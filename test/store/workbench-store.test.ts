@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
+import {
+  createMockWorkbenchService,
+  resetWorkbenchService,
+  setWorkbenchService,
+} from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
 describe("useWorkbenchStore", () => {
@@ -124,5 +128,36 @@ describe("useWorkbenchStore", () => {
       status: "sending",
     });
     expect(latestMessage?.id).not.toBe(failedMessage?.id);
+  });
+
+  it("recovers by reloading the current scope when the poll cursor is invalidated", async () => {
+    const baseService = createMockWorkbenchService();
+    let shouldInvalidateCursor = true;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        if (shouldInvalidateCursor) {
+          shouldInvalidateCursor = false;
+          throw {
+            code: "WORKBENCH_CURSOR_INVALIDATED",
+            message: "cursor invalidated",
+            status: 409,
+          };
+        }
+
+        return baseService.poll(request);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.pollState.status).toBe("idle");
+    expect(state.activeConversationId).toBe("conv-001");
+    expect(state.messagesByConversationId["conv-001"].length).toBeGreaterThan(0);
+    expect(state.sinceVersion).toBe(0);
   });
 });

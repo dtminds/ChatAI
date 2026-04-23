@@ -185,6 +185,19 @@ function parseWorkbenchTimestamp(value: string) {
   return new Date(value.replace(" ", "T")).getTime();
 }
 
+function isCursorInvalidationError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: string; status?: number };
+
+  return (
+    candidate.code === "WORKBENCH_CURSOR_INVALIDATED" ||
+    candidate.status === 409
+  );
+}
+
 function applyReadResult(
   state: WorkbenchStore,
   conversationId: string,
@@ -499,6 +512,73 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
         };
       });
     } catch (error) {
+      if (isCursorInvalidationError(error)) {
+        try {
+          const latestState = get();
+          const service = getWorkbenchService();
+          const accountId = latestState.activeAccountId;
+
+          if (!accountId) {
+            throw error;
+          }
+
+          const conversationDtos = await service.getConversations(accountId);
+          const conversations = conversationDtos.map(adaptConversation);
+          const recoveredConversation =
+            conversations.find(
+              (conversation) => conversation.id === latestState.activeConversationId,
+            ) ?? getFirstConversation(conversations, latestState.activeMode);
+          const recoveredConversationId = recoveredConversation?.id ?? "";
+          const accountMap = Object.fromEntries(
+            latestState.accounts.map((account) => [account.id, account]),
+          ) as Record<string, Account>;
+          const messageDtos = recoveredConversationId
+            ? await service.getMessages(recoveredConversationId, { limit: 30 })
+            : [];
+          const messages = messageDtos.map((message) =>
+            adaptMessage(
+              message,
+              latestState.customerProfilesById,
+              accountMap,
+              latestState.me,
+            ),
+          );
+
+          set((currentState) => ({
+            activeConversationId: recoveredConversationId,
+            activeMessageSeq: getActiveMessageSeq(
+              {
+                ...currentState.messagesByConversationId,
+                [recoveredConversationId]: messages,
+              },
+              recoveredConversationId,
+            ),
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [accountId]: conversations,
+            },
+            messagesByConversationId: recoveredConversationId
+              ? {
+                  ...currentState.messagesByConversationId,
+                  [recoveredConversationId]: messages,
+                }
+              : currentState.messagesByConversationId,
+            pendingMessages: [],
+            pollState: {
+              ...currentState.pollState,
+              errorMessage: undefined,
+              lastSuccessAt: Date.now(),
+              status: "idle",
+            },
+            sinceVersion: 0,
+          }));
+
+          return;
+        } catch {
+          // Fall through to the normal error state if the compensating reload fails.
+        }
+      }
+
       set((currentState) => ({
         pollState: {
           ...currentState.pollState,

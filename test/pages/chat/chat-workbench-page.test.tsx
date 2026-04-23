@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
@@ -116,5 +116,33 @@ describe("ChatWorkbenchPage", () => {
 
     expect(screen.queryByText("会话已由 德瑞可-小可 领取")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看历史" })).toBeDisabled();
+  });
+
+  it("loads older messages when the message viewport reaches the top", async () => {
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+
+    expect(screen.queryByText("会话已由 德瑞可-小可 领取")).not.toBeInTheDocument();
+
+    const messageViewport = screen.getByTestId("message-viewport");
+
+    Object.defineProperties(messageViewport, {
+      scrollHeight: {
+        configurable: true,
+        value: 1200,
+      },
+      scrollTop: {
+        configurable: true,
+        value: 0,
+        writable: true,
+      },
+    });
+
+    fireEvent.scroll(messageViewport);
+
+    await waitFor(() => {
+      expect(screen.getByText(/会话已由 德瑞可-小可 领取/)).toBeInTheDocument();
+    });
   });
 });

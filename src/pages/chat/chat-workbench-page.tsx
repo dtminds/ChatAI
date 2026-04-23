@@ -74,8 +74,11 @@ export function ChatWorkbenchPage() {
     claimStatus,
     conversationListsByScope,
     customerProfilesById,
+    hasMoreHistoryByConversationId,
     initializeWorkbench,
+    historyStatus,
     isConversationLoading,
+    loadOlderMessages,
     me,
     messagesByConversationId,
     pollState,
@@ -97,9 +100,18 @@ export function ChatWorkbenchPage() {
   );
   const [isResizingCustomerPanel, setIsResizingCustomerPanel] = useState(false);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
+  const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const messageListBottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
+  const historyLoadInFlightRef = useRef(false);
+  const pendingHistoryRestoreRef = useRef<{
+    conversationId: string;
+    previousScrollHeight: number;
+    previousScrollTop: number;
+  } | null>(null);
+  const previousConversationIdRef = useRef<string | undefined>(undefined);
+  const previousMessageCountRef = useRef(0);
 
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
@@ -113,6 +125,9 @@ export function ChatWorkbenchPage() {
     ) ?? visibleConversations[0];
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ?? [];
+  const hasMoreHistory = activeConversation
+    ? hasMoreHistoryByConversationId[activeConversation.id] !== false
+    : false;
   const activeCustomer =
     (activeConversation &&
       customerProfilesById[activeConversation.customerId]) ??
@@ -144,6 +159,46 @@ export function ChatWorkbenchPage() {
 
   const runPollCycle = useEffectEvent(async () => {
     await pollWorkbench();
+  });
+
+  const triggerOlderMessagesLoad = useEffectEvent(async () => {
+    if (
+      historyLoadInFlightRef.current ||
+      historyStatus === "loading" ||
+      !activeConversation ||
+      !hasMoreHistory
+    ) {
+      return;
+    }
+
+    const viewport = messageViewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    historyLoadInFlightRef.current = true;
+    pendingHistoryRestoreRef.current = {
+      conversationId: activeConversation.id,
+      previousScrollHeight: viewport.scrollHeight,
+      previousScrollTop: viewport.scrollTop,
+    };
+
+    try {
+      await loadOlderMessages();
+    } finally {
+      historyLoadInFlightRef.current = false;
+    }
+  });
+
+  const handleMessageViewportScroll = useEffectEvent(() => {
+    const viewport = messageViewportRef.current;
+
+    if (!viewport || viewport.scrollTop > 48) {
+      return;
+    }
+
+    void triggerOlderMessagesLoad();
   });
 
   useEffect(() => {
@@ -216,6 +271,48 @@ export function ChatWorkbenchPage() {
   }, [activeConversation?.id]);
 
   useEffect(() => {
+    const activeConversationId = activeConversation?.id;
+    const previousConversationId = previousConversationIdRef.current;
+    const previousMessageCount = previousMessageCountRef.current;
+    const viewport = messageViewportRef.current;
+    const pendingRestore = pendingHistoryRestoreRef.current;
+
+    if (pendingRestore && viewport && activeConversationId === pendingRestore.conversationId) {
+      if (activeMessages.length > previousMessageCount) {
+        const animationId = window.requestAnimationFrame(() => {
+          viewport.scrollTop =
+            viewport.scrollHeight -
+            pendingRestore.previousScrollHeight +
+            pendingRestore.previousScrollTop;
+        });
+
+        pendingHistoryRestoreRef.current = null;
+        previousConversationIdRef.current = activeConversationId;
+        previousMessageCountRef.current = activeMessages.length;
+
+        return () => {
+          window.cancelAnimationFrame(animationId);
+        };
+      }
+
+      if (historyStatus === "idle") {
+        pendingHistoryRestoreRef.current = null;
+      }
+    } else {
+      pendingHistoryRestoreRef.current = null;
+    }
+
+    const shouldScrollToBottom =
+      activeConversationId !== previousConversationId ||
+      (activeConversationId === previousConversationId &&
+        activeMessages.length > previousMessageCount);
+
+    if (!shouldScrollToBottom) {
+      previousConversationIdRef.current = activeConversationId;
+      previousMessageCountRef.current = activeMessages.length;
+      return;
+    }
+
     const animationId = window.requestAnimationFrame(() => {
       messageListBottomRef.current?.scrollIntoView({
         block: "end",
@@ -225,7 +322,7 @@ export function ChatWorkbenchPage() {
     return () => {
       window.cancelAnimationFrame(animationId);
     };
-  }, [activeConversation?.id, activeMessages.length]);
+  }, [activeConversation?.id, activeMessages.length, historyStatus]);
 
   useEffect(() => {
     if (bootstrapStatus !== "ready" || !activeAccountId) {
@@ -584,8 +681,20 @@ export function ChatWorkbenchPage() {
 
               <div className="flex min-h-0 min-w-0 flex-1" ref={workbenchBodyRef}>
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
-                  <ScrollArea className="min-h-0 flex-1 bg-white">
+                  <ScrollArea
+                    className="min-h-0 flex-1 bg-white"
+                    viewportTestId="message-viewport"
+                    viewportProps={{
+                      onScroll: handleMessageViewportScroll,
+                    }}
+                    viewportRef={messageViewportRef}
+                  >
                     <div className="px-5 py-5">
+                      {historyStatus === "loading" ? (
+                        <div className="mb-4 rounded-xl border border-dashed border-[#DEE5EE] px-4 py-2 text-center text-xs text-[#728093]">
+                          加载更早消息中...
+                        </div>
+                      ) : null}
                       {isConversationLoading ? (
                         <div className="mb-4 rounded-xl border border-dashed border-[#DEE5EE] px-4 py-3 text-sm text-[#728093]">
                           正在刷新当前会话...

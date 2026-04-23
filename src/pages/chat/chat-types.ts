@@ -1,5 +1,9 @@
 export type ChatMode = "single" | "group";
 
+export type MessageRole = "customer" | "agent" | "system";
+
+export type MessageStatus = "sending" | "sent" | "failed" | "read";
+
 export type Account = {
   id: string;
   name: string;
@@ -29,15 +33,95 @@ export type Conversation = {
   priority: "high" | "medium" | "low";
 };
 
-export type Message = {
+export type MessageSender = {
+  id: string;
+  name: string;
+  avatarUrl?: string;
+};
+
+export type SystemMessageContent = {
+  type: "system";
+  text: string;
+};
+
+export type TextMessageContent = {
+  type: "text";
+  text: string;
+};
+
+export type VoiceMessageContent = {
+  type: "voice";
+  durationLabel: string;
+};
+
+export type ImageMessageContent = {
+  type: "image";
+  imageUrl: string;
+  alt: string;
+  width?: number;
+  height?: number;
+};
+
+export type FileMessageContent = {
+  type: "file";
+  fileName: string;
+  fileSizeLabel: string;
+  extension: string;
+  sourceLabel?: string;
+};
+
+export type H5CardMessageContent = {
+  type: "h5";
+  title: string;
+  description: string;
+  previewImageUrl?: string;
+  sourceLabel?: string;
+};
+
+export type MiniProgramMessageContent = {
+  type: "mini-program";
+  title: string;
+  appName: string;
+  coverImageUrl?: string;
+  sourceLabel?: string;
+};
+
+export type MessageContent =
+  | SystemMessageContent
+  | TextMessageContent
+  | VoiceMessageContent
+  | ImageMessageContent
+  | FileMessageContent
+  | H5CardMessageContent
+  | MiniProgramMessageContent;
+
+type BaseMessage = {
   id: string;
   conversationId: string;
-  role: "customer" | "agent" | "system";
+  role: MessageRole;
   author: string;
-  body: string;
   sentAt: string;
-  status: "sending" | "sent" | "failed" | "read";
+  status: MessageStatus;
 };
+
+export type SystemMessage = BaseMessage & {
+  role: "system";
+  content: SystemMessageContent;
+};
+
+export type ChatMessage = BaseMessage & {
+  role: "customer" | "agent";
+  sender: MessageSender;
+  content:
+    | TextMessageContent
+    | VoiceMessageContent
+    | ImageMessageContent
+    | FileMessageContent
+    | H5CardMessageContent
+    | MiniProgramMessageContent;
+};
+
+export type Message = SystemMessage | ChatMessage;
 
 export type CustomerProfile = {
   id: string;

@@ -26,7 +26,8 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { Account, Conversation, Message } from "@/pages/chat/chat-types";
+import { ChatMessageList } from "@/pages/chat/components/message-feed";
+import type { Account, Conversation } from "@/pages/chat/chat-types";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
 const railItems = [
@@ -141,9 +142,9 @@ export function ChatWorkbenchPage() {
   };
 
   return (
-    <div className="min-h-svh bg-[#F7F8F9]">
-      <div className="grid min-h-svh grid-cols-[14.5rem_minmax(0,1fr)]">
-        <section className="flex min-h-svh flex-col bg-[#f5f6f8] px-3 py-4">
+    <div className="h-svh min-h-[720px] bg-[#F7F8F9]">
+      <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden">
+        <section className="flex h-full min-h-0 flex-col bg-[#f5f6f8] px-3 py-4">
           <div className="mb-3 flex items-center px-1">
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <HugeiconsIcon
@@ -211,10 +212,10 @@ export function ChatWorkbenchPage() {
           </div>
         </section>
 
-        <div className="p-4 pl-0">
+        <div className="h-full min-h-0 p-4 pl-0">
           <div
             className={cn(
-              "grid min-h-[calc(100svh-2rem)] overflow-hidden rounded-[20px] bg-white shadow-[0_8px_30px_rgba(15,23,42,0.05)] lg:grid-cols-[18rem_minmax(0,1fr)]",
+              "grid h-full min-h-0 overflow-hidden rounded-[20px] border border-[#e9edf2] bg-white lg:grid-cols-[18rem_minmax(0,1fr)]",
               isResizingCustomerPanel && "select-none",
             )}
           >
@@ -310,10 +311,8 @@ export function ChatWorkbenchPage() {
               <div className="flex min-h-0 min-w-0 flex-1" ref={workbenchBodyRef}>
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
                   <ScrollArea className="min-h-0 flex-1 bg-white">
-                    <div className="space-y-4 px-5 py-5">
-                      {activeMessages.map((message) => (
-                        <MessageBubble key={message.id} message={message} />
-                      ))}
+                    <div className="px-5 py-5">
+                      <ChatMessageList messages={activeMessages} />
                     </div>
                   </ScrollArea>
 
@@ -497,10 +496,10 @@ function AccountSidebarItem({
   return (
     <button
       className={cn(
-        "relative flex w-full items-start gap-2 rounded-[12px] px-3 py-3 text-left transition-colors",
+        "relative flex w-full items-start gap-2 rounded-[12px] border px-3 py-3 text-left transition-colors",
         isActive
-          ? "bg-white card-border-shadow"
-          : "bg-transparent hover:bg-white/70",
+          ? "border-[#e7ebf0] bg-white"
+          : "border-transparent bg-transparent hover:bg-white/70",
       )}
       onClick={onClick}
       title={account.name}
@@ -549,7 +548,7 @@ function ConversationCard({
           </Avatar>
           {conversation.unread > 0 && !isActive ? (
             <div
-              className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#ff4d4f] px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-white shadow-sm"
+              className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#ff4d4f] px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-white"
             >
               {conversation.unread}
             </div>
@@ -674,63 +673,6 @@ function formatDatePart(
   options: Intl.DateTimeFormatOptions,
 ) {
   return new Intl.DateTimeFormat("zh-CN", options).format(date);
-}
-
-function MessageBubble({ message }: { message: Message }) {
-  if (message.role === "system") {
-    return (
-      <div className="mx-auto max-w-2xl rounded-md bg-[#f1f3f6] px-3 py-1.5 text-center text-[11px] text-[#8c98a8]">
-        {message.body}
-      </div>
-    );
-  }
-
-  const isAgent = message.role === "agent";
-
-  return (
-    <div className={cn("flex gap-2.5", isAgent ? "justify-end" : "justify-start")}>
-      {!isAgent ? (
-        <Avatar className="mt-0.5 size-8 border-border">
-          <AvatarFallback>{message.author.slice(0, 1)}</AvatarFallback>
-        </Avatar>
-      ) : null}
-
-      <div className={cn("max-w-[40rem]", isAgent ? "order-first" : "")}>
-        <p
-          className={cn(
-            "mb-1 text-[12px] text-[#8c98a8]",
-            isAgent ? "text-right" : "",
-          )}
-        >
-          {message.author}
-        </p>
-        <div
-          className={cn(
-            "rounded-[8px] px-3.5 py-2 text-[14px] leading-6",
-            isAgent
-              ? "bg-[#cfe7ff] text-foreground"
-              : "bg-[#f2f4f7] text-foreground",
-          )}
-        >
-          {message.body}
-        </div>
-        <p
-          className={cn(
-            "mt-1.5 text-[11px] text-[#a1acbb]",
-            isAgent ? "text-right" : "",
-          )}
-        >
-          {message.sentAt}
-        </p>
-      </div>
-
-      {isAgent ? (
-        <Avatar className="mt-0.5 size-8 border-border">
-          <AvatarFallback>可</AvatarFallback>
-        </Avatar>
-      ) : null}
-    </div>
-  );
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {

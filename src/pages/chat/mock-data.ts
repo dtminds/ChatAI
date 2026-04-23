@@ -1,7 +1,23 @@
 import type { Account, Conversation, CustomerProfile, Message } from "@/pages/chat/chat-types";
 
-const customerAvatarUrl = createAvatarDataUrl("Y", "#dca06d", "#6b4c3b");
-const agentAvatarUrl = createAvatarDataUrl("L", "#1e2b4d", "#ef8b58");
+const accountAvatarDrcUrl =
+  "http://wework.qpic.cn/wwhead/duc2TvpEgSTewUnFO43HZ22H445fU0MTybfXZqjldjWlOArMJOM2GNsH3CUWyOuESHYdY5oHPhk/60";
+const accountAvatarNdtUrl =
+  "http://wework.qpic.cn/bizmail/GNtOLFv4zDw4EZia6Xg0YYvxibVQLtqfia5aRx5spGwaIm2vHgicBiarTuQ/60";
+const customerAvatarUrl =
+  "http://wx.qlogo.cn/mmhead/mOW261WJzibt0Sve4EmicjZbjRVJTuAYYHKCSNMriasW9CUOVVG9fsxicEeGrIuXnzkrbdgoAx7CEZI/64";
+const customerAvatarRuiUrl =
+  "http://wx.qlogo.cn/mmhead/5kc3roGJvWsakhB3k2hHcwC5eib6c9ialcF49rCibSQnz8/64";
+const customerAvatarPlusUrl =
+  "http://wx.qlogo.cn/mmhead/PiajxSqBRaEKoAfO0HnN90OicIskcZnJAeuFZ6zy6vErDJ1IeRzBtnXg/64";
+const customerAvatarGroupUrl =
+  "http://wx.qlogo.cn/mmhead/Q3auHgzwzM6CpFt8WP7GR5bh4xIwzjnaYTjhkNO0znVzMmcATUR4wg/64";
+const customerAvatarXiaoyuUrl =
+  "http://wx.qlogo.cn/mmhead/DoiajoZ3WVG6gOj80wYnYvb63wkempRp9licrvrymnbJk/64";
+const customerAvatarSleepUrl =
+  "http://wx.qlogo.cn/mmhead/6XFhg7ldObwgEHpMMpKicrLCNW2PgeAJFb4kRg3P5jn4dWbDceQ7kibA/64";
+const agentAvatarUrl = accountAvatarDrcUrl;
+const agentAvatarNdtUrl = accountAvatarNdtUrl;
 const phoneScreenshotImageUrl = createPhoneScreenshotDataUrl();
 const spreadsheetImageUrl = createSpreadsheetDataUrl();
 const h5CardPreviewImageUrl = createH5CardPreviewDataUrl();
@@ -11,6 +27,7 @@ export const seedAccounts: Account[] = [
   {
     id: "drc",
     name: "德瑞可",
+    avatarUrl: accountAvatarDrcUrl,
     operator: "小可",
     description: "私域客户管理",
     phone: "13296712905",
@@ -25,6 +42,7 @@ export const seedAccounts: Account[] = [
   {
     id: "ndt",
     name: "念都堂",
+    avatarUrl: accountAvatarNdtUrl,
     operator: "尚青",
     description: "门店社群维护",
     phone: "18104084782",
@@ -45,6 +63,7 @@ export const seedConversations: Record<string, Conversation[]> = {
       accountId: "drc",
       customerId: "cust-001",
       customerName: "丹阳草莓，得利市大樱桃",
+      customerAvatarUrl,
       preview: "这是最新的权益清单截图，你帮我确认下。",
       updatedAt: "2026-04-14 19:18:32",
       quietFor: "9天没聊了",
@@ -58,6 +77,7 @@ export const seedConversations: Record<string, Conversation[]> = {
       accountId: "drc",
       customerId: "cust-002",
       customerName: "睿白鸽",
+      customerAvatarUrl: customerAvatarRuiUrl,
       preview: "早餐能不能换成酸奶和坚果？",
       updatedAt: "2026-04-13 15:04:16",
       quietFor: "2天没聊了",
@@ -71,6 +91,7 @@ export const seedConversations: Record<string, Conversation[]> = {
       accountId: "drc",
       customerId: "cust-003",
       customerName: "+1.",
+      customerAvatarUrl: customerAvatarPlusUrl,
       preview: "体重平台期了，今天想加一次有氧。",
       updatedAt: "2026-04-13 05:09:59",
       quietFor: "2天没聊了",
@@ -84,6 +105,7 @@ export const seedConversations: Record<string, Conversation[]> = {
       accountId: "drc",
       customerId: "cust-004",
       customerName: "营养群-4月减脂冲刺",
+      customerAvatarUrl: customerAvatarGroupUrl,
       preview: "今天的打卡图请统一发到群公告下方。",
       updatedAt: "2026-04-11 09:44:38",
       quietFor: "4天没聊了",
@@ -99,6 +121,7 @@ export const seedConversations: Record<string, Conversation[]> = {
       accountId: "ndt",
       customerId: "cust-005",
       customerName: "小宇._",
+      customerAvatarUrl: customerAvatarXiaoyuUrl,
       preview: "好，那我今天先从晚餐控碳开始。",
       updatedAt: "2026-04-14 10:39:38",
       quietFor: "1天没聊了",
@@ -112,6 +135,7 @@ export const seedConversations: Record<string, Conversation[]> = {
       accountId: "ndt",
       customerId: "cust-006",
       customerName: "睡觉",
+      customerAvatarUrl: customerAvatarSleepUrl,
       preview: "多喝水，明天继续打卡。",
       updatedAt: "2026-04-09 16:04:45",
       quietFor: "6天没聊了",
@@ -315,6 +339,7 @@ export const seedMessages: Record<string, Message[]> = {
       sender: {
         id: "sender-cust-002",
         name: "睿白鸽",
+        avatarUrl: customerAvatarRuiUrl,
       },
       content: {
         type: "text",
@@ -333,6 +358,7 @@ export const seedMessages: Record<string, Message[]> = {
       sender: {
         id: "sender-cust-003",
         name: "+1.",
+        avatarUrl: customerAvatarPlusUrl,
       },
       content: {
         type: "text",
@@ -365,6 +391,7 @@ export const seedMessages: Record<string, Message[]> = {
       sender: {
         id: "sender-cust-005",
         name: "小宇._",
+        avatarUrl: customerAvatarXiaoyuUrl,
       },
       content: {
         type: "text",
@@ -383,6 +410,7 @@ export const seedMessages: Record<string, Message[]> = {
       sender: {
         id: "sender-agent-006",
         name: "念都堂-尚青",
+        avatarUrl: agentAvatarNdtUrl,
       },
       content: {
         type: "text",
@@ -393,22 +421,6 @@ export const seedMessages: Record<string, Message[]> = {
     },
   ],
 };
-
-function createAvatarDataUrl(label: string, start: string, end: string) {
-  return createSvgDataUrl(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="0 0 88 88" fill="none">
-      <defs>
-        <linearGradient id="avatar" x1="8" y1="10" x2="78" y2="78" gradientUnits="userSpaceOnUse">
-          <stop stop-color="${start}" />
-          <stop offset="1" stop-color="${end}" />
-        </linearGradient>
-      </defs>
-      <rect width="88" height="88" rx="24" fill="url(#avatar)" />
-      <circle cx="67" cy="21" r="7" fill="rgba(255,255,255,0.22)" />
-      <text x="44" y="52" font-size="34" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-weight="700">${label}</text>
-    </svg>
-  `);
-}
 
 function createPhoneScreenshotDataUrl() {
   return createSvgDataUrl(`
@@ -539,6 +551,7 @@ export const seedCustomerProfiles: Record<string, CustomerProfile> = {
   "cust-001": {
     id: "cust-001",
     name: "丹阳草莓，得利市大樱桃",
+    avatarUrl: customerAvatarUrl,
     persona: "轻食控碳客户",
     city: "南京",
     phone: "132 9671 2905",
@@ -585,6 +598,7 @@ export const seedCustomerProfiles: Record<string, CustomerProfile> = {
   "cust-002": {
     id: "cust-002",
     name: "睿白鸽",
+    avatarUrl: customerAvatarRuiUrl,
     persona: "早餐纠结型客户",
     city: "杭州",
     phone: "180 0000 0002",
@@ -613,6 +627,7 @@ export const seedCustomerProfiles: Record<string, CustomerProfile> = {
   "cust-003": {
     id: "cust-003",
     name: "+1.",
+    avatarUrl: customerAvatarPlusUrl,
     persona: "平台期客户",
     city: "苏州",
     phone: "180 0000 0003",
@@ -637,6 +652,7 @@ export const seedCustomerProfiles: Record<string, CustomerProfile> = {
   "cust-004": {
     id: "cust-004",
     name: "营养群-4月减脂冲刺",
+    avatarUrl: customerAvatarGroupUrl,
     persona: "群聊会话",
     city: "线上",
     phone: "--",
@@ -661,6 +677,7 @@ export const seedCustomerProfiles: Record<string, CustomerProfile> = {
   "cust-005": {
     id: "cust-005",
     name: "小宇._",
+    avatarUrl: customerAvatarXiaoyuUrl,
     persona: "初期控碳客户",
     city: "上海",
     phone: "180 0000 0005",
@@ -685,6 +702,7 @@ export const seedCustomerProfiles: Record<string, CustomerProfile> = {
   "cust-006": {
     id: "cust-006",
     name: "睡觉",
+    avatarUrl: customerAvatarSleepUrl,
     persona: "低活跃客户",
     city: "宁波",
     phone: "180 0000 0006",

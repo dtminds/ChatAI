@@ -177,7 +177,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => {
           avatarUrl:
             latestAgentMessage?.role === "agent"
               ? latestAgentMessage.sender.avatarUrl
-              : undefined,
+              : activeAccount?.avatarUrl,
         },
         content: {
           type: "text",

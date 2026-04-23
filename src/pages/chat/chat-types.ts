@@ -7,6 +7,7 @@ export type MessageStatus = "sending" | "sent" | "failed" | "read";
 export type Account = {
   id: string;
   name: string;
+  avatarUrl: string;
   operator: string;
   description: string;
   phone: string;
@@ -24,6 +25,7 @@ export type Conversation = {
   accountId: string;
   customerId: string;
   customerName: string;
+  customerAvatarUrl: string;
   preview: string;
   updatedAt: string;
   quietFor: string;
@@ -126,6 +128,7 @@ export type Message = SystemMessage | ChatMessage;
 export type CustomerProfile = {
   id: string;
   name: string;
+  avatarUrl: string;
   persona: string;
   city: string;
   phone: string;

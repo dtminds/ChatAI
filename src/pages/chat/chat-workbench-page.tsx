@@ -13,13 +13,12 @@ import {
   Menu11Icon,
   Notification02Icon,
   Search01Icon,
-  SentIcon,
   SmileIcon,
   Task01Icon,
   UserGroup03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -300,10 +299,10 @@ export function ChatWorkbenchPage() {
           </div>
         </section>
 
-        <div className="h-full min-h-0 p-4 pl-0">
+        <div className="h-full min-h-0 pl-0">
           <div
             className={cn(
-              "grid h-full min-h-0 overflow-hidden rounded-[20px] border border-[#e9edf2] bg-white lg:grid-cols-[18rem_minmax(0,1fr)]",
+              "grid h-full min-h-0 overflow-hidden rounded-[20px_0_0_20px] border-l border-[#e9edf2] bg-white lg:grid-cols-[18rem_minmax(0,1fr)]",
               isResizingCustomerPanel && "select-none",
             )}
           >
@@ -620,6 +619,7 @@ function AccountSidebarItem({
       type="button"
     >
       <Avatar className="mt-0.5 size-10">
+        <AvatarImage alt={account.name} src={account.avatarUrl} />
         <AvatarFallback>{account.name.slice(0, 1)}</AvatarFallback>
       </Avatar>
 
@@ -658,6 +658,10 @@ function ConversationCard({
       <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5">
         <div className="relative">
           <Avatar className="size-10">
+            <AvatarImage
+              alt={conversation.customerName}
+              src={conversation.customerAvatarUrl}
+            />
             <AvatarFallback>{conversation.customerName.slice(0, 1)}</AvatarFallback>
           </Avatar>
           {conversation.unread > 0 && !isActive ? (

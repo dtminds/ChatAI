@@ -71,6 +71,7 @@ export function ChatWorkbenchPage() {
   );
   const [isResizingCustomerPanel, setIsResizingCustomerPanel] = useState(false);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
+  const messageListBottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
 
@@ -155,6 +156,18 @@ export function ChatWorkbenchPage() {
   useEffect(() => {
     setIsEmojiPickerOpen(false);
   }, [activeConversation?.id]);
+
+  useEffect(() => {
+    const animationId = window.requestAnimationFrame(() => {
+      messageListBottomRef.current?.scrollIntoView({
+        block: "end",
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationId);
+    };
+  }, [activeConversation?.id, activeMessages.length]);
 
   const handleSendDraft = () => {
     const normalizedDraft = draft.trim();
@@ -407,6 +420,7 @@ export function ChatWorkbenchPage() {
                   <ScrollArea className="min-h-0 flex-1 bg-white">
                     <div className="px-5 py-5">
                       <ChatMessageList messages={activeMessages} />
+                      <div aria-hidden="true" ref={messageListBottomRef} />
                     </div>
                   </ScrollArea>
 

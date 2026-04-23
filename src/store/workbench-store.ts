@@ -19,6 +19,7 @@ import type {
 } from "@/pages/chat/chat-types";
 
 type AsyncStatus = "idle" | "loading" | "ready" | "error";
+type HistoryStatus = "idle" | "loading";
 
 type PollState = {
   status: "idle" | "polling" | "error";
@@ -40,6 +41,8 @@ type WorkbenchState = {
   bootstrapStatus: AsyncStatus;
   bootstrapError?: string;
   isConversationLoading: boolean;
+  historyStatus: HistoryStatus;
+  hasMoreHistoryByConversationId: Record<string, boolean>;
   claimStatus: "idle" | "claiming";
   sendStatus: "idle" | "sending";
   pollState: PollState;
@@ -53,12 +56,14 @@ type WorkbenchState = {
   claimActiveConversation: () => Promise<void>;
   sendAgentTextMessage: (text: string) => Promise<void>;
   retryFailedMessage: (messageId: string) => Promise<void>;
+  loadOlderMessages: () => Promise<void>;
   pollWorkbench: () => Promise<void>;
 };
 
 type WorkbenchStore = WorkbenchState;
 
 const defaultCustomerProfiles = seedCustomerProfiles;
+const MESSAGE_PAGE_SIZE = 5;
 
 function createInitialState(): Omit<
   WorkbenchState,
@@ -69,6 +74,7 @@ function createInitialState(): Omit<
   | "claimActiveConversation"
   | "sendAgentTextMessage"
   | "retryFailedMessage"
+  | "loadOlderMessages"
   | "pollWorkbench"
 > {
   return {
@@ -82,6 +88,8 @@ function createInitialState(): Omit<
     claimStatus: "idle",
     conversationListsByScope: {},
     customerProfilesById: defaultCustomerProfiles,
+    hasMoreHistoryByConversationId: {},
+    historyStatus: "idle",
     isConversationLoading: false,
     me: undefined,
     messagesByConversationId: {},
@@ -196,6 +204,13 @@ function isCursorInvalidationError(error: unknown) {
     candidate.code === "WORKBENCH_CURSOR_INVALIDATED" ||
     candidate.status === 409
   );
+}
+
+function hasPotentialOlderMessages(
+  loadedCount: number,
+  pageSize = MESSAGE_PAGE_SIZE,
+) {
+  return loadedCount >= pageSize;
 }
 
 function applyReadResult(
@@ -332,7 +347,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
         state.activeMode,
       );
       const messageDtos = activeConversationId
-        ? await service.getMessages(activeConversationId, { limit: 30 })
+        ? await service.getMessages(activeConversationId, { limit: MESSAGE_PAGE_SIZE })
         : [];
       const messages = messageDtos.map((message) =>
         adaptMessage(message, defaultCustomerProfiles, accountMap, me),
@@ -352,6 +367,11 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
         conversationListsByScope: {
           [activeAccountId]: activeConversations,
         },
+        hasMoreHistoryByConversationId: activeConversationId
+          ? {
+              [activeConversationId]: hasPotentialOlderMessages(messageDtos.length),
+            }
+          : {},
         me,
         messagesByConversationId: activeConversationId
           ? { [activeConversationId]: messages }
@@ -533,7 +553,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
             latestState.accounts.map((account) => [account.id, account]),
           ) as Record<string, Account>;
           const messageDtos = recoveredConversationId
-            ? await service.getMessages(recoveredConversationId, { limit: 30 })
+            ? await service.getMessages(recoveredConversationId, { limit: MESSAGE_PAGE_SIZE })
             : [];
           const messages = messageDtos.map((message) =>
             adaptMessage(
@@ -557,6 +577,14 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
               ...currentState.conversationListsByScope,
               [accountId]: conversations,
             },
+            hasMoreHistoryByConversationId: recoveredConversationId
+              ? {
+                  ...currentState.hasMoreHistoryByConversationId,
+                  [recoveredConversationId]: hasPotentialOlderMessages(
+                    messageDtos.length,
+                  ),
+                }
+              : currentState.hasMoreHistoryByConversationId,
             messagesByConversationId: recoveredConversationId
               ? {
                   ...currentState.messagesByConversationId,
@@ -757,6 +785,63 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
 
     await get().sendAgentTextMessage(failedMessage.content.text);
   },
+  async loadOlderMessages() {
+    const state = get();
+    const conversationId = state.activeConversationId;
+
+    if (
+      !conversationId ||
+      state.historyStatus === "loading" ||
+      state.hasMoreHistoryByConversationId[conversationId] === false
+    ) {
+      return;
+    }
+
+    const currentMessages = state.messagesByConversationId[conversationId] ?? [];
+    const firstSeq = currentMessages.reduce<number | undefined>((minSeq, message) => {
+      if (message.seq == null) {
+        return minSeq;
+      }
+
+      return minSeq == null ? message.seq : Math.min(minSeq, message.seq);
+    }, undefined);
+
+    if (firstSeq == null) {
+      return;
+    }
+
+    set({ historyStatus: "loading" });
+
+    try {
+      const accountMap = Object.fromEntries(
+        state.accounts.map((account) => [account.id, account]),
+      ) as Record<string, Account>;
+      const messageDtos = await getWorkbenchService().getMessages(conversationId, {
+        beforeSeq: firstSeq,
+        limit: MESSAGE_PAGE_SIZE,
+      });
+      const messages = messageDtos.map((message) =>
+        adaptMessage(message, state.customerProfilesById, accountMap, state.me),
+      );
+
+      set((currentState) => ({
+        hasMoreHistoryByConversationId: {
+          ...currentState.hasMoreHistoryByConversationId,
+          [conversationId]: hasPotentialOlderMessages(messageDtos.length),
+        },
+        historyStatus: "idle",
+        messagesByConversationId: {
+          ...currentState.messagesByConversationId,
+          [conversationId]: upsertMessageList(
+            messages,
+            currentState.messagesByConversationId[conversationId] ?? [],
+          ),
+        },
+      }));
+    } catch {
+      set({ historyStatus: "idle" });
+    }
+  },
   async setActiveAccount(accountId) {
     const state = get();
 
@@ -777,7 +862,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
         state.accounts.map((account) => [account.id, account]),
       ) as Record<string, Account>;
       const messageDtos = nextConversationId
-        ? await service.getMessages(nextConversationId, { limit: 30 })
+        ? await service.getMessages(nextConversationId, { limit: MESSAGE_PAGE_SIZE })
         : [];
       const messages = messageDtos.map((message) =>
         adaptMessage(message, state.customerProfilesById, accountMap, state.me),
@@ -798,6 +883,12 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
           ...currentState.conversationListsByScope,
           [accountId]: conversations,
         },
+        hasMoreHistoryByConversationId: nextConversationId
+          ? {
+              ...currentState.hasMoreHistoryByConversationId,
+              [nextConversationId]: hasPotentialOlderMessages(messageDtos.length),
+            }
+          : currentState.hasMoreHistoryByConversationId,
         isConversationLoading: false,
         messagesByConversationId: nextConversationId
           ? {
@@ -840,7 +931,9 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       const accountMap = Object.fromEntries(
         state.accounts.map((account) => [account.id, account]),
       ) as Record<string, Account>;
-      const messageDtos = await service.getMessages(conversationId, { limit: 30 });
+      const messageDtos = await service.getMessages(conversationId, {
+        limit: MESSAGE_PAGE_SIZE,
+      });
       const messages = messageDtos.map((message) =>
         adaptMessage(message, state.customerProfilesById, accountMap, state.me),
       );
@@ -853,6 +946,10 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
           },
           conversationId,
         ),
+        hasMoreHistoryByConversationId: {
+          ...currentState.hasMoreHistoryByConversationId,
+          [conversationId]: hasPotentialOlderMessages(messageDtos.length),
+        },
         isConversationLoading: false,
         messagesByConversationId: {
           ...currentState.messagesByConversationId,

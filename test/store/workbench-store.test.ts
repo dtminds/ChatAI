@@ -160,4 +160,34 @@ describe("useWorkbenchStore", () => {
     expect(state.messagesByConversationId["conv-001"].length).toBeGreaterThan(0);
     expect(state.sinceVersion).toBe(0);
   });
+
+  it("loads older messages before the current first sequence", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    let state = useWorkbenchStore.getState();
+
+    expect(state.messagesByConversationId["conv-001"]).toHaveLength(5);
+    expect(state.messagesByConversationId["conv-001"][0]).toMatchObject({
+      id: "msg-006",
+      seq: 6,
+    });
+    expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(true);
+
+    await useWorkbenchStore.getState().loadOlderMessages();
+
+    state = useWorkbenchStore.getState();
+
+    expect(state.messagesByConversationId["conv-001"]).toHaveLength(10);
+    expect(state.messagesByConversationId["conv-001"][0]).toMatchObject({
+      id: "msg-001",
+      seq: 1,
+    });
+    expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(true);
+
+    await useWorkbenchStore.getState().loadOlderMessages();
+
+    expect(
+      useWorkbenchStore.getState().hasMoreHistoryByConversationId["conv-001"],
+    ).toBe(false);
+  });
 });

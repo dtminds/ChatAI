@@ -80,4 +80,20 @@ describe("ChatWorkbenchPage", () => {
       expect(latestMessage?.id).not.toBe(beforeRetryId);
     });
   });
+
+  it("loads older messages from the history action", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+
+    expect(screen.queryByText("会话已由 德瑞可-小可 领取")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "查看历史" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/会话已由 德瑞可-小可 领取/)).toBeInTheDocument();
+    });
+  });
 });

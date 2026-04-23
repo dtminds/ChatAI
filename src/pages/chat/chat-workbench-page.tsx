@@ -74,8 +74,11 @@ export function ChatWorkbenchPage() {
     claimStatus,
     conversationListsByScope,
     customerProfilesById,
+    hasMoreHistoryByConversationId,
     initializeWorkbench,
+    historyStatus,
     isConversationLoading,
+    loadOlderMessages,
     me,
     messagesByConversationId,
     pollState,
@@ -113,6 +116,9 @@ export function ChatWorkbenchPage() {
     ) ?? visibleConversations[0];
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ?? [];
+  const hasMoreHistory = activeConversation
+    ? hasMoreHistoryByConversationId[activeConversation.id] !== false
+    : false;
   const activeCustomer =
     (activeConversation &&
       customerProfilesById[activeConversation.customerId]) ??
@@ -549,10 +555,19 @@ export function ChatWorkbenchPage() {
                   <div className="hidden items-center gap-2 md:flex">
                     <Button
                       className="h-9 rounded-lg border-[#d8dfea] bg-white px-3 text-[13px] shadow-none"
-                      disabled={!activeConversation}
+                      disabled={
+                        !activeConversation ||
+                        historyStatus === "loading" ||
+                        !hasMoreHistory
+                      }
+                      onClick={() => {
+                        startTransition(() => {
+                          void loadOlderMessages();
+                        });
+                      }}
                       variant="outline"
                     >
-                      查看历史
+                      {historyStatus === "loading" ? "加载中..." : "查看历史"}
                     </Button>
                     <Button
                       className="h-9 rounded-lg px-3 text-[13px] shadow-none"

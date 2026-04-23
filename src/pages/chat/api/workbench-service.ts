@@ -332,7 +332,7 @@ function buildInitialState(): MockState {
     ]),
   ) as Record<string, WorkbenchConversationSummaryDto[]>;
 
-  const accounts = seedAccounts.map((account) => ({
+  const accounts: WorkbenchAccountDto[] = seedAccounts.map((account) => ({
     accountId: account.id,
     avatar: account.avatarUrl,
     description: account.description,

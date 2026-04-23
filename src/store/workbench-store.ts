@@ -390,9 +390,6 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       });
 
       set((currentState) => {
-        const accountMap = Object.fromEntries(
-          currentState.accounts.map((account) => [account.id, account]),
-        ) as Record<string, Account>;
         const nextAccounts = currentState.accounts.map((account) => {
           const change = response.accountChanges.find(
             (item) => item.accountId === account.id,

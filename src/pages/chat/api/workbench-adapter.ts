@@ -6,13 +6,15 @@ import type {
 } from "@/pages/chat/api/workbench-contracts";
 import type {
   Account,
+  ChatMessage,
   Conversation,
   CustomerProfile,
   EmployeeProfile,
   Message,
-  MessageContent,
   MessageStatus,
 } from "@/pages/chat/chat-types";
+
+type ChatMessageContent = ChatMessage["content"];
 
 export function adaptEmployee(dto: WorkbenchEmployeeDto): EmployeeProfile {
   return {
@@ -92,7 +94,7 @@ export function adaptMessage(
   const isAgent = dto.senderType === "agent";
   const customer = customerProfilesById[dto.customerId];
   const account = accountsById[dto.accountId];
-  const content = adaptMessageContent(dto.contentType, dto.content);
+  const content = adaptChatMessageContent(dto.contentType, dto.content);
   const senderName = isAgent
     ? me && account
       ? `${account.name}-${account.operator}`
@@ -148,16 +150,11 @@ export function formatConversationPreview(text: string) {
   return `${normalizedText.slice(0, 28)}…`;
 }
 
-function adaptMessageContent(
+function adaptChatMessageContent(
   contentType: WorkbenchMessageDto["contentType"],
   content: Record<string, unknown>,
-): MessageContent {
+): ChatMessageContent {
   switch (contentType) {
-    case "system":
-      return {
-        text: String(content.text ?? ""),
-        type: "system",
-      };
     case "voice":
       return {
         durationLabel: String(content.durationLabel ?? ""),
@@ -196,6 +193,7 @@ function adaptMessageContent(
         type: "mini-program",
       };
     case "text":
+    case "system":
     default:
       return {
         text: String(content.text ?? ""),

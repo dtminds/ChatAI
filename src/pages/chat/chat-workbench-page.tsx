@@ -512,7 +512,6 @@ export function ChatWorkbenchPage() {
                         {visibleConversations.map((conversation) => (
                           <ConversationCard
                             conversation={conversation}
-                            currentEmployeeId={me?.id}
                             isActive={conversation.id === activeConversation?.id}
                             key={conversation.id}
                             onSelect={() => {

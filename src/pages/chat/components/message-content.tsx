@@ -179,7 +179,7 @@ export function MiniProgramMessageCard({
   content: MiniProgramMessageContent;
 }) {
   return (
-    <div className="w-[min(18.5rem,calc(100vw-7rem))] rounded-[8px] border border-[#e6ebf1] bg-white p-2.5 pb-1.5">
+    <div className="w-[min(17rem,calc(100vw-7rem))] rounded-[8px] border border-[#e6ebf1] bg-white p-2.5 pb-1.5">
       <div className="flex items-center gap-1.5 text-[12px] text-[#667487]">
         <div className="flex size-7 items-center justify-center rounded-full bg-[#eee] text-[#5276d9]">
           <HugeiconsIcon icon={AiBrowserIcon} size={14} strokeWidth={1.9} />
@@ -188,7 +188,7 @@ export function MiniProgramMessageCard({
       </div>
 
       <div className="mt-2.5">
-        <p className="line-clamp-2 text-[15px] font-medium leading-5 text-[#18212f]">
+        <p className="line-clamp-2 text-[14px] font-medium leading-5 text-[#18212f]">
           {content.title}
         </p>
       </div>

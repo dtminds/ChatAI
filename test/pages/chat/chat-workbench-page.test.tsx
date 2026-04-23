@@ -55,29 +55,57 @@ describe("ChatWorkbenchPage", () => {
 
     render(<ChatWorkbenchPage />);
 
-    await screen.findByPlaceholderText("请输入消息……");
-    await user.click(screen.getByTitle("念都堂"));
-    await user.type(screen.getByPlaceholderText("请输入消息……"), "这条消息会失败");
+    const composer = await screen.findByPlaceholderText("请输入消息……");
+    await user.click(composer);
+    await user.paste("这条消息 [fail]");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
-    await waitFor(async () => {
-      await useWorkbenchStore.getState().pollWorkbench();
+    await waitFor(() => {
+      const latestMessage =
+        useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+
+      expect(latestMessage).toMatchObject({
+        remoteMessageId: expect.any(String),
+        status: "sending",
+      });
+    });
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    await waitFor(() => {
       expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
     });
 
     const beforeRetryId =
-      useWorkbenchStore.getState().messagesByConversationId["conv-005"].at(-1)?.id;
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1)?.id;
 
     await user.click(screen.getByRole("button", { name: "重试发送" }));
 
     await waitFor(() => {
       const latestMessage =
-        useWorkbenchStore.getState().messagesByConversationId["conv-005"].at(-1);
+        useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
 
       expect(latestMessage).toMatchObject({
         status: "sending",
       });
       expect(latestMessage?.id).not.toBe(beforeRetryId);
+    });
+  });
+
+  it("disables the composer when the active account is offline", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+    await user.click(screen.getByTitle("念都堂"));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("当前会话暂不可发送消息")).toBeDisabled();
+      expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+      expect(
+        screen.getByText("当前账号离线，暂时无法发送消息。"),
+      ).toBeInTheDocument();
     });
   });
 

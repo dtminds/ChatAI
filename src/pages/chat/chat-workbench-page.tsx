@@ -129,12 +129,16 @@ export function ChatWorkbenchPage() {
   const isClaimedByOther =
     !!activeConversation?.assignedEmployeeId &&
     activeConversation.assignedEmployeeId !== me?.id;
+  const isActiveAccountOffline = activeAccount?.loginStatus === "offline";
   const canSendMessage =
     bootstrapStatus === "ready" &&
     !!activeConversation &&
+    !isActiveAccountOffline &&
     !isClaimedByOther &&
     sendStatus !== "sending";
-  const composerHint = isClaimedByOther
+  const composerHint = isActiveAccountOffline
+    ? "当前账号离线，暂时无法发送消息。"
+    : isClaimedByOther
     ? "该会话已被其他坐席领取，当前只读。"
     : activeConversation?.status === "public" && !isClaimedByCurrentUser
       ? "发送第一条消息时会自动领取会话。"

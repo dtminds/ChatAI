@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+:root {
+  --background: oklch(0.976 0.004 250);
+  --foreground: oklch(0.286 0.018 252);
+  --card: oklch(0.992 0.003 250);
+  --card-foreground: oklch(0.286 0.018 252);
+  --popover: oklch(0.992 0.003 250);
+  --popover-foreground: oklch(0.286 0.018 252);
+  --primary: oklch(0.646 0.149 253);
+  --primary-foreground: oklch(0.992 0.003 250);
+  --secondary: oklch(0.956 0.004 250);
+  --secondary-foreground: oklch(0.332 0.016 252);
+  --muted: oklch(0.952 0.004 252);
+  --muted-foreground: oklch(0.572 0.018 253);
+  --accent: oklch(0.944 0.006 249);
+  --accent-foreground: oklch(0.332 0.016 252);
+  --destructive: oklch(0.628 0.219 25);
+  --border: oklch(0.908 0.006 250);
+  --input: oklch(0.892 0.006 250);
+  --ring: oklch(0.732 0.094 252);
+  --radius: 0.8rem;
+  --avatar-start: oklch(0.707 0.131 252);
+  --avatar-end: oklch(0.748 0.097 214);
+}
+
+@theme inline {
+  --font-sans:
+    "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei",
+    sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 0.5rem);
+  --radius-md: calc(var(--radius) - 0.25rem);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 0.5rem);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .card-border-shadow {
+    box-shadow: 0 6px 14px -14px rgba(21, 42, 51, 0.42), inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+  }
+}

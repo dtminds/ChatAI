@@ -23,8 +23,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -45,6 +51,12 @@ const DEFAULT_CUSTOMER_PANEL_WIDTH = 304;
 const MIN_CUSTOMER_PANEL_WIDTH = 256;
 const MAX_CUSTOMER_PANEL_WIDTH = 420;
 const MIN_MESSAGE_PANEL_WIDTH = 520;
+const INPUT_ENTER_BEHAVIORS = {
+  newline: "Enter换行",
+  send: "Enter发送",
+} as const;
+
+type InputEnterBehavior = keyof typeof INPUT_ENTER_BEHAVIORS;
 
 export function ChatWorkbenchPage() {
   const {
@@ -65,7 +77,8 @@ export function ChatWorkbenchPage() {
 
   const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-  const [isEnterNewlineEnabled, setIsEnterNewlineEnabled] = useState(false);
+  const [inputEnterBehavior, setInputEnterBehavior] =
+    useState<InputEnterBehavior>("send");
   const [customerPanelWidth, setCustomerPanelWidth] = useState(
     DEFAULT_CUSTOMER_PANEL_WIDTH,
   );
@@ -186,7 +199,8 @@ export function ChatWorkbenchPage() {
       return;
     }
 
-    const shouldSend = isEnterNewlineEnabled ? event.shiftKey : !event.shiftKey;
+    const shouldSend =
+      inputEnterBehavior === "newline" ? event.shiftKey : !event.shiftKey;
 
     if (shouldSend) {
       event.preventDefault();
@@ -463,13 +477,27 @@ export function ChatWorkbenchPage() {
                           <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={1.8} />
                         </button>
                       </div>
-                      <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                        <Switch
-                          checked={isEnterNewlineEnabled}
-                          onCheckedChange={setIsEnterNewlineEnabled}
-                        />
-                        <span>{isEnterNewlineEnabled ? "Enter换行" : "Enter发送"}</span>
-                      </label>
+                      <Select
+                        onValueChange={(value) =>
+                          setInputEnterBehavior(value as InputEnterBehavior)
+                        }
+                        value={inputEnterBehavior}
+                      >
+                        <SelectTrigger
+                          aria-label="选择 Enter 键行为"
+                          className="h-7 min-w-0 border-0 bg-transparent px-1.5 text-[#8b96a6] focus:ring-0"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="end">
+                          <SelectItem value="send">
+                            {INPUT_ENTER_BEHAVIORS.send}
+                          </SelectItem>
+                          <SelectItem value="newline">
+                            {INPUT_ENTER_BEHAVIORS.newline}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <Textarea

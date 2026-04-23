@@ -11,7 +11,7 @@ export type RequestError = {
   code?: string;
 };
 
-const requestInstance = axios.create({
+export const requestInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
   timeout: 15000,
 });

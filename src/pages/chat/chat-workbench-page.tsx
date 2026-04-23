@@ -1,7 +1,9 @@
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  startTransition,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
 } from "react";
@@ -62,18 +64,27 @@ type InputEnterBehavior = keyof typeof INPUT_ENTER_BEHAVIORS;
 export function ChatWorkbenchPage() {
   const {
     accounts,
-    conversationListsByScope,
-    customerProfilesById,
-    messagesByConversationId,
     activeAccountId,
     activeConversationId,
-    activeMode,
-    pollState,
     activeMessageSeq,
+    activeMode,
+    bootstrapError,
+    bootstrapStatus,
+    claimActiveConversation,
+    claimStatus,
+    conversationListsByScope,
+    customerProfilesById,
+    initializeWorkbench,
+    isConversationLoading,
+    me,
+    messagesByConversationId,
+    pollState,
+    pollWorkbench,
+    sendAgentTextMessage,
+    sendStatus,
     setActiveAccount,
     setActiveConversation,
     setActiveMode,
-    sendAgentTextMessage,
   } = useWorkbenchStore();
 
   const [draft, setDraft] = useState("");
@@ -105,6 +116,34 @@ export function ChatWorkbenchPage() {
     (activeConversation &&
       customerProfilesById[activeConversation.customerId]) ??
     undefined;
+  const isClaimedByCurrentUser =
+    !!activeConversation?.assignedEmployeeId &&
+    activeConversation.assignedEmployeeId === me?.id;
+  const isClaimedByOther =
+    !!activeConversation?.assignedEmployeeId &&
+    activeConversation.assignedEmployeeId !== me?.id;
+  const canSendMessage =
+    bootstrapStatus === "ready" &&
+    !!activeConversation &&
+    !isClaimedByOther &&
+    sendStatus !== "sending";
+  const composerHint = isClaimedByOther
+    ? "该会话已被其他坐席领取，当前只读。"
+    : activeConversation?.status === "public" && !isClaimedByCurrentUser
+      ? "发送第一条消息时会自动领取会话。"
+      : pollState.status === "error"
+        ? "轮询暂时失败，消息状态可能延迟回收。"
+        : sendStatus === "sending"
+          ? "消息已受理，等待轮询回收最终状态。"
+          : "Enter 发送，Shift + Enter 换行。";
+
+  const runPollCycle = useEffectEvent(async () => {
+    await pollWorkbench();
+  });
+
+  useEffect(() => {
+    void initializeWorkbench();
+  }, [initializeWorkbench]);
 
   useEffect(() => {
     document.body.style.cursor = isResizingCustomerPanel ? "col-resize" : "";
@@ -183,14 +222,51 @@ export function ChatWorkbenchPage() {
     };
   }, [activeConversation?.id, activeMessages.length]);
 
-  const handleSendDraft = () => {
-    const normalizedDraft = draft.trim();
-
-    if (!normalizedDraft) {
+  useEffect(() => {
+    if (bootstrapStatus !== "ready" || !activeAccountId) {
       return;
     }
 
-    sendAgentTextMessage(normalizedDraft);
+    let timeoutId = 0;
+    let cancelled = false;
+
+    const scheduleNextPoll = () => {
+      const baseInterval =
+        document.visibilityState === "hidden" ? 10000 : pollState.intervalMs;
+      const jitter = Math.floor(Math.random() * pollState.jitterMs);
+
+      timeoutId = window.setTimeout(async () => {
+        await runPollCycle();
+
+        if (!cancelled) {
+          scheduleNextPoll();
+        }
+      }, baseInterval + jitter);
+    };
+
+    scheduleNextPoll();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    activeAccountId,
+    activeConversationId,
+    bootstrapStatus,
+    pollState.intervalMs,
+    pollState.jitterMs,
+    runPollCycle,
+  ]);
+
+  const handleSendDraft = () => {
+    const normalizedDraft = draft.trim();
+
+    if (!normalizedDraft || !canSendMessage) {
+      return;
+    }
+
+    void sendAgentTextMessage(normalizedDraft);
     setDraft("");
     textareaRef.current?.focus();
   };
@@ -262,6 +338,39 @@ export function ChatWorkbenchPage() {
     window.addEventListener("pointerup", handlePointerUp);
   };
 
+  if (bootstrapStatus === "loading" && accounts.length === 0) {
+    return (
+      <div className="flex h-svh items-center justify-center bg-[#F7F8F9] px-6">
+        <div className="rounded-2xl border border-[#E7EBF0] bg-white px-6 py-5 text-sm text-[#66758A] shadow-sm">
+          正在加载工作台数据...
+        </div>
+      </div>
+    );
+  }
+
+  if (bootstrapStatus === "error" && accounts.length === 0) {
+    return (
+      <div className="flex h-svh items-center justify-center bg-[#F7F8F9] px-6">
+        <div className="max-w-md rounded-2xl border border-[#F2D1D4] bg-white px-6 py-5 shadow-sm">
+          <p className="text-sm font-semibold text-foreground">工作台初始化失败</p>
+          <p className="mt-2 text-sm leading-6 text-[#6D7787]">
+            {bootstrapError ?? "暂时无法获取会话数据。"}
+          </p>
+          <Button
+            className="mt-4 h-9 rounded-lg px-4 text-[13px] shadow-none"
+            onClick={() => {
+              startTransition(() => {
+                void initializeWorkbench();
+              });
+            }}
+          >
+            重新加载
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-svh min-h-[720px] bg-[#F7F8F9]">
       <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden">
@@ -315,7 +424,11 @@ export function ChatWorkbenchPage() {
                     account={account}
                     isActive={isActive}
                     key={account.id}
-                    onClick={() => setActiveAccount(account.id)}
+                    onClick={() => {
+                      startTransition(() => {
+                        void setActiveAccount(account.id);
+                      });
+                    }}
                   />
                 );
               })}
@@ -330,16 +443,19 @@ export function ChatWorkbenchPage() {
               strokeWidth={1.8}
             />
             <span>{Math.floor(pollState.intervalMs / 1000)}s</span>
+            {pollState.status === "error" ? (
+              <span className="text-[#d54b4b]">轮询异常</span>
+            ) : null}
           </div>
         </section>
 
         <div className="h-full min-h-0 pl-0">
           <div
-            style={{ boxShadow: '-5px 0 10px -4px rgba(20, 37, 44, 0.04)'}}
             className={cn(
               "grid h-full min-h-0 overflow-hidden rounded-[20px_0_0_20px] border-l border-[#EBEDEE] bg-white lg:grid-cols-[18rem_minmax(0,1fr)]",
               isResizingCustomerPanel && "select-none",
             )}
+            style={{ boxShadow: "-5px 0 10px -4px rgba(20, 37, 44, 0.04)" }}
           >
             <section className="flex min-h-0 min-w-0 flex-col border-r border-[#EEEFF0] bg-white">
               <div className="border-b border-[#EEEFF0] px-4 py-4">
@@ -361,7 +477,11 @@ export function ChatWorkbenchPage() {
               <div className="min-h-0 flex-1">
                 <Tabs
                   className="flex h-full min-h-0 flex-col"
-                  onValueChange={(value) => setActiveMode(value as "single" | "group")}
+                  onValueChange={(value) => {
+                    startTransition(() => {
+                      void setActiveMode(value as "single" | "group");
+                    });
+                  }}
                   value={activeMode}
                 >
                   <div className="border-b border-[#EEEFF0] px-4">
@@ -394,7 +514,11 @@ export function ChatWorkbenchPage() {
                             conversation={conversation}
                             isActive={conversation.id === activeConversation?.id}
                             key={conversation.id}
-                            onSelect={() => setActiveConversation(conversation.id)}
+                            onSelect={() => {
+                              startTransition(() => {
+                                void setActiveConversation(conversation.id);
+                              });
+                            }}
                           />
                         ))}
                       </div>
@@ -422,10 +546,33 @@ export function ChatWorkbenchPage() {
                   </div>
 
                   <div className="hidden items-center gap-2 md:flex">
-                    <Button className="h-9 rounded-lg border-[#d8dfea] bg-white px-3 text-[13px] shadow-none" variant="outline">
+                    <Button
+                      className="h-9 rounded-lg border-[#d8dfea] bg-white px-3 text-[13px] shadow-none"
+                      disabled={!activeConversation}
+                      variant="outline"
+                    >
                       查看历史
                     </Button>
-                    <Button className="h-9 rounded-lg px-3 text-[13px] shadow-none">领取会话</Button>
+                    <Button
+                      className="h-9 rounded-lg px-3 text-[13px] shadow-none"
+                      disabled={
+                        !activeConversation ||
+                        isClaimedByCurrentUser ||
+                        isClaimedByOther ||
+                        claimStatus === "claiming"
+                      }
+                      onClick={() => {
+                        startTransition(() => {
+                          void claimActiveConversation();
+                        });
+                      }}
+                    >
+                      {isClaimedByCurrentUser
+                        ? "已领取"
+                        : claimStatus === "claiming"
+                          ? "领取中..."
+                          : "领取会话"}
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -434,6 +581,11 @@ export function ChatWorkbenchPage() {
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
                   <ScrollArea className="min-h-0 flex-1 bg-white">
                     <div className="px-5 py-5">
+                      {isConversationLoading ? (
+                        <div className="mb-4 rounded-xl border border-dashed border-[#DEE5EE] px-4 py-3 text-sm text-[#728093]">
+                          正在刷新当前会话...
+                        </div>
+                      ) : null}
                       <ChatMessageList messages={activeMessages} />
                       <div aria-hidden="true" ref={messageListBottomRef} />
                     </div>
@@ -442,7 +594,7 @@ export function ChatWorkbenchPage() {
                   <Separator className="bg-[#EEEFF0]" />
 
                   <div className="space-y-1.5 bg-white px-5 py-3">
-                    <div className="flex items-center ml-[-6px] justify-between gap-3 text-sm text-muted-foreground">
+                    <div className="ml-[-6px] flex items-center justify-between gap-3 text-sm text-muted-foreground">
                       <div className="flex items-center gap-1.5">
                         <div className="relative" ref={emojiPickerRef}>
                           <button
@@ -504,7 +656,7 @@ export function ChatWorkbenchPage() {
                         <Button
                           aria-label="发送消息"
                           className="size-7 rounded-full p-0 shadow-none"
-                          disabled={!draft.trim()}
+                          disabled={!draft.trim() || !canSendMessage}
                           onClick={handleSendDraft}
                           size="icon"
                         >
@@ -514,13 +666,19 @@ export function ChatWorkbenchPage() {
                     </div>
 
                     <Textarea
-                      className="chat-composer-textarea min-h-28 resize-none rounded-none border-0 bg-transparent pl-0 pr-0.5 py-1 text-[14px] shadow-none focus-visible:ring-0"
+                      className="chat-composer-textarea min-h-28 resize-none rounded-none border-0 bg-transparent py-1 pl-0 pr-0.5 text-[14px] shadow-none focus-visible:ring-0"
+                      disabled={!canSendMessage}
                       onChange={(event) => setDraft(event.target.value)}
                       onKeyDown={handleDraftKeyDown}
-                      placeholder="请输入消息……"
+                      placeholder={
+                        canSendMessage ? "请输入消息……" : "当前会话暂不可发送消息"
+                      }
                       ref={textareaRef}
                       value={draft}
                     />
+                    <p className="px-0.5 text-[12px] leading-5 text-[#8A94A6]">
+                      {composerHint}
+                    </p>
                   </div>
                 </div>
 
@@ -533,12 +691,12 @@ export function ChatWorkbenchPage() {
                   onPointerDown={handleCustomerPanelResizeStart}
                   type="button"
                 >
-                <span
-                  className={cn(
-                    "h-full w-px bg-[#EEEFF0] transition-colors",
-                    isResizingCustomerPanel && "bg-[#9cbcf8]",
-                  )}
-                />
+                  <span
+                    className={cn(
+                      "h-full w-px bg-[#EEEFF0] transition-colors",
+                      isResizingCustomerPanel && "bg-[#9cbcf8]",
+                    )}
+                  />
                 </button>
 
                 <aside
@@ -724,12 +882,35 @@ function AccountSidebarItem({
       </Avatar>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-semibold text-foreground">
-          {account.name}
-        </p>
-        <p className="mt-1 truncate text-[12px] text-[#6e7887]">
-          {account.operator}
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="truncate text-[13px] font-semibold text-foreground">
+            {account.name}
+          </p>
+          <div
+            className={cn(
+              "flex shrink-0 items-center gap-1 text-[10px] leading-none",
+              account.loginStatus === "offline" ? "text-[#98A2B3]" : "text-[#28B266]",
+            )}
+          >
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full",
+                account.loginStatus === "offline" ? "bg-[#C7CED8]" : "bg-[#28B266]",
+              )}
+            />
+            <span>{account.loginStatus === "offline" ? "离线" : "在线"}</span>
+          </div>
+        </div>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <p className="truncate text-[12px] text-[#6e7887]">
+            {account.operator}
+          </p>
+          {account.unreadCount ? (
+            <span className="rounded-full bg-[#ff4d4f] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+              {account.unreadCount}
+            </span>
+          ) : null}
+        </div>
       </div>
     </button>
   );
@@ -765,9 +946,7 @@ function ConversationCard({
             <AvatarFallback>{conversation.customerName.slice(0, 1)}</AvatarFallback>
           </Avatar>
           {conversation.unread > 0 && !isActive ? (
-            <div
-              className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#ff4d4f] px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-white"
-            >
+            <div className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#ff4d4f] px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
               {conversation.unread}
             </div>
           ) : null}
@@ -775,43 +954,37 @@ function ConversationCard({
 
         <div className="min-w-0 flex-1">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-            <p
-              className={cn(
-                "truncate text-[14px] font-medium",
-                "text-foreground",
-              )}
-            >
-              {conversation.customerName}
-            </p>
-            {conversation.mode === "group" ? (
-              <span
-                className={cn(
-                  "rounded px-1 py-0.5 text-[10px]",
-                  isActive
+            <div className="flex min-w-0 items-center gap-1.5">
+              <p className="truncate text-[14px] font-medium text-foreground">
+                {conversation.customerName}
+              </p>
+              {conversation.mode === "group" ? (
+                <span
+                  className={cn(
+                    "rounded px-1 py-0.5 text-[10px]",
+                    isActive
                     ? "bg-[#dce9ff] text-primary"
                     : "bg-[#eef3ff] text-primary",
-                )}
-              >
-                群
+                  )}
+                >
+                  群
+                </span>
+              ) : null}
+            </div>
+            {conversation.priority === "high" ? (
+              <span className="shrink-0 whitespace-nowrap rounded bg-[#FFF1F1] px-1 py-0.5 text-[10px] leading-none text-[#C74848]">
+                高优先
               </span>
-            ) : null}
+            ) : (
+              <span />
+            )}
           </div>
 
           <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-            <p
-              className={cn(
-                "truncate text-[12px]",
-                "text-[#7b8798]",
-              )}
-            >
+            <p className="truncate text-[12px] text-[#7b8798]">
               {conversation.preview}
             </p>
-            <span
-              className={cn(
-                "shrink-0 whitespace-nowrap text-xs",
-                "text-[#8a94a6]",
-              )}
-            >
+            <span className="shrink-0 whitespace-nowrap text-xs text-[#8a94a6]">
               {formatConversationTimestamp(conversation.updatedAt)}
             </span>
           </div>

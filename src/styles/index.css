@@ -80,4 +80,26 @@
   .card-border-shadow {
     box-shadow: 0 6px 14px -14px rgba(21, 42, 51, 0.42), inset 0 0 0 1px rgba(0, 0, 0, 0.1);
   }
+
+  .chat-composer-textarea {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(170, 179, 191, 0.58) transparent;
+  }
+
+  .chat-composer-textarea::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .chat-composer-textarea::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .chat-composer-textarea::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(170, 179, 191, 0.5);
+  }
+
+  .chat-composer-textarea::-webkit-scrollbar-thumb:hover {
+    background: rgba(151, 161, 174, 0.72);
+  }
 }

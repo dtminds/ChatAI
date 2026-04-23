@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
   AiChat02Icon,
+  ArrowUp02Icon,
   Chat01Icon,
   CustomerService02Icon,
   Image01Icon,
@@ -440,8 +441,8 @@ export function ChatWorkbenchPage() {
 
                   <Separator className="bg-[#EEEFF0]" />
 
-                  <div className="space-y-2 bg-white px-5 py-3">
-                    <div className="flex items-center justify-between gap-3 pb-2 text-sm text-muted-foreground">
+                  <div className="space-y-1.5 bg-white px-5 py-3">
+                    <div className="flex items-center ml-[-6px] justify-between gap-3 text-sm text-muted-foreground">
                       <div className="flex items-center gap-1.5">
                         <div className="relative" ref={emojiPickerRef}>
                           <button
@@ -477,47 +478,49 @@ export function ChatWorkbenchPage() {
                           <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={1.8} />
                         </button>
                       </div>
-                      <Select
-                        onValueChange={(value) =>
-                          setInputEnterBehavior(value as InputEnterBehavior)
-                        }
-                        value={inputEnterBehavior}
-                      >
-                        <SelectTrigger
-                          aria-label="选择 Enter 键行为"
-                          className="h-7 min-w-0 border-0 bg-transparent px-1.5 text-[#8b96a6] focus:ring-0"
+                      <div className="flex items-center gap-1">
+                        <Select
+                          onValueChange={(value) =>
+                            setInputEnterBehavior(value as InputEnterBehavior)
+                          }
+                          value={inputEnterBehavior}
                         >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent align="end">
-                          <SelectItem value="send">
-                            {INPUT_ENTER_BEHAVIORS.send}
-                          </SelectItem>
-                          <SelectItem value="newline">
-                            {INPUT_ENTER_BEHAVIORS.newline}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                          <SelectTrigger
+                            aria-label="选择 Enter 键行为"
+                            className="h-7 min-w-0 border-0 bg-transparent px-1.5 text-[#8b96a6] focus:ring-0"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent align="end">
+                            <SelectItem value="send">
+                              {INPUT_ENTER_BEHAVIORS.send}
+                            </SelectItem>
+                            <SelectItem value="newline">
+                              {INPUT_ENTER_BEHAVIORS.newline}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        <Button
+                          aria-label="发送消息"
+                          className="size-7 rounded-full p-0 shadow-none"
+                          disabled={!draft.trim()}
+                          onClick={handleSendDraft}
+                          size="icon"
+                        >
+                          <HugeiconsIcon icon={ArrowUp02Icon} size={14} strokeWidth={2} />
+                        </Button>
+                      </div>
                     </div>
 
                     <Textarea
-                      className="min-h-20 rounded-none border-0 bg-transparent px-0 py-1 text-[14px] shadow-none focus-visible:ring-0"
+                      className="chat-composer-textarea min-h-28 resize-none rounded-none border-0 bg-transparent pl-0 pr-0.5 py-1 text-[14px] shadow-none focus-visible:ring-0"
                       onChange={(event) => setDraft(event.target.value)}
                       onKeyDown={handleDraftKeyDown}
                       placeholder="请输入消息……"
                       ref={textareaRef}
                       value={draft}
                     />
-
-                    <div className="flex items-center justify-end">
-                      <Button
-                        className="h-9 rounded-[8px] px-8 text-[13px] shadow-none"
-                        disabled={!draft.trim()}
-                        onClick={handleSendDraft}
-                      >
-                        <span>发送</span>
-                      </Button>
-                    </div>
                   </div>
                 </div>
 

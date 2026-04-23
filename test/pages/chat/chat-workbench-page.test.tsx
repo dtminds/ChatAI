@@ -49,4 +49,35 @@ describe("ChatWorkbenchPage", () => {
       });
     });
   });
+
+  it("shows a retry icon before failed messages and retries on click", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+    await user.click(screen.getByTitle("念都堂"));
+    await user.type(screen.getByPlaceholderText("请输入消息……"), "这条消息会失败");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(async () => {
+      await useWorkbenchStore.getState().pollWorkbench();
+      expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+    });
+
+    const beforeRetryId =
+      useWorkbenchStore.getState().messagesByConversationId["conv-005"].at(-1)?.id;
+
+    await user.click(screen.getByRole("button", { name: "重试发送" }));
+
+    await waitFor(() => {
+      const latestMessage =
+        useWorkbenchStore.getState().messagesByConversationId["conv-005"].at(-1);
+
+      expect(latestMessage).toMatchObject({
+        status: "sending",
+      });
+      expect(latestMessage?.id).not.toBe(beforeRetryId);
+    });
+  });
 });

@@ -28,6 +28,17 @@ beforeAll(() => {
     writable: true,
     value: vi.fn((id: number) => window.clearTimeout(id)),
   });
+
+  class ResizeObserverMock {
+    disconnect = vi.fn();
+    observe = vi.fn();
+    unobserve = vi.fn();
+  }
+
+  Object.defineProperty(window, "ResizeObserver", {
+    writable: true,
+    value: ResizeObserverMock,
+  });
 });
 
 afterEach(() => {

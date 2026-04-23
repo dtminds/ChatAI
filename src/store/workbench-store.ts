@@ -52,6 +52,7 @@ type WorkbenchState = {
   setActiveMode: (mode: ChatMode) => Promise<void>;
   claimActiveConversation: () => Promise<void>;
   sendAgentTextMessage: (text: string) => Promise<void>;
+  retryFailedMessage: (messageId: string) => Promise<void>;
   pollWorkbench: () => Promise<void>;
 };
 
@@ -67,6 +68,7 @@ function createInitialState(): Omit<
   | "setActiveMode"
   | "claimActiveConversation"
   | "sendAgentTextMessage"
+  | "retryFailedMessage"
   | "pollWorkbench"
 > {
   return {
@@ -644,6 +646,36 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
         sendStatus: "idle",
       }));
     }
+  },
+  async retryFailedMessage(messageId) {
+    const state = get();
+    const conversationMessages =
+      state.messagesByConversationId[state.activeConversationId] ?? [];
+    const failedMessage = conversationMessages.find(
+      (message) =>
+        message.id === messageId &&
+        message.role === "agent" &&
+        message.status === "failed" &&
+        message.content.type === "text",
+    );
+
+    if (!failedMessage || failedMessage.role !== "agent" || failedMessage.content.type !== "text") {
+      return;
+    }
+
+    set((currentState) => ({
+      messagesByConversationId: {
+        ...currentState.messagesByConversationId,
+        [failedMessage.conversationId]: (
+          currentState.messagesByConversationId[failedMessage.conversationId] ?? []
+        ).filter((message) => message.id !== failedMessage.id),
+      },
+      pendingMessages: currentState.pendingMessages.filter(
+        (message) => message.id !== failedMessage.id,
+      ),
+    }));
+
+    await get().sendAgentTextMessage(failedMessage.content.text);
   },
   async setActiveAccount(accountId) {
     const state = get();

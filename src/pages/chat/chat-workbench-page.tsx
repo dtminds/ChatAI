@@ -80,6 +80,7 @@ export function ChatWorkbenchPage() {
     messagesByConversationId,
     pollState,
     pollWorkbench,
+    retryFailedMessage,
     sendAgentTextMessage,
     sendStatus,
     setActiveAccount,
@@ -586,7 +587,14 @@ export function ChatWorkbenchPage() {
                           正在刷新当前会话...
                         </div>
                       ) : null}
-                      <ChatMessageList messages={activeMessages} />
+                      <ChatMessageList
+                        messages={activeMessages}
+                        onRetryMessage={(messageId) => {
+                          startTransition(() => {
+                            void retryFailedMessage(messageId);
+                          });
+                        }}
+                      />
                       <div aria-hidden="true" ref={messageListBottomRef} />
                     </div>
                   </ScrollArea>

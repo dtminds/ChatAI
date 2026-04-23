@@ -93,4 +93,36 @@ describe("useWorkbenchStore", () => {
     });
     expect(state.pendingMessages).toHaveLength(0);
   });
+
+  it("retries a failed text message by resending it as a new pending message", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const beforeRetryCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-005"].length;
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-005"].at(-1);
+
+    expect(failedMessage).toMatchObject({
+      status: "failed",
+    });
+
+    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
+
+    const state = useWorkbenchStore.getState();
+    const latestMessage = state.messagesByConversationId["conv-005"].at(-1);
+
+    expect(state.messagesByConversationId["conv-005"]).toHaveLength(beforeRetryCount);
+    expect(latestMessage).toMatchObject({
+      content: {
+        text: "这条消息会失败",
+        type: "text",
+      },
+      role: "agent",
+      status: "sending",
+    });
+    expect(latestMessage?.id).not.toBe(failedMessage?.id);
+  });
 });

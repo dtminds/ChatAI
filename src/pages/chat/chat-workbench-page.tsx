@@ -231,7 +231,7 @@ export function ChatWorkbenchPage() {
   return (
     <div className="h-svh min-h-[720px] bg-[#F7F8F9]">
       <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden">
-        <section className="flex h-full min-h-0 flex-col bg-[#f5f6f8] px-3 py-4">
+        <section className="flex h-full min-h-0 flex-col bg-[#F7F8F9] px-3 py-4">
           <div className="mb-3 flex items-center px-1">
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <HugeiconsIcon
@@ -249,10 +249,10 @@ export function ChatWorkbenchPage() {
               return (
                 <button
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[12px] font-medium transition-colors",
+                    "flex w-full items-center gap-2.5 rounded-[20px] px-3 py-3 text-[12px] font-medium transition-colors",
                     isActive
-                      ? "bg-[#d7e8ff] text-primary"
-                      : "text-[#6b7a90] hover:bg-white/70 hover:text-foreground",
+                      ? "border border-[#dfe4ea] bg-white text-foreground shadow-[0_2px_8px_rgba(15,23,42,0.05)]"
+                      : "border border-transparent text-[#6b7a90] hover:bg-white/70 hover:text-foreground",
                   )}
                   key={item.label}
                   type="button"
@@ -301,8 +301,9 @@ export function ChatWorkbenchPage() {
 
         <div className="h-full min-h-0 pl-0">
           <div
+            style={{ boxShadow: '-5px 0 10px -4px rgba(20, 37, 44, 0.04)'}}
             className={cn(
-              "grid h-full min-h-0 overflow-hidden rounded-[20px_0_0_20px] border-l border-[#e9edf2] bg-white lg:grid-cols-[18rem_minmax(0,1fr)]",
+              "grid h-full min-h-0 overflow-hidden rounded-[20px_0_0_20px] border-l border-[#EBEDEE] bg-white lg:grid-cols-[18rem_minmax(0,1fr)]",
               isResizingCustomerPanel && "select-none",
             )}
           >
@@ -609,7 +610,7 @@ function AccountSidebarItem({
   return (
     <button
       className={cn(
-        "relative flex w-full items-start gap-2 rounded-[12px] border px-3 py-3 text-left transition-colors",
+        "relative flex w-full items-start gap-2 rounded-[16px] border px-2.5 py-2 text-left transition-colors",
         isActive
           ? "border-[#e7ebf0] bg-white"
           : "border-transparent bg-transparent hover:bg-white/70",

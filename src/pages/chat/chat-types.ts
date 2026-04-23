@@ -2,7 +2,12 @@ export type ChatMode = "single" | "group";
 
 export type MessageRole = "customer" | "agent" | "system";
 
-export type MessageStatus = "sending" | "sent" | "failed" | "read";
+export type MessageStatus = "pending" | "sending" | "sent" | "failed" | "read";
+
+export type EmployeeProfile = {
+  id: string;
+  displayName: string;
+};
 
 export type Account = {
   id: string;
@@ -18,6 +23,9 @@ export type Account = {
     stores: number;
   };
   tone: string;
+  unreadCount?: number;
+  lastMessageTime?: number;
+  loginStatus?: "online" | "offline";
 };
 
 export type Conversation = {
@@ -33,6 +41,8 @@ export type Conversation = {
   mode: ChatMode;
   status: "claimed" | "public" | "follow-up";
   priority: "high" | "medium" | "low";
+  assignedEmployeeId?: string;
+  updatedAtMs?: number;
 };
 
 export type MessageSender = {
@@ -104,6 +114,10 @@ type BaseMessage = {
   author: string;
   sentAt: string;
   status: MessageStatus;
+  clientMessageId?: string;
+  remoteMessageId?: string;
+  seq?: number;
+  failReason?: string;
 };
 
 export type SystemMessage = BaseMessage & {

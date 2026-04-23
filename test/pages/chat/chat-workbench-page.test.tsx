@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
 describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
+    resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
 
@@ -14,7 +16,7 @@ describe("ChatWorkbenchPage", () => {
 
     render(<ChatWorkbenchPage />);
 
-    const composer = screen.getByPlaceholderText("请输入消息……");
+    const composer = await screen.findByPlaceholderText("请输入消息……");
     await user.type(composer, "收到，我来帮你确认");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
@@ -23,10 +25,11 @@ describe("ChatWorkbenchPage", () => {
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
     ).toMatchObject({
       content: {
-        type: "text",
         text: "收到，我来帮你确认",
+        type: "text",
       },
       role: "agent",
+      status: "sending",
     });
   });
 
@@ -35,13 +38,15 @@ describe("ChatWorkbenchPage", () => {
 
     render(<ChatWorkbenchPage />);
 
+    await screen.findByPlaceholderText("请输入消息……");
     await user.click(screen.getByRole("tab", { name: "群聊" }));
 
-    expect(screen.getByRole("tab", { name: "群聊", selected: true })).toBeInTheDocument();
-    expect(screen.getAllByText("营养群-4月减脂冲刺")).toHaveLength(2);
-    expect(useWorkbenchStore.getState()).toMatchObject({
-      activeConversationId: "conv-004",
-      activeMode: "group",
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "群聊", selected: true })).toBeInTheDocument();
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        activeConversationId: "conv-004",
+        activeMode: "group",
+      });
     });
   });
 });

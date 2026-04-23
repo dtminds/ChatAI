@@ -70,10 +70,35 @@ export function MessageRow({ message }: { message: Message }) {
         <div className={cn("flex flex-col gap-1.5", isAgent ? "items-end" : "items-start")}>
           <MessageContentRenderer isAgent={isAgent} message={message} />
         </div>
+        {isAgent ? <MessageDeliveryState message={message} /> : null}
       </div>
 
       {isAgent ? <MessageAvatar message={message} /> : null}
     </div>
+  );
+}
+
+function MessageDeliveryState({ message }: { message: ChatMessage }) {
+  if (message.status === "sent" || message.status === "read") {
+    return null;
+  }
+
+  const label =
+    message.status === "failed"
+      ? message.failReason ?? "发送失败"
+      : message.status === "pending"
+        ? "等待提交..."
+        : "发送中...";
+
+  return (
+    <p
+      className={cn(
+        "mt-1 px-1 text-[11px]",
+        message.status === "failed" ? "text-[#d54b4b]" : "text-[#8a94a6]",
+      )}
+    >
+      {label}
+    </p>
   );
 }
 

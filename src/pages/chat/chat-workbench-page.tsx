@@ -882,16 +882,24 @@ function AccountSidebarItem({
       </Avatar>
 
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2">
           <p className="truncate text-[13px] font-semibold text-foreground">
             {account.name}
           </p>
-          <span
+          <div
             className={cn(
-              "h-2 w-2 shrink-0 rounded-full",
-              account.loginStatus === "offline" ? "bg-[#d54b4b]" : "bg-[#28b266]",
+              "flex shrink-0 items-center gap-1 text-[10px] leading-none",
+              account.loginStatus === "offline" ? "text-[#98A2B3]" : "text-[#28B266]",
             )}
-          />
+          >
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full",
+                account.loginStatus === "offline" ? "bg-[#C7CED8]" : "bg-[#28B266]",
+              )}
+            />
+            <span>{account.loginStatus === "offline" ? "离线" : "在线"}</span>
+          </div>
         </div>
         <div className="mt-1 flex items-center justify-between gap-2">
           <p className="truncate text-[12px] text-[#6e7887]">

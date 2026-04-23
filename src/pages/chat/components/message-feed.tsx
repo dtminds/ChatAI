@@ -1,6 +1,6 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { MessageContentRenderer } from "@/pages/chat/components/message-content";
+import { MessageContentRenderer } from "@/pages/chat/components/message";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 
 const TIMESTAMP_BREAK_MS = 30 * 60 * 1000;

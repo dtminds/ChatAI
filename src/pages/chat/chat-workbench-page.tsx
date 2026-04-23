@@ -1,11 +1,12 @@
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   useEffect,
   useRef,
   useState,
 } from "react";
 import {
-  AiBrain01Icon,
+  AiChat02Icon,
   Chat01Icon,
   CustomerService02Icon,
   Image01Icon,
@@ -13,6 +14,7 @@ import {
   Notification02Icon,
   Search01Icon,
   SentIcon,
+  SmileIcon,
   Task01Icon,
   UserGroup03Icon,
 } from "@hugeicons/core-free-icons";
@@ -27,7 +29,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { ChatMessageList } from "@/pages/chat/components/message-feed";
+import { WechatEmojiPicker } from "@/pages/chat/components/wechat-emoji-picker";
 import type { Account, Conversation } from "@/pages/chat/chat-types";
+import { type WechatEmojiName, toWechatEmojiToken } from "@/pages/chat/wechat-emoji";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
 const railItems = [
@@ -56,14 +60,18 @@ export function ChatWorkbenchPage() {
     setActiveAccount,
     setActiveConversation,
     setActiveMode,
+    sendAgentTextMessage,
   } = useWorkbenchStore();
 
   const [draft, setDraft] = useState("");
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [customerPanelWidth, setCustomerPanelWidth] = useState(
     DEFAULT_CUSTOMER_PANEL_WIDTH,
   );
   const [isResizingCustomerPanel, setIsResizingCustomerPanel] = useState(false);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement | null>(null);
 
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
@@ -112,6 +120,86 @@ export function ChatWorkbenchPage() {
       window.removeEventListener("resize", syncCustomerPanelWidth);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isEmojiPickerOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+
+      if (!target || emojiPickerRef.current?.contains(target)) {
+        return;
+      }
+
+      setIsEmojiPickerOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsEmojiPickerOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isEmojiPickerOpen]);
+
+  useEffect(() => {
+    setIsEmojiPickerOpen(false);
+  }, [activeConversation?.id]);
+
+  const handleSendDraft = () => {
+    const normalizedDraft = draft.trim();
+
+    if (!normalizedDraft) {
+      return;
+    }
+
+    sendAgentTextMessage(normalizedDraft);
+    setDraft("");
+    textareaRef.current?.focus();
+  };
+
+  const handleDraftKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.ctrlKey) {
+      return;
+    }
+
+    event.preventDefault();
+    handleSendDraft();
+  };
+
+  const handleEmojiSelect = (name: WechatEmojiName) => {
+    const nextToken = toWechatEmojiToken(name);
+    const textarea = textareaRef.current;
+
+    setIsEmojiPickerOpen(false);
+
+    if (!textarea) {
+      setDraft((currentDraft) => `${currentDraft}${nextToken}`);
+      return;
+    }
+
+    const selectionStart = textarea.selectionStart ?? draft.length;
+    const selectionEnd = textarea.selectionEnd ?? draft.length;
+    const nextDraft =
+      draft.slice(0, selectionStart) + nextToken + draft.slice(selectionEnd);
+    const nextCursorPosition = selectionStart + nextToken.length;
+
+    setDraft(nextDraft);
+
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(nextCursorPosition, nextCursorPosition);
+    });
+  };
 
   const handleCustomerPanelResizeStart = (
     event: ReactPointerEvent<HTMLButtonElement>,
@@ -320,35 +408,61 @@ export function ChatWorkbenchPage() {
 
                   <div className="space-y-2 bg-white px-5 py-3">
                     <div className="flex items-center justify-between gap-3 pb-2 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-1.5">
+                        <div className="relative" ref={emojiPickerRef}>
+                          <button
+                            aria-label="微信表情"
+                            className={cn(
+                              "inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-[#f3f6fb] hover:text-foreground",
+                              isEmojiPickerOpen && "bg-[#eef4ff] text-primary",
+                            )}
+                            onClick={() => setIsEmojiPickerOpen((current) => !current)}
+                            type="button"
+                          >
+                            <HugeiconsIcon icon={SmileIcon} size={18} strokeWidth={1.8} />
+                          </button>
+
+                          {isEmojiPickerOpen ? (
+                            <div className="absolute bottom-full left-0 z-30 mb-3">
+                              <WechatEmojiPicker onSelect={handleEmojiSelect} />
+                            </div>
+                          ) : null}
+                        </div>
                         <button
-                          className="inline-flex items-center gap-1.5 text-[13px] transition-colors hover:text-foreground"
+                          aria-label="发送图片"
+                          className="inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-[#f3f6fb] hover:text-foreground"
                           type="button"
                         >
-                          <HugeiconsIcon icon={AiBrain01Icon} size={16} strokeWidth={1.8} />
-                          <span>AI</span>
+                          <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={1.8} />
                         </button>
                         <button
-                          className="inline-flex items-center gap-1.5 text-[13px] transition-colors hover:text-foreground"
+                          aria-label="AI 助手"
+                          className="inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-[#f3f6fb] hover:text-foreground"
                           type="button"
                         >
-                          <HugeiconsIcon icon={Image01Icon} size={16} strokeWidth={1.8} />
-                          <span>图片</span>
+                          <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={1.8} />
                         </button>
                       </div>
-                      <span className="text-xs text-muted-foreground">脚手架占位</span>
+                      <span className="text-xs text-muted-foreground">
+                        Enter 发送，Ctrl+Enter 换行
+                      </span>
                     </div>
 
                     <Textarea
                       className="min-h-20 rounded-none border-0 bg-transparent px-0 py-1 text-[14px] shadow-none focus-visible:ring-0"
                       onChange={(event) => setDraft(event.target.value)}
+                      onKeyDown={handleDraftKeyDown}
                       placeholder="请输入消息……（Enter 发送，Ctrl+Enter 换行）"
+                      ref={textareaRef}
                       value={draft}
                     />
 
                     <div className="flex items-center justify-end">
-                      <Button className="h-9 rounded-lg px-4 text-[13px] shadow-none" disabled={!draft.trim()}>
-                        <HugeiconsIcon icon={SentIcon} size={18} strokeWidth={1.8} />
+                      <Button
+                        className="h-9 rounded-[8px] px-8 text-[13px] shadow-none"
+                        disabled={!draft.trim()}
+                        onClick={handleSendDraft}
+                      >
                         <span>发送</span>
                       </Button>
                     </div>

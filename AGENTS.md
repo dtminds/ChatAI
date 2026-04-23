@@ -26,6 +26,7 @@
 - 图标统一使用 Hugeicons，不再引入 Lucide 或其他图标集。
 - HTTP 请求统一从 `src/lib/request.ts` 出口发起，不直接在页面里裸写 `fetch`。
 - 工作台状态优先收敛到 `src/store/workbench-store.ts`，避免页面局部状态失控。
+- 单元测试、组件测试和测试辅助统一放在仓库根目录下的 `test/`，不要混进 `src/` 业务目录。
 - `src/pages/chat` 里的 mock 数据和占位结构可以演进，但请尽量保持字段命名与设计说明中的轮询模型一致。
 - 未接入真实后端前，允许使用本地假数据验证布局与交互层级。
 
@@ -36,10 +37,12 @@
 - `src/pages/chat`: `/chat` 工作台页面与 mock 数据
 - `src/router`: 路由定义
 - `src/store`: Zustand store
+- `test`: Vitest 用例、Testing Library 组件测试、测试初始化
 
 ## Dev Commands
 
 - 安装依赖：`pnpm install`
 - 启动开发：`pnpm dev`
 - 类型检查：`pnpm typecheck`
+- 测试：`pnpm test`
 - 生产构建：`pnpm build`

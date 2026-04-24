@@ -21,6 +21,7 @@ import type {
 
 type AsyncStatus = "idle" | "loading" | "ready" | "error";
 type HistoryStatus = "idle" | "loading";
+type ClaimStatus = "idle" | "claiming";
 type SendStatus = "idle" | "sending";
 
 type PollState = {
@@ -45,7 +46,7 @@ type WorkbenchState = {
   isConversationLoading: boolean;
   historyStatusByConversationId: Record<string, HistoryStatus>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
-  claimStatus: "idle" | "claiming";
+  claimStatusByConversationId: Record<string, ClaimStatus>;
   sendStatusByConversationId: Record<string, SendStatus>;
   pollState: PollState;
   sinceVersion: number;
@@ -67,6 +68,8 @@ type WorkbenchStore = WorkbenchState;
 const defaultCustomerProfiles = seedCustomerProfiles;
 const MESSAGE_PAGE_SIZE = 5;
 let latestScopeRequestId = 0;
+let latestClaimRequestId = 0;
+const latestClaimRequestIdByConversationId: Record<string, number> = {};
 
 function issueScopeRequestId() {
   latestScopeRequestId += 1;
@@ -75,6 +78,16 @@ function issueScopeRequestId() {
 
 function isCurrentScopeRequest(requestId: number) {
   return requestId === latestScopeRequestId;
+}
+
+function issueClaimRequestId(conversationId: string) {
+  latestClaimRequestId += 1;
+  latestClaimRequestIdByConversationId[conversationId] = latestClaimRequestId;
+  return latestClaimRequestId;
+}
+
+function isCurrentClaimRequest(conversationId: string, requestId: number) {
+  return latestClaimRequestIdByConversationId[conversationId] === requestId;
 }
 
 function createInitialState(): Omit<
@@ -97,7 +110,7 @@ function createInitialState(): Omit<
     activeMode: "single",
     bootstrapError: undefined,
     bootstrapStatus: "idle",
-    claimStatus: "idle",
+    claimStatusByConversationId: {},
     conversationListsByScope: {},
     customerProfilesById: defaultCustomerProfiles,
     hasMoreHistoryByConversationId: {},
@@ -287,13 +300,27 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       return;
     }
 
-    set({ claimStatus: "claiming" });
+    const requestId = issueClaimRequestId(activeConversationId);
+
+    set((currentState) => ({
+      claimStatusByConversationId: {
+        ...currentState.claimStatusByConversationId,
+        [activeConversationId]: "claiming",
+      },
+    }));
 
     try {
       const nextConversation = await claimConversation(activeConversationId);
 
+      if (!isCurrentClaimRequest(activeConversationId, requestId)) {
+        return;
+      }
+
       set((currentState) => ({
-        claimStatus: "idle",
+        claimStatusByConversationId: {
+          ...currentState.claimStatusByConversationId,
+          [activeConversationId]: "idle",
+        },
         conversationListsByScope: {
           ...currentState.conversationListsByScope,
           [activeAccountId]: mergeConversationList(
@@ -303,7 +330,16 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
         },
       }));
     } catch {
-      set({ claimStatus: "idle" });
+      if (!isCurrentClaimRequest(activeConversationId, requestId)) {
+        return;
+      }
+
+      set((currentState) => ({
+        claimStatusByConversationId: {
+          ...currentState.claimStatusByConversationId,
+          [activeConversationId]: "idle",
+        },
+      }));
     }
   },
   async initializeWorkbench() {
@@ -353,9 +389,14 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       });
 
       if (bootstrapResult.activeConversationId) {
+        const requestId = issueScopeRequestId();
         const readResult = await markConversationRead(
           bootstrapResult.activeConversationId,
         );
+
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
 
         set((currentState) => ({
           ...applyReadResult(

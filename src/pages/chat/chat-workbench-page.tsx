@@ -73,7 +73,7 @@ export function ChatWorkbenchPage() {
     bootstrapError,
     bootstrapStatus,
     claimActiveConversation,
-    claimStatus,
+    claimStatusByConversationId,
     conversationListsByScope,
     customerProfilesById,
     hasMoreHistoryByConversationId,
@@ -135,6 +135,9 @@ export function ChatWorkbenchPage() {
   const hasMoreHistory = activeConversation
     ? hasMoreHistoryByConversationId[activeConversation.id] !== false
     : false;
+  const activeClaimStatus = activeConversation
+    ? claimStatusByConversationId[activeConversation.id] ?? "idle"
+    : "idle";
   const activeSendStatus = activeConversation
     ? sendStatusByConversationId[activeConversation.id] ?? "idle"
     : "idle";
@@ -680,7 +683,7 @@ export function ChatWorkbenchPage() {
                         !activeConversation ||
                         isClaimedByCurrentUser ||
                         isClaimedByOther ||
-                        claimStatus === "claiming"
+                        activeClaimStatus === "claiming"
                       }
                       onClick={() => {
                         startTransition(() => {
@@ -690,7 +693,7 @@ export function ChatWorkbenchPage() {
                     >
                       {isClaimedByCurrentUser
                         ? "已领取"
-                        : claimStatus === "claiming"
+                        : activeClaimStatus === "claiming"
                           ? "领取中..."
                           : "领取会话"}
                     </Button>

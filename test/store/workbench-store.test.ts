@@ -206,6 +206,44 @@ describe("useWorkbenchStore", () => {
     ).toBe(false);
   });
 
+  it("drops stale bootstrap read results after the active conversation changes", async () => {
+    const baseService = createMockWorkbenchService();
+    const bootstrapReadStarted = createDeferred();
+    const bootstrapReadGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async markConversationRead(conversationId) {
+        if (conversationId === "conv-001") {
+          bootstrapReadStarted.resolve();
+          await bootstrapReadGate.promise;
+        }
+
+        return baseService.markConversationRead(conversationId);
+      },
+    });
+
+    const initializePromise = useWorkbenchStore.getState().initializeWorkbench();
+
+    await bootstrapReadStarted.promise;
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    bootstrapReadGate.resolve();
+    await initializePromise;
+
+    const state = useWorkbenchStore.getState();
+    const conv001 = state.conversationListsByScope.drc.find(
+      (conversation) => conversation.id === "conv-001",
+    );
+    const conv002 = state.conversationListsByScope.drc.find(
+      (conversation) => conversation.id === "conv-002",
+    );
+
+    expect(state.activeConversationId).toBe("conv-002");
+    expect(conv001?.unread).toBeGreaterThan(0);
+    expect(conv002?.unread).toBe(0);
+  });
+
   it("ignores stale conversation loads when switching conversations quickly", async () => {
     const baseService = createMockWorkbenchService();
     const slowConversationGate = createDeferred();
@@ -331,5 +369,40 @@ describe("useWorkbenchStore", () => {
     state = useWorkbenchStore.getState();
 
     expect(state.historyStatusByConversationId["conv-001"]).toBe("idle");
+  });
+
+  it("tracks claim status per conversation instead of globally", async () => {
+    const baseService = createMockWorkbenchService();
+    const claimGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async claimConversation(conversationId) {
+        if (conversationId === "conv-003") {
+          await claimGate.promise;
+        }
+
+        return baseService.claimConversation(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveConversation("conv-003");
+
+    const claimPromise = useWorkbenchStore.getState().claimActiveConversation();
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    let state = useWorkbenchStore.getState();
+
+    expect(state.claimStatusByConversationId["conv-003"]).toBe("claiming");
+    expect(state.claimStatusByConversationId["conv-002"] ?? "idle").toBe("idle");
+
+    claimGate.resolve();
+    await claimPromise;
+
+    state = useWorkbenchStore.getState();
+
+    expect(state.claimStatusByConversationId["conv-003"]).toBe("idle");
   });
 });

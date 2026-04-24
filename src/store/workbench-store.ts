@@ -1,13 +1,14 @@
 import { create } from "zustand";
+import { formatConversationPreview, formatWorkbenchTimestamp } from "@/pages/chat/api/workbench-adapter";
 import {
-  adaptAccount,
-  adaptConversation,
-  adaptEmployee,
-  adaptMessage,
-  formatConversationPreview,
-  formatWorkbenchTimestamp,
-} from "@/pages/chat/api/workbench-adapter";
-import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
+  bootstrapWorkbench,
+  claimConversation,
+  loadAccountScope,
+  loadConversationMessagesPage,
+  markConversationRead,
+  pollWorkbench,
+  sendTextMessage,
+} from "@/pages/chat/api/workbench-gateway";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import type {
   Account,
@@ -20,6 +21,7 @@ import type {
 
 type AsyncStatus = "idle" | "loading" | "ready" | "error";
 type HistoryStatus = "idle" | "loading";
+type SendStatus = "idle" | "sending";
 
 type PollState = {
   status: "idle" | "polling" | "error";
@@ -41,10 +43,10 @@ type WorkbenchState = {
   bootstrapStatus: AsyncStatus;
   bootstrapError?: string;
   isConversationLoading: boolean;
-  historyStatus: HistoryStatus;
+  historyStatusByConversationId: Record<string, HistoryStatus>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
   claimStatus: "idle" | "claiming";
-  sendStatus: "idle" | "sending";
+  sendStatusByConversationId: Record<string, SendStatus>;
   pollState: PollState;
   sinceVersion: number;
   activeMessageSeq: number;
@@ -64,6 +66,16 @@ type WorkbenchStore = WorkbenchState;
 
 const defaultCustomerProfiles = seedCustomerProfiles;
 const MESSAGE_PAGE_SIZE = 5;
+let latestScopeRequestId = 0;
+
+function issueScopeRequestId() {
+  latestScopeRequestId += 1;
+  return latestScopeRequestId;
+}
+
+function isCurrentScopeRequest(requestId: number) {
+  return requestId === latestScopeRequestId;
+}
 
 function createInitialState(): Omit<
   WorkbenchState,
@@ -89,7 +101,7 @@ function createInitialState(): Omit<
     conversationListsByScope: {},
     customerProfilesById: defaultCustomerProfiles,
     hasMoreHistoryByConversationId: {},
-    historyStatus: "idle",
+    historyStatusByConversationId: {},
     isConversationLoading: false,
     me: undefined,
     messagesByConversationId: {},
@@ -99,7 +111,7 @@ function createInitialState(): Omit<
       jitterMs: 350,
       status: "idle",
     },
-    sendStatus: "idle",
+    sendStatusByConversationId: {},
     sinceVersion: 0,
   };
 }
@@ -115,13 +127,6 @@ function getFirstConversationId(
     conversations[0];
 
   return firstMatch?.id ?? "";
-}
-
-function getFirstConversation(
-  conversations: Conversation[],
-  mode: ChatMode,
-) {
-  return conversations.find((conversation) => conversation.mode === mode) ?? conversations[0];
 }
 
 function getActiveMessageSeq(
@@ -206,13 +211,6 @@ function isCursorInvalidationError(error: unknown) {
   );
 }
 
-function hasPotentialOlderMessages(
-  loadedCount: number,
-  pageSize = MESSAGE_PAGE_SIZE,
-) {
-  return loadedCount >= pageSize;
-}
-
 function applyReadResult(
   state: WorkbenchStore,
   conversationId: string,
@@ -292,8 +290,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     set({ claimStatus: "claiming" });
 
     try {
-      const response = await getWorkbenchService().claimConversation(activeConversationId);
-      const nextConversation = adaptConversation(response.conversation);
+      const nextConversation = await claimConversation(activeConversationId);
 
       set((currentState) => ({
         claimStatus: "idle",
@@ -322,64 +319,43 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     });
 
     try {
-      const service = getWorkbenchService();
-      const [meDto, accountDtos] = await Promise.all([
-        service.getMe(),
-        service.getAccounts(),
-      ]);
-
-      const me = adaptEmployee(meDto);
-      const accounts = accountDtos.map((account) => adaptAccount(account, account.unreadCount));
-      const accountMap = Object.fromEntries(accounts.map((account) => [account.id, account])) as Record<
-        string,
-        Account
-      >;
-      const activeAccountId = accounts[0]?.id ?? "";
-      const conversationDtos = activeAccountId
-        ? await service.getConversations(activeAccountId)
-        : [];
-      const activeConversations = conversationDtos.map(adaptConversation);
-      const activeConversationId = getFirstConversationId(
-        {
-          [activeAccountId]: activeConversations,
-        },
-        activeAccountId,
+      const bootstrapResult = await bootstrapWorkbench(
         state.activeMode,
+        defaultCustomerProfiles,
+        MESSAGE_PAGE_SIZE,
       );
-      const messageDtos = activeConversationId
-        ? await service.getMessages(activeConversationId, { limit: MESSAGE_PAGE_SIZE })
-        : [];
-      const messages = messageDtos.map((message) =>
-        adaptMessage(message, defaultCustomerProfiles, accountMap, me),
-      );
+      const conversationPage = bootstrapResult.conversationPage;
 
       set({
-        accounts,
-        activeAccountId,
-        activeConversationId,
+        accounts: bootstrapResult.accounts,
+        activeAccountId: bootstrapResult.activeAccountId,
+        activeConversationId: bootstrapResult.activeConversationId,
         activeMessageSeq: getActiveMessageSeq(
-          {
-            [activeConversationId]: messages,
-          },
-          activeConversationId,
+          conversationPage
+            ? {
+                [conversationPage.conversationId]: conversationPage.messages,
+              }
+            : {},
+          bootstrapResult.activeConversationId,
         ),
+        activeMode: bootstrapResult.activeMode,
         bootstrapStatus: "ready",
-        conversationListsByScope: {
-          [activeAccountId]: activeConversations,
-        },
-        hasMoreHistoryByConversationId: activeConversationId
+        conversationListsByScope: bootstrapResult.conversationListsByScope,
+        hasMoreHistoryByConversationId: conversationPage
           ? {
-              [activeConversationId]: hasPotentialOlderMessages(messageDtos.length),
+              [conversationPage.conversationId]: conversationPage.hasMoreHistory,
             }
           : {},
-        me,
-        messagesByConversationId: activeConversationId
-          ? { [activeConversationId]: messages }
+        me: bootstrapResult.me,
+        messagesByConversationId: conversationPage
+          ? { [conversationPage.conversationId]: conversationPage.messages }
           : {},
       });
 
-      if (activeConversationId) {
-        const readResult = await service.markConversationRead(activeConversationId);
+      if (bootstrapResult.activeConversationId) {
+        const readResult = await markConversationRead(
+          bootstrapResult.activeConversationId,
+        );
 
         set((currentState) => ({
           ...applyReadResult(
@@ -417,14 +393,33 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     }));
 
     try {
-      const response = await getWorkbenchService().poll({
+      const request = {
         activeConversationId: state.activeConversationId,
         activeMessageSeq: state.activeMessageSeq,
         currentAccountId: state.activeAccountId,
         sinceVersion: state.sinceVersion,
+      };
+      const response = await pollWorkbench(request, {
+        accounts: state.accounts,
+        customerProfilesById: state.customerProfilesById,
+        me: state.me,
       });
 
       set((currentState) => {
+        const isStaleScope =
+          currentState.activeAccountId !== response.request.currentAccountId ||
+          currentState.activeConversationId !== response.request.activeConversationId ||
+          currentState.sinceVersion !== response.request.sinceVersion;
+
+        if (isStaleScope) {
+          return {
+            pollState: {
+              ...currentState.pollState,
+              status: "idle",
+            },
+          };
+        }
+
         const nextAccounts = currentState.accounts.map((account) => {
           const change = response.accountChanges.find(
             (item) => item.accountId === account.id,
@@ -440,9 +435,6 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
             unreadCount: change.unreadCount,
           };
         });
-        const nextAccountMap = Object.fromEntries(
-          nextAccounts.map((account) => [account.id, account]),
-        ) as Record<string, Account>;
         const nextConversationLists = { ...currentState.conversationListsByScope };
 
         for (const change of response.conversationChanges) {
@@ -457,25 +449,20 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
 
           nextConversationLists[change.accountId] = mergeConversationList(
             currentList,
-            adaptConversation(change),
+            change.conversation,
           );
         }
 
         const nextMessagesByConversationId = { ...currentState.messagesByConversationId };
 
-        if (response.activeConversationMessages.length > 0 && currentState.activeConversationId) {
-          const incomingMessages = response.activeConversationMessages.map((message) =>
-            adaptMessage(
-              message,
-              currentState.customerProfilesById,
-              nextAccountMap,
-              currentState.me,
-            ),
-          );
+        if (
+          response.activeConversationMessages.length > 0 &&
+          response.request.activeConversationId
+        ) {
           const currentMessages =
-            nextMessagesByConversationId[currentState.activeConversationId] ?? [];
-          nextMessagesByConversationId[currentState.activeConversationId] =
-            upsertMessageList(currentMessages, incomingMessages);
+            nextMessagesByConversationId[response.request.activeConversationId] ?? [];
+          nextMessagesByConversationId[response.request.activeConversationId] =
+            upsertMessageList(currentMessages, response.activeConversationMessages);
         }
 
         for (const change of response.messageStatusChanges) {
@@ -486,7 +473,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
               const matches =
                 (change.clientMessageId &&
                   message.clientMessageId === change.clientMessageId) ||
-                message.remoteMessageId === change.messageId;
+                message.remoteMessageId === change.remoteMessageId;
 
               if (!matches) {
                 return message;
@@ -495,13 +482,8 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
               return {
                 ...message,
                 failReason: change.reason,
-                remoteMessageId: change.messageId,
-                status:
-                  change.status === "failed"
-                    ? "failed"
-                    : change.status === "read"
-                      ? "read"
-                      : "sent",
+                remoteMessageId: change.remoteMessageId,
+                status: change.status,
               };
             },
           );
@@ -518,7 +500,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
           accounts: nextAccounts,
           activeMessageSeq: getActiveMessageSeq(
             nextMessagesByConversationId,
-            currentState.activeConversationId,
+            response.request.activeConversationId,
           ),
           conversationListsByScope: nextConversationLists,
           messagesByConversationId: nextMessagesByConversationId,
@@ -535,60 +517,49 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       if (isCursorInvalidationError(error)) {
         try {
           const latestState = get();
-          const service = getWorkbenchService();
           const accountId = latestState.activeAccountId;
 
           if (!accountId) {
             throw error;
           }
 
-          const conversationDtos = await service.getConversations(accountId);
-          const conversations = conversationDtos.map(adaptConversation);
-          const recoveredConversation =
-            conversations.find(
-              (conversation) => conversation.id === latestState.activeConversationId,
-            ) ?? getFirstConversation(conversations, latestState.activeMode);
-          const recoveredConversationId = recoveredConversation?.id ?? "";
-          const accountMap = Object.fromEntries(
-            latestState.accounts.map((account) => [account.id, account]),
-          ) as Record<string, Account>;
-          const messageDtos = recoveredConversationId
-            ? await service.getMessages(recoveredConversationId, { limit: MESSAGE_PAGE_SIZE })
-            : [];
-          const messages = messageDtos.map((message) =>
-            adaptMessage(
-              message,
-              latestState.customerProfilesById,
-              accountMap,
-              latestState.me,
-            ),
+          const scopeResult = await loadAccountScope(
+            accountId,
+            latestState.activeMode,
+            {
+              accounts: latestState.accounts,
+              customerProfilesById: latestState.customerProfilesById,
+              me: latestState.me,
+            },
+            MESSAGE_PAGE_SIZE,
           );
+          const conversationPage = scopeResult.conversationPage;
 
           set((currentState) => ({
-            activeConversationId: recoveredConversationId,
+            activeConversationId: scopeResult.nextConversationId,
             activeMessageSeq: getActiveMessageSeq(
-              {
-                ...currentState.messagesByConversationId,
-                [recoveredConversationId]: messages,
-              },
-              recoveredConversationId,
+              conversationPage
+                ? {
+                    ...currentState.messagesByConversationId,
+                    [conversationPage.conversationId]: conversationPage.messages,
+                  }
+                : currentState.messagesByConversationId,
+              scopeResult.nextConversationId,
             ),
             conversationListsByScope: {
               ...currentState.conversationListsByScope,
-              [accountId]: conversations,
+              [accountId]: scopeResult.conversations,
             },
-            hasMoreHistoryByConversationId: recoveredConversationId
+            hasMoreHistoryByConversationId: conversationPage
               ? {
                   ...currentState.hasMoreHistoryByConversationId,
-                  [recoveredConversationId]: hasPotentialOlderMessages(
-                    messageDtos.length,
-                  ),
+                  [conversationPage.conversationId]: conversationPage.hasMoreHistory,
                 }
               : currentState.hasMoreHistoryByConversationId,
-            messagesByConversationId: recoveredConversationId
+            messagesByConversationId: conversationPage
               ? {
                   ...currentState.messagesByConversationId,
-                  [recoveredConversationId]: messages,
+                  [conversationPage.conversationId]: conversationPage.messages,
                 }
               : currentState.messagesByConversationId,
             pendingMessages: [],
@@ -702,12 +673,15 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
           [activeConversationId]: nextMessages,
         },
         pendingMessages: [...currentState.pendingMessages, optimisticMessage],
-        sendStatus: "sending",
+        sendStatusByConversationId: {
+          ...currentState.sendStatusByConversationId,
+          [activeConversationId]: "sending",
+        },
       };
     });
 
     try {
-      const response = await getWorkbenchService().sendMessage({
+      const response = await sendTextMessage({
         accountId: activeAccountId,
         clientMessageId,
         content: normalizedText,
@@ -729,7 +703,10 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
               : message,
           ),
         },
-        sendStatus: "idle",
+        sendStatusByConversationId: {
+          ...currentState.sendStatusByConversationId,
+          [activeConversationId]: "idle",
+        },
       }));
     } catch (error) {
       set((currentState) => ({
@@ -751,7 +728,10 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
         pendingMessages: currentState.pendingMessages.filter(
           (message) => message.clientMessageId !== clientMessageId,
         ),
-        sendStatus: "idle",
+        sendStatusByConversationId: {
+          ...currentState.sendStatusByConversationId,
+          [activeConversationId]: "idle",
+        },
       }));
     }
   },
@@ -788,10 +768,13 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
   async loadOlderMessages() {
     const state = get();
     const conversationId = state.activeConversationId;
+    const historyStatus = conversationId
+      ? state.historyStatusByConversationId[conversationId] ?? "idle"
+      : "idle";
 
     if (
       !conversationId ||
-      state.historyStatus === "loading" ||
+      historyStatus === "loading" ||
       state.hasMoreHistoryByConversationId[conversationId] === false
     ) {
       return;
@@ -810,36 +793,51 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       return;
     }
 
-    set({ historyStatus: "loading" });
+    set((currentState) => ({
+      historyStatusByConversationId: {
+        ...currentState.historyStatusByConversationId,
+        [conversationId]: "loading",
+      },
+    }));
 
     try {
-      const accountMap = Object.fromEntries(
-        state.accounts.map((account) => [account.id, account]),
-      ) as Record<string, Account>;
-      const messageDtos = await getWorkbenchService().getMessages(conversationId, {
-        beforeSeq: firstSeq,
-        limit: MESSAGE_PAGE_SIZE,
-      });
-      const messages = messageDtos.map((message) =>
-        adaptMessage(message, state.customerProfilesById, accountMap, state.me),
+      const page = await loadConversationMessagesPage(
+        {
+          accounts: state.accounts,
+          customerProfilesById: state.customerProfilesById,
+          me: state.me,
+        },
+        conversationId,
+        {
+          beforeSeq: firstSeq,
+          limit: MESSAGE_PAGE_SIZE,
+        },
       );
 
       set((currentState) => ({
         hasMoreHistoryByConversationId: {
           ...currentState.hasMoreHistoryByConversationId,
-          [conversationId]: hasPotentialOlderMessages(messageDtos.length),
+          [conversationId]: page.hasMoreHistory,
         },
-        historyStatus: "idle",
+        historyStatusByConversationId: {
+          ...currentState.historyStatusByConversationId,
+          [conversationId]: "idle",
+        },
         messagesByConversationId: {
           ...currentState.messagesByConversationId,
           [conversationId]: upsertMessageList(
-            messages,
+            page.messages,
             currentState.messagesByConversationId[conversationId] ?? [],
           ),
         },
       }));
     } catch {
-      set({ historyStatus: "idle" });
+      set((currentState) => ({
+        historyStatusByConversationId: {
+          ...currentState.historyStatusByConversationId,
+          [conversationId]: "idle",
+        },
+      }));
     }
   },
   async setActiveAccount(accountId) {
@@ -849,57 +847,64 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       return;
     }
 
+    const requestId = issueScopeRequestId();
     set({ isConversationLoading: true });
 
     try {
-      const service = getWorkbenchService();
-      const conversationDtos = await service.getConversations(accountId);
-      const conversations = conversationDtos.map(adaptConversation);
-      const nextConversation = getFirstConversation(conversations, state.activeMode);
-      const nextConversationId = nextConversation?.id ?? "";
-      const nextMode = nextConversation?.mode ?? state.activeMode;
-      const accountMap = Object.fromEntries(
-        state.accounts.map((account) => [account.id, account]),
-      ) as Record<string, Account>;
-      const messageDtos = nextConversationId
-        ? await service.getMessages(nextConversationId, { limit: MESSAGE_PAGE_SIZE })
-        : [];
-      const messages = messageDtos.map((message) =>
-        adaptMessage(message, state.customerProfilesById, accountMap, state.me),
+      const scopeResult = await loadAccountScope(
+        accountId,
+        state.activeMode,
+        {
+          accounts: state.accounts,
+          customerProfilesById: state.customerProfilesById,
+          me: state.me,
+        },
+        MESSAGE_PAGE_SIZE,
       );
+      const conversationPage = scopeResult.conversationPage;
+
+      if (!isCurrentScopeRequest(requestId)) {
+        return;
+      }
 
       set((currentState) => ({
         activeAccountId: accountId,
-        activeConversationId: nextConversationId,
-        activeMode: nextMode,
+        activeConversationId: scopeResult.nextConversationId,
+        activeMode: scopeResult.nextMode,
         activeMessageSeq: getActiveMessageSeq(
-          {
-            ...currentState.messagesByConversationId,
-            [nextConversationId]: messages,
-          },
-          nextConversationId,
+          conversationPage
+            ? {
+                ...currentState.messagesByConversationId,
+                [conversationPage.conversationId]: conversationPage.messages,
+              }
+            : currentState.messagesByConversationId,
+          scopeResult.nextConversationId,
         ),
         conversationListsByScope: {
           ...currentState.conversationListsByScope,
-          [accountId]: conversations,
+          [accountId]: scopeResult.conversations,
         },
-        hasMoreHistoryByConversationId: nextConversationId
+        hasMoreHistoryByConversationId: conversationPage
           ? {
               ...currentState.hasMoreHistoryByConversationId,
-              [nextConversationId]: hasPotentialOlderMessages(messageDtos.length),
+              [conversationPage.conversationId]: conversationPage.hasMoreHistory,
             }
           : currentState.hasMoreHistoryByConversationId,
         isConversationLoading: false,
-        messagesByConversationId: nextConversationId
+        messagesByConversationId: conversationPage
           ? {
               ...currentState.messagesByConversationId,
-              [nextConversationId]: messages,
+              [conversationPage.conversationId]: conversationPage.messages,
             }
           : currentState.messagesByConversationId,
       }));
 
-      if (nextConversationId) {
-        const readResult = await service.markConversationRead(nextConversationId);
+      if (scopeResult.nextConversationId) {
+        const readResult = await markConversationRead(scopeResult.nextConversationId);
+
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
 
         set((currentState) => ({
           ...applyReadResult(
@@ -911,7 +916,9 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
         }));
       }
     } catch {
-      set({ isConversationLoading: false });
+      if (isCurrentScopeRequest(requestId)) {
+        set({ isConversationLoading: false });
+      }
     }
   },
   async setActiveConversation(conversationId) {
@@ -921,43 +928,53 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       return;
     }
 
+    const requestId = issueScopeRequestId();
     set({
       activeConversationId: conversationId,
       isConversationLoading: true,
     });
 
     try {
-      const service = getWorkbenchService();
-      const accountMap = Object.fromEntries(
-        state.accounts.map((account) => [account.id, account]),
-      ) as Record<string, Account>;
-      const messageDtos = await service.getMessages(conversationId, {
-        limit: MESSAGE_PAGE_SIZE,
-      });
-      const messages = messageDtos.map((message) =>
-        adaptMessage(message, state.customerProfilesById, accountMap, state.me),
+      const page = await loadConversationMessagesPage(
+        {
+          accounts: state.accounts,
+          customerProfilesById: state.customerProfilesById,
+          me: state.me,
+        },
+        conversationId,
+        {
+          limit: MESSAGE_PAGE_SIZE,
+        },
       );
+
+      if (!isCurrentScopeRequest(requestId)) {
+        return;
+      }
 
       set((currentState) => ({
         activeMessageSeq: getActiveMessageSeq(
           {
             ...currentState.messagesByConversationId,
-            [conversationId]: messages,
+            [conversationId]: page.messages,
           },
           conversationId,
         ),
         hasMoreHistoryByConversationId: {
           ...currentState.hasMoreHistoryByConversationId,
-          [conversationId]: hasPotentialOlderMessages(messageDtos.length),
+          [conversationId]: page.hasMoreHistory,
         },
         isConversationLoading: false,
         messagesByConversationId: {
           ...currentState.messagesByConversationId,
-          [conversationId]: messages,
+          [conversationId]: page.messages,
         },
       }));
 
-      const readResult = await service.markConversationRead(conversationId);
+      const readResult = await markConversationRead(conversationId);
+
+      if (!isCurrentScopeRequest(requestId)) {
+        return;
+      }
 
       set((currentState) => ({
         ...applyReadResult(
@@ -968,7 +985,9 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
         ),
       }));
     } catch {
-      set({ isConversationLoading: false });
+      if (isCurrentScopeRequest(requestId)) {
+        set({ isConversationLoading: false });
+      }
     }
   },
   async setActiveMode(mode) {

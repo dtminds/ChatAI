@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
+import {
+  createMockWorkbenchService,
+  resetWorkbenchService,
+  setWorkbenchService,
+} from "@/pages/chat/api/workbench-service";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
@@ -143,6 +147,30 @@ describe("ChatWorkbenchPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/会话已由 德瑞可-小可 领取/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows scope transition errors in the workbench", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-002" && options?.beforeSeq == null) {
+          throw new Error("切换会话失败");
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    await waitFor(() => {
+      expect(screen.getByText("切换会话失败")).toBeInTheDocument();
     });
   });
 });

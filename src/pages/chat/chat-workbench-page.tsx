@@ -73,12 +73,12 @@ export function ChatWorkbenchPage() {
     bootstrapError,
     bootstrapStatus,
     claimActiveConversation,
-    claimStatus,
+    claimStatusByConversationId,
     conversationListsByScope,
     customerProfilesById,
     hasMoreHistoryByConversationId,
+    historyStatusByConversationId,
     initializeWorkbench,
-    historyStatus,
     isConversationLoading,
     loadOlderMessages,
     me,
@@ -86,8 +86,9 @@ export function ChatWorkbenchPage() {
     pollState,
     pollWorkbench,
     retryFailedMessage,
+    scopeTransitionError,
     sendAgentTextMessage,
-    sendStatus,
+    sendStatusByConversationId,
     setActiveAccount,
     setActiveConversation,
     setActiveMode,
@@ -129,9 +130,18 @@ export function ChatWorkbenchPage() {
     ) ?? visibleConversations[0];
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ?? [];
+  const activeHistoryStatus = activeConversation
+    ? historyStatusByConversationId[activeConversation.id] ?? "idle"
+    : "idle";
   const hasMoreHistory = activeConversation
     ? hasMoreHistoryByConversationId[activeConversation.id] !== false
     : false;
+  const activeClaimStatus = activeConversation
+    ? claimStatusByConversationId[activeConversation.id] ?? "idle"
+    : "idle";
+  const activeSendStatus = activeConversation
+    ? sendStatusByConversationId[activeConversation.id] ?? "idle"
+    : "idle";
   const activeCustomer =
     (activeConversation &&
       customerProfilesById[activeConversation.customerId]) ??
@@ -148,7 +158,7 @@ export function ChatWorkbenchPage() {
     !!activeConversation &&
     !isActiveAccountOffline &&
     !isClaimedByOther &&
-    sendStatus !== "sending";
+    activeSendStatus !== "sending";
   const composerHint = isActiveAccountOffline
     ? "当前账号离线，暂时无法发送消息。"
     : isClaimedByOther
@@ -157,7 +167,7 @@ export function ChatWorkbenchPage() {
       ? "发送第一条消息时会自动领取会话。"
       : pollState.status === "error"
         ? "轮询暂时失败，消息状态可能延迟回收。"
-        : sendStatus === "sending"
+        : activeSendStatus === "sending"
           ? "消息已受理，等待轮询回收最终状态。"
           : "Enter 发送，Shift + Enter 换行。";
 
@@ -168,7 +178,7 @@ export function ChatWorkbenchPage() {
   const triggerOlderMessagesLoad = useEffectEvent(async () => {
     if (
       historyLoadInFlightRef.current ||
-      historyStatus === "loading" ||
+      activeHistoryStatus === "loading" ||
       !activeConversation ||
       !hasMoreHistory
     ) {
@@ -314,7 +324,7 @@ export function ChatWorkbenchPage() {
         return;
       }
 
-      if (historyStatus === "idle") {
+      if (activeHistoryStatus === "idle") {
         pendingHistoryRestoreRef.current = null;
       }
     } else {
@@ -335,7 +345,7 @@ export function ChatWorkbenchPage() {
     messageListBottomRef.current?.scrollIntoView({
       block: "end",
     });
-  }, [activeConversation?.id, activeMessages.length, historyStatus]);
+  }, [activeConversation?.id, activeMessages.length, activeHistoryStatus]);
 
   useEffect(() => {
     if (bootstrapStatus !== "ready" || !activeAccountId) {
@@ -674,7 +684,7 @@ export function ChatWorkbenchPage() {
                         !activeConversation ||
                         isClaimedByCurrentUser ||
                         isClaimedByOther ||
-                        claimStatus === "claiming"
+                        activeClaimStatus === "claiming"
                       }
                       onClick={() => {
                         startTransition(() => {
@@ -684,7 +694,7 @@ export function ChatWorkbenchPage() {
                     >
                       {isClaimedByCurrentUser
                         ? "已领取"
-                        : claimStatus === "claiming"
+                        : activeClaimStatus === "claiming"
                           ? "领取中..."
                           : "领取会话"}
                     </Button>
@@ -706,7 +716,7 @@ export function ChatWorkbenchPage() {
                     viewportRef={messageViewportRef}
                   >
                     <div className="relative px-5 py-5">
-                      {historyStatus === "loading" ? (
+                      {activeHistoryStatus === "loading" ? (
                         <div className="pointer-events-none absolute left-5 right-5 top-5 z-10 rounded-xl border border-dashed border-[#DEE5EE] bg-white/95 px-4 py-2 text-center text-xs text-[#728093] backdrop-blur-[1px]">
                           加载更早消息中...
                         </div>
@@ -714,6 +724,11 @@ export function ChatWorkbenchPage() {
                       {isConversationLoading ? (
                         <div className="mb-4 rounded-xl border border-dashed border-[#DEE5EE] px-4 py-3 text-sm text-[#728093]">
                           正在刷新当前会话...
+                        </div>
+                      ) : null}
+                      {scopeTransitionError ? (
+                        <div className="mb-4 rounded-xl border border-[#F2D1D4] bg-[#FFF7F7] px-4 py-3 text-sm text-[#B34757]">
+                          {scopeTransitionError}
                         </div>
                       ) : null}
                       <ChatMessageList

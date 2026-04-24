@@ -1,13 +1,14 @@
 import { create } from "zustand";
+import { formatConversationPreview, formatWorkbenchTimestamp } from "@/pages/chat/api/workbench-adapter";
 import {
-  adaptAccount,
-  adaptConversation,
-  adaptEmployee,
-  adaptMessage,
-  formatConversationPreview,
-  formatWorkbenchTimestamp,
-} from "@/pages/chat/api/workbench-adapter";
-import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
+  bootstrapWorkbench,
+  claimConversation,
+  loadAccountScope,
+  loadConversationMessagesPage,
+  markConversationRead,
+  pollWorkbench,
+  sendTextMessage,
+} from "@/pages/chat/api/workbench-gateway";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import type {
   Account,
@@ -20,6 +21,8 @@ import type {
 
 type AsyncStatus = "idle" | "loading" | "ready" | "error";
 type HistoryStatus = "idle" | "loading";
+type ClaimStatus = "idle" | "claiming";
+type SendStatus = "idle" | "sending";
 
 type PollState = {
   status: "idle" | "polling" | "error";
@@ -41,10 +44,11 @@ type WorkbenchState = {
   bootstrapStatus: AsyncStatus;
   bootstrapError?: string;
   isConversationLoading: boolean;
-  historyStatus: HistoryStatus;
+  scopeTransitionError?: string;
+  historyStatusByConversationId: Record<string, HistoryStatus>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
-  claimStatus: "idle" | "claiming";
-  sendStatus: "idle" | "sending";
+  claimStatusByConversationId: Record<string, ClaimStatus>;
+  sendStatusByConversationId: Record<string, SendStatus>;
   pollState: PollState;
   sinceVersion: number;
   activeMessageSeq: number;
@@ -85,11 +89,11 @@ function createInitialState(): Omit<
     activeMode: "single",
     bootstrapError: undefined,
     bootstrapStatus: "idle",
-    claimStatus: "idle",
+    claimStatusByConversationId: {},
     conversationListsByScope: {},
     customerProfilesById: defaultCustomerProfiles,
     hasMoreHistoryByConversationId: {},
-    historyStatus: "idle",
+    historyStatusByConversationId: {},
     isConversationLoading: false,
     me: undefined,
     messagesByConversationId: {},
@@ -99,7 +103,8 @@ function createInitialState(): Omit<
       jitterMs: 350,
       status: "idle",
     },
-    sendStatus: "idle",
+    scopeTransitionError: undefined,
+    sendStatusByConversationId: {},
     sinceVersion: 0,
   };
 }
@@ -115,13 +120,6 @@ function getFirstConversationId(
     conversations[0];
 
   return firstMatch?.id ?? "";
-}
-
-function getFirstConversation(
-  conversations: Conversation[],
-  mode: ChatMode,
-) {
-  return conversations.find((conversation) => conversation.mode === mode) ?? conversations[0];
 }
 
 function getActiveMessageSeq(
@@ -206,13 +204,6 @@ function isCursorInvalidationError(error: unknown) {
   );
 }
 
-function hasPotentialOlderMessages(
-  loadedCount: number,
-  pageSize = MESSAGE_PAGE_SIZE,
-) {
-  return loadedCount >= pageSize;
-}
-
 function applyReadResult(
   state: WorkbenchStore,
   conversationId: string,
@@ -271,635 +262,813 @@ function updateConversationPreview(
   });
 }
 
-export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
-  ...createInitialState(),
-  async claimActiveConversation() {
-    const state = get();
-    const { activeAccountId, activeConversationId, me } = state;
+export function createWorkbenchStore() {
+  let latestScopeRequestId = 0;
+  let latestClaimRequestId = 0;
+  const latestClaimRequestIdByConversationId: Record<string, number> = {};
 
-    if (!activeConversationId || !activeAccountId || !me) {
-      return;
-    }
+  function issueScopeRequestId() {
+    latestScopeRequestId += 1;
+    return latestScopeRequestId;
+  }
 
-    const activeConversation = (state.conversationListsByScope[activeAccountId] ?? []).find(
-      (conversation) => conversation.id === activeConversationId,
-    );
+  function isCurrentScopeRequest(requestId: number) {
+    return requestId === latestScopeRequestId;
+  }
 
-    if (activeConversation?.assignedEmployeeId === me.id) {
-      return;
-    }
+  function issueClaimRequestId(conversationId: string) {
+    latestClaimRequestId += 1;
+    latestClaimRequestIdByConversationId[conversationId] = latestClaimRequestId;
+    return latestClaimRequestId;
+  }
 
-    set({ claimStatus: "claiming" });
+  function isCurrentClaimRequest(conversationId: string, requestId: number) {
+    return latestClaimRequestIdByConversationId[conversationId] === requestId;
+  }
 
-    try {
-      const response = await getWorkbenchService().claimConversation(activeConversationId);
-      const nextConversation = adaptConversation(response.conversation);
+  function clearClaimRequest(conversationId: string) {
+    delete latestClaimRequestIdByConversationId[conversationId];
+  }
+
+  function omitClaimStatus(
+    claimStatusByConversationId: Record<string, ClaimStatus>,
+    conversationId: string,
+  ) {
+    const { [conversationId]: _ignored, ...nextClaimStatusByConversationId } =
+      claimStatusByConversationId;
+    return nextClaimStatusByConversationId;
+  }
+
+  return create<WorkbenchStore>((set, get) => ({
+    ...createInitialState(),
+    async claimActiveConversation() {
+      const state = get();
+      const { activeAccountId, activeConversationId, me } = state;
+
+      if (!activeConversationId || !activeAccountId || !me) {
+        return;
+      }
+
+      const activeConversation = (state.conversationListsByScope[activeAccountId] ?? []).find(
+        (conversation) => conversation.id === activeConversationId,
+      );
+
+      if (activeConversation?.assignedEmployeeId === me.id) {
+        return;
+      }
+
+      const requestId = issueClaimRequestId(activeConversationId);
 
       set((currentState) => ({
-        claimStatus: "idle",
-        conversationListsByScope: {
-          ...currentState.conversationListsByScope,
-          [activeAccountId]: mergeConversationList(
-            currentState.conversationListsByScope[activeAccountId] ?? [],
-            nextConversation,
-          ),
+        claimStatusByConversationId: {
+          ...currentState.claimStatusByConversationId,
+          [activeConversationId]: "claiming",
         },
       }));
-    } catch {
-      set({ claimStatus: "idle" });
-    }
-  },
-  async initializeWorkbench() {
-    const state = get();
 
-    if (state.bootstrapStatus === "loading") {
-      return;
-    }
+      try {
+        const nextConversation = await claimConversation(activeConversationId);
 
-    set({
-      bootstrapError: undefined,
-      bootstrapStatus: "loading",
-    });
-
-    try {
-      const service = getWorkbenchService();
-      const [meDto, accountDtos] = await Promise.all([
-        service.getMe(),
-        service.getAccounts(),
-      ]);
-
-      const me = adaptEmployee(meDto);
-      const accounts = accountDtos.map((account) => adaptAccount(account, account.unreadCount));
-      const accountMap = Object.fromEntries(accounts.map((account) => [account.id, account])) as Record<
-        string,
-        Account
-      >;
-      const activeAccountId = accounts[0]?.id ?? "";
-      const conversationDtos = activeAccountId
-        ? await service.getConversations(activeAccountId)
-        : [];
-      const activeConversations = conversationDtos.map(adaptConversation);
-      const activeConversationId = getFirstConversationId(
-        {
-          [activeAccountId]: activeConversations,
-        },
-        activeAccountId,
-        state.activeMode,
-      );
-      const messageDtos = activeConversationId
-        ? await service.getMessages(activeConversationId, { limit: MESSAGE_PAGE_SIZE })
-        : [];
-      const messages = messageDtos.map((message) =>
-        adaptMessage(message, defaultCustomerProfiles, accountMap, me),
-      );
-
-      set({
-        accounts,
-        activeAccountId,
-        activeConversationId,
-        activeMessageSeq: getActiveMessageSeq(
-          {
-            [activeConversationId]: messages,
-          },
-          activeConversationId,
-        ),
-        bootstrapStatus: "ready",
-        conversationListsByScope: {
-          [activeAccountId]: activeConversations,
-        },
-        hasMoreHistoryByConversationId: activeConversationId
-          ? {
-              [activeConversationId]: hasPotentialOlderMessages(messageDtos.length),
-            }
-          : {},
-        me,
-        messagesByConversationId: activeConversationId
-          ? { [activeConversationId]: messages }
-          : {},
-      });
-
-      if (activeConversationId) {
-        const readResult = await service.markConversationRead(activeConversationId);
+        if (!isCurrentClaimRequest(activeConversationId, requestId)) {
+          return;
+        }
 
         set((currentState) => ({
-          ...applyReadResult(
-            currentState,
-            readResult.conversationId,
-            readResult.accountId,
-            readResult.accountUnreadCount,
+          claimStatusByConversationId: omitClaimStatus(
+            currentState.claimStatusByConversationId,
+            activeConversationId,
+          ),
+          conversationListsByScope: {
+            ...currentState.conversationListsByScope,
+            [activeAccountId]: mergeConversationList(
+              currentState.conversationListsByScope[activeAccountId] ?? [],
+              nextConversation,
+            ),
+          },
+        }));
+        clearClaimRequest(activeConversationId);
+      } catch {
+        if (!isCurrentClaimRequest(activeConversationId, requestId)) {
+          return;
+        }
+
+        set((currentState) => ({
+          claimStatusByConversationId: omitClaimStatus(
+            currentState.claimStatusByConversationId,
+            activeConversationId,
           ),
         }));
+        clearClaimRequest(activeConversationId);
       }
-    } catch (error) {
+    },
+    async initializeWorkbench() {
+      const state = get();
+
+      if (state.bootstrapStatus === "loading") {
+        return;
+      }
+
       set({
-        bootstrapError: error instanceof Error ? error.message : "工作台初始化失败",
-        bootstrapStatus: "error",
-      });
-    }
-  },
-  async pollWorkbench() {
-    const state = get();
-
-    if (
-      state.bootstrapStatus !== "ready" ||
-      !state.activeAccountId ||
-      state.pollState.status === "polling"
-    ) {
-      return;
-    }
-
-    set((currentState) => ({
-      pollState: {
-        ...currentState.pollState,
-        errorMessage: undefined,
-        status: "polling",
-      },
-    }));
-
-    try {
-      const response = await getWorkbenchService().poll({
-        activeConversationId: state.activeConversationId,
-        activeMessageSeq: state.activeMessageSeq,
-        currentAccountId: state.activeAccountId,
-        sinceVersion: state.sinceVersion,
+        bootstrapError: undefined,
+        bootstrapStatus: "loading",
       });
 
-      set((currentState) => {
-        const nextAccounts = currentState.accounts.map((account) => {
-          const change = response.accountChanges.find(
-            (item) => item.accountId === account.id,
-          );
-
-          if (!change) {
-            return account;
-          }
-
-          return {
-            ...account,
-            lastMessageTime: change.lastMessageTime,
-            unreadCount: change.unreadCount,
-          };
-        });
-        const nextAccountMap = Object.fromEntries(
-          nextAccounts.map((account) => [account.id, account]),
-        ) as Record<string, Account>;
-        const nextConversationLists = { ...currentState.conversationListsByScope };
-
-        for (const change of response.conversationChanges) {
-          const currentList = nextConversationLists[change.accountId] ?? [];
-
-          if (change.type === "remove") {
-            nextConversationLists[change.accountId] = currentList.filter(
-              (conversation) => conversation.id !== change.conversationId,
-            );
-            continue;
-          }
-
-          nextConversationLists[change.accountId] = mergeConversationList(
-            currentList,
-            adaptConversation(change),
-          );
-        }
-
-        const nextMessagesByConversationId = { ...currentState.messagesByConversationId };
-
-        if (response.activeConversationMessages.length > 0 && currentState.activeConversationId) {
-          const incomingMessages = response.activeConversationMessages.map((message) =>
-            adaptMessage(
-              message,
-              currentState.customerProfilesById,
-              nextAccountMap,
-              currentState.me,
-            ),
-          );
-          const currentMessages =
-            nextMessagesByConversationId[currentState.activeConversationId] ?? [];
-          nextMessagesByConversationId[currentState.activeConversationId] =
-            upsertMessageList(currentMessages, incomingMessages);
-        }
-
-        for (const change of response.messageStatusChanges) {
-          const conversationMessages = nextMessagesByConversationId[change.conversationId] ?? [];
-
-          nextMessagesByConversationId[change.conversationId] = conversationMessages.map(
-            (message) => {
-              const matches =
-                (change.clientMessageId &&
-                  message.clientMessageId === change.clientMessageId) ||
-                message.remoteMessageId === change.messageId;
-
-              if (!matches) {
-                return message;
-              }
-
-              return {
-                ...message,
-                failReason: change.reason,
-                remoteMessageId: change.messageId,
-                status:
-                  change.status === "failed"
-                    ? "failed"
-                    : change.status === "read"
-                      ? "read"
-                      : "sent",
-              };
-            },
-          );
-        }
-
-        const pendingMessages = currentState.pendingMessages.filter(
-          (pendingMessage) =>
-            !response.messageStatusChanges.some(
-              (change) => change.clientMessageId === pendingMessage.clientMessageId,
-            ),
+      try {
+        const bootstrapResult = await bootstrapWorkbench(
+          state.activeMode,
+          defaultCustomerProfiles,
+          MESSAGE_PAGE_SIZE,
         );
+        const conversationPage = bootstrapResult.conversationPage;
 
-        return {
-          accounts: nextAccounts,
+        set({
+          accounts: bootstrapResult.accounts,
+          activeAccountId: bootstrapResult.activeAccountId,
+          activeConversationId: bootstrapResult.activeConversationId,
           activeMessageSeq: getActiveMessageSeq(
-            nextMessagesByConversationId,
-            currentState.activeConversationId,
+            conversationPage
+              ? {
+                  [conversationPage.conversationId]: conversationPage.messages,
+                }
+              : {},
+            bootstrapResult.activeConversationId,
           ),
-          conversationListsByScope: nextConversationLists,
-          messagesByConversationId: nextMessagesByConversationId,
-          pendingMessages,
-          pollState: {
-            ...currentState.pollState,
-            lastSuccessAt: Date.now(),
-            status: "idle",
-          },
-          sinceVersion: response.nextVersion,
-        };
-      });
-    } catch (error) {
-      if (isCursorInvalidationError(error)) {
-        try {
-          const latestState = get();
-          const service = getWorkbenchService();
-          const accountId = latestState.activeAccountId;
+          activeMode: bootstrapResult.activeMode,
+          bootstrapStatus: "ready",
+          conversationListsByScope: bootstrapResult.conversationListsByScope,
+          hasMoreHistoryByConversationId: conversationPage
+            ? {
+                [conversationPage.conversationId]: conversationPage.hasMoreHistory,
+              }
+            : {},
+          me: bootstrapResult.me,
+          messagesByConversationId: conversationPage
+            ? { [conversationPage.conversationId]: conversationPage.messages }
+            : {},
+        });
 
-          if (!accountId) {
-            throw error;
-          }
-
-          const conversationDtos = await service.getConversations(accountId);
-          const conversations = conversationDtos.map(adaptConversation);
-          const recoveredConversation =
-            conversations.find(
-              (conversation) => conversation.id === latestState.activeConversationId,
-            ) ?? getFirstConversation(conversations, latestState.activeMode);
-          const recoveredConversationId = recoveredConversation?.id ?? "";
-          const accountMap = Object.fromEntries(
-            latestState.accounts.map((account) => [account.id, account]),
-          ) as Record<string, Account>;
-          const messageDtos = recoveredConversationId
-            ? await service.getMessages(recoveredConversationId, { limit: MESSAGE_PAGE_SIZE })
-            : [];
-          const messages = messageDtos.map((message) =>
-            adaptMessage(
-              message,
-              latestState.customerProfilesById,
-              accountMap,
-              latestState.me,
-            ),
+        if (bootstrapResult.activeConversationId) {
+          const requestId = issueScopeRequestId();
+          const readResult = await markConversationRead(
+            bootstrapResult.activeConversationId,
           );
+
+          if (!isCurrentScopeRequest(requestId)) {
+            return;
+          }
 
           set((currentState) => ({
-            activeConversationId: recoveredConversationId,
-            activeMessageSeq: getActiveMessageSeq(
-              {
-                ...currentState.messagesByConversationId,
-                [recoveredConversationId]: messages,
-              },
-              recoveredConversationId,
+            ...applyReadResult(
+              currentState,
+              readResult.conversationId,
+              readResult.accountId,
+              readResult.accountUnreadCount,
             ),
-            conversationListsByScope: {
-              ...currentState.conversationListsByScope,
-              [accountId]: conversations,
-            },
-            hasMoreHistoryByConversationId: recoveredConversationId
-              ? {
-                  ...currentState.hasMoreHistoryByConversationId,
-                  [recoveredConversationId]: hasPotentialOlderMessages(
-                    messageDtos.length,
-                  ),
-                }
-              : currentState.hasMoreHistoryByConversationId,
-            messagesByConversationId: recoveredConversationId
-              ? {
-                  ...currentState.messagesByConversationId,
-                  [recoveredConversationId]: messages,
-                }
-              : currentState.messagesByConversationId,
-            pendingMessages: [],
-            pollState: {
-              ...currentState.pollState,
-              errorMessage: undefined,
-              lastSuccessAt: Date.now(),
-              status: "idle",
-            },
-            sinceVersion: 0,
           }));
-
-          return;
-        } catch {
-          // Fall through to the normal error state if the compensating reload fails.
         }
+      } catch (error) {
+        set({
+          bootstrapError: error instanceof Error ? error.message : "工作台初始化失败",
+          bootstrapStatus: "error",
+        });
+      }
+    },
+    async pollWorkbench() {
+      const state = get();
+
+      if (
+        state.bootstrapStatus !== "ready" ||
+        !state.activeAccountId ||
+        state.pollState.status === "polling"
+      ) {
+        return;
       }
 
       set((currentState) => ({
         pollState: {
           ...currentState.pollState,
-          errorMessage: error instanceof Error ? error.message : "轮询失败",
-          status: "error",
+          errorMessage: undefined,
+          status: "polling",
         },
       }));
-    }
-  },
-  async sendAgentTextMessage(text) {
-    const normalizedText = text.trim();
 
-    if (!normalizedText) {
-      return;
-    }
+      try {
+        const request = {
+          activeConversationId: state.activeConversationId,
+          activeMessageSeq: state.activeMessageSeq,
+          currentAccountId: state.activeAccountId,
+          sinceVersion: state.sinceVersion,
+        };
+        const response = await pollWorkbench(request, {
+          accounts: state.accounts,
+          customerProfilesById: state.customerProfilesById,
+          me: state.me,
+        });
 
-    const state = get();
-    const { activeAccountId, activeConversationId, me } = state;
+        set((currentState) => {
+          const isStaleScope =
+            currentState.activeAccountId !== response.request.currentAccountId ||
+            currentState.activeConversationId !== response.request.activeConversationId ||
+            currentState.sinceVersion !== response.request.sinceVersion;
 
-    if (!activeAccountId || !activeConversationId || !me) {
-      return;
-    }
+          if (isStaleScope) {
+            return {
+              pollState: {
+                ...currentState.pollState,
+                status: "idle",
+              },
+            };
+          }
 
-    const activeConversation = (state.conversationListsByScope[activeAccountId] ?? []).find(
-      (conversation) => conversation.id === activeConversationId,
-    );
+          const nextAccounts = currentState.accounts.map((account) => {
+            const change = response.accountChanges.find(
+              (item) => item.accountId === account.id,
+            );
 
-    if (!activeConversation) {
-      return;
-    }
+            if (!change) {
+              return account;
+            }
 
-    if (
-      activeConversation.assignedEmployeeId &&
-      activeConversation.assignedEmployeeId !== me.id
-    ) {
-      return;
-    }
+            return {
+              ...account,
+              lastMessageTime: change.lastMessageTime,
+              unreadCount: change.unreadCount,
+            };
+          });
+          const nextConversationLists = { ...currentState.conversationListsByScope };
 
-    if (!activeConversation.assignedEmployeeId || activeConversation.status === "public") {
-      await get().claimActiveConversation();
-    }
+          for (const change of response.conversationChanges) {
+            const currentList = nextConversationLists[change.accountId] ?? [];
 
-    const account = state.accounts.find((item) => item.id === activeAccountId);
-    const timestamp = Date.now();
-    const clientMessageId = `local_${timestamp}_${Math.random().toString(36).slice(2, 6)}`;
-    const optimisticMessage: Message = {
-      author: account ? `${account.name}-${account.operator}` : me.displayName,
-      clientMessageId,
-      content: {
-        text: normalizedText,
-        type: "text",
-      },
-      conversationId: activeConversationId,
-      id: clientMessageId,
-      role: "agent",
-      sender: {
-        avatarUrl: account?.avatarUrl,
-        id: `sender-agent-${activeAccountId}`,
-        name: account ? `${account.name}-${account.operator}` : me.displayName,
-      },
-      sentAt: formatWorkbenchTimestamp(timestamp),
-      status: "sending",
-    };
+            if (change.type === "remove") {
+              nextConversationLists[change.accountId] = currentList.filter(
+                (conversation) => conversation.id !== change.conversationId,
+              );
+              continue;
+            }
 
-    set((currentState) => {
-      const currentMessages =
-        currentState.messagesByConversationId[activeConversationId] ?? [];
-      const nextMessages = [...currentMessages, optimisticMessage];
-      const currentConversations =
-        currentState.conversationListsByScope[activeAccountId] ?? [];
+            nextConversationLists[change.accountId] = mergeConversationList(
+              currentList,
+              change.conversation,
+            );
+          }
 
-      return {
-        activeMessageSeq: getActiveMessageSeq(
-          {
+          const nextMessagesByConversationId = { ...currentState.messagesByConversationId };
+
+          if (
+            response.activeConversationMessages.length > 0 &&
+            response.request.activeConversationId
+          ) {
+            const currentMessages =
+              nextMessagesByConversationId[response.request.activeConversationId] ?? [];
+            nextMessagesByConversationId[response.request.activeConversationId] =
+              upsertMessageList(currentMessages, response.activeConversationMessages);
+          }
+
+          for (const change of response.messageStatusChanges) {
+            const conversationMessages = nextMessagesByConversationId[change.conversationId] ?? [];
+
+            nextMessagesByConversationId[change.conversationId] = conversationMessages.map(
+              (message) => {
+                const matches =
+                  (change.clientMessageId &&
+                    message.clientMessageId === change.clientMessageId) ||
+                  message.remoteMessageId === change.remoteMessageId;
+
+                if (!matches) {
+                  return message;
+                }
+
+                return {
+                  ...message,
+                  failReason: change.reason,
+                  remoteMessageId: change.remoteMessageId,
+                  status: change.status,
+                };
+              },
+            );
+          }
+
+          const pendingMessages = currentState.pendingMessages.filter(
+            (pendingMessage) =>
+              !response.messageStatusChanges.some(
+                (change) => change.clientMessageId === pendingMessage.clientMessageId,
+              ),
+          );
+
+          return {
+            accounts: nextAccounts,
+            activeMessageSeq: getActiveMessageSeq(
+              nextMessagesByConversationId,
+              response.request.activeConversationId,
+            ),
+            conversationListsByScope: nextConversationLists,
+            messagesByConversationId: nextMessagesByConversationId,
+            pendingMessages,
+            pollState: {
+              ...currentState.pollState,
+              lastSuccessAt: Date.now(),
+              status: "idle",
+            },
+            sinceVersion: response.nextVersion,
+          };
+        });
+      } catch (error) {
+        if (isCursorInvalidationError(error)) {
+          try {
+            const latestState = get();
+            const accountId = latestState.activeAccountId;
+
+            if (!accountId) {
+              throw error;
+            }
+
+            const scopeResult = await loadAccountScope(
+              accountId,
+              latestState.activeMode,
+              {
+                accounts: latestState.accounts,
+                customerProfilesById: latestState.customerProfilesById,
+                me: latestState.me,
+              },
+              MESSAGE_PAGE_SIZE,
+              latestState.activeConversationId,
+            );
+            const conversationPage = scopeResult.conversationPage;
+
+            set((currentState) => {
+              const nextMessagesByConversationId = conversationPage
+                ? {
+                    ...currentState.messagesByConversationId,
+                    [conversationPage.conversationId]: conversationPage.messages,
+                  }
+                : currentState.messagesByConversationId;
+              const nextHistoryByConversationId = conversationPage
+                ? {
+                    ...currentState.hasMoreHistoryByConversationId,
+                    [conversationPage.conversationId]: conversationPage.hasMoreHistory,
+                  }
+                : currentState.hasMoreHistoryByConversationId;
+              const nextState: Partial<WorkbenchStore> = {
+                conversationListsByScope: {
+                  ...currentState.conversationListsByScope,
+                  [accountId]: scopeResult.conversations,
+                },
+                hasMoreHistoryByConversationId: nextHistoryByConversationId,
+                messagesByConversationId: nextMessagesByConversationId,
+                pollState: {
+                  ...currentState.pollState,
+                  errorMessage: undefined,
+                  lastSuccessAt: Date.now(),
+                  status: "idle",
+                },
+              };
+
+              if (currentState.activeAccountId !== accountId) {
+                return nextState;
+              }
+
+              const nextActiveConversationId = scopeResult.conversations.some(
+                (conversation) => conversation.id === currentState.activeConversationId,
+              )
+                ? currentState.activeConversationId
+                : scopeResult.nextConversationId;
+
+              return {
+                ...nextState,
+                activeConversationId: nextActiveConversationId,
+                activeMessageSeq: getActiveMessageSeq(
+                  nextMessagesByConversationId,
+                  nextActiveConversationId,
+                ),
+                pendingMessages: currentState.pendingMessages.filter(
+                  (message) => message.conversationId !== state.activeConversationId,
+                ),
+                sinceVersion: 0,
+              };
+            });
+
+            return;
+          } catch {
+            // Fall through to the normal error state if the compensating reload fails.
+          }
+        }
+
+        set((currentState) => ({
+          pollState: {
+            ...currentState.pollState,
+            errorMessage: error instanceof Error ? error.message : "轮询失败",
+            status: "error",
+          },
+        }));
+      }
+    },
+    async sendAgentTextMessage(text) {
+      const normalizedText = text.trim();
+
+      if (!normalizedText) {
+        return;
+      }
+
+      const state = get();
+      const { activeAccountId, activeConversationId, me } = state;
+
+      if (!activeAccountId || !activeConversationId || !me) {
+        return;
+      }
+
+      const activeConversation = (state.conversationListsByScope[activeAccountId] ?? []).find(
+        (conversation) => conversation.id === activeConversationId,
+      );
+
+      if (!activeConversation) {
+        return;
+      }
+
+      if (
+        activeConversation.assignedEmployeeId &&
+        activeConversation.assignedEmployeeId !== me.id
+      ) {
+        return;
+      }
+
+      if (!activeConversation.assignedEmployeeId || activeConversation.status === "public") {
+        await get().claimActiveConversation();
+      }
+
+      const account = state.accounts.find((item) => item.id === activeAccountId);
+      const timestamp = Date.now();
+      const clientMessageId = `local_${timestamp}_${Math.random().toString(36).slice(2, 6)}`;
+      const optimisticMessage: Message = {
+        author: account ? `${account.name}-${account.operator}` : me.displayName,
+        clientMessageId,
+        content: {
+          text: normalizedText,
+          type: "text",
+        },
+        conversationId: activeConversationId,
+        id: clientMessageId,
+        role: "agent",
+        sender: {
+          avatarUrl: account?.avatarUrl,
+          id: `sender-agent-${activeAccountId}`,
+          name: account ? `${account.name}-${account.operator}` : me.displayName,
+        },
+        sentAt: formatWorkbenchTimestamp(timestamp),
+        status: "sending",
+      };
+
+      set((currentState) => {
+        const currentMessages =
+          currentState.messagesByConversationId[activeConversationId] ?? [];
+        const nextMessages = [...currentMessages, optimisticMessage];
+        const currentConversations =
+          currentState.conversationListsByScope[activeAccountId] ?? [];
+
+        return {
+          activeMessageSeq: getActiveMessageSeq(
+            {
+              ...currentState.messagesByConversationId,
+              [activeConversationId]: nextMessages,
+            },
+            activeConversationId,
+          ),
+          conversationListsByScope: {
+            ...currentState.conversationListsByScope,
+            [activeAccountId]: updateConversationPreview(
+              currentConversations,
+              activeConversationId,
+              normalizedText,
+              optimisticMessage.sentAt,
+              timestamp,
+              currentState.me?.id,
+            ),
+          },
+          messagesByConversationId: {
             ...currentState.messagesByConversationId,
             [activeConversationId]: nextMessages,
           },
-          activeConversationId,
-        ),
-        conversationListsByScope: {
-          ...currentState.conversationListsByScope,
-          [activeAccountId]: updateConversationPreview(
-            currentConversations,
-            activeConversationId,
-            normalizedText,
-            optimisticMessage.sentAt,
-            timestamp,
-            currentState.me?.id,
-          ),
-        },
-        messagesByConversationId: {
-          ...currentState.messagesByConversationId,
-          [activeConversationId]: nextMessages,
-        },
-        pendingMessages: [...currentState.pendingMessages, optimisticMessage],
-        sendStatus: "sending",
-      };
-    });
-
-    try {
-      const response = await getWorkbenchService().sendMessage({
-        accountId: activeAccountId,
-        clientMessageId,
-        content: normalizedText,
-        contentType: "text",
-        conversationId: activeConversationId,
+          pendingMessages: [...currentState.pendingMessages, optimisticMessage],
+          sendStatusByConversationId: {
+            ...currentState.sendStatusByConversationId,
+            [activeConversationId]: "sending",
+          },
+        };
       });
 
-      set((currentState) => ({
-        messagesByConversationId: {
-          ...currentState.messagesByConversationId,
-          [activeConversationId]: (
-            currentState.messagesByConversationId[activeConversationId] ?? []
-          ).map((message) =>
-            message.clientMessageId === clientMessageId
-              ? {
-                  ...message,
-                  remoteMessageId: response.messageId,
-                }
-              : message,
+      try {
+        const response = await sendTextMessage({
+          accountId: activeAccountId,
+          clientMessageId,
+          content: normalizedText,
+          contentType: "text",
+          conversationId: activeConversationId,
+        });
+
+        set((currentState) => ({
+          messagesByConversationId: {
+            ...currentState.messagesByConversationId,
+            [activeConversationId]: (
+              currentState.messagesByConversationId[activeConversationId] ?? []
+            ).map((message) =>
+              message.clientMessageId === clientMessageId
+                ? {
+                    ...message,
+                    remoteMessageId: response.messageId,
+                  }
+                : message,
+            ),
+          },
+          sendStatusByConversationId: {
+            ...currentState.sendStatusByConversationId,
+            [activeConversationId]: "idle",
+          },
+        }));
+      } catch (error) {
+        set((currentState) => ({
+          messagesByConversationId: {
+            ...currentState.messagesByConversationId,
+            [activeConversationId]: (
+              currentState.messagesByConversationId[activeConversationId] ?? []
+            ).map((message) =>
+              message.clientMessageId === clientMessageId
+                ? {
+                    ...message,
+                    failReason:
+                      error instanceof Error ? error.message : "消息发送失败",
+                    status: "failed",
+                  }
+                : message,
+            ),
+          },
+          pendingMessages: currentState.pendingMessages.filter(
+            (message) => message.clientMessageId !== clientMessageId,
           ),
-        },
-        sendStatus: "idle",
-      }));
-    } catch (error) {
-      set((currentState) => ({
-        messagesByConversationId: {
-          ...currentState.messagesByConversationId,
-          [activeConversationId]: (
-            currentState.messagesByConversationId[activeConversationId] ?? []
-          ).map((message) =>
-            message.clientMessageId === clientMessageId
-              ? {
-                  ...message,
-                  failReason:
-                    error instanceof Error ? error.message : "消息发送失败",
-                  status: "failed",
-                }
-              : message,
-          ),
-        },
-        pendingMessages: currentState.pendingMessages.filter(
-          (message) => message.clientMessageId !== clientMessageId,
-        ),
-        sendStatus: "idle",
-      }));
-    }
-  },
-  async retryFailedMessage(messageId) {
-    const state = get();
-    const conversationMessages =
-      state.messagesByConversationId[state.activeConversationId] ?? [];
-    const failedMessage = conversationMessages.find(
-      (message) =>
-        message.id === messageId &&
-        message.role === "agent" &&
-        message.status === "failed" &&
-        message.content.type === "text",
-    );
+          sendStatusByConversationId: {
+            ...currentState.sendStatusByConversationId,
+            [activeConversationId]: "idle",
+          },
+        }));
+      }
+    },
+    async retryFailedMessage(messageId) {
+      const state = get();
+      const conversationMessages =
+        state.messagesByConversationId[state.activeConversationId] ?? [];
+      const failedMessage = conversationMessages.find(
+        (message) =>
+          message.id === messageId &&
+          message.role === "agent" &&
+          message.status === "failed" &&
+          message.content.type === "text",
+      );
 
-    if (!failedMessage || failedMessage.role !== "agent" || failedMessage.content.type !== "text") {
-      return;
-    }
-
-    set((currentState) => ({
-      messagesByConversationId: {
-        ...currentState.messagesByConversationId,
-        [failedMessage.conversationId]: (
-          currentState.messagesByConversationId[failedMessage.conversationId] ?? []
-        ).filter((message) => message.id !== failedMessage.id),
-      },
-      pendingMessages: currentState.pendingMessages.filter(
-        (message) => message.id !== failedMessage.id,
-      ),
-    }));
-
-    await get().sendAgentTextMessage(failedMessage.content.text);
-  },
-  async loadOlderMessages() {
-    const state = get();
-    const conversationId = state.activeConversationId;
-
-    if (
-      !conversationId ||
-      state.historyStatus === "loading" ||
-      state.hasMoreHistoryByConversationId[conversationId] === false
-    ) {
-      return;
-    }
-
-    const currentMessages = state.messagesByConversationId[conversationId] ?? [];
-    const firstSeq = currentMessages.reduce<number | undefined>((minSeq, message) => {
-      if (message.seq == null) {
-        return minSeq;
+      if (
+        !failedMessage ||
+        failedMessage.role !== "agent" ||
+        failedMessage.content.type !== "text"
+      ) {
+        return;
       }
 
-      return minSeq == null ? message.seq : Math.min(minSeq, message.seq);
-    }, undefined);
-
-    if (firstSeq == null) {
-      return;
-    }
-
-    set({ historyStatus: "loading" });
-
-    try {
-      const accountMap = Object.fromEntries(
-        state.accounts.map((account) => [account.id, account]),
-      ) as Record<string, Account>;
-      const messageDtos = await getWorkbenchService().getMessages(conversationId, {
-        beforeSeq: firstSeq,
-        limit: MESSAGE_PAGE_SIZE,
-      });
-      const messages = messageDtos.map((message) =>
-        adaptMessage(message, state.customerProfilesById, accountMap, state.me),
-      );
-
       set((currentState) => ({
-        hasMoreHistoryByConversationId: {
-          ...currentState.hasMoreHistoryByConversationId,
-          [conversationId]: hasPotentialOlderMessages(messageDtos.length),
-        },
-        historyStatus: "idle",
         messagesByConversationId: {
           ...currentState.messagesByConversationId,
-          [conversationId]: upsertMessageList(
-            messages,
-            currentState.messagesByConversationId[conversationId] ?? [],
-          ),
+          [failedMessage.conversationId]: (
+            currentState.messagesByConversationId[failedMessage.conversationId] ?? []
+          ).filter((message) => message.id !== failedMessage.id),
         },
+        pendingMessages: currentState.pendingMessages.filter(
+          (message) => message.id !== failedMessage.id,
+        ),
       }));
-    } catch {
-      set({ historyStatus: "idle" });
-    }
-  },
-  async setActiveAccount(accountId) {
-    const state = get();
 
-    if (!accountId || state.activeAccountId === accountId) {
-      return;
-    }
+      await get().sendAgentTextMessage(failedMessage.content.text);
+    },
+    async loadOlderMessages() {
+      const state = get();
+      const conversationId = state.activeConversationId;
+      const historyStatus = conversationId
+        ? state.historyStatusByConversationId[conversationId] ?? "idle"
+        : "idle";
 
-    set({ isConversationLoading: true });
+      if (
+        !conversationId ||
+        historyStatus === "loading" ||
+        state.hasMoreHistoryByConversationId[conversationId] === false
+      ) {
+        return;
+      }
 
-    try {
-      const service = getWorkbenchService();
-      const conversationDtos = await service.getConversations(accountId);
-      const conversations = conversationDtos.map(adaptConversation);
-      const nextConversation = getFirstConversation(conversations, state.activeMode);
-      const nextConversationId = nextConversation?.id ?? "";
-      const nextMode = nextConversation?.mode ?? state.activeMode;
-      const accountMap = Object.fromEntries(
-        state.accounts.map((account) => [account.id, account]),
-      ) as Record<string, Account>;
-      const messageDtos = nextConversationId
-        ? await service.getMessages(nextConversationId, { limit: MESSAGE_PAGE_SIZE })
-        : [];
-      const messages = messageDtos.map((message) =>
-        adaptMessage(message, state.customerProfilesById, accountMap, state.me),
-      );
+      const currentMessages = state.messagesByConversationId[conversationId] ?? [];
+      const firstSeq = currentMessages.reduce<number | undefined>((minSeq, message) => {
+        if (message.seq == null) {
+          return minSeq;
+        }
+
+        return minSeq == null ? message.seq : Math.min(minSeq, message.seq);
+      }, undefined);
+
+      if (firstSeq == null) {
+        return;
+      }
 
       set((currentState) => ({
-        activeAccountId: accountId,
-        activeConversationId: nextConversationId,
-        activeMode: nextMode,
-        activeMessageSeq: getActiveMessageSeq(
-          {
-            ...currentState.messagesByConversationId,
-            [nextConversationId]: messages,
-          },
-          nextConversationId,
-        ),
-        conversationListsByScope: {
-          ...currentState.conversationListsByScope,
-          [accountId]: conversations,
+        historyStatusByConversationId: {
+          ...currentState.historyStatusByConversationId,
+          [conversationId]: "loading",
         },
-        hasMoreHistoryByConversationId: nextConversationId
-          ? {
-              ...currentState.hasMoreHistoryByConversationId,
-              [nextConversationId]: hasPotentialOlderMessages(messageDtos.length),
-            }
-          : currentState.hasMoreHistoryByConversationId,
-        isConversationLoading: false,
-        messagesByConversationId: nextConversationId
-          ? {
-              ...currentState.messagesByConversationId,
-              [nextConversationId]: messages,
-            }
-          : currentState.messagesByConversationId,
       }));
 
-      if (nextConversationId) {
-        const readResult = await service.markConversationRead(nextConversationId);
+      try {
+        const page = await loadConversationMessagesPage(
+          {
+            accounts: state.accounts,
+            customerProfilesById: state.customerProfilesById,
+            me: state.me,
+          },
+          conversationId,
+          {
+            beforeSeq: firstSeq,
+            limit: MESSAGE_PAGE_SIZE,
+          },
+        );
+
+        set((currentState) => ({
+          hasMoreHistoryByConversationId: {
+            ...currentState.hasMoreHistoryByConversationId,
+            [conversationId]: page.hasMoreHistory,
+          },
+          historyStatusByConversationId: {
+            ...currentState.historyStatusByConversationId,
+            [conversationId]: "idle",
+          },
+          messagesByConversationId: {
+            ...currentState.messagesByConversationId,
+            [conversationId]: upsertMessageList(
+              page.messages,
+              currentState.messagesByConversationId[conversationId] ?? [],
+            ),
+          },
+        }));
+      } catch {
+        set((currentState) => ({
+          historyStatusByConversationId: {
+            ...currentState.historyStatusByConversationId,
+            [conversationId]: "idle",
+          },
+        }));
+      }
+    },
+    async setActiveAccount(accountId) {
+      const state = get();
+
+      if (!accountId || state.activeAccountId === accountId) {
+        return;
+      }
+
+      const requestId = issueScopeRequestId();
+      set({
+        isConversationLoading: true,
+        scopeTransitionError: undefined,
+      });
+
+      try {
+        const scopeResult = await loadAccountScope(
+          accountId,
+          state.activeMode,
+          {
+            accounts: state.accounts,
+            customerProfilesById: state.customerProfilesById,
+            me: state.me,
+          },
+          MESSAGE_PAGE_SIZE,
+        );
+        const conversationPage = scopeResult.conversationPage;
+
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
+        set((currentState) => ({
+          activeAccountId: accountId,
+          activeConversationId: scopeResult.nextConversationId,
+          activeMode: scopeResult.nextMode,
+          activeMessageSeq: getActiveMessageSeq(
+            conversationPage
+              ? {
+                  ...currentState.messagesByConversationId,
+                  [conversationPage.conversationId]: conversationPage.messages,
+                }
+              : currentState.messagesByConversationId,
+            scopeResult.nextConversationId,
+          ),
+          conversationListsByScope: {
+            ...currentState.conversationListsByScope,
+            [accountId]: scopeResult.conversations,
+          },
+          hasMoreHistoryByConversationId: conversationPage
+            ? {
+                ...currentState.hasMoreHistoryByConversationId,
+                [conversationPage.conversationId]: conversationPage.hasMoreHistory,
+              }
+            : currentState.hasMoreHistoryByConversationId,
+          isConversationLoading: false,
+          messagesByConversationId: conversationPage
+            ? {
+                ...currentState.messagesByConversationId,
+                [conversationPage.conversationId]: conversationPage.messages,
+              }
+            : currentState.messagesByConversationId,
+          scopeTransitionError: undefined,
+        }));
+
+        if (scopeResult.nextConversationId) {
+          const readResult = await markConversationRead(scopeResult.nextConversationId);
+
+          if (!isCurrentScopeRequest(requestId)) {
+            return;
+          }
+
+          set((currentState) => ({
+            ...applyReadResult(
+              currentState,
+              readResult.conversationId,
+              readResult.accountId,
+              readResult.accountUnreadCount,
+            ),
+          }));
+        }
+      } catch (error) {
+        if (isCurrentScopeRequest(requestId)) {
+          set({
+            isConversationLoading: false,
+            scopeTransitionError:
+              error instanceof Error ? error.message : "切换账号失败",
+          });
+        }
+      }
+    },
+    async setActiveConversation(conversationId) {
+      const state = get();
+
+      if (
+        !conversationId ||
+        !state.activeAccountId ||
+        state.activeConversationId === conversationId
+      ) {
+        return;
+      }
+
+      const requestId = issueScopeRequestId();
+      set({
+        activeConversationId: conversationId,
+        isConversationLoading: true,
+        scopeTransitionError: undefined,
+      });
+
+      try {
+        const page = await loadConversationMessagesPage(
+          {
+            accounts: state.accounts,
+            customerProfilesById: state.customerProfilesById,
+            me: state.me,
+          },
+          conversationId,
+          {
+            limit: MESSAGE_PAGE_SIZE,
+          },
+        );
+
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
+        set((currentState) => ({
+          activeMessageSeq: getActiveMessageSeq(
+            {
+              ...currentState.messagesByConversationId,
+              [conversationId]: page.messages,
+            },
+            conversationId,
+          ),
+          hasMoreHistoryByConversationId: {
+            ...currentState.hasMoreHistoryByConversationId,
+            [conversationId]: page.hasMoreHistory,
+          },
+          isConversationLoading: false,
+          messagesByConversationId: {
+            ...currentState.messagesByConversationId,
+            [conversationId]: page.messages,
+          },
+          scopeTransitionError: undefined,
+        }));
+
+        const readResult = await markConversationRead(conversationId);
+
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
 
         set((currentState) => ({
           ...applyReadResult(
@@ -909,90 +1078,41 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
             readResult.accountUnreadCount,
           ),
         }));
+      } catch (error) {
+        if (isCurrentScopeRequest(requestId)) {
+          set({
+            isConversationLoading: false,
+            scopeTransitionError:
+              error instanceof Error ? error.message : "切换会话失败",
+          });
+        }
       }
-    } catch {
-      set({ isConversationLoading: false });
-    }
-  },
-  async setActiveConversation(conversationId) {
-    const state = get();
+    },
+    async setActiveMode(mode) {
+      const state = get();
 
-    if (!conversationId || !state.activeAccountId || state.activeConversationId === conversationId) {
-      return;
-    }
+      if (state.activeMode === mode) {
+        return;
+      }
 
-    set({
-      activeConversationId: conversationId,
-      isConversationLoading: true,
-    });
-
-    try {
-      const service = getWorkbenchService();
-      const accountMap = Object.fromEntries(
-        state.accounts.map((account) => [account.id, account]),
-      ) as Record<string, Account>;
-      const messageDtos = await service.getMessages(conversationId, {
-        limit: MESSAGE_PAGE_SIZE,
-      });
-      const messages = messageDtos.map((message) =>
-        adaptMessage(message, state.customerProfilesById, accountMap, state.me),
+      const nextConversationId = getFirstConversationId(
+        state.conversationListsByScope,
+        state.activeAccountId,
+        mode,
       );
 
-      set((currentState) => ({
-        activeMessageSeq: getActiveMessageSeq(
-          {
-            ...currentState.messagesByConversationId,
-            [conversationId]: messages,
-          },
-          conversationId,
-        ),
-        hasMoreHistoryByConversationId: {
-          ...currentState.hasMoreHistoryByConversationId,
-          [conversationId]: hasPotentialOlderMessages(messageDtos.length),
-        },
-        isConversationLoading: false,
-        messagesByConversationId: {
-          ...currentState.messagesByConversationId,
-          [conversationId]: messages,
-        },
-      }));
+      set({ activeMode: mode });
 
-      const readResult = await service.markConversationRead(conversationId);
+      if (nextConversationId) {
+        await get().setActiveConversation(nextConversationId);
+      } else {
+        set({
+          activeConversationId: "",
+          activeMessageSeq: 0,
+        });
+      }
+    },
+  }));
+}
 
-      set((currentState) => ({
-        ...applyReadResult(
-          currentState,
-          readResult.conversationId,
-          readResult.accountId,
-          readResult.accountUnreadCount,
-        ),
-      }));
-    } catch {
-      set({ isConversationLoading: false });
-    }
-  },
-  async setActiveMode(mode) {
-    const state = get();
-
-    if (state.activeMode === mode) {
-      return;
-    }
-
-    const nextConversationId = getFirstConversationId(
-      state.conversationListsByScope,
-      state.activeAccountId,
-      mode,
-    );
-
-    set({ activeMode: mode });
-
-    if (nextConversationId) {
-      await get().setActiveConversation(nextConversationId);
-    } else {
-      set({
-        activeConversationId: "",
-        activeMessageSeq: 0,
-      });
-    }
-  },
-}));
+export const useWorkbenchStore = createWorkbenchStore();

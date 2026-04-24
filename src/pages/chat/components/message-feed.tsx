@@ -30,13 +30,16 @@ export function ChatMessageList({ messages, onRetryMessage }: ChatMessageListPro
     <div className="space-y-3">
       {items.map((item) =>
         item.type === "divider" ? (
-          <MessageTimeDivider key={item.id} label={item.label} />
+          <div data-scroll-anchor={item.id} key={item.id}>
+            <MessageTimeDivider label={item.label} />
+          </div>
         ) : (
-          <MessageRow
-            key={item.message.id}
-            message={item.message}
-            onRetryMessage={onRetryMessage}
-          />
+          <div data-scroll-anchor={item.message.id} key={item.message.id}>
+            <MessageRow
+              message={item.message}
+              onRetryMessage={onRetryMessage}
+            />
+          </div>
         ),
       )}
     </div>

@@ -55,6 +55,7 @@ const DEFAULT_CUSTOMER_PANEL_WIDTH = 304;
 const MIN_CUSTOMER_PANEL_WIDTH = 256;
 const MAX_CUSTOMER_PANEL_WIDTH = 420;
 const MIN_MESSAGE_PANEL_WIDTH = 520;
+const MESSAGE_SCROLL_ANCHOR_ATTR = "data-scroll-anchor";
 const INPUT_ENTER_BEHAVIORS = {
   newline: "Enter换行",
   send: "Enter发送",
@@ -107,6 +108,8 @@ export function ChatWorkbenchPage() {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   const historyLoadInFlightRef = useRef(false);
   const pendingHistoryRestoreRef = useRef<{
+    anchorId?: string;
+    anchorOffsetTop?: number;
     conversationId: string;
     previousScrollHeight: number;
     previousScrollTop: number;
@@ -178,8 +181,12 @@ export function ChatWorkbenchPage() {
       return;
     }
 
+    const anchorSnapshot = captureViewportAnchor(viewport);
+
     historyLoadInFlightRef.current = true;
     pendingHistoryRestoreRef.current = {
+      anchorId: anchorSnapshot?.id,
+      anchorOffsetTop: anchorSnapshot?.offsetTop,
       conversationId: activeConversation.id,
       previousScrollHeight: viewport.scrollHeight,
       previousScrollTop: viewport.scrollTop,
@@ -280,10 +287,26 @@ export function ChatWorkbenchPage() {
 
     if (pendingRestore && viewport && activeConversationId === pendingRestore.conversationId) {
       if (activeMessages.length > previousMessageCount) {
-        viewport.scrollTop =
-          viewport.scrollHeight -
-          pendingRestore.previousScrollHeight +
-          pendingRestore.previousScrollTop;
+        const matchedAnchor =
+          pendingRestore.anchorId != null
+            ? findViewportAnchor(viewport, pendingRestore.anchorId)
+            : null;
+
+        if (
+          matchedAnchor &&
+          pendingRestore.anchorOffsetTop != null
+        ) {
+          const viewportTop = viewport.getBoundingClientRect().top;
+          const currentOffsetTop =
+            matchedAnchor.getBoundingClientRect().top - viewportTop;
+
+          viewport.scrollTop += currentOffsetTop - pendingRestore.anchorOffsetTop;
+        } else {
+          viewport.scrollTop =
+            viewport.scrollHeight -
+            pendingRestore.previousScrollHeight +
+            pendingRestore.previousScrollTop;
+        }
 
         pendingHistoryRestoreRef.current = null;
         previousConversationIdRef.current = activeConversationId;
@@ -676,12 +699,15 @@ export function ChatWorkbenchPage() {
                     viewportTestId="message-viewport"
                     viewportProps={{
                       onScroll: handleMessageViewportScroll,
+                      style: {
+                        overflowAnchor: "none",
+                      },
                     }}
                     viewportRef={messageViewportRef}
                   >
-                    <div className="px-5 py-5">
+                    <div className="relative px-5 py-5">
                       {historyStatus === "loading" ? (
-                        <div className="mb-4 rounded-xl border border-dashed border-[#DEE5EE] px-4 py-2 text-center text-xs text-[#728093]">
+                        <div className="pointer-events-none absolute left-5 right-5 top-5 z-10 rounded-xl border border-dashed border-[#DEE5EE] bg-white/95 px-4 py-2 text-center text-xs text-[#728093] backdrop-blur-[1px]">
                           加载更早消息中...
                         </div>
                       ) : null}
@@ -1140,6 +1166,45 @@ function formatConversationTimestamp(value: string) {
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("/");
+}
+
+function captureViewportAnchor(viewport: HTMLDivElement) {
+  const viewportTop = viewport.getBoundingClientRect().top;
+  const anchors = viewport.querySelectorAll<HTMLElement>(
+    `[${MESSAGE_SCROLL_ANCHOR_ATTR}]`,
+  );
+
+  for (const anchor of anchors) {
+    const rect = anchor.getBoundingClientRect();
+    const id = anchor.getAttribute(MESSAGE_SCROLL_ANCHOR_ATTR);
+
+    if (!id) {
+      continue;
+    }
+
+    if (rect.bottom > viewportTop + 1) {
+      return {
+        id,
+        offsetTop: rect.top - viewportTop,
+      };
+    }
+  }
+
+  return null;
+}
+
+function findViewportAnchor(viewport: HTMLDivElement, anchorId: string) {
+  const anchors = viewport.querySelectorAll<HTMLElement>(
+    `[${MESSAGE_SCROLL_ANCHOR_ATTR}]`,
+  );
+
+  for (const anchor of anchors) {
+    if (anchor.getAttribute(MESSAGE_SCROLL_ANCHOR_ATTR) === anchorId) {
+      return anchor;
+    }
+  }
+
+  return null;
 }
 
 function clampCustomerPanelWidth(width: number, availableWidth: number) {

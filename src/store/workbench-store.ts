@@ -44,6 +44,7 @@ type WorkbenchState = {
   bootstrapStatus: AsyncStatus;
   bootstrapError?: string;
   isConversationLoading: boolean;
+  scopeTransitionError?: string;
   historyStatusByConversationId: Record<string, HistoryStatus>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
   claimStatusByConversationId: Record<string, ClaimStatus>;
@@ -102,6 +103,7 @@ function createInitialState(): Omit<
       jitterMs: 350,
       status: "idle",
     },
+    scopeTransitionError: undefined,
     sendStatusByConversationId: {},
     sinceVersion: 0,
   };
@@ -590,45 +592,61 @@ export function createWorkbenchStore() {
                 me: latestState.me,
               },
               MESSAGE_PAGE_SIZE,
+              latestState.activeConversationId,
             );
             const conversationPage = scopeResult.conversationPage;
 
-            set((currentState) => ({
-              activeConversationId: scopeResult.nextConversationId,
-              activeMessageSeq: getActiveMessageSeq(
-                conversationPage
-                  ? {
-                      ...currentState.messagesByConversationId,
-                      [conversationPage.conversationId]: conversationPage.messages,
-                    }
-                  : currentState.messagesByConversationId,
-                scopeResult.nextConversationId,
-              ),
-              conversationListsByScope: {
-                ...currentState.conversationListsByScope,
-                [accountId]: scopeResult.conversations,
-              },
-              hasMoreHistoryByConversationId: conversationPage
-                ? {
-                    ...currentState.hasMoreHistoryByConversationId,
-                    [conversationPage.conversationId]: conversationPage.hasMoreHistory,
-                  }
-                : currentState.hasMoreHistoryByConversationId,
-              messagesByConversationId: conversationPage
+            set((currentState) => {
+              const nextMessagesByConversationId = conversationPage
                 ? {
                     ...currentState.messagesByConversationId,
                     [conversationPage.conversationId]: conversationPage.messages,
                   }
-                : currentState.messagesByConversationId,
-              pendingMessages: [],
-              pollState: {
-                ...currentState.pollState,
-                errorMessage: undefined,
-                lastSuccessAt: Date.now(),
-                status: "idle",
-              },
-              sinceVersion: 0,
-            }));
+                : currentState.messagesByConversationId;
+              const nextHistoryByConversationId = conversationPage
+                ? {
+                    ...currentState.hasMoreHistoryByConversationId,
+                    [conversationPage.conversationId]: conversationPage.hasMoreHistory,
+                  }
+                : currentState.hasMoreHistoryByConversationId;
+              const nextState: Partial<WorkbenchStore> = {
+                conversationListsByScope: {
+                  ...currentState.conversationListsByScope,
+                  [accountId]: scopeResult.conversations,
+                },
+                hasMoreHistoryByConversationId: nextHistoryByConversationId,
+                messagesByConversationId: nextMessagesByConversationId,
+                pollState: {
+                  ...currentState.pollState,
+                  errorMessage: undefined,
+                  lastSuccessAt: Date.now(),
+                  status: "idle",
+                },
+              };
+
+              if (currentState.activeAccountId !== accountId) {
+                return nextState;
+              }
+
+              const nextActiveConversationId = scopeResult.conversations.some(
+                (conversation) => conversation.id === currentState.activeConversationId,
+              )
+                ? currentState.activeConversationId
+                : scopeResult.nextConversationId;
+
+              return {
+                ...nextState,
+                activeConversationId: nextActiveConversationId,
+                activeMessageSeq: getActiveMessageSeq(
+                  nextMessagesByConversationId,
+                  nextActiveConversationId,
+                ),
+                pendingMessages: currentState.pendingMessages.filter(
+                  (message) => message.conversationId !== state.activeConversationId,
+                ),
+                sinceVersion: 0,
+              };
+            });
 
             return;
           } catch {
@@ -910,7 +928,10 @@ export function createWorkbenchStore() {
       }
 
       const requestId = issueScopeRequestId();
-      set({ isConversationLoading: true });
+      set({
+        isConversationLoading: true,
+        scopeTransitionError: undefined,
+      });
 
       try {
         const scopeResult = await loadAccountScope(
@@ -959,6 +980,7 @@ export function createWorkbenchStore() {
                 [conversationPage.conversationId]: conversationPage.messages,
               }
             : currentState.messagesByConversationId,
+          scopeTransitionError: undefined,
         }));
 
         if (scopeResult.nextConversationId) {
@@ -977,9 +999,13 @@ export function createWorkbenchStore() {
             ),
           }));
         }
-      } catch {
+      } catch (error) {
         if (isCurrentScopeRequest(requestId)) {
-          set({ isConversationLoading: false });
+          set({
+            isConversationLoading: false,
+            scopeTransitionError:
+              error instanceof Error ? error.message : "切换账号失败",
+          });
         }
       }
     },
@@ -998,6 +1024,7 @@ export function createWorkbenchStore() {
       set({
         activeConversationId: conversationId,
         isConversationLoading: true,
+        scopeTransitionError: undefined,
       });
 
       try {
@@ -1034,6 +1061,7 @@ export function createWorkbenchStore() {
             ...currentState.messagesByConversationId,
             [conversationId]: page.messages,
           },
+          scopeTransitionError: undefined,
         }));
 
         const readResult = await markConversationRead(conversationId);
@@ -1050,9 +1078,13 @@ export function createWorkbenchStore() {
             readResult.accountUnreadCount,
           ),
         }));
-      } catch {
+      } catch (error) {
         if (isCurrentScopeRequest(requestId)) {
-          set({ isConversationLoading: false });
+          set({
+            isConversationLoading: false,
+            scopeTransitionError:
+              error instanceof Error ? error.message : "切换会话失败",
+          });
         }
       }
     },

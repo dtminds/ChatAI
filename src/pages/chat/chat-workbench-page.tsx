@@ -86,6 +86,7 @@ export function ChatWorkbenchPage() {
     pollState,
     pollWorkbench,
     retryFailedMessage,
+    scopeTransitionError,
     sendAgentTextMessage,
     sendStatusByConversationId,
     setActiveAccount,
@@ -723,6 +724,11 @@ export function ChatWorkbenchPage() {
                       {isConversationLoading ? (
                         <div className="mb-4 rounded-xl border border-dashed border-[#DEE5EE] px-4 py-3 text-sm text-[#728093]">
                           正在刷新当前会话...
+                        </div>
+                      ) : null}
+                      {scopeTransitionError ? (
+                        <div className="mb-4 rounded-xl border border-[#F2D1D4] bg-[#FFF7F7] px-4 py-3 text-sm text-[#B34757]">
+                          {scopeTransitionError}
                         </div>
                       ) : null}
                       <ChatMessageList

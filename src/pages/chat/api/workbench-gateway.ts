@@ -141,11 +141,14 @@ export async function loadAccountScope(
   preferredMode: ChatMode,
   context: GatewayContext,
   pageSize = DEFAULT_MESSAGE_PAGE_SIZE,
+  preferredConversationId?: string,
 ): Promise<WorkbenchAccountScopeResult> {
   const service = getWorkbenchService();
   const conversationDtos = await service.getConversations(accountId);
   const conversations = conversationDtos.map(adaptConversation);
-  const nextConversation = getFirstConversation(conversations, preferredMode);
+  const nextConversation =
+    conversations.find((conversation) => conversation.id === preferredConversationId) ??
+    getFirstConversation(conversations, preferredMode);
   const nextConversationId = nextConversation?.id ?? "";
   const nextMode = nextConversation?.mode ?? preferredMode;
   const conversationPage = nextConversationId

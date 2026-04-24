@@ -176,6 +176,82 @@ describe("useWorkbenchStore", () => {
     expect(state.sinceVersion).toBe(0);
   });
 
+  it("preserves the current conversation and unrelated pending messages during cursor recovery", async () => {
+    const baseService = createMockWorkbenchService();
+    let shouldInvalidateCursor = true;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        if (shouldInvalidateCursor) {
+          shouldInvalidateCursor = false;
+          throw {
+            code: "WORKBENCH_CURSOR_INVALIDATED",
+            message: "cursor invalidated",
+            status: 409,
+          };
+        }
+
+        return baseService.poll(request);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("待回收消息");
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    const pendingBeforeRecovery = [...useWorkbenchStore.getState().pendingMessages];
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeConversationId).toBe("conv-002");
+    expect(state.pendingMessages).toEqual(pendingBeforeRecovery);
+    expect(state.sinceVersion).toBe(0);
+  });
+
+  it("drops stale cursor recovery results after the active account changes", async () => {
+    const baseService = createMockWorkbenchService();
+    let shouldInvalidateCursor = true;
+    const recoveryGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId) {
+        if (accountId === "drc" && !shouldInvalidateCursor) {
+          await recoveryGate.promise;
+        }
+
+        return baseService.getConversations(accountId);
+      },
+      async poll(request) {
+        if (shouldInvalidateCursor) {
+          shouldInvalidateCursor = false;
+          throw {
+            code: "WORKBENCH_CURSOR_INVALIDATED",
+            message: "cursor invalidated",
+            status: 409,
+          };
+        }
+
+        return baseService.poll(request);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const recoveryPromise = useWorkbenchStore.getState().pollWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    recoveryGate.resolve();
+    await recoveryPromise;
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.activeConversationId).toBe("conv-005");
+  });
+
   it("loads older messages before the current first sequence", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
 
@@ -441,5 +517,28 @@ describe("useWorkbenchStore", () => {
     state = useWorkbenchStore.getState();
 
     expect(state.claimStatusByConversationId["conv-003"]).toBeUndefined();
+  });
+
+  it("captures scope transition errors instead of failing silently", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-002" && options?.beforeSeq == null) {
+          throw new Error("切换会话失败");
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.isConversationLoading).toBe(false);
+    expect(state.scopeTransitionError).toBe("切换会话失败");
   });
 });

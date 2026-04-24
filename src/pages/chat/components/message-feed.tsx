@@ -1,3 +1,5 @@
+import { ReloadIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
@@ -7,6 +9,7 @@ const TIMESTAMP_BREAK_MS = 30 * 60 * 1000;
 
 type ChatMessageListProps = {
   messages: Message[];
+  onRetryMessage?: (messageId: string) => void;
 };
 
 type FeedItem =
@@ -20,16 +23,23 @@ type FeedItem =
       type: "message";
     };
 
-export function ChatMessageList({ messages }: ChatMessageListProps) {
+export function ChatMessageList({ messages, onRetryMessage }: ChatMessageListProps) {
   const items = buildFeedItems(messages);
 
   return (
     <div className="space-y-3">
       {items.map((item) =>
         item.type === "divider" ? (
-          <MessageTimeDivider key={item.id} label={item.label} />
+          <div data-scroll-anchor={item.id} key={item.id}>
+            <MessageTimeDivider label={item.label} />
+          </div>
         ) : (
-          <MessageRow key={item.message.id} message={item.message} />
+          <div data-scroll-anchor={item.message.id} key={item.message.id}>
+            <MessageRow
+              message={item.message}
+              onRetryMessage={onRetryMessage}
+            />
+          </div>
         ),
       )}
     </div>
@@ -46,7 +56,13 @@ export function MessageTimeDivider({ label }: { label: string }) {
   );
 }
 
-export function MessageRow({ message }: { message: Message }) {
+export function MessageRow({
+  message,
+  onRetryMessage,
+}: {
+  message: Message;
+  onRetryMessage?: (messageId: string) => void;
+}) {
   if (message.role === "system") {
     return (
       <div className="mx-auto max-w-2xl rounded-full bg-[#f3f5f8] px-4 py-2 text-center text-[12px] leading-5 text-[#8c98a8]">
@@ -67,8 +83,26 @@ export function MessageRow({ message }: { message: Message }) {
           isAgent ? "order-first items-end" : "items-start",
         )}
       >
-        <div className={cn("flex flex-col gap-1.5", isAgent ? "items-end" : "items-start")}>
-          <MessageContentRenderer isAgent={isAgent} message={message} />
+        <div
+          className={cn(
+            "flex items-end gap-2",
+            isAgent ? "flex-row" : "flex-row-reverse",
+          )}
+        >
+          {isAgent && message.status === "failed" && onRetryMessage ? (
+            <button
+              aria-label="重试发送"
+              className="mb-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-[#F2D1D4] bg-white text-[#D54B4B] transition-colors hover:bg-[#FFF1F1]"
+              onClick={() => onRetryMessage(message.id)}
+              title="重试发送"
+              type="button"
+            >
+              <HugeiconsIcon icon={ReloadIcon} size={13} strokeWidth={2} />
+            </button>
+          ) : null}
+          <div className={cn("flex flex-col gap-1.5", isAgent ? "items-end" : "items-start")}>
+            <MessageContentRenderer isAgent={isAgent} message={message} />
+          </div>
         </div>
         {isAgent ? <MessageDeliveryState message={message} /> : null}
       </div>

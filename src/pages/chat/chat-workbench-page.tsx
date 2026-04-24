@@ -4,6 +4,7 @@ import {
   startTransition,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -54,6 +55,7 @@ const DEFAULT_CUSTOMER_PANEL_WIDTH = 304;
 const MIN_CUSTOMER_PANEL_WIDTH = 256;
 const MAX_CUSTOMER_PANEL_WIDTH = 420;
 const MIN_MESSAGE_PANEL_WIDTH = 520;
+const MESSAGE_SCROLL_ANCHOR_ATTR = "data-scroll-anchor";
 const INPUT_ENTER_BEHAVIORS = {
   newline: "Enter换行",
   send: "Enter发送",
@@ -74,12 +76,16 @@ export function ChatWorkbenchPage() {
     claimStatus,
     conversationListsByScope,
     customerProfilesById,
+    hasMoreHistoryByConversationId,
     initializeWorkbench,
+    historyStatus,
     isConversationLoading,
+    loadOlderMessages,
     me,
     messagesByConversationId,
     pollState,
     pollWorkbench,
+    retryFailedMessage,
     sendAgentTextMessage,
     sendStatus,
     setActiveAccount,
@@ -96,9 +102,20 @@ export function ChatWorkbenchPage() {
   );
   const [isResizingCustomerPanel, setIsResizingCustomerPanel] = useState(false);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
+  const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const messageListBottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
+  const historyLoadInFlightRef = useRef(false);
+  const pendingHistoryRestoreRef = useRef<{
+    anchorId?: string;
+    anchorOffsetTop?: number;
+    conversationId: string;
+    previousScrollHeight: number;
+    previousScrollTop: number;
+  } | null>(null);
+  const previousConversationIdRef = useRef<string | undefined>(undefined);
+  const previousMessageCountRef = useRef(0);
 
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
@@ -112,6 +129,9 @@ export function ChatWorkbenchPage() {
     ) ?? visibleConversations[0];
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ?? [];
+  const hasMoreHistory = activeConversation
+    ? hasMoreHistoryByConversationId[activeConversation.id] !== false
+    : false;
   const activeCustomer =
     (activeConversation &&
       customerProfilesById[activeConversation.customerId]) ??
@@ -122,12 +142,16 @@ export function ChatWorkbenchPage() {
   const isClaimedByOther =
     !!activeConversation?.assignedEmployeeId &&
     activeConversation.assignedEmployeeId !== me?.id;
+  const isActiveAccountOffline = activeAccount?.loginStatus === "offline";
   const canSendMessage =
     bootstrapStatus === "ready" &&
     !!activeConversation &&
+    !isActiveAccountOffline &&
     !isClaimedByOther &&
     sendStatus !== "sending";
-  const composerHint = isClaimedByOther
+  const composerHint = isActiveAccountOffline
+    ? "当前账号离线，暂时无法发送消息。"
+    : isClaimedByOther
     ? "该会话已被其他坐席领取，当前只读。"
     : activeConversation?.status === "public" && !isClaimedByCurrentUser
       ? "发送第一条消息时会自动领取会话。"
@@ -139,6 +163,50 @@ export function ChatWorkbenchPage() {
 
   const runPollCycle = useEffectEvent(async () => {
     await pollWorkbench();
+  });
+
+  const triggerOlderMessagesLoad = useEffectEvent(async () => {
+    if (
+      historyLoadInFlightRef.current ||
+      historyStatus === "loading" ||
+      !activeConversation ||
+      !hasMoreHistory
+    ) {
+      return;
+    }
+
+    const viewport = messageViewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    const anchorSnapshot = captureViewportAnchor(viewport);
+
+    historyLoadInFlightRef.current = true;
+    pendingHistoryRestoreRef.current = {
+      anchorId: anchorSnapshot?.id,
+      anchorOffsetTop: anchorSnapshot?.offsetTop,
+      conversationId: activeConversation.id,
+      previousScrollHeight: viewport.scrollHeight,
+      previousScrollTop: viewport.scrollTop,
+    };
+
+    try {
+      await loadOlderMessages();
+    } finally {
+      historyLoadInFlightRef.current = false;
+    }
+  });
+
+  const handleMessageViewportScroll = useEffectEvent(() => {
+    const viewport = messageViewportRef.current;
+
+    if (!viewport || viewport.scrollTop > 48) {
+      return;
+    }
+
+    void triggerOlderMessagesLoad();
   });
 
   useEffect(() => {
@@ -210,17 +278,64 @@ export function ChatWorkbenchPage() {
     setIsEmojiPickerOpen(false);
   }, [activeConversation?.id]);
 
-  useEffect(() => {
-    const animationId = window.requestAnimationFrame(() => {
-      messageListBottomRef.current?.scrollIntoView({
-        block: "end",
-      });
-    });
+  useLayoutEffect(() => {
+    const activeConversationId = activeConversation?.id;
+    const previousConversationId = previousConversationIdRef.current;
+    const previousMessageCount = previousMessageCountRef.current;
+    const viewport = messageViewportRef.current;
+    const pendingRestore = pendingHistoryRestoreRef.current;
 
-    return () => {
-      window.cancelAnimationFrame(animationId);
-    };
-  }, [activeConversation?.id, activeMessages.length]);
+    if (pendingRestore && viewport && activeConversationId === pendingRestore.conversationId) {
+      if (activeMessages.length > previousMessageCount) {
+        const matchedAnchor =
+          pendingRestore.anchorId != null
+            ? findViewportAnchor(viewport, pendingRestore.anchorId)
+            : null;
+
+        if (
+          matchedAnchor &&
+          pendingRestore.anchorOffsetTop != null
+        ) {
+          const viewportTop = viewport.getBoundingClientRect().top;
+          const currentOffsetTop =
+            matchedAnchor.getBoundingClientRect().top - viewportTop;
+
+          viewport.scrollTop += currentOffsetTop - pendingRestore.anchorOffsetTop;
+        } else {
+          viewport.scrollTop =
+            viewport.scrollHeight -
+            pendingRestore.previousScrollHeight +
+            pendingRestore.previousScrollTop;
+        }
+
+        pendingHistoryRestoreRef.current = null;
+        previousConversationIdRef.current = activeConversationId;
+        previousMessageCountRef.current = activeMessages.length;
+        return;
+      }
+
+      if (historyStatus === "idle") {
+        pendingHistoryRestoreRef.current = null;
+      }
+    } else {
+      pendingHistoryRestoreRef.current = null;
+    }
+
+    const shouldScrollToBottom =
+      activeConversationId !== previousConversationId ||
+      (activeConversationId === previousConversationId &&
+        activeMessages.length > previousMessageCount);
+
+    if (!shouldScrollToBottom) {
+      previousConversationIdRef.current = activeConversationId;
+      previousMessageCountRef.current = activeMessages.length;
+      return;
+    }
+
+    messageListBottomRef.current?.scrollIntoView({
+      block: "end",
+    });
+  }, [activeConversation?.id, activeMessages.length, historyStatus]);
 
   useEffect(() => {
     if (bootstrapStatus !== "ready" || !activeAccountId) {
@@ -548,7 +663,7 @@ export function ChatWorkbenchPage() {
                   <div className="hidden items-center gap-2 md:flex">
                     <Button
                       className="h-9 rounded-lg border-[#d8dfea] bg-white px-3 text-[13px] shadow-none"
-                      disabled={!activeConversation}
+                      disabled
                       variant="outline"
                     >
                       查看历史
@@ -579,14 +694,36 @@ export function ChatWorkbenchPage() {
 
               <div className="flex min-h-0 min-w-0 flex-1" ref={workbenchBodyRef}>
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
-                  <ScrollArea className="min-h-0 flex-1 bg-white">
-                    <div className="px-5 py-5">
+                  <ScrollArea
+                    className="min-h-0 flex-1 bg-white"
+                    viewportTestId="message-viewport"
+                    viewportProps={{
+                      onScroll: handleMessageViewportScroll,
+                      style: {
+                        overflowAnchor: "none",
+                      },
+                    }}
+                    viewportRef={messageViewportRef}
+                  >
+                    <div className="relative px-5 py-5">
+                      {historyStatus === "loading" ? (
+                        <div className="pointer-events-none absolute left-5 right-5 top-5 z-10 rounded-xl border border-dashed border-[#DEE5EE] bg-white/95 px-4 py-2 text-center text-xs text-[#728093] backdrop-blur-[1px]">
+                          加载更早消息中...
+                        </div>
+                      ) : null}
                       {isConversationLoading ? (
                         <div className="mb-4 rounded-xl border border-dashed border-[#DEE5EE] px-4 py-3 text-sm text-[#728093]">
                           正在刷新当前会话...
                         </div>
                       ) : null}
-                      <ChatMessageList messages={activeMessages} />
+                      <ChatMessageList
+                        messages={activeMessages}
+                        onRetryMessage={(messageId) => {
+                          startTransition(() => {
+                            void retryFailedMessage(messageId);
+                          });
+                        }}
+                      />
                       <div aria-hidden="true" ref={messageListBottomRef} />
                     </div>
                   </ScrollArea>
@@ -1029,6 +1166,45 @@ function formatConversationTimestamp(value: string) {
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("/");
+}
+
+function captureViewportAnchor(viewport: HTMLDivElement) {
+  const viewportTop = viewport.getBoundingClientRect().top;
+  const anchors = viewport.querySelectorAll<HTMLElement>(
+    `[${MESSAGE_SCROLL_ANCHOR_ATTR}]`,
+  );
+
+  for (const anchor of anchors) {
+    const rect = anchor.getBoundingClientRect();
+    const id = anchor.getAttribute(MESSAGE_SCROLL_ANCHOR_ATTR);
+
+    if (!id) {
+      continue;
+    }
+
+    if (rect.bottom > viewportTop + 1) {
+      return {
+        id,
+        offsetTop: rect.top - viewportTop,
+      };
+    }
+  }
+
+  return null;
+}
+
+function findViewportAnchor(viewport: HTMLDivElement, anchorId: string) {
+  const anchors = viewport.querySelectorAll<HTMLElement>(
+    `[${MESSAGE_SCROLL_ANCHOR_ATTR}]`,
+  );
+
+  for (const anchor of anchors) {
+    if (anchor.getAttribute(MESSAGE_SCROLL_ANCHOR_ATTR) === anchorId) {
+      return anchor;
+    }
+  }
+
+  return null;
 }
 
 function clampCustomerPanelWidth(width: number, availableWidth: number) {

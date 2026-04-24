@@ -33,6 +33,8 @@ export type WorkbenchService = {
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
 };
 
+export type WorkbenchServiceMode = "mock" | "http";
+
 type WorkbenchEvent =
   | {
       version: number;
@@ -68,7 +70,7 @@ type MockState = {
 const CURRENT_EMPLOYEE_ID = "emp-001";
 const INITIAL_VERSION = 1284;
 
-let activeWorkbenchService: WorkbenchService = createMockWorkbenchService();
+let activeWorkbenchService: WorkbenchService = createWorkbenchService();
 
 export function getWorkbenchService() {
   return activeWorkbenchService;
@@ -79,7 +81,19 @@ export function setWorkbenchService(service: WorkbenchService) {
 }
 
 export function resetWorkbenchService() {
-  activeWorkbenchService = createMockWorkbenchService();
+  activeWorkbenchService = createWorkbenchService();
+}
+
+export function resolveWorkbenchServiceMode(
+  rawMode = import.meta.env.VITE_WORKBENCH_SERVICE_MODE,
+): WorkbenchServiceMode {
+  return rawMode === "http" ? "http" : "mock";
+}
+
+export function createWorkbenchService(
+  mode = resolveWorkbenchServiceMode(),
+): WorkbenchService {
+  return mode === "http" ? createHttpWorkbenchService() : createMockWorkbenchService();
 }
 
 export function createMockWorkbenchService(): WorkbenchService {

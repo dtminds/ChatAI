@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
+import {
+  createMockWorkbenchService,
+  resetWorkbenchService,
+  setWorkbenchService,
+} from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
 describe("useWorkbenchStore", () => {
@@ -92,5 +96,98 @@ describe("useWorkbenchStore", () => {
       status: "failed",
     });
     expect(state.pendingMessages).toHaveLength(0);
+  });
+
+  it("retries a failed text message by resending it as a new pending message", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const beforeRetryCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-005"].length;
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-005"].at(-1);
+
+    expect(failedMessage).toMatchObject({
+      status: "failed",
+    });
+
+    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
+
+    const state = useWorkbenchStore.getState();
+    const latestMessage = state.messagesByConversationId["conv-005"].at(-1);
+
+    expect(state.messagesByConversationId["conv-005"]).toHaveLength(beforeRetryCount);
+    expect(latestMessage).toMatchObject({
+      content: {
+        text: "这条消息会失败",
+        type: "text",
+      },
+      role: "agent",
+      status: "sending",
+    });
+    expect(latestMessage?.id).not.toBe(failedMessage?.id);
+  });
+
+  it("recovers by reloading the current scope when the poll cursor is invalidated", async () => {
+    const baseService = createMockWorkbenchService();
+    let shouldInvalidateCursor = true;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        if (shouldInvalidateCursor) {
+          shouldInvalidateCursor = false;
+          throw {
+            code: "WORKBENCH_CURSOR_INVALIDATED",
+            message: "cursor invalidated",
+            status: 409,
+          };
+        }
+
+        return baseService.poll(request);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.pollState.status).toBe("idle");
+    expect(state.activeConversationId).toBe("conv-001");
+    expect(state.messagesByConversationId["conv-001"].length).toBeGreaterThan(0);
+    expect(state.sinceVersion).toBe(0);
+  });
+
+  it("loads older messages before the current first sequence", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    let state = useWorkbenchStore.getState();
+
+    expect(state.messagesByConversationId["conv-001"]).toHaveLength(5);
+    expect(state.messagesByConversationId["conv-001"][0]).toMatchObject({
+      id: "msg-006",
+      seq: 6,
+    });
+    expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(true);
+
+    await useWorkbenchStore.getState().loadOlderMessages();
+
+    state = useWorkbenchStore.getState();
+
+    expect(state.messagesByConversationId["conv-001"]).toHaveLength(10);
+    expect(state.messagesByConversationId["conv-001"][0]).toMatchObject({
+      id: "msg-001",
+      seq: 1,
+    });
+    expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(true);
+
+    await useWorkbenchStore.getState().loadOlderMessages();
+
+    expect(
+      useWorkbenchStore.getState().hasMoreHistoryByConversationId["conv-001"],
+    ).toBe(false);
   });
 });

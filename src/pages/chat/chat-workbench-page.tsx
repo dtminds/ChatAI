@@ -4,6 +4,7 @@ import {
   startTransition,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -270,7 +271,7 @@ export function ChatWorkbenchPage() {
     setIsEmojiPickerOpen(false);
   }, [activeConversation?.id]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const activeConversationId = activeConversation?.id;
     const previousConversationId = previousConversationIdRef.current;
     const previousMessageCount = previousMessageCountRef.current;
@@ -279,20 +280,15 @@ export function ChatWorkbenchPage() {
 
     if (pendingRestore && viewport && activeConversationId === pendingRestore.conversationId) {
       if (activeMessages.length > previousMessageCount) {
-        const animationId = window.requestAnimationFrame(() => {
-          viewport.scrollTop =
-            viewport.scrollHeight -
-            pendingRestore.previousScrollHeight +
-            pendingRestore.previousScrollTop;
-        });
+        viewport.scrollTop =
+          viewport.scrollHeight -
+          pendingRestore.previousScrollHeight +
+          pendingRestore.previousScrollTop;
 
         pendingHistoryRestoreRef.current = null;
         previousConversationIdRef.current = activeConversationId;
         previousMessageCountRef.current = activeMessages.length;
-
-        return () => {
-          window.cancelAnimationFrame(animationId);
-        };
+        return;
       }
 
       if (historyStatus === "idle") {
@@ -313,15 +309,9 @@ export function ChatWorkbenchPage() {
       return;
     }
 
-    const animationId = window.requestAnimationFrame(() => {
-      messageListBottomRef.current?.scrollIntoView({
-        block: "end",
-      });
+    messageListBottomRef.current?.scrollIntoView({
+      block: "end",
     });
-
-    return () => {
-      window.cancelAnimationFrame(animationId);
-    };
   }, [activeConversation?.id, activeMessages.length, historyStatus]);
 
   useEffect(() => {

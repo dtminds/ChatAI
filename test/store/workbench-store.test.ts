@@ -4,7 +4,7 @@ import {
   resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
-import { useWorkbenchStore } from "@/store/workbench-store";
+import { createWorkbenchStore, useWorkbenchStore } from "@/store/workbench-store";
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -244,6 +244,43 @@ describe("useWorkbenchStore", () => {
     expect(conv002?.unread).toBe(0);
   });
 
+  it("isolates scope request tracking across store instances", async () => {
+    const baseService = createMockWorkbenchService();
+    const slowConversationGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-002" && options?.beforeSeq == null) {
+          await slowConversationGate.promise;
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    const storeA = createWorkbenchStore();
+    const storeB = createWorkbenchStore();
+
+    await storeA.getState().initializeWorkbench();
+    await storeB.getState().initializeWorkbench();
+
+    const slowLoad = storeA.getState().setActiveConversation("conv-002");
+    const otherStoreLoad = storeB.getState().setActiveConversation("conv-003");
+
+    await otherStoreLoad;
+    slowConversationGate.resolve();
+    await slowLoad;
+
+    const stateA = storeA.getState();
+    const stateB = storeB.getState();
+
+    expect(stateA.activeConversationId).toBe("conv-002");
+    expect(stateA.isConversationLoading).toBe(false);
+    expect(stateA.messagesByConversationId["conv-002"]).toBeDefined();
+    expect(stateB.activeConversationId).toBe("conv-003");
+  });
+
   it("ignores stale conversation loads when switching conversations quickly", async () => {
     const baseService = createMockWorkbenchService();
     const slowConversationGate = createDeferred();
@@ -403,6 +440,6 @@ describe("useWorkbenchStore", () => {
 
     state = useWorkbenchStore.getState();
 
-    expect(state.claimStatusByConversationId["conv-003"]).toBe("idle");
+    expect(state.claimStatusByConversationId["conv-003"]).toBeUndefined();
   });
 });

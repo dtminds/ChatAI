@@ -109,7 +109,8 @@ export function ChatWorkbenchPage() {
           ? "消息已受理，等待轮询回收最终状态。"
           : undefined;
 
-  const { handleMessageViewportScroll } = useMessageScrollRestoration({
+  const { handleLoadOlderMessages, handleMessageViewportScroll } =
+    useMessageScrollRestoration({
     activeConversationId: activeConversation?.id,
     activeHistoryStatus,
     hasMoreHistory,
@@ -118,7 +119,7 @@ export function ChatWorkbenchPage() {
     messageCount: activeMessages.length,
     messageListBottomRef,
     messageViewportRef,
-  });
+    });
 
   useEffect(() => {
     void initializeWorkbench();
@@ -250,6 +251,7 @@ export function ChatWorkbenchPage() {
               isConversationLoading={isConversationLoading}
               isEmojiPickerOpen={isEmojiPickerOpen}
               isResizingCustomerPanel={isResizingCustomerPanel}
+              hasMoreHistory={hasMoreHistory}
               messageListBottomRef={messageListBottomRef}
               messages={activeMessages}
               messageViewportRef={messageViewportRef}
@@ -259,6 +261,7 @@ export function ChatWorkbenchPage() {
               onEmojiPickerOpenChange={setIsEmojiPickerOpen}
               onEmojiSelect={handleEmojiSelect}
               onEnterBehaviorChange={setInputEnterBehavior}
+              onLoadOlderMessages={handleLoadOlderMessages}
               onMessageViewportScroll={handleMessageViewportScroll}
               onRetryMessage={retryFailedMessage}
               onSendDraft={handleSendDraft}

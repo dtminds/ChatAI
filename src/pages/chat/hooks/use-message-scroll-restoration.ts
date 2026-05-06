@@ -43,7 +43,7 @@ export function useMessageScrollRestoration({
   const previousConversationIdRef = useRef<string | undefined>(undefined);
   const previousMessageCountRef = useRef(0);
 
-  const triggerOlderMessagesLoad = useEffectEvent(async () => {
+  const handleLoadOlderMessages = useEffectEvent(async () => {
     if (
       historyLoadInFlightRef.current ||
       isHistoryLoading ||
@@ -84,7 +84,7 @@ export function useMessageScrollRestoration({
       return;
     }
 
-    void triggerOlderMessagesLoad();
+    void handleLoadOlderMessages();
   });
 
   useLayoutEffect(() => {
@@ -146,6 +146,7 @@ export function useMessageScrollRestoration({
   }, [activeConversationId, messageCount, activeHistoryStatus]);
 
   return {
+    handleLoadOlderMessages,
     handleMessageViewportScroll,
   };
 }

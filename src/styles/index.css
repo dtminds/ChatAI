@@ -227,10 +227,35 @@
   }
 
   .chat-composer-mention-row {
-    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
+    scrollbar-width: thin;
   }
 
   .chat-composer-mention-row::-webkit-scrollbar {
-    display: none;
+    height: 4px;
+  }
+
+  .chat-composer-mention-row::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .chat-composer-mention-row::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: transparent;
+  }
+
+  .chat-composer-mention-row:hover,
+  .chat-composer-mention-row:focus-within {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  .chat-composer-mention-row:hover::-webkit-scrollbar-thumb,
+  .chat-composer-mention-row:focus-within::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+  }
+
+  .chat-composer-mention-row:hover::-webkit-scrollbar-thumb:hover,
+  .chat-composer-mention-row:focus-within::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
   }
 }

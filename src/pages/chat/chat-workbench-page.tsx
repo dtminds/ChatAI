@@ -32,7 +32,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -56,12 +55,16 @@ const MIN_CUSTOMER_PANEL_WIDTH = 256;
 const MAX_CUSTOMER_PANEL_WIDTH = 420;
 const MIN_MESSAGE_PANEL_WIDTH = 520;
 const MESSAGE_SCROLL_ANCHOR_ATTR = "data-scroll-anchor";
-const INPUT_ENTER_BEHAVIORS = {
-  newline: "Enter换行",
-  send: "Enter发送",
+const INPUT_ENTER_BEHAVIOR_LABELS = {
+  newline: "Enter 换行",
+  send: "Enter 发送",
+} as const;
+const INPUT_ENTER_BEHAVIOR_DESCRIPTIONS = {
+  newline: "Enter 换行，Shift + Enter 发送",
+  send: "Enter 发送，Shift + Enter 换行",
 } as const;
 
-type InputEnterBehavior = keyof typeof INPUT_ENTER_BEHAVIORS;
+type InputEnterBehavior = keyof typeof INPUT_ENTER_BEHAVIOR_LABELS;
 
 export function ChatWorkbenchPage() {
   const {
@@ -169,7 +172,7 @@ export function ChatWorkbenchPage() {
         ? "轮询暂时失败，消息状态可能延迟回收。"
         : activeSendStatus === "sending"
           ? "消息已受理，等待轮询回收最终状态。"
-          : "Enter 发送，Shift + Enter 换行。";
+          : undefined;
 
   const runPollCycle = useEffectEvent(async () => {
     await pollWorkbench();
@@ -793,14 +796,14 @@ export function ChatWorkbenchPage() {
                             aria-label="选择 Enter 键行为"
                             className="h-7 min-w-0 border-0 bg-transparent px-1.5 text-[#8b96a6] focus:ring-0"
                           >
-                            <SelectValue />
+                            <span>{INPUT_ENTER_BEHAVIOR_LABELS[inputEnterBehavior]}</span>
                           </SelectTrigger>
                           <SelectContent align="end">
                             <SelectItem value="send">
-                              {INPUT_ENTER_BEHAVIORS.send}
+                              {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.send}
                             </SelectItem>
                             <SelectItem value="newline">
-                              {INPUT_ENTER_BEHAVIORS.newline}
+                              {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.newline}
                             </SelectItem>
                           </SelectContent>
                         </Select>
@@ -828,9 +831,11 @@ export function ChatWorkbenchPage() {
                       ref={textareaRef}
                       value={draft}
                     />
-                    <p className="px-0.5 text-[12px] leading-5 text-[#8A94A6]">
-                      {composerHint}
-                    </p>
+                    {composerHint ? (
+                      <p className="px-0.5 text-[12px] leading-5 text-[#8A94A6]">
+                        {composerHint}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 

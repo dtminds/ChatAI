@@ -24,15 +24,27 @@ export function useWorkbenchPolling({
       return;
     }
 
-    let timeoutId = 0;
+    let timeoutId: number | undefined;
     let cancelled = false;
 
+    const clearScheduledPoll = () => {
+      if (timeoutId == null) {
+        return;
+      }
+
+      window.clearTimeout(timeoutId);
+      timeoutId = undefined;
+    };
+
     const scheduleNextPoll = () => {
+      clearScheduledPoll();
+
       const baseInterval =
         document.visibilityState === "hidden" ? 10000 : intervalMs;
       const jitter = Math.floor(Math.random() * jitterMs);
 
       timeoutId = window.setTimeout(async () => {
+        timeoutId = undefined;
         await runPollCycle();
 
         if (!cancelled) {
@@ -41,11 +53,31 @@ export function useWorkbenchPolling({
       }, baseInterval + jitter);
     };
 
+    const pollNowAndReschedule = async () => {
+      clearScheduledPoll();
+      await runPollCycle();
+
+      if (!cancelled) {
+        scheduleNextPoll();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void pollNowAndReschedule();
+        return;
+      }
+
+      scheduleNextPoll();
+    };
+
     scheduleNextPoll();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timeoutId);
+      clearScheduledPoll();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [
     activeAccountId,

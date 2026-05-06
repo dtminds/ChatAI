@@ -30,7 +30,7 @@ export function ChatMessagePanel({
 }: ChatMessagePanelProps) {
   return (
     <ScrollArea
-      className="min-h-0 flex-1 bg-white"
+      className="min-h-0 flex-1 bg-surface"
       viewportTestId="message-viewport"
       viewportProps={{
         onScroll: onMessageViewportScroll,
@@ -44,7 +44,7 @@ export function ChatMessagePanel({
         {hasMoreHistory ? (
           <div className="mb-4 flex justify-center">
             <button
-              className="inline-flex h-8 min-w-36 items-center justify-center rounded-lg border border-dashed border-[#DEE5EE] bg-[#FAFBFC] px-4 text-xs font-medium text-[#728093] transition-colors hover:border-[#C9D4E2] hover:bg-white hover:text-[#4D5B6C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[#FAFBFC] disabled:text-[#9AA4B2]"
+              className="inline-flex h-8 min-w-36 items-center justify-center rounded-lg border border-dashed border-border bg-surface-muted px-4 text-xs font-medium text-muted-foreground transition-colors hover:border-input hover:bg-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted-foreground"
               disabled={activeHistoryStatus === "loading"}
               onClick={onLoadOlderMessages}
               type="button"
@@ -56,12 +56,12 @@ export function ChatMessagePanel({
           </div>
         ) : null}
         {isConversationLoading ? (
-          <div className="mb-4 rounded-xl border border-dashed border-[#DEE5EE] px-4 py-3 text-sm text-[#728093]">
+          <div className="mb-4 rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
             正在刷新当前会话...
           </div>
         ) : null}
         {scopeTransitionError ? (
-          <div className="mb-4 rounded-xl border border-[#F2D1D4] bg-[#FFF7F7] px-4 py-3 text-sm text-[#B34757]">
+          <div className="mb-4 rounded-xl border border-destructive/25 bg-destructive-muted px-4 py-3 text-sm text-destructive">
             {scopeTransitionError}
           </div>
         ) : null}

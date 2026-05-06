@@ -42,8 +42,8 @@ export function ConversationCard({
       className={cn(
         "group relative mb-1 w-full overflow-visible border-b px-2.5 py-2.5 text-left transition-colors",
         isActive
-          ? "rounded-md border-transparent bg-[#edf4ff] text-foreground"
-          : "border-[#EEEFF0] bg-white hover:bg-[#f7f9fc]",
+          ? "rounded-md border-transparent bg-surface-selected text-foreground"
+          : "border-divider bg-surface hover:bg-surface-hover",
       )}
     >
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
@@ -61,7 +61,7 @@ export function ConversationCard({
               <AvatarFallback>{conversation.customerName.slice(0, 1)}</AvatarFallback>
             </Avatar>
             {conversation.unread > 0 && !isActive ? (
-              <div className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#ff4d4f] px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
+              <div className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground">
                 {conversation.unread}
               </div>
             ) : null}
@@ -77,8 +77,8 @@ export function ConversationCard({
                   className={cn(
                     "rounded px-1 py-0.5 text-[10px]",
                     isActive
-                      ? "bg-[#dce9ff] text-primary"
-                      : "bg-[#eef3ff] text-primary",
+                      ? "bg-info-muted text-info"
+                      : "bg-primary/10 text-primary",
                   )}
                 >
                   群
@@ -87,10 +87,10 @@ export function ConversationCard({
             </div>
 
             <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-              <p className="truncate text-[12px] text-[#7b8798]">
+              <p className="truncate text-[12px] text-muted-foreground">
                 {conversation.preview}
               </p>
-              <span className="shrink-0 whitespace-nowrap text-xs text-[#8a94a6]">
+              <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
                 {formatConversationTimestamp(conversation.updatedAt)}
               </span>
             </div>
@@ -102,8 +102,8 @@ export function ConversationCard({
             <button
               aria-label="会话操作"
               className={cn(
-                "flex size-6 items-center justify-center rounded-md text-[#7b8798] opacity-0 transition hover:bg-white hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
-                isMenuOpen && "bg-white text-foreground opacity-100",
+                "flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-surface hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
+                isMenuOpen && "bg-surface text-foreground opacity-100",
               )}
               type="button"
             >

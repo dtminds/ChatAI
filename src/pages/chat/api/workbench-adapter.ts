@@ -232,8 +232,8 @@ function formatQuietFor(lastMessageTime: number) {
 
 function buildAccountTone(accountId: string) {
   return accountId === "ndt"
-    ? "linear-gradient(135deg, rgba(255,151,89,0.95), rgba(255,200,118,0.75))"
-    : "linear-gradient(135deg, rgba(74,144,255,0.95), rgba(107,188,255,0.78))";
+    ? "linear-gradient(135deg, var(--primary), var(--avatar-end))"
+    : "linear-gradient(135deg, var(--avatar-start), var(--avatar-end))";
 }
 
 function asOptionalString(value: unknown) {

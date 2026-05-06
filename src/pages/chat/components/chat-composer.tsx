@@ -102,15 +102,15 @@ export function ChatComposer({
   };
 
   return (
-    <div className="space-y-1.5 bg-white px-5 py-3">
+    <div className="space-y-1.5 bg-surface px-5 py-3">
       <div className="ml-[-6px] flex items-center justify-between gap-3 text-sm text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <div className="relative" ref={emojiPickerRef}>
             <button
               aria-label="微信表情"
               className={cn(
-                "inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-[#f3f6fb] hover:text-foreground",
-                isEmojiPickerOpen && "bg-[#eef4ff] text-primary",
+                "inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-surface-hover hover:text-foreground",
+                isEmojiPickerOpen && "bg-info-muted text-primary",
               )}
               onClick={() => onEmojiPickerOpenChange(!isEmojiPickerOpen)}
               type="button"
@@ -119,21 +119,21 @@ export function ChatComposer({
             </button>
 
             {isEmojiPickerOpen ? (
-              <div className="absolute bottom-full left-0 z-30 mb-3">
+              <div className="absolute bottom-full left-[-24px] z-30 mb-3">
                 <WechatEmojiPicker onSelect={onEmojiSelect} />
               </div>
             ) : null}
           </div>
           <button
             aria-label="发送图片"
-            className="inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-[#f3f6fb] hover:text-foreground"
+            className="inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-surface-hover hover:text-foreground"
             type="button"
           >
             <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={1.8} />
           </button>
           <button
             aria-label="AI 助手"
-            className="inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-[#f3f6fb] hover:text-foreground"
+            className="inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-surface-hover hover:text-foreground"
             type="button"
           >
             <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={1.8} />
@@ -146,7 +146,7 @@ export function ChatComposer({
           >
             <SelectTrigger
               aria-label="选择 Enter 键行为"
-              className="h-7 min-w-0 border-0 bg-transparent px-1.5 text-[#8b96a6] focus:ring-0"
+              className="h-7 min-w-0 border-0 bg-transparent px-1.5 text-muted-foreground focus:ring-0"
             >
               <span>{INPUT_ENTER_BEHAVIOR_LABELS[inputEnterBehavior]}</span>
             </SelectTrigger>
@@ -182,7 +182,7 @@ export function ChatComposer({
         value={draft}
       />
       {composerHint ? (
-        <p className="px-0.5 text-[12px] leading-5 text-[#8A94A6]">
+        <p className="px-0.5 text-[12px] leading-5 text-muted-foreground">
           {composerHint}
         </p>
       ) : null}

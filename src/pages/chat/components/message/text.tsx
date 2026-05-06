@@ -11,7 +11,9 @@ export function TextMessageBubble({ isAgent, text }: TextMessageBubbleProps) {
     <div
       className={cn(
         "rounded-[12px] px-3 py-2.5 text-[14px] leading-6",
-        isAgent ? "bg-[#cfe7ff] text-[#18212f]" : "bg-[#f2f4f7] text-[#18212f]",
+        isAgent
+          ? "bg-message-agent text-foreground"
+          : "bg-message-customer text-foreground",
       )}
     >
       <span className="whitespace-pre-wrap break-words">

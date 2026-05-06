@@ -14,7 +14,7 @@ export function DropdownMenuContent({
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         className={cn(
-          "z-50 min-w-[132px] overflow-hidden rounded-[10px] border border-[#e5e9ef] bg-white p-1 text-xs text-foreground shadow-[0_8px_24px_rgba(15,23,42,0.10)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          "z-50 min-w-[132px] overflow-hidden rounded-[10px] border border-border bg-popover p-1 text-xs text-popover-foreground shadow-[0_8px_24px_var(--shadow-medium)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
           className,
         )}
         sideOffset={sideOffset}
@@ -31,7 +31,7 @@ export function DropdownMenuItem({
   return (
     <DropdownMenuPrimitive.Item
       className={cn(
-        "relative flex cursor-default select-none items-center gap-2 rounded-[8px] px-2.5 py-2 outline-none transition-colors data-[highlighted]:bg-[#f3f6fb]",
+        "relative flex cursor-default select-none items-center gap-2 rounded-[8px] px-2.5 py-2 outline-none transition-colors data-[highlighted]:bg-surface-hover",
         className,
       )}
       {...props}

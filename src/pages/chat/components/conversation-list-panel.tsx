@@ -23,8 +23,8 @@ export function ConversationListPanel({
   onSelectMode,
 }: ConversationListPanelProps) {
   return (
-    <section className="flex min-h-0 min-w-0 flex-col border-r border-[#EEEFF0] bg-white">
-      <div className="border-b border-[#EEEFF0] px-4 py-4">
+    <section className="flex min-h-0 min-w-0 flex-col border-r border-divider bg-surface">
+      <div className="border-b border-divider px-4 py-4">
         <div className="relative">
           <HugeiconsIcon
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -34,7 +34,7 @@ export function ConversationListPanel({
             strokeWidth={1.8}
           />
           <Input
-            className="h-9 rounded-xl border border-transparent bg-[#f3f4f6] pl-10 text-sm shadow-none transition-colors focus-visible:border-[#d6dbe3] focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-ring/12"
+            className="h-9 rounded-xl border border-transparent bg-surface-muted pl-10 text-sm shadow-none transition-colors focus-visible:border-input focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/12"
             placeholder="搜索客户、手机号或会话关键词"
           />
         </div>
@@ -50,16 +50,16 @@ export function ConversationListPanel({
           }}
           value={activeMode}
         >
-          <div className="border-b border-[#EEEFF0] px-4">
+          <div className="border-b border-divider px-4">
             <TabsList className="h-auto w-full justify-center gap-5 rounded-none bg-transparent p-0">
               <TabsTrigger
-                className="rounded-none border-b-2 border-transparent px-0 py-2.5 text-[13px] font-medium text-[#6d7787] data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                className="rounded-none border-b-2 border-transparent px-0 py-2.5 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
                 value="single"
               >
                 单聊
               </TabsTrigger>
               <TabsTrigger
-                className="rounded-none border-b-2 border-transparent px-0 py-2.5 text-[13px] font-medium text-[#6d7787] data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                className="rounded-none border-b-2 border-transparent px-0 py-2.5 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
                 value="group"
               >
                 群聊
@@ -69,7 +69,7 @@ export function ConversationListPanel({
 
           <TabsContent className="mt-0 min-h-0 flex-1" value={activeMode}>
             <ScrollArea className="h-full">
-              <div className="bg-white px-2 py-1.5">
+              <div className="bg-surface px-2 py-1.5">
                 {conversations.length === 0 ? (
                   <div className="px-2 py-4 text-sm text-muted-foreground">
                     当前账号下暂无{activeMode === "single" ? "单聊" : "群聊"}占位数据。

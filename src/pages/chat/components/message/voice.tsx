@@ -12,7 +12,7 @@ export function VoiceMessageCard({
   content,
   isAgent,
 }: VoiceMessageCardProps) {
-  const bubbleTone = isAgent ? "bg-[#d8edff]" : "bg-[#f1f3f6]";
+  const bubbleTone = isAgent ? "bg-message-agent" : "bg-message-customer";
 
   return (
     <div
@@ -22,12 +22,12 @@ export function VoiceMessageCard({
       )}
     >
       <HugeiconsIcon
-        className="relative z-1 shrink-0 text-[#1f2733]"
+        className="relative z-1 shrink-0 text-foreground"
         icon={VolumeHighIcon}
         size={18}
         strokeWidth={1.9}
       />
-      <span className="relative z-1 shrink-0 text-[14px] font-semibold leading-none text-[#1f2733]">
+      <span className="relative z-1 shrink-0 text-[14px] font-semibold leading-none text-foreground">
         {content.durationLabel}
       </span>
     </div>

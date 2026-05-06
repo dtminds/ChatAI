@@ -9,7 +9,7 @@ import {
 describe("chat utility helpers", () => {
   it("formats conversation timestamps relative to today", () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-06T10:30:00+08:00"));
+    vi.setSystemTime(new Date(2026, 4, 6, 10, 30, 0));
 
     expect(formatConversationTimestamp("2026-05-06 10:05:00")).toBe("25分钟前");
     expect(formatConversationTimestamp("2026-05-06 08:05:00")).toBe("08:05");

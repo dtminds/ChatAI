@@ -202,6 +202,22 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("loads older messages when the history load area is clicked", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+
+    expect(screen.queryByText("会话已由 德瑞可-小可 领取")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "加载更早的对话" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/会话已由 德瑞可-小可 领取/)).toBeInTheDocument();
+    });
+  });
+
   it("shows scope transition errors in the workbench", async () => {
     const baseService = createMockWorkbenchService();
 

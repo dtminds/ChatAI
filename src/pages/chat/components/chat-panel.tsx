@@ -30,12 +30,14 @@ type ChatPanelProps = {
   isEmojiPickerOpen: boolean;
   isResizingCustomerPanel: boolean;
   messages: Message[];
+  hasMoreHistory: boolean;
   onClaimConversation: () => void | Promise<void>;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEmojiSelect: (name: WechatEmojiName) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
+  onLoadOlderMessages: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   onSendDraft: () => void;
@@ -64,12 +66,14 @@ export function ChatPanel({
   isEmojiPickerOpen,
   isResizingCustomerPanel,
   messages,
+  hasMoreHistory,
   onClaimConversation,
   onCustomerPanelResizeStart,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEmojiSelect,
   onEnterBehaviorChange,
+  onLoadOlderMessages,
   onMessageViewportScroll,
   onRetryMessage,
   onSendDraft,
@@ -94,10 +98,12 @@ export function ChatPanel({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
           <ChatMessagePanel
             activeHistoryStatus={activeHistoryStatus}
+            hasMoreHistory={hasMoreHistory}
             isConversationLoading={isConversationLoading}
             messageListBottomRef={messageListBottomRef}
             messages={messages}
             messageViewportRef={messageViewportRef}
+            onLoadOlderMessages={onLoadOlderMessages}
             onMessageViewportScroll={onMessageViewportScroll}
             onRetryMessage={onRetryMessage}
             scopeTransitionError={scopeTransitionError}

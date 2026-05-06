@@ -5,8 +5,10 @@ import type { Message } from "@/pages/chat/chat-types";
 
 type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
+  hasMoreHistory: boolean;
   isConversationLoading: boolean;
   messages: Message[];
+  onLoadOlderMessages: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   scopeTransitionError?: string;
@@ -16,8 +18,10 @@ type ChatMessagePanelProps = {
 
 export function ChatMessagePanel({
   activeHistoryStatus,
+  hasMoreHistory,
   isConversationLoading,
   messages,
+  onLoadOlderMessages,
   onMessageViewportScroll,
   onRetryMessage,
   scopeTransitionError,
@@ -37,9 +41,18 @@ export function ChatMessagePanel({
       viewportRef={messageViewportRef}
     >
       <div className="relative px-5 py-5">
-        {activeHistoryStatus === "loading" ? (
-          <div className="pointer-events-none absolute left-5 right-5 top-5 z-10 rounded-xl border border-dashed border-[#DEE5EE] bg-white/95 px-4 py-2 text-center text-xs text-[#728093] backdrop-blur-[1px]">
-            加载更早消息中...
+        {hasMoreHistory ? (
+          <div className="mb-4 flex justify-center">
+            <button
+              className="inline-flex h-8 min-w-36 items-center justify-center rounded-lg border border-dashed border-[#DEE5EE] bg-[#FAFBFC] px-4 text-xs font-medium text-[#728093] transition-colors hover:border-[#C9D4E2] hover:bg-white hover:text-[#4D5B6C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[#FAFBFC] disabled:text-[#9AA4B2]"
+              disabled={activeHistoryStatus === "loading"}
+              onClick={onLoadOlderMessages}
+              type="button"
+            >
+              {activeHistoryStatus === "loading"
+                ? "正在加载更早对话..."
+                : "加载更早的对话"}
+            </button>
           </div>
         ) : null}
         {isConversationLoading ? (

@@ -40,7 +40,7 @@ pnpm install
 pnpm dev
 ```
 
-默认启动后访问本地开发地址即可进入工作台页面。
+默认启动后访问 `http://localhost:8086/chat` 即可进入工作台页面。
 
 ### 3. 生产构建
 
@@ -120,4 +120,4 @@ pnpm install
 pnpm dev
 ```
 
-即可在 `/chat` 看到聊天工作台的三栏基础效果。
+即可在 `http://localhost:8086/chat` 看到聊天工作台的三栏基础效果。

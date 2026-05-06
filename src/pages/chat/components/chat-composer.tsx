@@ -2,11 +2,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type RefObject,
   useEffect,
+  useMemo,
   useRef,
+  useState,
 } from "react";
 import {
   AiChat02Icon,
   ArrowUp02Icon,
+  Cancel01Icon,
   Image01Icon,
   SmileIcon,
 } from "@hugeicons/core-free-icons";
@@ -27,18 +30,28 @@ import {
 } from "@/pages/chat/components/input-enter-behavior";
 import { WechatEmojiPicker } from "@/pages/chat/components/wechat-emoji-picker";
 import type { WechatEmojiName } from "@/pages/chat/wechat-emoji";
+import type { GroupMember } from "@/pages/chat/chat-types";
+
+export type MentionInsertPosition = "start" | "end";
 
 type ChatComposerProps = {
   canSendMessage: boolean;
   composerHint?: string;
   draft: string;
+  groupMembers: GroupMember[];
   inputEnterBehavior: InputEnterBehavior;
+  isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
+  mentionInsertPosition: MentionInsertPosition;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEmojiSelect: (name: WechatEmojiName) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
+  onMentionInsertPositionChange: (position: MentionInsertPosition) => void;
+  onRemoveMentionMember: (memberId: string) => void;
+  onSelectMentionMember: (member: GroupMember, triggerStart: number, triggerEnd: number) => void;
   onSendDraft: () => void;
+  selectedMentionMembers: GroupMember[];
   textareaRef: RefObject<HTMLTextAreaElement | null>;
 };
 
@@ -46,16 +59,59 @@ export function ChatComposer({
   canSendMessage,
   composerHint,
   draft,
+  groupMembers,
   inputEnterBehavior,
+  isGroupConversation,
   isEmojiPickerOpen,
+  mentionInsertPosition,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEmojiSelect,
   onEnterBehaviorChange,
+  onMentionInsertPositionChange,
+  onRemoveMentionMember,
+  onSelectMentionMember,
   onSendDraft,
+  selectedMentionMembers,
   textareaRef,
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
+  const [cursorPosition, setCursorPosition] = useState(draft.length);
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const mentionTrigger = useMemo(
+    () => getMentionTrigger(draft, cursorPosition),
+    [cursorPosition, draft],
+  );
+  const selectedMentionMemberIds = useMemo(
+    () => new Set(selectedMentionMembers.map((member) => member.id)),
+    [selectedMentionMembers],
+  );
+  const filteredMentionMembers = useMemo(() => {
+    if (!mentionTrigger || !isGroupConversation) {
+      return [];
+    }
+
+    const normalizedQuery = mentionTrigger.query.trim().toLocaleLowerCase();
+
+    return groupMembers.filter((member) => {
+      if (selectedMentionMemberIds.has(member.id)) {
+        return false;
+      }
+
+      return member.displayName.toLocaleLowerCase().includes(normalizedQuery);
+    });
+  }, [groupMembers, isGroupConversation, mentionTrigger, selectedMentionMemberIds]);
+  const isMentionPickerOpen =
+    canSendMessage &&
+    isGroupConversation &&
+    !!mentionTrigger &&
+    filteredMentionMembers.length > 0;
+  const canSubmitDraft =
+    canSendMessage && (!!draft.trim() || selectedMentionMembers.length > 0);
+
+  useEffect(() => {
+    setActiveMentionIndex(0);
+  }, [mentionTrigger?.query]);
 
   useEffect(() => {
     if (!isEmojiPickerOpen) {
@@ -88,6 +144,37 @@ export function ChatComposer({
   }, [isEmojiPickerOpen, onEmojiPickerOpenChange]);
 
   const handleDraftKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (isMentionPickerOpen && mentionTrigger) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveMentionIndex((currentIndex) =>
+          Math.min(currentIndex + 1, filteredMentionMembers.length - 1),
+        );
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveMentionIndex((currentIndex) => Math.max(currentIndex - 1, 0));
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const selectedMember = filteredMentionMembers[activeMentionIndex];
+
+        if (selectedMember) {
+          onSelectMentionMember(
+            selectedMember,
+            mentionTrigger.start,
+            mentionTrigger.end,
+          );
+        }
+
+        return;
+      }
+    }
+
     if (event.key !== "Enter") {
       return;
     }
@@ -99,6 +186,11 @@ export function ChatComposer({
       event.preventDefault();
       onSendDraft();
     }
+  };
+
+  const handleDraftChange = (nextDraft: string, nextCursorPosition: number | null) => {
+    onDraftChange(nextDraft);
+    setCursorPosition(nextCursorPosition ?? nextDraft.length);
   };
 
   return (
@@ -163,7 +255,7 @@ export function ChatComposer({
           <Button
             aria-label="发送消息"
             className="size-7 rounded-full p-0 shadow-none"
-            disabled={!draft.trim() || !canSendMessage}
+            disabled={!canSubmitDraft}
             onClick={onSendDraft}
             size="icon"
           >
@@ -172,15 +264,99 @@ export function ChatComposer({
         </div>
       </div>
 
-      <Textarea
-        className="chat-composer-textarea min-h-28 resize-none rounded-none border-0 bg-transparent py-1 pl-0 pr-0.5 text-[14px] shadow-none focus-visible:ring-0"
-        disabled={!canSendMessage}
-        onChange={(event) => onDraftChange(event.target.value)}
-        onKeyDown={handleDraftKeyDown}
-        placeholder={canSendMessage ? "请输入消息……" : "当前会话暂不可发送消息"}
-        ref={textareaRef}
-        value={draft}
-      />
+      <div className="relative">
+        {selectedMentionMembers.length > 0 ? (
+          <div className="flex min-h-8 items-center gap-3 border-b border-divider/70 pb-1.5">
+            <div className="chat-composer-mention-row flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+              {selectedMentionMembers.map((member) => (
+                <span
+                  className="inline-flex shrink-0 items-center gap-0.5 text-[13px] font-medium text-primary"
+                  key={member.id}
+                >
+                  @{member.displayName}
+                  <button
+                    aria-label={`移除 @${member.displayName}`}
+                    className="inline-flex size-4 items-center justify-center rounded-sm text-primary/70 transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                    onClick={() => onRemoveMentionMember(member.id)}
+                    type="button"
+                  >
+                    <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            <Select
+              onValueChange={(value) =>
+                onMentionInsertPositionChange(value as MentionInsertPosition)
+              }
+              value={mentionInsertPosition}
+            >
+              <SelectTrigger
+                aria-label="选择 @ 插入位置"
+                className="h-7 min-w-0 shrink-0 border-0 bg-transparent px-1.5 text-primary focus:ring-0"
+              >
+                <span>{mentionInsertPosition === "start" ? "文首" : "文尾"}</span>
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="start">文首</SelectItem>
+                <SelectItem value="end">文尾</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+
+        {isMentionPickerOpen && mentionTrigger ? (
+          <div
+            aria-label="选择群成员"
+            className="absolute bottom-full left-0 z-30 mb-2 w-56 overflow-hidden rounded-[10px] border border-border bg-popover py-1 shadow-[0_10px_28px_var(--shadow-soft)]"
+            role="listbox"
+          >
+            {filteredMentionMembers.map((member, index) => (
+              <button
+                aria-selected={index === activeMentionIndex}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-popover-foreground outline-none transition-colors hover:bg-surface-hover",
+                  index === activeMentionIndex && "bg-surface-hover",
+                )}
+                key={member.id}
+                onClick={() =>
+                  onSelectMentionMember(
+                    member,
+                    mentionTrigger.start,
+                    mentionTrigger.end,
+                  )
+                }
+                onMouseDown={(event) => event.preventDefault()}
+                role="option"
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  className="flex size-6 shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-muted-foreground"
+                >
+                  {member.displayName.slice(0, 1)}
+                </span>
+                <span className="truncate">{member.displayName}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <Textarea
+          className="chat-composer-textarea min-h-28 resize-none rounded-none border-0 bg-transparent py-1 pl-0 pr-0.5 text-[14px] shadow-none focus-visible:ring-0"
+          disabled={!canSendMessage}
+          onChange={(event) =>
+            handleDraftChange(event.target.value, event.target.selectionStart)
+          }
+          onClick={(event) => setCursorPosition(event.currentTarget.selectionStart)}
+          onKeyDown={handleDraftKeyDown}
+          onKeyUp={(event) => setCursorPosition(event.currentTarget.selectionStart)}
+          placeholder={canSendMessage ? "请输入消息……" : "当前会话暂不可发送消息"}
+          ref={textareaRef}
+          value={draft}
+        />
+      </div>
       {composerHint ? (
         <p className="px-0.5 text-[12px] leading-5 text-muted-foreground">
           {composerHint}
@@ -188,4 +364,22 @@ export function ChatComposer({
       ) : null}
     </div>
   );
+}
+
+function getMentionTrigger(draft: string, cursorPosition: number) {
+  const safeCursorPosition = Math.max(0, Math.min(cursorPosition, draft.length));
+  const beforeCursor = draft.slice(0, safeCursorPosition);
+  const match = /(^|\s)@([^\s@]*)$/.exec(beforeCursor);
+
+  if (!match) {
+    return null;
+  }
+
+  const atIndex = beforeCursor.lastIndexOf("@");
+
+  return {
+    end: safeCursorPosition,
+    query: match[2],
+    start: atIndex,
+  };
 }

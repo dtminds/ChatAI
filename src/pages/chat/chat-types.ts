@@ -9,6 +9,12 @@ export type EmployeeProfile = {
   displayName: string;
 };
 
+export type GroupMember = {
+  id: string;
+  displayName: string;
+  avatarUrl?: string;
+};
+
 export type Account = {
   id: string;
   name: string;

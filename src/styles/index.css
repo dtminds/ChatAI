@@ -211,4 +211,12 @@
   .chat-composer-textarea::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
   }
+
+  .chat-composer-mention-row {
+    scrollbar-width: none;
+  }
+
+  .chat-composer-mention-row::-webkit-scrollbar {
+    display: none;
+  }
 }

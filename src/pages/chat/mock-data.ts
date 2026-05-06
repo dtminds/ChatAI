@@ -1,4 +1,10 @@
-import type { Account, Conversation, CustomerProfile, Message } from "@/pages/chat/chat-types";
+import type {
+  Account,
+  Conversation,
+  CustomerProfile,
+  GroupMember,
+  Message,
+} from "@/pages/chat/chat-types";
 
 const accountAvatarDrcUrl =
   "http://wework.qpic.cn/wwhead/duc2TvpEgSTewUnFO43HZ22H445fU0MTybfXZqjldjWlOArMJOM2GNsH3CUWyOuESHYdY5oHPhk/60";
@@ -144,6 +150,36 @@ export const seedConversations: Record<string, Conversation[]> = {
       mode: "single",
       status: "follow-up",
       priority: "low",
+    },
+  ],
+};
+
+export const seedGroupMembersByConversationId: Record<string, GroupMember[]> = {
+  "conv-004": [
+    {
+      id: "member-001",
+      displayName: "小林",
+      avatarUrl: customerAvatarXiaoyuUrl,
+    },
+    {
+      id: "member-002",
+      displayName: "睿白鸽",
+      avatarUrl: customerAvatarRuiUrl,
+    },
+    {
+      id: "member-003",
+      displayName: "丹阳草莓",
+      avatarUrl: customerAvatarUrl,
+    },
+    {
+      id: "member-004",
+      displayName: "德瑞可-小可",
+      avatarUrl: agentAvatarUrl,
+    },
+    {
+      id: "member-005",
+      displayName: "睡觉",
+      avatarUrl: customerAvatarSleepUrl,
     },
   ],
 };

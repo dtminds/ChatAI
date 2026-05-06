@@ -14,11 +14,7 @@ describe("ChatHeader", () => {
 
     render(
       <ChatHeader
-        activeClaimStatus="idle"
         activeMessageSeq={12}
-        isClaimedByCurrentUser={false}
-        isClaimedByOther={false}
-        onClaimConversation={vi.fn()}
       />,
     );
 
@@ -38,11 +34,7 @@ describe("ChatHeader", () => {
 
     render(
       <ChatHeader
-        activeClaimStatus="idle"
         activeMessageSeq={12}
-        isClaimedByCurrentUser={false}
-        isClaimedByOther={false}
-        onClaimConversation={vi.fn()}
       />,
     );
 
@@ -61,11 +53,7 @@ describe("ChatHeader", () => {
 
     render(
       <ChatHeader
-        activeClaimStatus="idle"
         activeMessageSeq={12}
-        isClaimedByCurrentUser={false}
-        isClaimedByOther={false}
-        onClaimConversation={vi.fn()}
       />,
     );
 

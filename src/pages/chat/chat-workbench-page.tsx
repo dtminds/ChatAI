@@ -20,8 +20,6 @@ export function ChatWorkbenchPage() {
     activeMode,
     bootstrapError,
     bootstrapStatus,
-    claimActiveConversation,
-    claimStatusByConversationId,
     conversationListsByScope,
     customerProfilesById,
     hasMoreHistoryByConversationId,
@@ -40,6 +38,8 @@ export function ChatWorkbenchPage() {
     setActiveAccount,
     setActiveConversation,
     setActiveMode,
+    takeOverAccount,
+    takeoverStatusByAccountId,
   } = useWorkbenchStore();
 
   const [draft, setDraft] = useState("");
@@ -74,9 +74,6 @@ export function ChatWorkbenchPage() {
   const hasMoreHistory = activeConversation
     ? hasMoreHistoryByConversationId[activeConversation.id] !== false
     : false;
-  const activeClaimStatus = activeConversation
-    ? claimStatusByConversationId[activeConversation.id] ?? "idle"
-    : "idle";
   const activeSendStatus = activeConversation
     ? sendStatusByConversationId[activeConversation.id] ?? "idle"
     : "idle";
@@ -84,25 +81,20 @@ export function ChatWorkbenchPage() {
     (activeConversation &&
       customerProfilesById[activeConversation.customerId]) ??
     undefined;
-  const isClaimedByCurrentUser =
-    !!activeConversation?.assignedEmployeeId &&
-    activeConversation.assignedEmployeeId === me?.id;
-  const isClaimedByOther =
-    !!activeConversation?.assignedEmployeeId &&
-    activeConversation.assignedEmployeeId !== me?.id;
   const isActiveAccountOffline = activeAccount?.loginStatus === "offline";
+  const isActiveAccountTakenOver =
+    !!activeAccount?.takenOverEmployeeId &&
+    activeAccount.takenOverEmployeeId === me?.id;
   const canSendMessage =
     bootstrapStatus === "ready" &&
     !!activeConversation &&
     !isActiveAccountOffline &&
-    !isClaimedByOther &&
+    isActiveAccountTakenOver &&
     activeSendStatus !== "sending";
   const composerHint = isActiveAccountOffline
     ? "当前账号离线，暂时无法发送消息。"
-    : isClaimedByOther
-    ? "该会话已被其他坐席领取，当前只读。"
-    : activeConversation?.status === "public" && !isClaimedByCurrentUser
-      ? "发送第一条消息时会自动领取会话。"
+    : !isActiveAccountTakenOver
+      ? "当前账号未接管，只能查看消息。"
       : pollState.status === "error"
         ? "轮询暂时失败，消息状态可能延迟回收。"
         : activeSendStatus === "sending"
@@ -213,7 +205,10 @@ export function ChatWorkbenchPage() {
         <AccountRail
           accounts={accounts}
           activeAccountId={activeAccountId}
+          currentEmployeeId={me?.id}
           onSelectAccount={setActiveAccount}
+          onTakeOverAccount={takeOverAccount}
+          takeoverStatusByAccountId={takeoverStatusByAccountId}
         />
 
         <div className="h-full min-h-0 pl-0">
@@ -234,7 +229,6 @@ export function ChatWorkbenchPage() {
 
             <ChatPanel
               accountName={activeAccount?.name}
-              activeClaimStatus={activeClaimStatus}
               activeConversation={activeConversation}
               activeHistoryStatus={activeHistoryStatus}
               activeMessageSeq={activeMessageSeq}
@@ -244,8 +238,6 @@ export function ChatWorkbenchPage() {
               customerPanelWidth={customerPanelWidth}
               draft={draft}
               inputEnterBehavior={inputEnterBehavior}
-              isClaimedByCurrentUser={isClaimedByCurrentUser}
-              isClaimedByOther={isClaimedByOther}
               isConversationLoading={isConversationLoading}
               isEmojiPickerOpen={isEmojiPickerOpen}
               isResizingCustomerPanel={isResizingCustomerPanel}
@@ -253,7 +245,6 @@ export function ChatWorkbenchPage() {
               messageListBottomRef={messageListBottomRef}
               messages={activeMessages}
               messageViewportRef={messageViewportRef}
-              onClaimConversation={claimActiveConversation}
               onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
               onDraftChange={setDraft}
               onEmojiPickerOpenChange={setIsEmojiPickerOpen}

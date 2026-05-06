@@ -1,4 +1,4 @@
-import { startTransition, useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import {
   Moon02Icon,
   Sun02Icon,
@@ -11,21 +11,13 @@ const THEME_STORAGE_KEY = "chat-ai-theme";
 type ThemePreference = "dark" | "light";
 
 type ChatHeaderProps = {
-  activeClaimStatus: "idle" | "claiming";
   activeConversation?: Conversation;
   activeMessageSeq: number;
-  isClaimedByCurrentUser: boolean;
-  isClaimedByOther: boolean;
-  onClaimConversation: () => void | Promise<void>;
 };
 
 export function ChatHeader({
-  activeClaimStatus,
   activeConversation,
   activeMessageSeq,
-  isClaimedByCurrentUser,
-  isClaimedByOther,
-  onClaimConversation,
 }: ChatHeaderProps) {
   const [isDarkMode, setIsDarkMode] = useState(getInitialThemePreference);
 
@@ -57,52 +49,21 @@ export function ChatHeader({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            aria-label={isDarkMode ? "切换浅色模式" : "切换深色模式"}
-            className="size-9 rounded-lg p-0 shadow-none"
-            onClick={handleThemeToggle}
-            size="icon"
-            type="button"
-            variant="outline"
-          >
-            <HugeiconsIcon
-              color="currentColor"
-              icon={isDarkMode ? Sun02Icon : Moon02Icon}
-              size={16}
-              strokeWidth={1.8}
-            />
-          </Button>
-          <div className="hidden items-center gap-2 md:flex">
-          <Button
-            className="h-9 rounded-lg px-3 text-[13px] shadow-none"
-            disabled
-            variant="outline"
-          >
-            查看历史
-          </Button>
-          <Button
-            className="h-9 rounded-lg px-3 text-[13px] shadow-none"
-            disabled={
-              !activeConversation ||
-              isClaimedByCurrentUser ||
-              isClaimedByOther ||
-              activeClaimStatus === "claiming"
-            }
-            onClick={() => {
-              startTransition(() => {
-                void onClaimConversation();
-              });
-            }}
-          >
-            {isClaimedByCurrentUser
-              ? "已领取"
-              : activeClaimStatus === "claiming"
-                ? "领取中..."
-                : "领取会话"}
-          </Button>
-          </div>
-        </div>
+        <Button
+          aria-label={isDarkMode ? "切换浅色模式" : "切换深色模式"}
+          className="size-9 rounded-lg p-0 shadow-none"
+          onClick={handleThemeToggle}
+          size="icon"
+          type="button"
+          variant="outline"
+        >
+          <HugeiconsIcon
+            color="currentColor"
+            icon={isDarkMode ? Sun02Icon : Moon02Icon}
+            size={16}
+            strokeWidth={1.8}
+          />
+        </Button>
       </div>
     </div>
   );

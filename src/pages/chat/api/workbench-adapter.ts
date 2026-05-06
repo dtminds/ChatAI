@@ -39,6 +39,7 @@ export function adaptAccount(dto: WorkbenchAccountDto, unreadCount = dto.unreadC
     name: dto.name,
     operator: dto.operatorName,
     phone: dto.phone,
+    takenOverEmployeeId: dto.takenOverEmployeeId,
     tone: buildAccountTone(dto.accountId),
     unreadCount,
   };
@@ -47,7 +48,6 @@ export function adaptAccount(dto: WorkbenchAccountDto, unreadCount = dto.unreadC
 export function adaptConversation(dto: WorkbenchConversationSummaryDto): Conversation {
   return {
     accountId: dto.accountId,
-    assignedEmployeeId: dto.assignedEmployeeId,
     customerAvatarUrl: dto.customerAvatar,
     customerId: dto.customerId,
     customerName: dto.customerName,
@@ -57,7 +57,6 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     preview: dto.lastMessage,
     priority: dto.priority,
     quietFor: formatQuietFor(dto.lastMessageTime),
-    status: dto.status,
     unread: dto.unreadCount,
     updatedAt: formatWorkbenchTimestamp(dto.lastMessageTime),
     updatedAtMs: dto.lastMessageTime,

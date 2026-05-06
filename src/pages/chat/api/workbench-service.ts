@@ -7,7 +7,6 @@ import { http } from "@/lib/request";
 import {
   type WorkbenchAccountChangeDto,
   type WorkbenchAccountDto,
-  type WorkbenchClaimConversationResponse,
   type WorkbenchConversationChangeDto,
   type WorkbenchConversationReadResponse,
   type WorkbenchConversationSummaryDto,
@@ -19,11 +18,11 @@ import {
   type WorkbenchPollResponse,
   type WorkbenchSendMessagePayload,
   type WorkbenchSendMessageResponse,
+  type WorkbenchTakeOverAccountResponse,
 } from "@/pages/chat/api/workbench-contracts";
 import type { Message } from "@/pages/chat/chat-types";
 
 export type WorkbenchService = {
-  claimConversation: (conversationId: string) => Promise<WorkbenchClaimConversationResponse>;
   getAccounts: () => Promise<WorkbenchAccountDto[]>;
   getConversations: (accountId: string) => Promise<WorkbenchConversationSummaryDto[]>;
   getMe: () => Promise<WorkbenchEmployeeDto>;
@@ -31,6 +30,7 @@ export type WorkbenchService = {
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
+  takeOverAccount: (accountId: string) => Promise<WorkbenchTakeOverAccountResponse>;
 };
 
 export type WorkbenchServiceMode = "mock" | "http";
@@ -100,24 +100,6 @@ export function createMockWorkbenchService(): WorkbenchService {
   const state = buildInitialState();
 
   return {
-    async claimConversation(conversationId) {
-      const conversation = findConversation(state, conversationId);
-
-      if (!conversation) {
-        throw new Error("Conversation not found");
-      }
-
-      const nextConversation = {
-        ...conversation,
-        assignedEmployeeId: CURRENT_EMPLOYEE_ID,
-        status: "claimed" as const,
-      };
-
-      upsertConversation(state, nextConversation);
-      pushConversationEvent(state, nextConversation);
-
-      return { conversation: nextConversation };
-    },
     async getAccounts() {
       return clone(state.accounts);
     },
@@ -238,10 +220,8 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       const nextConversation = {
         ...conversation,
-        assignedEmployeeId: CURRENT_EMPLOYEE_ID,
         lastMessage: payload.content,
         lastMessageTime: now,
-        status: "claimed" as const,
       };
 
       upsertConversation(state, nextConversation);
@@ -262,16 +242,30 @@ export function createMockWorkbenchService(): WorkbenchService {
         status: "accepted",
       };
     },
+    async takeOverAccount(accountId) {
+      const account = findAccount(state, accountId);
+
+      if (!account) {
+        throw new Error("Account not found");
+      }
+
+      const nextAccount = {
+        ...account,
+        takenOverEmployeeId: CURRENT_EMPLOYEE_ID,
+      };
+
+      state.accounts = state.accounts.map((item) =>
+        item.accountId === accountId ? nextAccount : item,
+      );
+      pushAccountEvent(state, accountId);
+
+      return { account: clone(nextAccount) };
+    },
   };
 }
 
 export function createHttpWorkbenchService(): WorkbenchService {
   return {
-    claimConversation(conversationId) {
-      return http.post<WorkbenchClaimConversationResponse>(
-        `/workbench/conversations/${conversationId}/claim`,
-      );
-    },
     getAccounts() {
       return http.get<WorkbenchAccountDto[]>("/qywx-accounts");
     },
@@ -319,6 +313,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
         payload,
       );
     },
+    takeOverAccount(accountId) {
+      return http.post<WorkbenchTakeOverAccountResponse>(
+        `/workbench/accounts/${accountId}/take-over`,
+      );
+    },
   };
 }
 
@@ -329,8 +328,6 @@ function buildInitialState(): MockState {
       sortConversations(
         conversations.map((conversation) => ({
           accountId: conversation.accountId,
-          assignedEmployeeId:
-            conversation.status === "public" ? undefined : CURRENT_EMPLOYEE_ID,
           conversationId: conversation.id,
           customerAvatar: conversation.customerAvatarUrl,
           customerId: conversation.customerId,
@@ -340,7 +337,6 @@ function buildInitialState(): MockState {
           isPinned: conversation.isPinned,
           mode: conversation.mode,
           priority: conversation.priority,
-          status: conversation.status,
           unreadCount: conversation.unread,
         })),
       ),
@@ -352,10 +348,11 @@ function buildInitialState(): MockState {
     avatar: account.avatarUrl,
     description: account.description,
     lastMessageTime: getAccountLastMessageTime(conversationsByAccount[account.id] ?? []),
-    loginStatus: account.id === "ndt" ? "offline" : "online",
+    loginStatus: "online",
     name: account.name,
     operatorName: account.operator,
     phone: account.phone,
+    takenOverEmployeeId: account.id === "drc" ? CURRENT_EMPLOYEE_ID : undefined,
     unreadCount: getAccountUnreadCount(conversationsByAccount[account.id] ?? []),
   }));
 

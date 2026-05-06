@@ -2,12 +2,12 @@ import { create } from "zustand";
 import { formatConversationPreview, formatWorkbenchTimestamp } from "@/pages/chat/api/workbench-adapter";
 import {
   bootstrapWorkbench,
-  claimConversation,
   loadAccountScope,
   loadConversationMessagesPage,
   markConversationRead,
   pollWorkbench,
   sendTextMessage,
+  takeOverAccount as takeOverAccountRequest,
 } from "@/pages/chat/api/workbench-gateway";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import type {
@@ -21,8 +21,8 @@ import type {
 
 type AsyncStatus = "idle" | "loading" | "ready" | "error";
 type HistoryStatus = "idle" | "loading";
-type ClaimStatus = "idle" | "claiming";
 type SendStatus = "idle" | "sending";
+type TakeoverStatus = "idle" | "taking-over";
 
 type PollState = {
   status: "idle" | "polling" | "error";
@@ -47,8 +47,8 @@ type WorkbenchState = {
   scopeTransitionError?: string;
   historyStatusByConversationId: Record<string, HistoryStatus>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
-  claimStatusByConversationId: Record<string, ClaimStatus>;
   sendStatusByConversationId: Record<string, SendStatus>;
+  takeoverStatusByAccountId: Record<string, TakeoverStatus>;
   pollState: PollState;
   sinceVersion: number;
   activeMessageSeq: number;
@@ -57,8 +57,8 @@ type WorkbenchState = {
   setActiveAccount: (accountId: string) => Promise<void>;
   setActiveConversation: (conversationId: string) => Promise<void>;
   setActiveMode: (mode: ChatMode) => Promise<void>;
-  claimActiveConversation: () => Promise<void>;
   sendAgentTextMessage: (text: string) => Promise<void>;
+  takeOverAccount: (accountId: string) => Promise<void>;
   retryFailedMessage: (messageId: string) => Promise<void>;
   loadOlderMessages: () => Promise<void>;
   pollWorkbench: () => Promise<void>;
@@ -75,8 +75,8 @@ function createInitialState(): Omit<
   | "setActiveAccount"
   | "setActiveConversation"
   | "setActiveMode"
-  | "claimActiveConversation"
   | "sendAgentTextMessage"
+  | "takeOverAccount"
   | "retryFailedMessage"
   | "loadOlderMessages"
   | "pollWorkbench"
@@ -89,7 +89,6 @@ function createInitialState(): Omit<
     activeMode: "single",
     bootstrapError: undefined,
     bootstrapStatus: "idle",
-    claimStatusByConversationId: {},
     conversationListsByScope: {},
     customerProfilesById: defaultCustomerProfiles,
     hasMoreHistoryByConversationId: {},
@@ -106,6 +105,7 @@ function createInitialState(): Omit<
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
     sinceVersion: 0,
+    takeoverStatusByAccountId: {},
   };
 }
 
@@ -242,7 +242,6 @@ function updateConversationPreview(
   preview: string,
   updatedAt: string,
   updatedAtMs: number,
-  assignedEmployeeId?: string,
 ) {
   const currentConversation = conversations.find((conversation) => conversation.id === conversationId);
 
@@ -252,20 +251,22 @@ function updateConversationPreview(
 
   return mergeConversationList(conversations, {
     ...currentConversation,
-    assignedEmployeeId,
     preview: formatConversationPreview(preview),
     quietFor: "刚刚更新",
-    status: "claimed",
     unread: 0,
     updatedAt,
     updatedAtMs,
   });
 }
 
+function isAccountTakenOverByCurrentUser(account: Account | undefined, me: EmployeeProfile | undefined) {
+  return !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
+}
+
 export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
-  let latestClaimRequestId = 0;
-  const latestClaimRequestIdByConversationId: Record<string, number> = {};
+  let latestTakeoverRequestId = 0;
+  const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
 
   function issueScopeRequestId() {
     latestScopeRequestId += 1;
@@ -276,89 +277,87 @@ export function createWorkbenchStore() {
     return requestId === latestScopeRequestId;
   }
 
-  function issueClaimRequestId(conversationId: string) {
-    latestClaimRequestId += 1;
-    latestClaimRequestIdByConversationId[conversationId] = latestClaimRequestId;
-    return latestClaimRequestId;
+  function issueTakeoverRequestId(accountId: string) {
+    latestTakeoverRequestId += 1;
+    latestTakeoverRequestIdByAccountId[accountId] = latestTakeoverRequestId;
+    return latestTakeoverRequestId;
   }
 
-  function isCurrentClaimRequest(conversationId: string, requestId: number) {
-    return latestClaimRequestIdByConversationId[conversationId] === requestId;
+  function isCurrentTakeoverRequest(accountId: string, requestId: number) {
+    return latestTakeoverRequestIdByAccountId[accountId] === requestId;
   }
 
-  function clearClaimRequest(conversationId: string) {
-    delete latestClaimRequestIdByConversationId[conversationId];
+  function clearTakeoverRequest(accountId: string) {
+    delete latestTakeoverRequestIdByAccountId[accountId];
   }
 
-  function omitClaimStatus(
-    claimStatusByConversationId: Record<string, ClaimStatus>,
-    conversationId: string,
+  function omitTakeoverStatus(
+    takeoverStatusByAccountId: Record<string, TakeoverStatus>,
+    accountId: string,
   ) {
-    const { [conversationId]: _ignored, ...nextClaimStatusByConversationId } =
-      claimStatusByConversationId;
-    return nextClaimStatusByConversationId;
+    const { [accountId]: _ignored, ...nextTakeoverStatusByAccountId } =
+      takeoverStatusByAccountId;
+    return nextTakeoverStatusByAccountId;
   }
 
   return create<WorkbenchStore>((set, get) => ({
     ...createInitialState(),
-    async claimActiveConversation() {
+    async takeOverAccount(accountId) {
       const state = get();
-      const { activeAccountId, activeConversationId, me } = state;
+      const { me } = state;
 
-      if (!activeConversationId || !activeAccountId || !me) {
+      if (!accountId || !me) {
         return;
       }
 
-      const activeConversation = (state.conversationListsByScope[activeAccountId] ?? []).find(
-        (conversation) => conversation.id === activeConversationId,
-      );
+      const account = state.accounts.find((item) => item.id === accountId);
 
-      if (activeConversation?.assignedEmployeeId === me.id) {
+      if (
+        !account ||
+        account.loginStatus === "offline" ||
+        account.takenOverEmployeeId === me.id
+      ) {
         return;
       }
 
-      const requestId = issueClaimRequestId(activeConversationId);
+      const requestId = issueTakeoverRequestId(accountId);
 
       set((currentState) => ({
-        claimStatusByConversationId: {
-          ...currentState.claimStatusByConversationId,
-          [activeConversationId]: "claiming",
+        takeoverStatusByAccountId: {
+          ...currentState.takeoverStatusByAccountId,
+          [accountId]: "taking-over",
         },
       }));
 
       try {
-        const nextConversation = await claimConversation(activeConversationId);
+        const nextAccount = await takeOverAccountRequest(accountId);
 
-        if (!isCurrentClaimRequest(activeConversationId, requestId)) {
+        if (!isCurrentTakeoverRequest(accountId, requestId)) {
           return;
         }
 
         set((currentState) => ({
-          claimStatusByConversationId: omitClaimStatus(
-            currentState.claimStatusByConversationId,
-            activeConversationId,
+          accounts: currentState.accounts.map((item) =>
+            item.id === accountId ? nextAccount : item,
           ),
-          conversationListsByScope: {
-            ...currentState.conversationListsByScope,
-            [activeAccountId]: mergeConversationList(
-              currentState.conversationListsByScope[activeAccountId] ?? [],
-              nextConversation,
-            ),
-          },
+          takeoverStatusByAccountId: omitTakeoverStatus(
+            currentState.takeoverStatusByAccountId,
+            accountId,
+          ),
         }));
-        clearClaimRequest(activeConversationId);
+        clearTakeoverRequest(accountId);
       } catch {
-        if (!isCurrentClaimRequest(activeConversationId, requestId)) {
+        if (!isCurrentTakeoverRequest(accountId, requestId)) {
           return;
         }
 
         set((currentState) => ({
-          claimStatusByConversationId: omitClaimStatus(
-            currentState.claimStatusByConversationId,
-            activeConversationId,
+          takeoverStatusByAccountId: omitTakeoverStatus(
+            currentState.takeoverStatusByAccountId,
+            accountId,
           ),
         }));
-        clearClaimRequest(activeConversationId);
+        clearTakeoverRequest(accountId);
       }
     },
     async initializeWorkbench() {
@@ -407,7 +406,15 @@ export function createWorkbenchStore() {
             : {},
         });
 
-        if (bootstrapResult.activeConversationId) {
+        if (
+          bootstrapResult.activeConversationId &&
+          isAccountTakenOverByCurrentUser(
+            bootstrapResult.accounts.find(
+              (account) => account.id === bootstrapResult.activeAccountId,
+            ),
+            bootstrapResult.me,
+          )
+        ) {
           const requestId = issueScopeRequestId();
           const readResult = await markConversationRead(
             bootstrapResult.activeConversationId,
@@ -677,26 +684,18 @@ export function createWorkbenchStore() {
         return;
       }
 
+      const account = state.accounts.find((item) => item.id === activeAccountId);
       const activeConversation = (state.conversationListsByScope[activeAccountId] ?? []).find(
         (conversation) => conversation.id === activeConversationId,
       );
 
-      if (!activeConversation) {
-        return;
-      }
-
       if (
-        activeConversation.assignedEmployeeId &&
-        activeConversation.assignedEmployeeId !== me.id
+        !activeConversation ||
+        account?.loginStatus === "offline" ||
+        !isAccountTakenOverByCurrentUser(account, me)
       ) {
         return;
       }
-
-      if (!activeConversation.assignedEmployeeId || activeConversation.status === "public") {
-        await get().claimActiveConversation();
-      }
-
-      const account = state.accounts.find((item) => item.id === activeAccountId);
       const timestamp = Date.now();
       const clientMessageId = `local_${timestamp}_${Math.random().toString(36).slice(2, 6)}`;
       const optimisticMessage: Message = {
@@ -741,7 +740,6 @@ export function createWorkbenchStore() {
               normalizedText,
               optimisticMessage.sentAt,
               timestamp,
-              currentState.me?.id,
             ),
           },
           messagesByConversationId: {
@@ -983,7 +981,13 @@ export function createWorkbenchStore() {
           scopeTransitionError: undefined,
         }));
 
-        if (scopeResult.nextConversationId) {
+        if (
+          scopeResult.nextConversationId &&
+          isAccountTakenOverByCurrentUser(
+            get().accounts.find((account) => account.id === accountId),
+            get().me,
+          )
+        ) {
           const readResult = await markConversationRead(scopeResult.nextConversationId);
 
           if (!isCurrentScopeRequest(requestId)) {
@@ -1063,6 +1067,15 @@ export function createWorkbenchStore() {
           },
           scopeTransitionError: undefined,
         }));
+
+        const latestState = get();
+        const activeAccount = latestState.accounts.find(
+          (account) => account.id === latestState.activeAccountId,
+        );
+
+        if (!isAccountTakenOverByCurrentUser(activeAccount, latestState.me)) {
+          return;
+        }
 
         const readResult = await markConversationRead(conversationId);
 

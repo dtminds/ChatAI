@@ -96,19 +96,19 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
-  it("disables the composer when the active account is offline", async () => {
+  it("disables the composer when the active account is not taken over", async () => {
     const user = userEvent.setup();
 
     render(<ChatWorkbenchPage />);
 
     await screen.findByPlaceholderText("请输入消息……");
-    await user.click(screen.getByTitle("念都堂"));
+    await user.click(screen.getByRole("button", { name: "念都堂" }));
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("当前会话暂不可发送消息")).toBeDisabled();
       expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
       expect(
-        screen.getByText("当前账号离线，暂时无法发送消息。"),
+        screen.getByText("当前账号未接管，只能查看消息。"),
       ).toBeInTheDocument();
     });
   });
@@ -165,13 +165,13 @@ describe("ChatWorkbenchPage", () => {
     expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
   });
 
-  it("keeps the history action disabled until date-based history is added", async () => {
+  it("does not show removed chat header actions", async () => {
     render(<ChatWorkbenchPage />);
 
     await screen.findByPlaceholderText("请输入消息……");
 
-    expect(screen.queryByText("会话已由 德瑞可-小可 领取")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看历史" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "查看历史" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "领取会话" })).not.toBeInTheDocument();
   });
 
   it("loads older messages when the message viewport reaches the top", async () => {

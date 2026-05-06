@@ -14,7 +14,6 @@ import type { WechatEmojiName } from "@/pages/chat/wechat-emoji";
 
 type ChatPanelProps = {
   accountName?: string;
-  activeClaimStatus: "idle" | "claiming";
   activeConversation?: Conversation;
   activeHistoryStatus: "idle" | "loading" | "error";
   activeMessageSeq: number;
@@ -24,14 +23,11 @@ type ChatPanelProps = {
   customerPanelWidth: number;
   draft: string;
   inputEnterBehavior: InputEnterBehavior;
-  isClaimedByCurrentUser: boolean;
-  isClaimedByOther: boolean;
   isConversationLoading: boolean;
   isEmojiPickerOpen: boolean;
   isResizingCustomerPanel: boolean;
   messages: Message[];
   hasMoreHistory: boolean;
-  onClaimConversation: () => void | Promise<void>;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
@@ -50,7 +46,6 @@ type ChatPanelProps = {
 
 export function ChatPanel({
   accountName,
-  activeClaimStatus,
   activeConversation,
   activeHistoryStatus,
   activeMessageSeq,
@@ -60,14 +55,11 @@ export function ChatPanel({
   customerPanelWidth,
   draft,
   inputEnterBehavior,
-  isClaimedByCurrentUser,
-  isClaimedByOther,
   isConversationLoading,
   isEmojiPickerOpen,
   isResizingCustomerPanel,
   messages,
   hasMoreHistory,
-  onClaimConversation,
   onCustomerPanelResizeStart,
   onDraftChange,
   onEmojiPickerOpenChange,
@@ -86,12 +78,8 @@ export function ChatPanel({
   return (
     <section className="flex min-h-0 min-w-0 flex-col bg-surface">
       <ChatHeader
-        activeClaimStatus={activeClaimStatus}
         activeConversation={activeConversation}
         activeMessageSeq={activeMessageSeq}
-        isClaimedByCurrentUser={isClaimedByCurrentUser}
-        isClaimedByOther={isClaimedByOther}
-        onClaimConversation={onClaimConversation}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1" ref={workbenchBodyRef}>

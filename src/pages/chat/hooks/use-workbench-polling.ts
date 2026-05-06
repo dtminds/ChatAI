@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 
 type UseWorkbenchPollingOptions = {
   activeAccountId?: string;
@@ -15,8 +15,20 @@ export function useWorkbenchPolling({
   jitterMs,
   pollWorkbench,
 }: UseWorkbenchPollingOptions) {
+  const isPollingRef = useRef(false);
+
   const runPollCycle = useEffectEvent(async () => {
-    await pollWorkbench();
+    if (isPollingRef.current) {
+      return;
+    }
+
+    isPollingRef.current = true;
+
+    try {
+      await pollWorkbench();
+    } finally {
+      isPollingRef.current = false;
+    }
   });
 
   useEffect(() => {
@@ -40,7 +52,9 @@ export function useWorkbenchPolling({
       clearScheduledPoll();
 
       const baseInterval =
-        document.visibilityState === "hidden" ? 10000 : intervalMs;
+        document.visibilityState === "hidden"
+          ? Math.max(10000, intervalMs)
+          : intervalMs;
       const jitter = Math.floor(Math.random() * jitterMs);
 
       timeoutId = window.setTimeout(async () => {

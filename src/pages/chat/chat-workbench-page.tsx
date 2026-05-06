@@ -213,9 +213,7 @@ export function ChatWorkbenchPage() {
         <AccountRail
           accounts={accounts}
           activeAccountId={activeAccountId}
-          isPollError={pollState.status === "error"}
           onSelectAccount={setActiveAccount}
-          pollIntervalMs={pollState.intervalMs}
         />
 
         <div className="h-full min-h-0 pl-0">

@@ -23,10 +23,12 @@
 ## Working Agreements
 
 - 新页面优先沿用 `shadcn/ui` 组件，避免混入第二套 UI 体系。
+- 交互控件优先使用 `src/components/ui` 中已有基础组件（如 `Button`、`Input`、`DropdownMenu`），不要在业务组件里随手裸写原生控件；只有在封装基础组件或现有组件无法表达语义/交互时才使用原生元素，并同步处理可访问性、键盘行为和 `focus-visible`。
 - 图标统一使用 Hugeicons，不再引入 Lucide 或其他图标集。
 - HTTP 请求统一从 `src/lib/request.ts` 出口发起，不直接在页面里裸写 `fetch`。
 - 工作台状态优先收敛到 `src/store/workbench-store.ts`，避免页面局部状态失控。
 - 单元测试、组件测试和测试辅助统一放在仓库根目录下的 `test/`，不要混进 `src/` 业务目录。
+- 组件测试优先覆盖用户可感知行为、可访问语义、状态流转和关键数据契约；不要断言 Tailwind class、字号、间距、宽高、阴影、圆角等易变视觉实现细节，除非这些样式本身就是公开 API 或明确要求锁定的设计 token。
 - `src/pages/chat` 里的 mock 数据和占位结构可以演进，但请尽量保持字段命名与设计说明中的轮询模型一致。
 - 未接入真实后端前，允许使用本地假数据验证布局与交互层级。
 

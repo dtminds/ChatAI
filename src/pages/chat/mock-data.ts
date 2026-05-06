@@ -71,6 +71,7 @@ export const seedConversations: Record<string, Conversation[]> = {
       mode: "single",
       status: "claimed",
       priority: "high",
+      isPinned: true,
     },
     {
       id: "conv-002",

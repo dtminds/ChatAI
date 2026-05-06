@@ -41,6 +41,7 @@ export type Conversation = {
   mode: ChatMode;
   status: "claimed" | "public" | "follow-up";
   priority: "high" | "medium" | "low";
+  isPinned?: boolean;
   assignedEmployeeId?: string;
   updatedAtMs?: number;
 };

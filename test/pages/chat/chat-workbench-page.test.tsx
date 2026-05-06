@@ -131,6 +131,40 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByText("Enter 换行，Shift + Enter 发送")).toBeInTheDocument();
   });
 
+  it("shows conversation row actions without high-priority labels", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+
+    expect(screen.queryByText("高优先")).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "会话操作" })[0]);
+
+    expect(screen.getByRole("menuitem", { name: "取消置顶" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "置顶" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "标记未读" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "不显示" })).toBeInTheDocument();
+  });
+
+  it("does not switch conversations when opening row actions from the keyboard", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+
+    const secondConversationMenuButton =
+      screen.getAllByRole("button", { name: "会话操作" })[1];
+
+    secondConversationMenuButton.focus();
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByRole("menuitem", { name: "置顶" })).toBeInTheDocument();
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+  });
+
   it("keeps the history action disabled until date-based history is added", async () => {
     render(<ChatWorkbenchPage />);
 

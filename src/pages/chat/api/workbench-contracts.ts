@@ -40,6 +40,7 @@ export type WorkbenchConversationSummaryDto = {
   mode: "single" | "group";
   status: WorkbenchConversationStatus;
   assignedEmployeeId?: string;
+  isPinned?: boolean;
   priority: "high" | "medium" | "low";
 };
 

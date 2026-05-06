@@ -308,10 +308,10 @@ export function ChatComposer({
 
       <div className="relative">
         {selectedMentionMembers.length > 0 ? (
-          <div className="flex min-h-8 items-center gap-3 border-b border-divider/70 pb-1.5">
-            <div className="chat-composer-mention-row flex min-w-0 flex-1 items-center gap-4 overflow-x-auto">
+          <div className="chat-composer-mention-bar flex min-h-8 items-center gap-3 border-b mb-1 border-divider/70">
+            <div className="chat-composer-mention-row flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
               {selectedMentionMembers.map((member) => (
-                <span className="inline-flex shrink-0 py-1" key={member.id}>
+                <span className="inline-flex shrink-0 pt-1 pb-2" key={member.id}>
                   <span
                     className={cn(
                       "relative inline-flex text-[13px] font-medium text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/20",
@@ -334,7 +334,7 @@ export function ChatComposer({
                     {hoveredMentionMemberId === member.id ? (
                       <button
                         aria-label={`移除 @${member.displayName}`}
-                        className="absolute -right-4 top-1/2 inline-flex size-4 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-popover text-primary shadow-[0_4px_12px_var(--shadow-soft)] hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                        className="absolute -right-2 top-1 inline-flex size-4 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-popover text-primary shadow-[0_4px_12px_var(--shadow-soft)] hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
                         onClick={() => handleRemoveMentionMember(member.id)}
                         onMouseDown={(event) => event.preventDefault()}
                         type="button"
@@ -355,7 +355,7 @@ export function ChatComposer({
             >
               <SelectTrigger
                 aria-label="选择 @ 插入位置"
-                className="h-7 min-w-0 shrink-0 border-0 bg-transparent px-1.5 text-primary focus:ring-0"
+                className="h-7 min-w-0 shrink-0 border-0 bg-transparent px-1.5 pb-1.5 text-primary focus:ring-0"
               >
                 <span>{mentionInsertPosition === "start" ? "文首" : "文尾"}</span>
               </SelectTrigger>

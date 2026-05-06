@@ -114,8 +114,6 @@ describe("ChatWorkbenchPage", () => {
   });
 
   it("keeps Enter behavior help in the menu without a persistent footer hint", async () => {
-    const user = userEvent.setup();
-
     render(<ChatWorkbenchPage />);
 
     await screen.findByPlaceholderText("请输入消息……");

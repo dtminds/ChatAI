@@ -3,8 +3,8 @@ import {
   MoreHorizontalIcon,
   PinIcon,
   PinOffIcon,
-  CheckUnread02Icon,
-  EyeIcon,
+  BubbleChatNotificationIcon,
+  ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -33,8 +33,8 @@ export function ConversationCard({
       label: conversation.isPinned ? "取消置顶" : "置顶",
       icon: conversation.isPinned ? PinOffIcon : PinIcon,
     },
-    { label: "标记未读", icon: CheckUnread02Icon },
-    { label: "不显示", icon: EyeIcon },
+    { label: "标记未读", icon: BubbleChatNotificationIcon },
+    { label: "不显示", icon: ViewOffSlashIcon },
   ];
 
   const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {

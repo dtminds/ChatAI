@@ -113,6 +113,24 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("keeps Enter behavior help in the menu without a persistent footer hint", async () => {
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+
+    expect(screen.queryByText("Enter 发送，Shift + Enter 换行。")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "选择 Enter 键行为" })).toHaveTextContent(
+      "Enter 发送",
+    );
+
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "选择 Enter 键行为" }), {
+      key: "ArrowDown",
+    });
+
+    expect(screen.getByText("Enter 发送，Shift + Enter 换行")).toBeInTheDocument();
+    expect(screen.getByText("Enter 换行，Shift + Enter 发送")).toBeInTheDocument();
+  });
+
   it("keeps the history action disabled until date-based history is added", async () => {
     render(<ChatWorkbenchPage />);
 

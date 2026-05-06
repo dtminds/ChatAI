@@ -78,12 +78,12 @@ pnpm typecheck
 
 ## 关键文件
 
-- 设计说明：[docs/superpowers/specs/2026-04-19-chat-workbench-design.md](/Users/lsave/workspace/AI/ChatAI/docs/superpowers/specs/2026-04-19-chat-workbench-design.md)
-- 路由入口：[src/router/index.tsx](/Users/lsave/workspace/AI/ChatAI/src/router/index.tsx)
-- 工作台页面：[src/pages/chat/chat-workbench-page.tsx](/Users/lsave/workspace/AI/ChatAI/src/pages/chat/chat-workbench-page.tsx)
-- 状态管理：[src/store/workbench-store.ts](/Users/lsave/workspace/AI/ChatAI/src/store/workbench-store.ts)
-- 请求封装：[src/lib/request.ts](/Users/lsave/workspace/AI/ChatAI/src/lib/request.ts)
-- 协作约定：[AGENTS.md](/Users/lsave/workspace/AI/ChatAI/AGENTS.md)
+- 设计说明：[docs/superpowers/specs/2026-04-19-chat-workbench-design.md](docs/superpowers/specs/2026-04-19-chat-workbench-design.md)
+- 路由入口：[src/router/index.tsx](src/router/index.tsx)
+- 工作台页面：[src/pages/chat/chat-workbench-page.tsx](src/pages/chat/chat-workbench-page.tsx)
+- 状态管理：[src/store/workbench-store.ts](src/store/workbench-store.ts)
+- 请求封装：[src/lib/request.ts](src/lib/request.ts)
+- 协作约定：[AGENTS.md](AGENTS.md)
 
 ## 环境变量
 

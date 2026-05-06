@@ -84,7 +84,7 @@ describe("ChatWorkbenchPage", () => {
 
     expect(composer).toHaveValue("");
     expect(screen.getByText("@小林")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "移除 @小林" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "移除 @小林" })).not.toBeInTheDocument();
 
     await user.type(composer, "今天统一看群公告");
     fireEvent.keyDown(screen.getByRole("combobox", { name: "选择 @ 插入位置" }), {
@@ -116,6 +116,10 @@ describe("ChatWorkbenchPage", () => {
     const composer = await screen.findByPlaceholderText("请输入消息……");
     await user.type(composer, "@小");
     await user.click(screen.getByRole("option", { name: "小林" }));
+
+    expect(screen.queryByRole("button", { name: "移除 @小林" })).not.toBeInTheDocument();
+    await user.hover(screen.getByText("@小林"));
+
     await user.click(screen.getByRole("button", { name: "移除 @小林" }));
 
     expect(screen.queryByText("@小林")).not.toBeInTheDocument();

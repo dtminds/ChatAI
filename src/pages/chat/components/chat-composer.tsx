@@ -76,6 +76,8 @@ export function ChatComposer({
   textareaRef,
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
+  const mentionCloseTimerRef = useRef<number | null>(null);
+  const [hoveredMentionMemberId, setHoveredMentionMemberId] = useState<string | null>(null);
   const [cursorPosition, setCursorPosition] = useState(draft.length);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const mentionTrigger = useMemo(
@@ -112,6 +114,46 @@ export function ChatComposer({
   useEffect(() => {
     setActiveMentionIndex(0);
   }, [mentionTrigger?.query]);
+
+  useEffect(() => {
+    return () => {
+      if (mentionCloseTimerRef.current) {
+        window.clearTimeout(mentionCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showMentionRemovePopover = (memberId: string) => {
+    if (mentionCloseTimerRef.current) {
+      window.clearTimeout(mentionCloseTimerRef.current);
+      mentionCloseTimerRef.current = null;
+    }
+
+    setHoveredMentionMemberId(memberId);
+  };
+
+  const scheduleMentionRemovePopoverClose = (memberId: string) => {
+    if (mentionCloseTimerRef.current) {
+      window.clearTimeout(mentionCloseTimerRef.current);
+    }
+
+    mentionCloseTimerRef.current = window.setTimeout(() => {
+      setHoveredMentionMemberId((currentMemberId) =>
+        currentMemberId === memberId ? null : currentMemberId,
+      );
+      mentionCloseTimerRef.current = null;
+    }, 120);
+  };
+
+  const handleRemoveMentionMember = (memberId: string) => {
+    if (mentionCloseTimerRef.current) {
+      window.clearTimeout(mentionCloseTimerRef.current);
+      mentionCloseTimerRef.current = null;
+    }
+
+    setHoveredMentionMemberId(null);
+    onRemoveMentionMember(memberId);
+  };
 
   useEffect(() => {
     if (!isEmojiPickerOpen) {
@@ -267,21 +309,40 @@ export function ChatComposer({
       <div className="relative">
         {selectedMentionMembers.length > 0 ? (
           <div className="flex min-h-8 items-center gap-3 border-b border-divider/70 pb-1.5">
-            <div className="chat-composer-mention-row flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+            <div className="chat-composer-mention-row flex min-w-0 flex-1 items-center gap-4 overflow-x-auto">
               {selectedMentionMembers.map((member) => (
-                <span
-                  className="inline-flex shrink-0 items-center gap-0.5 text-[13px] font-medium text-primary"
-                  key={member.id}
-                >
-                  @{member.displayName}
-                  <button
-                    aria-label={`移除 @${member.displayName}`}
-                    className="inline-flex size-4 items-center justify-center rounded-sm text-primary/70 transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
-                    onClick={() => onRemoveMentionMember(member.id)}
-                    type="button"
+                <span className="inline-flex shrink-0 py-1" key={member.id}>
+                  <span
+                    className={cn(
+                      "relative inline-flex text-[13px] font-medium text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/20",
+                      hoveredMentionMemberId === member.id && "z-10",
+                    )}
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) {
+                        setHoveredMentionMemberId((currentMemberId) =>
+                          currentMemberId === member.id ? null : currentMemberId,
+                        );
+                      }
+                    }}
+                    onFocus={() => showMentionRemovePopover(member.id)}
+                    onMouseEnter={() => showMentionRemovePopover(member.id)}
+                    onMouseLeave={() => scheduleMentionRemovePopoverClose(member.id)}
+                    tabIndex={0}
                   >
-                    <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
-                  </button>
+                    @{member.displayName}
+
+                    {hoveredMentionMemberId === member.id ? (
+                      <button
+                        aria-label={`移除 @${member.displayName}`}
+                        className="absolute -right-4 top-1/2 inline-flex size-4 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-popover text-primary shadow-[0_4px_12px_var(--shadow-soft)] hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                        onClick={() => handleRemoveMentionMember(member.id)}
+                        onMouseDown={(event) => event.preventDefault()}
+                        type="button"
+                      >
+                        <HugeiconsIcon icon={Cancel01Icon} size={10} strokeWidth={2} />
+                      </button>
+                    ) : null}
+                  </span>
                 </span>
               ))}
             </div>

@@ -176,8 +176,8 @@ export function ChatWorkbenchPage() {
 
   if (bootstrapStatus === "loading" && accounts.length === 0) {
     return (
-      <div className="flex h-svh items-center justify-center bg-[#F7F8F9] px-6">
-        <div className="rounded-2xl border border-[#E7EBF0] bg-white px-6 py-5 text-sm text-[#66758A] shadow-sm">
+      <div className="flex h-svh items-center justify-center bg-background px-6">
+        <div className="rounded-2xl border border-border bg-surface px-6 py-5 text-sm text-muted-foreground shadow-sm">
           正在加载工作台数据...
         </div>
       </div>
@@ -186,10 +186,10 @@ export function ChatWorkbenchPage() {
 
   if (bootstrapStatus === "error" && accounts.length === 0) {
     return (
-      <div className="flex h-svh items-center justify-center bg-[#F7F8F9] px-6">
-        <div className="max-w-md rounded-2xl border border-[#F2D1D4] bg-white px-6 py-5 shadow-sm">
+      <div className="flex h-svh items-center justify-center bg-background px-6">
+        <div className="max-w-md rounded-2xl border border-destructive/25 bg-surface px-6 py-5 shadow-sm">
           <p className="text-sm font-semibold text-foreground">工作台初始化失败</p>
-          <p className="mt-2 text-sm leading-6 text-[#6D7787]">
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {bootstrapError ?? "暂时无法获取会话数据。"}
           </p>
           <Button
@@ -208,7 +208,7 @@ export function ChatWorkbenchPage() {
   }
 
   return (
-    <div className="h-svh min-h-[720px] bg-[#F7F8F9]">
+    <div className="h-svh min-h-[720px] bg-background">
       <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden">
         <AccountRail
           accounts={accounts}
@@ -219,10 +219,10 @@ export function ChatWorkbenchPage() {
         <div className="h-full min-h-0 pl-0">
           <div
             className={cn(
-              "grid h-full min-h-0 overflow-hidden rounded-[20px_0_0_20px] border-l border-[#EBEDEE] bg-white lg:grid-cols-[18rem_minmax(0,1fr)]",
+              "grid h-full min-h-0 overflow-hidden rounded-[20px_0_0_20px] border-l border-divider bg-surface lg:grid-cols-[18rem_minmax(0,1fr)]",
               isResizingCustomerPanel && "select-none",
             )}
-            style={{ boxShadow: "-5px 0 10px -4px rgba(20, 37, 44, 0.04)" }}
+            style={{ boxShadow: "-5px 0 10px -4px var(--shadow-soft)" }}
           >
             <ConversationListPanel
               activeConversation={activeConversation}

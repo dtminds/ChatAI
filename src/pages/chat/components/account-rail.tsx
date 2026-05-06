@@ -45,7 +45,7 @@ export function AccountRail({
   const signedInName = signedInAccount?.operator || signedInAccount?.name || "未登录";
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-[#F7F8F9] px-3 py-4">
+    <section className="flex h-full min-h-0 flex-col bg-background px-3 py-4">
       <div className="mb-3 flex items-center px-1">
         <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <HugeiconsIcon
@@ -65,8 +65,8 @@ export function AccountRail({
               className={cn(
                 "flex w-full items-center gap-2.5 rounded-[20px] px-3 py-3 text-[12px] font-medium transition-colors",
                 isActive
-                  ? "border border-[#dfe4ea] bg-white text-foreground shadow-[0_2px_8px_rgba(15,23,42,0.05)]"
-                  : "border border-transparent text-[#6b7a90] hover:bg-white/70 hover:text-foreground",
+                  ? "border border-border bg-surface text-foreground shadow-[0_2px_8px_var(--shadow-soft)]"
+                  : "border border-transparent text-muted-foreground hover:bg-surface-hover hover:text-foreground",
               )}
               key={item.label}
               type="button"
@@ -83,7 +83,7 @@ export function AccountRail({
         })}
       </div>
 
-      <div className="my-4 h-px bg-[#EEEFF0]" />
+      <div className="my-4 h-px bg-divider" />
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-2 py-1">
@@ -113,7 +113,7 @@ export function AccountRail({
         <div className="flex min-w-0 items-center gap-2.5">
           <Avatar
             aria-label={`${signedInName} 登录头像`}
-            className="size-9 rounded-full border border-white bg-white shadow-[0_4px_12px_rgba(15,23,42,0.08)]"
+            className="size-9 rounded-full border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
           >
             {signedInAccount ? (
               <AvatarImage alt={signedInName} src={signedInAccount.avatarUrl} />
@@ -123,7 +123,7 @@ export function AccountRail({
             </AvatarFallback>
           </Avatar>
           <span
-            className="truncate text-[13px] font-medium leading-none text-[#1F2937]"
+            className="truncate text-[13px] font-medium leading-none text-foreground"
             data-testid="account-rail-footer-name"
           >
             {signedInName}
@@ -134,7 +134,7 @@ export function AccountRail({
           <DropdownMenuTrigger asChild>
             <Button
               aria-label="打开账号设置"
-              className="size-8 shrink-0 rounded-full text-[#66727F] hover:bg-white/80 hover:text-[#293241] focus-visible:ring-2 focus-visible:ring-ring/20"
+              className="size-8 shrink-0 rounded-full text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
               size="icon"
               type="button"
               variant="ghost"
@@ -150,7 +150,7 @@ export function AccountRail({
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            className="w-[198px] rounded-[18px] border border-[#E7EAEE] p-2 text-[#1F2937] shadow-[0_16px_36px_rgba(15,23,42,0.1)] outline-none"
+            className="w-[198px] rounded-[18px] p-2 shadow-[0_16px_36px_var(--shadow-medium)] outline-none"
             side="top"
             sideOffset={10}
           >
@@ -160,7 +160,7 @@ export function AccountRail({
             >
               <Avatar
                 aria-label={`${signedInName} 账号头像`}
-                className="size-7 rounded-full border border-white bg-white shadow-[0_4px_12px_rgba(15,23,42,0.08)]"
+                  className="size-7 rounded-full border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
               >
                 {signedInAccount ? (
                   <AvatarImage alt={signedInName} src={signedInAccount.avatarUrl} />
@@ -177,10 +177,10 @@ export function AccountRail({
               </span>
             </div>
 
-            <div className="mx-2 h-px bg-[#EBEBEB]" />
+            <div className="mx-2 h-px bg-divider" />
 
             <div className="space-y-1 pt-2">
-              <DropdownMenuItem className="h-8 gap-2 rounded-[12px] px-3 text-[13px] font-normal data-[highlighted]:bg-[#F6F8F9]">
+              <DropdownMenuItem className="h-8 gap-2 rounded-[12px] px-3 text-[13px] font-normal">
                 <HugeiconsIcon
                   color="currentColor"
                   icon={Settings03Icon}
@@ -188,7 +188,7 @@ export function AccountRail({
                 />
                 <span>设置</span>
               </DropdownMenuItem>
-              <DropdownMenuItem className="h-9 gap-2 rounded-[12px] px-3 text-[13px] font-normal data-[highlighted]:bg-[#F6F8F9]">
+              <DropdownMenuItem className="h-9 gap-2 rounded-[12px] px-3 text-[13px] font-normal">
                 <HugeiconsIcon
                   color="currentColor"
                   icon={LogoutSquare01Icon}

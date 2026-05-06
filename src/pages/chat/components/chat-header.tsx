@@ -1,6 +1,14 @@
-import { startTransition } from "react";
+import { startTransition, useLayoutEffect, useState } from "react";
+import {
+  Moon02Icon,
+  Sun02Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import type { Conversation } from "@/pages/chat/chat-types";
+
+const THEME_STORAGE_KEY = "chat-ai-theme";
+type ThemePreference = "dark" | "light";
 
 type ChatHeaderProps = {
   activeClaimStatus: "idle" | "claiming";
@@ -19,15 +27,28 @@ export function ChatHeader({
   isClaimedByOther,
   onClaimConversation,
 }: ChatHeaderProps) {
+  const [isDarkMode, setIsDarkMode] = useState(getInitialThemePreference);
+
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle("dark", isDarkMode);
+  }, [isDarkMode]);
+
+  const handleThemeToggle = () => {
+    const shouldUseDarkMode = !isDarkMode;
+
+    writeThemePreference(shouldUseDarkMode ? "dark" : "light");
+    setIsDarkMode(shouldUseDarkMode);
+  };
+
   return (
-    <div className="flex min-h-[69px] items-center border-b border-[#EEEFF0] px-5 py-3">
+    <div className="flex min-h-[69px] items-center border-b border-divider px-5 py-3">
       <div className="flex w-full items-center justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="truncate text-[17px] font-semibold text-foreground">
               {activeConversation?.customerName ?? "请选择会话"}
             </p>
-            <span className="text-sm font-medium text-[#2eaf63]">
+            <span className="text-sm font-medium text-success">
               @微信
             </span>
           </div>
@@ -36,9 +57,25 @@ export function ChatHeader({
           </p>
         </div>
 
-        <div className="hidden items-center gap-2 md:flex">
+        <div className="flex items-center gap-2">
           <Button
-            className="h-9 rounded-lg border-[#d8dfea] bg-white px-3 text-[13px] shadow-none"
+            aria-label={isDarkMode ? "切换浅色模式" : "切换深色模式"}
+            className="size-9 rounded-lg p-0 shadow-none"
+            onClick={handleThemeToggle}
+            size="icon"
+            type="button"
+            variant="outline"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={isDarkMode ? Sun02Icon : Moon02Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+          <div className="hidden items-center gap-2 md:flex">
+          <Button
+            className="h-9 rounded-lg px-3 text-[13px] shadow-none"
             disabled
             variant="outline"
           >
@@ -64,8 +101,36 @@ export function ChatHeader({
                 ? "领取中..."
                 : "领取会话"}
           </Button>
+          </div>
         </div>
       </div>
     </div>
   );
+}
+
+function getInitialThemePreference() {
+  const savedTheme = readThemePreference();
+
+  return savedTheme === "dark" ||
+    (savedTheme !== "light" && document.documentElement.classList.contains("dark"));
+}
+
+function readThemePreference(): ThemePreference | undefined {
+  try {
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+
+    return savedTheme === "dark" || savedTheme === "light"
+      ? savedTheme
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeThemePreference(theme: ThemePreference) {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // Theme persistence is best-effort; the UI state still updates without storage.
+  }
 }

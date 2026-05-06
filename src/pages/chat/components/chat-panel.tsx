@@ -84,7 +84,7 @@ export function ChatPanel({
   workbenchBodyRef,
 }: ChatPanelProps) {
   return (
-    <section className="flex min-h-0 min-w-0 flex-col bg-white">
+    <section className="flex min-h-0 min-w-0 flex-col bg-surface">
       <ChatHeader
         activeClaimStatus={activeClaimStatus}
         activeConversation={activeConversation}
@@ -95,7 +95,7 @@ export function ChatPanel({
       />
 
       <div className="flex min-h-0 min-w-0 flex-1" ref={workbenchBodyRef}>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
           <ChatMessagePanel
             activeHistoryStatus={activeHistoryStatus}
             hasMoreHistory={hasMoreHistory}
@@ -109,7 +109,7 @@ export function ChatPanel({
             scopeTransitionError={scopeTransitionError}
           />
 
-          <Separator className="bg-[#EEEFF0]" />
+          <Separator className="bg-divider" />
 
           <ChatComposer
             canSendMessage={canSendMessage}

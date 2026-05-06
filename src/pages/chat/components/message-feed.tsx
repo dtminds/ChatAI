@@ -49,7 +49,7 @@ export function ChatMessageList({ messages, onRetryMessage }: ChatMessageListPro
 export function MessageTimeDivider({ label }: { label: string }) {
   return (
     <div className="flex items-center justify-center py-0.5">
-      <span className="text-[12px] font-medium tracking-[0.02em] text-[#9aa4b2]">
+      <span className="text-[12px] font-medium tracking-[0.02em] text-muted-foreground">
         {label}
       </span>
     </div>
@@ -65,7 +65,7 @@ export function MessageRow({
 }) {
   if (message.role === "system") {
     return (
-      <div className="mx-auto max-w-2xl rounded-full bg-[#f3f5f8] px-4 py-2 text-center text-[12px] leading-5 text-[#8c98a8]">
+      <div className="mx-auto max-w-2xl rounded-full bg-surface-muted px-4 py-2 text-center text-[12px] leading-5 text-muted-foreground">
         {message.content.text}
       </div>
     );
@@ -92,7 +92,7 @@ export function MessageRow({
           {isAgent && message.status === "failed" && onRetryMessage ? (
             <button
               aria-label="重试发送"
-              className="mb-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-[#F2D1D4] bg-white text-[#D54B4B] transition-colors hover:bg-[#FFF1F1]"
+              className="mb-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-destructive/25 bg-surface text-destructive transition-colors hover:bg-destructive-muted"
               onClick={() => onRetryMessage(message.id)}
               title="重试发送"
               type="button"
@@ -128,7 +128,7 @@ function MessageDeliveryState({ message }: { message: ChatMessage }) {
     <p
       className={cn(
         "mt-1 px-1 text-[11px]",
-        message.status === "failed" ? "text-[#d54b4b]" : "text-[#8a94a6]",
+        message.status === "failed" ? "text-destructive" : "text-muted-foreground",
       )}
     >
       {label}
@@ -138,7 +138,7 @@ function MessageDeliveryState({ message }: { message: ChatMessage }) {
 
 export function MessageAvatar({ message }: { message: ChatMessage }) {
   return (
-    <Avatar className="size-10 rounded-[12px] border border-[#edf1f5] bg-white">
+    <Avatar className="size-10 rounded-[12px] border border-border bg-surface">
       {message.sender.avatarUrl ? (
         <AvatarImage alt={message.sender.name} src={message.sender.avatarUrl} />
       ) : null}

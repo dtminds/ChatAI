@@ -1,6 +1,6 @@
 import {
   type RefObject,
-  useEffectEvent,
+  useCallback,
   useLayoutEffect,
   useRef,
 } from "react";
@@ -43,7 +43,7 @@ export function useMessageScrollRestoration({
   const previousConversationIdRef = useRef<string | undefined>(undefined);
   const previousMessageCountRef = useRef(0);
 
-  const handleLoadOlderMessages = useEffectEvent(async () => {
+  const handleLoadOlderMessages = useCallback(async () => {
     if (
       historyLoadInFlightRef.current ||
       isHistoryLoading ||
@@ -75,9 +75,15 @@ export function useMessageScrollRestoration({
     } finally {
       historyLoadInFlightRef.current = false;
     }
-  });
+  }, [
+    activeConversationId,
+    hasMoreHistory,
+    isHistoryLoading,
+    loadOlderMessages,
+    messageViewportRef,
+  ]);
 
-  const handleMessageViewportScroll = useEffectEvent(() => {
+  const handleMessageViewportScroll = useCallback(() => {
     const viewport = messageViewportRef.current;
 
     if (!viewport || viewport.scrollTop > 48) {
@@ -85,7 +91,7 @@ export function useMessageScrollRestoration({
     }
 
     void handleLoadOlderMessages();
-  });
+  }, [handleLoadOlderMessages, messageViewportRef]);
 
   useLayoutEffect(() => {
     const previousConversationId = previousConversationIdRef.current;

@@ -2,7 +2,6 @@ import { useEffect, useEffectEvent } from "react";
 
 type UseWorkbenchPollingOptions = {
   activeAccountId?: string;
-  activeConversationId?: string;
   bootstrapStatus: "idle" | "loading" | "ready" | "error";
   intervalMs: number;
   jitterMs: number;
@@ -11,7 +10,6 @@ type UseWorkbenchPollingOptions = {
 
 export function useWorkbenchPolling({
   activeAccountId,
-  activeConversationId,
   bootstrapStatus,
   intervalMs,
   jitterMs,
@@ -51,7 +49,6 @@ export function useWorkbenchPolling({
     };
   }, [
     activeAccountId,
-    activeConversationId,
     bootstrapStatus,
     intervalMs,
     jitterMs,

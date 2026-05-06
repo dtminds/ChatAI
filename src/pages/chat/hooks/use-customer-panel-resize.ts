@@ -48,11 +48,10 @@ export function useCustomerPanelResize(
     };
   }, [workbenchBodyRef]);
 
-  const handleCustomerPanelResizeStart = (
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ) => {
-    event.preventDefault();
-    setIsResizingCustomerPanel(true);
+  useEffect(() => {
+    if (!isResizingCustomerPanel) {
+      return;
+    }
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const bodyRect = workbenchBodyRef.current?.getBoundingClientRect();
@@ -68,12 +67,22 @@ export function useCustomerPanelResize(
 
     const handlePointerUp = () => {
       setIsResizingCustomerPanel(false);
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
     };
 
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [isResizingCustomerPanel, workbenchBodyRef]);
+
+  const handleCustomerPanelResizeStart = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+    setIsResizingCustomerPanel(true);
   };
 
   return {

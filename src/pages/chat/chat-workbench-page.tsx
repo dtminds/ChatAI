@@ -130,7 +130,6 @@ export function ChatWorkbenchPage() {
 
   useWorkbenchPolling({
     activeAccountId,
-    activeConversationId,
     bootstrapStatus,
     intervalMs: pollState.intervalMs,
     jitterMs: pollState.jitterMs,

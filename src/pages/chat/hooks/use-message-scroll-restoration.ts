@@ -143,7 +143,7 @@ export function useMessageScrollRestoration({
     messageListBottomRef.current?.scrollIntoView({
       block: "end",
     });
-  }, [activeConversationId, messageCount, activeHistoryStatus, messageListBottomRef, messageViewportRef]);
+  }, [activeConversationId, messageCount, activeHistoryStatus]);
 
   return {
     handleMessageViewportScroll,

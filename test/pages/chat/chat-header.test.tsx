@@ -49,4 +49,31 @@ describe("ChatHeader", () => {
     expect(document.documentElement).toHaveClass("dark");
     expect(screen.getByRole("button", { name: "切换浅色模式" })).toBeInTheDocument();
   });
+
+  it("still toggles the theme when localStorage is unavailable", async () => {
+    const user = userEvent.setup();
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+
+    render(
+      <ChatHeader
+        activeClaimStatus="idle"
+        activeMessageSeq={12}
+        isClaimedByCurrentUser={false}
+        isClaimedByOther={false}
+        onClaimConversation={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "切换深色模式" }));
+
+    expect(document.documentElement).toHaveClass("dark");
+
+    getItemSpy.mockRestore();
+    setItemSpy.mockRestore();
+  });
 });

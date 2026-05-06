@@ -1,4 +1,4 @@
-import { startTransition, useState } from "react";
+import { startTransition, useLayoutEffect, useState } from "react";
 import {
   Moon02Icon,
   Sun02Icon,
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { Conversation } from "@/pages/chat/chat-types";
 
 const THEME_STORAGE_KEY = "chat-ai-theme";
+type ThemePreference = "dark" | "light";
 
 type ChatHeaderProps = {
   activeClaimStatus: "idle" | "claiming";
@@ -26,25 +27,16 @@ export function ChatHeader({
   isClaimedByOther,
   onClaimConversation,
 }: ChatHeaderProps) {
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-    const shouldUseDarkMode =
-      savedTheme === "dark" ||
-      (savedTheme !== "light" && document.documentElement.classList.contains("dark"));
+  const [isDarkMode, setIsDarkMode] = useState(getInitialThemePreference);
 
-    document.documentElement.classList.toggle("dark", shouldUseDarkMode);
-
-    return shouldUseDarkMode;
-  });
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle("dark", isDarkMode);
+  }, [isDarkMode]);
 
   const handleThemeToggle = () => {
     const shouldUseDarkMode = !isDarkMode;
 
-    document.documentElement.classList.toggle("dark", shouldUseDarkMode);
-    window.localStorage.setItem(
-      THEME_STORAGE_KEY,
-      shouldUseDarkMode ? "dark" : "light",
-    );
+    writeThemePreference(shouldUseDarkMode ? "dark" : "light");
     setIsDarkMode(shouldUseDarkMode);
   };
 
@@ -114,4 +106,31 @@ export function ChatHeader({
       </div>
     </div>
   );
+}
+
+function getInitialThemePreference() {
+  const savedTheme = readThemePreference();
+
+  return savedTheme === "dark" ||
+    (savedTheme !== "light" && document.documentElement.classList.contains("dark"));
+}
+
+function readThemePreference(): ThemePreference | undefined {
+  try {
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+
+    return savedTheme === "dark" || savedTheme === "light"
+      ? savedTheme
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeThemePreference(theme: ThemePreference) {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // Theme persistence is best-effort; the UI state still updates without storage.
+  }
 }

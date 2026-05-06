@@ -370,7 +370,7 @@ export function ChatComposer({
         {isMentionPickerOpen && mentionTrigger ? (
           <div
             aria-label="选择群成员"
-            className="absolute bottom-full left-0 z-30 mb-2 w-56 overflow-hidden rounded-[10px] border border-border bg-popover py-1 shadow-[0_10px_28px_var(--shadow-soft)]"
+            className="absolute bottom-full left-0 z-30 mb-2 max-h-64 w-56 overflow-y-auto rounded-[10px] border border-border bg-popover py-1 shadow-[0_10px_28px_var(--shadow-soft)]"
             role="listbox"
           >
             {filteredMentionMembers.map((member, index) => (

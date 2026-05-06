@@ -142,7 +142,8 @@ describe("ChatWorkbenchPage", () => {
 
     await user.click(screen.getAllByRole("button", { name: "会话操作" })[0]);
 
-    expect(screen.getByRole("menuitem", { name: "置顶/取消置顶" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "取消置顶" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "置顶" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "标记未读" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "不显示" })).toBeInTheDocument();
   });

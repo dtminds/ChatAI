@@ -337,6 +337,7 @@ function buildInitialState(): MockState {
           customerName: conversation.customerName,
           lastMessage: conversation.preview,
           lastMessageTime: new Date(conversation.updatedAt.replace(" ", "T")).getTime(),
+          isPinned: conversation.isPinned,
           mode: conversation.mode,
           priority: conversation.priority,
           status: conversation.status,

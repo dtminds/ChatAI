@@ -52,6 +52,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     customerId: dto.customerId,
     customerName: dto.customerName,
     id: dto.conversationId,
+    isPinned: dto.isPinned,
     mode: dto.mode,
     preview: dto.lastMessage,
     priority: dto.priority,

@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   MoreHorizontalIcon,
   PinIcon,
+  PinOffIcon,
   CheckUnread02Icon,
   EyeIcon,
 } from "@hugeicons/core-free-icons";
@@ -17,12 +18,6 @@ import { cn } from "@/lib/utils";
 import type { Conversation } from "@/pages/chat/chat-types";
 import { formatConversationTimestamp } from "@/pages/chat/lib/chat-time";
 
-const conversationMenuItems = [
-  { label: "置顶/取消置顶", icon: PinIcon },
-  { label: "标记未读", icon: CheckUnread02Icon },
-  { label: "不显示", icon: EyeIcon },
-];
-
 export function ConversationCard({
   conversation,
   isActive,
@@ -33,6 +28,14 @@ export function ConversationCard({
   onSelect: () => void;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const conversationMenuItems = [
+    {
+      label: conversation.isPinned ? "取消置顶" : "置顶",
+      icon: conversation.isPinned ? PinOffIcon : PinIcon,
+    },
+    { label: "标记未读", icon: CheckUnread02Icon },
+    { label: "不显示", icon: EyeIcon },
+  ];
 
   const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") {

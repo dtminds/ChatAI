@@ -148,6 +148,23 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("menuitem", { name: "不显示" })).toBeInTheDocument();
   });
 
+  it("does not switch conversations when opening row actions from the keyboard", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+
+    const secondConversationMenuButton =
+      screen.getAllByRole("button", { name: "会话操作" })[1];
+
+    secondConversationMenuButton.focus();
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByRole("menuitem", { name: "置顶" })).toBeInTheDocument();
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+  });
+
   it("keeps the history action disabled until date-based history is added", async () => {
     render(<ChatWorkbenchPage />);
 

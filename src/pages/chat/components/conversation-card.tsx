@@ -41,10 +41,10 @@ export function ConversationCard({
   return (
     <div
       className={cn(
-        "group relative mb-1 w-full overflow-visible border-b px-2.5 py-2.5 text-left transition-colors",
+        "group relative mb-1 w-full overflow-visible border-b px-2.5 py-2.5 text-left",
         isActive
           ? "rounded-md border-transparent bg-surface-selected text-foreground"
-          : "border-divider bg-surface hover:bg-surface-hover",
+          : "border-divider bg-surface",
       )}
     >
       <Button
@@ -103,14 +103,14 @@ export function ConversationCard({
           <Button
             aria-label="会话操作"
             className={cn(
-              "absolute right-2.5 top-2.5 size-6 rounded-md p-0 text-muted-foreground opacity-0 transition hover:bg-surface hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
+              "absolute right-2.5 top-2 size-6 rounded-md p-0 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
               isMenuOpen && "bg-surface text-foreground opacity-100",
             )}
             size="icon"
             type="button"
             variant="ghost"
           >
-            <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={2} />
+            <HugeiconsIcon icon={MoreHorizontalIcon} size={18} />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

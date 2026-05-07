@@ -3,7 +3,7 @@
 
 :root {
   --background: oklch(0.976 0.004 250);
-  --foreground: oklch(0.286 0.018 252);
+  --foreground: #10141A;
   --card: oklch(0.992 0.003 250);
   --card-foreground: oklch(0.286 0.018 252);
   --popover: oklch(0.992 0.003 250);
@@ -13,7 +13,7 @@
   --secondary: oklch(0.956 0.004 250);
   --secondary-foreground: oklch(0.332 0.016 252);
   --muted: oklch(0.952 0.004 252);
-  --muted-foreground: oklch(0.572 0.018 253);
+  --muted-foreground: #9EA1A4;
   --accent: oklch(0.944 0.006 249);
   --accent-foreground: oklch(0.332 0.016 252);
   --destructive: oklch(0.628 0.219 25);
@@ -23,7 +23,7 @@
   --radius: 0.8rem;
   --avatar-start: oklch(0.707 0.131 252);
   --avatar-end: oklch(0.748 0.097 214);
-  --surface: oklch(0.992 0.003 250);
+  --surface: oklch(100% 0.00011 271.152);
   --surface-foreground: oklch(0.286 0.018 252);
   --surface-muted: oklch(0.958 0.006 250);
   --surface-hover: oklch(0.962 0.007 250);
@@ -50,7 +50,7 @@
   --scrollbar-thumb: oklch(0.755 0.012 250 / 0.58);
   --scrollbar-thumb-hover: oklch(0.691 0.017 250 / 0.72);
   --message-agent: oklch(0.913 0.044 245);
-  --message-customer: oklch(0.956 0.005 250);
+  --message-customer: #EEEEF0;
 }
 
 .dark {

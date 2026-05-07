@@ -185,13 +185,6 @@ export async function loadConversationMessagesPage(
   };
 }
 
-export async function claimConversation(
-  conversationId: string,
-): Promise<Conversation> {
-  const response = await getWorkbenchService().claimConversation(conversationId);
-  return adaptConversation(response.conversation);
-}
-
 export async function markConversationRead(
   conversationId: string,
 ): Promise<WorkbenchConversationReadResponse> {
@@ -202,6 +195,11 @@ export async function sendTextMessage(
   payload: WorkbenchSendMessagePayload,
 ): Promise<WorkbenchSendMessageResponse> {
   return getWorkbenchService().sendMessage(payload);
+}
+
+export async function takeOverAccount(accountId: string): Promise<Account> {
+  const response = await getWorkbenchService().takeOverAccount(accountId);
+  return adaptAccount(response.account, response.account.unreadCount);
 }
 
 export async function pollWorkbench(

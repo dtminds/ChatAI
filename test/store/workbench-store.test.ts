@@ -93,13 +93,12 @@ describe("useWorkbenchStore", () => {
     expect(state.activeAccountId).toBe("ndt");
     expect(state.activeMode).toBe("single");
     expect(state.activeConversationId).toBe("conv-005");
-    expect(state.conversationListsByScope.ndt[0].unread).toBe(0);
+    expect(state.conversationListsByScope.ndt[0].unread).toBe(1);
   });
 
-  it("marks send failures after polling an offline account", async () => {
+  it("marks send failures after polling a rejected message", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
-    await useWorkbenchStore.getState().setActiveAccount("ndt");
-    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败");
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
     await useWorkbenchStore.getState().pollWorkbench();
 
     const state = useWorkbenchStore.getState();
@@ -107,7 +106,7 @@ describe("useWorkbenchStore", () => {
       state.messagesByConversationId[state.activeConversationId].at(-1);
 
     expect(latestMessage).toMatchObject({
-      failReason: "企微账号离线",
+      failReason: "模拟发送失败",
       status: "failed",
     });
     expect(state.pendingMessages).toHaveLength(0);
@@ -115,14 +114,13 @@ describe("useWorkbenchStore", () => {
 
   it("retries a failed text message by resending it as a new pending message", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
-    await useWorkbenchStore.getState().setActiveAccount("ndt");
-    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败");
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
     await useWorkbenchStore.getState().pollWorkbench();
 
     const beforeRetryCount =
-      useWorkbenchStore.getState().messagesByConversationId["conv-005"].length;
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
     const failedMessage =
-      useWorkbenchStore.getState().messagesByConversationId["conv-005"].at(-1);
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
 
     expect(failedMessage).toMatchObject({
       status: "failed",
@@ -131,12 +129,12 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
 
     const state = useWorkbenchStore.getState();
-    const latestMessage = state.messagesByConversationId["conv-005"].at(-1);
+    const latestMessage = state.messagesByConversationId["conv-001"].at(-1);
 
-    expect(state.messagesByConversationId["conv-005"]).toHaveLength(beforeRetryCount);
+    expect(state.messagesByConversationId["conv-001"]).toHaveLength(beforeRetryCount);
     expect(latestMessage).toMatchObject({
       content: {
-        text: "这条消息会失败",
+        text: "这条消息会失败 [fail]",
         type: "text",
       },
       role: "agent",
@@ -484,39 +482,94 @@ describe("useWorkbenchStore", () => {
     expect(state.historyStatusByConversationId["conv-001"]).toBe("idle");
   });
 
-  it("tracks claim status per conversation instead of globally", async () => {
+  it("tracks takeover status per account instead of globally", async () => {
     const baseService = createMockWorkbenchService();
-    const claimGate = createDeferred();
+    const takeoverGate = createDeferred();
 
     setWorkbenchService({
       ...baseService,
-      async claimConversation(conversationId) {
-        if (conversationId === "conv-003") {
-          await claimGate.promise;
+      async takeOverAccount(accountId) {
+        if (accountId === "ndt") {
+          await takeoverGate.promise;
         }
 
-        return baseService.claimConversation(conversationId);
+        return baseService.takeOverAccount(accountId);
       },
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    await useWorkbenchStore.getState().setActiveConversation("conv-003");
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
 
-    const claimPromise = useWorkbenchStore.getState().claimActiveConversation();
+    const takeoverPromise = useWorkbenchStore.getState().takeOverAccount("ndt");
 
-    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+    await useWorkbenchStore.getState().setActiveAccount("drc");
 
     let state = useWorkbenchStore.getState();
 
-    expect(state.claimStatusByConversationId["conv-003"]).toBe("claiming");
-    expect(state.claimStatusByConversationId["conv-002"] ?? "idle").toBe("idle");
+    expect(state.takeoverStatusByAccountId.ndt).toBe("taking-over");
+    expect(state.takeoverStatusByAccountId.drc ?? "idle").toBe("idle");
 
-    claimGate.resolve();
-    await claimPromise;
+    takeoverGate.resolve();
+    await takeoverPromise;
 
     state = useWorkbenchStore.getState();
 
-    expect(state.claimStatusByConversationId["conv-003"]).toBeUndefined();
+    expect(state.takeoverStatusByAccountId.ndt).toBeUndefined();
+  });
+
+  it("keeps unread counts when switching into an untaken account", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
+    expect(state.conversationListsByScope.ndt[0].unread).toBe(1);
+  });
+
+  it("does not send messages from an untaken account", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    const beforeMessages =
+      useWorkbenchStore.getState().messagesByConversationId["conv-005"].length;
+
+    await useWorkbenchStore.getState().sendAgentTextMessage("未接管不能发送");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.messagesByConversationId["conv-005"]).toHaveLength(beforeMessages);
+    expect(state.pendingMessages).toHaveLength(0);
+  });
+
+  it("takes over an account and then allows read state and sending", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    await useWorkbenchStore.getState().takeOverAccount("ndt");
+    await useWorkbenchStore.getState().setActiveConversation("conv-006");
+    await useWorkbenchStore.getState().setActiveConversation("conv-005");
+    await useWorkbenchStore.getState().sendAgentTextMessage("接管后可以发送");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.accounts.find((account) => account.id === "ndt")).toMatchObject({
+      takenOverEmployeeId: "emp-001",
+      unreadCount: 0,
+    });
+    expect(state.conversationListsByScope.ndt[0]).toMatchObject({
+      id: "conv-005",
+      unread: 0,
+    });
+    expect(state.messagesByConversationId["conv-005"].at(-1)).toMatchObject({
+      content: {
+        text: "接管后可以发送",
+        type: "text",
+      },
+      role: "agent",
+      status: "sending",
+    });
   });
 
   it("captures scope transition errors instead of failing silently", async () => {

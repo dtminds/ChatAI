@@ -69,7 +69,6 @@ export const seedConversations: Record<string, Conversation[]> = {
       quietFor: "9天没聊了",
       unread: 2,
       mode: "single",
-      status: "claimed",
       priority: "high",
       isPinned: true,
     },
@@ -84,7 +83,6 @@ export const seedConversations: Record<string, Conversation[]> = {
       quietFor: "2天没聊了",
       unread: 0,
       mode: "single",
-      status: "follow-up",
       priority: "medium",
     },
     {
@@ -98,7 +96,6 @@ export const seedConversations: Record<string, Conversation[]> = {
       quietFor: "2天没聊了",
       unread: 4,
       mode: "single",
-      status: "public",
       priority: "medium",
     },
     {
@@ -112,7 +109,6 @@ export const seedConversations: Record<string, Conversation[]> = {
       quietFor: "4天没聊了",
       unread: 7,
       mode: "group",
-      status: "claimed",
       priority: "low",
     },
   ],
@@ -128,7 +124,6 @@ export const seedConversations: Record<string, Conversation[]> = {
       quietFor: "1天没聊了",
       unread: 1,
       mode: "single",
-      status: "claimed",
       priority: "medium",
     },
     {
@@ -142,7 +137,6 @@ export const seedConversations: Record<string, Conversation[]> = {
       quietFor: "6天没聊了",
       unread: 0,
       mode: "single",
-      status: "follow-up",
       priority: "low",
     },
   ],

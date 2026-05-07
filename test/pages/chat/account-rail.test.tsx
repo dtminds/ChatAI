@@ -19,7 +19,26 @@ const accounts: Account[] = [
     name: "lsave",
     operator: "lsave",
     phone: "13800000000",
+    takenOverEmployeeId: "emp-001",
     tone: "专业",
+    unreadCount: 7,
+  },
+  {
+    id: "account-2",
+    avatarUrl: "https://example.com/avatar-support.png",
+    description: "客服账号",
+    loginStatus: "online",
+    metrics: {
+      activeCustomers: 1,
+      agents: 1,
+      stores: 1,
+      totalCustomers: 3,
+    },
+    name: "support",
+    operator: "support",
+    phone: "13900000000",
+    tone: "专业",
+    unreadCount: 2,
   },
 ];
 
@@ -43,5 +62,75 @@ describe("AccountRail", () => {
     expect(screen.getByTestId("account-settings-profile")).toHaveTextContent("lsave");
     expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
+  });
+
+  it("shows account takeover state and takes over from the status menu", async () => {
+    const user = userEvent.setup();
+    const handleTakeOverAccount = vi.fn();
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+        onTakeOverAccount={handleTakeOverAccount}
+      />,
+    );
+
+    expect(screen.getByText("接管中")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "lsave 接管中" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "support 未接管" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "support 未接管" }));
+    await user.click(screen.getByRole("menuitem", { name: "接管账号" }));
+
+    expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");
+  });
+
+  it("uses a distinct warning treatment for untaken account labels and dots", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    const untakenBadge = screen.getByText("未接管").closest("span")?.parentElement;
+    const untakenDot = untakenBadge?.querySelector("[data-testid='account-status-dot']");
+
+    expect(untakenBadge).toHaveClass("text-warning");
+    expect(untakenDot).toHaveClass("bg-warning");
+  });
+
+  it("shows taken-over account unread badges on the avatar", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    const badge = screen.getByLabelText("lsave 未读消息 7");
+
+    expect(badge).toHaveTextContent("7");
+    expect(badge.parentElement).toHaveAttribute("data-testid", "account-avatar-wrap-account-1");
+  });
+
+  it("hides unread badges for accounts that are not taken over", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("2")).not.toBeInTheDocument();
   });
 });

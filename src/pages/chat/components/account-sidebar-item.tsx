@@ -36,12 +36,13 @@ export function AccountSidebarItem({
     <span
       className={cn(
         "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-1 text-[10px] font-medium leading-none",
-        isOffline
-          ? "bg-surface-muted text-muted-foreground"
-          : "bg-success/10 text-success",
+        isOffline && "bg-surface-muted text-muted-foreground",
+        !isOffline && isTakenOverByCurrentUser && "bg-success/10 text-success",
+        !isOffline && !isTakenOverByCurrentUser && "bg-warning-muted text-warning",
       )}
     >
       <span
+        data-testid="account-status-dot"
         className={cn(
           "size-1.5 rounded-full",
           isOffline ? "bg-muted-foreground/50" : "bg-success",

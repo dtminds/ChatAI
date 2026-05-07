@@ -51,6 +51,30 @@ const conversations: Conversation[] = [
 ];
 
 describe("ConversationListPanel", () => {
+  it("closes search results when clicking outside the dropdown", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={conversations.filter((item) => item.mode === "single")}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    const searchInput = screen.getByPlaceholderText("搜索客户、群名称");
+    await user.type(searchInput, "星云");
+
+    expect(await screen.findByRole("dialog", { name: "搜索结果" })).toBeInTheDocument();
+
+    await user.click(document.body);
+
+    expect(searchInput).toHaveValue("");
+    expect(screen.queryByRole("dialog", { name: "搜索结果" })).not.toBeInTheDocument();
+  });
+
   it("shows grouped customer and group search results with expand and collapse controls", async () => {
     const user = userEvent.setup();
     const handleSelectConversation = vi.fn();
@@ -69,6 +93,9 @@ describe("ConversationListPanel", () => {
     await user.type(screen.getByPlaceholderText("搜索客户、群名称"), "星云");
 
     const searchbox = await screen.findByRole("dialog", { name: "搜索结果" });
+    expect(
+      within(searchbox).getByTestId("conversation-search-results-scroll-area"),
+    ).toHaveAttribute("data-scrollbar-visibility", "scroll");
     expect(within(searchbox).getByText("联系人")).toBeInTheDocument();
     expect(within(searchbox).getByText("群聊")).toBeInTheDocument();
     expect(
@@ -97,6 +124,9 @@ describe("ConversationListPanel", () => {
       within(searchbox).getByRole("button", { name: /星云客户 6/ }),
     ).toBeInTheDocument();
     expect(within(searchbox).queryByRole("button", { name: "查看全部" })).not.toBeInTheDocument();
+    expect(
+      within(searchbox).getByTestId("conversation-search-expanded-scroll-area"),
+    ).toHaveAttribute("data-scrollbar-visibility", "scroll");
     const expandedResults = within(searchbox).getByRole("list", {
       name: "联系人搜索结果",
     });

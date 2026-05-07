@@ -31,6 +31,7 @@ export function ChatMessagePanel({
   return (
     <ScrollArea
       className="min-h-0 flex-1 bg-surface"
+      data-testid="message-scroll-area"
       viewportTestId="message-viewport"
       viewportProps={{
         onScroll: onMessageViewportScroll,

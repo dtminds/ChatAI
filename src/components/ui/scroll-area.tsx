@@ -13,6 +13,8 @@ type ScrollAreaProps = ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root>
 export function ScrollArea({
   className,
   children,
+  scrollHideDelay = 700,
+  type = "scroll",
   viewportProps,
   viewportRef,
   viewportTestId,
@@ -22,7 +24,11 @@ export function ScrollArea({
 
   return (
     <ScrollAreaPrimitive.Root
-      className={cn("relative overflow-hidden", className)}
+      className={cn("group/scroll-area relative overflow-hidden", className)}
+      data-scrollbar-hide-delay={scrollHideDelay}
+      data-scrollbar-visibility={type}
+      scrollHideDelay={scrollHideDelay}
+      type={type}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
@@ -48,16 +54,17 @@ function ScrollBar({
   return (
     <ScrollAreaPrimitive.ScrollAreaScrollbar
       orientation={orientation}
+      forceMount
       className={cn(
-        "flex touch-none select-none transition-colors",
+        "pointer-events-none flex touch-none select-none opacity-0 transition-opacity duration-200 data-[state=visible]:pointer-events-auto data-[state=visible]:opacity-100 group-hover/scroll-area:pointer-events-auto group-hover/scroll-area:opacity-100",
         orientation === "vertical"
-          ? "h-full w-2.5 border-l border-l-transparent p-px"
-          : "h-2.5 flex-col border-t border-t-transparent p-px",
+          ? "h-full w-[var(--scrollbar-size)] border-l border-l-transparent p-[var(--scrollbar-track-padding)]"
+          : "h-[var(--scrollbar-size)] flex-col border-t border-t-transparent p-[var(--scrollbar-track-padding)]",
         className,
       )}
       {...props}
     >
-      <ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full bg-subtle-foreground/35" />
+      <ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-[var(--scrollbar-radius)] bg-[var(--scrollbar-thumb)] transition-colors hover:bg-[var(--scrollbar-thumb-hover)]" />
     </ScrollAreaPrimitive.ScrollAreaScrollbar>
   );
 }

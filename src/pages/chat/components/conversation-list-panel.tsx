@@ -70,6 +70,7 @@ export function ConversationListPanel({
           modal={false}
           onOpenChange={(open) => {
             if (!open) {
+              setSearchKeyword("");
               setExpandedSearchSection(null);
             }
           }}
@@ -122,7 +123,7 @@ export function ConversationListPanel({
               "w-[26rem] rounded-lg border-border bg-popover p-0 text-popover-foreground shadow-[0_12px_32px_var(--shadow-medium)]",
               expandedSearchSection
                 ? "h-[min(34rem,calc(100vh-7rem))] overflow-hidden"
-                : "max-h-[min(34rem,calc(100vh-7rem))] overflow-y-auto",
+                : "h-[min(34rem,calc(100vh-7rem))] overflow-hidden",
             )}
             onCloseAutoFocus={(event) => {
               event.preventDefault();
@@ -173,7 +174,7 @@ export function ConversationListPanel({
           </div>
 
           <TabsContent className="mt-0 min-h-0 flex-1" value={activeMode}>
-            <ScrollArea className="h-full">
+            <ScrollArea className="h-full" data-testid="conversation-list-scroll-area">
               <div className="bg-surface px-2 py-1.5">
                 {conversations.length === 0 ? (
                   <div className="px-2 py-4 text-sm text-muted-foreground">
@@ -242,10 +243,14 @@ function SearchResultDropdown({
         <div className="shrink-0 bg-popover px-4 py-2">
           <h2 className="text-sm font-semibold text-muted-foreground">{title}</h2>
         </div>
-        <div
-          aria-label={`${title}搜索结果`}
-          className="min-h-0 flex-1 overflow-y-auto py-0"
-          role="list"
+        <ScrollArea
+          className="min-h-0 flex-1"
+          data-testid="conversation-search-expanded-scroll-area"
+          viewportProps={{
+            "aria-label": `${title}搜索结果`,
+            className: "py-0",
+            role: "list",
+          }}
         >
           <div className="space-y-1">
             {conversations.map((conversation) => (
@@ -257,7 +262,7 @@ function SearchResultDropdown({
               />
             ))}
           </div>
-        </div>
+        </ScrollArea>
         <div className="shrink-0 px-4 py-2">
           <Button
             className="h-auto rounded-none p-0 text-[13px] font-medium text-primary hover:bg-transparent hover:text-primary/85"
@@ -273,31 +278,36 @@ function SearchResultDropdown({
   }
 
   return (
-    <div>
-      {isShowingCustomers ? (
-        <SearchResultSection
-          conversations={visibleCustomers}
-          hasMore={expandedSection === null && customers.length > CUSTOMER_PREVIEW_LIMIT}
-          keyword={keyword}
-          onExpand={() => onExpand("single")}
-          onSelect={onSelect}
-          title="联系人"
-        />
-      ) : null}
-      {isShowingCustomers && isShowingGroups && customers.length > 0 && groups.length > 0 ? (
-        <div className="border-t border-divider" />
-      ) : null}
-      {isShowingGroups ? (
-        <SearchResultSection
-          conversations={visibleGroups}
-          hasMore={expandedSection === null && groups.length > GROUP_PREVIEW_LIMIT}
-          keyword={keyword}
-          onExpand={() => onExpand("group")}
-          onSelect={onSelect}
-          title="群聊"
-        />
-      ) : null}
-    </div>
+    <ScrollArea
+      className="h-full"
+      data-testid="conversation-search-results-scroll-area"
+    >
+      <div>
+        {isShowingCustomers ? (
+          <SearchResultSection
+            conversations={visibleCustomers}
+            hasMore={expandedSection === null && customers.length > CUSTOMER_PREVIEW_LIMIT}
+            keyword={keyword}
+            onExpand={() => onExpand("single")}
+            onSelect={onSelect}
+            title="联系人"
+          />
+        ) : null}
+        {isShowingCustomers && isShowingGroups && customers.length > 0 && groups.length > 0 ? (
+          <div className="border-t border-divider" />
+        ) : null}
+        {isShowingGroups ? (
+          <SearchResultSection
+            conversations={visibleGroups}
+            hasMore={expandedSection === null && groups.length > GROUP_PREVIEW_LIMIT}
+            keyword={keyword}
+            onExpand={() => onExpand("group")}
+            onSelect={onSelect}
+            title="群聊"
+          />
+        ) : null}
+      </div>
+    </ScrollArea>
   );
 }
 

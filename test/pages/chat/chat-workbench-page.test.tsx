@@ -83,7 +83,9 @@ describe("ChatWorkbenchPage", () => {
     await user.keyboard("{Enter}");
 
     expect(composer).toHaveValue("");
-    expect(screen.getByText("@小林")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看已 @ 的 1 位群成员" })).toHaveTextContent(
+      "小林",
+    );
     expect(screen.queryByRole("button", { name: "移除 @小林" })).not.toBeInTheDocument();
 
     await user.type(composer, "今天统一看群公告");
@@ -127,7 +129,7 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("listbox", { name: "选择群成员" })).toBeInTheDocument();
   });
 
-  it("removes selected group member mention tags", async () => {
+  it("removes selected group member mention tags from the hover menu", async () => {
     const user = userEvent.setup();
 
     render(<ChatWorkbenchPage />);
@@ -140,11 +142,51 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("option", { name: "小林" }));
 
     expect(screen.queryByRole("button", { name: "移除 @小林" })).not.toBeInTheDocument();
-    await user.hover(screen.getByText("@小林"));
+    await user.hover(screen.getByRole("button", { name: "查看已 @ 的 1 位群成员" }));
 
     await user.click(screen.getByRole("button", { name: "移除 @小林" }));
 
-    expect(screen.queryByText("@小林")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看已 @ 的 1 位群成员" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the selected member menu open when removing one of several members", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+
+    const composer = await screen.findByPlaceholderText("请输入消息……");
+    await user.type(composer, "@小");
+    await user.click(screen.getByRole("option", { name: "小林" }));
+    await user.type(composer, "@睿");
+    await user.click(screen.getByRole("option", { name: "睿白鸽" }));
+
+    await user.hover(screen.getByRole("button", { name: "查看已 @ 的 2 位群成员" }));
+    await user.click(screen.getByRole("button", { name: "移除 @小林" }));
+
+    expect(screen.getByRole("button", { name: "移除 @睿白鸽" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看已 @ 的 1 位群成员" })).toHaveTextContent(
+      "睿白鸽",
+    );
+  });
+
+  it("opens the selected member menu from keyboard focus", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+
+    const composer = await screen.findByPlaceholderText("请输入消息……");
+    await user.type(composer, "@小");
+    await user.click(screen.getByRole("option", { name: "小林" }));
+
+    fireEvent.focus(screen.getByRole("button", { name: "查看已 @ 的 1 位群成员" }));
+
+    expect(screen.getByRole("button", { name: "移除 @小林" })).toBeInTheDocument();
   });
 
   it("shows a retry icon before failed messages and retries on click", async () => {

@@ -225,27 +225,4 @@
   .chat-composer-textarea::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
   }
-
-  .chat-composer-mention-row {
-    scrollbar-gutter: stable;
-    scrollbar-color: var(--scrollbar-thumb) transparent;
-    scrollbar-width: thin;
-  }
-
-  .chat-composer-mention-row::-webkit-scrollbar {
-    height: 3px;
-  }
-
-  .chat-composer-mention-row::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .chat-composer-mention-row::-webkit-scrollbar-thumb {
-    border-radius: 999px;
-    background: var(--scrollbar-thumb);
-  }
-
-  .chat-composer-mention-row::-webkit-scrollbar-thumb:hover {
-    background: var(--scrollbar-thumb-hover);
-  }
 }

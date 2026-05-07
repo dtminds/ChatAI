@@ -16,6 +16,11 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -76,11 +81,12 @@ export function ChatComposer({
   textareaRef,
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
-  const mentionCloseTimerRef = useRef<number | null>(null);
-  const [hoveredMentionMemberId, setHoveredMentionMemberId] = useState<string | null>(null);
+  const mentionDropdownCloseTimerRef = useRef<number | null>(null);
+  const [isMentionDropdownOpen, setIsMentionDropdownOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(draft.length);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isMentionPickerDismissed, setIsMentionPickerDismissed] = useState(false);
+  const mentionSummaryLabel = `查看已 @ 的 ${selectedMentionMembers.length} 位群成员`;
   const mentionTrigger = useMemo(
     () => getMentionTrigger(draft, cursorPosition),
     [cursorPosition, draft],
@@ -120,42 +126,46 @@ export function ChatComposer({
 
   useEffect(() => {
     return () => {
-      if (mentionCloseTimerRef.current) {
-        window.clearTimeout(mentionCloseTimerRef.current);
+      if (mentionDropdownCloseTimerRef.current) {
+        window.clearTimeout(mentionDropdownCloseTimerRef.current);
       }
     };
   }, []);
 
-  const showMentionRemovePopover = (memberId: string) => {
-    if (mentionCloseTimerRef.current) {
-      window.clearTimeout(mentionCloseTimerRef.current);
-      mentionCloseTimerRef.current = null;
+  useEffect(() => {
+    if (selectedMentionMembers.length === 0) {
+      setIsMentionDropdownOpen(false);
+    }
+  }, [selectedMentionMembers.length]);
+
+  const keepMentionDropdownOpen = () => {
+    if (mentionDropdownCloseTimerRef.current) {
+      window.clearTimeout(mentionDropdownCloseTimerRef.current);
+      mentionDropdownCloseTimerRef.current = null;
     }
 
-    setHoveredMentionMemberId(memberId);
+    setIsMentionDropdownOpen(true);
   };
 
-  const scheduleMentionRemovePopoverClose = (memberId: string) => {
-    if (mentionCloseTimerRef.current) {
-      window.clearTimeout(mentionCloseTimerRef.current);
+  const scheduleMentionDropdownClose = () => {
+    if (mentionDropdownCloseTimerRef.current) {
+      window.clearTimeout(mentionDropdownCloseTimerRef.current);
     }
 
-    mentionCloseTimerRef.current = window.setTimeout(() => {
-      setHoveredMentionMemberId((currentMemberId) =>
-        currentMemberId === memberId ? null : currentMemberId,
-      );
-      mentionCloseTimerRef.current = null;
-    }, 120);
+    mentionDropdownCloseTimerRef.current = window.setTimeout(() => {
+      setIsMentionDropdownOpen(false);
+      mentionDropdownCloseTimerRef.current = null;
+    }, 150);
   };
 
-  const handleRemoveMentionMember = (memberId: string) => {
-    if (mentionCloseTimerRef.current) {
-      window.clearTimeout(mentionCloseTimerRef.current);
-      mentionCloseTimerRef.current = null;
-    }
-
-    setHoveredMentionMemberId(null);
+  const removeMentionMember = (memberId: string) => {
     onRemoveMentionMember(memberId);
+
+    if (selectedMentionMembers.length <= 1) {
+      setIsMentionDropdownOpen(false);
+    } else {
+      keepMentionDropdownOpen();
+    }
   };
 
   useEffect(() => {
@@ -246,7 +256,7 @@ export function ChatComposer({
 
   return (
     <div className="space-y-1.5 bg-surface px-5 py-3">
-      <div className="ml-[-6px] flex items-center justify-between gap-3 text-sm text-muted-foreground">
+      <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <div className="relative" ref={emojiPickerRef}>
             <button
@@ -317,44 +327,8 @@ export function ChatComposer({
 
       <div className="relative">
         {selectedMentionMembers.length > 0 ? (
-          <div className="chat-composer-mention-bar flex min-h-8 items-center gap-3 border-b mb-1 border-divider/70">
-            <div className="chat-composer-mention-row flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-              {selectedMentionMembers.map((member) => (
-                <span className="inline-flex shrink-0 pt-1 pb-2" key={member.id}>
-                  <span
-                    className={cn(
-                      "relative inline-flex text-[13px] font-medium text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/20",
-                      hoveredMentionMemberId === member.id && "z-10",
-                    )}
-                    onBlur={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget)) {
-                        setHoveredMentionMemberId((currentMemberId) =>
-                          currentMemberId === member.id ? null : currentMemberId,
-                        );
-                      }
-                    }}
-                    onFocus={() => showMentionRemovePopover(member.id)}
-                    onMouseEnter={() => showMentionRemovePopover(member.id)}
-                    onMouseLeave={() => scheduleMentionRemovePopoverClose(member.id)}
-                    tabIndex={0}
-                  >
-                    @{member.displayName}
-
-                    {hoveredMentionMemberId === member.id ? (
-                      <button
-                        aria-label={`移除 @${member.displayName}`}
-                        className="absolute -right-2 top-1 inline-flex size-4 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-popover text-primary shadow-[0_4px_12px_var(--shadow-soft)] hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
-                        onClick={() => handleRemoveMentionMember(member.id)}
-                        onMouseDown={(event) => event.preventDefault()}
-                        type="button"
-                      >
-                        <HugeiconsIcon icon={Cancel01Icon} size={10} strokeWidth={2} />
-                      </button>
-                    ) : null}
-                  </span>
-                </span>
-              ))}
-            </div>
+          <div className="flex min-h-8 items-center gap-1 border-b border-divider/70 mb-1 text-[13px]">
+            <span className="shrink-0 text-muted-foreground">在</span>
 
             <Select
               onValueChange={(value) =>
@@ -364,15 +338,76 @@ export function ChatComposer({
             >
               <SelectTrigger
                 aria-label="选择 @ 插入位置"
-                className="h-7 min-w-0 shrink-0 border-0 bg-transparent px-1.5 pb-1.5 text-primary focus:ring-0"
+                className="h-7 min-w-0 shrink-0 border-0 bg-transparent text-[13px] px-1 py-1 text-primary focus:ring-0"
               >
                 <span>{mentionInsertPosition === "start" ? "文首" : "文尾"}</span>
               </SelectTrigger>
-              <SelectContent align="end">
+              <SelectContent align="start">
                 <SelectItem value="start">文首</SelectItem>
                 <SelectItem value="end">文尾</SelectItem>
               </SelectContent>
             </Select>
+
+            <span className="shrink-0 text-muted-foreground">@ {selectedMentionMembers.length} 人：</span>
+
+            <DropdownMenu
+              open={isMentionDropdownOpen}
+              onOpenChange={setIsMentionDropdownOpen}
+              modal={false}
+            >
+              <DropdownMenuTrigger asChild>
+                <button
+                  aria-label={mentionSummaryLabel}
+                  className="min-w-0 flex-1 cursor-default truncate text-left text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                  onBlur={scheduleMentionDropdownClose}
+                  onFocus={keepMentionDropdownOpen}
+                  onMouseEnter={keepMentionDropdownOpen}
+                  onMouseLeave={scheduleMentionDropdownClose}
+                  type="button"
+                >
+                  {selectedMentionMembers.map((m) => m.displayName).join("，")}
+                </button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent
+                align="start"
+                side="top"
+                sideOffset={8}
+                className="w-56 max-h-64 overflow-y-auto"
+                onCloseAutoFocus={(e) => e.preventDefault()}
+                onFocusCapture={keepMentionDropdownOpen}
+                onMouseEnter={keepMentionDropdownOpen}
+                onMouseLeave={scheduleMentionDropdownClose}
+              >
+                {selectedMentionMembers.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex items-center gap-2 rounded-[8px] px-2.5 py-1.5"
+                  >
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-muted-foreground">
+                      {member.displayName.slice(0, 1)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{member.displayName}</span>
+                    <button
+                      aria-label={`移除 @${member.displayName}`}
+                      className="inline-flex size-5 shrink-0 items-center justify-center rounded transition-colors hover:bg-surface-muted hover:text-destructive"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        removeMentionMember(member.id);
+                      }}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                      type="button"
+                    >
+                      <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={2} />
+                    </button>
+                  </div>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         ) : null}
 

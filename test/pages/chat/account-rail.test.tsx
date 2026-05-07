@@ -88,7 +88,7 @@ describe("AccountRail", () => {
     expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");
   });
 
-  it("uses a distinct muted treatment for untaken account labels while keeping the online dot green", () => {
+  it("uses a distinct warning treatment for untaken account labels and dots", () => {
     render(
       <AccountRail
         accounts={accounts}
@@ -101,9 +101,8 @@ describe("AccountRail", () => {
     const untakenBadge = screen.getByText("未接管").closest("span")?.parentElement;
     const untakenDot = untakenBadge?.querySelector("[data-testid='account-status-dot']");
 
-    expect(untakenBadge).toHaveClass("bg-warning-muted");
     expect(untakenBadge).toHaveClass("text-warning");
-    expect(untakenDot).toHaveClass("bg-success");
+    expect(untakenDot).toHaveClass("bg-warning");
   });
 
   it("shows taken-over account unread badges on the avatar", () => {

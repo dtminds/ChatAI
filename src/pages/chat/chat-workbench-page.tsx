@@ -91,15 +91,13 @@ export function ChatWorkbenchPage() {
     !isActiveAccountOffline &&
     isActiveAccountTakenOver &&
     activeSendStatus !== "sending";
-  const composerHint = isActiveAccountOffline
-    ? "当前账号离线，暂时无法发送消息。"
+  const composerPlaceholder = canSendMessage
+    ? "请输入消息……"
+    : isActiveAccountOffline
+      ? "当前账号离线，暂时无法发送消息"
     : !isActiveAccountTakenOver
-      ? "当前账号未接管，只能查看消息。"
-      : pollState.status === "error"
-        ? "轮询暂时失败，消息状态可能延迟回收。"
-        : activeSendStatus === "sending"
-          ? "消息已受理，等待轮询回收最终状态。"
-          : undefined;
+      ? "当前账号未接管，暂时无法发送消息"
+      : "当前会话暂不可发送消息";
 
   const { handleLoadOlderMessages, handleMessageViewportScroll } =
     useMessageScrollRestoration({
@@ -233,7 +231,7 @@ export function ChatWorkbenchPage() {
               activeHistoryStatus={activeHistoryStatus}
               activeMessageSeq={activeMessageSeq}
               canSendMessage={canSendMessage}
-              composerHint={composerHint}
+              composerPlaceholder={composerPlaceholder}
               customer={activeCustomer}
               customerPanelWidth={customerPanelWidth}
               draft={draft}

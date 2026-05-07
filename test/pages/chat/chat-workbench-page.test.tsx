@@ -105,11 +105,11 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "念都堂" }));
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("当前会话暂不可发送消息")).toBeDisabled();
+      expect(screen.getByPlaceholderText("当前账号未接管，暂时无法发送消息")).toBeDisabled();
       expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
       expect(
-        screen.getByText("当前账号未接管，只能查看消息。"),
-      ).toBeInTheDocument();
+        screen.queryByText("当前账号未接管，暂时无法发送消息。"),
+      ).not.toBeInTheDocument();
     });
   });
 

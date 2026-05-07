@@ -30,7 +30,6 @@ import type { WechatEmojiName } from "@/pages/chat/wechat-emoji";
 
 type ChatComposerProps = {
   canSendMessage: boolean;
-  composerHint?: string;
   draft: string;
   inputEnterBehavior: InputEnterBehavior;
   isEmojiPickerOpen: boolean;
@@ -39,12 +38,12 @@ type ChatComposerProps = {
   onEmojiSelect: (name: WechatEmojiName) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onSendDraft: () => void;
+  placeholder: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
 };
 
 export function ChatComposer({
   canSendMessage,
-  composerHint,
   draft,
   inputEnterBehavior,
   isEmojiPickerOpen,
@@ -53,6 +52,7 @@ export function ChatComposer({
   onEmojiSelect,
   onEnterBehaviorChange,
   onSendDraft,
+  placeholder,
   textareaRef,
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
@@ -177,15 +177,10 @@ export function ChatComposer({
         disabled={!canSendMessage}
         onChange={(event) => onDraftChange(event.target.value)}
         onKeyDown={handleDraftKeyDown}
-        placeholder={canSendMessage ? "请输入消息……" : "当前会话暂不可发送消息"}
+        placeholder={placeholder}
         ref={textareaRef}
         value={draft}
       />
-      {composerHint ? (
-        <p className="px-0.5 text-[12px] leading-5 text-muted-foreground">
-          {composerHint}
-        </p>
-      ) : null}
     </div>
   );
 }

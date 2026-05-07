@@ -18,7 +18,7 @@ type ChatPanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
   activeMessageSeq: number;
   canSendMessage: boolean;
-  composerHint?: string;
+  composerPlaceholder: string;
   customer?: CustomerProfile;
   customerPanelWidth: number;
   draft: string;
@@ -50,7 +50,7 @@ export function ChatPanel({
   activeHistoryStatus,
   activeMessageSeq,
   canSendMessage,
-  composerHint,
+  composerPlaceholder,
   customer,
   customerPanelWidth,
   draft,
@@ -101,7 +101,6 @@ export function ChatPanel({
 
           <ChatComposer
             canSendMessage={canSendMessage}
-            composerHint={composerHint}
             draft={draft}
             inputEnterBehavior={inputEnterBehavior}
             isEmojiPickerOpen={isEmojiPickerOpen}
@@ -110,6 +109,7 @@ export function ChatPanel({
             onEmojiSelect={onEmojiSelect}
             onEnterBehaviorChange={onEnterBehaviorChange}
             onSendDraft={onSendDraft}
+            placeholder={composerPlaceholder}
             textareaRef={textareaRef}
           />
         </div>

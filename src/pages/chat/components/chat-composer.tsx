@@ -36,7 +36,6 @@ export type MentionInsertPosition = "start" | "end";
 
 type ChatComposerProps = {
   canSendMessage: boolean;
-  composerHint?: string;
   draft: string;
   groupMembers: GroupMember[];
   inputEnterBehavior: InputEnterBehavior;
@@ -52,12 +51,12 @@ type ChatComposerProps = {
   onSelectMentionMember: (member: GroupMember, triggerStart: number, triggerEnd: number) => void;
   onSendDraft: () => void;
   selectedMentionMembers: GroupMember[];
+  placeholder: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
 };
 
 export function ChatComposer({
   canSendMessage,
-  composerHint,
   draft,
   groupMembers,
   inputEnterBehavior,
@@ -73,6 +72,7 @@ export function ChatComposer({
   onSelectMentionMember,
   onSendDraft,
   selectedMentionMembers,
+  placeholder,
   textareaRef,
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
@@ -422,7 +422,7 @@ export function ChatComposer({
           onClick={(event) => setCursorPosition(event.currentTarget.selectionStart)}
           onKeyDown={handleDraftKeyDown}
           onKeyUp={(event) => setCursorPosition(event.currentTarget.selectionStart)}
-          placeholder={canSendMessage ? "请输入消息……" : "当前会话暂不可发送消息"}
+          placeholder={placeholder}
           ref={textareaRef}
           value={draft}
         />

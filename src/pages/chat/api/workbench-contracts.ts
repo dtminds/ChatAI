@@ -7,8 +7,6 @@ export type WorkbenchMessageContentType =
   | "h5"
   | "mini-program";
 
-export type WorkbenchConversationStatus = "claimed" | "public" | "follow-up";
-
 export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed" | "read";
 
 export type WorkbenchEmployeeDto = {
@@ -26,6 +24,7 @@ export type WorkbenchAccountDto = {
   unreadCount: number;
   lastMessageTime?: number;
   loginStatus: "online" | "offline";
+  takenOverEmployeeId?: string;
 };
 
 export type WorkbenchConversationSummaryDto = {
@@ -38,8 +37,6 @@ export type WorkbenchConversationSummaryDto = {
   lastMessageTime: number;
   unreadCount: number;
   mode: "single" | "group";
-  status: WorkbenchConversationStatus;
-  assignedEmployeeId?: string;
   isPinned?: boolean;
   priority: "high" | "medium" | "low";
 };
@@ -121,6 +118,6 @@ export type WorkbenchConversationReadResponse = {
   accountUnreadCount: number;
 };
 
-export type WorkbenchClaimConversationResponse = {
-  conversation: WorkbenchConversationSummaryDto;
+export type WorkbenchTakeOverAccountResponse = {
+  account: WorkbenchAccountDto;
 };

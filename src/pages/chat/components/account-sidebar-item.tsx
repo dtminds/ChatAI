@@ -1,68 +1,143 @@
+import { startTransition } from "react";
+import { UserCheck01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { Account } from "@/pages/chat/chat-types";
 
 export function AccountSidebarItem({
   account,
+  currentEmployeeId,
   isActive,
   onClick,
+  onTakeOverAccount,
+  takeoverStatus,
 }: {
   account: Account;
+  currentEmployeeId?: string;
   isActive: boolean;
   onClick: () => void;
+  onTakeOverAccount?: (accountId: string) => void | Promise<void>;
+  takeoverStatus: "idle" | "taking-over";
 }) {
+  const isOffline = account.loginStatus === "offline";
+  const isTakenOverByCurrentUser =
+    !!account.takenOverEmployeeId && account.takenOverEmployeeId === currentEmployeeId;
+  const statusLabel = isOffline ? "离线" : isTakenOverByCurrentUser ? "接管中" : "未接管";
+  const canTakeOver = !isOffline && !isTakenOverByCurrentUser && takeoverStatus !== "taking-over";
+  const shouldShowUnreadBadge = isTakenOverByCurrentUser && !!account.unreadCount;
+  const statusBadge = (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-1 text-[10px] font-medium leading-none",
+        isOffline && "text-muted-foreground",
+        !isOffline && isTakenOverByCurrentUser && "text-success",
+        !isOffline && !isTakenOverByCurrentUser && "text-warning",
+      )}
+    >
+      <span
+        data-testid="account-status-dot"
+        className={cn(
+          "size-1.5 rounded-full",
+          isOffline && "bg-muted-foreground/50",
+          !isOffline && isTakenOverByCurrentUser && "bg-success",
+          !isOffline && !isTakenOverByCurrentUser && "bg-warning"
+        )}
+      />
+      <span>{takeoverStatus === "taking-over" ? "接管中" : statusLabel}</span>
+    </span>
+  );
+
   return (
-    <button
+    <div
       className={cn(
         "relative flex w-full items-start gap-2 rounded-[16px] border px-2.5 py-2 text-left transition-colors",
         isActive
           ? "border-border bg-surface"
           : "border-transparent bg-transparent hover:bg-surface-hover",
       )}
-      onClick={onClick}
       title={account.name}
-      type="button"
     >
-      <Avatar className="mt-0.5 size-10">
-        <AvatarImage alt={account.name} src={account.avatarUrl} />
-        <AvatarFallback>{account.name.slice(0, 1)}</AvatarFallback>
-      </Avatar>
+      <div
+        className="relative mt-0.5"
+        data-testid={`account-avatar-wrap-${account.id}`}
+      >
+        <Avatar className="size-10">
+          <AvatarImage alt={account.name} src={account.avatarUrl} />
+          <AvatarFallback>{account.name.slice(0, 1)}</AvatarFallback>
+        </Avatar>
+        {shouldShowUnreadBadge ? (
+          <span
+            aria-label={`${account.name} 未读消息 ${account.unreadCount}`}
+            className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground"
+          >
+            {account.unreadCount}
+          </span>
+        ) : null}
+      </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-[13px] font-semibold text-foreground">
-            {account.name}
-          </p>
-          <div
-            className={cn(
-              "flex shrink-0 items-center gap-1 text-[10px] leading-none",
-              account.loginStatus === "offline"
-                ? "text-muted-foreground"
-                : "text-success",
-            )}
+          <button
+            className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+            onClick={onClick}
+            type="button"
           >
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                account.loginStatus === "offline"
-                  ? "bg-muted-foreground/50"
-                  : "bg-success",
-              )}
-            />
-            <span>{account.loginStatus === "offline" ? "离线" : "在线"}</span>
-          </div>
+            {account.name}
+          </button>
+          {canTakeOver ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <span
+                  aria-label={`${account.name} ${statusLabel}`}
+                  className="inline-flex cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  role="button"
+                  tabIndex={0}
+                >
+                  {statusBadge}
+                </span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[120px]">
+                <DropdownMenuItem
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    startTransition(() => {
+                      void onTakeOverAccount?.(account.id);
+                    });
+                  }}
+                >
+                  <HugeiconsIcon
+                    color="currentColor"
+                    icon={UserCheck01Icon}
+                    size={14}
+                    strokeWidth={1.8}
+                  />
+                  <span>接管账号</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            statusBadge
+          )}
         </div>
         <div className="mt-1 flex items-center justify-between gap-2">
-          <p className="truncate text-[12px] text-muted-foreground">
+          <button
+            className="min-w-0 flex-1 truncate text-left text-[12px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+            onClick={onClick}
+            type="button"
+          >
             {account.operator}
-          </p>
-          {account.unreadCount ? (
-            <span className="rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-semibold leading-none text-destructive-foreground">
-              {account.unreadCount}
-            </span>
-          ) : null}
+          </button>
         </div>
       </div>
-    </button>
+    </div>
   );
 }

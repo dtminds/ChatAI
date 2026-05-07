@@ -16,19 +16,16 @@ import type { MentionInsertPosition } from "@/pages/chat/components/chat-compose
 
 type ChatPanelProps = {
   accountName?: string;
-  activeClaimStatus: "idle" | "claiming";
   activeConversation?: Conversation;
   activeHistoryStatus: "idle" | "loading" | "error";
   activeMessageSeq: number;
   canSendMessage: boolean;
-  composerHint?: string;
+  composerPlaceholder: string;
   customer?: CustomerProfile;
   customerPanelWidth: number;
   draft: string;
   groupMembers: GroupMember[];
   inputEnterBehavior: InputEnterBehavior;
-  isClaimedByCurrentUser: boolean;
-  isClaimedByOther: boolean;
   isConversationLoading: boolean;
   isEmojiPickerOpen: boolean;
   isResizingCustomerPanel: boolean;
@@ -36,7 +33,6 @@ type ChatPanelProps = {
   messages: Message[];
   selectedMentionMembers: GroupMember[];
   hasMoreHistory: boolean;
-  onClaimConversation: () => void | Promise<void>;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
@@ -58,19 +54,16 @@ type ChatPanelProps = {
 
 export function ChatPanel({
   accountName,
-  activeClaimStatus,
   activeConversation,
   activeHistoryStatus,
   activeMessageSeq,
   canSendMessage,
-  composerHint,
+  composerPlaceholder,
   customer,
   customerPanelWidth,
   draft,
   groupMembers,
   inputEnterBehavior,
-  isClaimedByCurrentUser,
-  isClaimedByOther,
   isConversationLoading,
   isEmojiPickerOpen,
   isResizingCustomerPanel,
@@ -78,7 +71,6 @@ export function ChatPanel({
   messages,
   selectedMentionMembers,
   hasMoreHistory,
-  onClaimConversation,
   onCustomerPanelResizeStart,
   onDraftChange,
   onEmojiPickerOpenChange,
@@ -100,12 +92,8 @@ export function ChatPanel({
   return (
     <section className="flex min-h-0 min-w-0 flex-col bg-surface">
       <ChatHeader
-        activeClaimStatus={activeClaimStatus}
         activeConversation={activeConversation}
         activeMessageSeq={activeMessageSeq}
-        isClaimedByCurrentUser={isClaimedByCurrentUser}
-        isClaimedByOther={isClaimedByOther}
-        onClaimConversation={onClaimConversation}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1" ref={workbenchBodyRef}>
@@ -127,7 +115,6 @@ export function ChatPanel({
 
           <ChatComposer
             canSendMessage={canSendMessage}
-            composerHint={composerHint}
             draft={draft}
             groupMembers={groupMembers}
             isGroupConversation={activeConversation?.mode === "group"}
@@ -143,6 +130,7 @@ export function ChatPanel({
             onSelectMentionMember={onSelectMentionMember}
             onSendDraft={onSendDraft}
             selectedMentionMembers={selectedMentionMembers}
+            placeholder={composerPlaceholder}
             textareaRef={textareaRef}
           />
         </div>

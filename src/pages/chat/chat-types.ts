@@ -32,6 +32,7 @@ export type Account = {
   unreadCount?: number;
   lastMessageTime?: number;
   loginStatus?: "online" | "offline";
+  takenOverEmployeeId?: string;
 };
 
 export type Conversation = {
@@ -45,10 +46,8 @@ export type Conversation = {
   quietFor: string;
   unread: number;
   mode: ChatMode;
-  status: "claimed" | "public" | "follow-up";
   priority: "high" | "medium" | "low";
   isPinned?: boolean;
-  assignedEmployeeId?: string;
   updatedAtMs?: number;
 };
 

@@ -32,13 +32,19 @@ const railItems = [
 type AccountRailProps = {
   accounts: Account[];
   activeAccountId?: string;
+  currentEmployeeId?: string;
   onSelectAccount: (accountId: string) => void | Promise<void>;
+  onTakeOverAccount?: (accountId: string) => void | Promise<void>;
+  takeoverStatusByAccountId?: Record<string, "idle" | "taking-over">;
 };
 
 export function AccountRail({
   accounts,
   activeAccountId,
+  currentEmployeeId,
   onSelectAccount,
+  onTakeOverAccount,
+  takeoverStatusByAccountId = {},
 }: AccountRailProps) {
   const signedInAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
@@ -93,6 +99,7 @@ export function AccountRail({
             return (
               <AccountSidebarItem
                 account={account}
+                currentEmployeeId={currentEmployeeId}
                 isActive={isActive}
                 key={account.id}
                 onClick={() => {
@@ -100,6 +107,8 @@ export function AccountRail({
                     void onSelectAccount(account.id);
                   });
                 }}
+                onTakeOverAccount={onTakeOverAccount}
+                takeoverStatus={takeoverStatusByAccountId[account.id] ?? "idle"}
               />
             );
           })}

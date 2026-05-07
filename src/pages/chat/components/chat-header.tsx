@@ -20,8 +20,8 @@ type ChatHeaderProps = {
 };
 
 export function ChatHeader({ activeConversation }: ChatHeaderProps) {
-  const [themePreference, setThemePreference] = useState(getInitialThemePreference);
-  const [isSystemDarkMode, setIsSystemDarkMode] = useState(getSystemDarkMode);
+  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const [isSystemDarkMode, setIsSystemDarkMode] = useState(false);
   const isDarkMode =
     themePreference === "dark" ||
     (themePreference === "system" && isSystemDarkMode);
@@ -31,8 +31,12 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
   }, [isDarkMode]);
 
   useLayoutEffect(() => {
-    const mediaQuery = window.matchMedia(DARK_MODE_QUERY);
+    setThemePreference(getInitialThemePreference());
 
+    const mediaQuery = getDarkModeMediaQuery();
+    if (!mediaQuery) {
+      return;
+    }
     setIsSystemDarkMode(mediaQuery.matches);
 
     const handleSystemThemeChange = (event: MediaQueryListEvent) => {
@@ -109,8 +113,10 @@ function getInitialThemePreference(): ThemePreference {
   return readThemePreference() ?? "system";
 }
 
-function getSystemDarkMode() {
-  return window.matchMedia(DARK_MODE_QUERY).matches;
+function getDarkModeMediaQuery() {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(DARK_MODE_QUERY)
+    : undefined;
 }
 
 function readThemePreference(): ThemePreference | undefined {

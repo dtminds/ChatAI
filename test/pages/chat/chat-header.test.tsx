@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import type { Conversation } from "@/pages/chat/chat-types";
@@ -74,6 +75,18 @@ describe("ChatHeader", () => {
     expect(screen.getByText(conversation.customerName)).toBeInTheDocument();
     expect(screen.queryByText(/消息游标/)).not.toBeInTheDocument();
     expect(screen.queryByText(/22天没聊了/)).not.toBeInTheDocument();
+  });
+
+  it("does not read browser storage or media queries while rendering", () => {
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem");
+    const matchMediaSpy = vi.spyOn(window, "matchMedia");
+
+    renderToString(
+      <ChatHeader />,
+    );
+
+    expect(getItemSpy).not.toHaveBeenCalled();
+    expect(matchMediaSpy).not.toHaveBeenCalled();
   });
 
   it("restores the saved system mode preference", () => {

@@ -19,6 +19,14 @@ export function VideoMessageCard({
   onPlayClick,
 }: VideoMessageCardProps) {
   const frameStyle = getVideoFrameStyle(content);
+  const handlePlayClick = () => {
+    if (onPlayClick) {
+      onPlayClick();
+      return;
+    }
+
+    window.open(content.videoUrl, "_blank", "noopener,noreferrer");
+  };
 
   return (
     <div
@@ -38,7 +46,7 @@ export function VideoMessageCard({
       <button
         aria-label={`播放视频：${content.alt}`}
         className="absolute left-1/2 top-1/2 z-1 inline-flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/90 bg-black/10 text-white shadow-[0_2px_12px_var(--shadow-medium)] outline-none backdrop-blur-[1px] transition-colors hover:bg-black/20 focus-visible:ring-4 focus-visible:ring-white/35"
-        onClick={onPlayClick}
+        onClick={handlePlayClick}
         type="button"
       >
         <HugeiconsIcon
@@ -49,9 +57,14 @@ export function VideoMessageCard({
         />
       </button>
 
-      <span className="absolute bottom-1.5 right-1.5 z-1 rounded-[4px] bg-black/45 px-1.5 py-0.5 text-[12px] font-semibold leading-4 text-white shadow-sm">
-        {content.durationLabel}
-      </span>
+      {content.durationLabel ? (
+        <span
+          className="absolute bottom-1.5 right-1.5 z-1 rounded-[4px] bg-black/45 px-1.5 py-0.5 text-[12px] font-semibold leading-4 text-white shadow-sm"
+          data-testid="video-duration"
+        >
+          {content.durationLabel}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -67,7 +80,8 @@ function getVideoFrameStyle(content: VideoMessageContent): CSSProperties {
 
   return {
     width: `${Math.max(Math.round(rawWidth * scale), MIN_VIDEO_DIMENSION)}px`,
-    height: `${Math.max(Math.round(rawHeight * scale), MIN_VIDEO_DIMENSION)}px`,
+    height: "auto",
+    aspectRatio: `${rawWidth} / ${rawHeight}`,
     maxWidth: "min(22rem, calc(100vw - 7rem))",
   };
 }

@@ -1,10 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage, VideoMessageContent } from "@/pages/chat/chat-types";
 import { MessageContentRenderer, VideoMessageCard } from "@/pages/chat/components/message";
 
 describe("MessageContentRenderer video messages", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders a horizontal video preview with a play control and duration", () => {
     render(
       <MessageContentRenderer
@@ -66,6 +70,41 @@ describe("MessageContentRenderer video messages", () => {
     await user.click(screen.getByRole("button", { name: "播放视频：舞台活动视频封面" }));
 
     expect(handlePlayClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the video URL when no play handler is provided", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    render(
+      <VideoMessageCard
+        content={createVideoContent({
+          alt: "舞台活动视频封面",
+          durationLabel: "1:01",
+          height: 360,
+          width: 640,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放视频：舞台活动视频封面" }));
+
+    expect(openSpy).toHaveBeenCalledWith("/videos/demo.mp4", "_blank", "noopener,noreferrer");
+  });
+
+  it("does not render an empty duration badge", () => {
+    render(
+      <VideoMessageCard
+        content={createVideoContent({
+          alt: "舞台活动视频封面",
+          durationLabel: "",
+          height: 360,
+          width: 640,
+        })}
+      />,
+    );
+
+    expect(screen.queryByTestId("video-duration")).not.toBeInTheDocument();
   });
 });
 

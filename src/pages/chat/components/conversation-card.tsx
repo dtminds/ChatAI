@@ -44,7 +44,7 @@ export function ConversationCard({
         "group relative mb-1 w-full overflow-visible border-b px-2.5 py-2.5 text-left",
         isActive
           ? "rounded-md border-transparent bg-surface-selected text-foreground"
-          : "border-divider bg-surface",
+          : "border-divider/60 bg-surface",
       )}
     >
       <Button
@@ -61,7 +61,7 @@ export function ConversationCard({
             />
             <AvatarFallback>{conversation.customerName.slice(0, 1)}</AvatarFallback>
           </Avatar>
-          {conversation.unread > 0 && !isActive ? (
+          {conversation.unread > 0 ? (
             <div className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground">
               {conversation.unread}
             </div>

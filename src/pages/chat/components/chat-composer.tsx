@@ -7,9 +7,9 @@ import {
   useState,
 } from "react";
 import {
-  AiChat02Icon,
   ArrowUp02Icon,
   Cancel01Icon,
+  ChatDelayIcon,
   Image01Icon,
   SmileIcon,
 } from "@hugeicons/core-free-icons";
@@ -118,6 +118,8 @@ export function ChatComposer({
     filteredMentionMembers.length > 0;
   const canSubmitDraft =
     canSendMessage && (!!draft.trim() || selectedMentionMembers.length > 0);
+  const composerActionButtonClass =
+    "size-8 rounded-md p-0 shadow-none";
 
   useEffect(() => {
     setActiveMentionIndex(0);
@@ -257,19 +259,21 @@ export function ChatComposer({
   return (
     <div className="space-y-1.5 bg-surface px-5 py-3">
       <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 ml-[-6px]">
           <div className="relative" ref={emojiPickerRef}>
-            <button
+            <Button
               aria-label="微信表情"
               className={cn(
-                "inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-surface-hover hover:text-foreground",
+                composerActionButtonClass,
                 isEmojiPickerOpen && "bg-info-muted text-primary",
               )}
               onClick={() => onEmojiPickerOpenChange(!isEmojiPickerOpen)}
+              size="icon"
               type="button"
+              variant="ghost"
             >
               <HugeiconsIcon icon={SmileIcon} size={18} strokeWidth={1.8} />
-            </button>
+            </Button>
 
             {isEmojiPickerOpen ? (
               <div className="absolute bottom-full left-[-24px] z-30 mb-3">
@@ -277,20 +281,24 @@ export function ChatComposer({
               </div>
             ) : null}
           </div>
-          <button
+          <Button
             aria-label="发送图片"
-            className="inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-surface-hover hover:text-foreground"
+            className={composerActionButtonClass}
+            size="icon"
             type="button"
+            variant="ghost"
           >
             <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={1.8} />
-          </button>
-          <button
-            aria-label="AI 助手"
-            className="inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-surface-hover hover:text-foreground"
+          </Button>
+          <Button
+            aria-label="历史记录"
+            className={composerActionButtonClass}
+            size="icon"
             type="button"
+            variant="ghost"
           >
-            <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={1.8} />
-          </button>
+            <HugeiconsIcon icon={ChatDelayIcon} size={18} strokeWidth={1.8} />
+          </Button>
         </div>
         <div className="flex items-center gap-1">
           <Select
@@ -358,7 +366,7 @@ export function ChatComposer({
               <DropdownMenuTrigger asChild>
                 <button
                   aria-label={mentionSummaryLabel}
-                  className="min-w-0 flex-1 cursor-default truncate text-left text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                  className="min-w-0 flex-1 truncate text-left text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
                   onBlur={scheduleMentionDropdownClose}
                   onFocus={keepMentionDropdownOpen}
                   onMouseEnter={keepMentionDropdownOpen}

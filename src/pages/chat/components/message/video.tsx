@@ -19,13 +19,16 @@ export function VideoMessageCard({
   onPlayClick,
 }: VideoMessageCardProps) {
   const frameStyle = getVideoFrameStyle(content);
+  const mediaSize = getValidVideoSize(content);
   const handlePlayClick = () => {
     if (onPlayClick) {
       onPlayClick();
       return;
     }
 
-    window.open(content.videoUrl, "_blank", "noopener,noreferrer");
+    if (isSafeVideoUrl(content.videoUrl)) {
+      window.open(content.videoUrl, "_blank", "noopener,noreferrer");
+    }
   };
 
   return (
@@ -36,10 +39,10 @@ export function VideoMessageCard({
       <img
         alt={content.alt}
         className="absolute inset-0 h-full w-full object-cover"
-        height={content.height}
         loading="lazy"
         src={content.coverImageUrl}
-        width={content.width}
+        width={mediaSize.width}
+        height={mediaSize.height}
       />
       <div className="absolute inset-0 bg-black/5" />
 
@@ -70,8 +73,7 @@ export function VideoMessageCard({
 }
 
 function getVideoFrameStyle(content: VideoMessageContent): CSSProperties {
-  const rawWidth = content.width ?? DEFAULT_VIDEO_WIDTH;
-  const rawHeight = content.height ?? DEFAULT_VIDEO_HEIGHT;
+  const { height: rawHeight, width: rawWidth } = getValidVideoSize(content);
   const scale = Math.min(
     MAX_VIDEO_WIDTH / rawWidth,
     MAX_VIDEO_HEIGHT / rawHeight,
@@ -84,4 +86,32 @@ function getVideoFrameStyle(content: VideoMessageContent): CSSProperties {
     aspectRatio: `${rawWidth} / ${rawHeight}`,
     maxWidth: "min(22rem, calc(100vw - 7rem))",
   };
+}
+
+function getValidVideoSize(content: VideoMessageContent) {
+  return {
+    width: isPositiveFiniteNumber(content.width)
+      ? content.width
+      : DEFAULT_VIDEO_WIDTH,
+    height: isPositiveFiniteNumber(content.height)
+      ? content.height
+      : DEFAULT_VIDEO_HEIGHT,
+  };
+}
+
+function isPositiveFiniteNumber(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isSafeVideoUrl(url: string) {
+  if (url.startsWith("/")) {
+    return true;
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:";
+  } catch {
+    return false;
+  }
 }

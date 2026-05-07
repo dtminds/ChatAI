@@ -92,6 +92,52 @@ describe("MessageContentRenderer video messages", () => {
     expect(openSpy).toHaveBeenCalledWith("/videos/demo.mp4", "_blank", "noopener,noreferrer");
   });
 
+  it("does not open unsafe video URLs", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    render(
+      <VideoMessageCard
+        content={{
+          ...createVideoContent({
+            alt: "舞台活动视频封面",
+            durationLabel: "1:01",
+            height: 360,
+            width: 640,
+          }),
+          videoUrl: "javascript:alert(1)",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放视频：舞台活动视频封面" }));
+
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it("falls back to default frame dimensions for invalid video sizes", () => {
+    render(
+      <VideoMessageCard
+        content={{
+          ...createVideoContent({
+            alt: "无效尺寸视频封面",
+            durationLabel: "1:01",
+            height: Number.NaN,
+            width: 0,
+          }),
+        }}
+      />,
+    );
+
+    const cover = screen.getByRole("img", { name: "无效尺寸视频封面" });
+    const frame = cover.parentElement;
+
+    expect(frame).toHaveStyle({
+      aspectRatio: "320 / 240",
+      width: "320px",
+    });
+  });
+
   it("does not render an empty duration badge", () => {
     render(
       <VideoMessageCard

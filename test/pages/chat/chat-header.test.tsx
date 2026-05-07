@@ -89,7 +89,7 @@ describe("ChatHeader", () => {
     expect(matchMediaSpy).not.toHaveBeenCalled();
   });
 
-  it("restores the saved system mode preference", () => {
+  it("restores the saved system mode preference", async () => {
     window.localStorage.setItem("chat-ai-theme", "system");
     setSystemColorScheme(true);
 
@@ -97,11 +97,13 @@ describe("ChatHeader", () => {
       <ChatHeader />,
     );
 
-    expect(document.documentElement).toHaveClass("dark");
-    expect(screen.getByRole("radio", { name: "跟随系统" })).toHaveAttribute(
-      "data-state",
-      "on",
-    );
+    await waitFor(() => {
+      expect(document.documentElement).toHaveClass("dark");
+      expect(screen.getByRole("radio", { name: "跟随系统" })).toHaveAttribute(
+        "data-state",
+        "on",
+      );
+    });
   });
 
   it("still toggles the theme when localStorage is unavailable", async () => {

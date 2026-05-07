@@ -1,8 +1,9 @@
 import { Navigate, createBrowserRouter } from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
-import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
+import { ChatWorkbenchRoutePage } from "@/pages/chat/chat-workbench-page";
+import { ChatSettingsPage } from "@/pages/chat/settings/chat-settings-page";
 
-export const router = createBrowserRouter([
+export const routerConfig = [
   {
     path: "/",
     element: <RootLayout />,
@@ -13,8 +14,18 @@ export const router = createBrowserRouter([
       },
       {
         path: "chat",
-        element: <ChatWorkbenchPage />,
+        element: <ChatWorkbenchRoutePage />,
+      },
+      {
+        path: "chat/settings",
+        element: <ChatSettingsPage />,
+      },
+      {
+        path: "chat/settings/:sectionId",
+        element: <ChatSettingsPage />,
       },
     ],
   },
-]);
+];
+
+export const router = createBrowserRouter(routerConfig);

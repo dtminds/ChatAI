@@ -34,6 +34,7 @@ type AccountRailProps = {
   activeAccountId?: string;
   currentEmployeeId?: string;
   onSelectAccount: (accountId: string) => void | Promise<void>;
+  onOpenSettings?: () => void;
   onTakeOverAccount?: (accountId: string) => void | Promise<void>;
   takeoverStatusByAccountId?: Record<string, "idle" | "taking-over">;
 };
@@ -42,6 +43,7 @@ export function AccountRail({
   accounts,
   activeAccountId,
   currentEmployeeId,
+  onOpenSettings,
   onSelectAccount,
   onTakeOverAccount,
   takeoverStatusByAccountId = {},
@@ -189,7 +191,12 @@ export function AccountRail({
             <div className="mx-2 h-px bg-divider" />
 
             <div className="space-y-1 pt-2">
-              <DropdownMenuItem className="h-8 gap-2 rounded-[12px] px-3 text-[13px] font-normal">
+              <DropdownMenuItem
+                className="h-8 gap-2 rounded-[12px] px-3 text-[13px] font-normal"
+                onSelect={() => {
+                  onOpenSettings?.();
+                }}
+              >
                 <HugeiconsIcon
                   color="currentColor"
                   icon={Settings03Icon}

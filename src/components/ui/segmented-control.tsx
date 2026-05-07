@@ -9,7 +9,7 @@ export function SegmentedControl({
   return (
     <ToggleGroupPrimitive.Root
       className={cn(
-        "inline-flex h-7 items-center gap-0.5 rounded-lg border border-border bg-surface-muted/50 p-0.5",
+        "inline-flex h-7 items-center gap-0.5 rounded-lg border border-border bg-surface-muted p-0.5",
         className,
       )}
       {...props}

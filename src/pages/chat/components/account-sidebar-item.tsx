@@ -31,6 +31,7 @@ export function AccountSidebarItem({
     !!account.takenOverEmployeeId && account.takenOverEmployeeId === currentEmployeeId;
   const statusLabel = isOffline ? "离线" : isTakenOverByCurrentUser ? "已接管" : "未接管";
   const canTakeOver = !isOffline && !isTakenOverByCurrentUser && takeoverStatus !== "taking-over";
+  const shouldShowUnreadBadge = isTakenOverByCurrentUser && !!account.unreadCount;
   const statusBadge = (
     <span
       className={cn(
@@ -117,7 +118,7 @@ export function AccountSidebarItem({
           >
             {account.operator}
           </button>
-          {account.unreadCount ? (
+          {shouldShowUnreadBadge ? (
             <span className="rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-semibold leading-none text-destructive-foreground">
               {account.unreadCount}
             </span>

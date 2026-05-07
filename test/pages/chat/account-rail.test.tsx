@@ -85,4 +85,17 @@ describe("AccountRail", () => {
 
     expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");
   });
+
+  it("hides unread badges for accounts that are not taken over", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("2")).not.toBeInTheDocument();
+  });
 });

@@ -88,20 +88,20 @@ export function AccountSidebarItem({
           >
             {account.name}
           </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <span
-                aria-label={`${account.name} ${statusLabel}`}
-                className="inline-flex cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => event.stopPropagation()}
-                role="button"
-                tabIndex={0}
-              >
-                {statusBadge}
-              </span>
-            </DropdownMenuTrigger>
-            {canTakeOver ? (
+          {canTakeOver ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <span
+                  aria-label={`${account.name} ${statusLabel}`}
+                  className="inline-flex cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  role="button"
+                  tabIndex={0}
+                >
+                  {statusBadge}
+                </span>
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-[120px]">
                 <DropdownMenuItem
                   onClick={(event) => {
@@ -120,8 +120,10 @@ export function AccountSidebarItem({
                   <span>接管账号</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
-            ) : null}
-          </DropdownMenu>
+            </DropdownMenu>
+          ) : (
+            statusBadge
+          )}
         </div>
         <div className="mt-1 flex items-center justify-between gap-2">
           <button

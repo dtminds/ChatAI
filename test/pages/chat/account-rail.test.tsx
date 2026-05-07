@@ -78,7 +78,8 @@ describe("AccountRail", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "lsave 接管中" })).toBeInTheDocument();
+    expect(screen.getByText("接管中")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "lsave 接管中" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "support 未接管" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "support 未接管" }));

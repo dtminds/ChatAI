@@ -21,6 +21,7 @@ const accounts: Account[] = [
     phone: "13800000000",
     takenOverEmployeeId: "emp-001",
     tone: "专业",
+    unreadCount: 7,
   },
   {
     id: "account-2",
@@ -77,13 +78,29 @@ describe("AccountRail", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "lsave 已接管" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "lsave 接管中" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "support 未接管" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "support 未接管" }));
     await user.click(screen.getByRole("menuitem", { name: "接管账号" }));
 
     expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");
+  });
+
+  it("shows taken-over account unread badges on the avatar", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    const badge = screen.getByLabelText("lsave 未读消息 7");
+
+    expect(badge).toHaveTextContent("7");
+    expect(badge.parentElement).toHaveAttribute("data-testid", "account-avatar-wrap-account-1");
   });
 
   it("hides unread badges for accounts that are not taken over", () => {

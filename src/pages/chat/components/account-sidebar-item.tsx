@@ -29,7 +29,7 @@ export function AccountSidebarItem({
   const isOffline = account.loginStatus === "offline";
   const isTakenOverByCurrentUser =
     !!account.takenOverEmployeeId && account.takenOverEmployeeId === currentEmployeeId;
-  const statusLabel = isOffline ? "离线" : isTakenOverByCurrentUser ? "已接管" : "未接管";
+  const statusLabel = isOffline ? "离线" : isTakenOverByCurrentUser ? "接管中" : "未接管";
   const canTakeOver = !isOffline && !isTakenOverByCurrentUser && takeoverStatus !== "taking-over";
   const shouldShowUnreadBadge = isTakenOverByCurrentUser && !!account.unreadCount;
   const statusBadge = (
@@ -61,10 +61,23 @@ export function AccountSidebarItem({
       )}
       title={account.name}
     >
-      <Avatar className="mt-0.5 size-10">
-        <AvatarImage alt={account.name} src={account.avatarUrl} />
-        <AvatarFallback>{account.name.slice(0, 1)}</AvatarFallback>
-      </Avatar>
+      <div
+        className="relative mt-0.5"
+        data-testid={`account-avatar-wrap-${account.id}`}
+      >
+        <Avatar className="size-10">
+          <AvatarImage alt={account.name} src={account.avatarUrl} />
+          <AvatarFallback>{account.name.slice(0, 1)}</AvatarFallback>
+        </Avatar>
+        {shouldShowUnreadBadge ? (
+          <span
+            aria-label={`${account.name} 未读消息 ${account.unreadCount}`}
+            className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground"
+          >
+            {account.unreadCount}
+          </span>
+        ) : null}
+      </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
@@ -118,11 +131,6 @@ export function AccountSidebarItem({
           >
             {account.operator}
           </button>
-          {shouldShowUnreadBadge ? (
-            <span className="rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-semibold leading-none text-destructive-foreground">
-              {account.unreadCount}
-            </span>
-          ) : null}
         </div>
       </div>
     </div>

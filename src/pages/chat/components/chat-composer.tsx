@@ -475,7 +475,7 @@ function getMentionTrigger(draft: string, cursorPosition: number) {
     return null;
   }
 
-  const atIndex = beforeCursor.lastIndexOf("@");
+  const atIndex = match.index + match[1].length;
 
   return {
     end: safeCursorPosition,

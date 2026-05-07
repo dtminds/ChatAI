@@ -1,12 +1,18 @@
 import {
   AccountSetting01Icon,
   Add01Icon,
+  AlertCircleIcon,
   ArrowLeft01Icon,
+  Calendar03Icon,
   Configuration01Icon,
   Delete02Icon,
+  Database01Icon,
   Edit02Icon,
   GridTableIcon,
+  HelpCircleIcon,
+  Layers01Icon,
   Moon02Icon,
+  Notification03Icon,
   PaintBrush02Icon,
   Search01Icon,
   SecurityCheckIcon,
@@ -21,11 +27,35 @@ import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as React from "react";
 import { Link, Navigate, NavLink, useParams } from "react-router-dom";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -43,6 +73,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const settingsSections = [
@@ -76,6 +112,12 @@ const settingsSections = [
     path: "/chat/settings/appearance",
     icon: PaintBrush02Icon,
   },
+  {
+    id: "ui-kit",
+    label: "组件示例",
+    path: "/chat/settings/ui-kit",
+    icon: Layers01Icon,
+  },
 ] as const;
 
 type SettingsSectionId = (typeof settingsSections)[number]["id"];
@@ -108,6 +150,7 @@ export function ChatSettingsPage() {
               {activeSectionId === "roles" ? <RolePermissionDemo /> : null}
               {activeSectionId === "workflow" ? <ReceptionWorkflowDemo /> : null}
               {activeSectionId === "appearance" ? <AppearanceDemo /> : null}
+              {activeSectionId === "ui-kit" ? <UiComponentDemo /> : null}
             </div>
           </div>
         </main>
@@ -588,6 +631,256 @@ function AppearanceDemo() {
   );
 }
 
+function UiComponentDemo() {
+  const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(
+    new Date(2026, 4, 7),
+  );
+
+  return (
+    <>
+      <PageHeader
+        description="基础组件参考页：弹窗、确认框、单选组、Tooltip、Calendar 和 Toast，方便开发设置类页面时直接复制局部结构。"
+        eyebrow="DEMO / UI KIT"
+        title="组件示例"
+      />
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_23rem]">
+        <div className="space-y-4">
+          <section className="rounded-[10px] border border-border bg-background p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">
+                  弹窗与确认流程
+                </h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                  用于编辑表单、危险操作确认和需要阻断当前任务的短流程。
+                </p>
+              </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      aria-label="查看弹窗使用说明"
+                      className="size-9 rounded-[8px]"
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <HugeiconsIcon
+                        color="currentColor"
+                        icon={HelpCircleIcon}
+                        size={17}
+                        strokeWidth={1.8}
+                      />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">
+                    优先用于短表单和破坏性确认
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button className="rounded-[10px]" type="button">
+                    <HugeiconsIcon
+                      color="currentColor"
+                      icon={Edit02Icon}
+                      size={17}
+                      strokeWidth={1.8}
+                    />
+                    打开编辑弹窗
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>编辑接待策略</DialogTitle>
+                    <DialogDescription>
+                      典型设置表单弹窗，适合低字段量的快速编辑场景。
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-2">
+                    <Field label="策略名称">
+                      <Input id="strategy-name" defaultValue="自动分配" />
+                    </Field>
+                    <Field label="说明">
+                      <Textarea
+                        id="strategy-description"
+                        defaultValue="按在线状态、当前负载和历史关系分配新会话。"
+                      />
+                    </Field>
+                  </div>
+                  <DialogFooter>
+                    <Button className="rounded-[10px]" type="button" variant="outline">
+                      取消
+                    </Button>
+                    <Button className="rounded-[10px]" type="button">
+                      保存
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button className="rounded-[10px]" type="button" variant="outline">
+                    <HugeiconsIcon
+                      color="currentColor"
+                      icon={AlertCircleIcon}
+                      size={17}
+                      strokeWidth={1.8}
+                    />
+                    打开停用确认
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogMedia className="bg-destructive-muted text-destructive">
+                      <HugeiconsIcon
+                        color="currentColor"
+                        icon={AlertCircleIcon}
+                        size={30}
+                        strokeWidth={1.8}
+                      />
+                    </AlertDialogMedia>
+                    <AlertDialogTitle>停用接待策略</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      停用后新会话不会再按该策略分配，已有会话不受影响。
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>取消</AlertDialogCancel>
+                    <AlertDialogAction variant="default">确认停用</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <Button
+                className="rounded-[10px]"
+                onClick={() => {
+                  toast.success("配置已保存", {
+                    description: "DEMO 中的 Toast 已接入全局 Toaster。",
+                  });
+                }}
+                type="button"
+                variant="secondary"
+              >
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={Notification03Icon}
+                  size={17}
+                  strokeWidth={1.8}
+                />
+                触发 Toast
+              </Button>
+            </div>
+          </section>
+
+          <section className="rounded-[10px] border border-border bg-background p-5">
+            <h2 className="text-base font-semibold text-foreground">单选组模板</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              用于互斥策略、展示密度、通知等级等单选配置。
+            </p>
+
+            <RadioGroup
+              aria-label="分配策略"
+              className="mt-5 grid gap-3 md:grid-cols-3"
+              defaultValue="load"
+            >
+              {routingStrategies.map((strategy) => (
+                <Label
+                  className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-border bg-surface px-4 py-3 transition-colors hover:bg-surface-hover"
+                  key={strategy.value}
+                >
+                  <RadioGroupItem className="mt-0.5" value={strategy.value} />
+                  <span>
+                    <span className="block text-sm font-semibold text-foreground">
+                      {strategy.label}
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                      {strategy.description}
+                    </span>
+                  </span>
+                </Label>
+              ))}
+            </RadioGroup>
+          </section>
+        </div>
+
+        <aside className="space-y-4">
+          <section className="rounded-[10px] border border-border bg-background p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex size-9 items-center justify-center rounded-[10px] bg-info-muted text-info">
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={Calendar03Icon}
+                  size={18}
+                  strokeWidth={1.8}
+                />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-foreground">日期选择</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Calendar 单选示例</p>
+              </div>
+            </div>
+
+            <Label className="sr-only" id="schedule-date-label">
+              排班日期
+            </Label>
+            <div
+              aria-labelledby="schedule-date-label"
+              className="mt-4 overflow-x-auto rounded-[10px] border border-border bg-surface-muted"
+              role="group"
+            >
+              <Calendar
+                mode="single"
+                onSelect={setSelectedDate}
+                selected={selectedDate}
+              />
+            </div>
+            <p className="mt-3 text-sm text-muted-foreground">
+              当前日期：
+              <span className="font-medium text-foreground">
+                {selectedDate?.toLocaleDateString("zh-CN") ?? "未选择"}
+              </span>
+            </p>
+          </section>
+
+          <section className="rounded-[10px] border border-border bg-background p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex size-9 items-center justify-center rounded-[10px] bg-success-muted text-success">
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={Database01Icon}
+                  size={18}
+                  strokeWidth={1.8}
+                />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-foreground">已补充组件</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  统一放在 src/components/ui
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {["Dialog", "AlertDialog", "RadioGroup", "Tooltip", "Calendar", "Sonner"].map(
+                (component) => (
+                  <Badge key={component} variant="outline">
+                    {component}
+                  </Badge>
+                ),
+              )}
+            </div>
+          </section>
+        </aside>
+      </section>
+    </>
+  );
+}
+
 function Field({
   label,
   children,
@@ -752,5 +1045,23 @@ const workflowOptions = [
     description: "对命中规则的消息生成质检任务，便于运营回溯。",
     enabled: false,
     icon: SecurityCheckIcon,
+  },
+] as const;
+
+const routingStrategies = [
+  {
+    value: "load",
+    label: "负载优先",
+    description: "把新会话分配给当前接待量较低的客服。",
+  },
+  {
+    value: "relation",
+    label: "关系优先",
+    description: "优先回到最近接待过该客户的客服。",
+  },
+  {
+    value: "manual",
+    label: "人工分配",
+    description: "新会话进入待分配池，由组长手动指派。",
   },
 ] as const;

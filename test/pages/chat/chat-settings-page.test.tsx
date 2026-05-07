@@ -64,4 +64,26 @@ describe("Chat settings pages", () => {
     expect(screen.getByRole("heading", { name: "权限角色" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "角色权限矩阵" })).toBeInTheDocument();
   });
+
+  it("shows basic UI component demos for settings development references", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings");
+
+    await user.click(await screen.findByRole("link", { name: "组件示例" }));
+
+    expect(screen.getByRole("heading", { name: "组件示例" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "分配策略" })).toBeInTheDocument();
+    expect(screen.getByLabelText("排班日期")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "打开编辑弹窗" }));
+
+    expect(screen.getByRole("dialog", { name: "编辑接待策略" })).toBeInTheDocument();
+    expect(screen.getByLabelText("策略名称")).toHaveValue("自动分配");
+
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "打开停用确认" }));
+
+    expect(screen.getByRole("alertdialog", { name: "停用接待策略" })).toBeInTheDocument();
+  });
 });

@@ -6,7 +6,7 @@ export function Tabs({
   className,
   ...props
 }: ComponentPropsWithoutRef<typeof TabsPrimitive.Root>) {
-  return <TabsPrimitive.Root className={cn("flex flex-col gap-4", className)} {...props} />;
+  return <TabsPrimitive.Root className={cn("flex flex-col gap-2", className)} {...props} />;
 }
 
 export function TabsList({

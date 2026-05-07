@@ -4,12 +4,15 @@ import { cn } from "@/lib/utils";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
+import type { MentionInsertPosition } from "@/pages/chat/components/chat-composer";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import { type WechatEmojiName, toWechatEmojiToken } from "@/pages/chat/wechat-emoji";
+import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import type { GroupMember } from "@/pages/chat/chat-types";
 
 export function ChatWorkbenchPage() {
   const {
@@ -43,6 +46,9 @@ export function ChatWorkbenchPage() {
   } = useWorkbenchStore();
 
   const [draft, setDraft] = useState("");
+  const [mentionInsertPosition, setMentionInsertPosition] =
+    useState<MentionInsertPosition>("start");
+  const [selectedMentionMembers, setSelectedMentionMembers] = useState<GroupMember[]>([]);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [inputEnterBehavior, setInputEnterBehavior] =
     useState<InputEnterBehavior>("send");
@@ -68,6 +74,8 @@ export function ChatWorkbenchPage() {
     ) ?? visibleConversations[0];
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ?? [];
+  const activeGroupMembers =
+    (activeConversation && seedGroupMembersByConversationId[activeConversation.id]) ?? [];
   const activeHistoryStatus = activeConversation
     ? historyStatusByConversationId[activeConversation.id] ?? "idle"
     : "idle";
@@ -117,6 +125,8 @@ export function ChatWorkbenchPage() {
 
   useEffect(() => {
     setIsEmojiPickerOpen(false);
+    setMentionInsertPosition("start");
+    setSelectedMentionMembers([]);
   }, [activeConversation?.id]);
 
   useWorkbenchPolling({
@@ -128,7 +138,14 @@ export function ChatWorkbenchPage() {
   });
 
   const handleSendDraft = () => {
-    const normalizedDraft = draft.trim();
+    const mentionText = selectedMentionMembers
+      .map((member) => `@${member.displayName}`)
+      .join(" ");
+    const normalizedDraft = formatDraftWithMentions({
+      draft,
+      mentionInsertPosition,
+      mentionText,
+    });
 
     if (!normalizedDraft || !canSendMessage) {
       return;
@@ -136,6 +153,39 @@ export function ChatWorkbenchPage() {
 
     void sendAgentTextMessage(normalizedDraft);
     setDraft("");
+    setMentionInsertPosition("start");
+    setSelectedMentionMembers([]);
+    textareaRef.current?.focus();
+  };
+
+  const handleDraftChange = (nextDraft: string) => {
+    setDraft(nextDraft);
+  };
+
+  const handleSelectMentionMember = (
+    member: GroupMember,
+    triggerStart: number,
+    triggerEnd: number,
+  ) => {
+    setSelectedMentionMembers((currentMembers) =>
+      currentMembers.some((currentMember) => currentMember.id === member.id)
+        ? currentMembers
+        : [...currentMembers, member],
+    );
+    setDraft((currentDraft) =>
+      currentDraft.slice(0, triggerStart) + currentDraft.slice(triggerEnd),
+    );
+
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(triggerStart, triggerStart);
+    });
+  };
+
+  const handleRemoveMentionMember = (memberId: string) => {
+    setSelectedMentionMembers((currentMembers) =>
+      currentMembers.filter((member) => member.id !== memberId),
+    );
     textareaRef.current?.focus();
   };
 
@@ -235,24 +285,30 @@ export function ChatWorkbenchPage() {
               customer={activeCustomer}
               customerPanelWidth={customerPanelWidth}
               draft={draft}
+              groupMembers={activeGroupMembers}
               inputEnterBehavior={inputEnterBehavior}
               isConversationLoading={isConversationLoading}
               isEmojiPickerOpen={isEmojiPickerOpen}
               isResizingCustomerPanel={isResizingCustomerPanel}
+              mentionInsertPosition={mentionInsertPosition}
               hasMoreHistory={hasMoreHistory}
               messageListBottomRef={messageListBottomRef}
               messages={activeMessages}
               messageViewportRef={messageViewportRef}
               onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
-              onDraftChange={setDraft}
+              onDraftChange={handleDraftChange}
               onEmojiPickerOpenChange={setIsEmojiPickerOpen}
               onEmojiSelect={handleEmojiSelect}
               onEnterBehaviorChange={setInputEnterBehavior}
+              onMentionInsertPositionChange={setMentionInsertPosition}
+              onRemoveMentionMember={handleRemoveMentionMember}
+              onSelectMentionMember={handleSelectMentionMember}
               onLoadOlderMessages={handleLoadOlderMessages}
               onMessageViewportScroll={handleMessageViewportScroll}
               onRetryMessage={retryFailedMessage}
               onSendDraft={handleSendDraft}
               scopeTransitionError={scopeTransitionError}
+              selectedMentionMembers={selectedMentionMembers}
               textareaRef={textareaRef}
               workbenchBodyRef={workbenchBodyRef}
             />
@@ -261,4 +317,28 @@ export function ChatWorkbenchPage() {
       </div>
     </div>
   );
+}
+
+function formatDraftWithMentions({
+  draft,
+  mentionInsertPosition,
+  mentionText,
+}: {
+  draft: string;
+  mentionInsertPosition: MentionInsertPosition;
+  mentionText: string;
+}) {
+  const normalizedDraft = draft.trim();
+
+  if (!mentionText) {
+    return normalizedDraft;
+  }
+
+  if (!normalizedDraft) {
+    return mentionText;
+  }
+
+  return mentionInsertPosition === "start"
+    ? `${mentionText} ${normalizedDraft}`
+    : `${normalizedDraft} ${mentionText}`;
 }

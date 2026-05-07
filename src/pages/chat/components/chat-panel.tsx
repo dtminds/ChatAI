@@ -8,9 +8,11 @@ import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-beh
 import type {
   Conversation,
   CustomerProfile,
+  GroupMember,
   Message,
 } from "@/pages/chat/chat-types";
 import type { WechatEmojiName } from "@/pages/chat/wechat-emoji";
+import type { MentionInsertPosition } from "@/pages/chat/components/chat-composer";
 
 type ChatPanelProps = {
   accountName?: string;
@@ -22,17 +24,23 @@ type ChatPanelProps = {
   customer?: CustomerProfile;
   customerPanelWidth: number;
   draft: string;
+  groupMembers: GroupMember[];
   inputEnterBehavior: InputEnterBehavior;
   isConversationLoading: boolean;
   isEmojiPickerOpen: boolean;
   isResizingCustomerPanel: boolean;
+  mentionInsertPosition: MentionInsertPosition;
   messages: Message[];
+  selectedMentionMembers: GroupMember[];
   hasMoreHistory: boolean;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEmojiSelect: (name: WechatEmojiName) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
+  onMentionInsertPositionChange: (position: MentionInsertPosition) => void;
+  onRemoveMentionMember: (memberId: string) => void;
+  onSelectMentionMember: (member: GroupMember, triggerStart: number, triggerEnd: number) => void;
   onLoadOlderMessages: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
@@ -54,17 +62,23 @@ export function ChatPanel({
   customer,
   customerPanelWidth,
   draft,
+  groupMembers,
   inputEnterBehavior,
   isConversationLoading,
   isEmojiPickerOpen,
   isResizingCustomerPanel,
+  mentionInsertPosition,
   messages,
+  selectedMentionMembers,
   hasMoreHistory,
   onCustomerPanelResizeStart,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEmojiSelect,
   onEnterBehaviorChange,
+  onMentionInsertPositionChange,
+  onRemoveMentionMember,
+  onSelectMentionMember,
   onLoadOlderMessages,
   onMessageViewportScroll,
   onRetryMessage,
@@ -102,13 +116,20 @@ export function ChatPanel({
           <ChatComposer
             canSendMessage={canSendMessage}
             draft={draft}
+            groupMembers={groupMembers}
+            isGroupConversation={activeConversation?.mode === "group"}
             inputEnterBehavior={inputEnterBehavior}
             isEmojiPickerOpen={isEmojiPickerOpen}
+            mentionInsertPosition={mentionInsertPosition}
             onDraftChange={onDraftChange}
             onEmojiPickerOpenChange={onEmojiPickerOpenChange}
             onEmojiSelect={onEmojiSelect}
             onEnterBehaviorChange={onEnterBehaviorChange}
+            onMentionInsertPositionChange={onMentionInsertPositionChange}
+            onRemoveMentionMember={onRemoveMentionMember}
+            onSelectMentionMember={onSelectMentionMember}
             onSendDraft={onSendDraft}
+            selectedMentionMembers={selectedMentionMembers}
             placeholder={composerPlaceholder}
             textareaRef={textareaRef}
           />

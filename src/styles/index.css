@@ -242,6 +242,10 @@
 
   .chat-composer-mention-row::-webkit-scrollbar-thumb {
     border-radius: 999px;
-    background: transparent;
+    background: var(--scrollbar-thumb);
+  }
+
+  .chat-composer-mention-row::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
   }
 }

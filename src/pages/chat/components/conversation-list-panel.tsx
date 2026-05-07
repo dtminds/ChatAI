@@ -411,7 +411,7 @@ function HighlightedText({ keyword, text }: { keyword: string; text: string }) {
   return (
     <>
       {before}
-      <span className={cn("px-0 text-primary")}>{match}</span>
+      <span className={cn("px-0 text-success")}>{match}</span>
       {after}
     </>
   );

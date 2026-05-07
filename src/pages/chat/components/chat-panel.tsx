@@ -18,7 +18,6 @@ type ChatPanelProps = {
   accountName?: string;
   activeConversation?: Conversation;
   activeHistoryStatus: "idle" | "loading" | "error";
-  activeMessageSeq: number;
   canSendMessage: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
@@ -56,7 +55,6 @@ export function ChatPanel({
   accountName,
   activeConversation,
   activeHistoryStatus,
-  activeMessageSeq,
   canSendMessage,
   composerPlaceholder,
   customer,
@@ -93,7 +91,6 @@ export function ChatPanel({
     <section className="flex min-h-0 min-w-0 flex-col bg-surface">
       <ChatHeader
         activeConversation={activeConversation}
-        activeMessageSeq={activeMessageSeq}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1" ref={workbenchBodyRef}>

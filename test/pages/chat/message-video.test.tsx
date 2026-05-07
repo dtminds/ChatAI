@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import type { ChatMessage } from "@/pages/chat/chat-types";
-import { MessageContentRenderer } from "@/pages/chat/components/message";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import type { ChatMessage, VideoMessageContent } from "@/pages/chat/chat-types";
+import { MessageContentRenderer, VideoMessageCard } from "@/pages/chat/components/message";
 
 describe("MessageContentRenderer video messages", () => {
   it("renders a horizontal video preview with a play control and duration", () => {
@@ -45,6 +46,27 @@ describe("MessageContentRenderer video messages", () => {
     expect(screen.getByRole("button", { name: "播放视频：湖面竖版视频封面" })).toBeInTheDocument();
     expect(screen.getByText("0:11")).toBeInTheDocument();
   });
+
+  it("calls the optional play handler when the play control is clicked", async () => {
+    const user = userEvent.setup();
+    const handlePlayClick = vi.fn();
+
+    render(
+      <VideoMessageCard
+        content={createVideoContent({
+          alt: "舞台活动视频封面",
+          durationLabel: "1:01",
+          height: 360,
+          width: 640,
+        })}
+        onPlayClick={handlePlayClick}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放视频：舞台活动视频封面" }));
+
+    expect(handlePlayClick).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createVideoMessage({
@@ -57,7 +79,7 @@ function createVideoMessage({
   durationLabel: string;
   height: number;
   width: number;
-}) {
+}): ChatMessage {
   return {
     id: `msg-video-${width}-${height}`,
     conversationId: "conv-video",
@@ -67,16 +89,35 @@ function createVideoMessage({
       id: "sender-video",
       name: "陈慧燕",
     },
-    content: {
-      type: "video",
+    content: createVideoContent({
       alt,
-      coverImageUrl: "/covers/stage.jpg",
       durationLabel,
       height,
-      videoUrl: "/videos/demo.mp4",
       width,
-    },
+    }),
     sentAt: "2026-04-19 10:12:00",
     status: "read",
-  } as ChatMessage;
+  };
+}
+
+function createVideoContent({
+  alt,
+  durationLabel,
+  height,
+  width,
+}: {
+  alt: string;
+  durationLabel: string;
+  height: number;
+  width: number;
+}): VideoMessageContent {
+  return {
+    type: "video",
+    alt,
+    coverImageUrl: "/covers/stage.jpg",
+    durationLabel,
+    height,
+    videoUrl: "/videos/demo.mp4",
+    width,
+  };
 }

@@ -64,7 +64,7 @@ describe("AccountRail", () => {
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
   });
 
-  it("shows account takeover state and takes over from the status menu", async () => {
+  it("shows account takeover state and takes over from the status popover", async () => {
     const user = userEvent.setup();
     const handleTakeOverAccount = vi.fn();
 
@@ -82,10 +82,49 @@ describe("AccountRail", () => {
     expect(screen.queryByRole("button", { name: "lsave 接管中" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "support 未接管" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "support 未接管" }));
-    await user.click(screen.getByRole("menuitem", { name: "接管账号" }));
+    await user.hover(screen.getByRole("button", { name: "support 未接管" }));
+
+    expect(screen.getByText("当前账号未被你接管，你将无法：")).toBeInTheDocument();
+    expect(screen.getByText("使用该账号发送消息")).toBeInTheDocument();
+    expect(screen.getByText("标记消息已读状态")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "接管账号" }));
 
     expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");
+  });
+
+  it("opens and closes the takeover popover from keyboard commands", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+        onTakeOverAccount={vi.fn()}
+      />,
+    );
+
+    const statusTrigger = screen.getByRole("button", { name: "support 未接管" });
+
+    statusTrigger.focus();
+
+    expect(
+      screen.queryByText("当前账号未被你接管，你将无法："),
+    ).not.toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+
+    expect(
+      screen.getByText("当前账号未被你接管，你将无法："),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.queryByText("当前账号未被你接管，你将无法："),
+    ).not.toBeInTheDocument();
   });
 
   it("uses a distinct warning treatment for untaken account labels and dots", () => {

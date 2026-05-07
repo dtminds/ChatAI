@@ -1,13 +1,13 @@
-import { startTransition } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { UserCheck01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { Account } from "@/pages/chat/chat-types";
 
@@ -26,6 +26,8 @@ export function AccountSidebarItem({
   onTakeOverAccount?: (accountId: string) => void | Promise<void>;
   takeoverStatus: "idle" | "taking-over";
 }) {
+  const closePopoverTimerRef = useRef<number | null>(null);
+  const [isTakeoverPopoverOpen, setIsTakeoverPopoverOpen] = useState(false);
   const isOffline = account.loginStatus === "offline";
   const isTakenOverByCurrentUser =
     !!account.takenOverEmployeeId && account.takenOverEmployeeId === currentEmployeeId;
@@ -53,6 +55,45 @@ export function AccountSidebarItem({
       <span>{takeoverStatus === "taking-over" ? "接管中" : statusLabel}</span>
     </span>
   );
+  const clearClosePopoverTimer = () => {
+    if (closePopoverTimerRef.current !== null) {
+      window.clearTimeout(closePopoverTimerRef.current);
+      closePopoverTimerRef.current = null;
+    }
+  };
+  const openTakeoverPopover = () => {
+    clearClosePopoverTimer();
+    setIsTakeoverPopoverOpen(true);
+  };
+  const closeTakeoverPopover = () => {
+    clearClosePopoverTimer();
+    closePopoverTimerRef.current = window.setTimeout(() => {
+      setIsTakeoverPopoverOpen(false);
+      closePopoverTimerRef.current = null;
+    }, 120);
+  };
+  const closeTakeoverPopoverImmediately = () => {
+    clearClosePopoverTimer();
+    setIsTakeoverPopoverOpen(false);
+  };
+  const handleTakeoverTriggerKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+  ) => {
+    if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      openTakeoverPopover();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeTakeoverPopoverImmediately();
+    }
+  };
+
+  useEffect(() => clearClosePopoverTimer, []);
 
   return (
     <div
@@ -92,27 +133,57 @@ export function AccountSidebarItem({
             {account.name}
           </button>
           {canTakeOver ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <span
+            <Popover
+              onOpenChange={setIsTakeoverPopoverOpen}
+              open={isTakeoverPopoverOpen}
+            >
+              <PopoverTrigger asChild>
+                <button
                   aria-label={`${account.name} ${statusLabel}`}
                   className="inline-flex cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                  onBlur={closeTakeoverPopover}
                   onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => event.stopPropagation()}
-                  role="button"
-                  tabIndex={0}
+                  onKeyDown={handleTakeoverTriggerKeyDown}
+                  onMouseEnter={openTakeoverPopover}
+                  onMouseLeave={closeTakeoverPopover}
+                  type="button"
                 >
                   {statusBadge}
-                </span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[120px]">
-                <DropdownMenuItem
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="w-[220px]"
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) {
+                    closeTakeoverPopover();
+                  }
+                }}
+                onClick={(event) => event.stopPropagation()}
+                onCloseAutoFocus={(event) => event.preventDefault()}
+                onFocus={openTakeoverPopover}
+                onEscapeKeyDown={closeTakeoverPopoverImmediately}
+                onMouseEnter={openTakeoverPopover}
+                onMouseLeave={closeTakeoverPopover}
+                side="bottom"
+              >
+                <p className="text-[12px] leading-5 text-muted-foreground">
+                  当前账号未被你接管，你将无法：
+                </p>
+                <ul className="mt-1 list-disc space-y-1 pl-4 text-[12px] leading-5 text-muted-foreground">
+                  <li>使用该账号发送消息</li>
+                  <li>标记消息已读状态</li>
+                </ul>
+                <Button
+                  className="mt-3 h-8 w-full rounded-[10px] text-xs"
                   onClick={(event) => {
                     event.stopPropagation();
                     startTransition(() => {
                       void onTakeOverAccount?.(account.id);
                     });
                   }}
+                  size="sm"
+                  type="button"
                 >
                   <HugeiconsIcon
                     color="currentColor"
@@ -121,9 +192,9 @@ export function AccountSidebarItem({
                     strokeWidth={1.8}
                   />
                   <span>接管账号</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </Button>
+              </PopoverContent>
+            </Popover>
           ) : (
             statusBadge
           )}

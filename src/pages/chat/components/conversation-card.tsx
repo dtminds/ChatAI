@@ -103,14 +103,34 @@ export function ConversationCard({
           <Button
             aria-label="会话操作"
             className={cn(
-              "absolute right-2.5 top-2 size-6 rounded-md p-0 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
+              "group/menu absolute right-2.5 top-2 size-6 rounded-md p-0 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
+              conversation.isPinned ? "opacity-100" : "opacity-0",
               isMenuOpen && "bg-surface text-foreground opacity-100",
             )}
             size="icon"
             type="button"
             variant="ghost"
           >
-            <HugeiconsIcon icon={MoreHorizontalIcon} size={18} />
+            {conversation.isPinned ? (
+              <span
+                className={cn(
+                  "group-hover:hidden group-focus-visible/menu:hidden",
+                  isMenuOpen && "hidden",
+                )}
+              >
+                <HugeiconsIcon icon={PinIcon} size={16} strokeWidth={1.8} />
+              </span>
+            ) : null}
+            <span
+              className={cn(
+                conversation.isPinned
+                  ? "hidden group-hover:block group-focus-visible/menu:block"
+                  : "block",
+                isMenuOpen && "block",
+              )}
+            >
+              <HugeiconsIcon icon={MoreHorizontalIcon} size={18} />
+            </span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

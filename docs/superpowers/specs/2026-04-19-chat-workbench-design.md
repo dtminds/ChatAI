@@ -14,7 +14,7 @@
 - 前期在线坐席规模预计为几十人，但需要为后期几百坐席预留扩展位。
 - 技术栈应尽量简单、易维护、易排障。
 - 现有后端团队主栈为 `Java / Spring Boot`。
-- 页面核心体验要求是消息尽可能实时展示，同时支持可靠发送、未读提醒和会话排序更新。
+- 页面核心体验要求是消息尽可能实时展示，同时支持可靠发送、账号未读提醒和会话排序更新。
 
 ## 2. 目标与非目标
 
@@ -24,9 +24,9 @@
 
 1. 企业微信新消息到达后，工作台尽可能实时展示。
 2. 员工可在工作台直接回复消息，并看到发送成功或失败状态。
-3. 当前未打开的会话如果有新消息，左侧会话列表要更新未读数并自动上浮。
+3. 新消息到达后，左侧账号未读数、会话摘要和会话排序要及时更新。
 4. 一个员工可管理多个企微账号，通过单一增量轮询接口即可获取其权限范围内的账号、会话和当前聊天窗口变化。
-5. 支持多个员工共享账号权限，但通过会话归属机制避免多人同时回复同一客户。
+5. 支持多个员工共享账号权限，通过账号接管机制避免多人同时代表同一账号回复客户。
 6. 方案需兼容现有 `Spring Boot` 多实例集群，并可继续支撑更高并发和更多坐席规模。
 
 ### 2.2 非目标
@@ -68,19 +68,19 @@
 - 页面能在几秒内感知企微新消息
 - 员工在浏览器发起发送动作
 - 页面感知发送成功或失败
-- 会话列表未读数和排序实时更新
+- 账号未读数、会话摘要和会话排序实时更新
 
 这些场景下，纯轮询方案的边界更自然：
 
 - 一个增量轮询接口负责刷新账号角标、会话列表变化、当前打开会话的新消息和发送状态变化
-- 其他 HTTP 接口负责初始化数据、历史分页、发送消息、会话领取等命令式操作
+- 其他 HTTP 接口负责初始化数据、历史分页、发送消息、账号接管等命令式操作
 
 该方案的优点：
 
 - 实现简单，后端和前端都容易排障
 - 不需要额外维护 SSE 或 WebSocket 长连接
 - 更适配现有 Spring Boot 多实例集群和常规网关体系
-- 查询、发送、已读、领取等行为仍然是标准接口，不需要设计复杂消息协议
+- 查询、发送、已读、账号接管等行为仍然是标准接口，不需要设计复杂消息协议
 - 后期若确实出现更强实时诉求，仍可在不推翻业务模型的前提下迁移到 `SSE` 或 `WebSocket`
 
 纯轮询方案的前提是：
@@ -93,7 +93,7 @@
 
 ## 5. 产品模型
 
-系统设计必须把“企微账号权限”和“会话归属”拆开，否则后续会出现多人串话和统计失真问题。
+系统设计必须明确“企微账号权限”和“账号接管状态”，否则后续会出现多人同时代表同一账号回复客户的问题。
 
 ### 5.1 企微账号权限
 
@@ -105,25 +105,25 @@
 - 一个企微账号也可授权给多个员工
 - 账号权限只决定“可见/可操作资格”，不直接决定某个客户会话由谁处理
 
-### 5.2 会话归属
+### 5.2 账号接管
 
-会话归属决定某个具体客户会话当前由哪个员工负责。
+账号接管决定某个企微账号当前由哪个员工负责处理。
 
 推荐规则：
 
-1. 新会话默认进入公共池。
-2. 员工首次回复时自动领取会话，或显式点击领取后才可发送。
-3. 已归属会话的新消息只推给负责人；主管若有查看权限可额外接收只读事件。
-4. 未归属会话的新消息可以推给有资格接待该企微账号的在线员工。
-5. 会话支持后续转接、释放、重新分配。
+1. 员工可查看自己有权限的企微账号。
+2. 员工接管账号后，才可代表该账号发送消息。
+3. 账号被其他员工接管后，当前员工失去该账号发送资格。
+4. 账号未读数按账号维度维护。
+5. 会话是账号下的客户聊天对象，不承载员工处理人状态。
 
-第一期建议采用最简单的归属策略：
+第一期建议采用最简单的接管策略：
 
 ```text
-查看会话允许
-发送消息前自动领取
-领取成功后成为负责人
-负责人之外的人默认不可发送
+查看账号允许
+发送消息前必须接管账号
+接管成功后可代表该账号发送
+非当前接管员工默认不可发送
 ```
 
 ## 6. 总体架构
@@ -158,7 +158,7 @@ flowchart LR
 
 负责客服工作台核心业务：
 
-- 员工、企微账号、权限和会话归属
+- 员工、企微账号、权限和账号接管状态
 - 会话列表和消息历史查询
 - 未读数维护
 - 发送任务受理与状态流转
@@ -172,7 +172,7 @@ flowchart LR
 - 客户信息
 - 会话信息
 - 消息内容
-- 会话归属
+- 账号接管状态
 - 未读和已读状态
 - 发送任务和失败原因
 
@@ -274,13 +274,13 @@ GET /api/workbench/conversations?accountId=A2&page=1&pageSize=30
 
 ```text
 GET /api/workbench/conversations/{conversationId}/messages?before_seq=...&limit=30
-POST /api/workbench/conversations/{conversationId}/read
+POST /api/workbench/accounts/{accountId}/read
 ```
 
 打开会话后：
 
 - 拉取历史消息
-- 清空当前员工对该会话的未读数
+- 按账号维度更新已读水位
 - 轮询参数里的 `active_conversation_id` 和 `active_message_seq` 切换到当前会话
 - 之后该会话若继续收到消息，由轮询接口的 `active_conversation_messages` 增量追加
 
@@ -347,7 +347,6 @@ GET /api/workbench/poll
       "accountId": "A1",
       "contactName": "张三",
       "contactAvatar": "https://...",
-      "unreadCount": 3,
       "lastMessage": "请问发货了吗",
       "lastMessageTime": 1714300002800
     }
@@ -379,7 +378,7 @@ GET /api/workbench/poll
 前端按以下规则处理：
 
 1. `account_changes` 用来更新最左侧企微账号角标。
-2. `conversation_changes` 用来更新当前账号会话列表的未读数、摘要和排序；`type=remove` 时移出列表。
+2. `conversation_changes` 用来更新当前账号会话列表的摘要和排序；`type=remove` 时移出列表。
 3. `active_conversation_messages` 直接追加到右侧当前聊天窗口。
 4. `message_status_changes` 用来把本地 `sending` 消息更新为 `sent` 或 `failed`。
 5. 前端每次处理完成后，把 `next_version` 和最新 `active_message_seq` 存起来，作为下一次轮询参数。
@@ -410,15 +409,13 @@ GET /api/workbench/conversations?accountId=A1&page=1&pageSize=30
 - `avatar`
 - `lastMessage`
 - `lastMessageTime`
-- `unreadCount`
-- `assignedEmployeeId`
 - `status`
 
 ### 10.3 会话详情
 
 ```text
 GET /api/workbench/conversations/{conversationId}/messages?before_seq=...&limit=30
-POST /api/workbench/conversations/{conversationId}/read
+POST /api/workbench/accounts/{accountId}/read
 ```
 
 ### 10.4 增量轮询
@@ -427,21 +424,13 @@ POST /api/workbench/conversations/{conversationId}/read
 GET /api/workbench/poll?since_version=123&current_account_id=A1&active_conversation_id=A1-1&active_message_seq=456
 ```
 
-### 10.5 会话归属
+### 10.5 账号接管
 
 ```text
-POST /api/workbench/conversations/{conversationId}/claim
-POST /api/workbench/conversations/{conversationId}/release
-POST /api/workbench/conversations/{conversationId}/transfer
+POST /api/workbench/accounts/{accountId}/takeover
 ```
 
-第一期最小可只保留：
-
-```text
-POST /api/workbench/conversations/{conversationId}/claim
-```
-
-并在发送消息前自动触发领取逻辑。
+发送消息前必须确认当前员工正在接管对应账号。
 
 ### 10.6 消息发送
 
@@ -518,7 +507,6 @@ POST /api/workbench/messages/send
 - `id`
 - `account_id`
 - `customer_id`
-- `assigned_employee_id`
 - `status`
 - `last_message_id`
 - `last_message_time`
@@ -532,14 +520,14 @@ POST /api/workbench/messages/send
 unique(account_id, customer_id)
 ```
 
-### 11.5 conversation_employee_state
+### 11.5 account_employee_state
 
-用于存储员工视角的会话状态。
+用于存储员工视角的账号状态。
 
 字段建议：
 
 - `id`
-- `conversation_id`
+- `account_id`
 - `employee_id`
 - `unread_count`
 - `last_read_message_id`
@@ -648,7 +636,7 @@ pending
 2. 转换为内部标准事件
 3. chat-core 校验 accountId / customerId / externalMessageId
 4. MySQL 事务写入 message，更新 conversation
-5. 根据会话归属和账号权限计算目标员工
+5. 更新账号未读数和会话摘要
 6. 递增账号和会话相关的 `version`
 7. 前端在下一次轮询时拉到 `account_changes / conversation_changes / active_conversation_messages`
 ```
@@ -658,8 +646,8 @@ pending
 ```text
 1. 前端本地插入 sending 消息
 2. POST /api/workbench/messages/send
-3. 后端校验员工账号权限
-4. 如果会话未归属，尝试自动领取
+3. 后端校验员工账号权限和账号接管状态
+4. 校验会话属于当前账号
 5. 写入 message 和 message_send_task，状态为 `queued`
 6. 接口立即返回 `accepted`
 7. 后台异步调用 qywx-adapter 发送
@@ -667,13 +655,13 @@ pending
 9. 递增版本号，等待前端下一次轮询拉回状态变化
 ```
 
-### 13.3 会话领取
+### 13.3 账号接管
 
 ```text
-1. 员工显式领取或首次回复触发自动领取
-2. 后端通过事务或乐观锁更新 assigned_employee_id
-3. 成功后递增会话版本
-4. 其他员工工作台在下一次轮询时更新可操作状态
+1. 员工发起账号接管
+2. 后端通过事务或乐观锁更新账号接管状态
+3. 成功后递增账号版本
+4. 其他员工工作台在下一次轮询时更新账号可操作状态
 ```
 
 ## 14. 前端实现建议
@@ -793,8 +781,8 @@ MySQL 持久化
 - 单接口增量轮询
 - 员工发送文本消息
 - 消息发送成功/失败状态展示
-- 左侧未读数和会话上浮
-- 会话首次回复自动领取
+- 左侧账号未读数和会话上浮
+- 账号接管
 
 ### 17.2 Phase 2：稳定性增强
 
@@ -805,7 +793,6 @@ MySQL 持久化
 - 企微账号离线告警
 - 游标失效补偿
 - 多窗口状态同步
-- 手动转接与释放会话
 - 操作审计
 
 ### 17.3 Phase 3：效率与运营
@@ -829,7 +816,7 @@ MySQL 持久化
 浏览器与后端之间采用单接口增量轮询和普通 HTTP 动作接口
 MySQL 作为唯一可信数据源
 Redis 作为当前集群内版本号和摘要缓存层
-产品上明确区分账号权限和会话归属，通过公共池 + 自动领取避免多人串话
+产品上明确区分账号权限和账号接管状态，通过账号接管避免多人同时代表同一账号回复客户
 ```
 
 这套方案在当前阶段能用最低复杂度满足实时消息展示、消息发送状态、未读数更新和后续扩展需求，符合“简单、稳、好维护”的目标。

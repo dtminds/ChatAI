@@ -8,6 +8,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,10 +47,11 @@ export function ConversationCard({
           : "border-divider bg-surface hover:bg-surface-hover",
       )}
     >
-      <button
-        className="grid w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+      <Button
+        className="grid h-auto w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center justify-normal gap-2.5 whitespace-normal rounded-none p-0 text-left text-sm outline-none hover:bg-transparent hover:text-inherit focus-visible:ring-2 focus-visible:ring-ring/20"
         onClick={onSelect}
         type="button"
+        variant="ghost"
       >
         <div className="relative">
           <Avatar className="size-10">
@@ -94,20 +96,22 @@ export function ConversationCard({
             </span>
           </div>
         </div>
-      </button>
+      </Button>
 
       <DropdownMenu onOpenChange={setIsMenuOpen} open={isMenuOpen}>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             aria-label="会话操作"
             className={cn(
-              "absolute right-2.5 top-2.5 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-surface hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
+              "absolute right-2.5 top-2.5 size-6 rounded-md p-0 text-muted-foreground opacity-0 transition hover:bg-surface hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
               isMenuOpen && "bg-surface text-foreground opacity-100",
             )}
+            size="icon"
             type="button"
+            variant="ghost"
           >
             <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={2} />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {conversationMenuItems.map((item) => (

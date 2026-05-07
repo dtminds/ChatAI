@@ -427,11 +427,6 @@ export function ChatComposer({
           value={draft}
         />
       </div>
-      {composerHint ? (
-        <p className="px-0.5 text-[12px] leading-5 text-muted-foreground">
-          {composerHint}
-        </p>
-      ) : null}
     </div>
   );
 }

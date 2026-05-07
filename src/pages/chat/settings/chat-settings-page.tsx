@@ -80,20 +80,22 @@ const settingsSections = [
 
 type SettingsSectionId = (typeof settingsSections)[number]["id"];
 
-const sectionIds = new Set(settingsSections.map((section) => section.id));
+function isSettingsSectionId(id: string): id is SettingsSectionId {
+  return settingsSections.some((section) => section.id === id);
+}
 
 export function ChatSettingsPage() {
   const { sectionId } = useParams();
   const activeSectionId = sectionId ?? "accounts";
 
-  if (!sectionIds.has(activeSectionId as SettingsSectionId)) {
+  if (!isSettingsSectionId(activeSectionId)) {
     return <Navigate replace to="/chat/settings" />;
   }
 
   return (
     <div className="h-svh min-h-[720px] bg-background">
       <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden">
-        <SettingsSidebar activeSectionId={activeSectionId as SettingsSectionId} />
+        <SettingsSidebar activeSectionId={activeSectionId} />
 
         <main className="h-full min-h-0 overflow-hidden pl-0">
           <div
@@ -466,10 +468,10 @@ function RolePermissionDemo() {
                 </TableCell>
                 {role.permissions.map((permission) => (
                   <TableCell className="px-5 py-5" key={permission.label}>
-                    <label className="flex items-center gap-2 text-sm text-foreground">
+                    <Label className="text-foreground">
                       <Checkbox defaultChecked={permission.enabled} />
                       <span>{permission.label}</span>
-                    </label>
+                    </Label>
                   </TableCell>
                 ))}
                 <TableCell className="px-5 py-5">

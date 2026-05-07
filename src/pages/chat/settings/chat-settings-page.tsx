@@ -1062,12 +1062,11 @@ function UiComponentDemo() {
               </div>
 
               <div className="rounded-[10px] border border-border bg-surface p-4">
-                <Label htmlFor="qa-sample-slider">质检抽样比例</Label>
+                <Label id="qa-sample-slider-label">质检抽样比例</Label>
                 <Slider
-                  aria-label="质检抽样比例"
+                  aria-labelledby="qa-sample-slider-label"
                   className="mt-5"
                   defaultValue={[35]}
-                  id="qa-sample-slider"
                   max={100}
                   step={5}
                 />

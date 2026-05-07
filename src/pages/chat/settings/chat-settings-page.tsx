@@ -3,6 +3,7 @@ import {
   Add01Icon,
   AlertCircleIcon,
   ArrowLeft01Icon,
+  ArrowRight01Icon,
   Calendar03Icon,
   Configuration01Icon,
   Delete02Icon,
@@ -10,6 +11,7 @@ import {
   Edit02Icon,
   GridTableIcon,
   HelpCircleIcon,
+  Image01Icon,
   Layers01Icon,
   Moon02Icon,
   Notification03Icon,
@@ -27,6 +29,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as React from "react";
 import { Link, Navigate, NavLink, useParams } from "react-router-dom";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -40,10 +43,31 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -53,9 +77,38 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import {
   Select,
   SelectContent,
@@ -63,6 +116,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -635,6 +699,12 @@ function UiComponentDemo() {
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(
     new Date(2026, 4, 7),
   );
+  const [isRuleOpen, setIsRuleOpen] = React.useState(false);
+  const form = useForm({
+    defaultValues: {
+      templateName: "售前欢迎语",
+    },
+  });
 
   return (
     <>
@@ -644,8 +714,33 @@ function UiComponentDemo() {
         title="组件示例"
       />
 
+      <Breadcrumb aria-label="设置路径" className="mb-5">
+        <BreadcrumbList>
+          <BreadcrumbItem>设置</BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>开发参考</BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>组件示例</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_23rem]">
         <div className="space-y-4">
+          <Alert variant="destructive">
+            <HugeiconsIcon
+              color="currentColor"
+              icon={AlertCircleIcon}
+              size={16}
+              strokeWidth={1.8}
+            />
+            <AlertTitle>同步失败：企微素材库暂时不可用</AlertTitle>
+            <AlertDescription>
+              可用于页面内错误、配置说明和需要保留在上下文中的提示。
+            </AlertDescription>
+          </Alert>
+
           <section className="rounded-[10px] border border-border bg-background p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -763,7 +858,7 @@ function UiComponentDemo() {
                   toast.success("配置已保存", {
                     description: "DEMO 中的 Toast 已接入全局 Toaster。",
                   });
-                }}
+                  }}
                 type="button"
                 variant="secondary"
               >
@@ -775,6 +870,35 @@ function UiComponentDemo() {
                 />
                 触发 Toast
               </Button>
+
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button className="rounded-[10px]" type="button" variant="outline">
+                    打开右侧抽屉
+                  </Button>
+                </SheetTrigger>
+                <SheetContent className="sm:max-w-md">
+                  <SheetHeader>
+                    <SheetTitle>编辑账号详情</SheetTitle>
+                    <SheetDescription>
+                      Sheet 适合右侧详情、复杂编辑和不打断列表上下文的设置流程。
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="grid gap-4 px-4">
+                    <Field label="企微账号名称">
+                      <Input id="sheet-account-name" defaultValue="护肤小助理" />
+                    </Field>
+                    <Field label="默认接待组">
+                      <Input id="sheet-team-name" defaultValue="客服一组" />
+                    </Field>
+                  </div>
+                  <SheetFooter>
+                    <Button className="rounded-[10px]" type="button">
+                      保存变更
+                    </Button>
+                  </SheetFooter>
+                </SheetContent>
+              </Sheet>
             </div>
           </section>
 
@@ -806,6 +930,193 @@ function UiComponentDemo() {
                 </Label>
               ))}
             </RadioGroup>
+          </section>
+
+          <section className="rounded-[10px] border border-border bg-background p-5">
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">
+                  配置表单与高级规则
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Form 负责字段说明和错误消息结构，Accordion / Collapsible 负责收纳低频配置。
+                </p>
+
+                <Form {...form}>
+                  <form className="mt-5 grid gap-4" aria-label="模板配置表单">
+                    <FormField
+                      control={form.control}
+                      name="templateName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>模板名称</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormDescription>
+                            表单组件统一描述、错误消息和可访问性关联。
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <Collapsible open={isRuleOpen} onOpenChange={setIsRuleOpen}>
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          aria-expanded={isRuleOpen}
+                          className="w-fit rounded-[10px]"
+                          type="button"
+                          variant="outline"
+                        >
+                          高级分配规则
+                          <HugeiconsIcon
+                            color="currentColor"
+                            icon={ArrowRight01Icon}
+                            size={16}
+                            strokeWidth={1.8}
+                          />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-3 rounded-[10px] border border-border bg-surface-muted p-4 text-sm leading-6 text-muted-foreground">
+                        启用后会优先沿用最近一次服务关系。
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </form>
+                </Form>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">折叠配置组</h3>
+                <Accordion className="mt-3" collapsible defaultValue="sla" type="single">
+                  <AccordionItem value="sla">
+                    <AccordionTrigger>响应 SLA</AccordionTrigger>
+                    <AccordionContent className="text-muted-foreground">
+                      超过 90 秒未回复时转入兜底接待池。
+                    </AccordionContent>
+                  </AccordionItem>
+                  <AccordionItem value="quality">
+                    <AccordionTrigger>质检策略</AccordionTrigger>
+                    <AccordionContent className="text-muted-foreground">
+                      命中敏感词后自动创建待复核任务。
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[10px] border border-border bg-background p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">
+                  表格辅助组件
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Progress、Skeleton、Pagination、Slider 可覆盖导入、加载、分页和阈值配置。
+                </p>
+              </div>
+              <HoverCard>
+                <HoverCardTrigger asChild>
+                  <Button className="rounded-[10px]" type="button" variant="outline">
+                    账号悬浮信息
+                  </Button>
+                </HoverCardTrigger>
+                <HoverCardContent align="end">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="size-10 rounded-full">
+                      <AvatarFallback>梁</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">梁小满</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        今日接待 18 个会话
+                      </p>
+                    </div>
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
+            </div>
+
+            <div className="mt-5 grid gap-5 lg:grid-cols-2">
+              <div className="rounded-[10px] border border-border bg-surface p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">导入进度</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      账号绑定表正在校验 128 条记录
+                    </p>
+                  </div>
+                  <span className="text-sm font-semibold text-primary">68%</span>
+                </div>
+                <Progress className="mt-4" value={68} />
+              </div>
+
+              <div className="rounded-[10px] border border-border bg-surface p-4">
+                <h3 className="text-sm font-semibold text-foreground">加载占位</h3>
+                <div className="mt-4 space-y-3">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-5/6" />
+                </div>
+              </div>
+
+              <div className="rounded-[10px] border border-border bg-surface p-4">
+                <Label htmlFor="qa-sample-slider">质检抽样比例</Label>
+                <Slider
+                  aria-label="质检抽样比例"
+                  className="mt-5"
+                  defaultValue={[35]}
+                  id="qa-sample-slider"
+                  max={100}
+                  step={5}
+                />
+              </div>
+
+              <div className="rounded-[10px] border border-border bg-surface p-4">
+                <Pagination aria-label="分页">
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious href="#" />
+                    </PaginationItem>
+                    <PaginationItem>
+                      <PaginationLink href="#">1</PaginationLink>
+                    </PaginationItem>
+                    <PaginationItem>
+                      <PaginationLink href="#" isActive>
+                        2
+                      </PaginationLink>
+                    </PaginationItem>
+                    <PaginationItem>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                    <PaginationItem>
+                      <PaginationNext href="#" />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[10px] border border-border bg-background p-5">
+            <h2 className="text-base font-semibold text-foreground">工作台分栏参考</h2>
+            <ResizablePanelGroup
+              className="mt-5 min-h-[180px] rounded-[10px] border border-border"
+              orientation="horizontal"
+            >
+              <ResizablePanel defaultSize={34} minSize={25}>
+                <div className="flex h-full items-center justify-center bg-surface-muted text-sm text-muted-foreground">
+                  会话列表
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={66} minSize={35}>
+                <div className="flex h-full items-center justify-center bg-surface text-sm text-muted-foreground">
+                  聊天详情 / 客户资料
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </section>
         </div>
 
@@ -850,6 +1161,42 @@ function UiComponentDemo() {
 
           <section className="rounded-[10px] border border-border bg-background p-5">
             <div className="flex items-center gap-3">
+              <div className="flex size-9 items-center justify-center rounded-[10px] bg-info-muted text-info">
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={Image01Icon}
+                  size={18}
+                  strokeWidth={1.8}
+                />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-foreground">媒体比例预览</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  AspectRatio 可用真实宽高避免消息流跳动
+                </p>
+              </div>
+            </div>
+
+            <div
+              aria-label="媒体比例预览"
+              className="mt-4 rounded-[10px] border border-border bg-surface-muted p-3"
+              role="group"
+            >
+              <AspectRatio ratio={4 / 3}>
+                <div className="flex h-full items-center justify-center rounded-[8px] bg-background text-muted-foreground">
+                  <HugeiconsIcon
+                    color="currentColor"
+                    icon={Image01Icon}
+                    size={28}
+                    strokeWidth={1.8}
+                  />
+                </div>
+              </AspectRatio>
+            </div>
+          </section>
+
+          <section className="rounded-[10px] border border-border bg-background p-5">
+            <div className="flex items-center gap-3">
               <div className="flex size-9 items-center justify-center rounded-[10px] bg-success-muted text-success">
                 <HugeiconsIcon
                   color="currentColor"
@@ -866,13 +1213,11 @@ function UiComponentDemo() {
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              {["Dialog", "AlertDialog", "RadioGroup", "Tooltip", "Calendar", "Sonner"].map(
-                (component) => (
-                  <Badge key={component} variant="outline">
-                    {component}
-                  </Badge>
-                ),
-              )}
+              {uiComponentNames.map((component) => (
+                <Badge key={component} variant="outline">
+                  {component}
+                </Badge>
+              ))}
             </div>
           </section>
         </aside>
@@ -1064,4 +1409,26 @@ const routingStrategies = [
     label: "人工分配",
     description: "新会话进入待分配池，由组长手动指派。",
   },
+] as const;
+
+const uiComponentNames = [
+  "Dialog",
+  "AlertDialog",
+  "Sheet",
+  "Alert",
+  "Skeleton",
+  "Progress",
+  "RadioGroup",
+  "Slider",
+  "Tooltip",
+  "HoverCard",
+  "Accordion",
+  "Collapsible",
+  "Calendar",
+  "Pagination",
+  "Form",
+  "Resizable",
+  "Breadcrumb",
+  "AspectRatio",
+  "Sonner",
 ] as const;

@@ -86,4 +86,27 @@ describe("Chat settings pages", () => {
 
     expect(screen.getByRole("alertdialog", { name: "停用接待策略" })).toBeInTheDocument();
   });
+
+  it("shows extended UI component demos for common B2B settings patterns", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings/ui-kit");
+
+    expect(await screen.findByRole("heading", { name: "组件示例" })).toBeInTheDocument();
+    expect(screen.getByText("同步失败：企微素材库暂时不可用")).toBeInTheDocument();
+    expect(screen.getByText("导入进度")).toBeInTheDocument();
+    expect(screen.getByText("加载占位")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "设置路径" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "分页" })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "质检抽样比例" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "媒体比例预览" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "打开右侧抽屉" }));
+
+    expect(screen.getByRole("dialog", { name: "编辑账号详情" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "高级分配规则" }));
+
+    expect(screen.getByText("启用后会优先沿用最近一次服务关系。")).toBeInTheDocument();
+  });
 });

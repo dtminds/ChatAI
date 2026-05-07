@@ -29,6 +29,69 @@ const spreadsheetImageUrl = createSpreadsheetDataUrl();
 const h5CardPreviewImageUrl = createH5CardPreviewDataUrl();
 const miniProgramCoverImageUrl = createMiniProgramCoverDataUrl();
 
+const starCloudCustomerNames = [
+  "星云-星光 (星光)",
+  "星云小助手 (星云小助手（问题优先发群里）)",
+  "星云-云翎 (星云-云翎)",
+  "星云-云梦 (云梦)",
+  "星云-星语 (星语（问题优先发群里）)",
+  "星云-云翼 (云翼)",
+  "星云-星瑞 (星瑞)",
+  "马星",
+] as const;
+
+const starCloudGroupNames = [
+  "【外部】星云有客&企业微信沟通 (19)",
+  "星云-企业微信沟通 (8)",
+  "星云合伙人 (3)",
+  "星云产品&项目周会群 (14)",
+  "星云业务管理周会群 (7)",
+  "星云有客&企业微信 (17)",
+  "星云标准化产品-Core (10)",
+  "星云售后答疑群 (22)",
+  "星云渠道增长群 (16)",
+  "星云私域研习社班班群 (31)",
+  "星云客户成功协作群 (12)",
+  "星云咨询管理群 (9)",
+] as const;
+
+const starCloudAvatarUrls = [
+  customerAvatarUrl,
+  customerAvatarRuiUrl,
+  customerAvatarPlusUrl,
+  customerAvatarXiaoyuUrl,
+  customerAvatarSleepUrl,
+  customerAvatarGroupUrl,
+] as const;
+
+const starCloudCustomerConversations = starCloudCustomerNames.map((name, index) =>
+  createStarCloudConversation({
+    index,
+    mode: "single",
+    name,
+  }),
+);
+
+const starCloudGroupConversations = starCloudGroupNames.map((name, index) =>
+  createStarCloudConversation({
+    index,
+    mode: "group",
+    name,
+  }),
+);
+
+const starCloudConversations = [
+  ...starCloudCustomerConversations,
+  ...starCloudGroupConversations,
+];
+
+const starCloudCustomerProfiles = Object.fromEntries(
+  starCloudConversations.map((conversation, index) => [
+    conversation.customerId,
+    createStarCloudCustomerProfile(conversation, index),
+  ]),
+) as Record<string, CustomerProfile>;
+
 export const seedAccounts: Account[] = [
   {
     id: "drc",
@@ -117,6 +180,7 @@ export const seedConversations: Record<string, Conversation[]> = {
       mode: "group",
       priority: "low",
     },
+    ...starCloudConversations,
   ],
   ndt: [
     {
@@ -180,18 +244,6 @@ export const seedGroupMembersByConversationId: Record<string, GroupMember[]> = {
 
 export const seedMessages: Record<string, Message[]> = {
   "conv-001": [
-    {
-      id: "msg-001",
-      conversationId: "conv-001",
-      role: "system",
-      author: "系统",
-      content: {
-        type: "system",
-        text: "会话已由 德瑞可-小可 领取，后续消息将同步至当前工作台。",
-      },
-      sentAt: "2026-04-11 15:32:00",
-      status: "read",
-    },
     {
       id: "msg-002",
       conversationId: "conv-001",
@@ -579,6 +631,7 @@ function createSvgDataUrl(svg: string) {
 }
 
 export const seedCustomerProfiles: Record<string, CustomerProfile> = {
+  ...starCloudCustomerProfiles,
   "cust-001": {
     id: "cust-001",
     name: "丹阳草莓，得利市大樱桃",
@@ -756,3 +809,86 @@ export const seedCustomerProfiles: Record<string, CustomerProfile> = {
     notes: ["优先发短句提醒，不适合长话术。"],
   },
 };
+
+function createStarCloudConversation({
+  index,
+  mode,
+  name,
+}: {
+  index: number;
+  mode: Conversation["mode"];
+  name: string;
+}): Conversation {
+  const isGroup = mode === "group";
+  const displayIndex = String(index + 1).padStart(2, "0");
+  const day = String(10 - Math.floor(index / 4)).padStart(2, "0");
+  const hour = String(17 - (index % 6)).padStart(2, "0");
+  const minute = String((index * 7) % 60).padStart(2, "0");
+
+  return {
+    accountId: "drc",
+    customerAvatarUrl: starCloudAvatarUrls[index % starCloudAvatarUrls.length],
+    customerId: `cust-starcloud-${isGroup ? "group" : "single"}-${displayIndex}`,
+    customerName: name,
+    id: `conv-starcloud-${isGroup ? "group" : "single"}-${displayIndex}`,
+    isPinned: index < 2,
+    mode,
+    preview: isGroup
+      ? "包含：星云-星光、星云小助手、星云-云翎、运营客服"
+      : "客户成功部 / 运营客服",
+    priority: index % 3 === 0 ? "high" : index % 3 === 1 ? "medium" : "low",
+    quietFor: `${index + 1}天没聊了`,
+    unread: index % 4,
+    updatedAt: `2026-04-${day} ${hour}:${minute}:00`,
+  };
+}
+
+function createStarCloudCustomerProfile(
+  conversation: Conversation,
+  index: number,
+): CustomerProfile {
+  const isGroup = conversation.mode === "group";
+
+  return {
+    avatarUrl: conversation.customerAvatarUrl,
+    city: isGroup ? "线上" : ["杭州", "上海", "深圳", "广州"][index % 4],
+    id: conversation.customerId,
+    intentScore: isGroup ? 58 + (index % 4) * 6 : 64 + (index % 5) * 5,
+    metrics: isGroup
+      ? [
+          {
+            label: "群成员",
+            value: `${8 + index * 3}`,
+          },
+          {
+            label: "今日消息",
+            value: `${12 + index}`,
+          },
+        ]
+      : [
+          {
+            label: "最近会话",
+            value: `${index + 1} 天前`,
+          },
+          {
+            label: "跟进阶段",
+            value: index % 2 === 0 ? "意向确认" : "方案沟通",
+          },
+        ],
+    name: conversation.customerName,
+    notes: isGroup
+      ? ["用于验证群聊搜索结果展开状态。", "群运营动作暂以本地 mock 数据承载。"]
+      : ["用于验证联系人搜索结果展开状态。", "客户资料暂以本地 mock 数据承载。"],
+    persona: isGroup ? "星云群聊会话" : "星云客户样本",
+    phone: isGroup ? "--" : `180 7700 ${String(index + 1).padStart(4, "0")}`,
+    stage: isGroup ? "群运营" : index % 2 === 0 ? "新客跟进" : "复购培育",
+    tags: isGroup ? ["群聊", "星云", "搜索样本"] : ["星云", "搜索样本"],
+    tasks: [
+      {
+        id: `task-starcloud-${conversation.customerId}`,
+        status: index % 3 === 0 ? "due" : "open",
+        title: isGroup ? "检查群内待回复问题" : "补充客户跟进记录",
+      },
+    ],
+  };
+}

@@ -172,6 +172,37 @@
     @apply bg-background font-sans text-foreground antialiased;
   }
 
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    min-height: 32px;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: var(--scrollbar-thumb);
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   button,
   input,
   textarea {
@@ -206,7 +237,6 @@
 
   .chat-composer-textarea {
     scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 
   .chat-composer-textarea::-webkit-scrollbar {

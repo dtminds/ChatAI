@@ -306,7 +306,9 @@ describe("ChatWorkbenchPage", () => {
     await screen.findByPlaceholderText("请输入消息……");
 
     expect(screen.queryByRole("button", { name: "查看历史" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "领取会话" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /切换(深色|浅色)模式/ }),
+    ).toBeInTheDocument();
   });
 
   it("loads older messages when the message viewport reaches the top", async () => {
@@ -314,7 +316,7 @@ describe("ChatWorkbenchPage", () => {
 
     await screen.findByPlaceholderText("请输入消息……");
 
-    expect(screen.queryByText("会话已由 德瑞可-小可 领取")).not.toBeInTheDocument();
+    expect(screen.queryByText("预约直播抽秋天的第一杯奶茶")).not.toBeInTheDocument();
 
     const messageViewport = screen.getByTestId("message-viewport");
 
@@ -333,7 +335,7 @@ describe("ChatWorkbenchPage", () => {
     fireEvent.scroll(messageViewport);
 
     await waitFor(() => {
-      expect(screen.getByText(/会话已由 德瑞可-小可 领取/)).toBeInTheDocument();
+      expect(screen.getByText("预约直播抽秋天的第一杯奶茶")).toBeInTheDocument();
     });
   });
 
@@ -344,12 +346,12 @@ describe("ChatWorkbenchPage", () => {
 
     await screen.findByPlaceholderText("请输入消息……");
 
-    expect(screen.queryByText("会话已由 德瑞可-小可 领取")).not.toBeInTheDocument();
+    expect(screen.queryByText("预约直播抽秋天的第一杯奶茶")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "加载更早的对话" }));
 
     await waitFor(() => {
-      expect(screen.getByText(/会话已由 德瑞可-小可 领取/)).toBeInTheDocument();
+      expect(screen.getByText("预约直播抽秋天的第一杯奶茶")).toBeInTheDocument();
     });
   });
 

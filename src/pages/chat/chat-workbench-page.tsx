@@ -273,6 +273,7 @@ export function ChatWorkbenchPage() {
               conversations={visibleConversations}
               onSelectConversation={setActiveConversation}
               onSelectMode={setActiveMode}
+              searchableConversations={allConversations}
             />
 
             <ChatPanel

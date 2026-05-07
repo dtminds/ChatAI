@@ -4,6 +4,7 @@ import { afterEach, beforeAll, vi } from "vitest";
 
 beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
+  installLocalStorageMock();
 
   Object.defineProperty(window, "matchMedia", {
     writable: true,
@@ -44,3 +45,28 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
 });
+
+function installLocalStorageMock() {
+  let storage: Record<string, string> = {};
+  const localStorageMock: Storage = {
+    get length() {
+      return Object.keys(storage).length;
+    },
+    clear: vi.fn(() => {
+      storage = {};
+    }),
+    getItem: vi.fn((key: string) => storage[key] ?? null),
+    key: vi.fn((index: number) => Object.keys(storage)[index] ?? null),
+    removeItem: vi.fn((key: string) => {
+      delete storage[key];
+    }),
+    setItem: vi.fn((key: string, value: string) => {
+      storage[key] = String(value);
+    }),
+  };
+
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: localStorageMock,
+  });
+}

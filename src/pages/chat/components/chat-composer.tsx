@@ -80,6 +80,7 @@ export function ChatComposer({
   const [hoveredMentionMemberId, setHoveredMentionMemberId] = useState<string | null>(null);
   const [cursorPosition, setCursorPosition] = useState(draft.length);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const [isMentionPickerDismissed, setIsMentionPickerDismissed] = useState(false);
   const mentionTrigger = useMemo(
     () => getMentionTrigger(draft, cursorPosition),
     [cursorPosition, draft],
@@ -107,12 +108,14 @@ export function ChatComposer({
     canSendMessage &&
     isGroupConversation &&
     !!mentionTrigger &&
+    !isMentionPickerDismissed &&
     filteredMentionMembers.length > 0;
   const canSubmitDraft =
     canSendMessage && (!!draft.trim() || selectedMentionMembers.length > 0);
 
   useEffect(() => {
     setActiveMentionIndex(0);
+    setIsMentionPickerDismissed(false);
   }, [mentionTrigger?.query]);
 
   useEffect(() => {
@@ -187,6 +190,12 @@ export function ChatComposer({
 
   const handleDraftKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (isMentionPickerOpen && mentionTrigger) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsMentionPickerDismissed(true);
+        return;
+      }
+
       if (event.key === "ArrowDown") {
         event.preventDefault();
         setActiveMentionIndex((currentIndex) =>

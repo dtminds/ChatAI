@@ -105,6 +105,28 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("dismisses group member mentions with Escape until the query changes", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+
+    const composer = await screen.findByPlaceholderText("请输入消息……");
+    await user.type(composer, "@小");
+
+    expect(screen.getByRole("listbox", { name: "选择群成员" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("listbox", { name: "选择群成员" })).not.toBeInTheDocument();
+
+    await user.type(composer, "林");
+
+    expect(screen.getByRole("listbox", { name: "选择群成员" })).toBeInTheDocument();
+  });
+
   it("removes selected group member mention tags", async () => {
     const user = userEvent.setup();
 

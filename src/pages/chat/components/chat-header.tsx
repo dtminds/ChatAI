@@ -75,11 +75,11 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
           type="single"
           value={themePreference}
         >
-          <SegmentedControlItem aria-label="深色模式" value="dark">
+          <SegmentedControlItem aria-label="浅色模式" value="light">
             <HugeiconsIcon
               color="currentColor"
-              icon={Moon02Icon}
-              size={17}
+              icon={Sun02Icon}
+              size={16}
               strokeWidth={1.8}
             />
           </SegmentedControlItem>
@@ -87,15 +87,15 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
             <HugeiconsIcon
               color="currentColor"
               icon={ComputerIcon}
-              size={17}
+              size={16}
               strokeWidth={1.8}
             />
           </SegmentedControlItem>
-          <SegmentedControlItem aria-label="浅色模式" value="light">
+          <SegmentedControlItem aria-label="深色模式" value="dark">
             <HugeiconsIcon
               color="currentColor"
-              icon={Sun02Icon}
-              size={17}
+              icon={Moon02Icon}
+              size={16}
               strokeWidth={1.8}
             />
           </SegmentedControlItem>

@@ -19,7 +19,6 @@ export function ChatWorkbenchPage() {
     accounts,
     activeAccountId,
     activeConversationId,
-    activeMessageSeq,
     activeMode,
     bootstrapError,
     bootstrapStatus,
@@ -280,7 +279,6 @@ export function ChatWorkbenchPage() {
               accountName={activeAccount?.name}
               activeConversation={activeConversation}
               activeHistoryStatus={activeHistoryStatus}
-              activeMessageSeq={activeMessageSeq}
               canSendMessage={canSendMessage}
               composerPlaceholder={composerPlaceholder}
               customer={activeCustomer}

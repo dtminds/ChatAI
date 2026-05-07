@@ -1,35 +1,62 @@
 import { useLayoutEffect, useState } from "react";
 import {
+  ComputerIcon,
   Moon02Icon,
   Sun02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Button } from "@/components/ui/button";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@/components/ui/segmented-control";
 import type { Conversation } from "@/pages/chat/chat-types";
 
 const THEME_STORAGE_KEY = "chat-ai-theme";
-type ThemePreference = "dark" | "light";
+const DARK_MODE_QUERY = "(prefers-color-scheme: dark)";
+type ThemePreference = "dark" | "light" | "system";
 
 type ChatHeaderProps = {
   activeConversation?: Conversation;
-  activeMessageSeq: number;
 };
 
-export function ChatHeader({
-  activeConversation,
-  activeMessageSeq,
-}: ChatHeaderProps) {
-  const [isDarkMode, setIsDarkMode] = useState(getInitialThemePreference);
+export function ChatHeader({ activeConversation }: ChatHeaderProps) {
+  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const [isSystemDarkMode, setIsSystemDarkMode] = useState(false);
+  const isDarkMode =
+    themePreference === "dark" ||
+    (themePreference === "system" && isSystemDarkMode);
 
   useLayoutEffect(() => {
     document.documentElement.classList.toggle("dark", isDarkMode);
   }, [isDarkMode]);
 
-  const handleThemeToggle = () => {
-    const shouldUseDarkMode = !isDarkMode;
+  useLayoutEffect(() => {
+    setThemePreference(getInitialThemePreference());
 
-    writeThemePreference(shouldUseDarkMode ? "dark" : "light");
-    setIsDarkMode(shouldUseDarkMode);
+    const mediaQuery = getDarkModeMediaQuery();
+    if (!mediaQuery) {
+      return;
+    }
+    setIsSystemDarkMode(mediaQuery.matches);
+
+    const handleSystemThemeChange = (event: MediaQueryListEvent) => {
+      setIsSystemDarkMode(event.matches);
+    };
+
+    mediaQuery.addEventListener("change", handleSystemThemeChange);
+
+    return () => {
+      mediaQuery.removeEventListener("change", handleSystemThemeChange);
+    };
+  }, []);
+
+  const handleThemePreferenceChange = (nextThemePreference: string) => {
+    if (!isThemePreference(nextThemePreference)) {
+      return;
+    }
+
+    writeThemePreference(nextThemePreference);
+    setThemePreference(nextThemePreference);
   };
 
   return (
@@ -44,48 +71,68 @@ export function ChatHeader({
               @微信
             </span>
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            消息游标 {activeMessageSeq} · {activeConversation?.quietFor ?? "实时同步"}
-          </p>
         </div>
 
-        <Button
-          aria-label={isDarkMode ? "切换浅色模式" : "切换深色模式"}
-          className="size-9 rounded-lg p-0 shadow-none"
-          onClick={handleThemeToggle}
-          size="icon"
-          type="button"
-          variant="outline"
+        <SegmentedControl
+          aria-label="选择主题模式"
+          onValueChange={handleThemePreferenceChange}
+          type="single"
+          value={themePreference}
         >
-          <HugeiconsIcon
-            color="currentColor"
-            icon={isDarkMode ? Sun02Icon : Moon02Icon}
-            size={16}
-            strokeWidth={1.8}
-          />
-        </Button>
+          <SegmentedControlItem aria-label="浅色模式" value="light">
+            <HugeiconsIcon
+              color="currentColor"
+              icon={Sun02Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </SegmentedControlItem>
+          <SegmentedControlItem aria-label="跟随系统" value="system">
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ComputerIcon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </SegmentedControlItem>
+          <SegmentedControlItem aria-label="深色模式" value="dark">
+            <HugeiconsIcon
+              color="currentColor"
+              icon={Moon02Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </SegmentedControlItem>
+        </SegmentedControl>
       </div>
     </div>
   );
 }
 
-function getInitialThemePreference() {
-  const savedTheme = readThemePreference();
+function getInitialThemePreference(): ThemePreference {
+  return readThemePreference() ?? "system";
+}
 
-  return savedTheme === "dark" ||
-    (savedTheme !== "light" && document.documentElement.classList.contains("dark"));
+function getDarkModeMediaQuery() {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(DARK_MODE_QUERY)
+    : undefined;
 }
 
 function readThemePreference(): ThemePreference | undefined {
   try {
     const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
 
-    return savedTheme === "dark" || savedTheme === "light"
+    return isThemePreference(savedTheme)
       ? savedTheme
       : undefined;
   } catch {
     return undefined;
   }
+}
+
+function isThemePreference(value: unknown): value is ThemePreference {
+  return value === "dark" || value === "light" || value === "system";
 }
 
 function writeThemePreference(theme: ThemePreference) {

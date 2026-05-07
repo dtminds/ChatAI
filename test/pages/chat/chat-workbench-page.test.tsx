@@ -306,9 +306,8 @@ describe("ChatWorkbenchPage", () => {
     await screen.findByPlaceholderText("请输入消息……");
 
     expect(screen.queryByRole("button", { name: "查看历史" })).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /切换(深色|浅色)模式/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "选择主题模式" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "跟随系统" })).toBeInTheDocument();
   });
 
   it("loads older messages when the message viewport reaches the top", async () => {

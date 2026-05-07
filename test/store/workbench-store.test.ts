@@ -4,6 +4,10 @@ import {
   resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
+import {
+  seedConversations,
+  seedMessages,
+} from "@/pages/chat/mock-data";
 import { createWorkbenchStore, useWorkbenchStore } from "@/store/workbench-store";
 
 function createDeferred<T = void>() {
@@ -19,6 +23,26 @@ function createDeferred<T = void>() {
     reject,
     resolve,
   };
+}
+
+function getSeedUnreadAfterRead(accountId: string, readConversationId: string) {
+  return (seedConversations[accountId] ?? []).reduce(
+    (total, conversation) =>
+      total + (conversation.id === readConversationId ? 0 : conversation.unread),
+    0,
+  );
+}
+
+function getSeedMessageSeq(conversationId: string, messageId: string) {
+  const messageIndex = (seedMessages[conversationId] ?? []).findIndex(
+    (message) => message.id === messageId,
+  );
+
+  return messageIndex >= 0 ? messageIndex + 1 : undefined;
+}
+
+function getSeedMessageIdAt(conversationId: string, index: number) {
+  return seedMessages[conversationId]?.[index]?.id;
 }
 
 describe("useWorkbenchStore", () => {
@@ -44,7 +68,9 @@ describe("useWorkbenchStore", () => {
       id: "conv-001",
       unread: 0,
     });
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(11);
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
+      getSeedUnreadAfterRead("drc", "conv-001"),
+    );
   });
 
   it("sends a message optimistically and reconciles it on poll", async () => {
@@ -258,7 +284,7 @@ describe("useWorkbenchStore", () => {
     expect(state.messagesByConversationId["conv-001"]).toHaveLength(5);
     expect(state.messagesByConversationId["conv-001"][0]).toMatchObject({
       id: "msg-006",
-      seq: 6,
+      seq: getSeedMessageSeq("conv-001", "msg-006"),
     });
     expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(true);
 
@@ -266,12 +292,14 @@ describe("useWorkbenchStore", () => {
 
     state = useWorkbenchStore.getState();
 
-    expect(state.messagesByConversationId["conv-001"]).toHaveLength(10);
+    expect(state.messagesByConversationId["conv-001"]).toHaveLength(
+      seedMessages["conv-001"].length,
+    );
     expect(state.messagesByConversationId["conv-001"][0]).toMatchObject({
-      id: "msg-001",
+      id: getSeedMessageIdAt("conv-001", 0),
       seq: 1,
     });
-    expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(true);
+    expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(false);
 
     await useWorkbenchStore.getState().loadOlderMessages();
 

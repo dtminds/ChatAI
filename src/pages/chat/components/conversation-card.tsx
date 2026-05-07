@@ -91,7 +91,7 @@ export function ConversationCard({
             <p className="truncate text-[12px] text-muted-foreground">
               {conversation.preview}
             </p>
-            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+            <span className="shrink-0 whitespace-nowrap text-[12px] text-muted-foreground">
               {formatConversationTimestamp(conversation.updatedAt)}
             </span>
           </div>
@@ -105,7 +105,7 @@ export function ConversationCard({
             className={cn(
               "group/menu absolute right-2.5 top-2 size-6 rounded-md p-0 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
               conversation.isPinned ? "opacity-100" : "opacity-0",
-              isMenuOpen && "bg-surface text-foreground opacity-100",
+              isMenuOpen && "bg-muted text-foreground opacity-100",
             )}
             size="icon"
             type="button"
@@ -114,11 +114,11 @@ export function ConversationCard({
             {conversation.isPinned ? (
               <span
                 className={cn(
-                  "group-hover:hidden group-focus-visible/menu:hidden",
+                  "group-hover:hidden group-focus-visible/menu:hidden text-primary",
                   isMenuOpen && "hidden",
                 )}
               >
-                <HugeiconsIcon icon={PinIcon} size={16} strokeWidth={1.8} />
+                <HugeiconsIcon icon={PinIcon} size={14} />
               </span>
             ) : null}
             <span

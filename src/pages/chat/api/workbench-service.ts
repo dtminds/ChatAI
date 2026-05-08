@@ -423,6 +423,15 @@ function buildContent(message: Message) {
         imageUrl: message.content.imageUrl,
         width: message.content.width,
       };
+    case "video":
+      return {
+        alt: message.content.alt,
+        coverImageUrl: message.content.coverImageUrl,
+        durationLabel: message.content.durationLabel,
+        height: message.content.height,
+        videoUrl: message.content.videoUrl,
+        width: message.content.width,
+      };
     case "file":
       return {
         extension: message.content.extension,

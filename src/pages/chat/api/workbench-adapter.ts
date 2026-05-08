@@ -168,6 +168,16 @@ function adaptChatMessageContent(
         type: "image",
         width: asOptionalNumber(content.width),
       };
+    case "video":
+      return {
+        alt: String(content.alt ?? ""),
+        coverImageUrl: String(content.coverImageUrl ?? ""),
+        durationLabel: String(content.durationLabel ?? ""),
+        height: asOptionalNumber(content.height),
+        type: "video",
+        videoUrl: String(content.videoUrl ?? ""),
+        width: asOptionalNumber(content.width),
+      };
     case "file":
       return {
         extension: String(content.extension ?? ""),

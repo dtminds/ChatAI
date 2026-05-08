@@ -28,6 +28,8 @@ const phoneScreenshotImageUrl = createPhoneScreenshotDataUrl();
 const spreadsheetImageUrl = createSpreadsheetDataUrl();
 const h5CardPreviewImageUrl = createH5CardPreviewDataUrl();
 const miniProgramCoverImageUrl = createMiniProgramCoverDataUrl();
+const horizontalVideoCoverImageUrl = createHorizontalVideoCoverDataUrl();
+const verticalVideoCoverImageUrl = createVerticalVideoCoverDataUrl();
 
 const starCloudCustomerNames = [
   "星云-星光 (星光)",
@@ -431,6 +433,50 @@ export const seedMessages: Record<string, Message[]> = {
       sentAt: "2026-04-13 15:04:16",
       status: "read",
     },
+    {
+      id: "msg-011-video-horizontal",
+      conversationId: "conv-002",
+      role: "customer",
+      author: "睿白鸽",
+      sender: {
+        id: "sender-cust-002",
+        name: "睿白鸽",
+        avatarUrl: customerAvatarRuiUrl,
+      },
+      content: {
+        type: "video",
+        videoUrl: "/mock/video/stage-recital.mp4",
+        coverImageUrl: horizontalVideoCoverImageUrl,
+        alt: "舞台活动视频",
+        durationLabel: "1:01",
+        width: 640,
+        height: 360,
+      },
+      sentAt: "2026-04-13 15:04:28",
+      status: "read",
+    },
+    {
+      id: "msg-011-video-vertical",
+      conversationId: "conv-002",
+      role: "customer",
+      author: "睿白鸽",
+      sender: {
+        id: "sender-cust-002",
+        name: "睿白鸽",
+        avatarUrl: customerAvatarRuiUrl,
+      },
+      content: {
+        type: "video",
+        videoUrl: "/mock/video/lake-check.mp4",
+        coverImageUrl: verticalVideoCoverImageUrl,
+        alt: "湖面竖版视频",
+        durationLabel: "0:11",
+        width: 360,
+        height: 640,
+      },
+      sentAt: "2026-04-13 15:04:36",
+      status: "read",
+    },
   ],
   "conv-003": [
     {
@@ -622,6 +668,63 @@ function createMiniProgramCoverDataUrl() {
       <circle cx="458" cy="446" r="6" fill="#5d3341" />
       <circle cx="498" cy="446" r="6" fill="#5d3341" />
       <path d="M458 472C470 482 488 482 500 472" stroke="#5d3341" stroke-width="7" stroke-linecap="round" />
+    </svg>
+  `);
+}
+
+function createHorizontalVideoCoverDataUrl() {
+  return createSvgDataUrl(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" fill="none">
+      <rect width="640" height="360" fill="#10184f" />
+      <rect width="640" height="180" fill="url(#stageGlow)" opacity="0.95" />
+      <circle cx="416" cy="88" r="44" fill="#ff4fb8" opacity="0.72" />
+      <circle cx="410" cy="90" r="24" fill="#ffe66d" opacity="0.75" />
+      <rect y="244" width="640" height="116" fill="#26123d" />
+      <path d="M54 298C122 260 174 267 244 300C310 331 382 332 452 304C506 282 560 282 626 309" stroke="#ff625e" stroke-width="16" stroke-linecap="round" opacity="0.8" />
+      <path d="M88 304C164 276 238 276 320 306C402 335 490 322 592 290" stroke="#f8c35a" stroke-width="12" stroke-linecap="round" opacity="0.72" />
+      <rect x="92" y="152" width="18" height="90" rx="9" fill="#18294d" />
+      <circle cx="101" cy="136" r="17" fill="#d5a077" />
+      <path d="M110 164C142 151 163 138 186 112" stroke="#f6d1a4" stroke-width="10" stroke-linecap="round" />
+      <path d="M94 242L66 306" stroke="#141727" stroke-width="12" stroke-linecap="round" />
+      <path d="M107 242L142 310" stroke="#141727" stroke-width="12" stroke-linecap="round" />
+      <rect x="250" y="174" width="76" height="76" rx="10" fill="#f2efff" opacity="0.9" />
+      <rect x="346" y="168" width="78" height="82" rx="10" fill="#ffe2ee" opacity="0.9" />
+      <rect x="444" y="178" width="78" height="72" rx="10" fill="#fff2cc" opacity="0.9" />
+      <rect x="548" y="182" width="58" height="68" rx="10" fill="#ffd8da" opacity="0.9" />
+      <path d="M22 0H104L48 360H0V0Z" fill="#15151f" opacity="0.86" />
+      <defs>
+        <linearGradient id="stageGlow" x1="320" y1="0" x2="320" y2="180" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#143cff" />
+          <stop offset="1" stop-color="#10184f" stop-opacity="0" />
+        </linearGradient>
+      </defs>
+    </svg>
+  `);
+}
+
+function createVerticalVideoCoverDataUrl() {
+  return createSvgDataUrl(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="360" height="640" viewBox="0 0 360 640" fill="none">
+      <rect width="360" height="640" fill="#d8eaca" />
+      <rect width="360" height="230" fill="#ecf5dc" />
+      <path d="M0 132C76 122 144 142 216 128C280 116 322 110 360 124V640H0V132Z" fill="#9fc7b0" opacity="0.55" />
+      <path d="M0 248C58 236 112 260 176 248C244 236 292 214 360 230V640H0V248Z" fill="#7fb5a9" opacity="0.45" />
+      <path d="M0 398C78 368 138 414 204 390C264 368 316 356 360 374V640H0V398Z" fill="#4b8f88" opacity="0.35" />
+      <path d="M26 620C66 474 110 386 174 258" stroke="#dff0dc" stroke-width="6" stroke-linecap="round" opacity="0.45" />
+      <path d="M128 640C164 520 206 394 264 248" stroke="#eaf6e4" stroke-width="5" stroke-linecap="round" opacity="0.42" />
+      <ellipse cx="77" cy="242" rx="18" ry="8" fill="#e7ef9d" opacity="0.82" />
+      <ellipse cx="154" cy="298" rx="16" ry="7" fill="#e8f2aa" opacity="0.86" />
+      <ellipse cx="242" cy="330" rx="18" ry="8" fill="#edf7bc" opacity="0.82" />
+      <ellipse cx="284" cy="446" rx="14" ry="6" fill="#edf7bc" opacity="0.76" />
+      <ellipse cx="116" cy="452" rx="12" ry="6" fill="#e7ef9d" opacity="0.78" />
+      <rect y="0" width="360" height="640" fill="url(#waterLight)" opacity="0.52" />
+      <defs>
+        <linearGradient id="waterLight" x1="40" y1="0" x2="320" y2="640" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#ffffff" stop-opacity="0.55" />
+          <stop offset="0.42" stop-color="#ffffff" stop-opacity="0.08" />
+          <stop offset="1" stop-color="#1a6f70" stop-opacity="0.28" />
+        </linearGradient>
+      </defs>
     </svg>
   `);
 }

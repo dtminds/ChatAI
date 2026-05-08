@@ -102,7 +102,7 @@ describe("ConversationListPanel", () => {
       within(searchbox).getByRole("button", { name: /星云客户 1/ }),
     ).toBeInTheDocument();
     expect(within(searchbox).getAllByText("星云")[0]).toHaveClass(
-      "text-success",
+      "text-primary",
       "px-0",
     );
     expect(within(searchbox).queryByText("星云客户 6")).not.toBeInTheDocument();

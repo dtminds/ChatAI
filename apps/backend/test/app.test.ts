@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { solveChallenge, type Challenge } from "altcha-lib";
+import { deriveKey } from "altcha-lib/algorithms/scrypt";
 import { buildApp } from "../src/app";
 
 async function createAuthenticatedApp() {
@@ -16,6 +18,12 @@ async function createAuthenticatedApp() {
 
 describe("backend app", () => {
   afterEach(() => {
+    delete process.env.ALTCHA_COST;
+    delete process.env.ALTCHA_COUNTER_MAX;
+    delete process.env.ALTCHA_COUNTER_MIN;
+    delete process.env.ALTCHA_HMAC_SECRET;
+    delete process.env.ALTCHA_MEMORY_COST;
+    delete process.env.ALTCHA_PARALLELISM;
     delete process.env.AUTH_DEV_BYPASS;
     delete process.env.JWT_DEV_SECRET;
     delete process.env.JWT_PRIVATE_KEY;
@@ -58,6 +66,148 @@ describe("backend app", () => {
       },
       success: false,
     });
+
+    await app.close();
+  });
+
+  it("serves and verifies ALTCHA challenges once", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    const app = await buildApp();
+
+    const challengeResponse = await app.inject({
+      method: "GET",
+      url: "/api/auth/altcha/challenge",
+    });
+    const challenge = challengeResponse.json<Challenge>();
+    const solution = await solveChallenge({
+      challenge,
+      deriveKey,
+      timeout: 10000,
+    });
+
+    expect(challengeResponse.statusCode).toBe(200);
+    expect(challenge.parameters.algorithm).toBe("SCRYPT");
+    expect(challenge.parameters.data?.challengeId).toEqual(expect.any(String));
+    expect(solution).not.toBeNull();
+
+    const payload = windowlessBase64Encode(
+      JSON.stringify({
+        challenge,
+        solution,
+      }),
+    );
+
+    const firstVerify = await app.inject({
+      method: "POST",
+      payload: {
+        altcha: payload,
+      },
+      url: "/api/auth/altcha/verify",
+    });
+    const replayVerify = await app.inject({
+      method: "POST",
+      payload: {
+        altcha: payload,
+      },
+      url: "/api/auth/altcha/verify",
+    });
+
+    expect(firstVerify.statusCode).toBe(200);
+    expect(firstVerify.json()).toEqual({
+      data: {
+        verified: true,
+      },
+      success: true,
+    });
+    expect(replayVerify.statusCode).toBe(403);
+    expect(replayVerify.json()).toEqual({
+      error: {
+        code: "ALTCHA_VERIFICATION_FAILED",
+        message: "人机验证失败",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("does not consume an ALTCHA challenge when verification fails", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    const app = await buildApp();
+
+    const challengeResponse = await app.inject({
+      method: "GET",
+      url: "/api/auth/altcha/challenge",
+    });
+    const challenge = challengeResponse.json<Challenge>();
+    const solution = await solveChallenge({
+      challenge,
+      deriveKey,
+      timeout: 10000,
+    });
+
+    expect(solution).not.toBeNull();
+
+    const invalidVerify = await app.inject({
+      method: "POST",
+      payload: {
+        altcha: windowlessBase64Encode(
+          JSON.stringify({
+            challenge,
+            solution: {
+              ...solution,
+              derivedKey: "invalid-key",
+            },
+          }),
+        ),
+      },
+      url: "/api/auth/altcha/verify",
+    });
+    const validVerify = await app.inject({
+      method: "POST",
+      payload: {
+        altcha: windowlessBase64Encode(
+          JSON.stringify({
+            challenge,
+            solution,
+          }),
+        ),
+      },
+      url: "/api/auth/altcha/verify",
+    });
+
+    expect(invalidVerify.statusCode).toBe(403);
+    expect(validVerify.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it("falls back to safe ALTCHA counter bounds when env values are inverted", async () => {
+    process.env.ALTCHA_COST = "2";
+    process.env.ALTCHA_COUNTER_MIN = "10";
+    process.env.ALTCHA_COUNTER_MAX = "1";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    const app = await buildApp();
+
+    const challengeResponse = await app.inject({
+      method: "GET",
+      url: "/api/auth/altcha/challenge",
+    });
+
+    expect(challengeResponse.statusCode).toBe(200);
+    expect(challengeResponse.json<Challenge>().parameters.algorithm).toBe("SCRYPT");
 
     await app.close();
   });
@@ -350,3 +500,7 @@ describe("backend app", () => {
     await app.close();
   });
 });
+
+function windowlessBase64Encode(value: string) {
+  return Buffer.from(value, "utf8").toString("base64");
+}

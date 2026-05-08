@@ -1,4 +1,5 @@
 import { startTransition, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AccountRail } from "@/pages/chat/components/account-rail";
@@ -15,6 +16,26 @@ import { useWorkbenchStore } from "@/store/workbench-store";
 import type { GroupMember } from "@/pages/chat/chat-types";
 
 export function ChatWorkbenchPage() {
+  return <ChatWorkbenchContent />;
+}
+
+export function ChatWorkbenchRoutePage() {
+  const navigate = useNavigate();
+
+  return (
+    <ChatWorkbenchContent
+      onOpenSettings={() => {
+        navigate("/chat/settings");
+      }}
+    />
+  );
+}
+
+function ChatWorkbenchContent({
+  onOpenSettings,
+}: {
+  onOpenSettings?: () => void;
+}) {
   const {
     accounts,
     activeAccountId,
@@ -254,6 +275,7 @@ export function ChatWorkbenchPage() {
           activeAccountId={activeAccountId}
           currentEmployeeId={me?.id}
           onSelectAccount={setActiveAccount}
+          onOpenSettings={onOpenSettings}
           onTakeOverAccount={takeOverAccount}
           takeoverStatusByAccountId={takeoverStatusByAccountId}
         />

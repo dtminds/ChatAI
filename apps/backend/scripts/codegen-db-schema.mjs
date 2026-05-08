@@ -7,6 +7,7 @@ import path from "node:path";
 
 const require = createRequire(import.meta.url);
 const { Kysely, MysqlDialect } = require("kysely");
+const { parse: parseEnv } = require("dotenv");
 const mysql = require("mysql2");
 const { serializeFromMetadata } = require("kysely-codegen/dist/generator/generator/generate.js");
 const { MysqlDialect: CodegenMysqlDialect } = require("kysely-codegen/dist/generator/dialects/mysql/mysql-dialect.js");
@@ -70,20 +71,13 @@ if (invalidTable) {
 }
 
 function getDatabaseUrl() {
-  const env = readFileSync(envFile, "utf8");
-  const line = env.split(/\r?\n/).find((item) => /^DATABASE_URL\s*=/.test(item.trim()));
+  const env = parseEnv(readFileSync(envFile, "utf8"));
 
-  if (!line) {
+  if (!env.DATABASE_URL) {
     throw new Error(`DATABASE_URL is missing in ${envFile}`);
   }
 
-  const value = line.trim().replace(/^DATABASE_URL\s*=\s*/, "");
-
-  if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1);
-  }
-
-  return value.replace(/\s+#.*$/, "").trim();
+  return env.DATABASE_URL;
 }
 
 function appendDatabaseAlias(output) {

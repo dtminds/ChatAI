@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "dotenv": "^17.4.2",
     "kysely-codegen": "^0.20.0",
     "tsx": "^4.21.0",
     "typescript": "^5.8.0",

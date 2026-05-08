@@ -38,6 +38,9 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.12.3
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       kysely-codegen:
         specifier: ^0.20.0
         version: 0.20.0(kysely@0.28.17)(mysql2@3.22.3(@types/node@24.12.3))(typescript@5.9.3)

@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -227,9 +228,11 @@ export function UiComponentDemoPage() {
                     </Field>
                   </div>
                   <DialogFooter>
-                    <Button className="rounded-[10px]" type="button" variant="outline">
-                      取消
-                    </Button>
+                    <DialogClose asChild>
+                      <Button className="rounded-[10px]" type="button" variant="outline">
+                        取消
+                      </Button>
+                    </DialogClose>
                     <Button className="rounded-[10px]" type="button">
                       保存
                     </Button>

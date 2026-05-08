@@ -80,11 +80,17 @@ describe("Chat settings pages", () => {
     expect(screen.getByRole("dialog", { name: "编辑接待策略" })).toBeInTheDocument();
     expect(screen.getByLabelText("策略名称")).toHaveValue("自动分配");
 
-    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(
+      screen.queryByRole("dialog", { name: "编辑接待策略" }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "打开停用确认" }));
 
     expect(screen.getByRole("alertdialog", { name: "停用接待策略" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "取消" })).toHaveClass("rounded-[8px]");
+    expect(screen.getByRole("button", { name: "确认停用" })).toHaveClass("rounded-[8px]");
   });
 
   it("shows extended UI component demos for common B2B settings patterns", async () => {

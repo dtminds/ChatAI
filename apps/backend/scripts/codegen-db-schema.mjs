@@ -71,13 +71,19 @@ if (invalidTable) {
 
 function getDatabaseUrl() {
   const env = readFileSync(envFile, "utf8");
-  const line = env.split(/\r?\n/).find((item) => item.startsWith("DATABASE_URL="));
+  const line = env.split(/\r?\n/).find((item) => /^DATABASE_URL\s*=/.test(item.trim()));
 
   if (!line) {
     throw new Error(`DATABASE_URL is missing in ${envFile}`);
   }
 
-  return line.slice("DATABASE_URL=".length);
+  const value = line.trim().replace(/^DATABASE_URL\s*=\s*/, "");
+
+  if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1);
+  }
+
+  return value.replace(/\s+#.*$/, "").trim();
 }
 
 function appendDatabaseAlias(output) {

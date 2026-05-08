@@ -11,6 +11,14 @@ export type RequestError = {
   code?: string;
 };
 
+type ApiErrorEnvelope = {
+  error?: {
+    code?: string;
+    message?: string;
+  };
+  success?: false;
+};
+
 export const requestInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
   timeout: 15000,
@@ -22,6 +30,12 @@ requestInstance.interceptors.request.use((config) => {
   headers.set("X-Workbench-Client", "chat-ai-ui");
   headers.set("Accept", "application/json");
 
+  const accessToken = window.localStorage.getItem("chatai.accessToken");
+
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
   config.headers = headers;
 
   return config;
@@ -29,15 +43,17 @@ requestInstance.interceptors.request.use((config) => {
 
 function normalizeError(error: unknown): RequestError {
   if (axios.isAxiosError(error)) {
-    const axiosError = error as AxiosError<{ message?: string }>;
+    const axiosError = error as AxiosError<ApiErrorEnvelope & { message?: string }>;
+    const apiError = axiosError.response?.data?.error;
 
     return {
       message:
+        apiError?.message ??
         axiosError.response?.data?.message ??
         axiosError.message ??
         "Request failed",
       status: axiosError.response?.status,
-      code: axiosError.code,
+      code: apiError?.code ?? axiosError.code,
     };
   }
 

@@ -1,0 +1,34 @@
+import Fastify from "fastify";
+import { checkSchema } from "./db/schema-check.js";
+import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
+import { registerChatRoutes } from "./modules/chat/chat.routes.js";
+import { authPlugin } from "./plugins/auth.js";
+import { dbPlugin } from "./plugins/db.js";
+import { registerErrorHandler } from "./plugins/error-handler.js";
+
+export async function buildApp() {
+  const app = Fastify({
+    logger: {
+      level: process.env.LOG_LEVEL ?? "info",
+    },
+  });
+
+  await registerErrorHandler(app);
+  await app.register(dbPlugin);
+  await app.register(authPlugin);
+
+  app.get("/healthz", async () => ({ status: "ok" }));
+  app.get("/readyz", async () => {
+    const database = await checkSchema(app.db);
+
+    return {
+      database,
+      status: database.ok ? "ready" : "not-ready",
+    };
+  });
+
+  await registerAuthRoutes(app);
+  await registerChatRoutes(app);
+
+  return app;
+}

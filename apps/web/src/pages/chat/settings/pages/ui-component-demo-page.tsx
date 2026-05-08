@@ -218,12 +218,12 @@ export function UiComponentDemoPage() {
                   </DialogHeader>
                   <div className="grid gap-4 py-2">
                     <Field label="策略名称">
-                      <Input id="strategy-name" defaultValue="自动分配" />
+                      <Input id="strategy-name" defaultValue="接待策略" />
                     </Field>
                     <Field label="说明">
                       <Textarea
                         id="strategy-description"
-                        defaultValue="按在线状态、当前负载和历史关系分配新会话。"
+                        defaultValue="按在线状态、当前负载和历史关系提示当前服务压力。"
                       />
                     </Field>
                   </div>

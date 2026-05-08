@@ -10,7 +10,7 @@ import type {
   WorkbenchMessageStatus,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
-} from "@/pages/chat/api/workbench-contracts";
+} from "@chatai/contracts";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import type {
   Account,

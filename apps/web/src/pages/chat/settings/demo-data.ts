@@ -60,14 +60,14 @@ export const roles = [
 
 export const workflowOptions = [
   {
-    title: "自动分配",
-    description: "按在线状态、当前负载和历史接待关系自动分配新会话。",
+    title: "在线接待",
+    description: "按账号在线状态、接待能力和历史关系提示当前服务负载。",
     enabled: true,
     icon: SlidersHorizontalIcon,
   },
   {
     title: "超时转接",
-    description: "客服长时间未响应时，将会话转入兜底接待池。",
+    description: "客服长时间未响应时，提醒组长介入处理当前服务账号。",
     enabled: true,
     icon: GridTableIcon,
   },
@@ -83,7 +83,7 @@ export const routingStrategies = [
   {
     value: "load",
     label: "负载优先",
-    description: "把新会话分配给当前接待量较低的客服。",
+    description: "优先提示当前接待压力较低的客服处理新消息。",
   },
   {
     value: "relation",
@@ -92,8 +92,8 @@ export const routingStrategies = [
   },
   {
     value: "manual",
-    label: "人工分配",
-    description: "新会话进入待分配池，由组长手动指派。",
+    label: "人工处理",
+    description: "由组长根据账号状态和客户上下文安排处理人。",
   },
 ] as const;
 

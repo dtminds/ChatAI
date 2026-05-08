@@ -22,8 +22,8 @@
 
 ## Design References
 
-- 工作台设计：[docs/superpowers/specs/2026-04-19-chat-workbench-design.md](/Users/lsave/workspace/AI/ChatAI/docs/superpowers/specs/2026-04-19-chat-workbench-design.md)
-- Backend 架构：[docs/superpowers/specs/2026-05-08-backend-architecture-design.md](/Users/lsave/workspace/AI/ChatAI/docs/superpowers/specs/2026-05-08-backend-architecture-design.md)
+- 工作台设计：[docs/superpowers/specs/2026-04-19-chat-workbench-design.md](docs/superpowers/specs/2026-04-19-chat-workbench-design.md)
+- Backend 架构：[docs/superpowers/specs/2026-05-08-backend-architecture-design.md](docs/superpowers/specs/2026-05-08-backend-architecture-design.md)
 - 当前目标页面：`/chat`
 - 当前公开 API 前缀：`/api/server/*`
 

@@ -144,6 +144,26 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("rejects invalid chat route parameters", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations/conv-001/messages?limit=abc",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "BAD_REQUEST",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
   it("updates read state and emits poll changes after marking a conversation read", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

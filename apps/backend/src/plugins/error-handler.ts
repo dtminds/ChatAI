@@ -1,9 +1,15 @@
 import { apiError } from "@chatai/contracts";
-import type { FastifyInstance } from "fastify";
+import type { FastifyError, FastifyInstance } from "fastify";
 import { AppError } from "../shared/errors.js";
 
 export async function registerErrorHandler(app: FastifyInstance) {
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error: FastifyError, _request, reply) => {
+    if (error.validation) {
+      return reply
+        .code(400)
+        .send(apiError("BAD_REQUEST", error.message, { validation: error.validation }));
+    }
+
     if (error instanceof AppError) {
       return reply
         .code(error.statusCode)

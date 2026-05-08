@@ -1,25 +1,19 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
-const { Kysely, MysqlDialect } = require("kysely");
 const { parse: parseEnv } = require("dotenv");
-const mysql = require("mysql2");
-const { serializeFromMetadata } = require("kysely-codegen/dist/generator/generator/generate.js");
-const { MysqlDialect: CodegenMysqlDialect } = require("kysely-codegen/dist/generator/dialects/mysql/mysql-dialect.js");
-const { Logger } = require("kysely-codegen/dist/generator/logger/logger.js");
-const { DatabaseMetadata } = require("kysely-codegen/dist/introspector/metadata/database-metadata.js");
-const { EnumCollection } = require("kysely-codegen/dist/introspector/enum-collection.js");
-const { TableMatcher } = require("kysely-codegen/dist/introspector/table-matcher.js");
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outFile = path.join(appDir, "src/db/schema.ts");
 const envFile = path.join(appDir, ".env.local");
 const configFile = path.join(appDir, "scripts/codegen-db.config.json");
+const codegenBin = path.join(appDir, "node_modules/.bin/kysely-codegen");
 
 function parseTablePatterns(args) {
   return args.flatMap((arg) => {
@@ -93,45 +87,33 @@ function appendDatabaseAlias(output) {
 }
 
 const databaseUrl = getDatabaseUrl();
-const db = new Kysely({
-  dialect: new MysqlDialect({
-    pool: mysql.createPool(databaseUrl),
-  }),
-});
+const includePattern = tables.length === 1 ? tables[0] : `{${tables.join(",")}}`;
+const result = spawnSync(
+  codegenBin,
+  [
+    "--url",
+    databaseUrl,
+    "--out-file",
+    outFile,
+    "--dialect",
+    "mysql",
+    "--include-pattern",
+    includePattern,
+    "--type-only-imports",
+    "true",
+    "--log-level",
+    "info",
+  ],
+  { cwd: appDir, stdio: "inherit" },
+);
 
-try {
-  const allTables = await db.introspection.getTables();
-  const matchers = tables.map((table) => new TableMatcher(table));
-  const matchedTables = allTables.filter((table) =>
-    matchers.some((matcher) => matcher.match(table.schema, table.name)),
-  );
-
-  if (matchedTables.length === 0) {
-    console.error(`No tables matched: ${tables.join(", ")}`);
-    process.exit(1);
-  }
-
-  const metadata = new DatabaseMetadata({
-    enums: new EnumCollection(),
-    tables: matchedTables,
-  });
-  const output = appendDatabaseAlias(
-    serializeFromMetadata({
-      dialect: new CodegenMysqlDialect(),
-      logger: new Logger("info"),
-      metadata,
-      startTime: performance.now(),
-      typeOnlyImports: true,
-    }),
-  );
-
-  mkdirSync(path.dirname(outFile), { recursive: true });
-  writeFileSync(outFile, output);
-  console.log(
-    `Generated ${matchedTables.length} table${matchedTables.length === 1 ? "" : "s"}: ${matchedTables
-      .map((table) => table.name)
-      .join(", ")}`,
-  );
-} finally {
-  await db.destroy();
+if (result.error) {
+  throw result.error;
 }
+
+if (result.status !== 0) {
+  process.exit(result.status ?? 1);
+}
+
+writeFileSync(outFile, appendDatabaseAlias(readFileSync(outFile, "utf8")));
+console.log(`Generated ${tables.length} configured table${tables.length === 1 ? "" : "s"}: ${tables.join(", ")}`);

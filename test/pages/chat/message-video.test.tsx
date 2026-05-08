@@ -26,6 +26,9 @@ describe("MessageContentRenderer video messages", () => {
       "src",
       "/covers/stage.jpg",
     );
+    expect(screen.getByRole("img", { name: "舞台活动视频封面" }).parentElement).toHaveStyle({
+      width: "320px",
+    });
     expect(screen.getByRole("button", { name: "播放视频：舞台活动视频封面" })).toBeInTheDocument();
     expect(screen.getByText("1:01")).toBeInTheDocument();
   });
@@ -47,6 +50,9 @@ describe("MessageContentRenderer video messages", () => {
 
     expect(cover).toHaveAttribute("height", "640");
     expect(cover).toHaveAttribute("width", "360");
+    expect(cover.parentElement).toHaveStyle({
+      width: "160px",
+    });
     expect(screen.getByRole("button", { name: "播放视频：湖面竖版视频封面" })).toBeInTheDocument();
     expect(screen.getByText("0:11")).toBeInTheDocument();
   });

@@ -5,8 +5,8 @@ import type { VideoMessageContent } from "@/pages/chat/chat-types";
 
 const DEFAULT_VIDEO_WIDTH = 320;
 const DEFAULT_VIDEO_HEIGHT = 240;
-const MAX_VIDEO_WIDTH = 360;
-const MAX_VIDEO_HEIGHT = 320;
+const MAX_VIDEO_WIDTH = 320;
+const MAX_VIDEO_HEIGHT = 285;
 const MIN_VIDEO_DIMENSION = 140;
 
 type VideoMessageCardProps = {

@@ -93,6 +93,7 @@
 - 构建 web：`pnpm build`
 - 构建 backend：`pnpm backend:build`
 - 构建 contracts：`pnpm contracts:build`
+- 按配置生成 Kysely 类型：`pnpm backend:db:codegen`
 
 ## Naming and Domain Notes
 

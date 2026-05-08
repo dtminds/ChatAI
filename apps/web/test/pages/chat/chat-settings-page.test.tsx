@@ -78,7 +78,7 @@ describe("Chat settings pages", () => {
     await user.click(screen.getByRole("button", { name: "打开编辑弹窗" }));
 
     expect(screen.getByRole("dialog", { name: "编辑接待策略" })).toBeInTheDocument();
-    expect(screen.getByLabelText("策略名称")).toHaveValue("自动分配");
+    expect(screen.getByLabelText("策略名称")).toHaveValue("接待策略");
 
     await user.click(screen.getByRole("button", { name: "取消" }));
 

@@ -1,43 +1,165 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - main
+      - dev
   pull_request:
     branches:
       - main
+      - dev
   workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  verify:
-    name: Typecheck, Test, Build
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
+  pull-requests: read
 
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      contracts: ${{ steps.filter.outputs.contracts }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed areas
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - ".env*"
+              - ".github/workflows/ci.yml"
+              - "apps/web/**"
+              - "package.json"
+              - "packages/contracts/**"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig*.json"
+              - "tsconfig.base.json"
+            backend:
+              - ".env*"
+              - ".github/workflows/ci.yml"
+              - "apps/backend/**"
+              - "package.json"
+              - "packages/contracts/**"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig*.json"
+              - "tsconfig.base.json"
+            contracts:
+              - "package.json"
+              - "packages/contracts/**"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig*.json"
+              - "tsconfig.base.json"
+
+  contracts:
+    name: Contracts
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Enable pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.0.0 --activate
+        run: corepack enable
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm typecheck
+      - name: Typecheck contracts
+        run: pnpm contracts:typecheck
 
-      - name: Test
-        run: pnpm test
+      - name: Test contracts
+        run: pnpm contracts:test
 
-      - name: Build
-        run: pnpm build
+      - name: Build contracts
+        run: pnpm contracts:build
+
+  backend:
+    name: Backend
+    needs:
+      - changes
+      - contracts
+    if: |
+      always() &&
+      (github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true') &&
+      (needs.contracts.result == 'success' || needs.contracts.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck backend
+        run: pnpm backend:typecheck
+
+      - name: Test backend
+        run: pnpm backend:test
+
+      - name: Build backend
+        run: pnpm backend:build
+
+  frontend:
+    name: Frontend
+    needs:
+      - changes
+      - contracts
+    if: |
+      always() &&
+      (github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true') &&
+      (needs.contracts.result == 'success' || needs.contracts.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck frontend
+        run: pnpm --filter @chatai/web typecheck
+
+      - name: Test frontend
+        run: pnpm --filter @chatai/web test
+
+      - name: Build frontend
+        run: pnpm --filter @chatai/web build

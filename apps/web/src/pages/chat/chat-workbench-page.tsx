@@ -283,10 +283,10 @@ function ChatWorkbenchContent({
         <div className="h-full min-h-0 pl-0">
           <div
             className={cn(
-              "grid h-full min-h-0 overflow-hidden rounded-[20px_0_0_20px] border-l border-divider bg-surface lg:grid-cols-[18rem_minmax(0,1fr)]",
+              "grid h-full min-h-0 overflow-hidden rounded-[20px_0_0_20px] border-l border-divider/80 bg-surface lg:grid-cols-[18rem_minmax(0,1fr)]",
               isResizingCustomerPanel && "select-none",
             )}
-            style={{ boxShadow: "-5px 0 10px -4px var(--shadow-soft)" }}
+            style={{ boxShadow: "-3px 0 9px -4px var(--shadow-soft)" }}
           >
             <ConversationListPanel
               activeConversation={activeConversation}

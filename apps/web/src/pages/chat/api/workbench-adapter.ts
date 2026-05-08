@@ -3,7 +3,7 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchEmployeeDto,
   WorkbenchMessageDto,
-} from "@/pages/chat/api/workbench-contracts";
+} from "@chatai/contracts";
 import type {
   Account,
   ChatMessage,

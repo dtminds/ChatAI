@@ -1,0 +1,3 @@
+-- Schema snapshot for the ChatAI backend.
+-- The team currently applies database changes manually in the shared test DB.
+-- Keep this file synchronized after schema changes.

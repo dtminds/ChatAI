@@ -3,12 +3,23 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "dev": "pnpm --filter @chatai/web dev",
+    "dev:test-api": "pnpm --filter @chatai/web dev:test-api",
+    "backend:build": "pnpm --filter @chatai/backend build",
+    "backend:dev": "pnpm --filter @chatai/backend dev",
+    "backend:test": "pnpm --filter @chatai/backend test",
+    "backend:typecheck": "pnpm --filter @chatai/backend typecheck",
     "build": "pnpm --filter @chatai/web build",
+    "contracts:build": "pnpm --filter @chatai/contracts build",
+    "contracts:test": "pnpm --filter @chatai/contracts test",
+    "contracts:typecheck": "pnpm --filter @chatai/contracts typecheck",
     "preview": "pnpm --filter @chatai/web preview",
-    "typecheck": "pnpm --filter @chatai/web typecheck",
-    "test": "pnpm --filter @chatai/web test",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
     "test:watch": "pnpm --filter @chatai/web test:watch"
   },
   "packageManager": "pnpm@10.0.0"

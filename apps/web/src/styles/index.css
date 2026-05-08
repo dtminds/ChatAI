@@ -44,7 +44,7 @@
   --info-muted: oklch(0.936 0.034 253);
   --destructive-foreground: oklch(0.992 0.003 250);
   --destructive-muted: oklch(0.962 0.029 20);
-  --shadow-soft: oklch(0.286 0.018 252 / 0.08);
+  --shadow-soft: oklch(0.286 0.018 252 / 0.06);
   --shadow-medium: oklch(0.286 0.018 252 / 0.14);
   --shadow-strong: oklch(0.286 0.018 252 / 0.22);
   --scrollbar-size: 10px;

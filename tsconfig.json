@@ -6,6 +6,12 @@
     },
     {
       "path": "./apps/web/tsconfig.node.json"
+    },
+    {
+      "path": "./apps/backend"
+    },
+    {
+      "path": "./packages/contracts"
     }
   ]
 }

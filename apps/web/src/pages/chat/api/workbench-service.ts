@@ -19,7 +19,7 @@ import {
   type WorkbenchSendMessagePayload,
   type WorkbenchSendMessageResponse,
   type WorkbenchTakeOverAccountResponse,
-} from "@/pages/chat/api/workbench-contracts";
+} from "@chatai/contracts";
 import type { Message } from "@/pages/chat/chat-types";
 
 export type WorkbenchService = {
@@ -87,7 +87,11 @@ export function resetWorkbenchService() {
 export function resolveWorkbenchServiceMode(
   rawMode = import.meta.env.VITE_WORKBENCH_SERVICE_MODE,
 ): WorkbenchServiceMode {
-  return rawMode === "http" ? "http" : "mock";
+  if (rawMode === "mock" || rawMode === "http") {
+    return rawMode;
+  }
+
+  return import.meta.env.MODE === "test" ? "mock" : "http";
 }
 
 export function createWorkbenchService(
@@ -267,10 +271,10 @@ export function createMockWorkbenchService(): WorkbenchService {
 export function createHttpWorkbenchService(): WorkbenchService {
   return {
     getAccounts() {
-      return http.get<WorkbenchAccountDto[]>("/qywx-accounts");
+      return http.get<WorkbenchAccountDto[]>("/server/accounts");
     },
     getConversations(accountId) {
-      return http.get<WorkbenchConversationSummaryDto[]>("/workbench/conversations", {
+      return http.get<WorkbenchConversationSummaryDto[]>("/server/conversations", {
         params: {
           accountId,
           page: 1,
@@ -279,11 +283,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
       });
     },
     getMe() {
-      return http.get<WorkbenchEmployeeDto>("/me");
+      return http.get<WorkbenchEmployeeDto>("/server/me");
     },
     getMessages(conversationId, options) {
       return http.get<WorkbenchMessageDto[]>(
-        `/workbench/conversations/${conversationId}/messages`,
+        `/server/conversations/${conversationId}/messages`,
         {
           params: {
             before_seq: options?.beforeSeq,
@@ -294,11 +298,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     markConversationRead(conversationId) {
       return http.post<WorkbenchConversationReadResponse>(
-        `/workbench/conversations/${conversationId}/read`,
+        `/server/conversations/${conversationId}/read`,
       );
     },
     poll(request) {
-      return http.get<WorkbenchPollResponse>("/workbench/poll", {
+      return http.get<WorkbenchPollResponse>("/server/poll", {
         params: {
           active_conversation_id: request.activeConversationId,
           active_message_seq: request.activeMessageSeq,
@@ -309,13 +313,13 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     sendMessage(payload) {
       return http.post<WorkbenchSendMessageResponse, WorkbenchSendMessagePayload>(
-        "/workbench/messages/send",
+        "/server/messages/send",
         payload,
       );
     },
     takeOverAccount(accountId) {
       return http.post<WorkbenchTakeOverAccountResponse>(
-        `/workbench/accounts/${accountId}/take-over`,
+        `/server/accounts/${accountId}/take-over`,
       );
     },
   };

@@ -18,7 +18,8 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@chatai/contracts": ["../../packages/contracts/src/index.ts"]
     }
   },
   "include": ["src", "test"]

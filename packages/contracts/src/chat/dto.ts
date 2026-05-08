@@ -1,3 +1,35 @@
+import { Type, type Static } from "@sinclair/typebox";
+import { LoginStatusSchema, TakeoverStatusSchema } from "./enums.js";
+
+export const ChatAccountSchema = Type.Object({
+  accountId: Type.String(),
+  displayName: Type.String(),
+  loginStatus: LoginStatusSchema,
+  takeoverStatus: TakeoverStatusSchema,
+  unreadCount: Type.Optional(Type.Number()),
+});
+
+export const ChatConversationSchema = Type.Object({
+  accountId: Type.String(),
+  conversationId: Type.String(),
+  customerName: Type.String(),
+  previewText: Type.String(),
+  unreadCount: Type.Number(),
+  updatedAt: Type.String(),
+});
+
+export const ChatMessageSchema = Type.Object({
+  accountId: Type.String(),
+  conversationId: Type.String(),
+  createdAt: Type.String(),
+  messageId: Type.String(),
+  seq: Type.Number(),
+});
+
+export type ChatAccount = Static<typeof ChatAccountSchema>;
+export type ChatConversation = Static<typeof ChatConversationSchema>;
+export type ChatMessage = Static<typeof ChatMessageSchema>;
+
 export type WorkbenchMessageContentType =
   | "system"
   | "text"

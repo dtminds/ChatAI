@@ -274,14 +274,14 @@ POST /api/auth/login
 POST /api/auth/refresh
 POST /api/auth/logout
 
-GET  /api/bff/chat/bootstrap
-GET  /api/bff/chat/sync
-GET  /api/bff/chat/accounts
-POST /api/bff/chat/accounts/{accountId}/takeover
-GET  /api/bff/chat/accounts/{accountId}/conversations
-GET  /api/bff/chat/conversations/{conversationId}/messages
-POST /api/bff/chat/messages/send
-POST /api/bff/chat/accounts/{accountId}/read
+GET  /api/server/me
+GET  /api/server/accounts
+GET  /api/server/conversations
+GET  /api/server/conversations/{conversationId}/messages
+POST /api/server/conversations/{conversationId}/read
+GET  /api/server/poll
+POST /api/server/messages/send
+POST /api/server/accounts/{accountId}/take-over
 ```
 
 前端对外接口可以继续保留 path 参数；Backend 内部访问 MySQL 不受 Java API query 参数约定影响。
@@ -385,8 +385,8 @@ pnpm backend:test
 ```text
 GET /healthz
 GET /readyz
-GET /api/bff/chat/accounts
-GET /api/bff/chat/bootstrap
+GET /api/server/accounts
+GET /api/server/me
 ```
 
 ## 13. 高可用与连接池

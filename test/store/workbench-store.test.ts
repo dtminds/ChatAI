@@ -73,6 +73,21 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("bootstraps conversations that contain video messages", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(
+      state.messagesByConversationId["conv-002"].some(
+        (message) =>
+          message.role !== "system" && message.content.type === "video",
+      ),
+    ).toBe(true);
+    expect(state.bootstrapStatus).toBe("ready");
+  });
+
   it("sends a message optimistically and reconciles it on poll", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().sendAgentTextMessage("已经帮你备注好了，下午再跟进。");
@@ -280,7 +295,6 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().initializeWorkbench();
 
     let state = useWorkbenchStore.getState();
-
     expect(state.messagesByConversationId["conv-001"]).toHaveLength(5);
     expect(state.messagesByConversationId["conv-001"][0]).toMatchObject({
       id: "msg-006",

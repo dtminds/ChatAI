@@ -3,6 +3,7 @@ export type WorkbenchMessageContentType =
   | "text"
   | "voice"
   | "image"
+  | "video"
   | "file"
   | "h5"
   | "mini-program";

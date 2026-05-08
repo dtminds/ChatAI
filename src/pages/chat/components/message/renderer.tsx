@@ -4,6 +4,7 @@ import { ImageMessageCard } from "@/pages/chat/components/message/image";
 import { LinkMessageCard } from "@/pages/chat/components/message/link";
 import { MiniAppMessageCard } from "@/pages/chat/components/message/miniapp";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
+import { VideoMessageCard } from "@/pages/chat/components/message/video";
 import { VoiceMessageCard } from "@/pages/chat/components/message/voice";
 
 type MessageContentRendererProps = {
@@ -22,6 +23,8 @@ export function MessageContentRenderer({
       return <VoiceMessageCard content={message.content} isAgent={isAgent} />;
     case "image":
       return <ImageMessageCard content={message.content} />;
+    case "video":
+      return <VideoMessageCard content={message.content} />;
     case "file":
       return <FileMessageCard content={message.content} />;
     case "h5":

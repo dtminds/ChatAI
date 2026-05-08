@@ -80,6 +80,16 @@ export type ImageMessageContent = {
   height?: number;
 };
 
+export type VideoMessageContent = {
+  type: "video";
+  videoUrl: string;
+  coverImageUrl: string;
+  alt: string;
+  durationLabel: string;
+  width?: number;
+  height?: number;
+};
+
 export type FileMessageContent = {
   type: "file";
   fileName: string;
@@ -109,6 +119,7 @@ export type MessageContent =
   | TextMessageContent
   | VoiceMessageContent
   | ImageMessageContent
+  | VideoMessageContent
   | FileMessageContent
   | H5CardMessageContent
   | MiniProgramMessageContent;
@@ -138,6 +149,7 @@ export type ChatMessage = BaseMessage & {
     | TextMessageContent
     | VoiceMessageContent
     | ImageMessageContent
+    | VideoMessageContent
     | FileMessageContent
     | H5CardMessageContent
     | MiniProgramMessageContent;

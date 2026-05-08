@@ -6,7 +6,9 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  apps/web:
     dependencies:
       '@hugeicons/core-free-icons':
         specifier: ^1.0.0

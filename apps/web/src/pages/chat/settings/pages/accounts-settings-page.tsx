@@ -153,7 +153,7 @@ export function AccountsSettingsPage() {
         items={[
           "筛选条件建议沉淀为 query params，便于复制链接和回放问题。",
           "表格操作使用图标按钮承载编辑、删除等高频动作，主动作保留文字。",
-          "接真实接口时，可从 src/pages/chat/api 新增 settings service，再统一走 src/lib/request.ts。",
+          "接真实接口时，可从 apps/web/src/pages/chat/api 新增 settings service，再统一走 apps/web/src/lib/request.ts。",
         ]}
       />
     </>

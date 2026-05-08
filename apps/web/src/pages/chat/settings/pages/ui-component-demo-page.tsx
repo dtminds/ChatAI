@@ -629,7 +629,7 @@ export function UiComponentDemoPage() {
               <div>
                 <h2 className="text-base font-semibold text-foreground">已补充组件</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  统一放在 src/components/ui
+                  统一放在 apps/web/src/components/ui
                 </p>
               </div>
             </div>

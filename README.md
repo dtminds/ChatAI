@@ -1,6 +1,6 @@
 # ChatAI
 
-AI 客服工作台前端项目。
+AI 客服工作台项目。
 
 ## 技术栈
 
@@ -60,18 +60,23 @@ pnpm typecheck
 .
 ├── docs/
 │   └── superpowers/specs/
-├── src/
-│   ├── app/                 # 应用级布局
-│   ├── components/
-│   │   └── ui/              # shadcn/ui 基础组件
-│   ├── lib/                 # request、utils 等通用能力
-│   ├── pages/
-│   │   └── chat/            # /chat 页面、类型、mock 数据
-│   ├── router/              # React Router 路由定义
-│   ├── store/               # Zustand 状态管理
-│   └── styles/              # Tailwind v4 全局样式
+├── apps/
+│   └── web/
+│       ├── src/
+│       │   ├── app/         # 应用级布局
+│       │   ├── components/
+│       │   │   └── ui/      # shadcn/ui 基础组件
+│       │   ├── lib/         # request、utils 等通用能力
+│       │   ├── pages/
+│       │   │   └── chat/    # /chat 页面、类型、mock 数据
+│       │   ├── router/      # React Router 路由定义
+│       │   ├── store/       # Zustand 状态管理
+│       │   └── styles/      # Tailwind v4 全局样式
+│       ├── test/            # Vitest / Testing Library 测试
+│       ├── components.json
+│       └── package.json
 ├── AGENTS.md
-├── components.json
+├── pnpm-workspace.yaml
 ├── package.json
 └── README.md
 ```
@@ -79,10 +84,10 @@ pnpm typecheck
 ## 关键文件
 
 - 设计说明：[docs/superpowers/specs/2026-04-19-chat-workbench-design.md](docs/superpowers/specs/2026-04-19-chat-workbench-design.md)
-- 路由入口：[src/router/index.tsx](src/router/index.tsx)
-- 工作台页面：[src/pages/chat/chat-workbench-page.tsx](src/pages/chat/chat-workbench-page.tsx)
-- 状态管理：[src/store/workbench-store.ts](src/store/workbench-store.ts)
-- 请求封装：[src/lib/request.ts](src/lib/request.ts)
+- 路由入口：[apps/web/src/router/index.tsx](apps/web/src/router/index.tsx)
+- 工作台页面：[apps/web/src/pages/chat/chat-workbench-page.tsx](apps/web/src/pages/chat/chat-workbench-page.tsx)
+- 状态管理：[apps/web/src/store/workbench-store.ts](apps/web/src/store/workbench-store.ts)
+- 请求封装：[apps/web/src/lib/request.ts](apps/web/src/lib/request.ts)
 - 协作约定：[AGENTS.md](AGENTS.md)
 
 ## 环境变量

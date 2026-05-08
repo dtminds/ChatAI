@@ -5,6 +5,8 @@
 - 适用范围：第一期聚合聊天客服工作台的激进架构备选方案
 - 目标：评估 Node.js BFF 直接访问 MySQL / Redis，仅少量调用 Java Core 的可行性、边界和风险
 
+> 2026-05-08 更新：当前实现已按后端确认 schema 收敛为 `seatId = xy_wap_embed_user_seat.id`、`subUserId = xy_wap_embed_sub_user.id`。Node backend 只直接读取 MySQL 工作台表；会话已读、发送消息、席位接管由 Java owner 内部 API 写入。本文中的 `accountId` / `employeeId` 属于早期草案术语，后续开发以 `docs/superpowers/specs/2026-05-08-backend-architecture-design.md` 和 `packages/contracts` 为准。真实增量事件/cursor 机制仍待新增表或 Java 增量接口确认。
+
 ## 1. 方案结论
 
 本方案采用更激进的职责划分：
@@ -460,4 +462,3 @@ BFF 接收入站消息并维护会话摘要、未读和增量游标。
 但它的真实含义是：Node.js BFF 成为工作台业务后端。团队需要按正式后端服务标准建设它，而不是把它当作前端旁路服务。
 
 如果团队愿意承担这部分工程责任，本方案值得作为激进路线试点；如果当前缺少 Node.js 后端运维和数据治理能力，应先采用保守方案或从只读直连开始。
-

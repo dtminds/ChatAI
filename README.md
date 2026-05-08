@@ -178,13 +178,13 @@ pnpm backend:db:codegen -- xy_wap_embed_user_relation
 
 ```text
 /api/server/me
-/api/server/accounts
+/api/server/seats
 /api/server/conversations
 /api/server/conversations/:conversationId/messages
 /api/server/conversations/:conversationId/read
 /api/server/poll
 /api/server/messages/send
-/api/server/accounts/:accountId/take-over
+/api/server/seats/:seatId/take-over
 ```
 
 不要在前端页面里直接裸写 `fetch`，也不要把 backend 内部实现名暴露到公开 URL。
@@ -203,7 +203,8 @@ pnpm backend:db:codegen -- xy_wap_embed_user_relation
 ## 当前实现状态
 
 - Web 已接入 HTTP 服务模式，并保留测试场景下的 mock 服务能力。
-- Backend 已提供 `/api/server/*` 工作台接口，当前使用内存服务承载数据。
+- Backend 已提供 `/api/server/*` 工作台接口；配置 `DATABASE_URL` 后从 MySQL 工作台表读取席位、会话和消息，未配置时使用内存服务便于本地开发。
 - Auth 路由已预留，登录、刷新、退出仍未实现。
-- MySQL 接入点已预留，真实 schema 和查询逻辑后续接入。
+- 会话已读、发送消息、席位接管属于 Java owner 写操作，Node backend 通过 `JAVA_INTERNAL_API_BASE_URL` 配置的内部接口转发。
+- 真实增量事件/cursor 表尚未确认，当前 DB 模式的 `/api/server/poll` 只补拉当前会话的新消息。
 - Redis 不是当前阶段必需依赖。

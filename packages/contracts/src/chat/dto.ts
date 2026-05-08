@@ -1,32 +1,32 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { LoginStatusSchema, TakeoverStatusSchema } from "./enums.js";
 
-export const ChatAccountSchema = Type.Object({
-  accountId: Type.String(),
+export const ChatSeatSchema = Type.Object({
   displayName: Type.String(),
   loginStatus: LoginStatusSchema,
+  seatId: Type.String(),
   takeoverStatus: TakeoverStatusSchema,
   unreadCount: Type.Optional(Type.Number()),
 });
 
 export const ChatConversationSchema = Type.Object({
-  accountId: Type.String(),
   conversationId: Type.String(),
   customerName: Type.String(),
   previewText: Type.String(),
+  seatId: Type.String(),
   unreadCount: Type.Number(),
   updatedAt: Type.String(),
 });
 
 export const ChatMessageSchema = Type.Object({
-  accountId: Type.String(),
   conversationId: Type.String(),
   createdAt: Type.String(),
   messageId: Type.String(),
   seq: Type.Number(),
+  seatId: Type.String(),
 });
 
-export type ChatAccount = Static<typeof ChatAccountSchema>;
+export type ChatSeat = Static<typeof ChatSeatSchema>;
 export type ChatConversation = Static<typeof ChatConversationSchema>;
 export type ChatMessage = Static<typeof ChatMessageSchema>;
 
@@ -42,13 +42,14 @@ export type WorkbenchMessageContentType =
 
 export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed" | "read";
 
-export type WorkbenchEmployeeDto = {
-  id: string;
+export type WorkbenchSubUserDto = {
+  subUserId: string;
   displayName: string;
 };
 
-export type WorkbenchAccountDto = {
-  accountId: string;
+export type WorkbenchSeatDto = {
+  seatId: string;
+  thirdUserId?: string;
   name: string;
   avatar: string;
   operatorName: string;
@@ -57,12 +58,15 @@ export type WorkbenchAccountDto = {
   unreadCount: number;
   lastMessageTime?: number;
   loginStatus: "online" | "offline";
-  takenOverEmployeeId?: string;
+  hostSubUserId?: string;
 };
 
 export type WorkbenchConversationSummaryDto = {
   conversationId: string;
-  accountId: string;
+  seatId: string;
+  thirdUserId?: string;
+  thirdExternalUserId?: string;
+  thirdGroupId?: string;
   customerId: string;
   customerName: string;
   customerAvatar: string;
@@ -77,8 +81,11 @@ export type WorkbenchConversationSummaryDto = {
 export type WorkbenchMessageBaseDto = {
   messageId: string;
   conversationId: string;
-  accountId: string;
+  seatId: string;
   customerId: string;
+  thirdUserId?: string;
+  thirdExternalUserId?: string;
+  thirdGroupId?: string;
   senderType: "customer" | "agent" | "system";
   contentType: WorkbenchMessageContentType;
   status: WorkbenchMessageStatus;
@@ -91,8 +98,8 @@ export type WorkbenchMessageBaseDto = {
 
 export type WorkbenchMessageDto = WorkbenchMessageBaseDto;
 
-export type WorkbenchAccountChangeDto = {
-  accountId: string;
+export type WorkbenchSeatChangeDto = {
+  seatId: string;
   unreadCount: number;
   lastMessageTime?: number;
 };
@@ -101,7 +108,7 @@ export type WorkbenchConversationChangeDto =
   | ({
       type: "remove";
       conversationId: string;
-      accountId: string;
+      seatId: string;
     })
   | ({
       type: "upsert";
@@ -117,21 +124,21 @@ export type WorkbenchMessageStatusChangeDto = {
 
 export type WorkbenchPollRequest = {
   sinceVersion: number;
-  currentAccountId?: string;
+  currentSeatId?: string;
   activeConversationId?: string;
   activeMessageSeq?: number;
 };
 
 export type WorkbenchPollResponse = {
   nextVersion: number;
-  accountChanges: WorkbenchAccountChangeDto[];
+  seatChanges: WorkbenchSeatChangeDto[];
   conversationChanges: WorkbenchConversationChangeDto[];
   activeConversationMessages: WorkbenchMessageDto[];
   messageStatusChanges: WorkbenchMessageStatusChangeDto[];
 };
 
 export type WorkbenchSendMessagePayload = {
-  accountId: string;
+  seatId: string;
   conversationId: string;
   clientMessageId: string;
   contentType: "text";
@@ -146,11 +153,11 @@ export type WorkbenchSendMessageResponse = {
 
 export type WorkbenchConversationReadResponse = {
   conversationId: string;
-  accountId: string;
+  seatId: string;
   unreadCount: number;
-  accountUnreadCount: number;
+  seatUnreadCount: number;
 };
 
-export type WorkbenchTakeOverAccountResponse = {
-  account: WorkbenchAccountDto;
+export type WorkbenchTakeOverSeatResponse = {
+  seat: WorkbenchSeatDto;
 };

@@ -4,12 +4,15 @@ import type {
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
+import { MysqlWorkbenchService, type WorkbenchService } from "./workbench.service.js";
+import { createWorkbenchJavaClient } from "./workbench-java-client.js";
 import { createMemoryWorkbenchService } from "./workbench-memory.service.js";
+import { WorkbenchRepository } from "./workbench-repository.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
 const ConversationListQuerySchema = Type.Object({
-  accountId: Type.Optional(Type.String()),
+  seatId: Type.Optional(Type.String()),
   page: Type.Optional(NumericStringSchema),
   pageSize: Type.Optional(NumericStringSchema),
 });
@@ -26,20 +29,20 @@ const ConversationMessagesQuerySchema = Type.Object({
 const PollQuerySchema = Type.Object({
   active_conversation_id: Type.Optional(Type.String()),
   active_message_seq: Type.Optional(NumericStringSchema),
-  current_account_id: Type.Optional(Type.String()),
+  current_seat_id: Type.Optional(Type.String()),
   since_version: Type.Optional(NumericStringSchema),
 });
 
 const SendMessageBodySchema = Type.Object({
-  accountId: Type.String(),
   clientMessageId: Type.String(),
   content: Type.String(),
   contentType: Type.Literal("text"),
   conversationId: Type.String(),
+  seatId: Type.String(),
 });
 
-const AccountParamsSchema = Type.Object({
-  accountId: Type.String(),
+const SeatParamsSchema = Type.Object({
+  seatId: Type.String(),
 });
 
 type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
@@ -47,17 +50,22 @@ type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
-type AccountParams = Static<typeof AccountParamsSchema>;
+type SeatParams = Static<typeof SeatParamsSchema>;
 
 export async function registerChatRoutes(app: FastifyInstance) {
-  const workbench = createMemoryWorkbenchService();
+  const workbench: WorkbenchService = app.db
+    ? new MysqlWorkbenchService(
+        new WorkbenchRepository(app.db),
+        createWorkbenchJavaClient(),
+      )
+    : createMemoryWorkbenchService();
 
-  app.get("/api/server/me", { preHandler: app.authenticate }, async () =>
-    workbench.getMe(),
+  app.get("/api/server/me", { preHandler: app.authenticate }, async (request) =>
+    workbench.getMe(getSubUserId(request)),
   );
 
-  app.get("/api/server/accounts", { preHandler: app.authenticate }, async () =>
-    workbench.getAccounts(),
+  app.get("/api/server/seats", { preHandler: app.authenticate }, async (request) =>
+    workbench.getSeats(getSubUserId(request)),
   );
 
   app.get<{ Querystring: ConversationListQuery }>(
@@ -69,7 +77,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return workbench.getConversations(request.query.accountId ?? "");
+      return workbench.getConversations(getSubUserId(request), request.query.seatId ?? "");
     },
   );
 
@@ -86,10 +94,14 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return workbench.getMessages(request.params.conversationId, {
-        beforeSeq: parseOptionalInteger(request.query.before_seq),
-        limit: parseOptionalInteger(request.query.limit),
-      });
+      return workbench.getMessages(
+        getSubUserId(request),
+        request.params.conversationId,
+        {
+          beforeSeq: parseOptionalInteger(request.query.before_seq),
+          limit: parseOptionalInteger(request.query.limit),
+        },
+      );
     },
   );
 
@@ -102,7 +114,10 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return workbench.markConversationRead(request.params.conversationId);
+      return workbench.markConversationRead(
+        getSubUserId(request),
+        request.params.conversationId,
+      );
     },
   );
 
@@ -118,11 +133,11 @@ export async function registerChatRoutes(app: FastifyInstance) {
       const pollRequest = {
         activeConversationId: request.query.active_conversation_id,
         activeMessageSeq: parseOptionalInteger(request.query.active_message_seq),
-        currentAccountId: request.query.current_account_id,
+        currentSeatId: request.query.current_seat_id,
         sinceVersion: parseOptionalInteger(request.query.since_version) ?? 0,
       } satisfies WorkbenchPollRequest;
 
-      return workbench.poll(pollRequest);
+      return workbench.poll(getSubUserId(request), pollRequest);
     },
   );
 
@@ -135,21 +150,28 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) =>
-      workbench.sendMessage(request.body satisfies WorkbenchSendMessagePayload),
+      workbench.sendMessage(
+        getSubUserId(request),
+        request.body satisfies WorkbenchSendMessagePayload,
+      ),
   );
 
-  app.post<{ Params: AccountParams }>(
-    "/api/server/accounts/:accountId/take-over",
+  app.post<{ Params: SeatParams }>(
+    "/api/server/seats/:seatId/take-over",
     {
       preHandler: app.authenticate,
       schema: {
-        params: AccountParamsSchema,
+        params: SeatParamsSchema,
       },
     },
     async (request) => {
-      return workbench.takeOverAccount(request.params.accountId);
+      return workbench.takeOverSeat(getSubUserId(request), request.params.seatId);
     },
   );
+}
+
+function getSubUserId(request: { user?: { subUserId: string } }) {
+  return request.user?.subUserId ?? "";
 }
 
 function parseOptionalInteger(value: string | undefined) {

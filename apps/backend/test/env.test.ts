@@ -6,7 +6,7 @@ import { getPort, loadBackendEnv } from "../src/config/env";
 
 const ENV_KEYS = [
   "AUTH_DEV_BYPASS",
-  "AUTH_DEV_EMPLOYEE_ID",
+  "AUTH_DEV_SUB_USER_ID",
   "DATABASE_URL",
   "JWT_DEV_SECRET",
   "NODE_ENV",
@@ -31,9 +31,9 @@ describe("backend env config", () => {
   it("loads shared root env files and backend local env files for the selected mode", () => {
     const rootDir = createEnvDir();
     const appDir = createEnvDir();
-    writeFileSync(join(rootDir, ".env"), "PORT=3001\nAUTH_DEV_EMPLOYEE_ID=emp-base\n");
+    writeFileSync(join(rootDir, ".env"), "PORT=3001\nAUTH_DEV_SUB_USER_ID=sub-base\n");
     writeFileSync(join(rootDir, ".env.local"), "AUTH_DEV_BYPASS=false\n");
-    writeFileSync(join(rootDir, ".env.development"), "AUTH_DEV_EMPLOYEE_ID=emp-dev\n");
+    writeFileSync(join(rootDir, ".env.development"), "AUTH_DEV_SUB_USER_ID=sub-dev\n");
     writeFileSync(join(rootDir, ".env.development.local"), "AUTH_DEV_BYPASS=true\n");
     writeFileSync(join(appDir, ".env.local"), "JWT_DEV_SECRET=backend-local\n");
     writeFileSync(join(appDir, ".env.development.local"), "DATABASE_URL=mysql://local\n");
@@ -41,7 +41,7 @@ describe("backend env config", () => {
     loadBackendEnv({ appDir, rootDir, mode: "development" });
 
     expect(process.env.PORT).toBe("3001");
-    expect(process.env.AUTH_DEV_EMPLOYEE_ID).toBe("emp-dev");
+    expect(process.env.AUTH_DEV_SUB_USER_ID).toBe("sub-dev");
     expect(process.env.AUTH_DEV_BYPASS).toBe("true");
     expect(process.env.JWT_DEV_SECRET).toBe("backend-local");
     expect(process.env.DATABASE_URL).toBe("mysql://local");

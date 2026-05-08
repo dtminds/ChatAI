@@ -4,7 +4,7 @@ import { buildApp } from "../src/app";
 async function createAuthenticatedApp() {
   const app = await buildApp();
   const token = app.jwt.sign({
-    employeeId: "emp-001",
+    subUserId: "sub-user-001",
     roles: ["agent"],
   });
 
@@ -47,7 +47,7 @@ describe("backend app", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/api/server/accounts",
+      url: "/api/server/seats",
     });
 
     expect(response.statusCode).toBe(401);
@@ -75,7 +75,7 @@ describe("backend app", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       displayName: "林洒",
-      id: "emp-001",
+      subUserId: "sub-user-001",
     });
 
     await app.close();
@@ -112,15 +112,15 @@ describe("backend app", () => {
       method: "GET",
       url: "/api/server/me",
     });
-    const accounts = await app.inject({
+    const seats = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/accounts",
+      url: "/api/server/seats",
     });
     const conversations = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/conversations?accountId=drc&page=1&pageSize=30",
+      url: "/api/server/conversations?seatId=drc&page=1&pageSize=30",
     });
     const messages = await app.inject({
       headers: { authorization },
@@ -131,18 +131,18 @@ describe("backend app", () => {
     expect(me.statusCode).toBe(200);
     expect(me.json()).toEqual({
       displayName: "林洒",
-      id: "emp-001",
+      subUserId: "sub-user-001",
     });
-    expect(accounts.statusCode).toBe(200);
-    expect(accounts.json()[0]).toMatchObject({
-      accountId: "drc",
+    expect(seats.statusCode).toBe(200);
+    expect(seats.json()[0]).toMatchObject({
+      seatId: "drc",
       loginStatus: "online",
-      takenOverEmployeeId: "emp-001",
+      hostSubUserId: "sub-user-001",
     });
     expect(conversations.statusCode).toBe(200);
     expect(conversations.json()[0]).toMatchObject({
-      accountId: "drc",
       conversationId: "conv-001",
+      seatId: "drc",
       unreadCount: 2,
     });
     expect(messages.statusCode).toBe(200);
@@ -197,18 +197,18 @@ describe("backend app", () => {
       headers: { authorization },
       method: "POST",
       payload: {
-        accountId: "drc",
         clientMessageId: "local-sort-test-001",
         content: "未置顶会话的新消息",
         contentType: "text",
         conversationId: "conv-002",
+        seatId: "drc",
       },
       url: "/api/server/messages/send",
     });
     const conversations = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/conversations?accountId=drc",
+      url: "/api/server/conversations?seatId=drc",
     });
 
     expect(send.statusCode).toBe(200);
@@ -233,24 +233,24 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_account_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
     });
 
     expect(read.statusCode).toBe(200);
     expect(read.json()).toMatchObject({
-      accountId: "drc",
       conversationId: "conv-001",
+      seatId: "drc",
       unreadCount: 0,
     });
-    expect(read.json().accountUnreadCount).toBeGreaterThan(0);
+    expect(read.json().seatUnreadCount).toBeGreaterThan(0);
     expect(poll.statusCode).toBe(200);
     expect(poll.json()).toMatchObject({
       activeConversationMessages: [],
       nextVersion: expect.any(Number),
     });
-    expect(poll.json().accountChanges[0]).toMatchObject({
-      accountId: "drc",
-      unreadCount: read.json().accountUnreadCount,
+    expect(poll.json().seatChanges[0]).toMatchObject({
+      seatId: "drc",
+      unreadCount: read.json().seatUnreadCount,
     });
     expect(poll.json().conversationChanges[0]).toMatchObject({
       conversationId: "conv-001",
@@ -268,18 +268,18 @@ describe("backend app", () => {
       headers: { authorization },
       method: "POST",
       payload: {
-        accountId: "drc",
         clientMessageId: "local-test-001",
         content: "后端 mock 发送测试",
         contentType: "text",
         conversationId: "conv-001",
+        seatId: "drc",
       },
       url: "/api/server/messages/send",
     });
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_account_id=drc&active_conversation_id=conv-001&active_message_seq=10",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=10",
     });
 
     expect(send.statusCode).toBe(200);
@@ -303,20 +303,47 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("takes over an account and returns the updated account", async () => {
+  it("rejects sends when the seat does not own the conversation", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
     const response = await app.inject({
       headers: { authorization },
       method: "POST",
-      url: "/api/server/accounts/ndt/take-over",
+      payload: {
+        clientMessageId: "local-seat-mismatch-001",
+        content: "错误席位不能发送",
+        contentType: "text",
+        conversationId: "conv-001",
+        seatId: "ndt",
+      },
+      url: "/api/server/messages/send",
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "CONVERSATION_NOT_FOUND",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("takes over a seat and returns the updated seat", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/seats/ndt/take-over",
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      account: {
-        accountId: "ndt",
-        takenOverEmployeeId: "emp-001",
+      seat: {
+        hostSubUserId: "sub-user-001",
+        seatId: "ndt",
       },
     });
 

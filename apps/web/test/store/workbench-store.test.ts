@@ -59,7 +59,7 @@ describe("useWorkbenchStore", () => {
     expect(state.bootstrapStatus).toBe("ready");
     expect(state.me).toMatchObject({
       displayName: "林洒",
-      id: "emp-001",
+      id: "sub-user-001",
     });
     expect(state.activeAccountId).toBe("drc");
     expect(state.activeConversationId).toBe("conv-001");
@@ -530,12 +530,12 @@ describe("useWorkbenchStore", () => {
 
     setWorkbenchService({
       ...baseService,
-      async takeOverAccount(accountId) {
-        if (accountId === "ndt") {
+      async takeOverSeat(seatId) {
+        if (seatId === "ndt") {
           await takeoverGate.promise;
         }
 
-        return baseService.takeOverAccount(accountId);
+        return baseService.takeOverSeat(seatId);
       },
     });
 
@@ -597,7 +597,7 @@ describe("useWorkbenchStore", () => {
     const state = useWorkbenchStore.getState();
 
     expect(state.accounts.find((account) => account.id === "ndt")).toMatchObject({
-      takenOverEmployeeId: "emp-001",
+      takenOverEmployeeId: "sub-user-001",
       unreadCount: 0,
     });
     expect(state.conversationListsByScope.ndt[0]).toMatchObject({

@@ -27,3 +27,15 @@ export class NotFoundError extends AppError {
     super(code, message, 404);
   }
 }
+
+export class BadGatewayError extends AppError {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
+    super(code, message, 502, details);
+  }
+}
+
+export class ServiceUnavailableError extends AppError {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
+    super(code, message, 503, details);
+  }
+}

@@ -1,10 +1,10 @@
 import type {
-  WorkbenchAccountChangeDto,
-  WorkbenchAccountDto,
+  WorkbenchSeatChangeDto,
+  WorkbenchSeatDto,
   WorkbenchConversationChangeDto,
   WorkbenchConversationReadResponse,
   WorkbenchConversationSummaryDto,
-  WorkbenchEmployeeDto,
+  WorkbenchSubUserDto,
   WorkbenchMessageDto,
   WorkbenchMessageStatus,
   WorkbenchMessageStatusChangeDto,
@@ -12,15 +12,15 @@ import type {
   WorkbenchPollResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
-  WorkbenchTakeOverAccountResponse,
+  WorkbenchTakeOverSeatResponse,
 } from "@chatai/contracts";
 import { NotFoundError } from "../../shared/errors.js";
 
 type WorkbenchEvent =
   | {
       version: number;
-      type: "account";
-      payload: WorkbenchAccountChangeDto;
+      type: "seat";
+      payload: WorkbenchSeatChangeDto;
     }
   | {
       version: number;
@@ -39,21 +39,21 @@ type WorkbenchEvent =
     };
 
 type MemoryWorkbenchState = {
-  accounts: WorkbenchAccountDto[];
-  conversationsByAccount: Record<string, WorkbenchConversationSummaryDto[]>;
-  employee: WorkbenchEmployeeDto;
+  seats: WorkbenchSeatDto[];
+  conversationsBySeat: Record<string, WorkbenchConversationSummaryDto[]>;
+  subUser: WorkbenchSubUserDto;
   events: WorkbenchEvent[];
   messagesByConversationId: Record<string, WorkbenchMessageDto[]>;
   nextId: number;
   version: number;
 };
 
-const CURRENT_EMPLOYEE_ID = "emp-001";
+const CURRENT_SUB_USER_ID = "sub-user-001";
 const INITIAL_VERSION = 1284;
 
-const accountAvatarDrcUrl =
+const seatAvatarDrcUrl =
   "http://wework.qpic.cn/wwhead/duc2TvpEgSTewUnFO43HZ22H445fU0MTybfXZqjldjWlOArMJOM2GNsH3CUWyOuESHYdY5oHPhk/60";
-const accountAvatarNdtUrl =
+const seatAvatarNdtUrl =
   "http://wework.qpic.cn/bizmail/GNtOLFv4zDw4EZia6Xg0YYvxibVQLtqfia5aRx5spGwaIm2vHgicBiarTuQ/60";
 const customerAvatarUrl =
   "http://wx.qlogo.cn/mmhead/mOW261WJzibt0Sve4EmicjZbjRVJTuAYYHKCSNMriasW9CUOVVG9fsxicEeGrIuXnzkrbdgoAx7CEZI/64";
@@ -74,16 +74,20 @@ export function createMemoryWorkbenchService() {
   const state = buildInitialState();
 
   return {
-    getAccounts() {
-      return clone(state.accounts);
+    getSeats(_subUserId: string) {
+      return clone(state.seats);
     },
-    getConversations(accountId: string) {
-      return clone(sortConversations(state.conversationsByAccount[accountId] ?? []));
+    getConversations(_subUserId: string, seatId: string) {
+      return clone(sortConversations(state.conversationsBySeat[seatId] ?? []));
     },
-    getMe() {
-      return clone(state.employee);
+    getMe(_subUserId: string) {
+      return clone(state.subUser);
     },
-    getMessages(conversationId: string, options?: { beforeSeq?: number; limit?: number }) {
+    getMessages(
+      _subUserId: string,
+      conversationId: string,
+      options?: { beforeSeq?: number; limit?: number },
+    ) {
       const messages = [...(state.messagesByConversationId[conversationId] ?? [])].sort(
         (left, right) => left.seq - right.seq,
       );
@@ -99,7 +103,10 @@ export function createMemoryWorkbenchService() {
 
       return clone(visibleMessages);
     },
-    markConversationRead(conversationId: string): WorkbenchConversationReadResponse {
+    markConversationRead(
+      _subUserId: string,
+      conversationId: string,
+    ): WorkbenchConversationReadResponse {
       const conversation = findConversation(state, conversationId);
 
       if (!conversation) {
@@ -112,31 +119,31 @@ export function createMemoryWorkbenchService() {
       };
 
       upsertConversation(state, nextConversation);
-      syncAccountUnread(state, nextConversation.accountId);
+      syncSeatUnread(state, nextConversation.seatId);
       pushConversationEvent(state, nextConversation);
-      pushAccountEvent(state, nextConversation.accountId);
+      pushSeatEvent(state, nextConversation.seatId);
 
       return {
-        accountId: nextConversation.accountId,
-        accountUnreadCount: findAccount(state, nextConversation.accountId)?.unreadCount ?? 0,
+        seatId: nextConversation.seatId,
+        seatUnreadCount: findSeat(state, nextConversation.seatId)?.unreadCount ?? 0,
         conversationId,
         unreadCount: 0,
       };
     },
-    poll(request: WorkbenchPollRequest): WorkbenchPollResponse {
+    poll(_subUserId: string, request: WorkbenchPollRequest): WorkbenchPollResponse {
       const relevantEvents = state.events.filter((event) => event.version > request.sinceVersion);
-      const accountChanges = collapseLatest(
+      const seatChanges = collapseLatest(
         relevantEvents.filter(
-          (event): event is Extract<WorkbenchEvent, { type: "account" }> =>
-            event.type === "account",
+          (event): event is Extract<WorkbenchEvent, { type: "seat" }> =>
+            event.type === "seat",
         ),
-        (event) => event.payload.accountId,
+        (event) => event.payload.seatId,
       ).map((event) => event.payload);
       const conversationChanges = collapseLatest(
         relevantEvents.filter(
           (event): event is Extract<WorkbenchEvent, { type: "conversation" }> =>
             event.type === "conversation" &&
-            event.payload.accountId === request.currentAccountId,
+            event.payload.seatId === request.currentSeatId,
         ),
         (event) => event.payload.conversationId,
       ).map((event) => event.payload);
@@ -156,26 +163,29 @@ export function createMemoryWorkbenchService() {
         .map((event) => event.payload);
 
       return {
-        accountChanges: clone(accountChanges),
+        seatChanges: clone(seatChanges),
         activeConversationMessages: clone(activeConversationMessages),
         conversationChanges: clone(conversationChanges),
         messageStatusChanges: clone(messageStatusChanges),
         nextVersion: state.version,
       };
     },
-    sendMessage(payload: WorkbenchSendMessagePayload): WorkbenchSendMessageResponse {
+    sendMessage(
+      _subUserId: string,
+      payload: WorkbenchSendMessagePayload,
+    ): WorkbenchSendMessageResponse {
       const conversation = findConversation(state, payload.conversationId);
 
-      if (!conversation) {
+      if (!conversation || conversation.seatId !== payload.seatId) {
         throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
       }
 
       const messageId = `msg-server-${state.nextId++}`;
       const nextSeq = getNextMessageSeq(state, payload.conversationId);
       const now = Date.now();
-      const outcome = resolveSendOutcome(state, payload.accountId, payload.content);
+      const outcome = resolveSendOutcome(state, payload.seatId, payload.content);
       const backendMessage = {
-        accountId: payload.accountId,
+        seatId: payload.seatId,
         clientMessageId: payload.clientMessageId,
         content: {
           text: payload.content,
@@ -201,9 +211,9 @@ export function createMemoryWorkbenchService() {
       };
 
       upsertConversation(state, nextConversation);
-      syncAccountUnread(state, payload.accountId);
+      syncSeatUnread(state, payload.seatId);
       pushConversationEvent(state, nextConversation);
-      pushAccountEvent(state, payload.accountId);
+      pushSeatEvent(state, payload.seatId);
       pushMessageStatusEvent(state, {
         clientMessageId: payload.clientMessageId,
         conversationId: payload.conversationId,
@@ -218,30 +228,30 @@ export function createMemoryWorkbenchService() {
         status: "accepted",
       };
     },
-    takeOverAccount(accountId: string): WorkbenchTakeOverAccountResponse {
-      const account = findAccount(state, accountId);
+    takeOverSeat(_subUserId: string, seatId: string): WorkbenchTakeOverSeatResponse {
+      const seat = findSeat(state, seatId);
 
-      if (!account) {
+      if (!seat) {
         throw new NotFoundError("ACCOUNT_NOT_FOUND", "账号不存在");
       }
 
-      const nextAccount = {
-        ...account,
-        takenOverEmployeeId: CURRENT_EMPLOYEE_ID,
+      const nextSeat = {
+        ...seat,
+        hostSubUserId: CURRENT_SUB_USER_ID,
       };
 
-      state.accounts = state.accounts.map((item) =>
-        item.accountId === accountId ? nextAccount : item,
+      state.seats = state.seats.map((item) =>
+        item.seatId === seatId ? nextSeat : item,
       );
-      pushAccountEvent(state, accountId);
+      pushSeatEvent(state, seatId);
 
-      return { account: clone(nextAccount) };
+      return { seat: clone(nextSeat) };
     },
   };
 }
 
 function buildInitialState(): MemoryWorkbenchState {
-  const conversationsByAccount = {
+  const conversationsBySeat = {
     drc: sortConversations([
       conversation("conv-001", "drc", "cust-001", "丹阳草莓，得利市大樱桃", customerAvatarUrl, "这是最新的权益清单截图，你帮我确认下。", "2026-04-14 19:18:32", 2, "single", "high", true),
       conversation("conv-002", "drc", "cust-002", "睿白鸽", customerAvatarRuiUrl, "早餐能不能换成酸奶和坚果？", "2026-04-13 15:04:16", 0, "single", "medium"),
@@ -253,17 +263,17 @@ function buildInitialState(): MemoryWorkbenchState {
       conversation("conv-006", "ndt", "cust-006", "睡觉", customerAvatarSleepUrl, "多喝水，明天继续打卡。", "2026-04-09 16:04:45", 0, "single", "low"),
     ]),
   } satisfies Record<string, WorkbenchConversationSummaryDto[]>;
-  const accounts = [
-    account("drc", "德瑞可", accountAvatarDrcUrl, "小可", "私域客户管理", "13296712905", "online", conversationsByAccount.drc, CURRENT_EMPLOYEE_ID),
-    account("ndt", "念都堂", accountAvatarNdtUrl, "尚青", "门店社群维护", "18104084782", "online", conversationsByAccount.ndt),
+  const seats = [
+    seat("drc", "德瑞可", seatAvatarDrcUrl, "小可", "私域客户管理", "13296712905", "online", conversationsBySeat.drc, CURRENT_SUB_USER_ID),
+    seat("ndt", "念都堂", seatAvatarNdtUrl, "尚青", "门店社群维护", "18104084782", "online", conversationsBySeat.ndt),
   ];
 
   return {
-    accounts,
-    conversationsByAccount,
-    employee: {
+    seats,
+    conversationsBySeat,
+    subUser: {
       displayName: "林洒",
-      id: CURRENT_EMPLOYEE_ID,
+      subUserId: CURRENT_SUB_USER_ID,
     },
     events: [],
     messagesByConversationId: {
@@ -301,34 +311,34 @@ function buildInitialState(): MemoryWorkbenchState {
   };
 }
 
-function account(
-  accountId: string,
+function seat(
+  seatId: string,
   name: string,
   avatar: string,
   operatorName: string,
   description: string,
   phone: string,
-  loginStatus: WorkbenchAccountDto["loginStatus"],
+  loginStatus: WorkbenchSeatDto["loginStatus"],
   conversations: WorkbenchConversationSummaryDto[],
-  takenOverEmployeeId?: string,
-): WorkbenchAccountDto {
+  hostSubUserId?: string,
+): WorkbenchSeatDto {
   return {
-    accountId,
+    seatId,
     avatar,
     description,
-    lastMessageTime: getAccountLastMessageTime(conversations),
+    lastMessageTime: getSeatLastMessageTime(conversations),
     loginStatus,
     name,
     operatorName,
     phone,
-    takenOverEmployeeId,
-    unreadCount: getAccountUnreadCount(conversations),
+    hostSubUserId,
+    unreadCount: getSeatUnreadCount(conversations),
   };
 }
 
 function conversation(
   conversationId: string,
-  accountId: string,
+  seatId: string,
   customerId: string,
   customerName: string,
   customerAvatar: string,
@@ -340,7 +350,7 @@ function conversation(
   isPinned?: boolean,
 ): WorkbenchConversationSummaryDto {
   return {
-    accountId,
+    seatId,
     conversationId,
     customerAvatar,
     customerId,
@@ -357,7 +367,7 @@ function conversation(
 function message(
   messageId: string,
   conversationId: string,
-  accountId: string,
+  seatId: string,
   customerId: string,
   senderType: WorkbenchMessageDto["senderType"],
   contentType: WorkbenchMessageDto["contentType"],
@@ -367,7 +377,7 @@ function message(
   status: WorkbenchMessageStatus,
 ): WorkbenchMessageDto {
   return {
-    accountId,
+    seatId,
     content,
     contentType,
     conversationId,
@@ -391,21 +401,21 @@ function toTimestamp(value: string) {
 }
 
 function findConversation(state: MemoryWorkbenchState, conversationId: string) {
-  return Object.values(state.conversationsByAccount)
+  return Object.values(state.conversationsBySeat)
     .flat()
     .find((conversation) => conversation.conversationId === conversationId);
 }
 
-function findAccount(state: MemoryWorkbenchState, accountId: string) {
-  return state.accounts.find((account) => account.accountId === accountId);
+function findSeat(state: MemoryWorkbenchState, seatId: string) {
+  return state.seats.find((seat) => seat.seatId === seatId);
 }
 
 function upsertConversation(
   state: MemoryWorkbenchState,
   nextConversation: WorkbenchConversationSummaryDto,
 ) {
-  const currentConversations = state.conversationsByAccount[nextConversation.accountId] ?? [];
-  state.conversationsByAccount[nextConversation.accountId] = sortConversations([
+  const currentConversations = state.conversationsBySeat[nextConversation.seatId] ?? [];
+  state.conversationsBySeat[nextConversation.seatId] = sortConversations([
     nextConversation,
     ...currentConversations.filter(
       (conversation) => conversation.conversationId !== nextConversation.conversationId,
@@ -413,33 +423,33 @@ function upsertConversation(
   ]);
 }
 
-function syncAccountUnread(state: MemoryWorkbenchState, accountId: string) {
-  const account = findAccount(state, accountId);
+function syncSeatUnread(state: MemoryWorkbenchState, seatId: string) {
+  const seat = findSeat(state, seatId);
 
-  if (!account) {
+  if (!seat) {
     return;
   }
 
-  const conversations = state.conversationsByAccount[accountId] ?? [];
-  account.unreadCount = getAccountUnreadCount(conversations);
-  account.lastMessageTime = getAccountLastMessageTime(conversations);
+  const conversations = state.conversationsBySeat[seatId] ?? [];
+  seat.unreadCount = getSeatUnreadCount(conversations);
+  seat.lastMessageTime = getSeatLastMessageTime(conversations);
 }
 
-function pushAccountEvent(state: MemoryWorkbenchState, accountId: string) {
-  const account = findAccount(state, accountId);
+function pushSeatEvent(state: MemoryWorkbenchState, seatId: string) {
+  const seat = findSeat(state, seatId);
 
-  if (!account) {
+  if (!seat) {
     return;
   }
 
   state.version += 1;
   state.events.push({
     payload: {
-      accountId,
-      lastMessageTime: account.lastMessageTime,
-      unreadCount: account.unreadCount,
+      seatId,
+      lastMessageTime: seat.lastMessageTime,
+      unreadCount: seat.unreadCount,
     },
-    type: "account",
+    type: "seat",
     version: state.version,
   });
 }
@@ -479,15 +489,15 @@ function getNextMessageSeq(state: MemoryWorkbenchState, conversationId: string) 
 
 function resolveSendOutcome(
   state: MemoryWorkbenchState,
-  accountId: string,
+  seatId: string,
   content: string,
 ) {
-  const account = findAccount(state, accountId);
-  const shouldFail = account?.loginStatus === "offline" || /\[fail\]/i.test(content);
+  const seat = findSeat(state, seatId);
+  const shouldFail = seat?.loginStatus === "offline" || /\[fail\]/i.test(content);
 
   if (shouldFail) {
     return {
-      reason: account?.loginStatus === "offline" ? "企微账号离线" : "模拟发送失败",
+      reason: seat?.loginStatus === "offline" ? "企微账号离线" : "模拟发送失败",
       status: "failed" as const,
     };
   }
@@ -497,11 +507,11 @@ function resolveSendOutcome(
   };
 }
 
-function getAccountUnreadCount(conversations: WorkbenchConversationSummaryDto[]) {
+function getSeatUnreadCount(conversations: WorkbenchConversationSummaryDto[]) {
   return conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0);
 }
 
-function getAccountLastMessageTime(conversations: WorkbenchConversationSummaryDto[]) {
+function getSeatLastMessageTime(conversations: WorkbenchConversationSummaryDto[]) {
   return conversations.reduce(
     (latest, conversation) => Math.max(latest, conversation.lastMessageTime),
     0,

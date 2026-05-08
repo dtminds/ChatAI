@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "pnpm --filter @chatai/contracts build && tsc -p tsconfig.json",
+    "db:codegen": "node scripts/codegen-db-schema.mjs",
     "dev": "pnpm --filter @chatai/contracts build && NODE_ENV=development tsx watch src/server.ts",
     "start": "node dist/server.js",
     "test": "vitest run",
@@ -26,6 +27,8 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "dotenv": "^17.4.2",
+    "kysely-codegen": "^0.20.0",
     "tsx": "^4.21.0",
     "typescript": "^5.8.0",
     "vitest": "^4.1.5"

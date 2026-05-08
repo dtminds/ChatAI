@@ -108,6 +108,7 @@ pnpm dev:test-api
 pnpm dev                  # 启动 web，本地前端 -> 本地 backend
 pnpm dev:test-api         # 启动 web，本地前端 -> 测试环境 API
 pnpm backend:dev          # 启动 backend
+pnpm backend:db:codegen   # 按 apps/backend/scripts/codegen-db.config.json 生成 Kysely 类型
 pnpm typecheck            # 全仓类型检查
 pnpm test                 # 全仓测试
 pnpm build                # 构建 web
@@ -139,6 +140,36 @@ apps/backend/.env.local
 
 ```text
 apps/backend/.env.example
+```
+
+## 数据库类型生成
+
+Backend 使用 `kysely-codegen` 从 `apps/backend/.env.local` 的 `DATABASE_URL` 连接数据库，并且只生成 `apps/backend/scripts/codegen-db.config.json` 中配置的表：
+
+```json
+{
+  "tables": [
+    "xy_wap_embed_user_relation"
+  ]
+}
+```
+
+生成结果会覆盖：
+
+```text
+apps/backend/src/db/schema.ts
+```
+
+日常直接运行：
+
+```bash
+pnpm backend:db:codegen
+```
+
+如果临时验证某张表，也可以用命令行参数覆盖配置：
+
+```bash
+pnpm backend:db:codegen -- xy_wap_embed_user_relation
 ```
 
 ## API 约定

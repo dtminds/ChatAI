@@ -10,6 +10,7 @@
     "dev": "pnpm --filter @chatai/web dev",
     "dev:test-api": "pnpm --filter @chatai/web dev:test-api",
     "backend:build": "pnpm --filter @chatai/backend build",
+    "backend:db:codegen": "pnpm --filter @chatai/backend db:codegen",
     "backend:dev": "pnpm --filter @chatai/backend dev",
     "backend:test": "pnpm --filter @chatai/backend test",
     "backend:typecheck": "pnpm --filter @chatai/backend typecheck",

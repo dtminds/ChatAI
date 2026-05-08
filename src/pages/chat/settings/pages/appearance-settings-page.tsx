@@ -27,12 +27,12 @@ export function AppearanceSettingsPage() {
         />
       </section>
 
-      <section className="mt-5 rounded-[10px] border border-border bg-background p-5">
+      <section className="mt-5 rounded-[10px] border border-border p-5">
         <h2 className="text-base font-semibold text-foreground">工作台密度</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {["舒适", "标准", "紧凑"].map((density) => (
             <button
-              className="rounded-[10px] border border-border bg-surface px-4 py-3 text-left text-sm font-medium text-foreground transition-colors hover:bg-surface-hover"
+              className="rounded-[10px] border border-border px-4 py-3 text-left text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:text-primary"
               key={density}
               type="button"
             >

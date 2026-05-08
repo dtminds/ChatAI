@@ -1,6 +1,6 @@
 import {
   AccountSetting01Icon,
-  ArrowLeft01Icon,
+  ArrowLeft02Icon,
   Configuration01Icon,
   Layers01Icon,
   PaintBrush02Icon,
@@ -73,15 +73,12 @@ export function ChatSettingsPage() {
   }
 
   return (
-    <div className="h-svh min-h-[720px] bg-background">
+    <div className="fixed inset-0 overflow-hidden bg-background">
       <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden">
         <SettingsSidebar activeSectionId={activeSectionId} />
 
-        <main className="h-full min-h-0 overflow-hidden pl-0">
-          <div
-            className="h-full min-h-0 overflow-y-auto rounded-[20px_0_0_20px] border-l border-divider bg-surface"
-            style={{ boxShadow: "-5px 0 10px -4px var(--shadow-soft)" }}
-          >
+        <main className="h-full min-h-0 overflow-hidden pl-0 rounded-[20px_0_0_20px] border-l border-divider bg-surface" style={{ boxShadow: "-5px 0 10px -4px var(--shadow-soft)" }}>
+          <div className="h-full min-h-0 overflow-y-auto">
             <div className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col px-8 py-8">
               <SettingsContent sectionId={activeSectionId} />
             </div>
@@ -118,13 +115,13 @@ function SettingsSidebar({
     <aside className="flex h-full min-h-0 flex-col bg-background px-4 py-5">
       <Button
         asChild
-        className="mb-6 h-10 justify-start rounded-[14px] px-2.5 text-[15px] font-normal text-muted-foreground hover:text-foreground"
+        className="mb-6 h-10 justify-start rounded-[8px] px-2 text-[14px] font-normal text-muted-foreground hover:text-foreground"
         variant="ghost"
       >
         <Link aria-label="返回应用" to="/chat">
           <HugeiconsIcon
             color="currentColor"
-            icon={ArrowLeft01Icon}
+            icon={ArrowLeft02Icon}
             size={20}
             strokeWidth={1.8}
           />
@@ -139,10 +136,10 @@ function SettingsSidebar({
           return (
             <NavLink
               className={cn(
-                "flex h-12 items-center gap-3 rounded-[14px] px-3 text-[15px] font-medium transition-colors",
+                "flex h-9 items-center gap-2 rounded-[8px] px-3 text-[14px] text-foreground transition-colors",
                 isActive
-                  ? "bg-surface-hover text-foreground"
-                  : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
+                  ? "bg-muted"
+                  : "hover:bg-muted/50",
               )}
               key={section.id}
               to={section.path}
@@ -150,8 +147,7 @@ function SettingsSidebar({
               <HugeiconsIcon
                 color="currentColor"
                 icon={section.icon}
-                size={22}
-                strokeWidth={1.8}
+                size={18}
               />
               <span>{section.label}</span>
             </NavLink>

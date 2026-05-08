@@ -27,9 +27,9 @@ export function RolePermissionSettingsPage() {
         title="权限角色"
       />
 
-      <section className="overflow-hidden rounded-[10px] border border-border bg-background">
+      <section className="overflow-hidden rounded-[10px] border border-border">
         <Table aria-label="角色权限矩阵">
-          <TableHeader className="bg-surface-muted">
+          <TableHeader>
             <TableRow>
               <TableHead className="px-5 py-4">角色</TableHead>
               <TableHead className="px-5 py-4">会话接待</TableHead>

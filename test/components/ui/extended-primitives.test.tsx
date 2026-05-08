@@ -73,6 +73,19 @@ describe("extended UI primitives", () => {
     expect(screen.getByRole("slider", { name: "最大值" })).toBeInTheDocument();
   });
 
+  it("uses the controlled slider value to determine thumb count", () => {
+    render(
+      <Slider
+        aria-label="受控比例"
+        defaultValue={[20, 80]}
+        onValueChange={() => {}}
+        value={[35]}
+      />,
+    );
+
+    expect(screen.getAllByRole("slider", { name: "受控比例" })).toHaveLength(1);
+  });
+
   it("uses localized pagination labels by default", () => {
     render(
       <Pagination>

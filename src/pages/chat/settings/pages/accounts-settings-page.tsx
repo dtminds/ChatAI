@@ -51,7 +51,7 @@ export function AccountsSettingsPage() {
             />
             <Input
               aria-label="搜索企微账号"
-              className="h-10 rounded-[8px] bg-background pl-9 shadow-none"
+              className="h-10 rounded-[8px] pl-9"
               placeholder="搜索企微账号"
             />
           </div>
@@ -59,7 +59,7 @@ export function AccountsSettingsPage() {
           <Select defaultValue="all">
             <SelectTrigger
               aria-label="筛选接待状态"
-              className="h-10 min-w-[180px] rounded-[8px] bg-background text-sm shadow-none"
+              className="h-10 min-w-[180px] rounded-[8px] text-sm"
             >
               <SelectValue placeholder="筛选接待状态" />
             </SelectTrigger>
@@ -83,9 +83,9 @@ export function AccountsSettingsPage() {
         </Button>
       </section>
 
-      <section className="mt-6 overflow-hidden rounded-[10px] border border-border bg-background">
+      <section className="mt-6 overflow-hidden rounded-[10px] border border-border">
         <Table aria-label="企微账号列表">
-          <TableHeader className="bg-surface-muted">
+          <TableHeader>
             <TableRow>
               <TableHead className="w-[34%] px-5 py-4">企微账号</TableHead>
               <TableHead className="w-[14%] px-5 py-4">接待状态</TableHead>

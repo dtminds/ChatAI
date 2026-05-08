@@ -17,7 +17,7 @@ export function ReceptionWorkflowSettingsPage() {
       <section className="grid gap-4 lg:grid-cols-3">
         {workflowOptions.map((option) => (
           <div
-            className="rounded-[10px] border border-border bg-background p-5"
+            className="rounded-[10px] border border-border p-5"
             key={option.title}
           >
             <div className="flex items-start justify-between gap-3">
@@ -39,7 +39,7 @@ export function ReceptionWorkflowSettingsPage() {
         ))}
       </section>
 
-      <section className="mt-5 grid gap-4 rounded-[10px] border border-border bg-background p-5 md:grid-cols-3">
+      <section className="mt-5 grid gap-4 rounded-[10px] border border-border p-5 md:grid-cols-3">
         <Field label="自动转接等待时间">
           <Input id="handoff-wait" defaultValue="90 秒" />
         </Field>

@@ -25,7 +25,7 @@ export function SubAccountsSettingsPage() {
         aria-label="子账号表单"
         className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]"
       >
-        <section className="space-y-5 rounded-[10px] border border-border bg-background p-5">
+        <section className="space-y-5 rounded-[10px] border border-border p-5">
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="员工姓名">
               <Input id="employee-name" placeholder="请输入员工姓名" />
@@ -35,7 +35,7 @@ export function SubAccountsSettingsPage() {
             </Field>
             <Field label="所属部门">
               <Select defaultValue="support">
-                <SelectTrigger id="employee-team" className="h-11 w-full rounded-2xl">
+                <SelectTrigger id="employee-team" className="h-11 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -47,7 +47,7 @@ export function SubAccountsSettingsPage() {
             </Field>
             <Field label="账号角色">
               <Select defaultValue="agent">
-                <SelectTrigger id="employee-role" className="h-11 w-full rounded-2xl">
+                <SelectTrigger id="employee-role" className="h-11 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -66,7 +66,7 @@ export function SubAccountsSettingsPage() {
             />
           </Field>
 
-          <div className="flex items-center justify-between rounded-[10px] border border-border bg-surface-muted px-4 py-3">
+          <div className="flex items-center justify-between rounded-[10px] border border-border px-4 py-3">
             <div>
               <p className="text-sm font-medium text-foreground">允许接待群聊</p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -77,9 +77,9 @@ export function SubAccountsSettingsPage() {
           </div>
         </section>
 
-        <aside className="space-y-4 rounded-[10px] border border-border bg-background p-5">
+        <aside className="space-y-4 rounded-[10px] border border-border p-5">
           <h2 className="text-sm font-semibold text-foreground">账号预览</h2>
-          <div className="rounded-[10px] bg-surface-muted p-4">
+          <div className="rounded-[10px] border border-border p-4">
             <div className="flex items-center gap-3">
               <div className="flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
                 梁

@@ -76,7 +76,7 @@ export function StatusText({
 
 export function DemoNotes({ items }: { items: string[] }) {
   return (
-    <section className="mt-6 rounded-[10px] border border-border bg-info-muted p-5">
+    <section className="mt-6 rounded-[10px] border border-border p-5">
       <h2 className="text-sm font-semibold text-foreground">开发接入提示</h2>
       <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
         {items.map((item) => (
@@ -101,11 +101,11 @@ export function PreferenceOption({
 }) {
   return (
     <button
-      className="rounded-[10px] border border-border bg-background p-5 text-left transition-colors hover:bg-surface-hover"
+      className="rounded-[10px] border border-border p-5 text-left transition-colors hover:border-primary/40"
       type="button"
     >
       <div className="flex items-center gap-3">
-        <div className="flex size-9 items-center justify-center rounded-[10px] bg-surface-muted text-foreground">
+        <div className="flex size-9 items-center justify-center rounded-[10px] border border-border text-foreground">
           <HugeiconsIcon
             color="currentColor"
             icon={icon}

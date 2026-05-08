@@ -160,7 +160,7 @@ export function UiComponentDemoPage() {
             </AlertDescription>
           </Alert>
 
-          <section className="rounded-[10px] border border-border bg-background p-5">
+          <section className="rounded-[10px] border border-border p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold text-foreground">
@@ -321,7 +321,7 @@ export function UiComponentDemoPage() {
             </div>
           </section>
 
-          <section className="rounded-[10px] border border-border bg-background p-5">
+          <section className="rounded-[10px] border border-border p-5">
             <h2 className="text-base font-semibold text-foreground">单选组模板</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               用于互斥策略、展示密度、通知等级等单选配置。
@@ -334,7 +334,7 @@ export function UiComponentDemoPage() {
             >
               {routingStrategies.map((strategy) => (
                 <Label
-                  className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-border bg-surface px-4 py-3 transition-colors hover:bg-surface-hover"
+                  className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-border px-4 py-3 transition-colors hover:border-primary/40"
                   key={strategy.value}
                 >
                   <RadioGroupItem className="mt-0.5" value={strategy.value} />
@@ -351,7 +351,7 @@ export function UiComponentDemoPage() {
             </RadioGroup>
           </section>
 
-          <section className="rounded-[10px] border border-border bg-background p-5">
+          <section className="rounded-[10px] border border-border p-5">
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
               <div>
                 <h2 className="text-base font-semibold text-foreground">
@@ -397,7 +397,7 @@ export function UiComponentDemoPage() {
                           />
                         </Button>
                       </CollapsibleTrigger>
-                      <CollapsibleContent className="mt-3 rounded-[10px] border border-border bg-surface-muted p-4 text-sm leading-6 text-muted-foreground">
+                      <CollapsibleContent className="mt-3 rounded-[10px] border border-border p-4 text-sm leading-6 text-muted-foreground">
                         启用后会优先沿用最近一次服务关系。
                       </CollapsibleContent>
                     </Collapsible>
@@ -425,7 +425,7 @@ export function UiComponentDemoPage() {
             </div>
           </section>
 
-          <section className="rounded-[10px] border border-border bg-background p-5">
+          <section className="rounded-[10px] border border-border p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold text-foreground">
@@ -458,7 +458,7 @@ export function UiComponentDemoPage() {
             </div>
 
             <div className="mt-5 grid gap-5 lg:grid-cols-2">
-              <div className="rounded-[10px] border border-border bg-surface p-4">
+              <div className="rounded-[10px] border border-border p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">导入进度</h3>
@@ -471,7 +471,7 @@ export function UiComponentDemoPage() {
                 <Progress className="mt-4" value={68} />
               </div>
 
-              <div className="rounded-[10px] border border-border bg-surface p-4">
+              <div className="rounded-[10px] border border-border p-4">
                 <h3 className="text-sm font-semibold text-foreground">加载占位</h3>
                 <div className="mt-4 space-y-3">
                   <Skeleton className="h-4 w-2/3" />
@@ -480,7 +480,7 @@ export function UiComponentDemoPage() {
                 </div>
               </div>
 
-              <div className="rounded-[10px] border border-border bg-surface p-4">
+              <div className="rounded-[10px] border border-border p-4">
                 <Label id="qa-sample-slider-label">质检抽样比例</Label>
                 <Slider
                   aria-labelledby="qa-sample-slider-label"
@@ -491,7 +491,7 @@ export function UiComponentDemoPage() {
                 />
               </div>
 
-              <div className="rounded-[10px] border border-border bg-surface p-4">
+              <div className="rounded-[10px] border border-border p-4">
                 <Pagination aria-label="分页">
                   <PaginationContent>
                     <PaginationItem>
@@ -517,20 +517,20 @@ export function UiComponentDemoPage() {
             </div>
           </section>
 
-          <section className="rounded-[10px] border border-border bg-background p-5">
+          <section className="rounded-[10px] border border-border p-5">
             <h2 className="text-base font-semibold text-foreground">工作台分栏参考</h2>
             <ResizablePanelGroup
               className="mt-5 min-h-[180px] rounded-[10px] border border-border"
               orientation="horizontal"
             >
               <ResizablePanel defaultSize={34} minSize={25}>
-                <div className="flex h-full items-center justify-center bg-surface-muted text-sm text-muted-foreground">
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                   会话列表
                 </div>
               </ResizablePanel>
               <ResizableHandle withHandle />
               <ResizablePanel defaultSize={66} minSize={35}>
-                <div className="flex h-full items-center justify-center bg-surface text-sm text-muted-foreground">
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                   聊天详情 / 客户资料
                 </div>
               </ResizablePanel>
@@ -539,7 +539,7 @@ export function UiComponentDemoPage() {
         </div>
 
         <aside className="space-y-4">
-          <section className="rounded-[10px] border border-border bg-background p-5">
+          <section className="rounded-[10px] border border-border p-5">
             <div className="flex items-center gap-3">
               <div className="flex size-9 items-center justify-center rounded-[10px] bg-info-muted text-info">
                 <HugeiconsIcon
@@ -560,7 +560,7 @@ export function UiComponentDemoPage() {
             </Label>
             <div
               aria-labelledby="schedule-date-label"
-              className="mt-4 overflow-x-auto rounded-[10px] border border-border bg-surface-muted"
+              className="mt-4 overflow-x-auto rounded-[10px] border border-border"
               role="group"
             >
               <Calendar
@@ -577,7 +577,7 @@ export function UiComponentDemoPage() {
             </p>
           </section>
 
-          <section className="rounded-[10px] border border-border bg-background p-5">
+          <section className="rounded-[10px] border border-border p-5">
             <div className="flex items-center gap-3">
               <div className="flex size-9 items-center justify-center rounded-[10px] bg-info-muted text-info">
                 <HugeiconsIcon
@@ -597,11 +597,11 @@ export function UiComponentDemoPage() {
 
             <div
               aria-label="媒体比例预览"
-              className="mt-4 rounded-[10px] border border-border bg-surface-muted p-3"
+              className="mt-4 rounded-[10px] border border-border p-3"
               role="group"
             >
               <AspectRatio ratio={4 / 3}>
-                <div className="flex h-full items-center justify-center rounded-[8px] bg-background text-muted-foreground">
+                <div className="flex h-full items-center justify-center rounded-[8px] border border-dashed border-border text-muted-foreground">
                   <HugeiconsIcon
                     color="currentColor"
                     icon={Image01Icon}
@@ -613,7 +613,7 @@ export function UiComponentDemoPage() {
             </div>
           </section>
 
-          <section className="rounded-[10px] border border-border bg-background p-5">
+          <section className="rounded-[10px] border border-border p-5">
             <div className="flex items-center gap-3">
               <div className="flex size-9 items-center justify-center rounded-[10px] bg-success-muted text-success">
                 <HugeiconsIcon

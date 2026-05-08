@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -91,9 +91,7 @@ function appendDatabaseAlias(output) {
 const databaseUrl = getDatabaseUrl();
 const db = new Kysely({
   dialect: new MysqlDialect({
-    pool: mysql.createPool({
-      uri: databaseUrl,
-    }),
+    pool: mysql.createPool(databaseUrl),
   }),
 });
 
@@ -123,6 +121,7 @@ try {
     }),
   );
 
+  mkdirSync(path.dirname(outFile), { recursive: true });
   writeFileSync(outFile, output);
   console.log(
     `Generated ${matchedTables.length} table${matchedTables.length === 1 ? "" : "s"}: ${matchedTables

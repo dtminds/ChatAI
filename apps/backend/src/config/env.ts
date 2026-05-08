@@ -84,9 +84,9 @@ export function loadBackendEnv(options: LoadBackendEnvOptions = {}) {
 
 export function getPort(env: NodeJS.ProcessEnv = process.env) {
   const rawPort = env.PORT ?? "3001";
-  const port = Number.parseInt(rawPort, 10);
+  const port = Number(rawPort);
 
-  if (!Number.isInteger(port) || port <= 0) {
+  if (!Number.isSafeInteger(port) || port <= 0 || port > 65535) {
     throw new Error(`Invalid PORT: ${rawPort}`);
   }
 

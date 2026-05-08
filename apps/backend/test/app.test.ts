@@ -17,6 +17,9 @@ async function createAuthenticatedApp() {
 describe("backend app", () => {
   afterEach(() => {
     delete process.env.AUTH_DEV_BYPASS;
+    delete process.env.JWT_DEV_SECRET;
+    delete process.env.JWT_PRIVATE_KEY;
+    delete process.env.JWT_PUBLIC_KEY;
     delete process.env.NODE_ENV;
   });
 
@@ -80,6 +83,8 @@ describe("backend app", () => {
 
   it("does not allow auth bypass outside development", async () => {
     process.env.AUTH_DEV_BYPASS = "true";
+    process.env.JWT_PRIVATE_KEY = "test-jwt-secret";
+    process.env.JWT_PUBLIC_KEY = "test-jwt-secret";
     process.env.NODE_ENV = "production";
     const app = await buildApp();
 
@@ -91,6 +96,12 @@ describe("backend app", () => {
     expect(response.statusCode).toBe(401);
 
     await app.close();
+  });
+
+  it("requires explicit JWT configuration in production", async () => {
+    process.env.NODE_ENV = "production";
+
+    await expect(buildApp()).rejects.toThrow(/JWT keys.*production mode/);
   });
 
   it("serves workbench bootstrap resources from backend state", async () => {

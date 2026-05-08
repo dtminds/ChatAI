@@ -88,4 +88,10 @@ describe("backend env config", () => {
 
     expect(getPort()).toBe(3101);
   });
+
+  it("rejects malformed backend ports", () => {
+    expect(() => getPort({ PORT: "3001abc" })).toThrow("Invalid PORT: 3001abc");
+    expect(() => getPort({ PORT: "70000" })).toThrow("Invalid PORT: 70000");
+    expect(() => getPort({ PORT: "0" })).toThrow("Invalid PORT: 0");
+  });
 });

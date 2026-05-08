@@ -27,6 +27,10 @@ function getJwtSecret() {
     };
   }
 
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT keys must be configured in production mode.");
+  }
+
   return process.env.JWT_DEV_SECRET ?? "dev-only-change-me";
 }
 

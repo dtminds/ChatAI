@@ -77,4 +77,16 @@ describe("vite config env", () => {
   it("uses the repository root as the default env directory", () => {
     expect(getRepoRoot()).toBe(resolve(__dirname, "../../.."));
   });
+
+  it("rejects malformed dev server ports", () => {
+    expect(() =>
+      getViteDevServerConfig({ VITE_DEV_SERVER_PORT: "8086abc" }),
+    ).toThrow("Invalid VITE_DEV_SERVER_PORT: 8086abc");
+    expect(() => getViteDevServerConfig({ VITE_DEV_SERVER_PORT: "70000" })).toThrow(
+      "Invalid VITE_DEV_SERVER_PORT: 70000",
+    );
+    expect(() => getViteDevServerConfig({ VITE_DEV_SERVER_PORT: "0" })).toThrow(
+      "Invalid VITE_DEV_SERVER_PORT: 0",
+    );
+  });
 });

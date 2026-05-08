@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "dev": "pnpm --filter @chatai/web dev",
     "dev:test-api": "pnpm --filter @chatai/web dev:test-api",

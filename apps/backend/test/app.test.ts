@@ -175,6 +175,53 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("returns an empty message page when limit is zero", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations/conv-001/messages?limit=0",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual([]);
+
+    await app.close();
+  });
+
+  it("keeps pinned conversations before newer unpinned conversations", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const send = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        accountId: "drc",
+        clientMessageId: "local-sort-test-001",
+        content: "未置顶会话的新消息",
+        contentType: "text",
+        conversationId: "conv-002",
+      },
+      url: "/api/server/messages/send",
+    });
+    const conversations = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations?accountId=drc",
+    });
+
+    expect(send.statusCode).toBe(200);
+    expect(conversations.statusCode).toBe(200);
+    const conversationIds = conversations
+      .json()
+      .map((conversation: { conversationId: string }) => conversation.conversationId);
+
+    expect(conversationIds.slice(0, 2)).toEqual(["conv-001", "conv-002"]);
+
+    await app.close();
+  });
+
   it("updates read state and emits poll changes after marking a conversation read", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

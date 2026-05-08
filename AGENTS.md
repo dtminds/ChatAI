@@ -15,6 +15,7 @@
 ## Stack
 
 - Monorepo：pnpm workspace
+- Runtime：Node.js 24 LTS
 - Web：Vite 7、React 19、TypeScript、Tailwind CSS v4、shadcn/ui、Hugeicons、React Router v7、Zustand、Axios
 - Backend：Fastify 5、TypeScript、Kysely、mysql2、`@fastify/jwt`、TypeBox
 - Contracts：TypeScript、TypeBox

@@ -91,8 +91,11 @@ export function createMemoryWorkbenchService() {
       const limit = options?.limit ?? 30;
       const visibleMessages =
         beforeSeq == null
-          ? messages.slice(-limit)
-          : messages.filter((message) => message.seq < beforeSeq).slice(-limit);
+          ? sliceLatest(messages, limit)
+          : sliceLatest(
+              messages.filter((message) => message.seq < beforeSeq),
+              limit,
+            );
 
       return clone(visibleMessages);
     },
@@ -506,7 +509,21 @@ function getAccountLastMessageTime(conversations: WorkbenchConversationSummaryDt
 }
 
 function sortConversations(conversations: WorkbenchConversationSummaryDto[]) {
-  return [...conversations].sort((left, right) => right.lastMessageTime - left.lastMessageTime);
+  return [...conversations].sort((left, right) => {
+    if (Boolean(left.isPinned) !== Boolean(right.isPinned)) {
+      return left.isPinned ? -1 : 1;
+    }
+
+    return right.lastMessageTime - left.lastMessageTime;
+  });
+}
+
+function sliceLatest<T>(items: T[], limit: number) {
+  if (limit <= 0) {
+    return [];
+  }
+
+  return items.slice(-limit);
 }
 
 function collapseLatest<T>(items: T[], getKey: (item: T) => string) {

@@ -205,6 +205,7 @@ pnpm backend:db:codegen -- xy_wap_embed_user_relation
 - Web 已接入 HTTP 服务模式，并保留测试场景下的 mock 服务能力。
 - Backend 已提供 `/api/server/*` 工作台接口；配置 `DATABASE_URL` 后从 MySQL 工作台表读取席位、会话和消息，未配置时使用内存服务便于本地开发。
 - Auth 路由已预留，登录、刷新、退出仍未实现。
+- 开发环境如使用 `AUTH_DEV_BYPASS=true`，`AUTH_DEV_SUB_USER_ID` 必须填写真实可用的 `xy_wap_embed_sub_user.id` 数字主键。
 - 会话已读、发送消息、席位接管属于 Java owner 写操作，Node backend 通过 `JAVA_INTERNAL_API_BASE_URL` 配置的内部接口转发。
 - 真实增量事件/cursor 表尚未确认，当前 DB 模式的 `/api/server/poll` 只补拉当前会话的新消息。
 - Redis 不是当前阶段必需依赖。

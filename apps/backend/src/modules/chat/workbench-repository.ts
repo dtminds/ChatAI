@@ -18,10 +18,16 @@ export class WorkbenchRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
   async getSubUser(subUserId: string) {
+    const subUserNumericId = parseMySqlId(subUserId);
+
+    if (subUserNumericId == null) {
+      return undefined;
+    }
+
     const subUser = await this.db
       .selectFrom("xy_wap_embed_sub_user")
       .select(["id", "name"])
-      .where("id", "=", Number(subUserId))
+      .where("id", "=", subUserNumericId)
       .where("status", "=", 1)
       .executeTakeFirst();
 
@@ -36,6 +42,12 @@ export class WorkbenchRepository {
   }
 
   async listSeats(subUserId: string) {
+    const subUserNumericId = parseMySqlId(subUserId);
+
+    if (subUserNumericId == null) {
+      return [];
+    }
+
     const rows = await this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
       .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
@@ -66,7 +78,7 @@ export class WorkbenchRepository {
           .as("unread_count"),
         expressionBuilder.fn.max("conversation.last_msgtime").as("last_message_time"),
       ])
-      .where("relation.sub_id", "=", Number(subUserId))
+      .where("relation.sub_id", "=", subUserNumericId)
       .where("seat.biz_status", "=", 1)
       .groupBy([
         "seat.id",
@@ -83,6 +95,12 @@ export class WorkbenchRepository {
   }
 
   async getSeat(seatId: string) {
+    const seatNumericId = parseMySqlId(seatId);
+
+    if (seatNumericId == null) {
+      return undefined;
+    }
+
     const rows = await this.db
       .selectFrom("xy_wap_embed_user_seat as seat")
       .leftJoin("xy_wap_embed_convesation as conversation", (join) =>
@@ -107,7 +125,7 @@ export class WorkbenchRepository {
           .as("unread_count"),
         expressionBuilder.fn.max("conversation.last_msgtime").as("last_message_time"),
       ])
-      .where("seat.id", "=", Number(seatId))
+      .where("seat.id", "=", seatNumericId)
       .where("seat.biz_status", "=", 1)
       .groupBy([
         "seat.id",
@@ -123,6 +141,13 @@ export class WorkbenchRepository {
   }
 
   async canAccessSeat(subUserId: string, seatId: string) {
+    const subUserNumericId = parseMySqlId(subUserId);
+    const seatNumericId = parseMySqlId(seatId);
+
+    if (subUserNumericId == null || seatNumericId == null) {
+      return false;
+    }
+
     const relation = await this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
       .innerJoin("xy_wap_embed_sub_user as sub_user", (join) =>
@@ -138,8 +163,8 @@ export class WorkbenchRepository {
           .onRef("seat.platform", "=", "relation.platform"),
       )
       .select("relation.id")
-      .where("relation.sub_id", "=", Number(subUserId))
-      .where("relation.user_seat_id", "=", Number(seatId))
+      .where("relation.sub_id", "=", subUserNumericId)
+      .where("relation.user_seat_id", "=", seatNumericId)
       .where("sub_user.status", "=", 1)
       .where("seat.biz_status", "=", 1)
       .executeTakeFirst();
@@ -148,7 +173,13 @@ export class WorkbenchRepository {
   }
 
   async listConversations(seatId: string) {
-    const seat = await this.getSeatRecord(seatId);
+    const seatNumericId = parseMySqlId(seatId);
+
+    if (seatNumericId == null) {
+      return [];
+    }
+
+    const seat = await this.getSeatRecord(seatNumericId);
 
     if (!seat) {
       return [];
@@ -198,7 +229,7 @@ export class WorkbenchRepository {
         "group_seat.name as group_name",
       ])
       .select((expressionBuilder) => [
-        expressionBuilder.val(Number(seatId)).as("seat_id"),
+        expressionBuilder.val(seatNumericId).as("seat_id"),
         expressionBuilder.fn
           .coalesce("bind.remark", "contact.real_name", "contact.name")
           .as("customer_name"),
@@ -215,6 +246,12 @@ export class WorkbenchRepository {
   }
 
   async getConversationLookup(conversationId: string): Promise<ConversationLookup | undefined> {
+    const conversationNumericId = parseMySqlId(conversationId);
+
+    if (conversationNumericId == null) {
+      return undefined;
+    }
+
     const row = await this.db
       .selectFrom("xy_wap_embed_convesation as conversation")
       .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
@@ -224,7 +261,7 @@ export class WorkbenchRepository {
           .onRef("seat.platform", "=", "conversation.platform"),
       )
       .select(["conversation.id as id", "seat.id as seat_id"])
-      .where("conversation.id", "=", Number(conversationId))
+      .where("conversation.id", "=", conversationNumericId)
       .where("conversation.biz_status", "=", 1)
       .executeTakeFirst();
 
@@ -243,6 +280,12 @@ export class WorkbenchRepository {
       limit: number;
     },
   ) {
+    const conversationNumericId = parseMySqlId(conversationId);
+
+    if (conversationNumericId == null || options.limit <= 0) {
+      return [];
+    }
+
     const conversation = await this.db
       .selectFrom("xy_wap_embed_convesation as conversation")
       .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
@@ -261,11 +304,11 @@ export class WorkbenchRepository {
         "conversation.third_userid as third_userid",
         "seat.id as seat_id",
       ])
-      .where("conversation.id", "=", Number(conversationId))
+      .where("conversation.id", "=", conversationNumericId)
       .where("conversation.biz_status", "=", 1)
       .executeTakeFirst();
 
-    if (!conversation || options.limit <= 0) {
+    if (!conversation) {
       return [];
     }
 
@@ -317,12 +360,22 @@ export class WorkbenchRepository {
     return rows.reverse().map((row) => mapMessageRow(row as MessageRow));
   }
 
-  private async getSeatRecord(seatId: string) {
+  private async getSeatRecord(seatId: number) {
     return this.db
       .selectFrom("xy_wap_embed_user_seat")
       .select(["id", "uid", "platform", "third_userid"])
-      .where("id", "=", Number(seatId))
+      .where("id", "=", seatId)
       .where("biz_status", "=", 1)
       .executeTakeFirst();
   }
+}
+
+function parseMySqlId(value: string) {
+  const numeric = Number(value);
+
+  if (!Number.isSafeInteger(numeric) || numeric <= 0) {
+    return undefined;
+  }
+
+  return numeric;
 }

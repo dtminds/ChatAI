@@ -262,6 +262,8 @@ RS256 或 EdDSA
 
 完整登录、refresh token rotation、logout revoke 等在用户表 schema 明确后实现。
 
+开发环境允许 `AUTH_DEV_BYPASS=true` 绕过鉴权，但 `AUTH_DEV_SUB_USER_ID` 必须配置为真实可用的 `xy_wap_embed_sub_user.id` 数字主键；无效或不存在的值会返回 401。
+
 ## 9. API 范围
 
 第一阶段目标接口：

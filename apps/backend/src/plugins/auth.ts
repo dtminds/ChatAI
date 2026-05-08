@@ -55,7 +55,7 @@ export const authPlugin = fp(async (app) => {
   app.decorate("authenticate", async (request) => {
     if (isDevelopmentAuthBypassEnabled()) {
       request.user = {
-        subUserId: process.env.AUTH_DEV_SUB_USER_ID ?? "sub-user-001",
+        subUserId: process.env.AUTH_DEV_SUB_USER_ID ?? "",
         roles: ["agent"],
       };
       return;

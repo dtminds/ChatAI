@@ -57,7 +57,6 @@ jobs:
               - "tsconfig*.json"
               - "tsconfig.base.json"
             contracts:
-              - ".github/workflows/ci.yml"
               - "package.json"
               - "packages/contracts/**"
               - "pnpm-lock.yaml"
@@ -75,9 +74,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Enable pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.0.0 --activate
+        run: corepack enable
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -99,17 +96,20 @@ jobs:
 
   backend:
     name: Backend
-    needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
+    needs:
+      - changes
+      - contracts
+    if: |
+      always() &&
+      (github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true') &&
+      (needs.contracts.result == 'success' || needs.contracts.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Enable pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.0.0 --activate
+        run: corepack enable
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -131,17 +131,20 @@ jobs:
 
   frontend:
     name: Frontend
-    needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true'
+    needs:
+      - changes
+      - contracts
+    if: |
+      always() &&
+      (github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true') &&
+      (needs.contracts.result == 'success' || needs.contracts.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Enable pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.0.0 --activate
+        run: corepack enable
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -159,4 +162,4 @@ jobs:
         run: pnpm --filter @chatai/web test
 
       - name: Build frontend
-        run: pnpm build
+        run: pnpm --filter @chatai/web build

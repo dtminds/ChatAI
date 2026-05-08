@@ -33,7 +33,7 @@ export function SubAccountsSettingsPage() {
             <Field label="手机号">
               <Input id="employee-phone" placeholder="用于登录和通知" />
             </Field>
-            <Field label="所属部门">
+            <Field htmlFor="employee-team" label="所属部门">
               <Select defaultValue="support">
                 <SelectTrigger id="employee-team" className="h-11 w-full">
                   <SelectValue />
@@ -45,7 +45,7 @@ export function SubAccountsSettingsPage() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="账号角色">
+            <Field htmlFor="employee-role" label="账号角色">
               <Select defaultValue="agent">
                 <SelectTrigger id="employee-role" className="h-11 w-full">
                   <SelectValue />

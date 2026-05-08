@@ -70,4 +70,28 @@ describe("UI primitive refs", () => {
     expect(cellRef.current).toBeInstanceOf(HTMLTableCellElement);
     expect(captionRef.current).toBeInstanceOf(HTMLTableCaptionElement);
   });
+
+  it("allows table header and cell text to wrap by default", () => {
+    render(
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>很长的表头</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell>很长的单元格内容</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+
+    expect(document.querySelector("[data-slot='table-head']")).not.toHaveClass(
+      "whitespace-nowrap",
+    );
+    expect(document.querySelector("[data-slot='table-cell']")).not.toHaveClass(
+      "whitespace-nowrap",
+    );
+  });
 });

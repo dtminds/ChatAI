@@ -16,6 +16,11 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Slider } from "@/components/ui/slider";
+import {
+  Field,
+  PreferenceOption,
+} from "@/pages/chat/settings/shared";
+import { Sun01Icon } from "@hugeicons/core-free-icons";
 
 function BrokenFormFieldUsage() {
   useFormField();
@@ -124,5 +129,31 @@ describe("extended UI primitives", () => {
     render(<DemoForm />);
 
     expect(screen.getByLabelText("模板名称")).toBeInTheDocument();
+  });
+
+  it("allows demo field labels to target nested controls explicitly", () => {
+    render(
+      <Field htmlFor="nested-control" label="嵌套控件">
+        <div>
+          <input id="nested-control" />
+        </div>
+      </Field>,
+    );
+
+    expect(screen.getByLabelText("嵌套控件")).toBeInTheDocument();
+  });
+
+  it("does not nest headings inside preference option buttons", () => {
+    render(
+      <PreferenceOption
+        description="适合白天办公环境。"
+        icon={Sun01Icon}
+        title="浅色模式"
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: /浅色模式/ });
+
+    expect(button.querySelector("h1,h2,h3,h4,h5,h6")).toBeNull();
   });
 });

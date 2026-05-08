@@ -38,12 +38,14 @@ export function PageHeader({
 
 export function Field({
   label,
+  htmlFor,
   children,
 }: {
   label: string;
+  htmlFor?: string;
   children: React.ReactNode;
 }) {
-  const id = getElementId(children);
+  const id = htmlFor ?? getElementId(children);
 
   return (
     <div className="space-y-2">
@@ -113,7 +115,7 @@ export function PreferenceOption({
             strokeWidth={1.8}
           />
         </div>
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        <span className="text-base font-semibold text-foreground">{title}</span>
       </div>
       <p className="mt-3 text-sm leading-6 text-muted-foreground">{description}</p>
     </button>

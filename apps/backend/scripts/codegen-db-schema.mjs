@@ -71,6 +71,10 @@ if (invalidTable) {
 }
 
 function getDatabaseUrl() {
+  if (!existsSync(envFile)) {
+    throw new Error(`DATABASE_URL is missing. Create ${envFile} first.`);
+  }
+
   const env = parseEnv(readFileSync(envFile, "utf8"));
 
   if (!env.DATABASE_URL) {

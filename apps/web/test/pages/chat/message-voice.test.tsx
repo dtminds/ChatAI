@@ -175,6 +175,53 @@ describe("voice message playback", () => {
     );
   });
 
+  it("does not let stale AMR initialization resume after another voice claims playback", async () => {
+    const user = userEvent.setup();
+    let resolveFirstDownload!: (value: Blob) => void;
+    const firstDownload = new Promise<Blob>((resolve) => {
+      resolveFirstDownload = resolve;
+    });
+
+    mocks.request
+      .mockReturnValueOnce(firstDownload)
+      .mockResolvedValue(new Blob(["second-amr"]));
+
+    render(
+      <div>
+        <VoiceMessageCard
+          content={{
+            type: "voice",
+            audioUrl: "https://b3.iyouke.com/bilin/20260421/272/first.amr",
+            durationLabel: "11\"",
+          }}
+          isAgent={false}
+        />
+        <VoiceMessageCard
+          content={{
+            type: "voice",
+            audioUrl: "https://b3.iyouke.com/bilin/20260421/272/second.amr",
+            durationLabel: "12\"",
+          }}
+          isAgent={false}
+        />
+      </div>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+    await user.click(screen.getByRole("button", { name: "播放语音消息 12\"" }));
+
+    await waitFor(() => {
+      expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
+    });
+
+    resolveFirstDownload(new Blob(["first-amr"]));
+
+    await waitFor(() => {
+      expect(mocks.amrInitWithBlob).toHaveBeenCalledTimes(2);
+    });
+    expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
+  });
+
   it("stops playback when the voice message unmounts", async () => {
     const user = userEvent.setup();
     const { unmount } = render(

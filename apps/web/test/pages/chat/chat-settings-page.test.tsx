@@ -66,6 +66,33 @@ describe("Chat settings pages", () => {
     expect(screen.getByRole("table", { name: "角色权限矩阵" })).toBeInTheDocument();
   });
 
+  it("switches and persists appearance themes from the appearance settings page", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings/appearance");
+
+    expect(await screen.findByRole("heading", { name: "外观" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "现代简约 更轻、更克制的 SaaS 风格。" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "默认 当前蓝色主色和 neutral 基线。" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Green 绿色主色，适合健康和增长类语境。" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Claude 暖色 Claude 风格。" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Caffeine 咖啡色调，弱光下更温暖。" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Orange 暖橙主色，适合更有活力的工作台。" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rose 玫瑰红主色，整体更柔和醒目。" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Slack Slack 风格的协作配色。" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Supabase Supabase 风格的开发者绿色。" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sunset 日落暖色，界面氛围更强。" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nature 自然绿和大地色，观感更有机。" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Claude 暖色 Claude 风格。" }));
+
+    expect(document.documentElement).toHaveAttribute("data-appearance-theme", "claude");
+    expect(window.localStorage.getItem("chat-ai-appearance-theme")).toBe("claude");
+    expect(screen.getByRole("button", { name: "Claude 暖色 Claude 风格。" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
   it("shows basic UI component demos for settings development references", async () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");

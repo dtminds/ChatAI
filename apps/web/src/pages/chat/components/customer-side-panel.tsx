@@ -25,7 +25,7 @@ export function CustomerSidePanel({
         aria-label="调整客户信息栏宽度"
         className={cn(
           "relative hidden w-1.5 shrink-0 cursor-col-resize items-stretch justify-center bg-surface xl:flex",
-          isResizing ? "bg-surface-active" : "hover:bg-surface-hover",
+          isResizing ? "bg-accent" : "hover:bg-surface-hover",
         )}
         onPointerDown={onResizeStart}
         type="button"

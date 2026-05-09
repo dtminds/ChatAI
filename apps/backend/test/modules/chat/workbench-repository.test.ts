@@ -22,6 +22,9 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(createFailingDb() as never);
 
     await expect(repository.getSeat("not-a-seat")).resolves.toBeUndefined();
+    await expect(repository.getSeat("1e2")).resolves.toBeUndefined();
+    await expect(repository.getSeat("1.2")).resolves.toBeUndefined();
+    await expect(repository.getSeat(" 1")).resolves.toBeUndefined();
     await expect(repository.listConversations("not-a-seat")).resolves.toEqual([]);
     await expect(
       repository.getConversationLookup("not-a-conversation"),

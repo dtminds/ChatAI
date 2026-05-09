@@ -10,7 +10,7 @@ export type SeatRow = {
   host_sub_id: number | string | null;
   id: number | string;
   is_online: number | null;
-  last_message_time: number | string | null;
+  last_message_time: Date | number | string | null;
   third_user_name: string;
   third_userid: string;
   unread_count: number | string | null;
@@ -25,7 +25,7 @@ export type ConversationRow = {
   id: number | string;
   last_message_content: string | null;
   last_message_type: string | null;
-  last_msgtime: number | string | null;
+  last_msgtime: Date | number | string | null;
   pinned_time: number | string;
   seat_id: number | string;
   third_external_userid: string;
@@ -43,7 +43,7 @@ export type MessageRow = {
   from_type: number | null;
   id: number | string;
   msgid: string;
-  msgtime: number | string;
+  msgtime: Date | number | string;
   msgtype: string;
   seat_id: number | string;
   third_external_id: string;
@@ -59,7 +59,7 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
     avatar: row.avatar ?? "",
     description: "",
     hostSubUserId,
-    lastMessageTime: toOptionalNumber(row.last_message_time),
+    lastMessageTime: toOptionalTimestamp(row.last_message_time),
     loginStatus: row.is_online === 1 ? "online" : "offline",
     name: seatName,
     operatorName: seatName,
@@ -90,7 +90,7 @@ export function mapConversationRow(
     customerName,
     isPinned: toNumber(row.pinned_time) > 0 ? true : undefined,
     lastMessage: formatMessagePreview(row.last_message_type, row.last_message_content),
-    lastMessageTime: toNumber(row.last_msgtime),
+    lastMessageTime: toTimestamp(row.last_msgtime),
     mode,
     priority: "medium",
     seatId: String(row.seat_id),
@@ -115,7 +115,7 @@ export function mapMessageRow(row: MessageRow): WorkbenchMessageDto {
     content: parseMessageContent(row.msgtype, row.content),
     contentType: mapContentType(row.msgtype),
     conversationId: String(row.conversation_id),
-    createdAt: toNumber(row.msgtime),
+    createdAt: toTimestamp(row.msgtime),
     customerId,
     messageId: row.msgid,
     seatId: String(row.seat_id),
@@ -389,12 +389,38 @@ function toNumber(value: number | string | null) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
-function toOptionalNumber(value: number | string | null) {
+function toOptionalTimestamp(value: Date | number | string | null) {
+  const timestamp = parseTimestamp(value);
+
+  return timestamp ?? undefined;
+}
+
+function toTimestamp(value: Date | number | string | null) {
+  return parseTimestamp(value) ?? 0;
+}
+
+function parseTimestamp(value: Date | number | string | null) {
   if (value == null || value === "") {
     return undefined;
   }
 
+  if (value instanceof Date) {
+    const timestamp = value.getTime();
+
+    return Number.isFinite(timestamp) ? timestamp : undefined;
+  }
+
   const numeric = Number(value);
 
-  return Number.isFinite(numeric) ? numeric : undefined;
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const timestamp = Date.parse(value);
+
+  return Number.isFinite(timestamp) ? timestamp : undefined;
 }

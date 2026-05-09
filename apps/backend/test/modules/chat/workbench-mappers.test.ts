@@ -94,6 +94,53 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("maps timestamp fields from Date objects and date strings", () => {
+    expect(
+      mapSeatRow({
+        avatar: "",
+        host_sub_id: 0,
+        id: 12,
+        is_online: 0,
+        last_message_time: new Date("2026-05-09T08:30:00.000Z"),
+        third_user_name: "小可",
+        third_userid: "third-user-1",
+        unread_count: 0,
+      }),
+    ).toMatchObject({
+      lastMessageTime: 1778315400000,
+    });
+
+    expect(
+      mapConversationRow({
+        chat_type: 1,
+        customer_avatar: "",
+        customer_name: "客户备注",
+        group_avatar: "",
+        group_name: "",
+        id: 88,
+        last_message_content: "",
+        last_message_type: "text",
+        last_msgtime: "2026-05-09T08:31:00.000Z",
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "external-1",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      lastMessageTime: 1778315460000,
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        msgtime: "2026-05-09T08:32:00.000Z",
+      })),
+    ).toMatchObject({
+      createdAt: 1778315520000,
+    });
+  });
+
   it("maps image content with complete URLs or object paths", () => {
     expect(
       mapMessageRow(messageRow({

@@ -35,7 +35,7 @@ export function AvatarFallback({
   return (
     <AvatarPrimitive.Fallback
       className={cn(
-        "flex size-full items-center justify-center bg-[linear-gradient(135deg,_var(--avatar-start),_var(--avatar-end))] text-sm font-semibold text-white",
+        "flex size-full items-center justify-center bg-primary text-sm font-semibold text-primary-foreground",
         className,
       )}
       {...props}

@@ -151,7 +151,7 @@ export function MessageAvatar({ message }: { message: ChatMessage }) {
       {message.sender.avatarUrl ? (
         <AvatarImage alt={message.sender.name} src={message.sender.avatarUrl} />
       ) : null}
-      <AvatarFallback className="rounded-[12px] text-sm">
+      <AvatarFallback className="rounded-[6px] text-sm">
         {message.sender.name.slice(0, 1)}
       </AvatarFallback>
     </Avatar>

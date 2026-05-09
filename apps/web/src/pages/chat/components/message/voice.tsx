@@ -21,12 +21,13 @@ type CleanupOptions = {
 };
 
 let activeVoicePlayback: ActiveVoicePlayback | null = null;
+let playbackGeneration = 0;
 
 export function VoiceMessageCard({
   content,
   isAgent,
 }: VoiceMessageCardProps) {
-  const bubbleTone = isAgent ? "bg-message-agent" : "bg-message-customer";
+  const bubbleTone = isAgent ? "bg-primary/10" : "bg-secondary";
   const playbackIdRef = useRef(Symbol("voice-message-playback"));
   const amrBlobRef = useRef<Blob | null>(null);
   const amrUrlRef = useRef<string | null>(null);
@@ -74,11 +75,19 @@ export function VoiceMessageCard({
       activeVoicePlayback?.stop();
     }
 
+    playbackGeneration += 1;
     activeVoicePlayback = {
       id: playbackIdRef.current,
       stop: stopPlayback,
     };
+
+    return playbackGeneration;
   }, [stopPlayback]);
+
+  const isCurrentPlayback = useCallback((generation: number) => (
+    activeVoicePlayback?.id === playbackIdRef.current &&
+    playbackGeneration === generation
+  ), []);
 
   useEffect(() => {
     return () => {
@@ -91,7 +100,11 @@ export function VoiceMessageCard({
       return;
     }
 
+    let generation: number | undefined;
+
     try {
+      generation = claimActivePlayback();
+
       if (isAmrUrl(content.audioUrl)) {
         await playAmrVoice(content.audioUrl);
         return;
@@ -105,17 +118,23 @@ export function VoiceMessageCard({
         audioRef.current.addEventListener("error", failPlayback);
       }
 
-      claimActivePlayback();
+      if (!isCurrentPlayback(generation)) {
+        return;
+      }
+
       audioRef.current.currentTime = 0;
       setPlaybackState("playing");
       await audioRef.current.play();
     } catch {
-      failPlayback();
+      if (generation == null || isCurrentPlayback(generation)) {
+        failPlayback();
+      }
     }
   };
 
   const playAmrVoice = async (audioUrl: string) => {
     audioRef.current?.pause();
+    const generation = playbackGeneration;
 
     if (amrUrlRef.current !== audioUrl) {
       destroyAmrRecorder(amrRef.current);
@@ -141,7 +160,10 @@ export function VoiceMessageCard({
       amrUrlRef.current = audioUrl;
     }
 
-    claimActivePlayback();
+    if (!isCurrentPlayback(generation)) {
+      return;
+    }
+
     setPlaybackState("playing");
     amrRef.current.play();
   };

@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import {
   BadGatewayError,
   BadRequestError,
@@ -7,7 +8,7 @@ const ALLOWED_MEDIA_HOST = "b3.iyouke.com";
 const DEFAULT_MEDIA_PROXY_TIMEOUT_MS = 8000;
 
 export type ProxiedMediaAsset = {
-  body: Buffer;
+  body: Readable;
   contentLength?: string;
   contentType: string;
 };
@@ -39,8 +40,12 @@ export async function fetchProxiedMediaAsset(rawUrl: string) {
     });
   }
 
+  if (!response.body) {
+    throw new BadGatewayError("MEDIA_PROXY_FETCH_FAILED", "媒体资源获取失败");
+  }
+
   return {
-    body: Buffer.from(await response.arrayBuffer()),
+    body: Readable.fromWeb(response.body),
     contentLength: response.headers.get("content-length") ?? undefined,
     contentType:
       response.headers.get("content-type") ?? "application/octet-stream",

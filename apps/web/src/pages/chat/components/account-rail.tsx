@@ -58,7 +58,7 @@ export function AccountRail({
     currentEmployee?.displayName || signedInAccount?.operator || signedInAccount?.name || "未登录";
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-background px-3 py-4">
+    <section className="flex h-full min-h-0 flex-col bg-sidebar px-3 py-4 text-sidebar-foreground">
       <div className="mb-3 flex items-center px-1">
         <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <HugeiconsIcon
@@ -78,8 +78,8 @@ export function AccountRail({
               className={cn(
                 "flex w-full items-center gap-2.5 rounded-[20px] px-3 py-3 text-[12px] font-medium transition-colors",
                 isActive
-                  ? "border border-border bg-surface text-foreground shadow-[0_2px_8px_var(--shadow-soft)]"
-                  : "border border-transparent text-muted-foreground hover:bg-surface-hover hover:text-foreground",
+                  ? "border border-sidebar-border bg-background text-foreground shadow-[0_2px_8px_var(--shadow-soft)]"
+                  : "border border-transparent text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               )}
               key={item.label}
               type="button"

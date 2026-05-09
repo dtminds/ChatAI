@@ -257,7 +257,7 @@ export function ChatComposer({
   };
 
   return (
-    <div className="space-y-1.5 bg-surface px-5 py-3">
+    <div className="space-y-1.5 bg-surface px-4 py-2">
       <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
         <div className="flex items-center gap-1.5 ml-[-6px]">
           <div className="relative" ref={emojiPickerRef}>
@@ -265,7 +265,7 @@ export function ChatComposer({
               aria-label="微信表情"
               className={cn(
                 composerActionButtonClass,
-                isEmojiPickerOpen && "bg-info-muted text-primary",
+                isEmojiPickerOpen && "bg-primary/10 text-primary",
               )}
               onClick={() => onEmojiPickerOpenChange(!isEmojiPickerOpen)}
               size="icon"

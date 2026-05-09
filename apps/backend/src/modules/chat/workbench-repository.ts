@@ -371,7 +371,11 @@ export class WorkbenchRepository {
 }
 
 function parseMySqlId(value: string) {
-  const numeric = Number(value);
+  if (!/^[1-9]\d*$/.test(value)) {
+    return undefined;
+  }
+
+  const numeric = Number.parseInt(value, 10);
 
   if (!Number.isSafeInteger(numeric) || numeric <= 0) {
     return undefined;

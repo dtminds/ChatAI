@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import {
+  applyAppearanceTheme,
+  getInitialAppearanceTheme,
+} from "@/lib/appearance-theme";
+import {
   hasStoredAuthToken,
   subscribeAuthTokensChanged,
 } from "@/pages/auth/auth-tokens";
@@ -11,6 +15,10 @@ const PUBLIC_PATHS = new Set(["/login"]);
 export function RootLayout() {
   const location = useLocation();
   const [hasAuthToken, setHasAuthToken] = useState(hasStoredAuthToken);
+
+  useEffect(() => {
+    applyAppearanceTheme(getInitialAppearanceTheme());
+  }, []);
 
   useEffect(() => {
     const syncAuthTokenState = () => {

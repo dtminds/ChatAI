@@ -278,7 +278,7 @@ function ChatWorkbenchContent({
   }
 
   return (
-    <div className="h-svh min-h-[720px] bg-background">
+    <div className="h-svh min-h-[720px] bg-sidebar">
       <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden">
         <AccountRail
           accounts={accounts}

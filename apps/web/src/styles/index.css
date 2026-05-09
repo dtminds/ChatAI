@@ -755,7 +755,7 @@ html.dark[data-appearance-theme="nature"] {
 
 @theme inline {
   --font-sans:
-    "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei",
+    "Inter",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,
     sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);

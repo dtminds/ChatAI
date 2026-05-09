@@ -18,6 +18,7 @@ function renderRoute(initialEntry = "/chat") {
 
 describe("Chat settings pages", () => {
   beforeEach(() => {
+    window.localStorage.setItem("chatai.refreshToken", "test-refresh-token");
     resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });

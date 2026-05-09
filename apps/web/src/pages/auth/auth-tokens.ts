@@ -14,3 +14,10 @@ export function clearAuthTokens() {
 export function getRefreshToken() {
   return window.localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
 }
+
+export function hasStoredAuthToken() {
+  return Boolean(
+    window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ||
+      window.localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY),
+  );
+}

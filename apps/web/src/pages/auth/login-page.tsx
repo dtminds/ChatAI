@@ -2,6 +2,15 @@ import { type FormEvent, useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { RequestError } from "@/lib/request";
@@ -12,7 +21,7 @@ import { storeAuthTokens } from "./auth-tokens";
 
 export function LoginPage() {
   return (
-    <main className="flex min-h-svh flex-col items-center justify-center bg-muted p-6 md:p-10">
+    <main className="flex min-h-svh flex-col items-center justify-center bg-background p-6 md:p-10">
       <div className="w-full max-w-4xl">
         <LoginForm />
       </div>
@@ -64,7 +73,7 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">欢迎回来</h1>
                 <p className="text-balance text-muted-foreground">
-                  登录你的 AI 客服工作台账号
+                  登录你的客服工作台
                 </p>
               </div>
 
@@ -82,17 +91,32 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
               <div className="grid gap-2">
                 <div className="flex items-center">
                   <Label htmlFor={passwordId}>密码</Label>
-                  <a
-                    className="ml-auto text-sm underline-offset-2 hover:underline"
-                    href="#"
-                  >
-                    忘记密码？
-                  </a>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        className="ml-auto h-auto rounded-none p-0 text-sm underline-offset-2 hover:bg-transparent hover:underline"
+                        type="button"
+                        variant="ghost"
+                      >
+                        忘记密码？
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>重置密码</DialogTitle>
+                        <DialogDescription>
+                          为了保障账号安全，请使用主账号登录，然后在设置中重置子账号的密码
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter showCloseButton />
+                    </DialogContent>
+                  </Dialog>
                 </div>
                 <Input
                   autoComplete="current-password"
                   id={passwordId}
                   name="password"
+                  placeholder="请输入密码"
                   required
                   type="password"
                 />

@@ -30,11 +30,18 @@ describe("LoginPage", () => {
     renderLoginRoute();
 
     expect(await screen.findByRole("heading", { name: "欢迎回来" })).toBeInTheDocument();
-    expect(screen.getByText("登录你的 AI 客服工作台账号")).toBeInTheDocument();
+    expect(screen.getByText("登录你的客服工作台")).toBeInTheDocument();
     expect(screen.getByLabelText("用户名")).toBeInTheDocument();
     expect(screen.getByLabelText("密码")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
-    expect(document.querySelector("altcha-widget")).toBeInTheDocument();
+    const altchaWidget = document.querySelector("altcha-widget");
+    expect(altchaWidget).toBeInTheDocument();
+    expect(altchaWidget).toHaveAttribute("data-altcha-theme", "business");
+    expect(altchaWidget).toHaveStyle({ "--altcha-max-width": "100%" });
+    expect(JSON.parse(getAltchaConfiguration(altchaWidget))).toEqual({
+      hideFooter: true,
+      hideLogo: true,
+    });
     expect(screen.getByAltText("登录页占位图")).toHaveAttribute(
       "src",
       "https://ui.shadcn.com/placeholder.svg",
@@ -54,6 +61,18 @@ describe("LoginPage", () => {
     expect(screen.getByRole("button", { name: "验证" })).toBeInTheDocument();
     expect(document.querySelector("altcha-widget")).not.toBeInTheDocument();
     expect(document.querySelector('input[name="altcha"]')).toBeInTheDocument();
+  });
+
+  it("guides users to contact an administrator when resetting password", async () => {
+    const user = userEvent.setup();
+    setSecureContext(true);
+
+    renderLoginRoute();
+
+    await user.click(await screen.findByRole("button", { name: "忘记密码？" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "重置密码" });
+    expect(dialog).toHaveTextContent("为了保障账号安全，请使用主账号登录，然后在设置中重置子账号的密码");
   });
 
   it("solves the fallback ALTCHA control and stores the payload", async () => {
@@ -198,4 +217,8 @@ function setSecureContext(value: boolean) {
     configurable: true,
     value,
   });
+}
+
+function getAltchaConfiguration(widget: Element | null) {
+  return (widget as Element & { configuration?: string } | null)?.configuration ?? "{}";
 }

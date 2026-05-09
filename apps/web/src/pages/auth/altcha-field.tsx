@@ -12,12 +12,17 @@ import {
 } from "react";
 import "altcha";
 import "altcha/i18n/zh-cn";
+import "altcha/themes/business.css";
 import { Button } from "@/components/ui/button";
 import { http } from "@/lib/request";
 import { cn } from "@/lib/utils";
 
 const CHALLENGE_URL = "/api/auth/altcha/challenge";
 const CHALLENGE_API_PATH = "/auth/altcha/challenge";
+const WIDGET_CONFIGURATION = JSON.stringify({
+  hideFooter: true,
+  hideLogo: true,
+});
 
 type AltchaFieldState = "idle" | "verifying" | "verified" | "error";
 
@@ -34,12 +39,17 @@ export function AltchaField() {
 
   if (isSecureContext) {
     return (
-      <altcha-widget
-        auto="onload"
-        challenge={CHALLENGE_URL}
-        language="zh-cn"
-        name="altcha"
-      />
+      <div className="[&>altcha-widget]:block [&>altcha-widget]:w-full text-[13px]">
+        <altcha-widget
+          auto="onload"
+          challenge={CHALLENGE_URL}
+          configuration={WIDGET_CONFIGURATION}
+          data-altcha-theme="business"
+          language="zh-cn"
+          name="altcha"
+          style={{ "--altcha-max-width": "100%" }}
+        />
+      </div>
     );
   }
 

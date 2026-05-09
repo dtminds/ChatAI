@@ -51,6 +51,26 @@ const conversations: Conversation[] = [
 ];
 
 describe("ConversationListPanel", () => {
+  it("shows an empty state when the active mode has no conversations", () => {
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={[]}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    const emptyState = screen.getByRole("status", { name: "暂无数据" });
+
+    expect(emptyState).toHaveTextContent("暂无数据");
+    expect(emptyState.querySelector("svg")).toBeInTheDocument();
+    expect(screen.queryByText("暂无单聊")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前账号下暂无单聊。")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前账号下暂无单聊占位数据。")).not.toBeInTheDocument();
+  });
+
   it("closes search results when clicking outside the dropdown", async () => {
     const user = userEvent.setup();
 

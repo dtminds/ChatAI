@@ -17,7 +17,7 @@ export function PageHeader({
 }) {
   return (
     <header className="mb-7">
-      <div className="flex items-center gap-2 text-xs font-medium text-primary">
+      <div className="flex items-center gap-1 text-xs font-medium text-primary">
         <HugeiconsIcon
           color="currentColor"
           icon={Settings03Icon}
@@ -26,7 +26,7 @@ export function PageHeader({
         />
         <span>{eyebrow}</span>
       </div>
-      <h1 className="mt-2 text-[26px] font-semibold tracking-normal text-foreground">
+      <h1 className="text-[26px] font-semibold tracking-normal text-foreground">
         {title}
       </h1>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">

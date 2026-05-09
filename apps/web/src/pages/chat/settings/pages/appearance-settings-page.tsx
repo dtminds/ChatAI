@@ -39,7 +39,7 @@ export function AppearanceSettingsPage() {
     <>
       <PageHeader
         description="选择工作台整体配色。明暗模式仍可在聊天页顶部单独切换。"
-        eyebrow="PREFERENCE"
+        eyebrow="THEME"
         title="外观"
       />
 

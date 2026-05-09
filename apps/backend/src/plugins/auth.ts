@@ -35,10 +35,6 @@ function getJwtSecret() {
   return process.env.JWT_DEV_SECRET ?? "dev-only-change-me";
 }
 
-function isDevelopmentAuthBypassEnabled() {
-  return process.env.NODE_ENV === "development" && process.env.AUTH_DEV_BYPASS === "true";
-}
-
 export const authPlugin = fp(async (app) => {
   await app.register(fastifyJwt, {
     secret: getJwtSecret(),
@@ -54,16 +50,6 @@ export const authPlugin = fp(async (app) => {
   });
 
   app.decorate("authenticate", async (request) => {
-    if (isDevelopmentAuthBypassEnabled()) {
-      request.user = {
-        roles: ["agent"],
-        sessionId: "dev-session",
-        sessionVersion: 1,
-        subUserId: process.env.AUTH_DEV_SUB_USER_ID ?? "",
-      };
-      return;
-    }
-
     try {
       await request.jwtVerify();
     } catch {

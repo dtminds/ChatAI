@@ -530,30 +530,9 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("allows unauthenticated server routes only with explicit development auth bypass", async () => {
+  it("does not allow unauthenticated server routes when auth bypass is misconfigured", async () => {
     process.env.AUTH_DEV_BYPASS = "true";
     process.env.NODE_ENV = "development";
-    const app = await buildApp();
-
-    const response = await app.inject({
-      method: "GET",
-      url: "/api/server/me",
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      displayName: "林洒",
-      subUserId: "sub-user-001",
-    });
-
-    await app.close();
-  });
-
-  it("does not allow auth bypass outside development", async () => {
-    process.env.AUTH_DEV_BYPASS = "true";
-    process.env.JWT_PRIVATE_KEY = "test-jwt-secret";
-    process.env.JWT_PUBLIC_KEY = "test-jwt-secret";
-    process.env.NODE_ENV = "production";
     const app = await buildApp();
 
     const response = await app.inject({

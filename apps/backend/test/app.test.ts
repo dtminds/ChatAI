@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { solveChallenge, type Challenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/scrypt";
 import argon2 from "argon2";
@@ -26,6 +26,7 @@ async function createAuthenticatedApp() {
 
 describe("backend app", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     delete process.env.ALTCHA_COST;
     delete process.env.ALTCHA_COUNTER_MAX;
     delete process.env.ALTCHA_COUNTER_MIN;
@@ -277,6 +278,62 @@ describe("backend app", () => {
       sessionId: "501",
       sessionVersion: 1,
       subUserId: "101",
+    });
+
+    await app.close();
+  });
+
+  it("stores request IP and user agent metadata when logging in", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    let sessionMetadata: Record<string, unknown> | undefined;
+    const app = await buildApp();
+    app.db = createAuthDbMock(
+      {
+        account: "agent001",
+        id: 101,
+        name: "客服一号",
+        password_hash: await argon2.hash("correct-password", {
+          hashLength: 32,
+          memoryCost: 4096,
+          parallelism: 1,
+          timeCost: 2,
+          type: argon2.argon2id,
+        }),
+        platform: 1,
+        uid: 9001,
+      },
+      {
+        onSessionWrite: (values) => {
+          sessionMetadata = values;
+        },
+      },
+    );
+    const altcha = await createSolvedAltchaPayload(app);
+
+    const response = await app.inject({
+      headers: {
+        "user-agent": "Mozilla/5.0 test agent",
+        "x-forwarded-for": "203.0.113.8, 10.0.0.2",
+      },
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha,
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(sessionMetadata).toMatchObject({
+      ip: "203.0.113.8",
+      user_agent: "Mozilla/5.0 test agent",
     });
 
     await app.close();
@@ -622,6 +679,56 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("proxies allowlisted media through the authenticated server API", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: {
+          "content-type": "audio/amr",
+        },
+        status: 200,
+      }),
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/proxy?url=${encodeURIComponent("https://b3.iyouke.com/bilin/20260421/272/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("audio/amr");
+    expect(response.body).toBe("\u0001\u0002\u0003");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("rejects media proxy requests to non-allowlisted origins", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/proxy?url=${encodeURIComponent("https://example.com/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "MEDIA_URL_NOT_ALLOWED",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
   it("returns an empty message page when limit is zero", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
@@ -824,14 +931,19 @@ async function createSolvedAltchaPayload(app: Awaited<ReturnType<typeof buildApp
   );
 }
 
-function createAuthDbMock(record: {
-  account: string;
-  id: number;
-  name: string;
-  password_hash: string;
-  platform: number;
-  uid: number;
-}) {
+function createAuthDbMock(
+  record: {
+    account: string;
+    id: number;
+    name: string;
+    password_hash: string;
+    platform: number;
+    uid: number;
+  },
+  options: {
+    onSessionWrite?: (values: Record<string, unknown>) => void;
+  } = {},
+) {
   let session = {
     expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
     id: 501,
@@ -893,6 +1005,7 @@ function createAuthDbMock(record: {
                 })
               : values;
 
+          options.onSessionWrite?.(resolved);
           session = {
             ...session,
             ...(resolved as Partial<typeof session>),
@@ -914,6 +1027,7 @@ function createAuthDbMock(record: {
         execute: async () => [],
         onDuplicateKeyUpdate: () => builder,
         values: (values: Record<string, unknown>) => {
+          options.onSessionWrite?.(values);
           session = {
             ...session,
             ...(values as Partial<typeof session>),

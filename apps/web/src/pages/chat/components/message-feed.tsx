@@ -49,7 +49,7 @@ export function ChatMessageList({ messages, onRetryMessage }: ChatMessageListPro
 export function MessageTimeDivider({ label }: { label: string }) {
   return (
     <div className="flex items-center justify-center py-0.5">
-      <span className="text-[12px] font-medium tracking-[0.02em] text-muted-foreground">
+      <span className="text-[12px] text-muted-foreground">
         {label}
       </span>
     </div>
@@ -74,40 +74,49 @@ export function MessageRow({
   const isAgent = message.role === "agent";
 
   return (
-    <div className={cn("flex items-start gap-3", isAgent ? "justify-end" : "justify-start")}>
-      {!isAgent ? <MessageAvatar message={message} /> : null}
-
+    <div className={cn("flex items-start", isAgent ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "flex max-w-[42rem] flex-col",
-          isAgent ? "order-first items-end" : "items-start",
+          "flex min-w-0 max-w-[90%] items-start gap-2",
+          isAgent ? "justify-end" : "justify-start",
         )}
+        data-testid="message-row-group"
       >
-        <div
-          className={cn(
-            "flex items-end gap-2",
-            isAgent ? "flex-row" : "flex-row-reverse",
-          )}
-        >
-          {isAgent && message.status === "failed" && onRetryMessage ? (
-            <button
-              aria-label="重试发送"
-              className="mb-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-destructive/25 bg-surface text-destructive transition-colors hover:bg-destructive-muted"
-              onClick={() => onRetryMessage(message.id)}
-              title="重试发送"
-              type="button"
-            >
-              <HugeiconsIcon icon={ReloadIcon} size={13} strokeWidth={2} />
-            </button>
-          ) : null}
-          <div className={cn("flex flex-col gap-1.5", isAgent ? "items-end" : "items-start")}>
-            <MessageContentRenderer isAgent={isAgent} message={message} />
-          </div>
-        </div>
-        {isAgent ? <MessageDeliveryState message={message} /> : null}
-      </div>
+        {!isAgent ? <MessageAvatar message={message} /> : null}
 
-      {isAgent ? <MessageAvatar message={message} /> : null}
+        <div className={cn("flex min-w-0 flex-col", isAgent ? "items-end" : "items-start")}>
+          <div
+            className={cn(
+              "flex min-w-0 max-w-full items-end gap-2",
+              isAgent ? "flex-row" : "flex-row-reverse",
+            )}
+          >
+            {isAgent && message.status === "failed" && onRetryMessage ? (
+              <button
+                aria-label="重试发送"
+                className="mb-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-destructive/25 bg-surface text-destructive transition-colors hover:bg-destructive-muted"
+                onClick={() => onRetryMessage(message.id)}
+                title="重试发送"
+                type="button"
+              >
+                <HugeiconsIcon icon={ReloadIcon} size={13} strokeWidth={2} />
+              </button>
+            ) : null}
+            <div
+              className={cn(
+                "flex min-w-0 max-w-full flex-col gap-1.5",
+                isAgent ? "items-end" : "items-start",
+              )}
+              data-testid="message-content-stack"
+            >
+              <MessageContentRenderer isAgent={isAgent} message={message} />
+            </div>
+          </div>
+          {isAgent ? <MessageDeliveryState message={message} /> : null}
+        </div>
+
+        {isAgent ? <MessageAvatar message={message} /> : null}
+      </div>
     </div>
   );
 }
@@ -138,7 +147,7 @@ function MessageDeliveryState({ message }: { message: ChatMessage }) {
 
 export function MessageAvatar({ message }: { message: ChatMessage }) {
   return (
-    <Avatar className="size-10 rounded-[12px] border border-border bg-surface">
+    <Avatar className="size-8 rounded-[6px] bg-surface">
       {message.sender.avatarUrl ? (
         <AvatarImage alt={message.sender.name} src={message.sender.avatarUrl} />
       ) : null}
@@ -190,21 +199,33 @@ function shouldInsertDivider(previous: Message | undefined, current: Message) {
   );
 }
 
-function formatMessageDividerLabel(value: string) {
+export function formatMessageDividerLabel(value: string) {
   const date = parseWorkbenchDate(value);
 
   if (!date) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
+  const now = new Date();
+  const time = formatTimePart(date);
+
+  if (isSameCalendarDay(date, now)) {
+    return time;
+  }
+
+  if (isSameCalendarDay(date, addDays(now, -1))) {
+    return `昨天 ${time}`;
+  }
+
+  if (isSameWeekMondayToSunday(date, now)) {
+    return `${formatWeekdayPart(date)} ${time}`;
+  }
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+  }
+
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
 }
 
 function parseWorkbenchDate(value: string) {
@@ -224,4 +245,44 @@ function isSameCalendarDay(a: Date, b: Date) {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
   );
+}
+
+function isSameWeekMondayToSunday(a: Date, b: Date) {
+  const weekStart = getMondayStartOfDay(b);
+  const nextWeekStart = addDays(weekStart, 7);
+
+  return a.getTime() >= weekStart.getTime() && a.getTime() < nextWeekStart.getTime();
+}
+
+function getMondayStartOfDay(value: Date) {
+  const date = startOfDay(value);
+  const day = date.getDay();
+  const daysSinceMonday = day === 0 ? 6 : day - 1;
+
+  return addDays(date, -daysSinceMonday);
+}
+
+function startOfDay(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function addDays(value: Date, days: number) {
+  const date = new Date(value);
+  date.setDate(date.getDate() + days);
+
+  return date;
+}
+
+function formatTimePart(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function formatWeekdayPart(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    weekday: "short",
+  }).format(date);
 }

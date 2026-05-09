@@ -30,6 +30,11 @@ type SessionRow = {
   sub_user_id: number;
 };
 
+export type LoginRequestMetadata = {
+  ip?: string;
+  userAgent?: string;
+};
+
 export class InvalidCredentialsError extends AppError {
   constructor() {
     super("INVALID_CREDENTIALS", "用户名或密码错误", 401);
@@ -39,6 +44,7 @@ export class InvalidCredentialsError extends AppError {
 export async function loginWithPassword(
   app: FastifyInstance,
   payload: AuthLoginRequest,
+  metadata: LoginRequestMetadata = {},
 ): Promise<AuthLoginResponse> {
   const altcha = await verifyAltchaPayload(payload.altcha);
 
@@ -61,8 +67,8 @@ export async function loginWithPassword(
   }
 
   const session = await createOrReplaceSession(app.db, subUser.id, {
-    ip: getRequestIp(app),
-    userAgent: undefined,
+    ip: metadata.ip,
+    userAgent: metadata.userAgent,
   });
   const subUserId = String(subUser.id);
   const accessToken = signAccessToken(app, subUserId, session);
@@ -272,8 +278,4 @@ function hashRefreshToken(refreshToken: string) {
 
 function createRefreshExpiry() {
   return new Date(Date.now() + REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000);
-}
-
-function getRequestIp(_app: FastifyInstance) {
-  return undefined;
 }

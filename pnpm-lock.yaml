@@ -140,6 +140,9 @@ importers:
       axios:
         specifier: ^1.9.0
         version: 1.15.2
+      benz-amr-recorder:
+        specifier: ^1.1.5
+        version: 1.1.5
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1687,6 +1690,12 @@ packages:
     resolution: {integrity: sha512-Q+rUQ7Uz8AHM7DEaNdwvfFCTq7a43lNTzuS94eiWqwyxfV/wJv+oUivef51T91mmRY4d4A1u9rcSvkeufCVXlA==}
     engines: {node: '>=6.0.0'}
     hasBin: true
+
+  benz-amr-recorder@1.1.5:
+    resolution: {integrity: sha512-NepctcNTsZHK8NxBb5uKO5p8S+xkbm+vD6GLSkCYdJeEsriexvgumLHpDkanX4QJBcLRMVtg16buWMs+gUPB3g==}
+
+  benz-recorderjs@1.0.5:
+    resolution: {integrity: sha512-EwedOQo9KLti7HxDi/eZY51PSRbAXnOdEZmLvJ6ro3QQSoF9Y3AXBt57MIllGvVz5vtFYMeikG+GD7qTm3+p9w==}
 
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
@@ -4158,6 +4167,12 @@ snapshots:
       - debug
 
   baseline-browser-mapping@2.10.21: {}
+
+  benz-amr-recorder@1.1.5:
+    dependencies:
+      benz-recorderjs: 1.0.5
+
+  benz-recorderjs@1.0.5: {}
 
   bidi-js@1.0.3:
     dependencies:

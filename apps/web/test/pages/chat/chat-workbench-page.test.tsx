@@ -317,48 +317,22 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("radio", { name: "跟随系统" })).toBeInTheDocument();
   });
 
-  it("loads older messages when the message viewport reaches the top", async () => {
+  it("does not show a history loader when the default message page covers all history", async () => {
     render(<ChatWorkbenchPage />);
 
     await screen.findByPlaceholderText("请输入消息……");
 
-    expect(screen.queryByText("预约直播抽秋天的第一杯奶茶")).not.toBeInTheDocument();
-
-    const messageViewport = screen.getByTestId("message-viewport");
-
-    Object.defineProperties(messageViewport, {
-      scrollHeight: {
-        configurable: true,
-        value: 1200,
-      },
-      scrollTop: {
-        configurable: true,
-        value: 0,
-        writable: true,
-      },
-    });
-
-    fireEvent.scroll(messageViewport);
-
-    await waitFor(() => {
-      expect(screen.getByText("预约直播抽秋天的第一杯奶茶")).toBeInTheDocument();
-    });
+    expect(screen.getByText("预约直播抽秋天的第一杯奶茶")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加载更早的对话" })).not.toBeInTheDocument();
   });
 
-  it("loads older messages when the history load area is clicked", async () => {
-    const user = userEvent.setup();
-
+  it("keeps all seed messages visible after the initial 50-message request", async () => {
     render(<ChatWorkbenchPage />);
 
     await screen.findByPlaceholderText("请输入消息……");
 
-    expect(screen.queryByText("预约直播抽秋天的第一杯奶茶")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "加载更早的对话" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("预约直播抽秋天的第一杯奶茶")).toBeInTheDocument();
-    });
+    expect(screen.getByText("预约直播抽秋天的第一杯奶茶")).toBeInTheDocument();
+    expect(screen.getAllByText("这是最新的权益清单截图，你帮我确认下。").length).toBeGreaterThan(0);
   });
 
   it("shows scope transition errors in the workbench", async () => {

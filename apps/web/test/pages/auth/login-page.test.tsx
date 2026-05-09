@@ -117,6 +117,30 @@ describe("LoginPage", () => {
     expect(mock.history.post).toEqual([]);
   });
 
+  it("uses a short timeout when solving the fallback ALTCHA challenge", async () => {
+    const user = userEvent.setup();
+    setSecureContext(false);
+    mock.onGet("/auth/altcha/challenge").reply(200, {
+      parameters: {
+        algorithm: "SCRYPT",
+        challenge: "challenge-001",
+      },
+      signature: "signature-001",
+    });
+
+    renderLoginRoute();
+
+    await user.click(await screen.findByRole("button", { name: "验证" }));
+    await screen.findByText("人机验证已通过");
+
+    const { solveChallenge } = await import("altcha/lib");
+    expect(solveChallenge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        timeout: 15000,
+      }),
+    );
+  });
+
   it("logs in with account, password, and ALTCHA payload", async () => {
     const user = userEvent.setup();
     setSecureContext(false);

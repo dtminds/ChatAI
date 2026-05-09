@@ -419,7 +419,10 @@ function buildContent(message: Message) {
     case "text":
       return { text: message.content.text };
     case "voice":
-      return { durationLabel: message.content.durationLabel };
+      return {
+        audioUrl: message.content.audioUrl,
+        durationLabel: message.content.durationLabel,
+      };
     case "image":
       return {
         alt: message.content.alt,

@@ -7,7 +7,7 @@ import {
   type AuthRefreshRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createAltchaChallenge, verifyAltchaPayload } from "./altcha.service.js";
 import { loginWithPassword, refreshAccessToken, revokeSession } from "./auth.service.js";
 
@@ -47,7 +47,13 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         body: AuthLoginRequestSchema,
       },
     },
-    async (request) => apiSuccess(await loginWithPassword(app, request.body)),
+    async (request) =>
+      apiSuccess(
+        await loginWithPassword(app, request.body, {
+          ip: getRequestIp(request),
+          userAgent: request.headers["user-agent"],
+        }),
+      ),
   );
   app.post<{ Body: AuthRefreshRequest }>(
     "/api/auth/refresh",
@@ -61,4 +67,14 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   app.post("/api/auth/logout", { preHandler: app.authenticate }, async (request) =>
     apiSuccess(await revokeSession(app, request.user)),
   );
+}
+
+function getRequestIp(request: FastifyRequest) {
+  const forwardedFor = request.headers["x-forwarded-for"];
+
+  if (typeof forwardedFor === "string" && forwardedFor.trim()) {
+    return forwardedFor.split(",")[0]?.trim();
+  }
+
+  return request.ip;
 }

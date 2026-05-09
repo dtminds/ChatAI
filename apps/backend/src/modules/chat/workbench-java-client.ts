@@ -9,6 +9,8 @@ import {
   ServiceUnavailableError,
 } from "../../shared/errors.js";
 
+const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
+
 export type WorkbenchJavaClient = {
   markConversationRead(input: {
     conversationId: string;
@@ -70,14 +72,32 @@ async function postJava<T>(
     );
   }
 
-  const response = await fetch(`${baseUrl}${path}`, {
-    body: JSON.stringify(body),
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    method: "POST",
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), readJavaApiTimeoutMs());
+  let response: Response;
+
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      body: JSON.stringify(body),
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      method: "POST",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new BadGatewayError(
+      "JAVA_INTERNAL_API_FAILED",
+      "Java 内部工作台接口调用失败",
+      {
+        path,
+        reason: error instanceof Error ? error.name : "unknown",
+      },
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     throw new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败", {
@@ -87,4 +107,12 @@ async function postJava<T>(
   }
 
   return (await response.json()) as T;
+}
+
+function readJavaApiTimeoutMs() {
+  const value = Number.parseInt(process.env.JAVA_INTERNAL_API_TIMEOUT_MS ?? "", 10);
+
+  return Number.isSafeInteger(value) && value > 0
+    ? value
+    : DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS;
 }

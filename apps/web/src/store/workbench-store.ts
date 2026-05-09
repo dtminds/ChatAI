@@ -67,7 +67,7 @@ type WorkbenchState = {
 type WorkbenchStore = WorkbenchState;
 
 const defaultCustomerProfiles = seedCustomerProfiles;
-const MESSAGE_PAGE_SIZE = 5;
+const MESSAGE_PAGE_SIZE = 50;
 
 function createInitialState(): Omit<
   WorkbenchState,

@@ -173,9 +173,64 @@ function parseMessageContent(msgtype: string, rawContent: string | null) {
     return { text: String(parsed ?? "") };
   }
 
-  return {
-    text: formatMessagePreview(msgtype, rawContent),
-  };
+  switch (msgtype) {
+    case "image":
+      return {
+        alt: "图片",
+        imageUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
+      };
+    case "voice":
+      return {
+        audioUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
+        durationLabel: "",
+      };
+    case "video":
+      return {
+        alt: "视频",
+        coverImageUrl: normalizeMediaAssetUrl(readStringField(parsed, "coverUrl")),
+        durationLabel: "",
+        videoUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
+      };
+    case "file": {
+      const fileName = readStringField(parsed, "fileName") || "未知文件";
+      const extension = readStringField(parsed, "fileExt") || getFileExtension(fileName);
+
+      return {
+        extension,
+        fileName,
+        fileSizeLabel: formatFileSize(readNumberField(parsed, "fileSize")),
+        fileUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
+        sourceLabel: "文件",
+      };
+    }
+    case "link":
+      return {
+        description:
+          readStringField(parsed, "desc") || readStringField(parsed, "description"),
+        previewImageUrl: normalizeMediaAssetUrl(
+          readStringField(parsed, "coverUrl") || readStringField(parsed, "imageUrl"),
+        ),
+        sourceLabel: "链接",
+        title: readStringField(parsed, "title") || formatMessagePreview(msgtype, rawContent),
+        url: normalizeMediaAssetUrl(
+          readStringField(parsed, "href") || readStringField(parsed, "linkUrl"),
+        ),
+      };
+    case "weapp":
+      return {
+        appName:
+          readStringField(parsed, "appId") ||
+          readStringField(parsed, "originId") ||
+          "小程序",
+        coverImageUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
+        sourceLabel: "小程序",
+        title: readStringField(parsed, "title") || "小程序",
+      };
+    default:
+      return {
+        text: formatMessagePreview(msgtype, rawContent),
+      };
+  }
 }
 
 function formatMessagePreview(msgtype: string | null, rawContent: string | null) {
@@ -186,6 +241,10 @@ function formatMessagePreview(msgtype: string | null, rawContent: string | null)
   }
 
   if (parsed && typeof parsed === "object") {
+    if ("unsupportedDisplayText" in parsed) {
+      return String(parsed.unsupportedDisplayText ?? "");
+    }
+
     if ("text" in parsed) {
       return String(parsed.text ?? "");
     }
@@ -208,6 +267,22 @@ function formatMessagePreview(msgtype: string | null, rawContent: string | null)
       return "[链接]";
     case "weapp":
       return "[小程序]";
+    case "card":
+      return "[名片]";
+    case "emotion":
+      return "[表情]";
+    case "location":
+      return "[位置]";
+    case "redpacket":
+      return "[红包]";
+    case "sphfeed":
+      return "[视频号]";
+    case "revoke":
+      return "[撤回消息]";
+    case "solitaire":
+      return "[群接龙]";
+    case "chatrecord":
+      return "[聊天记录]";
     default:
       return rawContent ?? "";
   }
@@ -225,6 +300,77 @@ function parseContent(rawContent: string | null): unknown {
   } catch {
     return content;
   }
+}
+
+function readStringField(value: unknown, key: string) {
+  if (!isRecord(value)) {
+    return "";
+  }
+
+  const field = value[key];
+
+  return typeof field === "string" ? field : "";
+}
+
+function readNumberField(value: unknown, key: string) {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const field = value[key];
+  const numeric = typeof field === "number" ? field : Number(field);
+
+  return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const mediaAssetBaseUrl = "https://b3.iyouke.com";
+
+function normalizeMediaAssetUrl(value: string) {
+  const url = value.trim();
+
+  if (!url) {
+    return "";
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+
+    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:" ? url : "";
+  } catch {
+    return `${mediaAssetBaseUrl}/${url.replace(/^\/+/, "")}`;
+  }
+}
+
+function getFileExtension(fileName: string) {
+  const lastSegment = fileName.split(/[\\/]/).pop() ?? "";
+  const dotIndex = lastSegment.lastIndexOf(".");
+
+  return dotIndex >= 0 && dotIndex < lastSegment.length - 1
+    ? lastSegment.slice(dotIndex + 1).toLowerCase()
+    : "";
+}
+
+function formatFileSize(size: number | undefined) {
+  if (!size || size <= 0) {
+    return "";
+  }
+
+  const units = ["B", "KB", "MB", "GB"];
+  let value = size;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return unitIndex === 0
+    ? `${Math.round(value)} ${units[unitIndex]}`
+    : `${value.toFixed(2)} ${units[unitIndex]}`;
 }
 
 function normalizeOptionalId(value: number | string | null) {

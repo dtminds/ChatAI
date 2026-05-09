@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 
 const CHALLENGE_URL = "/api/auth/altcha/challenge";
 const CHALLENGE_API_PATH = "/auth/altcha/challenge";
+const SOLVE_TIMEOUT_MS = 15000;
 const WIDGET_CONFIGURATION = JSON.stringify({
   hideFooter: true,
   hideLogo: true,
@@ -73,7 +74,7 @@ function HttpAltchaField() {
       const solution = await solveChallenge({
         challenge,
         deriveKey: scrypt.deriveKey,
-        timeout: 90000,
+        timeout: SOLVE_TIMEOUT_MS,
       });
 
       if (!solution) {

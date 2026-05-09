@@ -88,7 +88,7 @@ export type WorkbenchPollResult = {
   request: WorkbenchScopeRequest;
 };
 
-const DEFAULT_MESSAGE_PAGE_SIZE = 5;
+const DEFAULT_MESSAGE_PAGE_SIZE = 50;
 
 export async function bootstrapWorkbench(
   preferredMode: ChatMode,

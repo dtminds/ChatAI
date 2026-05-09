@@ -7,6 +7,7 @@ import type { FastifyInstance } from "fastify";
 import { MysqlWorkbenchService, type WorkbenchService } from "./workbench.service.js";
 import { createWorkbenchJavaClient } from "./workbench-java-client.js";
 import { createMemoryWorkbenchService } from "./workbench-memory.service.js";
+import { fetchProxiedMediaAsset } from "./media-proxy.service.js";
 import { WorkbenchRepository } from "./workbench-repository.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
@@ -24,6 +25,10 @@ const ConversationParamsSchema = Type.Object({
 const ConversationMessagesQuerySchema = Type.Object({
   before_seq: Type.Optional(NumericStringSchema),
   limit: Type.Optional(NumericStringSchema),
+});
+
+const MediaProxyQuerySchema = Type.Object({
+  url: Type.String({ minLength: 1 }),
 });
 
 const PollQuerySchema = Type.Object({
@@ -48,6 +53,7 @@ const SeatParamsSchema = Type.Object({
 type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
 type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
+type MediaProxyQuery = Static<typeof MediaProxyQuerySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
@@ -66,6 +72,28 @@ export async function registerChatRoutes(app: FastifyInstance) {
 
   app.get("/api/server/seats", { preHandler: app.authenticate }, async (request) =>
     workbench.getSeats(getSubUserId(request)),
+  );
+
+  app.get<{ Querystring: MediaProxyQuery }>(
+    "/api/server/media/proxy",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: MediaProxyQuerySchema,
+      },
+    },
+    async (request, reply) => {
+      const media = await fetchProxiedMediaAsset(request.query.url);
+
+      reply.header("cache-control", "private, max-age=300");
+      reply.header("content-type", media.contentType);
+
+      if (media.contentLength) {
+        reply.header("content-length", media.contentLength);
+      }
+
+      return reply.send(media.body);
+    },
   );
 
   app.get<{ Querystring: ConversationListQuery }>(

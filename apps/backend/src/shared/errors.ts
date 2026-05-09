@@ -22,6 +22,12 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+export class BadRequestError extends AppError {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
+    super(code, message, 400, details);
+  }
+}
+
 export class NotFoundError extends AppError {
   constructor(code: string, message: string) {
     super(code, message, 404);

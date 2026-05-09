@@ -73,6 +73,25 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("requests 50 messages for initial and switched conversation pages", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedLimits: Array<number | undefined> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        observedLimits.push(options?.limit);
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    expect(observedLimits).toEqual([50, 50]);
+  });
+
   it("bootstraps conversations that contain video messages", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().setActiveConversation("conv-002");
@@ -291,21 +310,10 @@ describe("useWorkbenchStore", () => {
     expect(state.activeConversationId).toBe("conv-005");
   });
 
-  it("loads older messages before the current first sequence", async () => {
+  it("loads the full seed page when the default message page covers all history", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
 
-    let state = useWorkbenchStore.getState();
-    expect(state.messagesByConversationId["conv-001"]).toHaveLength(5);
-    expect(state.messagesByConversationId["conv-001"][0]).toMatchObject({
-      id: "msg-006",
-      seq: getSeedMessageSeq("conv-001", "msg-006"),
-    });
-    expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(true);
-
-    await useWorkbenchStore.getState().loadOlderMessages();
-
-    state = useWorkbenchStore.getState();
-
+    const state = useWorkbenchStore.getState();
     expect(state.messagesByConversationId["conv-001"]).toHaveLength(
       seedMessages["conv-001"].length,
     );
@@ -493,10 +501,19 @@ describe("useWorkbenchStore", () => {
   it("tracks history loading per conversation instead of globally", async () => {
     const baseService = createMockWorkbenchService();
     const historyGate = createDeferred();
+    let initialConversationLoad = true;
 
     setWorkbenchService({
       ...baseService,
       async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          initialConversationLoad = false;
+          return baseService.getMessages(conversationId, {
+            ...options,
+            limit: 5,
+          });
+        }
+
         if (conversationId === "conv-001" && options?.beforeSeq != null) {
           await historyGate.promise;
         }
@@ -506,6 +523,13 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    expect(initialConversationLoad).toBe(false);
+    useWorkbenchStore.setState((state) => ({
+      hasMoreHistoryByConversationId: {
+        ...state.hasMoreHistoryByConversationId,
+        "conv-001": true,
+      },
+    }));
 
     const historyPromise = useWorkbenchStore.getState().loadOlderMessages();
 

@@ -157,6 +157,7 @@ function adaptChatMessageContent(
   switch (contentType) {
     case "voice":
       return {
+        audioUrl: asOptionalString(content.audioUrl),
         durationLabel: String(content.durationLabel ?? ""),
         type: "voice",
       };

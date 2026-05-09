@@ -15,32 +15,60 @@ const DEFAULT_ALTCHA_MEMORY_COST = 8;
 const DEFAULT_ALTCHA_PARALLELISM = 1;
 const DEFAULT_COUNTER_MIN = 5000;
 const DEFAULT_COUNTER_MAX = 10000;
+const DEFAULT_USED_RECORD_PRUNE_INTERVAL_MS = 60 * 1000;
+const DEFAULT_USED_RECORD_PRUNE_SIZE_THRESHOLD = 1000;
 
 type StoreRecord = {
   expiresAt: number;
   used: boolean;
 };
 
-class InMemoryAltchaStore {
+export class InMemoryAltchaStore {
   private readonly records = new Map<string, StoreRecord>();
+  private lastPrunedAt = Date.now();
+
+  constructor(
+    private readonly options: {
+      pruneIntervalMs?: number;
+      pruneSizeThreshold?: number;
+      ttlMs?: number;
+    } = {},
+  ) {}
+
+  get size() {
+    return this.records.size;
+  }
 
   isUsed(key: string) {
-    this.pruneExpired();
+    const record = this.records.get(key);
 
-    return this.records.get(key)?.used === true;
+    return record?.used === true && record.expiresAt > Date.now();
   }
 
   markUsed(key: string) {
-    this.pruneExpired();
+    this.pruneExpiredIfNeeded();
     this.records.set(key, {
-      expiresAt: Date.now() + CHALLENGE_TTL_MS,
+      expiresAt: Date.now() + (this.options.ttlMs ?? CHALLENGE_TTL_MS),
       used: true,
     });
   }
 
-  private pruneExpired() {
+  private pruneExpiredIfNeeded() {
     const now = Date.now();
+    const intervalMs =
+      this.options.pruneIntervalMs ?? DEFAULT_USED_RECORD_PRUNE_INTERVAL_MS;
+    const sizeThreshold =
+      this.options.pruneSizeThreshold ?? DEFAULT_USED_RECORD_PRUNE_SIZE_THRESHOLD;
 
+    if (this.records.size < sizeThreshold && now - this.lastPrunedAt < intervalMs) {
+      return;
+    }
+
+    this.lastPrunedAt = now;
+    this.pruneExpired(now);
+  }
+
+  private pruneExpired(now: number) {
     for (const [key, record] of this.records) {
       if (record.expiresAt <= now) {
         this.records.delete(key);

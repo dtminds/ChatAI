@@ -1,8 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
+
+vi.mock("@/components/ui/avatar", () => ({
+  Avatar: ({ children, ...props }: ComponentProps<"span">) => (
+    <span {...props}>{children}</span>
+  ),
+  AvatarFallback: ({ children, ...props }: ComponentProps<"span">) => (
+    <span {...props}>{children}</span>
+  ),
+  AvatarImage: (props: ComponentProps<"img">) => <img {...props} />,
+}));
 
 const accounts: Account[] = [
   {
@@ -63,10 +74,13 @@ describe("AccountRail", () => {
     const footer = screen.getByTestId("account-rail-footer");
     expect(footer).toHaveTextContent("林洒");
     expect(footer).not.toHaveTextContent("lsave");
+    expect(footer.querySelector("img")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "打开账号设置" }));
 
-    expect(screen.getByTestId("account-settings-profile")).toHaveTextContent("林洒");
+    const settingsProfile = screen.getByTestId("account-settings-profile");
+    expect(settingsProfile).toHaveTextContent("林洒");
+    expect(settingsProfile.querySelector("img")).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
   });

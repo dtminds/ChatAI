@@ -9,7 +9,7 @@ import {
   UserGroup03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -56,7 +56,6 @@ export function AccountRail({
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
   const signedInName =
     currentEmployee?.displayName || signedInAccount?.operator || signedInAccount?.name || "未登录";
-  const signedInAvatarUrl = signedInAccount?.avatarUrl;
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-background px-3 py-4">
@@ -132,9 +131,6 @@ export function AccountRail({
             aria-label={`${signedInName} 登录头像`}
             className="size-9 rounded-full border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
           >
-            {signedInAccount ? (
-              <AvatarImage alt={signedInName} src={signedInAvatarUrl} />
-            ) : null}
             <AvatarFallback className="rounded-full text-sm">
               {signedInName.slice(0, 1)}
             </AvatarFallback>
@@ -177,11 +173,8 @@ export function AccountRail({
             >
               <Avatar
                 aria-label={`${signedInName} 账号头像`}
-                  className="size-7 rounded-full border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
+                className="size-7 rounded-full border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
               >
-                {signedInAccount ? (
-                  <AvatarImage alt={signedInName} src={signedInAvatarUrl} />
-                ) : null}
                 <AvatarFallback className="rounded-full text-sm">
                   {signedInName.slice(0, 1)}
                 </AvatarFallback>

@@ -458,7 +458,7 @@ export interface XyWapEmbedSubUser {
    */
   password_hash: string;
   /**
-   * 内嵌平台 1、涂色
+   * 内嵌平台 5、比邻
    */
   platform: Generated<number>;
   /**
@@ -644,7 +644,7 @@ export interface XyWapEmbedUserSeatSubRelation {
   create_time: Generated<Date>;
   id: Generated<number>;
   /**
-   * 内嵌平台 1、涂色
+   * 内嵌平台 5、比邻
    */
   platform: Generated<number>;
   /**

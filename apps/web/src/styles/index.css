@@ -2,21 +2,21 @@
 @import "tw-animate-css";
 
 :root {
-  --background: oklch(0.976 0.004 250);
+  --background: #FAFAFA;
   --foreground: #10141A;
   --card: oklch(0.992 0.003 250);
   --card-foreground: oklch(0.286 0.018 252);
   --popover: oklch(0.992 0.003 250);
   --popover-foreground: oklch(0.286 0.018 252);
-  --primary: oklch(0.646 0.149 253);
+  --primary: #000000;
   --primary-foreground: oklch(0.992 0.003 250);
   --secondary: oklch(0.956 0.004 250);
   --secondary-foreground: oklch(0.332 0.016 252);
-  --muted: oklch(0.952 0.004 252);
-  --muted-foreground: #9EA1A4;
-  --accent: oklch(0.944 0.006 249);
-  --accent-foreground: oklch(0.332 0.016 252);
-  --destructive: oklch(0.628 0.219 25);
+  --muted: lab(96.52% -.0000298023 .0000119209);
+  --muted-foreground: lab(48.496% 0 0);
+  --accent: lab(96.52% -.0000298023 .0000119209);
+  --accent-foreground: lab(7.78201% -.0000149012 0);
+  --destructive: lab(48.4493% 77.4328 61.5452);
   --border: oklch(0.908 0.006 250);
   --input: oklch(0.892 0.006 250);
   --ring: oklch(0.732 0.094 252);
@@ -25,7 +25,7 @@
   --avatar-end: oklch(0.748 0.097 214);
   --surface: oklch(100% 0.00011 271.152);
   --surface-foreground: oklch(0.286 0.018 252);
-  --surface-muted: oklch(0.958 0.006 250);
+  --surface-muted: #F5F5F5;
   --surface-hover: oklch(0.962 0.007 250);
   --surface-active: oklch(0.945 0.012 252);
   --surface-selected: oklch(0.934 0.026 253);

@@ -115,7 +115,7 @@ describe("ConversationListPanel", () => {
     const searchbox = await screen.findByRole("dialog", { name: "搜索结果" });
     expect(
       within(searchbox).getByTestId("conversation-search-results-scroll-area"),
-    ).toHaveAttribute("data-scrollbar-visibility", "scroll");
+    ).toHaveAttribute("data-scrollbar-visibility", "hover");
     expect(within(searchbox).getByText("联系人")).toBeInTheDocument();
     expect(within(searchbox).getByText("群聊")).toBeInTheDocument();
     expect(
@@ -143,7 +143,7 @@ describe("ConversationListPanel", () => {
     expect(within(searchbox).queryByRole("button", { name: "查看全部" })).not.toBeInTheDocument();
     expect(
       within(searchbox).getByTestId("conversation-search-expanded-scroll-area"),
-    ).toHaveAttribute("data-scrollbar-visibility", "scroll");
+    ).toHaveAttribute("data-scrollbar-visibility", "hover");
     const expandedResults = within(searchbox).getByRole("list", {
       name: "联系人搜索结果",
     });

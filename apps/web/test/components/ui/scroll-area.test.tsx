@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 describe("ScrollArea", () => {
-  it("uses the system scrollbar visibility policy by default", () => {
+  it("uses Radix scrollbar visibility defaults", () => {
     render(
       <ScrollArea data-testid="scroll-area">
         <div>Scrollable content</div>
@@ -12,11 +12,11 @@ describe("ScrollArea", () => {
 
     expect(screen.getByTestId("scroll-area")).toHaveAttribute(
       "data-scrollbar-visibility",
-      "scroll",
+      "hover",
     );
     expect(screen.getByTestId("scroll-area")).toHaveAttribute(
       "data-scrollbar-hide-delay",
-      "700",
+      "600",
     );
   });
 
@@ -41,16 +41,15 @@ describe("ScrollArea", () => {
     );
   });
 
-  it("keeps scrollbar tracks mounted so hover can reveal them before scrolling", () => {
+  it("does not add custom hover visibility outside Radix behavior", () => {
     render(
-      <ScrollArea data-testid="scroll-area">
+      <ScrollArea data-testid="scroll-area" type="scroll">
         <div>Scrollable content</div>
       </ScrollArea>,
     );
 
-    expect(screen.getByTestId("scroll-area")).toHaveClass("group/scroll-area");
     expect(
       screen.getByTestId("scroll-area").querySelector('[data-orientation="vertical"]'),
-    ).toHaveClass("group-hover/scroll-area:opacity-100");
+    ).not.toHaveClass("group-hover/scroll-area:opacity-100");
   });
 });

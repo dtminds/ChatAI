@@ -33,14 +33,6 @@ function getSeedUnreadAfterRead(accountId: string, readConversationId: string) {
   );
 }
 
-function getSeedMessageSeq(conversationId: string, messageId: string) {
-  const messageIndex = (seedMessages[conversationId] ?? []).findIndex(
-    (message) => message.id === messageId,
-  );
-
-  return messageIndex >= 0 ? messageIndex + 1 : undefined;
-}
-
 function getSeedMessageIdAt(conversationId: string, index: number) {
   return seedMessages[conversationId]?.[index]?.id;
 }

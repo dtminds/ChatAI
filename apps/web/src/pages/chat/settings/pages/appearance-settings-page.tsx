@@ -2,6 +2,10 @@ import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useLayoutEffect, useState } from "react";
 
+import {
+  Avatar,
+  AvatarFallback,
+} from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import {
   type AppearanceThemeId,
@@ -55,12 +59,31 @@ export function AppearanceSettingsPage() {
               onClick={() => handleAppearanceThemeChange(theme.id)}
               type="button"
             >
-              <span>
-                <span className="block text-sm font-semibold text-foreground">
-                  {theme.name}
+              <span className="flex min-w-0 items-start gap-3">
+                <span aria-hidden="true" className="flex shrink-0 -space-x-2 pt-0.5">
+                  {theme.previewColors.map((color, index) => (
+                    <Avatar
+                      className="size-6 rounded-full ring-2 ring-background"
+                      key={`${theme.id}-${color}`}
+                    >
+                      <AvatarFallback
+                        className="rounded-full"
+                        style={{ backgroundColor: color }}
+                      >
+                        <span className="sr-only">
+                          {theme.name} 预览色 {index + 1}
+                        </span>
+                      </AvatarFallback>
+                    </Avatar>
+                  ))}
                 </span>
-                <span className="mt-2 block text-sm leading-6 text-muted-foreground">
-                  {theme.description}
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-foreground">
+                    {theme.name}
+                  </span>
+                  <span className="mt-2 block text-sm leading-6 text-muted-foreground">
+                    {theme.description}
+                  </span>
                 </span>
               </span>
               {isActive ? (
@@ -75,21 +98,6 @@ export function AppearanceSettingsPage() {
             </button>
           );
         })}
-      </section>
-
-      <section className="mt-5 rounded-[10px] border border-border p-5">
-        <h2 className="text-base font-semibold text-foreground">工作台密度</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          {["舒适", "标准", "紧凑"].map((density) => (
-            <button
-              className="rounded-[10px] border border-border px-4 py-3 text-left text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:text-primary"
-              key={density}
-              type="button"
-            >
-              {density}
-            </button>
-          ))}
-        </div>
       </section>
     </>
   );

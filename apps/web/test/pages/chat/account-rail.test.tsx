@@ -59,7 +59,7 @@ const currentEmployee: EmployeeProfile = {
 };
 
 describe("AccountRail", () => {
-  it("shows the signed-in employee and opens the settings menu from the bottom trigger", async () => {
+  it("shows the signed-in employee in a full-width footer trigger and opens the account menu", async () => {
     const user = userEvent.setup();
 
     render(
@@ -71,15 +71,16 @@ describe("AccountRail", () => {
       />,
     );
 
-    const footer = screen.getByTestId("account-rail-footer");
-    expect(footer).toHaveTextContent("林洒");
-    expect(footer).not.toHaveTextContent("lsave");
-    expect(footer.querySelector("img")).not.toBeInTheDocument();
+    const footerTrigger = screen.getByRole("button", { name: "打开账号菜单" });
+    expect(footerTrigger).toHaveTextContent("林洒");
+    expect(footerTrigger).toHaveTextContent("lsave");
+    expect(footerTrigger.querySelector("img")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "打开账号设置" }));
+    await user.click(footerTrigger);
 
     const settingsProfile = screen.getByTestId("account-settings-profile");
     expect(settingsProfile).toHaveTextContent("林洒");
+    expect(settingsProfile).toHaveTextContent("lsave");
     expect(settingsProfile.querySelector("img")).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
@@ -99,7 +100,7 @@ describe("AccountRail", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "打开账号设置" }));
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
 
     expect(handleLogout).toHaveBeenCalledTimes(1);

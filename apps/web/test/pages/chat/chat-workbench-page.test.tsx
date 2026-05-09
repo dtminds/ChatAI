@@ -371,7 +371,7 @@ describe("ChatWorkbenchPage", () => {
     render(<ChatWorkbenchPage />);
 
     await screen.findByPlaceholderText("请输入消息……");
-    await user.click(screen.getByRole("button", { name: "打开账号设置" }));
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
 
     await waitFor(() => {

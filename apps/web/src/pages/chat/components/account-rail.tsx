@@ -4,6 +4,7 @@ import {
   CustomerService02Icon,
   LogoutSquare01Icon,
   Menu11Icon,
+  MoreVerticalIcon,
   Settings03Icon,
   Task01Icon,
   UserGroup03Icon,
@@ -15,6 +16,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -56,6 +59,7 @@ export function AccountRail({
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
   const signedInName =
     currentEmployee?.displayName || signedInAccount?.operator || signedInAccount?.name || "未登录";
+  const signedInAccountName = signedInAccount?.name ?? "未选择账号";
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-sidebar px-3 py-4 text-sidebar-foreground">
@@ -122,76 +126,80 @@ export function AccountRail({
         </div>
       </ScrollArea>
 
-      <div
-        className="flex items-center justify-between gap-2 rounded-[16px] px-2 py-2"
-        data-testid="account-rail-footer"
-      >
-        <div className="flex min-w-0 items-center gap-2.5">
-          <Avatar
-            aria-label={`${signedInName} 登录头像`}
-            className="size-9 rounded-full border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
-          >
-            <AvatarFallback className="rounded-full text-sm">
-              {signedInName.slice(0, 1)}
-            </AvatarFallback>
-          </Avatar>
-          <span
-            className="truncate text-[13px] font-medium leading-none text-foreground"
-            data-testid="account-rail-footer-name"
-          >
-            {signedInName}
-          </span>
-        </div>
-
+      <div className="pt-3" data-testid="account-rail-footer">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              aria-label="打开账号设置"
-              className="size-8 shrink-0 rounded-full text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
-              size="icon"
+              aria-label="打开账号菜单"
+              className="h-13 w-full justify-start gap-2 rounded-[10px] px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
               type="button"
               variant="ghost"
             >
+              <Avatar
+                aria-label={`${signedInName} 登录头像`}
+                className="size-8 shrink-0 rounded-lg border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)] grayscale"
+              >
+                <AvatarFallback className="rounded-lg text-sm">
+                  {signedInName.slice(0, 1)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                <span
+                  className="truncate font-medium"
+                  data-testid="account-rail-footer-name"
+                >
+                  {signedInName}
+                </span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {signedInAccountName}
+                </span>
+              </div>
               <HugeiconsIcon
                 color="currentColor"
                 data-testid="account-rail-settings-icon"
-                icon={Settings03Icon}
-                size={16}
-                strokeWidth={1.8}
+                icon={MoreVerticalIcon}
+                size={18}
               />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            className="w-[198px] rounded-[18px] p-2 shadow-[0_16px_36px_var(--shadow-medium)] outline-none"
-            side="top"
-            sideOffset={10}
+            className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-56 rounded-lg p-1 shadow-[0_16px_36px_var(--shadow-medium)] outline-none"
+            side="right"
+            sideOffset={4}
           >
-            <div
-              className="flex items-center gap-1.5 px-2 pb-3 pt-2"
-              data-testid="account-settings-profile"
-            >
-              <Avatar
-                aria-label={`${signedInName} 账号头像`}
-                className="size-7 rounded-full border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
+            <DropdownMenuLabel className="p-0 font-normal">
+              <div
+                className="flex items-center gap-2 px-1 py-1.5 text-left text-sm"
+                data-testid="account-settings-profile"
               >
-                <AvatarFallback className="rounded-full text-sm">
-                  {signedInName.slice(0, 1)}
-                </AvatarFallback>
-              </Avatar>
-              <span
-                className="truncate text-[13px] font-medium leading-none"
-                data-testid="account-settings-profile-name"
-              >
-                {signedInName}
-              </span>
-            </div>
+                <Avatar
+                  aria-label={`${signedInName} 账号头像`}
+                  className="size-8 shrink-0 rounded-lg border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
+                >
+                  <AvatarFallback className="rounded-lg text-sm">
+                    {signedInName.slice(0, 1)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                  <span
+                    className="truncate font-medium"
+                    data-testid="account-settings-profile-name"
+                  >
+                    {signedInName}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {signedInAccountName}
+                  </span>
+                </div>
+              </div>
+            </DropdownMenuLabel>
 
-            <div className="mx-2 h-px bg-divider" />
+            <DropdownMenuSeparator />
 
-            <div className="space-y-1 pt-2">
+            <div className="space-y-1 py-1">
               <DropdownMenuItem
-                className="h-8 gap-2 rounded-[12px] px-3 text-[13px] font-normal"
+                className="h-8 gap-2 rounded-[8px] px-2.5 text-[13px] font-normal"
                 onSelect={() => {
                   onOpenSettings?.();
                 }}
@@ -204,7 +212,7 @@ export function AccountRail({
                 <span>设置</span>
               </DropdownMenuItem>
               <DropdownMenuItem
-                className="h-9 gap-2 rounded-[12px] px-3 text-[13px] font-normal"
+                className="h-8 gap-2 rounded-[8px] px-2.5 text-[13px] font-normal"
                 onSelect={() => {
                   void onLogout?.();
                 }}

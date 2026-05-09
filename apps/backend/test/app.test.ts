@@ -977,6 +977,7 @@ function createAuthDbMock(
 
           return result;
         },
+        orderBy: () => builder,
         select: () => builder,
         where: (column: string, operator: string, value: unknown) => {
           wheres.push([column, operator, value]);
@@ -1064,6 +1065,7 @@ function createSessionDbMock(session: {
           session_version: session.session_version,
           sub_user_id: session.sub_user_id,
         }),
+        orderBy: () => builder,
         select: () => builder,
         where: () => builder,
       };

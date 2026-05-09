@@ -212,6 +212,7 @@ async function createOrReplaceSession(
     .selectFrom("xy_wap_embed_sub_user_session")
     .select(["id", "session_version"])
     .where("sub_user_id", "=", subUserId)
+    .orderBy("id", "desc")
     .executeTakeFirstOrThrow();
 
   return {

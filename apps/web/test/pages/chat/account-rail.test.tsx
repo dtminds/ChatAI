@@ -80,7 +80,7 @@ describe("AccountRail", () => {
 
     const settingsProfile = screen.getByTestId("account-settings-profile");
     expect(settingsProfile).toHaveTextContent("林洒");
-    expect(settingsProfile).toHaveTextContent("lsave");
+    expect(settingsProfile).not.toHaveTextContent("lsave");
     expect(settingsProfile.querySelector("img")).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();

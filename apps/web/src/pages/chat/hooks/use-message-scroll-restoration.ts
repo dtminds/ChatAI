@@ -1,6 +1,7 @@
 import {
   type RefObject,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
 } from "react";
@@ -10,6 +11,8 @@ import {
 } from "@/pages/chat/lib/scroll-anchor";
 
 type HistoryStatus = "idle" | "loading" | "error";
+
+const BOTTOM_PIN_THRESHOLD_PX = 48;
 
 type UseMessageScrollRestorationOptions = {
   activeConversationId?: string;
@@ -33,6 +36,8 @@ export function useMessageScrollRestoration({
   messageViewportRef,
 }: UseMessageScrollRestorationOptions) {
   const historyLoadInFlightRef = useRef(false);
+  const isPinnedToBottomRef = useRef(true);
+  const pendingScrollFrameRef = useRef<number | undefined>(undefined);
   const pendingHistoryRestoreRef = useRef<{
     anchorId?: string;
     anchorOffsetTop?: number;
@@ -42,6 +47,54 @@ export function useMessageScrollRestoration({
   } | null>(null);
   const previousConversationIdRef = useRef<string | undefined>(undefined);
   const previousMessageCountRef = useRef(0);
+
+  const scrollViewportToBottom = useCallback(() => {
+    const viewport = messageViewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    viewport.scrollTop = viewport.scrollHeight;
+  }, [messageViewportRef]);
+
+  const schedulePinnedBottomScroll = useCallback(() => {
+    if (!isPinnedToBottomRef.current || pendingHistoryRestoreRef.current) {
+      return;
+    }
+
+    if (pendingScrollFrameRef.current != null) {
+      window.cancelAnimationFrame(pendingScrollFrameRef.current);
+    }
+
+    pendingScrollFrameRef.current = window.requestAnimationFrame(() => {
+      pendingScrollFrameRef.current = undefined;
+
+      if (!isPinnedToBottomRef.current || pendingHistoryRestoreRef.current) {
+        return;
+      }
+
+      scrollViewportToBottom();
+    });
+  }, [scrollViewportToBottom]);
+
+  const updatePinnedToBottomFromViewport = useCallback(() => {
+    const viewport = messageViewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    const distanceToBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+
+    isPinnedToBottomRef.current = distanceToBottom <= BOTTOM_PIN_THRESHOLD_PX;
+
+    if (!isPinnedToBottomRef.current && pendingScrollFrameRef.current != null) {
+      window.cancelAnimationFrame(pendingScrollFrameRef.current);
+      pendingScrollFrameRef.current = undefined;
+    }
+  }, [messageViewportRef]);
 
   const handleLoadOlderMessages = useCallback(async () => {
     if (
@@ -61,6 +114,7 @@ export function useMessageScrollRestoration({
 
     const anchorSnapshot = captureViewportAnchor(viewport);
 
+    isPinnedToBottomRef.current = false;
     historyLoadInFlightRef.current = true;
     pendingHistoryRestoreRef.current = {
       anchorId: anchorSnapshot?.id,
@@ -86,12 +140,41 @@ export function useMessageScrollRestoration({
   const handleMessageViewportScroll = useCallback(() => {
     const viewport = messageViewportRef.current;
 
+    updatePinnedToBottomFromViewport();
+
     if (!viewport || viewport.scrollTop > 48) {
       return;
     }
 
     void handleLoadOlderMessages();
-  }, [handleLoadOlderMessages, messageViewportRef]);
+  }, [handleLoadOlderMessages, messageViewportRef, updatePinnedToBottomFromViewport]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingScrollFrameRef.current != null) {
+        window.cancelAnimationFrame(pendingScrollFrameRef.current);
+      }
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const viewport = messageViewportRef.current;
+
+    if (!viewport || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observedElement = viewport.firstElementChild ?? viewport;
+    const observer = new ResizeObserver(() => {
+      schedulePinnedBottomScroll();
+    });
+
+    observer.observe(observedElement);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [messageViewportRef, schedulePinnedBottomScroll]);
 
   useLayoutEffect(() => {
     const previousConversationId = previousConversationIdRef.current;
@@ -123,6 +206,7 @@ export function useMessageScrollRestoration({
         }
 
         pendingHistoryRestoreRef.current = null;
+        updatePinnedToBottomFromViewport();
         previousConversationIdRef.current = activeConversationId;
         previousMessageCountRef.current = messageCount;
         return;
@@ -149,6 +233,8 @@ export function useMessageScrollRestoration({
     messageListBottomRef.current?.scrollIntoView({
       block: "end",
     });
+    isPinnedToBottomRef.current = true;
+    schedulePinnedBottomScroll();
   }, [activeConversationId, messageCount, activeHistoryStatus]);
 
   return {

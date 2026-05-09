@@ -23,6 +23,10 @@ function defineScrollMetric(
   });
 }
 
+function createResizeObserverEntry(target: Element): ResizeObserverEntry {
+  return { target } as unknown as ResizeObserverEntry;
+}
+
 function ScrollRestorationHarness({
   activeConversationId,
   messageCount,
@@ -71,7 +75,7 @@ describe("useMessageScrollRestoration", () => {
 
     await act(async () => {
       latestResizeObserver?.callback(
-        [{ target: content } as ResizeObserverEntry],
+        [createResizeObserverEntry(content)],
         latestResizeObserver as unknown as ResizeObserver,
       );
       await new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined)));
@@ -95,7 +99,7 @@ describe("useMessageScrollRestoration", () => {
       viewport.scrollTop = 120;
       viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
       latestResizeObserver?.callback(
-        [{ target: content } as ResizeObserverEntry],
+        [createResizeObserverEntry(content)],
         latestResizeObserver as unknown as ResizeObserver,
       );
       await new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined)));

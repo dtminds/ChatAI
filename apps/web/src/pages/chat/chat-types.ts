@@ -69,6 +69,7 @@ export type TextMessageContent = {
 
 export type VoiceMessageContent = {
   type: "voice";
+  audioUrl?: string;
   durationLabel: string;
 };
 

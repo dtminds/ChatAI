@@ -36,7 +36,7 @@
 - 前后端共享 DTO 和响应结构优先放到 `packages/contracts`，不要在 web/backend 两边复制类型。
 - 当前 backend 的工作台数据仍是内存服务，后续替换 MySQL 查询时保持路由契约稳定。
 - Redis 不是当前阶段必需依赖；除非功能确实需要，不要提前引入 Redis 强依赖。
-- 鉴权当前使用 Bearer token 方向；开发环境允许 `AUTH_DEV_BYPASS=true` 绕过，但只应在 `NODE_ENV=development` 下生效。
+- 鉴权使用 Bearer token；所有环境都必须走正常登录、JWT 和 session 校验，不再提供开发绕过。
 
 ## Web Working Agreements
 

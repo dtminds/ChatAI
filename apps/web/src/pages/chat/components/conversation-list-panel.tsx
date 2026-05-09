@@ -1,8 +1,13 @@
 import { startTransition, useMemo, useState } from "react";
-import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  LicenseNoIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyMedia } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -177,9 +182,24 @@ export function ConversationListPanel({
             <ScrollArea className="h-full" data-testid="conversation-list-scroll-area">
               <div className="bg-surface px-2 py-1.5">
                 {conversations.length === 0 ? (
-                  <div className="px-2 py-4 text-sm text-muted-foreground">
-                    当前账号下暂无{activeMode === "single" ? "单聊" : "群聊"}占位数据。
-                  </div>
+                  <Empty
+                    aria-label="暂无数据"
+                    className="min-h-40 gap-2 px-2 py-6 text-[13px] text-muted-foreground"
+                    role="status"
+                  >
+                    <EmptyMedia
+                      className="bg-background text-muted-foreground"
+                      variant="icon"
+                    >
+                      <HugeiconsIcon
+                        color="currentColor"
+                        icon={LicenseNoIcon}
+                        size={22}
+                        strokeWidth={1.8}
+                      />
+                    </EmptyMedia>
+                    <span>暂无数据</span>
+                  </Empty>
                 ) : null}
                 {conversations.map((conversation) => (
                   <ConversationCard

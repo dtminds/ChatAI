@@ -33,14 +33,6 @@ function getSeedUnreadAfterRead(accountId: string, readConversationId: string) {
   );
 }
 
-function getSeedMessageSeq(conversationId: string, messageId: string) {
-  const messageIndex = (seedMessages[conversationId] ?? []).findIndex(
-    (message) => message.id === messageId,
-  );
-
-  return messageIndex >= 0 ? messageIndex + 1 : undefined;
-}
-
 function getSeedMessageIdAt(conversationId: string, index: number) {
   return seedMessages[conversationId]?.[index]?.id;
 }
@@ -59,7 +51,7 @@ describe("useWorkbenchStore", () => {
     expect(state.bootstrapStatus).toBe("ready");
     expect(state.me).toMatchObject({
       displayName: "林洒",
-      id: "emp-001",
+      id: "sub-user-001",
     });
     expect(state.activeAccountId).toBe("drc");
     expect(state.activeConversationId).toBe("conv-001");
@@ -71,6 +63,25 @@ describe("useWorkbenchStore", () => {
     expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
       getSeedUnreadAfterRead("drc", "conv-001"),
     );
+  });
+
+  it("requests 50 messages for initial and switched conversation pages", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedLimits: Array<number | undefined> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        observedLimits.push(options?.limit);
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    expect(observedLimits).toEqual([50, 50]);
   });
 
   it("bootstraps conversations that contain video messages", async () => {
@@ -291,21 +302,10 @@ describe("useWorkbenchStore", () => {
     expect(state.activeConversationId).toBe("conv-005");
   });
 
-  it("loads older messages before the current first sequence", async () => {
+  it("loads the full seed page when the default message page covers all history", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
 
-    let state = useWorkbenchStore.getState();
-    expect(state.messagesByConversationId["conv-001"]).toHaveLength(5);
-    expect(state.messagesByConversationId["conv-001"][0]).toMatchObject({
-      id: "msg-006",
-      seq: getSeedMessageSeq("conv-001", "msg-006"),
-    });
-    expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(true);
-
-    await useWorkbenchStore.getState().loadOlderMessages();
-
-    state = useWorkbenchStore.getState();
-
+    const state = useWorkbenchStore.getState();
     expect(state.messagesByConversationId["conv-001"]).toHaveLength(
       seedMessages["conv-001"].length,
     );
@@ -493,10 +493,19 @@ describe("useWorkbenchStore", () => {
   it("tracks history loading per conversation instead of globally", async () => {
     const baseService = createMockWorkbenchService();
     const historyGate = createDeferred();
+    let initialConversationLoad = true;
 
     setWorkbenchService({
       ...baseService,
       async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          initialConversationLoad = false;
+          return baseService.getMessages(conversationId, {
+            ...options,
+            limit: 5,
+          });
+        }
+
         if (conversationId === "conv-001" && options?.beforeSeq != null) {
           await historyGate.promise;
         }
@@ -506,6 +515,13 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    expect(initialConversationLoad).toBe(false);
+    useWorkbenchStore.setState((state) => ({
+      hasMoreHistoryByConversationId: {
+        ...state.hasMoreHistoryByConversationId,
+        "conv-001": true,
+      },
+    }));
 
     const historyPromise = useWorkbenchStore.getState().loadOlderMessages();
 
@@ -530,12 +546,12 @@ describe("useWorkbenchStore", () => {
 
     setWorkbenchService({
       ...baseService,
-      async takeOverAccount(accountId) {
-        if (accountId === "ndt") {
+      async takeOverSeat(seatId) {
+        if (seatId === "ndt") {
           await takeoverGate.promise;
         }
 
-        return baseService.takeOverAccount(accountId);
+        return baseService.takeOverSeat(seatId);
       },
     });
 
@@ -597,7 +613,7 @@ describe("useWorkbenchStore", () => {
     const state = useWorkbenchStore.getState();
 
     expect(state.accounts.find((account) => account.id === "ndt")).toMatchObject({
-      takenOverEmployeeId: "emp-001",
+      takenOverEmployeeId: "sub-user-001",
       unreadCount: 0,
     });
     expect(state.conversationListsByScope.ndt[0]).toMatchObject({

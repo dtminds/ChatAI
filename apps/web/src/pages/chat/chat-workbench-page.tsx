@@ -2,6 +2,8 @@ import { startTransition, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { clearAuthTokens } from "@/pages/auth/auth-tokens";
+import { logout } from "@/pages/auth/auth-service";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
@@ -81,6 +83,14 @@ function ChatWorkbenchContent({
     handleCustomerPanelResizeStart,
     isResizingCustomerPanel,
   } = useCustomerPanelResize(workbenchBodyRef);
+
+  async function handleLogout() {
+    try {
+      await logout();
+    } finally {
+      clearAuthTokens();
+    }
+  }
 
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
@@ -268,12 +278,14 @@ function ChatWorkbenchContent({
   }
 
   return (
-    <div className="h-svh min-h-[720px] bg-background">
+    <div className="h-svh min-h-[720px] bg-sidebar">
       <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden">
         <AccountRail
           accounts={accounts}
           activeAccountId={activeAccountId}
+          currentEmployee={me}
           currentEmployeeId={me?.id}
+          onLogout={handleLogout}
           onSelectAccount={setActiveAccount}
           onOpenSettings={onOpenSettings}
           onTakeOverAccount={takeOverAccount}

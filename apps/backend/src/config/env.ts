@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 
 export const EnvSchema = Type.Object({
-  AUTH_DEV_BYPASS: Type.Optional(Type.String()),
-  AUTH_DEV_EMPLOYEE_ID: Type.Optional(Type.String()),
+  JAVA_INTERNAL_API_BASE_URL: Type.Optional(Type.String()),
+  JAVA_INTERNAL_API_TOKEN: Type.Optional(Type.String()),
   DATABASE_URL: Type.Optional(Type.String()),
   JWT_AUDIENCE: Type.Optional(Type.String()),
   JWT_DEV_SECRET: Type.Optional(Type.String()),

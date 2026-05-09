@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import MockAdapter from "axios-mock-adapter";
+import { requestInstance } from "@/lib/request";
 import {
   createMockWorkbenchService,
   resetWorkbenchService,
@@ -9,10 +11,15 @@ import {
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
+const mock = new MockAdapter(requestInstance);
+
 describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
+    mock.reset();
     resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+    window.localStorage.setItem("chatai.accessToken", "access-token-001");
+    window.localStorage.setItem("chatai.refreshToken", "refresh-token-001");
   });
 
   it("sends a message from the composer", async () => {
@@ -310,48 +317,22 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("radio", { name: "跟随系统" })).toBeInTheDocument();
   });
 
-  it("loads older messages when the message viewport reaches the top", async () => {
+  it("does not show a history loader when the default message page covers all history", async () => {
     render(<ChatWorkbenchPage />);
 
     await screen.findByPlaceholderText("请输入消息……");
 
-    expect(screen.queryByText("预约直播抽秋天的第一杯奶茶")).not.toBeInTheDocument();
-
-    const messageViewport = screen.getByTestId("message-viewport");
-
-    Object.defineProperties(messageViewport, {
-      scrollHeight: {
-        configurable: true,
-        value: 1200,
-      },
-      scrollTop: {
-        configurable: true,
-        value: 0,
-        writable: true,
-      },
-    });
-
-    fireEvent.scroll(messageViewport);
-
-    await waitFor(() => {
-      expect(screen.getByText("预约直播抽秋天的第一杯奶茶")).toBeInTheDocument();
-    });
+    expect(screen.getByText("预约直播抽秋天的第一杯奶茶")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加载更早的对话" })).not.toBeInTheDocument();
   });
 
-  it("loads older messages when the history load area is clicked", async () => {
-    const user = userEvent.setup();
-
+  it("keeps all seed messages visible after the initial 50-message request", async () => {
     render(<ChatWorkbenchPage />);
 
     await screen.findByPlaceholderText("请输入消息……");
 
-    expect(screen.queryByText("预约直播抽秋天的第一杯奶茶")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "加载更早的对话" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("预约直播抽秋天的第一杯奶茶")).toBeInTheDocument();
-    });
+    expect(screen.getByText("预约直播抽秋天的第一杯奶茶")).toBeInTheDocument();
+    expect(screen.getAllByText("这是最新的权益清单截图，你帮我确认下。").length).toBeGreaterThan(0);
   });
 
   it("shows scope transition errors in the workbench", async () => {
@@ -376,5 +357,28 @@ describe("ChatWorkbenchPage", () => {
     await waitFor(() => {
       expect(screen.getByText("切换会话失败")).toBeInTheDocument();
     });
+  });
+
+  it("logs out from the account menu and clears stored auth tokens", async () => {
+    const user = userEvent.setup();
+    mock.onPost("/auth/logout").reply(200, {
+      data: {
+        revoked: true,
+      },
+      success: true,
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("chatai.accessToken")).toBeNull();
+      expect(window.localStorage.getItem("chatai.refreshToken")).toBeNull();
+    });
+    expect(mock.history.post).toHaveLength(1);
+    expect(mock.history.post[0]?.url).toBe("/auth/logout");
   });
 });

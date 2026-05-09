@@ -24,7 +24,7 @@ export function LinkMessageCard({ content }: LinkMessageCardProps) {
             src={content.previewImageUrl}
           />
         ) : (
-          <div className="flex size-12 items-center justify-center rounded-[8px] bg-info-muted text-info">
+          <div className="flex size-12 items-center justify-center rounded-[8px] bg-primary/10 text-primary">
             <HugeiconsIcon icon={AnalysisTextLinkIcon} size={18} strokeWidth={1.8} />
           </div>
         )}

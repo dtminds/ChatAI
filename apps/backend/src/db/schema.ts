@@ -56,7 +56,7 @@ export interface XyWapEmbedContact {
   update_time: Generated<Date>;
 }
 
-export interface XyWapEmbedConvesation {
+export interface XyWapEmbedConversation {
   /**
    * 会话状态：1、正常，0、删除
    */
@@ -454,17 +454,13 @@ export interface XyWapEmbedSubUser {
    */
   name: string;
   /**
-   * 加密后的密码
+   * Argon2id PHC格式密码哈希
    */
-  password: string;
+  password_hash: string;
   /**
-   * 内嵌平台 1、涂色
+   * 内嵌平台 5、比邻
    */
   platform: Generated<number>;
-  /**
-   * 加密校验码
-   */
-  salt: string;
   /**
    * 状态：1正常，2禁用，0删除
    */
@@ -481,6 +477,50 @@ export interface XyWapEmbedSubUser {
    * 更新时间
    */
   update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSubUserSession {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * refresh token过期时间
+   */
+  expires_at: Date;
+  id: Generated<number>;
+  /**
+   * 登录IP
+   */
+  ip: string | null;
+  /**
+   * 最近刷新时间
+   */
+  last_used_at: Date | null;
+  /**
+   * refresh token哈希
+   */
+  refresh_token_hash: string;
+  /**
+   * 吊销时间
+   */
+  revoked_at: Date | null;
+  /**
+   * 会话版本，新登录时递增
+   */
+  session_version: Generated<number>;
+  /**
+   * 子账号id(xy_wap_embed_sub_user.id)
+   */
+  sub_user_id: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+  /**
+   * 登录设备UA
+   */
+  user_agent: string | null;
 }
 
 export interface XyWapEmbedUserRelation {
@@ -604,7 +644,7 @@ export interface XyWapEmbedUserSeatSubRelation {
   create_time: Generated<Date>;
   id: Generated<number>;
   /**
-   * 内嵌平台 1、涂色
+   * 内嵌平台 5、比邻
    */
   platform: Generated<number>;
   /**
@@ -627,13 +667,14 @@ export interface XyWapEmbedUserSeatSubRelation {
 
 export interface DB {
   xy_wap_embed_contact: XyWapEmbedContact;
-  xy_wap_embed_convesation: XyWapEmbedConvesation;
+  xy_wap_embed_conversation: XyWapEmbedConversation;
   xy_wap_embed_customer_bind_relation: XyWapEmbedCustomerBindRelation;
   xy_wap_embed_group_member: XyWapEmbedGroupMember;
   xy_wap_embed_group_seat: XyWapEmbedGroupSeat;
   xy_wap_embed_msg_audit_info: XyWapEmbedMsgAuditInfo;
   xy_wap_embed_sider_bar_config: XyWapEmbedSiderBarConfig;
   xy_wap_embed_sub_user: XyWapEmbedSubUser;
+  xy_wap_embed_sub_user_session: XyWapEmbedSubUserSession;
   xy_wap_embed_user_relation: XyWapEmbedUserRelation;
   xy_wap_embed_user_seat: XyWapEmbedUserSeat;
   xy_wap_embed_user_seat_sub_relation: XyWapEmbedUserSeatSubRelation;

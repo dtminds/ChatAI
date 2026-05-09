@@ -544,7 +544,7 @@ export function UiComponentDemoPage() {
         <aside className="space-y-4">
           <section className="rounded-[10px] border border-border p-5">
             <div className="flex items-center gap-3">
-              <div className="flex size-9 items-center justify-center rounded-[10px] bg-info-muted text-info">
+              <div className="flex size-9 items-center justify-center rounded-[10px] bg-primary/10 text-primary">
                 <HugeiconsIcon
                   color="currentColor"
                   icon={Calendar03Icon}
@@ -582,7 +582,7 @@ export function UiComponentDemoPage() {
 
           <section className="rounded-[10px] border border-border p-5">
             <div className="flex items-center gap-3">
-              <div className="flex size-9 items-center justify-center rounded-[10px] bg-info-muted text-info">
+              <div className="flex size-9 items-center justify-center rounded-[10px] bg-primary/10 text-primary">
                 <HugeiconsIcon
                   color="currentColor"
                   icon={Image01Icon}

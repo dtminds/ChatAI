@@ -5,8 +5,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getPort, loadBackendEnv } from "../src/config/env";
 
 const ENV_KEYS = [
-  "AUTH_DEV_BYPASS",
-  "AUTH_DEV_EMPLOYEE_ID",
   "DATABASE_URL",
   "JWT_DEV_SECRET",
   "NODE_ENV",
@@ -31,18 +29,18 @@ describe("backend env config", () => {
   it("loads shared root env files and backend local env files for the selected mode", () => {
     const rootDir = createEnvDir();
     const appDir = createEnvDir();
-    writeFileSync(join(rootDir, ".env"), "PORT=3001\nAUTH_DEV_EMPLOYEE_ID=emp-base\n");
-    writeFileSync(join(rootDir, ".env.local"), "AUTH_DEV_BYPASS=false\n");
-    writeFileSync(join(rootDir, ".env.development"), "AUTH_DEV_EMPLOYEE_ID=emp-dev\n");
-    writeFileSync(join(rootDir, ".env.development.local"), "AUTH_DEV_BYPASS=true\n");
+    writeFileSync(join(rootDir, ".env"), "PORT=3001\nJWT_ISSUER=issuer-base\n");
+    writeFileSync(join(rootDir, ".env.local"), "JWT_AUDIENCE=audience-local\n");
+    writeFileSync(join(rootDir, ".env.development"), "JWT_ISSUER=issuer-dev\n");
+    writeFileSync(join(rootDir, ".env.development.local"), "JWT_AUDIENCE=audience-dev\n");
     writeFileSync(join(appDir, ".env.local"), "JWT_DEV_SECRET=backend-local\n");
     writeFileSync(join(appDir, ".env.development.local"), "DATABASE_URL=mysql://local\n");
 
     loadBackendEnv({ appDir, rootDir, mode: "development" });
 
     expect(process.env.PORT).toBe("3001");
-    expect(process.env.AUTH_DEV_EMPLOYEE_ID).toBe("emp-dev");
-    expect(process.env.AUTH_DEV_BYPASS).toBe("true");
+    expect(process.env.JWT_ISSUER).toBe("issuer-dev");
+    expect(process.env.JWT_AUDIENCE).toBe("audience-dev");
     expect(process.env.JWT_DEV_SECRET).toBe("backend-local");
     expect(process.env.DATABASE_URL).toBe("mysql://local");
   });
@@ -59,11 +57,11 @@ describe("backend env config", () => {
 
   it("does not load development env by default when NODE_ENV is absent", () => {
     const rootDir = createEnvDir();
-    writeFileSync(join(rootDir, ".env.development"), "AUTH_DEV_BYPASS=true\n");
+    writeFileSync(join(rootDir, ".env.development"), "JWT_DEV_SECRET=development-secret\n");
 
     loadBackendEnv({ rootDir });
 
-    expect(process.env.AUTH_DEV_BYPASS).toBeUndefined();
+    expect(process.env.JWT_DEV_SECRET).toBeUndefined();
   });
 
   it("returns loaded file paths for diagnostics", () => {

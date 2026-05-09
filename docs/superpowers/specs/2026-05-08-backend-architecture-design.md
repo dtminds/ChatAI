@@ -262,6 +262,8 @@ RS256 或 EdDSA
 
 完整登录、refresh token rotation、logout revoke 等在用户表 schema 明确后实现。
 
+所有环境都必须走正常登录、JWT 和 session 校验；不再提供开发环境鉴权绕过。
+
 ## 9. API 范围
 
 第一阶段目标接口：
@@ -275,16 +277,18 @@ POST /api/auth/refresh
 POST /api/auth/logout
 
 GET  /api/server/me
-GET  /api/server/accounts
+GET  /api/server/seats
 GET  /api/server/conversations
 GET  /api/server/conversations/{conversationId}/messages
 POST /api/server/conversations/{conversationId}/read
 GET  /api/server/poll
 POST /api/server/messages/send
-POST /api/server/accounts/{accountId}/take-over
+POST /api/server/seats/{seatId}/take-over
 ```
 
-前端对外接口可以继续保留 path 参数；Backend 内部访问 MySQL 不受 Java API query 参数约定影响。
+公开工作台 DTO 使用 `seatId` 表示 `xy_wap_embed_user_seat.id`，使用 `subUserId` 表示 `xy_wap_embed_sub_user.id`。
+Node backend 只直接读取会话、消息、席位等 MySQL 表；会话已读、消息发送、席位接管通过 Java owner 内部 API 写入。
+真实增量事件/cursor 机制尚未落表，DB 模式的 `/api/server/poll` 当前只补拉当前会话的新消息，席位和会话变更需要后续事件/cursor 表或 Java 增量接口支撑。
 
 ## 10. 核心模块职责
 
@@ -385,7 +389,7 @@ pnpm backend:test
 ```text
 GET /healthz
 GET /readyz
-GET /api/server/accounts
+GET /api/server/seats
 GET /api/server/me
 ```
 

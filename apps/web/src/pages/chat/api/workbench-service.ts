@@ -5,12 +5,12 @@ import {
 } from "@/pages/chat/mock-data";
 import { http } from "@/lib/request";
 import {
-  type WorkbenchAccountChangeDto,
-  type WorkbenchAccountDto,
+  type WorkbenchSeatChangeDto,
+  type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
   type WorkbenchConversationReadResponse,
   type WorkbenchConversationSummaryDto,
-  type WorkbenchEmployeeDto,
+  type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
   type WorkbenchMessageStatus,
   type WorkbenchMessageStatusChangeDto,
@@ -18,19 +18,19 @@ import {
   type WorkbenchPollResponse,
   type WorkbenchSendMessagePayload,
   type WorkbenchSendMessageResponse,
-  type WorkbenchTakeOverAccountResponse,
+  type WorkbenchTakeOverSeatResponse,
 } from "@chatai/contracts";
 import type { Message } from "@/pages/chat/chat-types";
 
 export type WorkbenchService = {
-  getAccounts: () => Promise<WorkbenchAccountDto[]>;
-  getConversations: (accountId: string) => Promise<WorkbenchConversationSummaryDto[]>;
-  getMe: () => Promise<WorkbenchEmployeeDto>;
+  getSeats: () => Promise<WorkbenchSeatDto[]>;
+  getConversations: (seatId: string) => Promise<WorkbenchConversationSummaryDto[]>;
+  getMe: () => Promise<WorkbenchSubUserDto>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessageDto[]>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
-  takeOverAccount: (accountId: string) => Promise<WorkbenchTakeOverAccountResponse>;
+  takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
 };
 
 export type WorkbenchServiceMode = "mock" | "http";
@@ -38,8 +38,8 @@ export type WorkbenchServiceMode = "mock" | "http";
 type WorkbenchEvent =
   | {
       version: number;
-      type: "account";
-      payload: WorkbenchAccountChangeDto;
+      type: "seat";
+      payload: WorkbenchSeatChangeDto;
     }
   | {
       version: number;
@@ -58,16 +58,16 @@ type WorkbenchEvent =
     };
 
 type MockState = {
-  accounts: WorkbenchAccountDto[];
+  seats: WorkbenchSeatDto[];
   conversationsByAccount: Record<string, WorkbenchConversationSummaryDto[]>;
-  employee: WorkbenchEmployeeDto;
+  subUser: WorkbenchSubUserDto;
   events: WorkbenchEvent[];
   messagesByConversationId: Record<string, WorkbenchMessageDto[]>;
   nextId: number;
   version: number;
 };
 
-const CURRENT_EMPLOYEE_ID = "emp-001";
+const CURRENT_SUB_USER_ID = "sub-user-001";
 const INITIAL_VERSION = 1284;
 
 let activeWorkbenchService: WorkbenchService = createWorkbenchService();
@@ -104,16 +104,16 @@ export function createMockWorkbenchService(): WorkbenchService {
   const state = buildInitialState();
 
   return {
-    async getAccounts() {
-      return clone(state.accounts);
+    async getSeats() {
+      return clone(state.seats);
     },
-    async getConversations(accountId) {
-      const conversations = state.conversationsByAccount[accountId] ?? [];
+    async getConversations(seatId) {
+      const conversations = state.conversationsByAccount[seatId] ?? [];
 
       return clone(sortConversations(conversations));
     },
     async getMe() {
-      return clone(state.employee);
+      return clone(state.subUser);
     },
     async getMessages(conversationId, options) {
       const messages = [...(state.messagesByConversationId[conversationId] ?? [])].sort(
@@ -141,29 +141,29 @@ export function createMockWorkbenchService(): WorkbenchService {
       };
 
       upsertConversation(state, nextConversation);
-      syncAccountUnread(state, nextConversation.accountId);
+      syncAccountUnread(state, nextConversation.seatId);
       pushConversationEvent(state, nextConversation);
-      pushAccountEvent(state, nextConversation.accountId);
+      pushAccountEvent(state, nextConversation.seatId);
 
       return {
-        accountId: nextConversation.accountId,
-        accountUnreadCount: findAccount(state, nextConversation.accountId)?.unreadCount ?? 0,
+        seatId: nextConversation.seatId,
+        seatUnreadCount: findAccount(state, nextConversation.seatId)?.unreadCount ?? 0,
         conversationId,
         unreadCount: 0,
       };
     },
     async poll(request) {
       const relevantEvents = state.events.filter((event) => event.version > request.sinceVersion);
-      const accountChanges = collapseLatest(
-        relevantEvents.filter((event): event is Extract<WorkbenchEvent, { type: "account" }> => event.type === "account"),
-        (event) => event.payload.accountId,
+      const seatChanges = collapseLatest(
+        relevantEvents.filter((event): event is Extract<WorkbenchEvent, { type: "seat" }> => event.type === "seat"),
+        (event) => event.payload.seatId,
       ).map((event) => event.payload);
 
       const conversationChanges = collapseLatest(
         relevantEvents.filter(
           (event): event is Extract<WorkbenchEvent, { type: "conversation" }> =>
             event.type === "conversation" &&
-            event.payload.accountId === request.currentAccountId,
+            event.payload.seatId === request.currentSeatId,
         ),
         (event) => event.payload.conversationId,
       ).map((event) => event.payload);
@@ -185,7 +185,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         .map((event) => event.payload);
 
       return {
-        accountChanges: clone(accountChanges),
+        seatChanges: clone(seatChanges),
         activeConversationMessages: clone(activeConversationMessages),
         conversationChanges: clone(conversationChanges),
         messageStatusChanges: clone(messageStatusChanges),
@@ -202,9 +202,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       const messageId = `msg-server-${state.nextId++}`;
       const nextSeq = getNextMessageSeq(state, payload.conversationId);
       const now = Date.now();
-      const outcome = resolveSendOutcome(state, payload.accountId, payload.content);
+      const outcome = resolveSendOutcome(state, payload.seatId, payload.content);
       const backendMessage = {
-        accountId: payload.accountId,
+        seatId: payload.seatId,
         clientMessageId: payload.clientMessageId,
         content: {
           text: payload.content,
@@ -229,9 +229,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       };
 
       upsertConversation(state, nextConversation);
-      syncAccountUnread(state, payload.accountId);
+      syncAccountUnread(state, payload.seatId);
       pushConversationEvent(state, nextConversation);
-      pushAccountEvent(state, payload.accountId);
+      pushAccountEvent(state, payload.seatId);
       pushMessageStatusEvent(state, {
         clientMessageId: payload.clientMessageId,
         conversationId: payload.conversationId,
@@ -246,44 +246,44 @@ export function createMockWorkbenchService(): WorkbenchService {
         status: "accepted",
       };
     },
-    async takeOverAccount(accountId) {
-      const account = findAccount(state, accountId);
+    async takeOverSeat(seatId) {
+      const seat = findAccount(state, seatId);
 
-      if (!account) {
+      if (!seat) {
         throw new Error("Account not found");
       }
 
       const nextAccount = {
-        ...account,
-        takenOverEmployeeId: CURRENT_EMPLOYEE_ID,
+        ...seat,
+        hostSubUserId: CURRENT_SUB_USER_ID,
       };
 
-      state.accounts = state.accounts.map((item) =>
-        item.accountId === accountId ? nextAccount : item,
+      state.seats = state.seats.map((item) =>
+        item.seatId === seatId ? nextAccount : item,
       );
-      pushAccountEvent(state, accountId);
+      pushAccountEvent(state, seatId);
 
-      return { account: clone(nextAccount) };
+      return { seat: clone(nextAccount) };
     },
   };
 }
 
 export function createHttpWorkbenchService(): WorkbenchService {
   return {
-    getAccounts() {
-      return http.get<WorkbenchAccountDto[]>("/server/accounts");
+    getSeats() {
+      return http.get<WorkbenchSeatDto[]>("/server/seats");
     },
-    getConversations(accountId) {
+    getConversations(seatId) {
       return http.get<WorkbenchConversationSummaryDto[]>("/server/conversations", {
         params: {
-          accountId,
+          seatId,
           page: 1,
           pageSize: 30,
         },
       });
     },
     getMe() {
-      return http.get<WorkbenchEmployeeDto>("/server/me");
+      return http.get<WorkbenchSubUserDto>("/server/me");
     },
     getMessages(conversationId, options) {
       return http.get<WorkbenchMessageDto[]>(
@@ -306,7 +306,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
         params: {
           active_conversation_id: request.activeConversationId,
           active_message_seq: request.activeMessageSeq,
-          current_account_id: request.currentAccountId,
+          current_seat_id: request.currentSeatId,
           since_version: request.sinceVersion,
         },
       });
@@ -317,9 +317,9 @@ export function createHttpWorkbenchService(): WorkbenchService {
         payload,
       );
     },
-    takeOverAccount(accountId) {
-      return http.post<WorkbenchTakeOverAccountResponse>(
-        `/server/accounts/${accountId}/take-over`,
+    takeOverSeat(seatId) {
+      return http.post<WorkbenchTakeOverSeatResponse>(
+        `/server/seats/${seatId}/take-over`,
       );
     },
   };
@@ -327,11 +327,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
 
 function buildInitialState(): MockState {
   const conversationsByAccount = Object.fromEntries(
-    Object.entries(seedConversations).map(([accountId, conversations]) => [
-      accountId,
+    Object.entries(seedConversations).map(([seatId, conversations]) => [
+      seatId,
       sortConversations(
         conversations.map((conversation) => ({
-          accountId: conversation.accountId,
+          seatId: conversation.accountId,
           conversationId: conversation.id,
           customerAvatar: conversation.customerAvatarUrl,
           customerId: conversation.customerId,
@@ -347,17 +347,17 @@ function buildInitialState(): MockState {
     ]),
   ) as Record<string, WorkbenchConversationSummaryDto[]>;
 
-  const accounts: WorkbenchAccountDto[] = seedAccounts.map((account) => ({
-    accountId: account.id,
-    avatar: account.avatarUrl,
-    description: account.description,
-    lastMessageTime: getAccountLastMessageTime(conversationsByAccount[account.id] ?? []),
+  const seats: WorkbenchSeatDto[] = seedAccounts.map((seat) => ({
+    seatId: seat.id,
+    avatar: seat.avatarUrl,
+    description: seat.description,
+    lastMessageTime: getAccountLastMessageTime(conversationsByAccount[seat.id] ?? []),
     loginStatus: "online",
-    name: account.name,
-    operatorName: account.operator,
-    phone: account.phone,
-    takenOverEmployeeId: account.id === "drc" ? CURRENT_EMPLOYEE_ID : undefined,
-    unreadCount: getAccountUnreadCount(conversationsByAccount[account.id] ?? []),
+    name: seat.name,
+    operatorName: seat.operator,
+    phone: seat.phone,
+    hostSubUserId: seat.id === "drc" ? CURRENT_SUB_USER_ID : undefined,
+    unreadCount: getAccountUnreadCount(conversationsByAccount[seat.id] ?? []),
   }));
 
   const messagesByConversationId = Object.fromEntries(
@@ -373,11 +373,11 @@ function buildInitialState(): MockState {
   ) as Record<string, WorkbenchMessageDto[]>;
 
   return {
-    accounts,
+    seats,
     conversationsByAccount,
-    employee: {
+    subUser: {
       displayName: "林洒",
-      id: CURRENT_EMPLOYEE_ID,
+      subUserId: CURRENT_SUB_USER_ID,
     },
     events: [],
     messagesByConversationId,
@@ -393,11 +393,11 @@ function buildMessageDto({
   message: Message;
   seq: number;
 }): WorkbenchMessageDto {
-  const accountId = getAccountIdByConversationId(message.conversationId);
+  const seatId = getSeatIdByConversationId(message.conversationId);
   const customerId = getCustomerIdByConversationId(message.conversationId);
 
   return {
-    accountId,
+    seatId,
     clientMessageId: message.clientMessageId,
     content: buildContent(message),
     contentType: message.content.type,
@@ -419,7 +419,10 @@ function buildContent(message: Message) {
     case "text":
       return { text: message.content.text };
     case "voice":
-      return { durationLabel: message.content.durationLabel };
+      return {
+        audioUrl: message.content.audioUrl,
+        durationLabel: message.content.durationLabel,
+      };
     case "image":
       return {
         alt: message.content.alt,
@@ -476,7 +479,7 @@ function normalizeBackendStatus(status: Message["status"]): WorkbenchMessageStat
   }
 }
 
-function getAccountIdByConversationId(conversationId: string) {
+function getSeatIdByConversationId(conversationId: string) {
   const conversation = Object.values(seedConversations)
     .flat()
     .find((item) => item.id === conversationId);
@@ -509,13 +512,13 @@ function findConversation(state: MockState, conversationId: string) {
     .find((conversation) => conversation.conversationId === conversationId);
 }
 
-function findAccount(state: MockState, accountId: string) {
-  return state.accounts.find((account) => account.accountId === accountId);
+function findAccount(state: MockState, seatId: string) {
+  return state.seats.find((seat) => seat.seatId === seatId);
 }
 
 function upsertConversation(state: MockState, nextConversation: WorkbenchConversationSummaryDto) {
-  const currentConversations = state.conversationsByAccount[nextConversation.accountId] ?? [];
-  state.conversationsByAccount[nextConversation.accountId] = sortConversations([
+  const currentConversations = state.conversationsByAccount[nextConversation.seatId] ?? [];
+  state.conversationsByAccount[nextConversation.seatId] = sortConversations([
     nextConversation,
     ...currentConversations.filter(
       (conversation) => conversation.conversationId !== nextConversation.conversationId,
@@ -523,33 +526,33 @@ function upsertConversation(state: MockState, nextConversation: WorkbenchConvers
   ]);
 }
 
-function syncAccountUnread(state: MockState, accountId: string) {
-  const account = findAccount(state, accountId);
+function syncAccountUnread(state: MockState, seatId: string) {
+  const seat = findAccount(state, seatId);
 
-  if (!account) {
+  if (!seat) {
     return;
   }
 
-  const conversations = state.conversationsByAccount[accountId] ?? [];
-  account.unreadCount = getAccountUnreadCount(conversations);
-  account.lastMessageTime = getAccountLastMessageTime(conversations);
+  const conversations = state.conversationsByAccount[seatId] ?? [];
+  seat.unreadCount = getAccountUnreadCount(conversations);
+  seat.lastMessageTime = getAccountLastMessageTime(conversations);
 }
 
-function pushAccountEvent(state: MockState, accountId: string) {
-  const account = findAccount(state, accountId);
+function pushAccountEvent(state: MockState, seatId: string) {
+  const seat = findAccount(state, seatId);
 
-  if (!account) {
+  if (!seat) {
     return;
   }
 
   state.version += 1;
   state.events.push({
     payload: {
-      accountId,
-      lastMessageTime: account.lastMessageTime,
-      unreadCount: account.unreadCount,
+      seatId,
+      lastMessageTime: seat.lastMessageTime,
+      unreadCount: seat.unreadCount,
     },
-    type: "account",
+    type: "seat",
     version: state.version,
   });
 }
@@ -584,13 +587,13 @@ function getNextMessageSeq(state: MockState, conversationId: string) {
   return (messages.at(-1)?.seq ?? 0) + 1;
 }
 
-function resolveSendOutcome(state: MockState, accountId: string, content: string) {
-  const account = findAccount(state, accountId);
-  const shouldFail = account?.loginStatus === "offline" || /\[fail\]/i.test(content);
+function resolveSendOutcome(state: MockState, seatId: string, content: string) {
+  const seat = findAccount(state, seatId);
+  const shouldFail = seat?.loginStatus === "offline" || /\[fail\]/i.test(content);
 
   if (shouldFail) {
     return {
-      reason: account?.loginStatus === "offline" ? "企微账号离线" : "模拟发送失败",
+      reason: seat?.loginStatus === "offline" ? "企微账号离线" : "模拟发送失败",
       status: "failed" as const,
     };
   }

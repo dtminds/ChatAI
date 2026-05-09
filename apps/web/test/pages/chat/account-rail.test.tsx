@@ -1,8 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { AccountRail } from "@/pages/chat/components/account-rail";
-import type { Account } from "@/pages/chat/chat-types";
+import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
+
+vi.mock("@/components/ui/avatar", () => ({
+  Avatar: ({ children, ...props }: ComponentProps<"span">) => (
+    <span {...props}>{children}</span>
+  ),
+  AvatarFallback: ({ children, ...props }: ComponentProps<"span">) => (
+    <span {...props}>{children}</span>
+  ),
+  AvatarImage: (props: ComponentProps<"img">) => <img {...props} />,
+}));
 
 const accounts: Account[] = [
   {
@@ -42,26 +53,57 @@ const accounts: Account[] = [
   },
 ];
 
+const currentEmployee: EmployeeProfile = {
+  displayName: "林洒",
+  id: "emp-001",
+};
+
 describe("AccountRail", () => {
-  it("shows the signed-in account and opens the settings menu from the bottom trigger", async () => {
+  it("shows the signed-in employee in a full-width footer trigger and opens the account menu", async () => {
     const user = userEvent.setup();
 
     render(
       <AccountRail
         accounts={accounts}
         activeAccountId="account-1"
+        currentEmployee={currentEmployee}
         onSelectAccount={vi.fn()}
       />,
     );
 
-    const footer = screen.getByTestId("account-rail-footer");
-    expect(footer).toHaveTextContent("lsave");
+    const footerTrigger = screen.getByRole("button", { name: "打开账号菜单" });
+    expect(footerTrigger).toHaveTextContent("林洒");
+    expect(footerTrigger).toHaveTextContent("lsave");
+    expect(footerTrigger.querySelector("img")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "打开账号设置" }));
+    await user.click(footerTrigger);
 
-    expect(screen.getByTestId("account-settings-profile")).toHaveTextContent("lsave");
+    const settingsProfile = screen.getByTestId("account-settings-profile");
+    expect(settingsProfile).toHaveTextContent("林洒");
+    expect(settingsProfile).not.toHaveTextContent("lsave");
+    expect(settingsProfile.querySelector("img")).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
+  });
+
+  it("calls logout from the account settings menu", async () => {
+    const user = userEvent.setup();
+    const handleLogout = vi.fn();
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onLogout={handleLogout}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
+
+    expect(handleLogout).toHaveBeenCalledTimes(1);
   });
 
   it("shows account takeover state and takes over from the status popover", async () => {

@@ -98,7 +98,7 @@ export function AccountsSettingsPage() {
               <TableRow key={account.id}>
                 <TableCell className="px-5 py-5">
                   <div className="flex items-center gap-3">
-                    <div className="flex size-8 items-center justify-center rounded-[8px] bg-info-muted text-info">
+                    <div className="flex size-8 items-center justify-center rounded-[8px] bg-primary/10 text-primary">
                       <HugeiconsIcon
                         color="currentColor"
                         icon={UserGroup03Icon}

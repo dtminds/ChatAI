@@ -43,7 +43,7 @@ export function ConversationCard({
       className={cn(
         "group relative mb-1 w-full overflow-visible border-b px-2.5 py-2.5 text-left",
         isActive
-          ? "rounded-md border-transparent bg-surface-selected text-foreground"
+          ? "rounded-lg border-transparent bg-secondary text-foreground"
           : "border-divider/60 bg-surface",
       )}
     >
@@ -78,7 +78,7 @@ export function ConversationCard({
                 className={cn(
                   "rounded px-1 py-0.5 text-[10px]",
                   isActive
-                    ? "bg-info-muted text-info"
+                    ? "bg-primary/10 text-primary"
                     : "bg-primary/10 text-primary",
                 )}
               >

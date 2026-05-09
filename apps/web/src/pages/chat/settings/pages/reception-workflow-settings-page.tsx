@@ -21,7 +21,7 @@ export function ReceptionWorkflowSettingsPage() {
             key={option.title}
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="flex size-9 items-center justify-center rounded-[10px] bg-info-muted text-info">
+              <div className="flex size-9 items-center justify-center rounded-[10px] bg-primary/10 text-primary">
                 <HugeiconsIcon
                   color="currentColor"
                   icon={option.icon}

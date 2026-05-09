@@ -5,11 +5,11 @@ import {
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
 import type {
-  WorkbenchAccountChangeDto,
   WorkbenchConversationReadResponse,
   WorkbenchMessageStatus,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
+  WorkbenchSeatChangeDto,
 } from "@chatai/contracts";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import type {
@@ -80,7 +80,7 @@ export type WorkbenchMessageStatusChange = {
 };
 
 export type WorkbenchPollResult = {
-  accountChanges: WorkbenchAccountChangeDto[];
+  accountChanges: Array<WorkbenchSeatChangeDto & { accountId: string }>;
   activeConversationMessages: Message[];
   conversationChanges: WorkbenchConversationChange[];
   messageStatusChanges: WorkbenchMessageStatusChange[];
@@ -88,7 +88,7 @@ export type WorkbenchPollResult = {
   request: WorkbenchScopeRequest;
 };
 
-const DEFAULT_MESSAGE_PAGE_SIZE = 5;
+const DEFAULT_MESSAGE_PAGE_SIZE = 50;
 
 export async function bootstrapWorkbench(
   preferredMode: ChatMode,
@@ -98,7 +98,7 @@ export async function bootstrapWorkbench(
   const service = getWorkbenchService();
   const [meDto, accountDtos] = await Promise.all([
     service.getMe(),
-    service.getAccounts(),
+    service.getSeats(),
   ]);
 
   const me = adaptEmployee(meDto);
@@ -198,8 +198,8 @@ export async function sendTextMessage(
 }
 
 export async function takeOverAccount(accountId: string): Promise<Account> {
-  const response = await getWorkbenchService().takeOverAccount(accountId);
-  return adaptAccount(response.account, response.account.unreadCount);
+  const response = await getWorkbenchService().takeOverSeat(accountId);
+  return adaptAccount(response.seat, response.seat.unreadCount);
 }
 
 export async function pollWorkbench(
@@ -209,17 +209,20 @@ export async function pollWorkbench(
   const response = await getWorkbenchService().poll(request);
 
   return {
-    accountChanges: response.accountChanges,
+    accountChanges: response.seatChanges.map((change) => ({
+      ...change,
+      accountId: change.seatId,
+    })),
     activeConversationMessages: adaptMessages(response.activeConversationMessages, context),
     conversationChanges: response.conversationChanges.map((change) =>
       change.type === "remove"
         ? {
-            accountId: change.accountId,
+            accountId: change.seatId,
             conversationId: change.conversationId,
             type: "remove" as const,
           }
         : {
-            accountId: change.accountId,
+            accountId: change.seatId,
             conversation: adaptConversation(change),
             type: "upsert" as const,
           },

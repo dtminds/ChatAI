@@ -51,6 +51,26 @@ const conversations: Conversation[] = [
 ];
 
 describe("ConversationListPanel", () => {
+  it("shows an empty state when the active mode has no conversations", () => {
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={[]}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    const emptyState = screen.getByRole("status", { name: "暂无数据" });
+
+    expect(emptyState).toHaveTextContent("暂无数据");
+    expect(emptyState.querySelector("svg")).toBeInTheDocument();
+    expect(screen.queryByText("暂无单聊")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前账号下暂无单聊。")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前账号下暂无单聊占位数据。")).not.toBeInTheDocument();
+  });
+
   it("closes search results when clicking outside the dropdown", async () => {
     const user = userEvent.setup();
 
@@ -95,7 +115,7 @@ describe("ConversationListPanel", () => {
     const searchbox = await screen.findByRole("dialog", { name: "搜索结果" });
     expect(
       within(searchbox).getByTestId("conversation-search-results-scroll-area"),
-    ).toHaveAttribute("data-scrollbar-visibility", "scroll");
+    ).toHaveAttribute("data-scrollbar-visibility", "hover");
     expect(within(searchbox).getByText("联系人")).toBeInTheDocument();
     expect(within(searchbox).getByText("群聊")).toBeInTheDocument();
     expect(
@@ -123,7 +143,7 @@ describe("ConversationListPanel", () => {
     expect(within(searchbox).queryByRole("button", { name: "查看全部" })).not.toBeInTheDocument();
     expect(
       within(searchbox).getByTestId("conversation-search-expanded-scroll-area"),
-    ).toHaveAttribute("data-scrollbar-visibility", "scroll");
+    ).toHaveAttribute("data-scrollbar-visibility", "hover");
     const expandedResults = within(searchbox).getByRole("list", {
       name: "联系人搜索结果",
     });

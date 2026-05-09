@@ -67,7 +67,7 @@ type WorkbenchState = {
 type WorkbenchStore = WorkbenchState;
 
 const defaultCustomerProfiles = seedCustomerProfiles;
-const MESSAGE_PAGE_SIZE = 5;
+const MESSAGE_PAGE_SIZE = 50;
 
 function createInitialState(): Omit<
   WorkbenchState,
@@ -208,7 +208,7 @@ function applyReadResult(
   state: WorkbenchStore,
   conversationId: string,
   accountId: string,
-  accountUnreadCount: number,
+  seatUnreadCount: number,
 ) {
   const nextConversations = (state.conversationListsByScope[accountId] ?? []).map(
     (conversation) =>
@@ -225,7 +225,7 @@ function applyReadResult(
       account.id === accountId
         ? {
             ...account,
-            unreadCount: accountUnreadCount,
+            unreadCount: seatUnreadCount,
           }
         : account,
     ),
@@ -428,8 +428,8 @@ export function createWorkbenchStore() {
             ...applyReadResult(
               currentState,
               readResult.conversationId,
-              readResult.accountId,
-              readResult.accountUnreadCount,
+              readResult.seatId,
+              readResult.seatUnreadCount,
             ),
           }));
         }
@@ -756,11 +756,11 @@ export function createWorkbenchStore() {
 
       try {
         const response = await sendTextMessage({
-          accountId: activeAccountId,
           clientMessageId,
           content: normalizedText,
           contentType: "text",
           conversationId: activeConversationId,
+          seatId: activeAccountId,
         });
 
         set((currentState) => ({
@@ -998,8 +998,8 @@ export function createWorkbenchStore() {
             ...applyReadResult(
               currentState,
               readResult.conversationId,
-              readResult.accountId,
-              readResult.accountUnreadCount,
+              readResult.seatId,
+              readResult.seatUnreadCount,
             ),
           }));
         }
@@ -1087,8 +1087,8 @@ export function createWorkbenchStore() {
           ...applyReadResult(
             currentState,
             readResult.conversationId,
-            readResult.accountId,
-            readResult.accountUnreadCount,
+            readResult.seatId,
+            readResult.seatUnreadCount,
           ),
         }));
       } catch (error) {

@@ -2,6 +2,7 @@ import fastifyJwt from "@fastify/jwt";
 import fp from "fastify-plugin";
 import type { JwtUser } from "@chatai/contracts";
 import { UnauthorizedError } from "../shared/errors.js";
+import { verifyAccessSession } from "../modules/auth/auth.service.js";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
@@ -34,10 +35,6 @@ function getJwtSecret() {
   return process.env.JWT_DEV_SECRET ?? "dev-only-change-me";
 }
 
-function isDevelopmentAuthBypassEnabled() {
-  return process.env.NODE_ENV === "development" && process.env.AUTH_DEV_BYPASS === "true";
-}
-
 export const authPlugin = fp(async (app) => {
   await app.register(fastifyJwt, {
     secret: getJwtSecret(),
@@ -53,17 +50,13 @@ export const authPlugin = fp(async (app) => {
   });
 
   app.decorate("authenticate", async (request) => {
-    if (isDevelopmentAuthBypassEnabled()) {
-      request.user = {
-        employeeId: process.env.AUTH_DEV_EMPLOYEE_ID ?? "emp-001",
-        roles: ["agent"],
-      };
-      return;
-    }
-
     try {
       await request.jwtVerify();
     } catch {
+      throw new UnauthorizedError();
+    }
+
+    if (!app.db || !(await verifyAccessSession(app.db, request.user))) {
       throw new UnauthorizedError();
     }
   });

@@ -13,8 +13,8 @@ type ScrollAreaProps = ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root>
 export function ScrollArea({
   className,
   children,
-  scrollHideDelay = 700,
-  type = "scroll",
+  scrollHideDelay = 600,
+  type = "hover",
   viewportProps,
   viewportRef,
   viewportTestId,
@@ -56,7 +56,7 @@ function ScrollBar({
       orientation={orientation}
       forceMount
       className={cn(
-        "pointer-events-none flex touch-none select-none opacity-0 transition-opacity duration-200 data-[state=visible]:pointer-events-auto data-[state=visible]:opacity-100 group-hover/scroll-area:pointer-events-auto group-hover/scroll-area:opacity-100",
+        "pointer-events-none flex touch-none select-none opacity-0 transition-opacity duration-200 data-[state=visible]:pointer-events-auto data-[state=visible]:opacity-100",
         orientation === "vertical"
           ? "h-full w-[var(--scrollbar-size)] border-l border-l-transparent p-[var(--scrollbar-track-padding)]"
           : "h-[var(--scrollbar-size)] flex-col border-t border-t-transparent p-[var(--scrollbar-track-padding)]",

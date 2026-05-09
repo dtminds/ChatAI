@@ -1,8 +1,8 @@
 import type {
-  WorkbenchAccountDto,
   WorkbenchConversationSummaryDto,
-  WorkbenchEmployeeDto,
   WorkbenchMessageDto,
+  WorkbenchSeatDto,
+  WorkbenchSubUserDto,
 } from "@chatai/contracts";
 import type {
   Account,
@@ -16,18 +16,18 @@ import type {
 
 type ChatMessageContent = ChatMessage["content"];
 
-export function adaptEmployee(dto: WorkbenchEmployeeDto): EmployeeProfile {
+export function adaptEmployee(dto: WorkbenchSubUserDto): EmployeeProfile {
   return {
     displayName: dto.displayName,
-    id: dto.id,
+    id: dto.subUserId,
   };
 }
 
-export function adaptAccount(dto: WorkbenchAccountDto, unreadCount = dto.unreadCount): Account {
+export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCount): Account {
   return {
     avatarUrl: dto.avatar,
     description: dto.description,
-    id: dto.accountId,
+    id: dto.seatId,
     lastMessageTime: dto.lastMessageTime,
     loginStatus: dto.loginStatus,
     metrics: {
@@ -39,15 +39,15 @@ export function adaptAccount(dto: WorkbenchAccountDto, unreadCount = dto.unreadC
     name: dto.name,
     operator: dto.operatorName,
     phone: dto.phone,
-    takenOverEmployeeId: dto.takenOverEmployeeId,
-    tone: buildAccountTone(dto.accountId),
+    takenOverEmployeeId: dto.hostSubUserId,
+    tone: buildAccountTone(dto.seatId),
     unreadCount,
   };
 }
 
 export function adaptConversation(dto: WorkbenchConversationSummaryDto): Conversation {
   return {
-    accountId: dto.accountId,
+    accountId: dto.seatId,
     customerAvatarUrl: dto.customerAvatar,
     customerId: dto.customerId,
     customerName: dto.customerName,
@@ -93,7 +93,7 @@ export function adaptMessage(
 
   const isAgent = dto.senderType === "agent";
   const customer = customerProfilesById[dto.customerId];
-  const account = accountsById[dto.accountId];
+  const account = accountsById[dto.seatId];
   const content = adaptChatMessageContent(dto.contentType, dto.content);
   const senderName = isAgent
     ? me && account
@@ -113,7 +113,7 @@ export function adaptMessage(
     role: isAgent ? "agent" : "customer",
     sender: {
       avatarUrl: senderAvatar,
-      id: isAgent ? `sender-agent-${dto.accountId}` : `sender-customer-${dto.customerId}`,
+      id: isAgent ? `sender-agent-${dto.seatId}` : `sender-customer-${dto.customerId}`,
       name: senderName,
     },
     sentAt,
@@ -157,6 +157,7 @@ function adaptChatMessageContent(
   switch (contentType) {
     case "voice":
       return {
+        audioUrl: asOptionalString(content.audioUrl),
         durationLabel: String(content.durationLabel ?? ""),
         type: "voice",
       };
@@ -241,8 +242,8 @@ function formatQuietFor(lastMessageTime: number) {
 
 function buildAccountTone(accountId: string) {
   return accountId === "ndt"
-    ? "linear-gradient(135deg, var(--primary), var(--avatar-end))"
-    : "linear-gradient(135deg, var(--avatar-start), var(--avatar-end))";
+    ? "linear-gradient(135deg, var(--primary), var(--muted-foreground))"
+    : "linear-gradient(135deg, var(--muted-foreground), var(--primary))";
 }
 
 function asOptionalString(value: unknown) {

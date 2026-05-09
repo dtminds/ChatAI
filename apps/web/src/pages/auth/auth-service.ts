@@ -22,3 +22,7 @@ export async function refreshAccessToken(refreshToken: string) {
     },
   );
 }
+
+export async function logout() {
+  return http.post<{ data: { revoked: boolean } }>("/auth/logout");
+}

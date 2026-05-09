@@ -20,7 +20,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { AccountSidebarItem } from "@/pages/chat/components/account-sidebar-item";
-import type { Account } from "@/pages/chat/chat-types";
+import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
 
 const railItems = [
   { label: "工作台", icon: Menu11Icon },
@@ -32,7 +32,9 @@ const railItems = [
 type AccountRailProps = {
   accounts: Account[];
   activeAccountId?: string;
+  currentEmployee?: EmployeeProfile;
   currentEmployeeId?: string;
+  onLogout?: () => void | Promise<void>;
   onSelectAccount: (accountId: string) => void | Promise<void>;
   onOpenSettings?: () => void;
   onTakeOverAccount?: (accountId: string) => void | Promise<void>;
@@ -42,7 +44,9 @@ type AccountRailProps = {
 export function AccountRail({
   accounts,
   activeAccountId,
+  currentEmployee,
   currentEmployeeId,
+  onLogout,
   onOpenSettings,
   onSelectAccount,
   onTakeOverAccount,
@@ -50,7 +54,9 @@ export function AccountRail({
 }: AccountRailProps) {
   const signedInAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
-  const signedInName = signedInAccount?.operator || signedInAccount?.name || "未登录";
+  const signedInName =
+    currentEmployee?.displayName || signedInAccount?.operator || signedInAccount?.name || "未登录";
+  const signedInAvatarUrl = signedInAccount?.avatarUrl;
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-background px-3 py-4">
@@ -127,7 +133,7 @@ export function AccountRail({
             className="size-9 rounded-full border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
           >
             {signedInAccount ? (
-              <AvatarImage alt={signedInName} src={signedInAccount.avatarUrl} />
+              <AvatarImage alt={signedInName} src={signedInAvatarUrl} />
             ) : null}
             <AvatarFallback className="rounded-full text-sm">
               {signedInName.slice(0, 1)}
@@ -174,7 +180,7 @@ export function AccountRail({
                   className="size-7 rounded-full border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
               >
                 {signedInAccount ? (
-                  <AvatarImage alt={signedInName} src={signedInAccount.avatarUrl} />
+                  <AvatarImage alt={signedInName} src={signedInAvatarUrl} />
                 ) : null}
                 <AvatarFallback className="rounded-full text-sm">
                   {signedInName.slice(0, 1)}
@@ -204,7 +210,12 @@ export function AccountRail({
                 />
                 <span>设置</span>
               </DropdownMenuItem>
-              <DropdownMenuItem className="h-9 gap-2 rounded-[12px] px-3 text-[13px] font-normal">
+              <DropdownMenuItem
+                className="h-9 gap-2 rounded-[12px] px-3 text-[13px] font-normal"
+                onSelect={() => {
+                  void onLogout?.();
+                }}
+              >
                 <HugeiconsIcon
                   color="currentColor"
                   icon={LogoutSquare01Icon}

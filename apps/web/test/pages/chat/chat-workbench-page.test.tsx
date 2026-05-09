@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import MockAdapter from "axios-mock-adapter";
+import { requestInstance } from "@/lib/request";
 import {
   createMockWorkbenchService,
   resetWorkbenchService,
@@ -9,10 +11,15 @@ import {
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
+const mock = new MockAdapter(requestInstance);
+
 describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
+    mock.reset();
     resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+    window.localStorage.setItem("chatai.accessToken", "access-token-001");
+    window.localStorage.setItem("chatai.refreshToken", "refresh-token-001");
   });
 
   it("sends a message from the composer", async () => {
@@ -376,5 +383,28 @@ describe("ChatWorkbenchPage", () => {
     await waitFor(() => {
       expect(screen.getByText("切换会话失败")).toBeInTheDocument();
     });
+  });
+
+  it("logs out from the account menu and clears stored auth tokens", async () => {
+    const user = userEvent.setup();
+    mock.onPost("/auth/logout").reply(200, {
+      data: {
+        revoked: true,
+      },
+      success: true,
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByPlaceholderText("请输入消息……");
+    await user.click(screen.getByRole("button", { name: "打开账号设置" }));
+    await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("chatai.accessToken")).toBeNull();
+      expect(window.localStorage.getItem("chatai.refreshToken")).toBeNull();
+    });
+    expect(mock.history.post).toHaveLength(1);
+    expect(mock.history.post[0]?.url).toBe("/auth/logout");
   });
 });

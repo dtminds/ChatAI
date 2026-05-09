@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AccountRail } from "@/pages/chat/components/account-rail";
-import type { Account } from "@/pages/chat/chat-types";
+import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
 
 const accounts: Account[] = [
   {
@@ -42,26 +42,53 @@ const accounts: Account[] = [
   },
 ];
 
+const currentEmployee: EmployeeProfile = {
+  displayName: "林洒",
+  id: "emp-001",
+};
+
 describe("AccountRail", () => {
-  it("shows the signed-in account and opens the settings menu from the bottom trigger", async () => {
+  it("shows the signed-in employee and opens the settings menu from the bottom trigger", async () => {
     const user = userEvent.setup();
 
     render(
       <AccountRail
         accounts={accounts}
         activeAccountId="account-1"
+        currentEmployee={currentEmployee}
         onSelectAccount={vi.fn()}
       />,
     );
 
     const footer = screen.getByTestId("account-rail-footer");
-    expect(footer).toHaveTextContent("lsave");
+    expect(footer).toHaveTextContent("林洒");
+    expect(footer).not.toHaveTextContent("lsave");
 
     await user.click(screen.getByRole("button", { name: "打开账号设置" }));
 
-    expect(screen.getByTestId("account-settings-profile")).toHaveTextContent("lsave");
+    expect(screen.getByTestId("account-settings-profile")).toHaveTextContent("林洒");
     expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
+  });
+
+  it("calls logout from the account settings menu", async () => {
+    const user = userEvent.setup();
+    const handleLogout = vi.fn();
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onLogout={handleLogout}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开账号设置" }));
+    await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
+
+    expect(handleLogout).toHaveBeenCalledTimes(1);
   });
 
   it("shows account takeover state and takes over from the status popover", async () => {

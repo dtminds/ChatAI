@@ -137,7 +137,7 @@ export function AccountRail({
             >
               <Avatar
                 aria-label={`${signedInName} 登录头像`}
-                className="size-8 shrink-0 rounded-lg border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)] grayscale"
+                className="size-8 shrink-0 rounded-lg bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
               >
                 <AvatarFallback className="rounded-lg text-sm">
                   {signedInName.slice(0, 1)}
@@ -175,21 +175,18 @@ export function AccountRail({
               >
                 <Avatar
                   aria-label={`${signedInName} 账号头像`}
-                  className="size-8 shrink-0 rounded-lg border border-background bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
+                  className="size-6 shrink-0 rounded-lg bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
                 >
                   <AvatarFallback className="rounded-lg text-sm">
                     {signedInName.slice(0, 1)}
                   </AvatarFallback>
                 </Avatar>
-                <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                <div className="grid min-w-0 flex-1 text-left text-[12px] leading-tight">
                   <span
                     className="truncate font-medium"
                     data-testid="account-settings-profile-name"
                   >
                     {signedInName}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {signedInAccountName}
                   </span>
                 </div>
               </div>

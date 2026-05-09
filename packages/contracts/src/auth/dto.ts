@@ -9,6 +9,7 @@ export const AuthLoginRequestSchema = Type.Object({
 export const AuthLoginResponseSchema = Type.Object({
   accessToken: Type.String(),
   expiresIn: Type.Number(),
+  refreshToken: Type.String(),
   subUser: Type.Object({
     displayName: Type.String(),
     subUserId: Type.String(),
@@ -16,11 +17,26 @@ export const AuthLoginResponseSchema = Type.Object({
   tokenType: Type.Literal("Bearer"),
 });
 
+export const AuthRefreshRequestSchema = Type.Object({
+  refreshToken: Type.String(),
+});
+
+export const AuthRefreshResponseSchema = Type.Object({
+  accessToken: Type.String(),
+  expiresIn: Type.Number(),
+  refreshToken: Type.String(),
+  tokenType: Type.Literal("Bearer"),
+});
+
 export const JwtUserSchema = Type.Object({
-  subUserId: Type.String(),
   roles: Type.Array(Type.String()),
+  sessionId: Type.String(),
+  sessionVersion: Type.Number(),
+  subUserId: Type.String(),
 });
 
 export type AuthLoginRequest = Static<typeof AuthLoginRequestSchema>;
 export type AuthLoginResponse = Static<typeof AuthLoginResponseSchema>;
+export type AuthRefreshRequest = Static<typeof AuthRefreshRequestSchema>;
+export type AuthRefreshResponse = Static<typeof AuthRefreshResponseSchema>;
 export type JwtUser = Static<typeof JwtUserSchema>;

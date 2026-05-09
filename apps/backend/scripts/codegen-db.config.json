@@ -1,13 +1,14 @@
 {
   "tables": [
     "xy_wap_embed_contact",
-    "xy_wap_embed_convesation",
+    "xy_wap_embed_conversation",
     "xy_wap_embed_customer_bind_relation",
     "xy_wap_embed_group_member",
     "xy_wap_embed_group_seat",
     "xy_wap_embed_msg_audit_info",
     "xy_wap_embed_sider_bar_config",
     "xy_wap_embed_sub_user",
+    "xy_wap_embed_sub_user_session",
     "xy_wap_embed_user_relation",
     "xy_wap_embed_user_seat",
     "xy_wap_embed_user_seat_sub_relation"

@@ -2,6 +2,7 @@ import fastifyJwt from "@fastify/jwt";
 import fp from "fastify-plugin";
 import type { JwtUser } from "@chatai/contracts";
 import { UnauthorizedError } from "../shared/errors.js";
+import { verifyAccessSession } from "../modules/auth/auth.service.js";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
@@ -55,8 +56,10 @@ export const authPlugin = fp(async (app) => {
   app.decorate("authenticate", async (request) => {
     if (isDevelopmentAuthBypassEnabled()) {
       request.user = {
-        subUserId: process.env.AUTH_DEV_SUB_USER_ID ?? "",
         roles: ["agent"],
+        sessionId: "dev-session",
+        sessionVersion: 1,
+        subUserId: process.env.AUTH_DEV_SUB_USER_ID ?? "",
       };
       return;
     }
@@ -64,6 +67,10 @@ export const authPlugin = fp(async (app) => {
     try {
       await request.jwtVerify();
     } catch {
+      throw new UnauthorizedError();
+    }
+
+    if (!app.db || !(await verifyAccessSession(app.db, request.user))) {
       throw new UnauthorizedError();
     }
   });

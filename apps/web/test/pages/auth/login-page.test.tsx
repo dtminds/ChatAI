@@ -117,6 +117,7 @@ describe("LoginPage", () => {
         data: {
           accessToken: "token-001",
           expiresIn: 1200,
+          refreshToken: "refresh-token-001",
           subUser: {
             displayName: "客服一号",
             subUserId: "101",
@@ -136,6 +137,7 @@ describe("LoginPage", () => {
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     expect(window.localStorage.getItem("chatai.accessToken")).toBe("token-001");
+    expect(window.localStorage.getItem("chatai.refreshToken")).toBe("refresh-token-001");
     expect(router.state.location.pathname).toBe("/chat");
     expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
       account: "agent001",

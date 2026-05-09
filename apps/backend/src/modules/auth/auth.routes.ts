@@ -2,12 +2,14 @@ import {
   apiError,
   apiSuccess,
   AuthLoginRequestSchema,
+  AuthRefreshRequestSchema,
   type AuthLoginRequest,
+  type AuthRefreshRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { createAltchaChallenge, verifyAltchaPayload } from "./altcha.service.js";
-import { loginWithPassword } from "./auth.service.js";
+import { loginWithPassword, refreshAccessToken, revokeSession } from "./auth.service.js";
 
 const AltchaVerifyBodySchema = Type.Object({
   altcha: Type.String(),
@@ -47,10 +49,16 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     },
     async (request) => apiSuccess(await loginWithPassword(app, request.body)),
   );
-  app.post("/api/auth/refresh", async (_request, reply) =>
-    reply.code(501).send(apiError("NOT_IMPLEMENTED", "刷新登录接口尚未实现")),
+  app.post<{ Body: AuthRefreshRequest }>(
+    "/api/auth/refresh",
+    {
+      schema: {
+        body: AuthRefreshRequestSchema,
+      },
+    },
+    async (request) => apiSuccess(await refreshAccessToken(app, request.body.refreshToken)),
   );
-  app.post("/api/auth/logout", async (_request, reply) =>
-    reply.code(501).send(apiError("NOT_IMPLEMENTED", "退出登录接口尚未实现")),
+  app.post("/api/auth/logout", { preHandler: app.authenticate }, async (request) =>
+    apiSuccess(await revokeSession(app, request.user)),
   );
 }

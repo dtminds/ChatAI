@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import type { RequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { AltchaField } from "./altcha-field";
-import { login, storeAccessToken } from "./auth-service";
+import { login } from "./auth-service";
+import { storeAuthTokens } from "./auth-tokens";
 
 export function LoginPage() {
   return (
@@ -45,7 +46,7 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
     try {
       const response = await login({ account, altcha, password });
 
-      storeAccessToken(response.data.accessToken);
+      storeAuthTokens(response.data);
       navigate("/chat", { replace: true });
     } catch (error) {
       setErrorMessage((error as RequestError).message ?? "登录失败，请重试");

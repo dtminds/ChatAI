@@ -7,8 +7,15 @@ import { buildApp } from "../src/app";
 async function createAuthenticatedApp() {
   const app = await buildApp();
   const token = app.jwt.sign({
-    subUserId: "sub-user-001",
     roles: ["agent"],
+    sessionId: "501",
+    sessionVersion: 1,
+    subUserId: "101",
+  });
+  app.db = createSessionDbMock({
+    id: "501",
+    session_version: 1,
+    sub_user_id: "101",
   });
 
   return {
@@ -253,6 +260,7 @@ describe("backend app", () => {
       data: {
         accessToken: expect.any(String),
         expiresIn: 1200,
+        refreshToken: expect.any(String),
         subUser: {
           displayName: "客服一号",
           subUserId: "101",
@@ -266,8 +274,212 @@ describe("backend app", () => {
 
     expect(decoded).toMatchObject({
       roles: ["agent"],
+      sessionId: "501",
+      sessionVersion: 1,
       subUserId: "101",
     });
+
+    await app.close();
+  });
+
+  it("refreshes access tokens without rotating the refresh token", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    const app = await buildApp();
+    app.db = createAuthDbMock({
+      account: "agent001",
+      id: 101,
+      name: "客服一号",
+      password_hash: await argon2.hash("correct-password", {
+        hashLength: 32,
+        memoryCost: 4096,
+        parallelism: 1,
+        timeCost: 2,
+        type: argon2.argon2id,
+      }),
+      platform: 1,
+      uid: 9001,
+    });
+    const altcha = await createSolvedAltchaPayload(app);
+
+    const login = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha,
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+    const refreshToken = login.json().data.refreshToken;
+    const refresh = await app.inject({
+      method: "POST",
+      payload: {
+        refreshToken,
+      },
+      url: "/api/auth/refresh",
+    });
+
+    expect(refresh.statusCode).toBe(200);
+    expect(refresh.json()).toMatchObject({
+      data: {
+        accessToken: expect.any(String),
+        expiresIn: 1200,
+        refreshToken,
+        tokenType: "Bearer",
+      },
+      success: true,
+    });
+    expect(app.jwt.verify(refresh.json().data.accessToken)).toMatchObject({
+      sessionId: "501",
+      sessionVersion: 1,
+      subUserId: "101",
+    });
+
+    await app.close();
+  });
+
+  it("invalidates the old access and refresh tokens when the same sub user logs in again", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    const app = await buildApp();
+    app.db = createAuthDbMock({
+      account: "agent001",
+      id: 101,
+      name: "客服一号",
+      password_hash: await argon2.hash("correct-password", {
+        hashLength: 32,
+        memoryCost: 4096,
+        parallelism: 1,
+        timeCost: 2,
+        type: argon2.argon2id,
+      }),
+      platform: 1,
+      uid: 9001,
+    });
+
+    const firstLogin = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha: await createSolvedAltchaPayload(app),
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+    const secondLogin = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha: await createSolvedAltchaPayload(app),
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+
+    expect(firstLogin.statusCode).toBe(200);
+    expect(secondLogin.statusCode).toBe(200);
+    expect(app.jwt.verify(secondLogin.json().data.accessToken)).toMatchObject({
+      sessionId: "501",
+      sessionVersion: 2,
+      subUserId: "101",
+    });
+
+    const oldAccess = await app.inject({
+      headers: {
+        authorization: `Bearer ${firstLogin.json().data.accessToken}`,
+      },
+      method: "GET",
+      url: "/api/server/me",
+    });
+    const oldRefresh = await app.inject({
+      method: "POST",
+      payload: {
+        refreshToken: firstLogin.json().data.refreshToken,
+      },
+      url: "/api/auth/refresh",
+    });
+
+    expect(oldAccess.statusCode).toBe(401);
+    expect(oldAccess.json()).toEqual({
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+    expect(oldRefresh.statusCode).toBe(401);
+
+    await app.close();
+  });
+
+  it("logs out by revoking the current session", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    const app = await buildApp();
+    app.db = createAuthDbMock({
+      account: "agent001",
+      id: 101,
+      name: "客服一号",
+      password_hash: await argon2.hash("correct-password", {
+        hashLength: 32,
+        memoryCost: 4096,
+        parallelism: 1,
+        timeCost: 2,
+        type: argon2.argon2id,
+      }),
+      platform: 1,
+      uid: 9001,
+    });
+    const login = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha: await createSolvedAltchaPayload(app),
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+    const authorization = `Bearer ${login.json().data.accessToken}`;
+
+    const logout = await app.inject({
+      headers: {
+        authorization,
+      },
+      method: "POST",
+      url: "/api/auth/logout",
+    });
+    const me = await app.inject({
+      headers: {
+        authorization,
+      },
+      method: "GET",
+      url: "/api/server/me",
+    });
+
+    expect(logout.statusCode).toBe(200);
+    expect(logout.json()).toEqual({
+      data: {
+        revoked: true,
+      },
+      success: true,
+    });
+    expect(me.statusCode).toBe(401);
 
     await app.close();
   });
@@ -641,12 +853,124 @@ function createAuthDbMock(record: {
   platform: number;
   uid: number;
 }) {
+  let session = {
+    expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+    id: 501,
+    refresh_token_hash: "",
+    revoked_at: null as Date | null,
+    session_version: 0,
+    sub_user_id: record.id,
+  };
+
   return {
     selectFrom(table: string) {
-      expect(table).toBe("xy_wap_embed_sub_user");
+      const wheres: Array<[string, string, unknown]> = [];
+      const builder = {
+        executeTakeFirst: async () => {
+          if (table === "xy_wap_embed_sub_user") {
+            return record;
+          }
+
+          if (table === "xy_wap_embed_sub_user_session") {
+            return matchesSession(session, wheres) ? session : undefined;
+          }
+
+          throw new Error(`Unexpected select table: ${table}`);
+        },
+        executeTakeFirstOrThrow: async () => {
+          const result = await builder.executeTakeFirst();
+
+          if (!result) {
+            throw new Error(`No row for table: ${table}`);
+          }
+
+          return result;
+        },
+        select: () => builder,
+        where: (column: string, operator: string, value: unknown) => {
+          wheres.push([column, operator, value]);
+          return builder;
+        },
+      };
+
+      return builder;
+    },
+    updateTable(table: string) {
+      if (table !== "xy_wap_embed_sub_user_session") {
+        throw new Error(`Unexpected update table: ${table}`);
+      }
 
       const builder = {
-        executeTakeFirst: async () => record,
+        execute: async () => [],
+        set: (
+          values:
+            | Record<string, unknown>
+            | ((expressionBuilder: unknown) => Record<string, unknown>),
+        ) => {
+          const resolved =
+            typeof values === "function"
+              ? values({
+                  eb: () => session.session_version + 1,
+                })
+              : values;
+
+          session = {
+            ...session,
+            ...(resolved as Partial<typeof session>),
+          };
+
+          return builder;
+        },
+        where: () => builder,
+      };
+
+      return builder;
+    },
+    insertInto(table: string) {
+      if (table !== "xy_wap_embed_sub_user_session") {
+        throw new Error(`Unexpected insert table: ${table}`);
+      }
+
+      const builder = {
+        execute: async () => [],
+        onDuplicateKeyUpdate: () => builder,
+        values: (values: Record<string, unknown>) => {
+          session = {
+            ...session,
+            ...(values as Partial<typeof session>),
+            id: session.id,
+            session_version: session.session_version + 1,
+          };
+
+          return builder;
+        },
+      };
+
+      return builder;
+    },
+  } as never;
+}
+
+function createSessionDbMock(session: {
+  id: string;
+  session_version: number;
+  sub_user_id: string;
+}) {
+  return {
+    selectFrom(table: string) {
+      if (table !== "xy_wap_embed_sub_user_session") {
+        throw new Error(`Unexpected select table: ${table}`);
+      }
+
+      const builder = {
+        executeTakeFirst: async () => ({
+          expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          id: session.id,
+          refresh_token_hash: "dev-refresh-token-hash",
+          revoked_at: null,
+          session_version: session.session_version,
+          sub_user_id: session.sub_user_id,
+        }),
         select: () => builder,
         where: () => builder,
       };
@@ -654,4 +978,42 @@ function createAuthDbMock(record: {
       return builder;
     },
   } as never;
+}
+
+function matchesSession(
+  session: {
+    expires_at: Date;
+    id: number;
+    refresh_token_hash: string;
+    revoked_at: Date | null;
+    session_version: number;
+    sub_user_id: number;
+  },
+  wheres: Array<[string, string, unknown]>,
+) {
+  if (session.revoked_at) {
+    return false;
+  }
+
+  if (!session.refresh_token_hash) {
+    return false;
+  }
+
+  return wheres.every(([column, operator, value]) => {
+    const sessionValue = session[column as keyof typeof session];
+
+    if (operator === "is" && value === null) {
+      return sessionValue === null;
+    }
+
+    if (operator === "=") {
+      return String(sessionValue) === String(value);
+    }
+
+    if (operator === ">") {
+      return sessionValue instanceof Date && value instanceof Date && sessionValue > value;
+    }
+
+    return true;
+  });
 }

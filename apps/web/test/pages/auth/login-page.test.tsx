@@ -22,6 +22,7 @@ describe("LoginPage", () => {
   afterEach(() => {
     mock.reset();
     setSecureContext(true);
+    window.localStorage.clear();
   });
 
   it("renders the shadcn login layout with username and password only", async () => {
@@ -96,6 +97,83 @@ describe("LoginPage", () => {
     );
     expect(mock.history.post).toEqual([]);
   });
+
+  it("logs in with account, password, and ALTCHA payload", async () => {
+    const user = userEvent.setup();
+    setSecureContext(false);
+    mock.onGet("/auth/altcha/challenge").reply(200, {
+      parameters: {
+        algorithm: "SCRYPT",
+        challenge: "challenge-001",
+        data: {
+          challengeId: "challenge-id-001",
+        },
+      },
+      signature: "signature-001",
+    });
+    mock.onPost("/auth/login").reply((config) => [
+      200,
+      {
+        data: {
+          accessToken: "token-001",
+          expiresIn: 1200,
+          subUser: {
+            displayName: "客服一号",
+            subUserId: "101",
+          },
+          tokenType: "Bearer",
+        },
+        success: true,
+      },
+    ]);
+
+    const router = renderLoginRoute();
+
+    await user.type(await screen.findByLabelText("用户名"), "agent001");
+    await user.type(screen.getByLabelText("密码"), "correct-password");
+    await user.click(screen.getByRole("button", { name: "验证" }));
+    await screen.findByText("人机验证已通过");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(window.localStorage.getItem("chatai.accessToken")).toBe("token-001");
+    expect(router.state.location.pathname).toBe("/chat");
+    expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
+      account: "agent001",
+      altcha: expect.any(String),
+      password: "correct-password",
+    });
+  });
+
+  it("shows a login error when credentials are rejected", async () => {
+    const user = userEvent.setup();
+    setSecureContext(false);
+    mock.onGet("/auth/altcha/challenge").reply(200, {
+      parameters: {
+        algorithm: "SCRYPT",
+        challenge: "challenge-001",
+      },
+      signature: "signature-001",
+    });
+    mock.onPost("/auth/login").reply(401, {
+      error: {
+        code: "INVALID_CREDENTIALS",
+        message: "用户名或密码错误",
+      },
+      success: false,
+    });
+
+    const router = renderLoginRoute();
+
+    await user.type(await screen.findByLabelText("用户名"), "agent001");
+    await user.type(screen.getByLabelText("密码"), "wrong-password");
+    await user.click(screen.getByRole("button", { name: "验证" }));
+    await screen.findByText("人机验证已通过");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(await screen.findByText("用户名或密码错误")).toBeInTheDocument();
+    expect(window.localStorage.getItem("chatai.accessToken")).toBeNull();
+    expect(router.state.location.pathname).toBe("/login");
+  });
 });
 
 function renderLoginRoute() {
@@ -104,6 +182,8 @@ function renderLoginRoute() {
   });
 
   render(<RouterProvider router={router} />);
+
+  return router;
 }
 
 function setSecureContext(value: boolean) {

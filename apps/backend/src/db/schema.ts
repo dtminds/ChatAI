@@ -454,17 +454,13 @@ export interface XyWapEmbedSubUser {
    */
   name: string;
   /**
-   * 加密后的密码
+   * Argon2id PHC格式密码哈希
    */
-  password: string;
+  password_hash: string;
   /**
    * 内嵌平台 1、涂色
    */
   platform: Generated<number>;
-  /**
-   * 加密校验码
-   */
-  salt: string;
   /**
    * 状态：1正常，2禁用，0删除
    */

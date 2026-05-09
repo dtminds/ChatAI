@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { solveChallenge, type Challenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/scrypt";
+import argon2 from "argon2";
 import { buildApp } from "../src/app";
 
 async function createAuthenticatedApp() {
@@ -208,6 +209,111 @@ describe("backend app", () => {
 
     expect(challengeResponse.statusCode).toBe(200);
     expect(challengeResponse.json<Challenge>().parameters.algorithm).toBe("SCRYPT");
+
+    await app.close();
+  });
+
+  it("logs in active sub users with ALTCHA and Argon2id password verification", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    const app = await buildApp();
+    app.db = createAuthDbMock({
+      account: "agent001",
+      id: 101,
+      name: "客服一号",
+      password_hash: await argon2.hash("correct-password", {
+        hashLength: 32,
+        memoryCost: 4096,
+        parallelism: 1,
+        timeCost: 2,
+        type: argon2.argon2id,
+      }),
+      platform: 1,
+      uid: 9001,
+    });
+    const altcha = await createSolvedAltchaPayload(app);
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha,
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        accessToken: expect.any(String),
+        expiresIn: 1200,
+        subUser: {
+          displayName: "客服一号",
+          subUserId: "101",
+        },
+        tokenType: "Bearer",
+      },
+      success: true,
+    });
+
+    const decoded = app.jwt.verify(response.json().data.accessToken);
+
+    expect(decoded).toMatchObject({
+      roles: ["agent"],
+      subUserId: "101",
+    });
+
+    await app.close();
+  });
+
+  it("rejects login with a uniform error when the password is wrong", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    const app = await buildApp();
+    app.db = createAuthDbMock({
+      account: "agent001",
+      id: 101,
+      name: "客服一号",
+      password_hash: await argon2.hash("correct-password", {
+        hashLength: 32,
+        memoryCost: 4096,
+        parallelism: 1,
+        timeCost: 2,
+        type: argon2.argon2id,
+      }),
+      platform: 1,
+      uid: 9001,
+    });
+    const altcha = await createSolvedAltchaPayload(app);
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha,
+        password: "wrong-password",
+      },
+      url: "/api/auth/login",
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({
+      error: {
+        code: "INVALID_CREDENTIALS",
+        message: "用户名或密码错误",
+      },
+      success: false,
+    });
 
     await app.close();
   });
@@ -503,4 +609,49 @@ describe("backend app", () => {
 
 function windowlessBase64Encode(value: string) {
   return Buffer.from(value, "utf8").toString("base64");
+}
+
+async function createSolvedAltchaPayload(app: Awaited<ReturnType<typeof buildApp>>) {
+  const challengeResponse = await app.inject({
+    method: "GET",
+    url: "/api/auth/altcha/challenge",
+  });
+  const challenge = challengeResponse.json<Challenge>();
+  const solution = await solveChallenge({
+    challenge,
+    deriveKey,
+    timeout: 10000,
+  });
+
+  expect(solution).not.toBeNull();
+
+  return windowlessBase64Encode(
+    JSON.stringify({
+      challenge,
+      solution,
+    }),
+  );
+}
+
+function createAuthDbMock(record: {
+  account: string;
+  id: number;
+  name: string;
+  password_hash: string;
+  platform: number;
+  uid: number;
+}) {
+  return {
+    selectFrom(table: string) {
+      expect(table).toBe("xy_wap_embed_sub_user");
+
+      const builder = {
+        executeTakeFirst: async () => record,
+        select: () => builder,
+        where: () => builder,
+      };
+
+      return builder;
+    },
+  } as never;
 }

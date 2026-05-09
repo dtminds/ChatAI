@@ -1,10 +1,13 @@
-import { type FormEvent, useId } from "react";
+import { type FormEvent, useId, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { RequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { AltchaField } from "./altcha-field";
+import { login, storeAccessToken } from "./auth-service";
 
 export function LoginPage() {
   return (
@@ -19,9 +22,36 @@ export function LoginPage() {
 function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
   const accountId = useId();
   const passwordId = useId();
+  const navigate = useNavigate();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const formData = new FormData(event.currentTarget);
+    const account = String(formData.get("account") ?? "").trim();
+    const password = String(formData.get("password") ?? "");
+    const altcha = String(formData.get("altcha") ?? "");
+
+    if (!altcha) {
+      setErrorMessage("请先完成人机验证");
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      const response = await login({ account, altcha, password });
+
+      storeAccessToken(response.data.accessToken);
+      navigate("/chat", { replace: true });
+    } catch (error) {
+      setErrorMessage((error as RequestError).message ?? "登录失败，请重试");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -69,8 +99,14 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
 
               <AltchaField />
 
-              <Button className="w-full rounded-md" type="submit">
-                登录
+              {errorMessage ? (
+                <p className="text-sm text-destructive" role="alert">
+                  {errorMessage}
+                </p>
+              ) : null}
+
+              <Button className="w-full rounded-md" disabled={isSubmitting} type="submit">
+                {isSubmitting ? "登录中..." : "登录"}
               </Button>
             </div>
           </form>

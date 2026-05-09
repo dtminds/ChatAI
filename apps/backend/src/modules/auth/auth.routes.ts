@@ -1,7 +1,13 @@
-import { apiError, apiSuccess } from "@chatai/contracts";
+import {
+  apiError,
+  apiSuccess,
+  AuthLoginRequestSchema,
+  type AuthLoginRequest,
+} from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { createAltchaChallenge, verifyAltchaPayload } from "./altcha.service.js";
+import { loginWithPassword } from "./auth.service.js";
 
 const AltchaVerifyBodySchema = Type.Object({
   altcha: Type.String(),
@@ -32,8 +38,14 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     },
   );
 
-  app.post("/api/auth/login", async (_request, reply) =>
-    reply.code(501).send(apiError("NOT_IMPLEMENTED", "登录接口尚未实现")),
+  app.post<{ Body: AuthLoginRequest }>(
+    "/api/auth/login",
+    {
+      schema: {
+        body: AuthLoginRequestSchema,
+      },
+    },
+    async (request) => apiSuccess(await loginWithPassword(app, request.body)),
   );
   app.post("/api/auth/refresh", async (_request, reply) =>
     reply.code(501).send(apiError("NOT_IMPLEMENTED", "刷新登录接口尚未实现")),

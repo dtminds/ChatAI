@@ -56,7 +56,7 @@ export class WorkbenchRepository {
           .onRef("seat.uid", "=", "relation.uid")
           .onRef("seat.platform", "=", "relation.platform"),
       )
-      .leftJoin("xy_wap_embed_convesation as conversation", (join) =>
+      .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
         join
           .onRef("conversation.third_userid", "=", "seat.third_userid")
           .onRef("conversation.uid", "=", "seat.uid")
@@ -103,7 +103,7 @@ export class WorkbenchRepository {
 
     const rows = await this.db
       .selectFrom("xy_wap_embed_user_seat as seat")
-      .leftJoin("xy_wap_embed_convesation as conversation", (join) =>
+      .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
         join
           .onRef("conversation.third_userid", "=", "seat.third_userid")
           .onRef("conversation.uid", "=", "seat.uid")
@@ -186,7 +186,7 @@ export class WorkbenchRepository {
     }
 
     const rows = await this.db
-      .selectFrom("xy_wap_embed_convesation as conversation")
+      .selectFrom("xy_wap_embed_conversation as conversation")
       .leftJoin("xy_wap_embed_msg_audit_info as last_message", (join) =>
         join
           .onRef("last_message.id", "=", "conversation.last_audit_info_id")
@@ -253,7 +253,7 @@ export class WorkbenchRepository {
     }
 
     const row = await this.db
-      .selectFrom("xy_wap_embed_convesation as conversation")
+      .selectFrom("xy_wap_embed_conversation as conversation")
       .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
         join
           .onRef("seat.third_userid", "=", "conversation.third_userid")
@@ -287,7 +287,7 @@ export class WorkbenchRepository {
     }
 
     const conversation = await this.db
-      .selectFrom("xy_wap_embed_convesation as conversation")
+      .selectFrom("xy_wap_embed_conversation as conversation")
       .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
         join
           .onRef("seat.third_userid", "=", "conversation.third_userid")

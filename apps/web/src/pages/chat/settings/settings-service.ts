@@ -1,5 +1,8 @@
 import type {
   ApiSuccessEnvelope,
+  SettingsManagedAccount,
+  SettingsManagedAccountsResponse,
+  SettingsManagedAccountSubAccountsUpdateRequest,
   SettingsSubAccount,
   SettingsSubAccountCreateRequest,
   SettingsSubAccountsResponse,
@@ -13,6 +16,26 @@ export async function listSubAccounts() {
   const response = await http.get<ApiSuccessEnvelope<SettingsSubAccountsResponse>>(
     "/server/settings/sub-accounts",
   );
+
+  return response.data;
+}
+
+export async function listManagedAccounts() {
+  const response = await http.get<ApiSuccessEnvelope<SettingsManagedAccountsResponse>>(
+    "/server/settings/managed-accounts",
+  );
+
+  return response.data;
+}
+
+export async function updateManagedAccountSubAccounts(
+  managedAccountId: string,
+  payload: SettingsManagedAccountSubAccountsUpdateRequest,
+) {
+  const response = await http.put<
+    ApiSuccessEnvelope<SettingsManagedAccount>,
+    SettingsManagedAccountSubAccountsUpdateRequest
+  >(`/server/settings/managed-accounts/${managedAccountId}/sub-accounts`, payload);
 
   return response.data;
 }

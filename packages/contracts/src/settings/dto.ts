@@ -30,6 +30,37 @@ export const SettingsSubAccountsResponseSchema = Type.Object({
   subAccounts: Type.Array(SettingsSubAccountSchema),
 });
 
+export const SettingsManagedAccountOnlineStatusSchema = Type.Union([
+  Type.Literal("online"),
+  Type.Literal("offline"),
+]);
+
+export const SettingsManagedAccountSubAccountSchema = Type.Object({
+  account: Type.String(),
+  id: Type.String(),
+  isTakingOver: Type.Boolean(),
+  name: Type.String(),
+  status: SettingsSubAccountStatusSchema,
+  type: SettingsSubAccountTypeSchema,
+});
+
+export const SettingsManagedAccountSchema = Type.Object({
+  avatarUrl: Type.String(),
+  id: Type.String(),
+  name: Type.String(),
+  onlineStatus: SettingsManagedAccountOnlineStatusSchema,
+  subAccounts: Type.Array(SettingsManagedAccountSubAccountSchema),
+});
+
+export const SettingsManagedAccountsResponseSchema = Type.Object({
+  managedAccounts: Type.Array(SettingsManagedAccountSchema),
+  subAccounts: Type.Array(SettingsManagedAccountSubAccountSchema),
+});
+
+export const SettingsManagedAccountSubAccountsUpdateRequestSchema = Type.Object({
+  subAccountIds: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
 export const SettingsSubAccountCreateRequestSchema = Type.Object({
   account: Type.String({ minLength: 1 }),
   name: Type.String({ minLength: 1 }),
@@ -55,6 +86,19 @@ export type SettingsWeComSeat = Static<typeof SettingsWeComSeatSchema>;
 export type SettingsSubAccount = Static<typeof SettingsSubAccountSchema>;
 export type SettingsSubAccountsResponse = Static<
   typeof SettingsSubAccountsResponseSchema
+>;
+export type SettingsManagedAccountOnlineStatus = Static<
+  typeof SettingsManagedAccountOnlineStatusSchema
+>;
+export type SettingsManagedAccountSubAccount = Static<
+  typeof SettingsManagedAccountSubAccountSchema
+>;
+export type SettingsManagedAccount = Static<typeof SettingsManagedAccountSchema>;
+export type SettingsManagedAccountsResponse = Static<
+  typeof SettingsManagedAccountsResponseSchema
+>;
+export type SettingsManagedAccountSubAccountsUpdateRequest = Static<
+  typeof SettingsManagedAccountSubAccountsUpdateRequestSchema
 >;
 export type SettingsSubAccountCreateRequest = Static<
   typeof SettingsSubAccountCreateRequestSchema

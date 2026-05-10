@@ -99,6 +99,94 @@ describe("Chat settings pages", () => {
       },
       success: true,
     });
+    mock.onGet("/server/settings/managed-accounts").reply(200, {
+      data: {
+        managedAccounts: [
+          {
+            avatarUrl: "https://example.com/drc.png",
+            id: "101",
+            name: "德瑞可",
+            onlineStatus: "offline",
+            subAccounts: [
+              {
+                account: "agent001",
+                id: "11",
+                isTakingOver: true,
+                name: "客服一号",
+                status: "active",
+                type: 0,
+              },
+              {
+                account: "agent002",
+                id: "12",
+                isTakingOver: false,
+                name: "客服二号",
+                status: "active",
+                type: 0,
+              },
+              {
+                account: "agent003",
+                id: "13",
+                isTakingOver: false,
+                name: "客服三号",
+                status: "active",
+                type: 0,
+              },
+              {
+                account: "agent004",
+                id: "14",
+                isTakingOver: false,
+                name: "客服四号",
+                status: "disabled",
+                type: 0,
+              },
+            ],
+          },
+          {
+            avatarUrl: "https://example.com/ndt.png",
+            id: "102",
+            name: "念都堂",
+            onlineStatus: "online",
+            subAccounts: [],
+          },
+        ],
+        subAccounts: [
+          {
+            account: "agent001",
+            id: "11",
+            isTakingOver: false,
+            name: "客服一号",
+            status: "active",
+            type: 0,
+          },
+          {
+            account: "agent002",
+            id: "12",
+            isTakingOver: false,
+            name: "客服二号",
+            status: "active",
+            type: 0,
+          },
+          {
+            account: "agent003",
+            id: "13",
+            isTakingOver: false,
+            name: "客服三号",
+            status: "active",
+            type: 0,
+          },
+          {
+            account: "agent004",
+            id: "14",
+            isTakingOver: false,
+            name: "客服四号",
+            status: "disabled",
+            type: 0,
+          },
+        ],
+      },
+      success: true,
+    });
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     document.documentElement.classList.remove("dark");
     setSystemColorScheme(false);
@@ -126,14 +214,22 @@ describe("Chat settings pages", () => {
     });
   });
 
-  it("shows demo CRUD and form reference pages inside the settings shell", async () => {
+  it("shows real managed-account and form reference pages inside the settings shell", async () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");
 
     expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "新增账号" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "编辑 护肤小助理" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "在线状态" })).toBeInTheDocument();
+    expect(screen.getByText("德瑞可")).toBeInTheDocument();
+    expect(screen.getByText("离线")).toBeInTheDocument();
+    expect(screen.getByText("念都堂")).toBeInTheDocument();
+    expect(screen.getByText("在线")).toBeInTheDocument();
+    expect(
+      screen.getByText("客服一号（接管中），客服二号，客服三号等4人"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "关联子账号" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "新增账号" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "子账号管理" }));
 
@@ -309,6 +405,82 @@ describe("Chat settings pages", () => {
       ),
     ).toBe(true);
     expect(mock.history.put).toHaveLength(0);
+  });
+
+  it("shows related sub-account summaries and updates managed-account relations", async () => {
+    const user = userEvent.setup();
+    mock.onPut("/server/settings/managed-accounts/101/sub-accounts").reply((config) => [
+      200,
+      {
+        data: {
+          avatarUrl: "https://example.com/drc.png",
+          id: "101",
+          name: "德瑞可",
+          onlineStatus: "offline",
+          subAccounts: [
+            {
+              account: "agent002",
+              id: "12",
+              isTakingOver: false,
+              name: "客服二号",
+              status: "active",
+              type: 0,
+            },
+            {
+              account: "agent003",
+              id: "13",
+              isTakingOver: false,
+              name: "客服三号",
+              status: "active",
+              type: 0,
+            },
+            {
+              account: "agent004",
+              id: "14",
+              isTakingOver: false,
+              name: "客服四号",
+              status: "disabled",
+              type: 0,
+            },
+          ],
+        },
+        success: true,
+      },
+    ]);
+    renderRoute("/chat/settings");
+
+    expect(await screen.findByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
+    expect(
+      screen.getByText("客服一号（接管中），客服二号，客服三号等4人"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("未关联")).toBeInTheDocument();
+
+    await user.hover(screen.getByRole("button", { name: "查看 德瑞可 的全部关联子账号" }));
+
+    expect(screen.getByText("关联子账号 · 4")).toBeInTheDocument();
+    expect(screen.getAllByText("客服四号")).not.toHaveLength(0);
+    expect(screen.queryByRole("textbox", { name: "搜索关联子账号" })).not.toBeInTheDocument();
+
+    await user.unhover(screen.getByRole("button", { name: "查看 德瑞可 的全部关联子账号" }));
+    await user.click(screen.getAllByRole("button", { name: "关联子账号" })[0]);
+    expect(screen.getByRole("dialog", { name: "关联子账号" })).toBeInTheDocument();
+    expect(screen.getByText("已选择 4 个")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("textbox", { name: "搜索并选择子账号" }));
+    await user.type(screen.getByRole("textbox", { name: "搜索并选择子账号" }), "二号");
+    expect(screen.getByRole("checkbox", { name: "客服二号" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "客服三号" })).not.toBeInTheDocument();
+    await user.clear(screen.getByRole("textbox", { name: "搜索并选择子账号" }));
+    await user.click(screen.getByRole("checkbox", { name: "客服一号" }));
+    expect(screen.getByText("已选择 3 个")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(mock.history.put).toHaveLength(1);
+    });
+    expect(JSON.parse(mock.history.put[0]?.data ?? "{}")).toEqual({
+      subAccountIds: ["12", "13", "14"],
+    });
   });
 
   it("marks the main account and disables destructive row actions", async () => {

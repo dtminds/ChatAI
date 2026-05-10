@@ -43,7 +43,7 @@ export function ConversationCard({
       className={cn(
         "group relative mb-1 w-full overflow-visible border-b px-2.5 py-2.5 text-left",
         isActive
-          ? "rounded-lg border-transparent bg-secondary text-foreground"
+          ? "rounded-xl border-transparent bg-secondary text-foreground"
           : "border-divider/60 bg-surface",
       )}
     >
@@ -54,7 +54,7 @@ export function ConversationCard({
         variant="ghost"
       >
         <div className="relative">
-          <Avatar className="size-10">
+          <Avatar className="size-8">
             <AvatarImage
               alt={conversation.customerName}
               src={conversation.customerAvatarUrl}

@@ -88,18 +88,18 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
               strokeWidth={1.8}
             />
           </SegmentedControlItem>
-          <SegmentedControlItem aria-label="跟随系统" value="system">
-            <HugeiconsIcon
-              color="currentColor"
-              icon={ComputerIcon}
-              size={16}
-              strokeWidth={1.8}
-            />
-          </SegmentedControlItem>
           <SegmentedControlItem aria-label="深色模式" value="dark">
             <HugeiconsIcon
               color="currentColor"
               icon={Moon02Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </SegmentedControlItem>
+          <SegmentedControlItem aria-label="跟随系统" value="system">
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ComputerIcon}
               size={16}
               strokeWidth={1.8}
             />

@@ -5,8 +5,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
-  PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { Account } from "@/pages/chat/chat-types";
@@ -76,23 +76,7 @@ export function AccountSidebarItem({
     clearClosePopoverTimer();
     setIsTakeoverPopoverOpen(false);
   };
-  const handleTakeoverTriggerKeyDown = (
-    event: React.KeyboardEvent<HTMLButtonElement>,
-  ) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
-      event.preventDefault();
-      event.stopPropagation();
-      openTakeoverPopover();
-      return;
-    }
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      closeTakeoverPopoverImmediately();
-    }
-  };
-  const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleCardKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== "Enter" && event.key !== " ") {
       return;
     }
@@ -104,119 +88,110 @@ export function AccountSidebarItem({
   useEffect(() => clearClosePopoverTimer, []);
 
   return (
-    <div
-      aria-label={`选择 ${account.name}`}
-      className={cn(
-        "relative flex w-full items-center gap-2 rounded-[16px] border px-2.5 py-2 text-left transition-colors",
-        isActive
-          ? "border-border bg-surface"
-          : "border-transparent bg-transparent hover:bg-surface-hover",
-      )}
-      data-testid={`account-sidebar-item-${account.id}`}
-      onClick={onClick}
-      onKeyDown={handleCardKeyDown}
-      role="button"
-      tabIndex={0}
-      title={account.name}
+    <Popover
+      onOpenChange={setIsTakeoverPopoverOpen}
+      open={isTakeoverPopoverOpen}
     >
-      <div
-        className="relative"
-        data-testid={`account-avatar-wrap-${account.id}`}
-      >
-        <Avatar className="size-9">
-          <AvatarImage alt={account.name} src={account.avatarUrl} />
-          <AvatarFallback>{account.name.slice(0, 1)}</AvatarFallback>
-        </Avatar>
-        {shouldShowUnreadBadge ? (
-          <span
-            aria-label={`${account.name} 未读消息 ${account.unreadCount}`}
-            className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground"
-          >
-            {account.unreadCount}
-          </span>
-        ) : null}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center">
-          <span
-            className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold text-foreground"
-          >
-            {account.name}
-          </span>
-        </div>
-        <div
-          className="mt-1 flex items-center"
-          data-testid={`account-sidebar-item-status-row-${account.id}`}
-        >
-          {canTakeOver ? (
-            <Popover
-              onOpenChange={setIsTakeoverPopoverOpen}
-              open={isTakeoverPopoverOpen}
-            >
-              <PopoverTrigger asChild>
-                <button
-                  aria-label={`${account.name} ${statusLabel}`}
-                  className="inline-flex cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
-                  onBlur={closeTakeoverPopover}
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={handleTakeoverTriggerKeyDown}
-                  onMouseEnter={openTakeoverPopover}
-                  onMouseLeave={closeTakeoverPopover}
-                  type="button"
-                >
-                  {statusBadge}
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                align="start"
-                className="w-[220px]"
-                onBlur={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget)) {
-                    closeTakeoverPopover();
-                  }
-                }}
-                onClick={(event) => event.stopPropagation()}
-                onCloseAutoFocus={(event) => event.preventDefault()}
-                onFocus={openTakeoverPopover}
-                onEscapeKeyDown={closeTakeoverPopoverImmediately}
-                onMouseEnter={openTakeoverPopover}
-                onMouseLeave={closeTakeoverPopover}
-                side="bottom"
-              >
-                <p className="text-[12px] leading-5 text-muted-foreground">
-                  当前账号未被你接管，你将无法：
-                </p>
-                <ul className="mt-1 list-disc space-y-1 pl-4 text-[12px] leading-5 text-muted-foreground">
-                  <li>使用该账号发送消息</li>
-                  <li>标记消息已读状态</li>
-                </ul>
-                <Button
-                  className="mt-3 h-8 w-full rounded-[10px] text-xs"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    startTransition(() => {
-                      void onTakeOverAccount?.(account.id);
-                    });
-                  }}
-                  size="sm"
-                  type="button"
-                >
-                  <HugeiconsIcon
-                    color="currentColor"
-                    icon={UserCheck01Icon}
-                    size={14}
-                    strokeWidth={1.8}
-                  />
-                  <span>接管账号</span>
-                </Button>
-              </PopoverContent>
-            </Popover>
-          ) : (
-            statusBadge
+      <PopoverAnchor asChild>
+        <button
+          aria-label={`选择 ${account.name}`}
+          className={cn(
+            "relative flex w-full items-center gap-2 rounded-[16px] border px-2.5 py-2 text-left transition-colors",
+            isActive
+              ? "border-border bg-surface"
+              : "border-transparent bg-transparent hover:bg-surface-hover",
           )}
-        </div>
-      </div>
-    </div>
+          data-testid={`account-sidebar-item-${account.id}`}
+          onBlur={closeTakeoverPopover}
+          onClick={onClick}
+          onFocus={canTakeOver ? openTakeoverPopover : undefined}
+          onKeyDown={handleCardKeyDown}
+          onMouseEnter={canTakeOver ? openTakeoverPopover : undefined}
+          onMouseLeave={canTakeOver ? closeTakeoverPopover : undefined}
+          title={account.name}
+          type="button"
+        >
+          <div
+            className="relative"
+            data-testid={`account-avatar-wrap-${account.id}`}
+          >
+            <Avatar className="size-9">
+              <AvatarImage alt={account.name} src={account.avatarUrl} />
+              <AvatarFallback>{account.name.slice(0, 1)}</AvatarFallback>
+            </Avatar>
+            {shouldShowUnreadBadge ? (
+              <span
+                aria-label={`${account.name} 未读消息 ${account.unreadCount}`}
+                className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground"
+              >
+                {account.unreadCount}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center">
+              <span
+                className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold text-foreground"
+              >
+                {account.name}
+              </span>
+            </div>
+            <div
+              className="mt-1 flex items-center"
+              data-testid={`account-sidebar-item-status-row-${account.id}`}
+            >
+              {statusBadge}
+            </div>
+          </div>
+        </button>
+      </PopoverAnchor>
+      {canTakeOver ? (
+        <PopoverContent
+          align="start"
+          className="w-[240px]"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) {
+              closeTakeoverPopover();
+            }
+          }}
+          onClick={(event) => event.stopPropagation()}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          onFocus={openTakeoverPopover}
+          onEscapeKeyDown={closeTakeoverPopoverImmediately}
+          onMouseEnter={openTakeoverPopover}
+          onMouseLeave={closeTakeoverPopover}
+          side="right"
+          sideOffset={2}
+        >
+          <p className="text-[13px] font-medium leading-5 text-warning">
+            当前账号未被你接管，你将无法
+          </p>
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-[12px] leading-5 text-muted-foreground">
+            <li>使用该账号发送消息</li>
+            <li>标记消息已读状态</li>
+          </ul>
+          <Button
+            className="mt-3 h-8 w-full rounded-[10px] text-xs"
+            onClick={(event) => {
+              event.stopPropagation();
+              startTransition(() => {
+                void onTakeOverAccount?.(account.id);
+              });
+            }}
+            size="sm"
+            type="button"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={UserCheck01Icon}
+              size={14}
+              strokeWidth={1.8}
+            />
+            <span>接管账号</span>
+          </Button>
+        </PopoverContent>
+      ) : null}
+    </Popover>
   );
 }

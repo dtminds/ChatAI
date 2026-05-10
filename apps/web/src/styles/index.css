@@ -768,7 +768,9 @@ html.dark[data-appearance-theme="nature"] {
 
 @theme inline {
   --font-sans:
-    "Inter",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,
+    -apple-system-body, ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui,
+    "Segoe UI", "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
     sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);

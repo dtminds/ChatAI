@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -144,11 +144,11 @@ describe("AccountRail", () => {
 
     expect(screen.getByText("接管中")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "lsave 接管中" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "support 未接管" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "support 未接管" })).not.toBeInTheDocument();
 
-    await user.hover(screen.getByRole("button", { name: "support 未接管" }));
+    await user.hover(screen.getByRole("button", { name: "选择 support" }));
 
-    expect(screen.getByText("当前账号未被你接管，你将无法：")).toBeInTheDocument();
+    expect(screen.getByText("当前账号未被你接管，你将无法")).toBeInTheDocument();
     expect(screen.getByText("使用该账号发送消息")).toBeInTheDocument();
     expect(screen.getByText("标记消息已读状态")).toBeInTheDocument();
 
@@ -203,7 +203,7 @@ describe("AccountRail", () => {
     expect(screen.queryByTestId("account-sidebar-item-operator-account-2")).not.toBeInTheDocument();
   });
 
-  it("opens and closes the takeover popover from keyboard commands", async () => {
+  it("opens and closes the takeover popover from card hover", async () => {
     const user = userEvent.setup();
 
     render(
@@ -216,25 +216,26 @@ describe("AccountRail", () => {
       />,
     );
 
-    const statusTrigger = screen.getByRole("button", { name: "support 未接管" });
-
-    statusTrigger.focus();
+    const card = screen.getByRole("button", { name: "选择 support" });
 
     expect(
-      screen.queryByText("当前账号未被你接管，你将无法："),
+      screen.queryByText("当前账号未被你接管，你将无法"),
     ).not.toBeInTheDocument();
 
-    await user.keyboard("{Enter}");
+    await user.hover(card);
 
     expect(
-      screen.getByText("当前账号未被你接管，你将无法："),
+      screen.getByText("当前账号未被你接管，你将无法"),
     ).toBeInTheDocument();
+    expect(screen.getByText("当前账号未被你接管，你将无法")).toHaveClass("text-warning");
 
-    await user.keyboard("{Escape}");
+    await user.unhover(card);
 
-    expect(
-      screen.queryByText("当前账号未被你接管，你将无法："),
-    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("当前账号未被你接管，你将无法"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("uses a distinct warning treatment for untaken account labels and dots", () => {

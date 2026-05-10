@@ -1,7 +1,7 @@
 import { startTransition } from "react";
 import {
   Chat01Icon,
-  CustomerService02Icon,
+  ChartBreakoutCircleIcon,
   LogoutSquare01Icon,
   Menu11Icon,
   MoreVerticalIcon,
@@ -80,9 +80,9 @@ export function AccountRail({
       <div className="mb-3 flex items-center px-1">
         <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <HugeiconsIcon
-            icon={CustomerService02Icon}
-            size={18}
-            strokeWidth={1.7}
+            icon={ChartBreakoutCircleIcon}
+            size={24}
+            strokeWidth={2}
           />
         </div>
       </div>
@@ -94,7 +94,7 @@ export function AccountRail({
           return (
             <button
               className={cn(
-                "flex h-9 w-full items-center gap-2 rounded-[8px] px-3 text-[14px] text-foreground transition-colors",
+                "flex h-8.5 w-full items-center gap-2 rounded-[8px] px-3 text-[14px] text-foreground transition-colors",
                 isActive
                   ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                   : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -151,9 +151,9 @@ export function AccountRail({
             >
               <Avatar
                 aria-label={`${signedInName} 登录头像`}
-                className="size-8 shrink-0 rounded-lg bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
+                className="size-8 shrink-0 rounded-full bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
               >
-                <AvatarFallback className="rounded-lg text-sm">
+                <AvatarFallback className="rounded-full text-sm">
                   <span data-testid="account-rail-footer-avatar-fallback">
                     {signedInAvatarFallback}
                   </span>
@@ -188,9 +188,9 @@ export function AccountRail({
               >
                 <Avatar
                   aria-label={`${signedInName} 账号头像`}
-                  className="size-6 shrink-0 rounded-lg bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
+                  className="size-6 shrink-0 rounded-full bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
                 >
-                  <AvatarFallback className="rounded-lg text-sm">
+                  <AvatarFallback className="rounded-full text-sm">
                     {signedInAvatarFallback}
                   </AvatarFallback>
                 </Avatar>

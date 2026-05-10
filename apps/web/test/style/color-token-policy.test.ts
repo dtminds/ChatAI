@@ -75,6 +75,18 @@ describe("color token policy", () => {
     expect(themeCss).not.toContain("--avatar-end");
   });
 
+  test("keeps generic and Chinese font fallbacks in the sans stack", () => {
+    expect(themeCss).toContain("ui-sans-serif");
+    expect(themeCss).toContain("system-ui");
+    expect(themeCss).toContain("sans-serif");
+    expect(themeCss).not.toContain("\"ui-sans-serif\"");
+    expect(themeCss).not.toContain("\"system-ui\"");
+    expect(themeCss).not.toContain("\"sans-serif\"");
+    expect(themeCss).toContain("\"PingFang SC\"");
+    expect(themeCss).toContain("\"Hiragino Sans GB\"");
+    expect(themeCss).toContain("\"Microsoft YaHei\"");
+  });
+
   test("exposes shadcn sidebar theme tokens", () => {
     expect(themeCss).toContain("--sidebar: oklch(0.98 0 0);");
     expect(themeCss).toContain("--sidebar-foreground: oklch(0.14 0 0);");

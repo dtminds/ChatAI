@@ -881,11 +881,10 @@ function SubAccountDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor={passwordId}>密码</Label>
-              <Button
-                className="h-auto px-0"
+              <button
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
                 onClick={handleGeneratePassword}
                 type="button"
-                variant="link"
               >
                 <HugeiconsIcon
                   color="currentColor"
@@ -894,7 +893,7 @@ function SubAccountDialog({
                   strokeWidth={1.8}
                 />
                 <span>随机生成</span>
-              </Button>
+              </button>
             </div>
             <div className="relative">
               <Input

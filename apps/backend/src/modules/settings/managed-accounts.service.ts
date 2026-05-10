@@ -135,8 +135,8 @@ export class ManagedAccountSettingsService {
       .execute() as Promise<ManagedAccountRow[]>;
   }
 
-  private listAssignableSubAccountRows(scope: TenantScope) {
-    return this.db
+  private listAssignableSubAccountRows(scope: TenantScope, subAccountIds?: number[]) {
+    let query = this.db
       .selectFrom("xy_wap_embed_sub_user as sub_user")
       .select([
         "sub_user.account",
@@ -147,7 +147,13 @@ export class ManagedAccountSettingsService {
       ])
       .where("sub_user.uid", "=", scope.uid)
       .where("sub_user.platform", "=", scope.platform)
-      .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
+      .where("sub_user.status", "!=", dbSubAccountStatus.deleted);
+
+    if (subAccountIds !== undefined) {
+      query = query.where("sub_user.id", "in", subAccountIds);
+    }
+
+    return query
       .orderBy("sub_user.id", "desc")
       .execute() as Promise<SubAccountRow[]>;
   }
@@ -208,7 +214,7 @@ export class ManagedAccountSettingsService {
       return [];
     }
 
-    const subAccounts = await this.listAssignableSubAccountRows(scope);
+    const subAccounts = await this.listAssignableSubAccountRows(scope, uniqueSubAccountIds);
     const validSubAccountIds = new Set(subAccounts.map((subAccount) => subAccount.id));
 
     if (uniqueSubAccountIds.some((subAccountId) => !validSubAccountIds.has(subAccountId))) {

@@ -474,8 +474,25 @@ describe("Chat settings pages", () => {
     await user.hover(screen.getByRole("button", { name: "查看 德瑞可 的全部关联子账号" }));
 
     expect(screen.getByText("关联子账号 · 5")).toBeInTheDocument();
+    const relatedSubAccountsPopover = screen.getByText("关联子账号 · 5").closest("[role='dialog']");
+
+    expect(relatedSubAccountsPopover).toBeInTheDocument();
     expect(screen.getAllByText("客服四号")).not.toHaveLength(0);
     expect(screen.queryByRole("textbox", { name: "搜索关联子账号" })).not.toBeInTheDocument();
+    expect(
+      within(relatedSubAccountsPopover as HTMLElement).getAllByLabelText("账号类型：主账号")
+        .length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(relatedSubAccountsPopover as HTMLElement).getAllByLabelText("账号类型：子账号")
+        .length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(relatedSubAccountsPopover as HTMLElement).getAllByText("已停用").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(relatedSubAccountsPopover as HTMLElement).queryByLabelText("关联子账号 客服一号"),
+    ).not.toBeInTheDocument();
 
     await user.unhover(screen.getByRole("button", { name: "查看 德瑞可 的全部关联子账号" }));
     await user.click(screen.getAllByRole("button", { name: "关联子账号" })[0]);

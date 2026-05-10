@@ -100,6 +100,7 @@ describe("settings managed-account routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(db.subAccountValidationWheres).toContainEqual(["sub_user.id", "in", [12]]);
     expect(db.deletedRelationSeatIds).toEqual([101]);
     expect(db.insertedRelations).toEqual([
       {
@@ -219,6 +220,7 @@ function createSettingsDbMock() {
   const state = {
     deletedRelationSeatIds: [] as number[],
     insertedRelations: [] as Array<Record<string, unknown>>,
+    subAccountValidationWheres: [] as Array<[string, string, unknown]>,
     selectFrom(table: string) {
       const wheres: Array<[string, string, unknown]> = [];
       const builder = {
@@ -240,13 +242,23 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_sub_user as sub_user") {
+            state.subAccountValidationWheres = wheres;
+
             return subUsers
               .filter((subUser) => {
                 if (subUser.status === 0) {
                   return false;
                 }
 
+                const idFilter = wheres.find(([column]) => column === "sub_user.id")?.[2];
                 const typeFilter = wheres.find(([column]) => column === "sub_user.type")?.[2];
+
+                if (
+                  Array.isArray(idFilter) &&
+                  !idFilter.includes(subUser.id)
+                ) {
+                  return false;
+                }
 
                 return typeFilter === undefined || subUser.type === typeFilter;
               })

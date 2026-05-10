@@ -377,10 +377,10 @@ function RelatedSubAccountsPopoverContent({
                 className="flex h-10 items-center gap-2 rounded-[8px] px-2.5 text-sm text-foreground"
                 key={subAccount.id}
               >
-                <SubAccountAvatar subAccount={subAccount} />
-                <span className="min-w-0 flex-1 truncate">
-                  {formatSubAccountName(subAccount)}
-                </span>
+                <SubAccountIdentity
+                  name={formatSubAccountName(subAccount)}
+                  subAccount={subAccount}
+                />
               </div>
             ))}
           </div>
@@ -606,8 +606,10 @@ function SubAccountSelectionList({
 }
 
 function SubAccountIdentity({
+  name,
   subAccount,
 }: {
+  name?: string;
   subAccount: SettingsManagedAccountSubAccount;
 }) {
   const isActive = subAccount.status === "active";
@@ -625,7 +627,7 @@ function SubAccountIdentity({
       >
         {subAccount.type === 1 ? "主账号" : "子账号"}
       </Badge>
-      <span className="min-w-0 max-w-[9rem] truncate">{subAccount.name}</span>
+      <span className="min-w-0 max-w-[9rem] truncate">{name ?? subAccount.name}</span>
       {isActive ? null : (
         <span className="shrink-0 text-xs font-medium text-muted-foreground">
           已停用
@@ -657,26 +659,6 @@ function ManagedAccountAvatar({
       ) : null}
       <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">
         {getInitial(account.name)}
-      </AvatarFallback>
-    </Avatar>
-  );
-}
-
-function SubAccountAvatar({
-  className,
-  subAccount,
-}: {
-  className?: string;
-  subAccount: SettingsManagedAccountSubAccount;
-}) {
-  return (
-    <Avatar
-      aria-label={`关联子账号 ${subAccount.name}`}
-      className={cn("size-8 rounded-full border-2 border-surface", className)}
-      title={subAccount.name}
-    >
-      <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">
-        {getInitial(subAccount.name)}
       </AvatarFallback>
     </Avatar>
   );

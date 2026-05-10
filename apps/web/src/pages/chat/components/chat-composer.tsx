@@ -403,7 +403,7 @@ export function ChatComposer({
           >
             <SelectTrigger
               aria-label="选择 Enter 键行为"
-              className="h-7 min-w-0 border-0 bg-transparent px-1.5 text-muted-foreground shadow-none focus:ring-0"
+              className="h-7 min-w-0 border-0 text-[12px] bg-transparent px-1.5 text-muted-foreground shadow-none focus:ring-0"
             >
               <span>{INPUT_ENTER_BEHAVIOR_LABELS[inputEnterBehavior]}</span>
             </SelectTrigger>

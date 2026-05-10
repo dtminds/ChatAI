@@ -798,12 +798,19 @@ function SubAccountDialog({
     seatIds: [],
   });
   const [formError, setFormError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [seatQuery, setSeatQuery] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const accountId = useId();
   const nameId = useId();
   const passwordId = useId();
+  const passwordHelpId = useId();
   const mode = state?.mode ?? "create";
+  const passwordDescriptionId = passwordError
+    ? `${passwordHelpId}-error`
+    : mode === "create"
+      ? `${passwordHelpId}-hint`
+      : undefined;
 
   useEffect(() => {
     if (!state) {
@@ -817,6 +824,7 @@ function SubAccountDialog({
       seatIds: state.subAccount?.seats.map((seat) => seat.seatId) ?? [],
     });
     setFormError("");
+    setPasswordError("");
     setSeatQuery("");
     setShowPassword(false);
   }, [state]);
@@ -826,6 +834,10 @@ function SubAccountDialog({
       ...current,
       [field]: value,
     }));
+
+    if (field === "password") {
+      setPasswordError("");
+    }
   }
 
   function toggleSeat(seatId: string) {
@@ -839,11 +851,14 @@ function SubAccountDialog({
 
   function handleGeneratePassword() {
     updateField("password", generatePassword());
+    setPasswordError("");
     setShowPassword(true);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setFormError("");
+    setPasswordError("");
 
     if (!formValues.account.trim() || !formValues.name.trim()) {
       setFormError("请完整填写子账号信息");
@@ -851,14 +866,14 @@ function SubAccountDialog({
     }
 
     if (mode === "create" && !formValues.password.trim()) {
-      setFormError("请填写密码");
+      setPasswordError("请填写密码");
       return;
     }
 
     const normalizedPassword = formValues.password.trim();
 
     if (normalizedPassword && !isValidSettingsSubAccountPassword(normalizedPassword)) {
-      setFormError(settingsSubAccountPasswordMessage);
+      setPasswordError(settingsSubAccountPasswordMessage);
       return;
     }
 
@@ -908,6 +923,8 @@ function SubAccountDialog({
             </div>
             <div className="relative">
               <Input
+                aria-describedby={passwordDescriptionId}
+                aria-invalid={passwordError ? true : undefined}
                 autoComplete="new-password"
                 id={passwordId}
                 name={mode === "create" ? "newSubAccountPassword" : "updatedSubAccountPassword"}
@@ -932,8 +949,12 @@ function SubAccountDialog({
                 />
               </Button>
             </div>
-            {mode === "create" ? (
-              <p className="text-xs text-muted-foreground">
+            {passwordError ? (
+              <p className="text-xs text-destructive" id={`${passwordHelpId}-error`}>
+                {passwordError}
+              </p>
+            ) : mode === "create" ? (
+              <p className="text-xs text-muted-foreground" id={`${passwordHelpId}-hint`}>
                 {settingsSubAccountPasswordMessage}
               </p>
             ) : null}

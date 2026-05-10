@@ -139,7 +139,9 @@ describe("Chat settings pages", () => {
 
     expect(screen.getByRole("heading", { name: "子账号管理" })).toBeInTheDocument();
     expect(await screen.findByRole("table", { name: "子账号列表" })).toBeInTheDocument();
-    expect(screen.getAllByText("主账号")).toHaveLength(2);
+    expect(screen.getByRole("columnheader", { name: "账号类型" })).toBeInTheDocument();
+    expect(screen.getByLabelText("账号类型：主账号")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("账号类型：子账号")).toHaveLength(2);
     expect(screen.getByText("客服一号")).toBeInTheDocument();
     expect(screen.getByText("agent001")).toBeInTheDocument();
     expect(screen.getByLabelText("关联企微账号 德瑞可")).toBeInTheDocument();
@@ -313,7 +315,8 @@ describe("Chat settings pages", () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings/sub-accounts");
 
-    expect(await screen.findAllByText("主账号")).toHaveLength(2);
+    expect(await screen.findByLabelText("账号类型：主账号")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("账号类型：子账号")).toHaveLength(2);
 
     await user.click(screen.getByRole("button", { name: "打开 主账号 操作菜单" }));
 

@@ -4,7 +4,6 @@ import {
   MoreHorizontalIcon,
   Search01Icon,
   ShuffleIcon,
-  UserAccountIcon,
   ViewOffIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -296,7 +295,8 @@ export function SubAccountsSettingsPage() {
           <Table aria-label="子账号列表">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[32%] px-5 py-4">账号</TableHead>
+                <TableHead className="w-[28%] px-5 py-4">账号</TableHead>
+                <TableHead className="w-[14%] px-5 py-4">账号类型</TableHead>
                 <TableHead className="w-[14%] px-5 py-4">账号状态</TableHead>
                 <TableHead className="w-[30%] px-5 py-4">关联企微账号</TableHead>
                 <TableHead className="px-5 py-4">操作</TableHead>
@@ -305,7 +305,7 @@ export function SubAccountsSettingsPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell className="px-5 py-10" colSpan={4}>
+                  <TableCell className="px-5 py-10" colSpan={5}>
                     <div
                       aria-label="正在加载子账号"
                       className="flex items-center justify-center gap-3 text-sm text-muted-foreground"
@@ -337,7 +337,7 @@ export function SubAccountsSettingsPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={4}>
+                  <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={5}>
                     暂无子账号
                   </TableCell>
                 </TableRow>
@@ -421,23 +421,23 @@ function SubAccountRow({
   return (
     <TableRow>
       <TableCell className="px-5 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-[8px] bg-primary/10 text-primary">
-            <HugeiconsIcon
-              color="currentColor"
-              icon={UserAccountIcon}
-              size={16}
-              strokeWidth={1.8}
-            />
-          </div>
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-2">
-              <p className="truncate font-medium text-foreground">{subAccount.name}</p>
-              {isMainAccount ? <Badge>主账号</Badge> : null}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">{subAccount.account}</p>
-          </div>
+        <div className="min-w-0">
+          <p className="truncate font-medium text-foreground">{subAccount.name}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{subAccount.account}</p>
         </div>
+      </TableCell>
+      <TableCell className="px-5 py-5">
+        <Badge
+          aria-label={isMainAccount ? "账号类型：主账号" : "账号类型：子账号"}
+          className={
+            isMainAccount
+              ? "bg-primary/12 text-primary"
+              : "bg-success-muted text-success"
+          }
+          variant={isMainAccount ? "default" : "secondary"}
+        >
+          {isMainAccount ? "主账号" : "子账号"}
+        </Badge>
       </TableCell>
       <TableCell className="px-5 py-5">
         <StatusText tone={isActive ? "success" : "muted"}>

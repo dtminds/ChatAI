@@ -656,6 +656,7 @@ function SeatSelectionList({
   selectedSeatIds: string[];
 }) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const pickerAnchorRef = useRef<HTMLDivElement | null>(null);
   const selectedSeatIdSet = new Set(selectedSeatIds);
   const normalizedQuery = query.trim().toLowerCase();
   const filteredSeats = normalizedQuery
@@ -678,23 +679,32 @@ function SeatSelectionList({
         open={isPickerOpen}
       >
         <PopoverAnchor asChild>
-          <Input
-            aria-label="搜索并选择托管账号"
-            className="h-9 rounded-[8px]"
-            onChange={(event) => {
-              onQueryChange(event.target.value);
-              setIsPickerOpen(true);
-            }}
-            onFocus={() => setIsPickerOpen(true)}
-            placeholder="搜索并选择托管账号"
-            value={query}
-          />
+          <div ref={pickerAnchorRef}>
+            <Input
+              aria-label="搜索并选择托管账号"
+              className="h-9 rounded-[8px]"
+              onChange={(event) => {
+                onQueryChange(event.target.value);
+                setIsPickerOpen(true);
+              }}
+              onFocus={() => setIsPickerOpen(true)}
+              placeholder="搜索并选择托管账号"
+              value={query}
+            />
+          </div>
         </PopoverAnchor>
 
         <PopoverContent
           align="start"
           className="w-[var(--radix-popper-anchor-width)] rounded-[10px] p-2"
           onCloseAutoFocus={(event) => event.preventDefault()}
+          onInteractOutside={(event) => {
+            const target = event.target;
+
+            if (target instanceof Node && pickerAnchorRef.current?.contains(target)) {
+              event.preventDefault();
+            }
+          }}
           onOpenAutoFocus={(event) => event.preventDefault()}
           sideOffset={8}
         >

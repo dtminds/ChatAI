@@ -30,6 +30,7 @@ import {
   $exportComposerSegments,
   $insertComposerImage,
   $insertComposerText,
+  $removeComposerTextRange,
 } from "@/pages/chat/components/composer/lexical-utils";
 import { toWechatEmojiToken } from "@/pages/chat/wechat-emoji";
 
@@ -231,12 +232,7 @@ export function MentionTextRemovalPlugin({
     }
 
     editor.update(() => {
-      const text = $getRoot().getTextContent();
-      const nextText =
-        text.slice(0, pendingRemoval.start) + text.slice(pendingRemoval.end);
-
-      $clearComposer();
-      $insertComposerText(nextText);
+      $removeComposerTextRange(pendingRemoval.start, pendingRemoval.end);
     });
     onRemovalComplete();
   }, [editor, onRemovalComplete, pendingRemoval]);

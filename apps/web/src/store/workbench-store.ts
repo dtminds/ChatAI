@@ -12,13 +12,12 @@ import {
 import {
   getComposerSegmentsPreview,
   normalizeComposerSegments,
-  type ComposerImageSegment,
   type ComposerSegment,
-  type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import type {
   Account,
+  ChatMessage,
   ChatMode,
   Conversation,
   CustomerProfile,
@@ -272,7 +271,7 @@ function buildSegmentClientMessageId(clientMessageId: string, index: number) {
   return index === 0 ? clientMessageId : `${clientMessageId}_${index + 1}`;
 }
 
-function buildOptimisticMessageContent(segment: ComposerSegment): Message["content"] {
+function buildOptimisticMessageContent(segment: ComposerSegment): ChatMessage["content"] {
   if (segment.type === "image") {
     return {
       alt: segment.alt,

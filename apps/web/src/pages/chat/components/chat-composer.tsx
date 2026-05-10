@@ -296,30 +296,30 @@ export function ChatComposer({
     onSelectMentionMember,
   ]);
 
-  const handleImageFiles = (fileList: FileList | null) => {
+  const handleImageFiles = async (fileList: FileList | null) => {
     const files = Array.from(fileList ?? []).filter((file) =>
       file.type.startsWith("image/"),
     );
+    const images = await Promise.all(
+      files.map(async (file) => ({
+        alt: file.name || "图片",
+        src: await readImageFileAsDataUrl(file),
+      })),
+    );
 
-    for (const file of files) {
-      const reader = new FileReader();
+    for (const image of images) {
+      if (!image.src) {
+        continue;
+      }
 
-      reader.addEventListener("load", () => {
-        const src = typeof reader.result === "string" ? reader.result : "";
-
-        if (!src) {
-          return;
-        }
-
-        composerRef.current?.dispatchCommand(INSERT_COMPOSER_IMAGE_COMMAND, {
-          alt: file.name || "图片",
-          localUrl: src,
-          src,
-        });
-        composerRef.current?.focus();
+      composerRef.current?.dispatchCommand(INSERT_COMPOSER_IMAGE_COMMAND, {
+        alt: image.alt,
+        localUrl: image.src,
+        src: image.src,
       });
-      reader.readAsDataURL(file);
     }
+
+    composerRef.current?.focus();
   };
 
   const handleEmojiSelect = (name: WechatEmojiName) => {
@@ -380,7 +380,7 @@ export function ChatComposer({
             className="sr-only"
             multiple
             onChange={(event) => {
-              handleImageFiles(event.currentTarget.files);
+              void handleImageFiles(event.currentTarget.files);
               event.currentTarget.value = "";
             }}
             ref={imageInputRef}
@@ -615,4 +615,16 @@ function getMentionTrigger(draft: string, cursorPosition: number) {
     query: match[2],
     start: atIndex,
   };
+}
+
+function readImageFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve) => {
+    const reader = new FileReader();
+
+    reader.addEventListener("load", () => {
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    });
+    reader.addEventListener("error", () => resolve(""));
+    reader.readAsDataURL(file);
+  });
 }

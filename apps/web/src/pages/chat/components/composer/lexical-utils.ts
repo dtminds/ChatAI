@@ -108,6 +108,50 @@ export function $clearComposer() {
   root.selectStart();
 }
 
+export function $removeComposerTextRange(start: number, end: number) {
+  const safeStart = Math.max(0, start);
+  const safeEnd = Math.max(safeStart, end);
+
+  if (safeStart === safeEnd) {
+    return;
+  }
+
+  let textOffset = 0;
+
+  for (const part of collectTextContentParts($getRoot())) {
+    const nodeStart = textOffset;
+    const nodeEnd = nodeStart + part.length;
+    textOffset = nodeEnd;
+
+    if (!part.textNode) {
+      continue;
+    }
+
+    const textNode = part.textNode;
+    const text = textNode.getTextContent();
+
+    if (safeEnd <= nodeStart) {
+      break;
+    }
+
+    if (safeStart >= nodeEnd) {
+      continue;
+    }
+
+    const rangeStart = Math.max(0, safeStart - nodeStart);
+    const rangeEnd = Math.min(text.length, safeEnd - nodeStart);
+    const nextText = text.slice(0, rangeStart) + text.slice(rangeEnd);
+
+    if (nextText) {
+      textNode.setTextContent(nextText);
+    } else {
+      textNode.remove();
+    }
+  }
+
+  $getRoot().selectEnd();
+}
+
 export function $exportComposerSegments() {
   const segments: ComposerSegment[] = [];
 
@@ -159,17 +203,8 @@ function collectSegmentsFromNode(node: LexicalNode, segments: ComposerSegment[])
     const elementNode = node as ElementNode;
     const children = elementNode.getChildren();
 
-    children.forEach((child, index) => {
+    children.forEach((child) => {
       collectSegmentsFromNode(child, segments);
-
-      if (index < children.length - 1) {
-        const currentChild = children[index];
-        const nextChild = children[index + 1];
-
-        if ($isComposerImageNode(currentChild) || $isComposerImageNode(nextChild)) {
-          return;
-        }
-      }
     });
 
     if (!$isRootNode(node)) {
@@ -202,4 +237,43 @@ function findFirstWechatEmojiToken(text: string) {
   }
 
   return null;
+}
+
+type TextContentPart = {
+  length: number;
+  textNode?: TextNode;
+};
+
+function collectTextContentParts(node: LexicalNode): TextContentPart[] {
+  if ($isTextNode(node)) {
+    return [
+      {
+        length: node.getTextContent().length,
+        textNode: node,
+      },
+    ];
+  }
+
+  if (!$isElementNode(node) && !$isRootNode(node)) {
+    return [
+      {
+        length: node.getTextContent().length,
+      },
+    ];
+  }
+
+  const children = (node as ElementNode).getChildren();
+  const parts: TextContentPart[] = [];
+
+  children.forEach((child, index) => {
+    parts.push(...collectTextContentParts(child));
+
+    if ($isElementNode(child) && !child.isInline() && index !== children.length - 1) {
+      parts.push({
+        length: 2,
+      });
+    }
+  });
+
+  return parts;
 }

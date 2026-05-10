@@ -80,10 +80,10 @@ export function AccountRail({
           return (
             <button
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-[20px] px-3 py-3 text-[12px] font-medium transition-colors",
+                "flex h-9 w-full items-center gap-2 rounded-[8px] px-3 text-[14px] text-foreground transition-colors",
                 isActive
-                  ? "border border-sidebar-border bg-background text-foreground shadow-[0_2px_8px_var(--shadow-soft)]"
-                  : "border border-transparent text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                  : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               )}
               key={item.label}
               type="button"
@@ -91,7 +91,7 @@ export function AccountRail({
               <HugeiconsIcon
                 color="currentColor"
                 icon={item.icon}
-                size={16}
+                size={18}
                 strokeWidth={1.8}
               />
               <span>{item.label}</span>

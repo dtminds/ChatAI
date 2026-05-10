@@ -121,6 +121,7 @@ describe("ChatWorkbenchPage", () => {
       "aria-pressed",
       "false",
     );
+    expect(window.localStorage.getItem("chatai.accountRailCollapsed")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "折叠侧栏" }));
 
@@ -134,6 +135,7 @@ describe("ChatWorkbenchPage", () => {
       "aria-pressed",
       "true",
     );
+    expect(window.localStorage.getItem("chatai.accountRailCollapsed")).toBe("true");
 
     await user.hover(screen.getByRole("button", { name: "客户" }));
 
@@ -147,6 +149,21 @@ describe("ChatWorkbenchPage", () => {
       "aria-pressed",
       "false",
     );
+    expect(window.localStorage.getItem("chatai.accountRailCollapsed")).toBe("false");
+  });
+
+  it("restores the collapsed account sidebar from localStorage", async () => {
+    window.localStorage.setItem("chatai.accountRailCollapsed", "true");
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    expect(screen.getByRole("button", { name: "展开侧栏" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "聊天" })).toBeInTheDocument();
   });
 
   it("does not open member mentions in single chats", async () => {

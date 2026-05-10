@@ -12,7 +12,7 @@ export function TextMessageBubble({ isAgent, text }: TextMessageBubbleProps) {
       className={cn(
         "w-fit max-w-full rounded-[12px] px-3 py-2.5 text-[14px] leading-6",
         isAgent
-          ? "bg-primary/30 text-foreground"
+          ? "bg-primary/15 text-foreground"
           : "bg-secondary text-foreground",
       )}
       data-testid="text-message-bubble"

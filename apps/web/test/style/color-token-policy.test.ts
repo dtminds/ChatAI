@@ -63,6 +63,8 @@ describe("color token policy", () => {
   test("keeps the modern minimal baseline for default theme tokens", () => {
     expect(themeCss).toContain("--background: oklch(1 0 0);");
     expect(themeCss).toContain("--foreground: oklch(0.32 0 0);");
+    expect(themeCss).toContain("--neutral-strong: oklch(0.18 0 0);");
+    expect(themeCss).toContain("--neutral-strong-foreground: oklch(1 0 0);");
     expect(themeCss).toContain("--card: oklch(1 0 0);");
     expect(themeCss).toContain("--card-foreground: oklch(0.32 0 0);");
     expect(themeCss).toContain("--secondary: oklch(0.97 0 0);");
@@ -70,6 +72,8 @@ describe("color token policy", () => {
     expect(themeCss).toContain("--muted: oklch(0.98 0 0);");
     expect(themeCss).toContain("--background: oklch(0.2 0 0);");
     expect(themeCss).toContain("--foreground: oklch(0.92 0 0);");
+    expect(themeCss).toContain("--neutral-strong: oklch(0.92 0 0);");
+    expect(themeCss).toContain("--neutral-strong-foreground: oklch(0.18 0 0);");
     expect(themeCss).toContain("--card: oklch(0.27 0 0);");
     expect(themeCss).toContain("--secondary: oklch(0.27 0 0);");
     expect(themeCss).toContain("--muted: oklch(0.27 0 0);");
@@ -135,6 +139,8 @@ describe("color token policy", () => {
     expect(themeCss).toContain("--color-conversation-active-muted-foreground: var(--conversation-active-muted-foreground);");
     expect(themeCss).toContain("--color-conversation-active-icon: var(--conversation-active-icon);");
     expect(themeCss).toContain("--color-conversation-hover: var(--conversation-hover);");
+    expect(themeCss).toContain("--color-neutral-strong: var(--neutral-strong);");
+    expect(themeCss).toContain("--color-neutral-strong-foreground: var(--neutral-strong-foreground);");
     expect(themeCss).not.toContain("--message-agent");
     expect(themeCss).not.toContain("--message-customer");
     expect(themeCss).not.toContain("--color-message-agent");

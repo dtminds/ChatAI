@@ -256,6 +256,29 @@ describe("AccountRail", () => {
     expect(untakenDot).toHaveClass("bg-warning");
   });
 
+  it("shows the product logo with neutral strong text", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("account-rail-logo")).toHaveClass(
+      "grid-cols-[18px_minmax(0,1fr)]",
+      "gap-2",
+      "px-3",
+      "text-neutral-strong",
+    );
+    expect(screen.getByTestId("account-rail-logo")).not.toHaveClass("bg-neutral-strong");
+    expect(screen.getByTestId("account-rail-logo")).toHaveTextContent("ChatAI");
+    expect(screen.getByTestId("account-rail-logo").firstElementChild).toHaveClass(
+      "size-[18px]",
+      "overflow-visible",
+    );
+  });
+
   it("keeps account avatar fallbacks on primary colors", () => {
     render(
       <AccountRail

@@ -19,6 +19,27 @@ import { useWorkbenchStore } from "@/store/workbench-store";
 import type { ChatMode, GroupMember } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
+const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
+
+function getInitialAccountRailCollapsed() {
+  try {
+    return window.localStorage.getItem(ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeAccountRailCollapsed(isCollapsed: boolean) {
+  try {
+    window.localStorage.setItem(
+      ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY,
+      String(isCollapsed),
+    );
+  } catch {
+    // Keep the UI usable when storage is unavailable.
+  }
+}
+
 export function ChatWorkbenchPage() {
   return <ChatWorkbenchContent />;
 }
@@ -73,7 +94,9 @@ function ChatWorkbenchContent({
     useState<MentionInsertPosition>("start");
   const [selectedMentionMembers, setSelectedMentionMembers] = useState<GroupMember[]>([]);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-  const [isAccountRailCollapsed, setIsAccountRailCollapsed] = useState(false);
+  const [isAccountRailCollapsed, setIsAccountRailCollapsed] = useState(
+    getInitialAccountRailCollapsed,
+  );
   const [inputEnterBehavior, setInputEnterBehavior] =
     useState<InputEnterBehavior>("send");
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
@@ -93,6 +116,11 @@ function ChatWorkbenchContent({
       clearAuthTokens();
     }
   }
+
+  const handleAccountRailCollapseChange = (nextIsCollapsed: boolean) => {
+    setIsAccountRailCollapsed(nextIsCollapsed);
+    writeAccountRailCollapsed(nextIsCollapsed);
+  };
 
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
@@ -275,7 +303,7 @@ function ChatWorkbenchContent({
           currentEmployee={me}
           currentEmployeeId={me?.id}
           isCollapsed={isAccountRailCollapsed}
-          onCollapseChange={setIsAccountRailCollapsed}
+          onCollapseChange={handleAccountRailCollapseChange}
           onLogout={handleLogout}
           onSelectAccount={setActiveAccount}
           onOpenSettings={onOpenSettings}

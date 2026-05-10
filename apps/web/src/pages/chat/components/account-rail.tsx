@@ -87,7 +87,7 @@ export function AccountRail({
   const signedInName = currentEmployee?.displayName.trim() || "未登录";
   const signedInAvatarFallback = getFirstGrapheme(signedInName);
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
-  const toggleIcon = isCollapsed ? LayoutAlignLeftIcon : PanelLeftIcon;
+  const toggleIcon = isCollapsed ? PanelLeftIcon : LayoutAlignLeftIcon;
   const accountMenuContent = (
     <DropdownMenuContent
       align="end"
@@ -267,12 +267,20 @@ export function AccountRail({
   return (
     <section className="flex h-full min-h-0 flex-col bg-sidebar px-3 py-4 text-sidebar-foreground">
       <div className="mb-3 flex items-center justify-between px-1">
-        <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <HugeiconsIcon
-            icon={ChartBreakoutCircleIcon}
-            size={24}
-            strokeWidth={2}
-          />
+        <div
+          className="grid h-8.5 min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2.5 px-3 text-neutral-strong"
+          data-testid="account-rail-logo"
+        >
+          <span className="relative flex size-[18px] items-center justify-center overflow-visible">
+            <HugeiconsIcon
+              className="absolute"
+              color="currentColor"
+              icon={ChartBreakoutCircleIcon}
+              size={24}
+              strokeWidth={2}
+            />
+          </span>
+          <span className="text-[15px] font-semibold leading-none">ChatAI</span>
         </div>
         <Button
           aria-label={toggleLabel}

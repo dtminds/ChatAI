@@ -46,6 +46,30 @@ describe("ChatWorkbenchPage", () => {
     window.localStorage.setItem("chatai.refreshToken", "refresh-token-001");
   });
 
+  it("shows a frameless animated loading indicator while bootstrapping", () => {
+    const baseService = createMockWorkbenchService();
+    const deferredAccounts = createDeferred<Awaited<ReturnType<typeof baseService.getAccounts>>>();
+
+    setWorkbenchService({
+      ...baseService,
+      getAccounts: () => deferredAccounts.promise,
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    expect(screen.getByText("正在加载工作台数据...")).toBeInTheDocument();
+
+    const loadingIndicator = screen.getByTestId("workbench-loading-indicator");
+    const loadingPanel = loadingIndicator.parentElement;
+
+    expect(loadingIndicator).toBeInTheDocument();
+    expect(
+      Array.from(loadingPanel?.classList ?? []).some((className) =>
+        /^(bg-|border|shadow)/.test(className),
+      ),
+    ).toBe(false);
+  });
+
   it("sends a message from the composer", async () => {
     const user = userEvent.setup();
 

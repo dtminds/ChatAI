@@ -1,6 +1,7 @@
 {
   "$schema": "https://ui.shadcn.com/schema.json",
   "style": "new-york",
+  "rsc": false,
   "tsx": true,
   "tailwind": {
     "config": "",
@@ -9,10 +10,14 @@
     "cssVariables": true,
     "prefix": ""
   },
+  "iconLibrary": "radix",
   "aliases": {
     "components": "@/components",
-    "lib": "@/lib",
+    "utils": "@/lib/utils",
     "ui": "@/components/ui",
-    "utils": "@/lib/utils"
+    "lib": "@/lib"
+  },
+  "registries": {
+    "@dotmatrix": "https://dotmatrix.zzzzshawn.cloud/r/{name}.json"
   }
 }

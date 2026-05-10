@@ -284,7 +284,6 @@ function buildInitialState(): MemoryWorkbenchState {
     seats,
     conversationsBySeat,
     subUser: {
-      account: "13800138000",
       displayName: "林洒",
       subUserId: CURRENT_SUB_USER_ID,
     },

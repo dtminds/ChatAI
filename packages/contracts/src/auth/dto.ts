@@ -11,7 +11,6 @@ export const AuthLoginResponseSchema = Type.Object({
   expiresIn: Type.Number(),
   refreshToken: Type.String(),
   subUser: Type.Object({
-    account: Type.String(),
     displayName: Type.String(),
     subUserId: Type.String(),
   }),

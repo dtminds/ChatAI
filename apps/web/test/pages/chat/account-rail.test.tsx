@@ -54,13 +54,12 @@ const accounts: Account[] = [
 ];
 
 const currentEmployee: EmployeeProfile = {
-  account: "13800138000",
   displayName: "林洒",
   id: "emp-001",
 };
 
 describe("AccountRail", () => {
-  it("shows the signed-in sub user name and account in the footer menu", async () => {
+  it("shows only the signed-in sub user name in the footer menu", async () => {
     const user = userEvent.setup();
 
     render(
@@ -74,7 +73,8 @@ describe("AccountRail", () => {
 
     const footerTrigger = screen.getByRole("button", { name: "打开账号菜单" });
     expect(footerTrigger).toHaveTextContent("林洒");
-    expect(footerTrigger).toHaveTextContent("13800138000");
+    expect(screen.queryByTestId("account-rail-footer-account")).not.toBeInTheDocument();
+    expect(footerTrigger).not.toHaveTextContent("13800138000");
     expect(footerTrigger).not.toHaveTextContent("lsave");
     expect(footerTrigger.querySelector("img")).not.toBeInTheDocument();
     expect(screen.getByTestId("account-rail-footer-avatar-fallback")).toHaveTextContent("林");
@@ -83,7 +83,7 @@ describe("AccountRail", () => {
 
     const settingsProfile = screen.getByTestId("account-settings-profile");
     expect(settingsProfile).toHaveTextContent("林洒");
-    expect(settingsProfile).toHaveTextContent("13800138000");
+    expect(settingsProfile).not.toHaveTextContent("13800138000");
     expect(settingsProfile).not.toHaveTextContent("lsave");
     expect(settingsProfile.querySelector("img")).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
@@ -96,7 +96,6 @@ describe("AccountRail", () => {
         accounts={accounts}
         activeAccountId="account-1"
         currentEmployee={{
-          account: "13800138000",
           displayName: "👩‍💼小林",
           id: "emp-001",
         }}
@@ -107,26 +106,6 @@ describe("AccountRail", () => {
     expect(screen.getByTestId("account-rail-footer-avatar-fallback")).toHaveTextContent(
       "👩‍💼",
     );
-  });
-
-  it("shows one footer text row when sub user name and account are the same", () => {
-    render(
-      <AccountRail
-        accounts={accounts}
-        activeAccountId="account-1"
-        currentEmployee={{
-          account: "13800138000",
-          displayName: "13800138000",
-          id: "emp-001",
-        }}
-        onSelectAccount={vi.fn()}
-      />,
-    );
-
-    const footerTrigger = screen.getByRole("button", { name: "打开账号菜单" });
-
-    expect(footerTrigger).toHaveTextContent("13800138000");
-    expect(screen.queryByTestId("account-rail-footer-account")).not.toBeInTheDocument();
   });
 
   it("calls logout from the account settings menu", async () => {
@@ -176,6 +155,52 @@ describe("AccountRail", () => {
     await user.click(screen.getByRole("button", { name: "接管账号" }));
 
     expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");
+  });
+
+  it("selects a seat from the whole card surface", async () => {
+    const user = userEvent.setup();
+    const handleSelectAccount = vi.fn();
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={handleSelectAccount}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "选择 support" }));
+
+    expect(handleSelectAccount).toHaveBeenCalledWith("account-2");
+
+    screen.getByRole("button", { name: "选择 lsave" }).focus();
+    await user.keyboard("{Enter}");
+
+    expect(handleSelectAccount).toHaveBeenCalledWith("account-1");
+  });
+
+  it("shows each seat name on the first row and status on the second row", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("lsave")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "lsave" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("account-sidebar-item-account-1")).toHaveClass("items-center");
+    expect(screen.getByTestId("account-avatar-wrap-account-1")).not.toHaveClass("mt-0.5");
+    expect(screen.getByTestId("account-sidebar-item-status-row-account-1")).toHaveTextContent("接管中");
+    const statusBadge = screen.getByText("接管中").closest("span")?.parentElement;
+    expect(statusBadge).not.toHaveClass("px-1.5");
+    expect(statusBadge).not.toHaveClass("py-1");
+    expect(screen.getByTestId("account-sidebar-item-status-row-account-2")).toHaveTextContent("未接管");
+    expect(screen.queryByTestId("account-sidebar-item-operator-account-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("account-sidebar-item-operator-account-2")).not.toBeInTheDocument();
   });
 
   it("opens and closes the takeover popover from keyboard commands", async () => {

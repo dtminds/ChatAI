@@ -52,7 +52,6 @@ describe("workbench gateway message paging", () => {
       })),
       customerProfilesById: {},
       me: {
-        account: me.account,
         id: me.subUserId,
         displayName: me.displayName,
       },

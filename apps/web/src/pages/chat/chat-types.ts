@@ -5,7 +5,6 @@ export type MessageRole = "customer" | "agent" | "system";
 export type MessageStatus = "pending" | "sending" | "sent" | "failed" | "read";
 
 export type EmployeeProfile = {
-  account: string;
   id: string;
   displayName: string;
 };

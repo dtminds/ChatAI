@@ -72,12 +72,8 @@ export function AccountRail({
   onTakeOverAccount,
   takeoverStatusByAccountId = {},
 }: AccountRailProps) {
-  const signedInName =
-    currentEmployee?.displayName.trim() || currentEmployee?.account.trim() || "未登录";
-  const signedInAccountName = currentEmployee?.account.trim() ?? "";
+  const signedInName = currentEmployee?.displayName.trim() || "未登录";
   const signedInAvatarFallback = getFirstGrapheme(signedInName);
-  const shouldShowSignedInAccount =
-    signedInAccountName.length > 0 && signedInAccountName !== signedInName;
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-sidebar px-3 py-4 text-sidebar-foreground">
@@ -170,14 +166,6 @@ export function AccountRail({
                 >
                   {signedInName}
                 </span>
-                {shouldShowSignedInAccount ? (
-                  <span
-                    className="truncate text-xs text-muted-foreground"
-                    data-testid="account-rail-footer-account"
-                  >
-                    {signedInAccountName}
-                  </span>
-                ) : null}
               </div>
               <HugeiconsIcon
                 color="currentColor"
@@ -213,11 +201,6 @@ export function AccountRail({
                   >
                     {signedInName}
                   </span>
-                  {shouldShowSignedInAccount ? (
-                    <span className="truncate text-muted-foreground">
-                      {signedInAccountName}
-                    </span>
-                  ) : null}
                 </div>
               </div>
             </DropdownMenuLabel>

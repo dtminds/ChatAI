@@ -18,7 +18,6 @@ type ChatMessageContent = ChatMessage["content"];
 
 export function adaptEmployee(dto: WorkbenchSubUserDto): EmployeeProfile {
   return {
-    account: dto.account,
     displayName: dto.displayName,
     id: dto.subUserId,
   };

@@ -162,7 +162,6 @@ describe("LoginPage", () => {
           expiresIn: 1200,
           refreshToken: "refresh-token-001",
           subUser: {
-            account: "agent001",
             displayName: "客服一号",
             subUserId: "101",
           },

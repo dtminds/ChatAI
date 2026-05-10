@@ -50,7 +50,6 @@ describe("useWorkbenchStore", () => {
 
     expect(state.bootstrapStatus).toBe("ready");
     expect(state.me).toMatchObject({
-      account: "13800138000",
       displayName: "林洒",
       id: "sub-user-001",
     });

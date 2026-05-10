@@ -16,7 +16,6 @@ const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 20 * 60;
 const REFRESH_TOKEN_EXPIRES_IN_DAYS = 14;
 
 type SubUserCredentialRow = {
-  account: string;
   id: number;
   name: string;
   password_hash: string;
@@ -79,7 +78,6 @@ export async function loginWithPassword(
     expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
     refreshToken: session.refreshToken,
     subUser: {
-      account: subUser.account,
       displayName: subUser.name,
       subUserId,
     },
@@ -173,7 +171,7 @@ async function findActiveSubUserCredential(
 
   return db
     .selectFrom("xy_wap_embed_sub_user")
-    .select(["account", "id", "name", "password_hash"])
+    .select(["id", "name", "password_hash"])
     .where("account", "=", normalizedAccount)
     .where("status", "=", 1)
     .executeTakeFirst();

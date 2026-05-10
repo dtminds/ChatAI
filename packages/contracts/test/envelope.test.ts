@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { apiError, apiSuccess } from "../src";
+import {
+  apiError,
+  apiSuccess,
+  AuthLoginResponseSchema,
+} from "../src";
 
 describe("API envelope helpers", () => {
   it("creates success and error envelopes", () => {
@@ -17,5 +21,11 @@ describe("API envelope helpers", () => {
       },
       success: false,
     });
+  });
+
+  it("does not include sub user account in login responses", () => {
+    expect(AuthLoginResponseSchema.properties.subUser.properties).not.toHaveProperty(
+      "account",
+    );
   });
 });

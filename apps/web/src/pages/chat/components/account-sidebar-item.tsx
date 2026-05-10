@@ -37,7 +37,7 @@ export function AccountSidebarItem({
   const statusBadge = (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-1 text-[10px] font-medium leading-none",
+        "inline-flex shrink-0 items-center gap-1 rounded-full text-[10px] font-medium leading-none",
         isOffline && "text-muted-foreground",
         !isOffline && isTakenOverByCurrentUser && "text-success",
         !isOffline && !isTakenOverByCurrentUser && "text-warning",
@@ -92,24 +92,38 @@ export function AccountSidebarItem({
       closeTakeoverPopoverImmediately();
     }
   };
+  const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    onClick();
+  };
 
   useEffect(() => clearClosePopoverTimer, []);
 
   return (
     <div
+      aria-label={`选择 ${account.name}`}
       className={cn(
-        "relative flex w-full items-start gap-2 rounded-[16px] border px-2.5 py-2 text-left transition-colors",
+        "relative flex w-full items-center gap-2 rounded-[16px] border px-2.5 py-2 text-left transition-colors",
         isActive
           ? "border-border bg-surface"
           : "border-transparent bg-transparent hover:bg-surface-hover",
       )}
+      data-testid={`account-sidebar-item-${account.id}`}
+      onClick={onClick}
+      onKeyDown={handleCardKeyDown}
+      role="button"
+      tabIndex={0}
       title={account.name}
     >
       <div
-        className="relative mt-0.5"
+        className="relative"
         data-testid={`account-avatar-wrap-${account.id}`}
       >
-        <Avatar className="size-10">
+        <Avatar className="size-9">
           <AvatarImage alt={account.name} src={account.avatarUrl} />
           <AvatarFallback>{account.name.slice(0, 1)}</AvatarFallback>
         </Avatar>
@@ -124,14 +138,17 @@ export function AccountSidebarItem({
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <button
-            className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
-            onClick={onClick}
-            type="button"
+        <div className="flex items-center">
+          <span
+            className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold text-foreground"
           >
             {account.name}
-          </button>
+          </span>
+        </div>
+        <div
+          className="mt-1 flex items-center"
+          data-testid={`account-sidebar-item-status-row-${account.id}`}
+        >
           {canTakeOver ? (
             <Popover
               onOpenChange={setIsTakeoverPopoverOpen}
@@ -198,15 +215,6 @@ export function AccountSidebarItem({
           ) : (
             statusBadge
           )}
-        </div>
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <button
-            className="min-w-0 flex-1 truncate text-left text-[12px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
-            onClick={onClick}
-            type="button"
-          >
-            {account.operator}
-          </button>
         </div>
       </div>
     </div>

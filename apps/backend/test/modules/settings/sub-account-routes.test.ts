@@ -319,16 +319,20 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
-            return [...relations, ...state.insertedRelations].map((relation) => {
-              const seat = seats.find((item) => item.id === relation.user_seat_id);
+            const subId = wheres.find(([column]) => column === "relation.sub_id")?.[2];
 
-              return {
-                avatarUrl: seat?.third_avatar,
-                name: seat?.third_user_name,
-                seat_id: relation.user_seat_id,
-                sub_id: relation.sub_id,
-              };
-            });
+            return [...relations, ...state.insertedRelations]
+              .filter((relation) => subId === undefined || relation.sub_id === subId)
+              .map((relation) => {
+                const seat = seats.find((item) => item.id === relation.user_seat_id);
+
+                return {
+                  avatarUrl: seat?.third_avatar,
+                  name: seat?.third_user_name,
+                  seat_id: relation.user_seat_id,
+                  sub_id: relation.sub_id,
+                };
+              });
           }
 
           if (table === "xy_wap_embed_sub_user as sub_user") {

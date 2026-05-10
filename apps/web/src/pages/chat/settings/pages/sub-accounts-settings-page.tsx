@@ -988,10 +988,30 @@ function generatePassword() {
   const digits = "23456789";
   const symbols = "!@#$%^&*";
   const all = `${upper}${lower}${digits}${symbols}`;
-  const required = [upper, lower, digits, symbols].map((chars) =>
-    chars[Math.floor(Math.random() * chars.length)],
-  );
-  const rest = Array.from({ length: 8 }, () => all[Math.floor(Math.random() * all.length)]);
+  const required = [upper, lower, digits, symbols].map((chars) => pickRandomChar(chars));
+  const rest = Array.from({ length: 8 }, () => pickRandomChar(all));
+  const combined = [...required, ...rest];
 
-  return [...required, ...rest].sort(() => Math.random() - 0.5).join("");
+  for (let index = combined.length - 1; index > 0; index -= 1) {
+    const swapIndex = getRandomInt(index + 1);
+    [combined[index], combined[swapIndex]] = [combined[swapIndex], combined[index]];
+  }
+
+  return combined.join("");
+}
+
+function pickRandomChar(chars: string) {
+  return chars[getRandomInt(chars.length)];
+}
+
+function getRandomInt(maxExclusive: number) {
+  const randomValues = new Uint32Array(1);
+  const maxUint32 = 0x100000000;
+  const limit = maxUint32 - (maxUint32 % maxExclusive);
+
+  do {
+    crypto.getRandomValues(randomValues);
+  } while (randomValues[0] >= limit);
+
+  return randomValues[0] % maxExclusive;
 }

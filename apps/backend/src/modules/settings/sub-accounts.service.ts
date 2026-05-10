@@ -244,8 +244,8 @@ export class SubAccountSettingsService {
       .execute() as Promise<SeatRow[]>;
   }
 
-  private listRelationRows(scope: TenantScope) {
-    return this.db
+  private listRelationRows(scope: TenantScope, subAccountId?: number) {
+    let query = this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
       .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
         join
@@ -261,8 +261,13 @@ export class SubAccountSettingsService {
       ])
       .where("relation.uid", "=", scope.uid)
       .where("relation.platform", "=", scope.platform)
-      .where("seat.biz_status", "=", 1)
-      .execute() as Promise<RelationRow[]>;
+      .where("seat.biz_status", "=", 1);
+
+    if (subAccountId !== undefined) {
+      query = query.where("relation.sub_id", "=", subAccountId);
+    }
+
+    return query.execute() as Promise<RelationRow[]>;
   }
 
   private async assertAccountAvailable(account: string) {
@@ -380,7 +385,7 @@ export class SubAccountSettingsService {
         .where("sub_user.platform", "=", scope.platform)
         .where("sub_user.status", "!=", 0)
         .executeTakeFirst() as Promise<SubAccountRow | undefined>,
-      this.listRelationRows(scope),
+      this.listRelationRows(scope, subAccountId),
     ]);
 
     if (!subAccount) {
@@ -389,9 +394,7 @@ export class SubAccountSettingsService {
 
     return mapSubAccount(
       subAccount,
-      relations
-        .filter((relation) => relation.sub_id === subAccountId)
-        .map(mapRelationSeat),
+      relations.map(mapRelationSeat),
     );
   }
 }

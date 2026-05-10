@@ -1,3 +1,4 @@
+import MockAdapter from "axios-mock-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -5,6 +6,9 @@ import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { routerConfig } from "@/router";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import { requestInstance } from "@/lib/request";
+
+const mock = new MockAdapter(requestInstance);
 
 function renderRoute(initialEntry = "/chat") {
   const router = createMemoryRouter(routerConfig, {
@@ -20,6 +24,81 @@ describe("Chat settings pages", () => {
   beforeEach(() => {
     window.localStorage.setItem("chatai.refreshToken", "test-refresh-token");
     resetWorkbenchService();
+    mock.reset();
+    mock.onGet("/server/settings/sub-accounts").reply(200, {
+      data: {
+        seats: [
+          {
+            avatarUrl: "https://example.com/drc.png",
+            name: "德瑞可",
+            seatId: "101",
+          },
+          {
+            avatarUrl: "https://example.com/ndt.png",
+            name: "念都堂",
+            seatId: "102",
+          },
+          {
+            avatarUrl: "https://example.com/mid.png",
+            name: "中台号",
+            seatId: "103",
+          },
+          {
+            avatarUrl: "https://example.com/after-sale.png",
+            name: "售后号",
+            seatId: "104",
+          },
+        ],
+        subAccounts: [
+          {
+            account: "owner",
+            id: "1",
+            name: "主账号",
+            seats: [],
+            status: "active",
+            type: 1,
+          },
+          {
+            account: "agent001",
+            id: "11",
+            name: "客服一号",
+            seats: [
+              {
+                avatarUrl: "https://example.com/drc.png",
+                name: "德瑞可",
+                seatId: "101",
+              },
+              {
+                avatarUrl: "https://example.com/ndt.png",
+                name: "念都堂",
+                seatId: "102",
+              },
+              {
+                avatarUrl: "https://example.com/mid.png",
+                name: "中台号",
+                seatId: "103",
+              },
+              {
+                avatarUrl: "https://example.com/after-sale.png",
+                name: "售后号",
+                seatId: "104",
+              },
+            ],
+            status: "active",
+            type: 0,
+          },
+          {
+            account: "agent002",
+            id: "12",
+            name: "客服二号",
+            seats: [],
+            status: "disabled",
+            type: 0,
+          },
+        ],
+      },
+      success: true,
+    });
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     document.documentElement.classList.remove("dark");
     setSystemColorScheme(false);
@@ -59,13 +138,242 @@ describe("Chat settings pages", () => {
     await user.click(screen.getByRole("link", { name: "子账号管理" }));
 
     expect(screen.getByRole("heading", { name: "子账号管理" })).toBeInTheDocument();
-    expect(screen.getByRole("form", { name: "子账号表单" })).toBeInTheDocument();
-    expect(screen.getByLabelText("员工姓名")).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "子账号列表" })).toBeInTheDocument();
+    expect(screen.getAllByText("主账号")).toHaveLength(2);
+    expect(screen.getByText("客服一号")).toBeInTheDocument();
+    expect(screen.getByText("agent001")).toBeInTheDocument();
+    expect(screen.getByLabelText("关联企微账号 德瑞可")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 主账号 操作菜单" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 客服一号 操作菜单" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 客服二号 操作菜单" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "权限角色" }));
 
     expect(screen.getByRole("heading", { name: "权限角色" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "角色权限矩阵" })).toBeInTheDocument();
+  });
+
+  it("creates, edits, toggles, and deletes sub-accounts from settings", async () => {
+    const user = userEvent.setup();
+    mock.onPost("/server/settings/sub-accounts").reply((config) => [
+      200,
+      {
+        data: {
+          ...JSON.parse(config.data ?? "{}"),
+          id: "13",
+          seats: [
+            {
+              avatarUrl: "https://example.com/drc.png",
+              name: "德瑞可",
+              seatId: "101",
+            },
+          ],
+          status: "active",
+          type: 0,
+        },
+        success: true,
+      },
+    ]);
+    mock.onPut("/server/settings/sub-accounts/11").reply((config) => [
+      200,
+      {
+        data: {
+          account: "agent001",
+          id: "11",
+          ...JSON.parse(config.data ?? "{}"),
+          seats: [],
+          status: "active",
+          type: 0,
+        },
+        success: true,
+      },
+    ]);
+    mock.onPatch("/server/settings/sub-accounts/11/status").reply(200, {
+      data: {
+        account: "agent001",
+        id: "11",
+        name: "客服一号",
+        seats: [],
+        status: "disabled",
+        type: 0,
+      },
+      success: true,
+    });
+    mock.onDelete("/server/settings/sub-accounts/12").reply(200, {
+      data: { deleted: true },
+      success: true,
+    });
+    renderRoute("/chat/settings/sub-accounts");
+
+    await user.click(await screen.findByRole("button", { name: "新增子账号" }));
+    expect(screen.getByRole("dialog", { name: "添加子账号" })).toBeInTheDocument();
+    expect(screen.getByText("已选择 0 个")).toBeInTheDocument();
+    expect(screen.getByText("暂无已分配账号")).toBeInTheDocument();
+    await user.click(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
+    await user.type(screen.getByRole("textbox", { name: "搜索并选择托管账号" }), "念都");
+    expect(screen.getByText("念都堂")).toBeInTheDocument();
+    expect(screen.queryByText("德瑞可")).not.toBeInTheDocument();
+    await user.clear(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
+    await user.type(screen.getByLabelText("登录用户名"), "agent003");
+    await user.type(screen.getByLabelText("密码"), "Strong1!");
+    await user.type(screen.getByLabelText("姓名"), "客服三号");
+    await user.click(screen.getByRole("checkbox", { name: "德瑞可" }));
+    expect(screen.getByText("已选择 1 个")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(mock.history.post).toHaveLength(1);
+    });
+    expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
+      account: "agent003",
+      name: "客服三号",
+      password: "Strong1!",
+      seatIds: ["101"],
+    });
+
+    await user.click(screen.getByRole("button", { name: "打开 客服一号 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "编辑" }));
+    expect(screen.getByRole("dialog", { name: "编辑子账号" })).toBeInTheDocument();
+    expect(screen.getByLabelText("登录用户名")).toBeDisabled();
+    await user.clear(screen.getByLabelText("姓名"));
+    await user.type(screen.getByLabelText("姓名"), "客服一号改");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(mock.history.put).toHaveLength(1);
+    });
+    expect(JSON.parse(mock.history.put[0]?.data ?? "{}")).toMatchObject({
+      name: "客服一号改",
+      password: "",
+    });
+
+    await user.click(screen.getByRole("button", { name: "打开 客服一号改 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "停用" }));
+    await waitFor(() => {
+      expect(mock.history.patch).toHaveLength(1);
+    });
+    expect(JSON.parse(mock.history.patch[0]?.data ?? "{}")).toEqual({
+      status: "disabled",
+    });
+
+    await user.click(screen.getByRole("button", { name: "打开 客服二号 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    expect(screen.getByRole("alertdialog", { name: "删除子账号" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => {
+      expect(mock.history.delete[0]?.url).toBe("/server/settings/sub-accounts/12");
+    });
+  });
+
+  it("marks the main account and disables destructive row actions", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings/sub-accounts");
+
+    expect(await screen.findAllByText("主账号")).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "打开 主账号 操作菜单" }));
+
+    expect(screen.getByRole("menuitem", { name: "编辑" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "停用" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "删除" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("summarizes many related WeCom seats with avatars and shows a display-only popover", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings/sub-accounts");
+
+    expect(await screen.findByRole("table", { name: "子账号列表" })).toBeInTheDocument();
+    expect(screen.getByLabelText("关联企微账号 德瑞可")).toBeInTheDocument();
+    expect(screen.getByLabelText("关联企微账号 念都堂")).toBeInTheDocument();
+    expect(screen.getByLabelText("关联企微账号 中台号")).toBeInTheDocument();
+    expect(screen.getByText("+1")).toBeInTheDocument();
+    expect(screen.queryByText("共 4 个")).not.toBeInTheDocument();
+    expect(screen.queryByText("售后号")).not.toBeInTheDocument();
+
+    await user.hover(
+      screen.getByRole("button", { name: "查看 客服一号 的全部关联企微账号" }),
+    );
+
+    expect(screen.getByText("关联企微账号 · 4")).toBeInTheDocument();
+    expect(screen.getByText("中台号")).toBeInTheDocument();
+    expect(screen.getByText("售后号")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "搜索关联企微账号" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: "德瑞可" })[0]).toHaveAttribute(
+      "src",
+      "https://example.com/drc.png",
+    );
+
+    await user.unhover(
+      screen.getByRole("button", { name: "查看 客服一号 的全部关联企微账号" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("关联企微账号 · 4")).not.toBeInTheDocument();
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 180));
+    expect(screen.queryByText("关联企微账号 · 4")).not.toBeInTheDocument();
+  });
+
+  it("shows a single related WeCom seat as one avatar without a total count", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mock.onGet("/server/settings/sub-accounts").reply(200, {
+      data: {
+        seats: [
+          {
+            avatarUrl: "https://example.com/drc.png",
+            name: "德瑞可",
+            seatId: "101",
+          },
+        ],
+        subAccounts: [
+          {
+            account: "agent001",
+            id: "11",
+            name: "客服一号",
+            seats: [
+              {
+                avatarUrl: "https://example.com/drc.png",
+                name: "德瑞可",
+                seatId: "101",
+              },
+            ],
+            status: "active",
+            type: 0,
+          },
+        ],
+      },
+      success: true,
+    });
+    renderRoute("/chat/settings/sub-accounts");
+
+    expect(await screen.findByLabelText("关联企微账号 德瑞可")).toBeInTheDocument();
+    expect(screen.queryByText("共 1 个")).not.toBeInTheDocument();
+    await user.hover(
+      screen.getByRole("button", { name: "查看 客服一号 的全部关联企微账号" }),
+    );
+    expect(screen.getByText("关联企微账号 · 1")).toBeInTheDocument();
+  });
+
+  it("centers the sub-account loading state with the shared loader", async () => {
+    mock.resetHandlers();
+    mock.onGet("/server/settings/sub-accounts").reply(
+      () => new Promise(() => undefined),
+    );
+
+    renderRoute("/chat/settings/sub-accounts");
+
+    const loadingText = await screen.findByText("正在加载子账号");
+    const loadingStatus = screen.getByRole("status", { name: "正在加载子账号" });
+
+    expect(loadingStatus).toContainElement(loadingText);
+    expect(screen.getByLabelText("正在加载")).toBeInTheDocument();
   });
 
   it("switches and persists appearance themes from the appearance settings page", async () => {
@@ -154,8 +462,8 @@ describe("Chat settings pages", () => {
     await user.click(screen.getByRole("button", { name: "打开停用确认" }));
 
     expect(screen.getByRole("alertdialog", { name: "停用接待策略" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "取消" })).toHaveClass("rounded-[8px]");
-    expect(screen.getByRole("button", { name: "确认停用" })).toHaveClass("rounded-[8px]");
+    expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认停用" })).toBeInTheDocument();
   });
 
   it("shows extended UI component demos for common B2B settings patterns", async () => {

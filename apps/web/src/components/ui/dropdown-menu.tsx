@@ -56,7 +56,7 @@ export function DropdownMenuItem({
   return (
     <DropdownMenuPrimitive.Item
       className={cn(
-        "relative flex cursor-default select-none items-center gap-2 rounded-[8px] px-2.5 py-2 outline-none transition-colors data-[highlighted]:bg-surface-hover",
+        "relative flex cursor-default select-none items-center gap-2 rounded-[8px] px-2.5 py-2 outline-none transition-colors data-[highlighted]:bg-surface-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[disabled]:data-[highlighted]:bg-transparent",
         className,
       )}
       {...props}

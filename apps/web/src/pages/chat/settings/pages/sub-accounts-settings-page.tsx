@@ -882,7 +882,7 @@ function SubAccountDialog({
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor={passwordId}>密码</Label>
               <button
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                className="inline-flex items-center gap-1.5 text-sm font-medium leading-none text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
                 onClick={handleGeneratePassword}
                 type="button"
               >

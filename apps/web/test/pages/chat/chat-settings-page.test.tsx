@@ -486,8 +486,8 @@ describe("Chat settings pages", () => {
     expect(screen.getByText("已选择 5 个")).toBeInTheDocument();
     expect(within(dialog).getAllByLabelText("账号类型：主账号").length).toBeGreaterThan(0);
     expect(within(dialog).getAllByLabelText("账号类型：子账号").length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText("启用").length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText("停用").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("已启用").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("已停用").length).toBeGreaterThan(0);
     expect(within(dialog).queryByText("owner")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("agent001")).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText("关联子账号 客服一号")).not.toBeInTheDocument();

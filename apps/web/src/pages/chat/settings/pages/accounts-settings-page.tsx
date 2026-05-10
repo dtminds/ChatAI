@@ -611,9 +611,11 @@ function SubAccountIdentity({
 }: {
   subAccount: SettingsManagedAccountSubAccount;
 }) {
+  const isActive = subAccount.status === "active";
+
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2">
-      <span className="min-w-0 flex-1 truncate">{subAccount.name}</span>
+    <div className="flex min-w-0 flex-1 items-center justify-start gap-2">
+      <span className="min-w-0 max-w-[9rem] truncate">{subAccount.name}</span>
       <Badge
         aria-label={subAccount.type === 1 ? "账号类型：主账号" : "账号类型：子账号"}
         className={
@@ -625,9 +627,14 @@ function SubAccountIdentity({
       >
         {subAccount.type === 1 ? "主账号" : "子账号"}
       </Badge>
-      <StatusText tone={subAccount.status === "active" ? "success" : "muted"}>
-        {subAccount.status === "active" ? "启用" : "停用"}
-      </StatusText>
+      <span
+        className={cn(
+          "shrink-0 text-xs font-medium",
+          isActive ? "text-success" : "text-muted-foreground",
+        )}
+      >
+        {isActive ? "已启用" : "已停用"}
+      </span>
     </div>
   );
 }

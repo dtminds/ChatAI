@@ -109,6 +109,14 @@ describe("Chat settings pages", () => {
             onlineStatus: "offline",
             subAccounts: [
               {
+                account: "owner",
+                id: "1",
+                isTakingOver: false,
+                name: "主账号",
+                status: "active",
+                type: 1,
+              },
+              {
                 account: "agent001",
                 id: "11",
                 isTakingOver: true,
@@ -151,6 +159,14 @@ describe("Chat settings pages", () => {
           },
         ],
         subAccounts: [
+          {
+            account: "owner",
+            id: "1",
+            isTakingOver: false,
+            name: "主账号",
+            status: "active",
+            type: 1,
+          },
           {
             account: "agent001",
             id: "11",
@@ -226,7 +242,7 @@ describe("Chat settings pages", () => {
     expect(screen.getByText("念都堂")).toBeInTheDocument();
     expect(screen.getByText("在线")).toBeInTheDocument();
     expect(
-      screen.getByText("客服一号（接管中），客服二号，客服三号等4人"),
+      screen.getByText("客服一号（接管中），主账号，客服二号等5人"),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "关联子账号" })).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "新增账号" })).not.toBeInTheDocument();
@@ -451,35 +467,37 @@ describe("Chat settings pages", () => {
 
     expect(await screen.findByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
     expect(
-      screen.getByText("客服一号（接管中），客服二号，客服三号等4人"),
+      screen.getByText("客服一号（接管中），主账号，客服二号等5人"),
     ).toBeInTheDocument();
     expect(screen.getByText("未关联")).toBeInTheDocument();
 
     await user.hover(screen.getByRole("button", { name: "查看 德瑞可 的全部关联子账号" }));
 
-    expect(screen.getByText("关联子账号 · 4")).toBeInTheDocument();
+    expect(screen.getByText("关联子账号 · 5")).toBeInTheDocument();
     expect(screen.getAllByText("客服四号")).not.toHaveLength(0);
     expect(screen.queryByRole("textbox", { name: "搜索关联子账号" })).not.toBeInTheDocument();
 
     await user.unhover(screen.getByRole("button", { name: "查看 德瑞可 的全部关联子账号" }));
     await user.click(screen.getAllByRole("button", { name: "关联子账号" })[0]);
     expect(screen.getByRole("dialog", { name: "关联子账号" })).toBeInTheDocument();
-    expect(screen.getByText("已选择 4 个")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索并选择子账号" })).not.toHaveFocus();
+    expect(screen.getByText("已选择 5 个")).toBeInTheDocument();
 
     await user.click(screen.getByRole("textbox", { name: "搜索并选择子账号" }));
+    expect(screen.getByRole("checkbox", { name: "主账号" })).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "搜索并选择子账号" }), "二号");
     expect(screen.getByRole("checkbox", { name: "客服二号" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "客服三号" })).not.toBeInTheDocument();
     await user.clear(screen.getByRole("textbox", { name: "搜索并选择子账号" }));
     await user.click(screen.getByRole("checkbox", { name: "客服一号" }));
-    expect(screen.getByText("已选择 3 个")).toBeInTheDocument();
+    expect(screen.getByText("已选择 4 个")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认提交" }));
 
     await waitFor(() => {
       expect(mock.history.put).toHaveLength(1);
     });
     expect(JSON.parse(mock.history.put[0]?.data ?? "{}")).toEqual({
-      subAccountIds: ["12", "13", "14"],
+      subAccountIds: ["1", "12", "13", "14"],
     });
   });
 

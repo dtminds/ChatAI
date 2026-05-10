@@ -430,7 +430,10 @@ function SubAccountRelationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[42rem]">
+      <DialogContent
+        className="sm:max-w-[42rem]"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>关联子账号</DialogTitle>
           <DialogDescription>

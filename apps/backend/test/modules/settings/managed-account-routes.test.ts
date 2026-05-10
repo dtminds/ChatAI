@@ -22,6 +22,14 @@ describe("settings managed-account routes", () => {
             onlineStatus: "offline",
             subAccounts: [
               {
+                account: "owner",
+                id: "1",
+                isTakingOver: false,
+                name: "主账号",
+                status: "active",
+                type: 1,
+              },
+              {
                 account: "agent001",
                 id: "11",
                 isTakingOver: true,
@@ -48,6 +56,14 @@ describe("settings managed-account routes", () => {
           },
         ],
         subAccounts: [
+          {
+            account: "owner",
+            id: "1",
+            isTakingOver: false,
+            name: "主账号",
+            status: "active",
+            type: 1,
+          },
           {
             account: "agent001",
             id: "11",
@@ -183,6 +199,12 @@ function createSettingsDbMock() {
   const relations = [
     {
       platform: 5,
+      sub_id: 1,
+      uid: 9001,
+      user_seat_id: 101,
+    },
+    {
+      platform: 5,
       sub_id: 11,
       uid: 9001,
       user_seat_id: 101,
@@ -219,7 +241,15 @@ function createSettingsDbMock() {
 
           if (table === "xy_wap_embed_sub_user as sub_user") {
             return subUsers
-              .filter((subUser) => subUser.status !== 0 && subUser.type === 0)
+              .filter((subUser) => {
+                if (subUser.status === 0) {
+                  return false;
+                }
+
+                const typeFilter = wheres.find(([column]) => column === "sub_user.type")?.[2];
+
+                return typeFilter === undefined || subUser.type === typeFilter;
+              })
               .map((subUser) => ({
                 account: subUser.account,
                 id: subUser.id,
@@ -241,6 +271,11 @@ function createSettingsDbMock() {
               .filter((relation) => seatId === undefined || relation.user_seat_id === seatId)
               .map((relation) => {
                 const subUser = subUsers.find((item) => item.id === relation.sub_id);
+                const typeFilter = wheres.find(([column]) => column === "sub_user.type")?.[2];
+
+                if (typeFilter !== undefined && subUser?.type !== typeFilter) {
+                  return undefined;
+                }
 
                 return {
                   account: subUser?.account,
@@ -250,7 +285,8 @@ function createSettingsDbMock() {
                   sub_id: relation.sub_id,
                   type: subUser?.type,
                 };
-              });
+              })
+              .filter((relation): relation is NonNullable<typeof relation> => !!relation);
           }
 
           throw new Error(`Unexpected execute table: ${table}`);

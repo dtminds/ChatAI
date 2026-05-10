@@ -148,7 +148,6 @@ export class ManagedAccountSettingsService {
       .where("sub_user.uid", "=", scope.uid)
       .where("sub_user.platform", "=", scope.platform)
       .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
-      .where("sub_user.type", "=", dbSubAccountType.sub)
       .orderBy("sub_user.id", "desc")
       .execute() as Promise<SubAccountRow[]>;
   }
@@ -172,8 +171,7 @@ export class ManagedAccountSettingsService {
       ])
       .where("relation.uid", "=", scope.uid)
       .where("relation.platform", "=", scope.platform)
-      .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
-      .where("sub_user.type", "=", dbSubAccountType.sub);
+      .where("sub_user.status", "!=", dbSubAccountStatus.deleted);
 
     if (managedAccountId !== undefined) {
       query = query.where("relation.user_seat_id", "=", managedAccountId);

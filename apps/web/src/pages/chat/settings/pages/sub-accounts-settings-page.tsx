@@ -52,6 +52,7 @@ import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
@@ -655,33 +656,12 @@ function SeatSelectionList({
   selectedSeatIds: string[];
 }) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const pickerRef = useRef<HTMLDivElement | null>(null);
   const selectedSeatIdSet = new Set(selectedSeatIds);
   const normalizedQuery = query.trim().toLowerCase();
   const filteredSeats = normalizedQuery
     ? seats.filter((seat) => seat.name.toLowerCase().includes(normalizedQuery))
     : seats;
   const selectedSeats = seats.filter((seat) => selectedSeatIdSet.has(seat.seatId));
-
-  useEffect(() => {
-    if (!isPickerOpen) {
-      return;
-    }
-
-    function closePickerOnOutsidePointerDown(event: PointerEvent) {
-      const target = event.target;
-
-      if (target instanceof Node && !pickerRef.current?.contains(target)) {
-        setIsPickerOpen(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", closePickerOnOutsidePointerDown, true);
-
-    return () => {
-      document.removeEventListener("pointerdown", closePickerOnOutsidePointerDown, true);
-    };
-  }, [isPickerOpen]);
 
   return (
     <section className="space-y-3">
@@ -692,59 +672,64 @@ function SeatSelectionList({
         </span>
       </div>
 
-      <div className="relative" ref={pickerRef}>
-        <Input
-          aria-label="搜索并选择托管账号"
-          className="h-9 rounded-[8px]"
-          onChange={(event) => onQueryChange(event.target.value)}
-          onFocus={() => setIsPickerOpen(true)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              setIsPickerOpen(false);
-            }
-          }}
-          placeholder="搜索并选择托管账号"
-          value={query}
-        />
+      <Popover
+        modal={false}
+        onOpenChange={setIsPickerOpen}
+        open={isPickerOpen}
+      >
+        <PopoverAnchor asChild>
+          <Input
+            aria-label="搜索并选择托管账号"
+            className="h-9 rounded-[8px]"
+            onChange={(event) => {
+              onQueryChange(event.target.value);
+              setIsPickerOpen(true);
+            }}
+            onFocus={() => setIsPickerOpen(true)}
+            placeholder="搜索并选择托管账号"
+            value={query}
+          />
+        </PopoverAnchor>
 
-        {isPickerOpen ? (
-          <div
-            className="absolute left-0 right-0 top-full z-50 mt-2 rounded-[10px] border border-border bg-popover p-2 text-popover-foreground shadow-[0_12px_30px_var(--shadow-medium)]"
-            onMouseDown={(event) => event.preventDefault()}
-          >
-            {seats.length > 0 ? (
-              <ScrollArea className="h-[15rem]">
-                <div className="space-y-1 pr-2">
-                  {filteredSeats.length > 0 ? (
-                    filteredSeats.map((seat) => (
-                      <label
-                        className="flex h-10 cursor-pointer items-center gap-2 rounded-[8px] px-2.5 text-sm text-foreground hover:bg-surface-hover"
-                        key={seat.seatId}
-                      >
-                        <Checkbox
-                          aria-label={seat.name}
-                          checked={selectedSeatIdSet.has(seat.seatId)}
-                          onCheckedChange={() => onToggleSeat(seat.seatId)}
-                        />
-                        <SeatAvatar seat={seat} />
-                        <span className="min-w-0 flex-1 truncate">{seat.name}</span>
-                      </label>
-                    ))
-                  ) : (
-                    <p className="px-2.5 py-8 text-center text-sm text-muted-foreground">
-                      未找到匹配账号
-                    </p>
-                  )}
-                </div>
-              </ScrollArea>
-            ) : (
-              <p className="px-2.5 py-8 text-center text-sm text-muted-foreground">
-                暂无可分配企微账号
-              </p>
-            )}
-          </div>
-        ) : null}
-      </div>
+        <PopoverContent
+          align="start"
+          className="w-[var(--radix-popper-anchor-width)] rounded-[10px] p-2"
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          sideOffset={8}
+        >
+          {seats.length > 0 ? (
+            <ScrollArea className="h-[15rem]">
+              <div className="space-y-1 pr-2">
+                {filteredSeats.length > 0 ? (
+                  filteredSeats.map((seat) => (
+                    <label
+                      className="flex h-10 cursor-pointer items-center gap-2 rounded-[8px] px-2.5 text-sm text-foreground hover:bg-surface-hover"
+                      key={seat.seatId}
+                    >
+                      <Checkbox
+                        aria-label={seat.name}
+                        checked={selectedSeatIdSet.has(seat.seatId)}
+                        onCheckedChange={() => onToggleSeat(seat.seatId)}
+                      />
+                      <SeatAvatar seat={seat} />
+                      <span className="min-w-0 flex-1 truncate">{seat.name}</span>
+                    </label>
+                  ))
+                ) : (
+                  <p className="px-2.5 py-8 text-center text-sm text-muted-foreground">
+                    未找到匹配账号
+                  </p>
+                )}
+              </div>
+            </ScrollArea>
+          ) : (
+            <p className="px-2.5 py-8 text-center text-sm text-muted-foreground">
+              暂无可分配企微账号
+            </p>
+          )}
+        </PopoverContent>
+      </Popover>
 
       {selectedSeats.length > 0 ? (
         <ScrollArea className="h-[9rem] rounded-[10px] border border-border">

@@ -297,7 +297,7 @@ export function UiComponentDemoPage() {
                     </SheetDescription>
                   </SheetHeader>
                   <div className="grid gap-4 px-6 pb-6">
-                    <Field label="企微账号名称">
+                    <Field label="托管账号名称">
                       <Input id="sheet-account-name" defaultValue="护肤小助理" />
                     </Field>
                     <Field label="默认接待组">

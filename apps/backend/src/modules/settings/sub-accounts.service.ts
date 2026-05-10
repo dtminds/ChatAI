@@ -351,7 +351,7 @@ export class SubAccountSettingsService {
     );
 
     if (uniqueSeatIds.length !== rawSeatIds.length) {
-      throw new BadRequestError("INVALID_SEAT", "企微账号不存在");
+      throw new BadRequestError("INVALID_SEAT", "托管账号不存在");
     }
 
     if (uniqueSeatIds.length === 0) {
@@ -362,7 +362,7 @@ export class SubAccountSettingsService {
     const validSeatIds = new Set(seats.map((seat) => seat.id));
 
     if (uniqueSeatIds.some((seatId) => !validSeatIds.has(seatId))) {
-      throw new BadRequestError("INVALID_SEAT", "企微账号不存在");
+      throw new BadRequestError("INVALID_SEAT", "托管账号不存在");
     }
 
     return uniqueSeatIds;
@@ -465,7 +465,7 @@ function groupRelationsBySubAccountId(relations: RelationRow[]) {
 function mapSeat(row: SeatRow): SettingsWeComSeat {
   return {
     avatarUrl: row.avatarUrl || "",
-    name: row.third_user_name || "未命名企微账号",
+    name: row.third_user_name || "未命名托管账号",
     seatId: String(row.id),
   };
 }
@@ -473,7 +473,7 @@ function mapSeat(row: SeatRow): SettingsWeComSeat {
 function mapRelationSeat(row: RelationRow): SettingsWeComSeat {
   return {
     avatarUrl: row.avatarUrl || "",
-    name: row.name || "未命名企微账号",
+    name: row.name || "未命名托管账号",
     seatId: String(row.seat_id),
   };
 }

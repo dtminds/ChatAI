@@ -117,7 +117,7 @@ describe("Chat settings pages", () => {
     });
     expect(screen.getByRole("navigation", { name: "设置菜单" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "德仁堂 接管中" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "企微账号" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "托管账号" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "返回应用" }));
 
@@ -130,8 +130,8 @@ describe("Chat settings pages", () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");
 
-    expect(await screen.findByRole("heading", { name: "企微账号" })).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "企微账号列表" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新增账号" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "编辑 护肤小助理" })).toBeInTheDocument();
 
@@ -144,7 +144,7 @@ describe("Chat settings pages", () => {
     expect(screen.getAllByLabelText("账号类型：子账号")).toHaveLength(2);
     expect(screen.getByText("客服一号")).toBeInTheDocument();
     expect(screen.getByText("agent001")).toBeInTheDocument();
-    expect(screen.getByLabelText("关联企微账号 德瑞可")).toBeInTheDocument();
+    expect(screen.getByLabelText("关联托管账号 德瑞可")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开 主账号 操作菜单" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开 客服一号 操作菜单" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开 客服二号 操作菜单" })).toBeInTheDocument();
@@ -352,35 +352,35 @@ describe("Chat settings pages", () => {
     renderRoute("/chat/settings/sub-accounts");
 
     expect(await screen.findByRole("table", { name: "子账号列表" })).toBeInTheDocument();
-    expect(screen.getByLabelText("关联企微账号 德瑞可")).toBeInTheDocument();
-    expect(screen.getByLabelText("关联企微账号 念都堂")).toBeInTheDocument();
-    expect(screen.getByLabelText("关联企微账号 中台号")).toBeInTheDocument();
+    expect(screen.getByLabelText("关联托管账号 德瑞可")).toBeInTheDocument();
+    expect(screen.getByLabelText("关联托管账号 念都堂")).toBeInTheDocument();
+    expect(screen.getByLabelText("关联托管账号 中台号")).toBeInTheDocument();
     expect(screen.getByText("+1")).toBeInTheDocument();
     expect(screen.queryByText("共 4 个")).not.toBeInTheDocument();
     expect(screen.queryByText("售后号")).not.toBeInTheDocument();
 
     await user.hover(
-      screen.getByRole("button", { name: "查看 客服一号 的全部关联企微账号" }),
+      screen.getByRole("button", { name: "查看 客服一号 的全部关联托管账号" }),
     );
 
-    expect(screen.getByText("关联企微账号 · 4")).toBeInTheDocument();
+    expect(screen.getByText("关联托管账号 · 4")).toBeInTheDocument();
     expect(screen.getByText("中台号")).toBeInTheDocument();
     expect(screen.getByText("售后号")).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "搜索关联企微账号" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "搜索关联托管账号" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: "德瑞可" })[0]).toHaveAttribute(
       "src",
       "https://example.com/drc.png",
     );
 
     await user.unhover(
-      screen.getByRole("button", { name: "查看 客服一号 的全部关联企微账号" }),
+      screen.getByRole("button", { name: "查看 客服一号 的全部关联托管账号" }),
     );
 
     await waitFor(() => {
-      expect(screen.queryByText("关联企微账号 · 4")).not.toBeInTheDocument();
+      expect(screen.queryByText("关联托管账号 · 4")).not.toBeInTheDocument();
     });
     await new Promise((resolve) => window.setTimeout(resolve, 180));
-    expect(screen.queryByText("关联企微账号 · 4")).not.toBeInTheDocument();
+    expect(screen.queryByText("关联托管账号 · 4")).not.toBeInTheDocument();
   });
 
   it("shows a single related WeCom seat as one avatar without a total count", async () => {
@@ -416,12 +416,12 @@ describe("Chat settings pages", () => {
     });
     renderRoute("/chat/settings/sub-accounts");
 
-    expect(await screen.findByLabelText("关联企微账号 德瑞可")).toBeInTheDocument();
+    expect(await screen.findByLabelText("关联托管账号 德瑞可")).toBeInTheDocument();
     expect(screen.queryByText("共 1 个")).not.toBeInTheDocument();
     await user.hover(
-      screen.getByRole("button", { name: "查看 客服一号 的全部关联企微账号" }),
+      screen.getByRole("button", { name: "查看 客服一号 的全部关联托管账号" }),
     );
-    expect(screen.getByText("关联企微账号 · 1")).toBeInTheDocument();
+    expect(screen.getByText("关联托管账号 · 1")).toBeInTheDocument();
   });
 
   it("centers the sub-account loading state with the shared loader", async () => {

@@ -298,7 +298,7 @@ export function SubAccountsSettingsPage() {
                 <TableHead className="w-[28%] px-5 py-4">账号</TableHead>
                 <TableHead className="w-[14%] px-5 py-4">账号类型</TableHead>
                 <TableHead className="w-[14%] px-5 py-4">账号状态</TableHead>
-                <TableHead className="w-[30%] px-5 py-4">关联企微账号</TableHead>
+                <TableHead className="w-[30%] px-5 py-4">关联托管账号</TableHead>
                 <TableHead className="px-5 py-4">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -376,7 +376,7 @@ export function SubAccountsSettingsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>删除子账号</AlertDialogTitle>
             <AlertDialogDescription>
-              删除后该子账号将无法登录工作台，已关联企微账号不会被删除。
+              删除后该子账号将无法登录工作台，已关联托管账号不会被删除。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -538,7 +538,7 @@ function RelatedSeatsPreview({
     >
       <PopoverTrigger asChild>
         <Button
-          aria-label={`查看 ${subAccountName} 的全部关联企微账号`}
+          aria-label={`查看 ${subAccountName} 的全部关联托管账号`}
           className="h-8 justify-start rounded-full p-0 hover:bg-transparent"
           onBlur={scheduleClosePopover}
           onFocus={openPopover}
@@ -594,7 +594,7 @@ function RelatedSeatsPopoverContent({
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3 px-2.5">
           <p className="text-sm font-medium text-foreground">
-            关联企微账号 · {seats.length}
+            关联托管账号 · {seats.length}
           </p>
         </div>
         <ScrollArea className="h-[16rem]">
@@ -624,7 +624,7 @@ function SeatAvatar({
 }) {
   return (
     <Avatar
-      aria-label={`关联企微账号 ${seat.name}`}
+      aria-label={`关联托管账号 ${seat.name}`}
       className={cn("size-8 rounded-full border-2 border-surface", className)}
       title={seat.name}
     >
@@ -739,7 +739,7 @@ function SeatSelectionList({
             </ScrollArea>
           ) : (
             <p className="px-2.5 py-8 text-center text-sm text-muted-foreground">
-              暂无可分配企微账号
+              暂无可分配托管账号
             </p>
           )}
         </PopoverContent>
@@ -887,7 +887,7 @@ function SubAccountDialog({
           <DialogTitle>{mode === "create" ? "添加子账号" : "编辑子账号"}</DialogTitle>
           <DialogDescription>
             {mode === "create"
-              ? "填写登录信息，并为子账号分配可接待的企微账号"
+              ? "填写登录信息，并为子账号分配可接待的托管账号"
               : "登录用户名不可修改，密码留空时不更新"}
           </DialogDescription>
         </DialogHeader>

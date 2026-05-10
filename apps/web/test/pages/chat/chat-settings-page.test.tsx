@@ -1,6 +1,6 @@
 import MockAdapter from "axios-mock-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { routerConfig } from "@/router";
@@ -479,9 +479,18 @@ describe("Chat settings pages", () => {
 
     await user.unhover(screen.getByRole("button", { name: "查看 德瑞可 的全部关联子账号" }));
     await user.click(screen.getAllByRole("button", { name: "关联子账号" })[0]);
-    expect(screen.getByRole("dialog", { name: "关联子账号" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "关联子账号" });
+
+    expect(dialog).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "搜索并选择子账号" })).not.toHaveFocus();
     expect(screen.getByText("已选择 5 个")).toBeInTheDocument();
+    expect(within(dialog).getAllByLabelText("账号类型：主账号").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByLabelText("账号类型：子账号").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("启用").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("停用").length).toBeGreaterThan(0);
+    expect(within(dialog).queryByText("owner")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("agent001")).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("关联子账号 客服一号")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("textbox", { name: "搜索并选择子账号" }));
     expect(screen.getByRole("checkbox", { name: "主账号" })).toBeInTheDocument();

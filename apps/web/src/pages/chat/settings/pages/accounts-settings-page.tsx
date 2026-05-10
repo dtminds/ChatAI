@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -431,7 +432,7 @@ function SubAccountRelationDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-[42rem]"
+        className="sm:max-w-[34rem]"
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <DialogHeader>
@@ -557,9 +558,7 @@ function SubAccountSelectionList({
                         checked={selectedSubAccountIdSet.has(subAccount.id)}
                         onCheckedChange={() => onToggleSubAccount(subAccount.id)}
                       />
-                      <SubAccountAvatar subAccount={subAccount} />
-                      <span className="min-w-0 flex-1 truncate">{subAccount.name}</span>
-                      <span className="text-xs text-muted-foreground">{subAccount.account}</span>
+                      <SubAccountIdentity subAccount={subAccount} />
                     </label>
                   ))
                 ) : (
@@ -585,9 +584,7 @@ function SubAccountSelectionList({
                 className="flex h-10 items-center gap-2 rounded-[8px] px-2.5 text-sm text-foreground"
                 key={subAccount.id}
               >
-                <SubAccountAvatar subAccount={subAccount} />
-                <span className="min-w-0 flex-1 truncate">{subAccount.name}</span>
-                <span className="text-xs text-muted-foreground">{subAccount.account}</span>
+                <SubAccountIdentity subAccount={subAccount} />
                 <Button
                   className="h-7 rounded-[8px] px-2 text-xs text-muted-foreground"
                   onClick={() => onToggleSubAccount(subAccount.id)}
@@ -606,6 +603,32 @@ function SubAccountSelectionList({
         </div>
       )}
     </section>
+  );
+}
+
+function SubAccountIdentity({
+  subAccount,
+}: {
+  subAccount: SettingsManagedAccountSubAccount;
+}) {
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <span className="min-w-0 flex-1 truncate">{subAccount.name}</span>
+      <Badge
+        aria-label={subAccount.type === 1 ? "账号类型：主账号" : "账号类型：子账号"}
+        className={
+          subAccount.type === 1
+            ? "shrink-0 bg-primary/12 text-primary"
+            : "shrink-0 bg-success-muted text-success"
+        }
+        variant={subAccount.type === 1 ? "default" : "secondary"}
+      >
+        {subAccount.type === 1 ? "主账号" : "子账号"}
+      </Badge>
+      <StatusText tone={subAccount.status === "active" ? "success" : "muted"}>
+        {subAccount.status === "active" ? "启用" : "停用"}
+      </StatusText>
+    </div>
   );
 }
 

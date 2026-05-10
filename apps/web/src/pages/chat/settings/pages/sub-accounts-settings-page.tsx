@@ -882,7 +882,7 @@ function SubAccountDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[42rem]">
+      <DialogContent className="sm:max-w-[34rem]">
         <DialogHeader>
           <DialogTitle>{mode === "create" ? "添加子账号" : "编辑子账号"}</DialogTitle>
           <DialogDescription>

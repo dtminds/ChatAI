@@ -44,6 +44,23 @@ type AccountRailProps = {
   takeoverStatusByAccountId?: Record<string, "idle" | "taking-over">;
 };
 
+const userNameSegmenter =
+  typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : undefined;
+
+function getFirstGrapheme(value: string) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  return userNameSegmenter?.segment(trimmedValue)[Symbol.iterator]().next().value?.segment ?? [
+    ...trimmedValue,
+  ][0] ?? "";
+}
+
 export function AccountRail({
   accounts,
   activeAccountId,
@@ -55,11 +72,12 @@ export function AccountRail({
   onTakeOverAccount,
   takeoverStatusByAccountId = {},
 }: AccountRailProps) {
-  const signedInAccount =
-    accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
   const signedInName =
-    currentEmployee?.displayName || signedInAccount?.operator || signedInAccount?.name || "未登录";
-  const signedInAccountName = signedInAccount?.name ?? "未选择账号";
+    currentEmployee?.displayName.trim() || currentEmployee?.account.trim() || "未登录";
+  const signedInAccountName = currentEmployee?.account.trim() ?? "";
+  const signedInAvatarFallback = getFirstGrapheme(signedInName);
+  const shouldShowSignedInAccount =
+    signedInAccountName.length > 0 && signedInAccountName !== signedInName;
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-sidebar px-3 py-4 text-sidebar-foreground">
@@ -140,7 +158,9 @@ export function AccountRail({
                 className="size-8 shrink-0 rounded-lg bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
               >
                 <AvatarFallback className="rounded-lg text-sm">
-                  {signedInName.slice(0, 1)}
+                  <span data-testid="account-rail-footer-avatar-fallback">
+                    {signedInAvatarFallback}
+                  </span>
                 </AvatarFallback>
               </Avatar>
               <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
@@ -150,9 +170,14 @@ export function AccountRail({
                 >
                   {signedInName}
                 </span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {signedInAccountName}
-                </span>
+                {shouldShowSignedInAccount ? (
+                  <span
+                    className="truncate text-xs text-muted-foreground"
+                    data-testid="account-rail-footer-account"
+                  >
+                    {signedInAccountName}
+                  </span>
+                ) : null}
               </div>
               <HugeiconsIcon
                 color="currentColor"
@@ -178,7 +203,7 @@ export function AccountRail({
                   className="size-6 shrink-0 rounded-lg bg-surface shadow-[0_4px_12px_var(--shadow-soft)]"
                 >
                   <AvatarFallback className="rounded-lg text-sm">
-                    {signedInName.slice(0, 1)}
+                    {signedInAvatarFallback}
                   </AvatarFallback>
                 </Avatar>
                 <div className="grid min-w-0 flex-1 text-left text-[12px] leading-tight">
@@ -188,6 +213,11 @@ export function AccountRail({
                   >
                     {signedInName}
                   </span>
+                  {shouldShowSignedInAccount ? (
+                    <span className="truncate text-muted-foreground">
+                      {signedInAccountName}
+                    </span>
+                  ) : null}
                 </div>
               </div>
             </DropdownMenuLabel>

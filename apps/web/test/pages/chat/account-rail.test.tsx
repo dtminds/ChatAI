@@ -54,12 +54,13 @@ const accounts: Account[] = [
 ];
 
 const currentEmployee: EmployeeProfile = {
+  account: "13800138000",
   displayName: "林洒",
   id: "emp-001",
 };
 
 describe("AccountRail", () => {
-  it("shows the signed-in employee in a full-width footer trigger and opens the account menu", async () => {
+  it("shows the signed-in sub user name and account in the footer menu", async () => {
     const user = userEvent.setup();
 
     render(
@@ -73,17 +74,59 @@ describe("AccountRail", () => {
 
     const footerTrigger = screen.getByRole("button", { name: "打开账号菜单" });
     expect(footerTrigger).toHaveTextContent("林洒");
-    expect(footerTrigger).toHaveTextContent("lsave");
+    expect(footerTrigger).toHaveTextContent("13800138000");
+    expect(footerTrigger).not.toHaveTextContent("lsave");
     expect(footerTrigger.querySelector("img")).not.toBeInTheDocument();
+    expect(screen.getByTestId("account-rail-footer-avatar-fallback")).toHaveTextContent("林");
 
     await user.click(footerTrigger);
 
     const settingsProfile = screen.getByTestId("account-settings-profile");
     expect(settingsProfile).toHaveTextContent("林洒");
+    expect(settingsProfile).toHaveTextContent("13800138000");
     expect(settingsProfile).not.toHaveTextContent("lsave");
     expect(settingsProfile.querySelector("img")).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "设置" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
+  });
+
+  it("uses the first user-name grapheme as avatar fallback", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={{
+          account: "13800138000",
+          displayName: "👩‍💼小林",
+          id: "emp-001",
+        }}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("account-rail-footer-avatar-fallback")).toHaveTextContent(
+      "👩‍💼",
+    );
+  });
+
+  it("shows one footer text row when sub user name and account are the same", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={{
+          account: "13800138000",
+          displayName: "13800138000",
+          id: "emp-001",
+        }}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    const footerTrigger = screen.getByRole("button", { name: "打开账号菜单" });
+
+    expect(footerTrigger).toHaveTextContent("13800138000");
+    expect(screen.queryByTestId("account-rail-footer-account")).not.toBeInTheDocument();
   });
 
   it("calls logout from the account settings menu", async () => {

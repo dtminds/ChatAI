@@ -45,6 +45,7 @@ export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed" | 
 export type WorkbenchSubUserDto = {
   subUserId: string;
   displayName: string;
+  account: string;
 };
 
 export type WorkbenchSeatDto = {

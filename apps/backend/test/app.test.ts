@@ -263,6 +263,7 @@ describe("backend app", () => {
         expiresIn: 1200,
         refreshToken: expect.any(String),
         subUser: {
+          account: "agent001",
           displayName: "客服一号",
           subUserId: "101",
         },
@@ -634,6 +635,7 @@ describe("backend app", () => {
 
     expect(me.statusCode).toBe(200);
     expect(me.json()).toEqual({
+      account: "13800138000",
       displayName: "林洒",
       subUserId: "sub-user-001",
     });

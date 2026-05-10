@@ -45,6 +45,17 @@ type RelationRow = {
   sub_id: number;
 };
 
+const dbSubAccountStatus = {
+  active: 1,
+  deleted: 0,
+  disabled: 2,
+} as const;
+
+const dbSubAccountType = {
+  main: 1,
+  sub: 0,
+} as const;
+
 export class SubAccountSettingsService {
   constructor(private readonly db: Kysely<Database>) {}
 
@@ -55,13 +66,14 @@ export class SubAccountSettingsService {
       this.listSeatRows(scope),
       this.listRelationRows(scope),
     ]);
+    const relationsBySubAccountId = groupRelationsBySubAccountId(relations);
 
     return {
       seats: seats.map(mapSeat),
       subAccounts: subAccounts.map((subAccount) =>
         mapSubAccount(
           subAccount,
-          relations.filter((relation) => relation.sub_id === subAccount.id).map(mapRelationSeat),
+          relationsBySubAccountId.get(subAccount.id) ?? [],
         ),
       ),
     };
@@ -94,8 +106,8 @@ export class SubAccountSettingsService {
         name: normalizedName,
         password_hash: await hashPassword(normalizedPassword),
         platform: scope.platform,
-        status: 1,
-        type: 0,
+        status: dbSubAccountStatus.active,
+        type: dbSubAccountType.sub,
         uid: scope.uid,
       })
       .executeTakeFirstOrThrow();
@@ -147,7 +159,7 @@ export class SubAccountSettingsService {
       .where("id", "=", numericSubAccountId)
       .where("uid", "=", scope.uid)
       .where("platform", "=", scope.platform)
-      .where("status", "!=", 0)
+      .where("status", "!=", dbSubAccountStatus.deleted)
       .execute();
 
     const seatIds = await this.normalizeSeatIds(scope, payload.seatIds);
@@ -172,13 +184,13 @@ export class SubAccountSettingsService {
     await this.db
       .updateTable("xy_wap_embed_sub_user")
       .set({
-        status: status === "active" ? 1 : 2,
+        status: status === "active" ? dbSubAccountStatus.active : dbSubAccountStatus.disabled,
         update_time: new Date(),
       })
       .where("id", "=", numericSubAccountId)
       .where("uid", "=", scope.uid)
       .where("platform", "=", scope.platform)
-      .where("status", "!=", 0)
+      .where("status", "!=", dbSubAccountStatus.deleted)
       .execute();
 
     return this.getSubAccountOrThrow(scope, numericSubAccountId);
@@ -196,13 +208,13 @@ export class SubAccountSettingsService {
     await this.db
       .updateTable("xy_wap_embed_sub_user")
       .set({
-        status: 0,
+        status: dbSubAccountStatus.deleted,
         update_time: new Date(),
       })
       .where("id", "=", numericSubAccountId)
       .where("uid", "=", scope.uid)
       .where("platform", "=", scope.platform)
-      .where("type", "=", 0)
+      .where("type", "=", dbSubAccountType.sub)
       .execute();
 
     return { deleted: true };
@@ -219,7 +231,7 @@ export class SubAccountSettingsService {
       .selectFrom("xy_wap_embed_sub_user")
       .select(["platform", "uid"])
       .where("id", "=", numericSubUserId)
-      .where("status", "=", 1)
+      .where("status", "=", dbSubAccountStatus.active)
       .executeTakeFirst();
 
     if (!currentSubUser) {
@@ -244,7 +256,7 @@ export class SubAccountSettingsService {
       ])
       .where("sub_user.uid", "=", scope.uid)
       .where("sub_user.platform", "=", scope.platform)
-      .where("sub_user.status", "!=", 0)
+      .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
       .orderBy("sub_user.id", "desc")
       .execute() as Promise<SubAccountRow[]>;
   }
@@ -291,7 +303,7 @@ export class SubAccountSettingsService {
       .selectFrom("xy_wap_embed_sub_user")
       .select("id")
       .where("account", "=", account)
-      .where("status", "!=", 0)
+      .where("status", "!=", dbSubAccountStatus.deleted)
       .executeTakeFirst();
 
     if (existing) {
@@ -306,7 +318,7 @@ export class SubAccountSettingsService {
       .where("id", "=", subAccountId)
       .where("uid", "=", scope.uid)
       .where("platform", "=", scope.platform)
-      .where("status", "!=", 0)
+      .where("status", "!=", dbSubAccountStatus.deleted)
       .executeTakeFirst();
 
     if (!subAccount) {
@@ -321,14 +333,14 @@ export class SubAccountSettingsService {
       .where("id", "=", subAccountId)
       .where("uid", "=", scope.uid)
       .where("platform", "=", scope.platform)
-      .where("status", "!=", 0)
+      .where("status", "!=", dbSubAccountStatus.deleted)
       .executeTakeFirst();
 
     if (!subAccount) {
       throw new NotFoundError("SUB_ACCOUNT_NOT_FOUND", "子账号不存在");
     }
 
-    if (subAccount.type === 1) {
+    if (subAccount.type === dbSubAccountType.main) {
       throw new BadRequestError("MAIN_ACCOUNT_PROTECTED", "主账号不允许禁用或删除");
     }
   }
@@ -399,7 +411,7 @@ export class SubAccountSettingsService {
         .where("sub_user.id", "=", subAccountId)
         .where("sub_user.uid", "=", scope.uid)
         .where("sub_user.platform", "=", scope.platform)
-        .where("sub_user.status", "!=", 0)
+        .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
         .executeTakeFirst() as Promise<SubAccountRow | undefined>,
       this.listRelationRows(scope, subAccountId),
     ]);
@@ -432,9 +444,22 @@ function mapSubAccount(
     id: String(row.id),
     name: row.name,
     seats,
-    status: row.status === 1 ? "active" : "disabled",
-    type: row.type === 1 ? 1 : 0,
+    status: row.status === dbSubAccountStatus.active ? "active" : "disabled",
+    type: row.type === dbSubAccountType.main ? dbSubAccountType.main : dbSubAccountType.sub,
   };
+}
+
+function groupRelationsBySubAccountId(relations: RelationRow[]) {
+  const relationsBySubAccountId = new Map<number, SettingsWeComSeat[]>();
+
+  for (const relation of relations) {
+    const seats = relationsBySubAccountId.get(relation.sub_id) ?? [];
+
+    seats.push(mapRelationSeat(relation));
+    relationsBySubAccountId.set(relation.sub_id, seats);
+  }
+
+  return relationsBySubAccountId;
 }
 
 function mapSeat(row: SeatRow): SettingsWeComSeat {

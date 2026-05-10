@@ -244,7 +244,6 @@ function ManagedAccountRow({
           <ManagedAccountAvatar account={account} />
           <div className="min-w-0">
             <p className="truncate font-medium text-foreground">{account.name}</p>
-            <p className="mt-1 text-xs text-muted-foreground">ID {account.id}</p>
           </div>
         </div>
       </TableCell>
@@ -615,7 +614,6 @@ function SubAccountIdentity({
 
   return (
     <div className="flex min-w-0 flex-1 items-center justify-start gap-2">
-      <span className="min-w-0 max-w-[9rem] truncate">{subAccount.name}</span>
       <Badge
         aria-label={subAccount.type === 1 ? "账号类型：主账号" : "账号类型：子账号"}
         className={
@@ -627,14 +625,12 @@ function SubAccountIdentity({
       >
         {subAccount.type === 1 ? "主账号" : "子账号"}
       </Badge>
-      <span
-        className={cn(
-          "shrink-0 text-xs font-medium",
-          isActive ? "text-success" : "text-muted-foreground",
-        )}
-      >
-        {isActive ? "已启用" : "已停用"}
-      </span>
+      <span className="min-w-0 max-w-[9rem] truncate">{subAccount.name}</span>
+      {isActive ? null : (
+        <span className="shrink-0 text-xs font-medium text-muted-foreground">
+          已停用
+        </span>
+      )}
     </div>
   );
 }

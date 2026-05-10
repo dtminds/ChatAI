@@ -69,7 +69,6 @@ export function ImagePreviewDialog({
       <DialogContent
         aria-describedby={undefined}
         className="max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)] border-0 bg-transparent p-0 shadow-none sm:max-w-[calc(100vw-2rem)]"
-        showCloseButton={true}
       >
         <DialogTitle className="sr-only">图片预览</DialogTitle>
         <button

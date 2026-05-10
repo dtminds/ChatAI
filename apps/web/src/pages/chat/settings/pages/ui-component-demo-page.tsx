@@ -22,7 +22,6 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogMedia,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
@@ -199,7 +198,7 @@ export function UiComponentDemoPage() {
             <div className="mt-5 flex flex-wrap gap-3">
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button className="rounded-[10px]" type="button">
+                  <Button type="button">
                     <HugeiconsIcon
                       color="currentColor"
                       icon={Edit02Icon}
@@ -229,11 +228,11 @@ export function UiComponentDemoPage() {
                   </div>
                   <DialogFooter>
                     <DialogClose asChild>
-                      <Button className="rounded-[10px]" type="button" variant="outline">
+                      <Button type="button" variant="outline">
                         取消
                       </Button>
                     </DialogClose>
-                    <Button className="rounded-[10px]" type="button">
+                    <Button type="button">
                       保存
                     </Button>
                   </DialogFooter>
@@ -242,7 +241,7 @@ export function UiComponentDemoPage() {
 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button className="rounded-[10px]" type="button" variant="outline">
+                  <Button type="button" variant="outline">
                     <HugeiconsIcon
                       color="currentColor"
                       icon={AlertCircleIcon}
@@ -254,14 +253,6 @@ export function UiComponentDemoPage() {
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogMedia className="bg-destructive-muted text-destructive">
-                      <HugeiconsIcon
-                        color="currentColor"
-                        icon={AlertCircleIcon}
-                        size={30}
-                        strokeWidth={1.8}
-                      />
-                    </AlertDialogMedia>
                     <AlertDialogTitle>停用接待策略</AlertDialogTitle>
                     <AlertDialogDescription>
                       停用后新会话不会再按该策略分配，已有会话不受影响。
@@ -275,7 +266,6 @@ export function UiComponentDemoPage() {
               </AlertDialog>
 
               <Button
-                className="rounded-[10px]"
                 onClick={() => {
                   toast.success("配置已保存", {
                     description: "DEMO 中的 Toast 已接入全局 Toaster。",
@@ -295,7 +285,7 @@ export function UiComponentDemoPage() {
 
               <Sheet>
                 <SheetTrigger asChild>
-                  <Button className="rounded-[10px]" type="button" variant="outline">
+                  <Button type="button" variant="outline">
                     打开右侧抽屉
                   </Button>
                 </SheetTrigger>
@@ -306,8 +296,8 @@ export function UiComponentDemoPage() {
                       Sheet 适合右侧详情、复杂编辑和不打断列表上下文的设置流程。
                     </SheetDescription>
                   </SheetHeader>
-                  <div className="grid gap-4 px-4">
-                    <Field label="企微账号名称">
+                  <div className="grid gap-4 px-6 pb-6">
+                    <Field label="托管账号名称">
                       <Input id="sheet-account-name" defaultValue="护肤小助理" />
                     </Field>
                     <Field label="默认接待组">
@@ -315,7 +305,7 @@ export function UiComponentDemoPage() {
                     </Field>
                   </div>
                   <SheetFooter>
-                    <Button className="rounded-[10px]" type="button">
+                    <Button type="button">
                       保存变更
                     </Button>
                   </SheetFooter>
@@ -440,7 +430,7 @@ export function UiComponentDemoPage() {
               </div>
               <HoverCard>
                 <HoverCardTrigger asChild>
-                  <Button className="rounded-[10px]" type="button" variant="outline">
+                  <Button type="button" variant="outline">
                     账号悬浮信息
                   </Button>
                 </HoverCardTrigger>

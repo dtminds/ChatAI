@@ -22,7 +22,7 @@ import { UiComponentDemoPage } from "@/pages/chat/settings/pages/ui-component-de
 const settingsSections = [
   {
     id: "accounts",
-    label: "企微账号",
+    label: "托管账号",
     path: "/chat/settings",
     icon: AccountSetting01Icon,
   },

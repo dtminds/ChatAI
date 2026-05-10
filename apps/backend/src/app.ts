@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { checkSchema } from "./db/schema-check.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
 import { registerChatRoutes } from "./modules/chat/chat.routes.js";
+import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
 import { authPlugin } from "./plugins/auth.js";
 import { dbPlugin } from "./plugins/db.js";
 import { registerErrorHandler } from "./plugins/error-handler.js";
@@ -29,6 +30,7 @@ export async function buildApp() {
 
   await registerAuthRoutes(app);
   await registerChatRoutes(app);
+  await registerSettingsRoutes(app);
 
   return app;
 }

@@ -36,7 +36,7 @@ export function AccountsSettingsPage() {
       <PageHeader
         description="典型列表页结构：筛选栏、批量操作、状态列、行内操作和分页区域，后续接真实 API 时可替换数据源。"
         eyebrow="DEMO / CRUD"
-        title="企微账号"
+        title="托管账号"
       />
 
       <section className="flex flex-wrap items-center justify-between gap-3">
@@ -50,16 +50,16 @@ export function AccountsSettingsPage() {
               strokeWidth={1.8}
             />
             <Input
-              aria-label="搜索企微账号"
+              aria-label="搜索托管账号"
               className="h-10 rounded-[8px] pl-9"
-              placeholder="搜索企微账号"
+              placeholder="搜索托管账号"
             />
           </div>
 
           <Select defaultValue="all">
             <SelectTrigger
               aria-label="筛选接待状态"
-              className="h-10 min-w-[180px] rounded-[8px] text-sm"
+              className="h-10 w-[180px] rounded-[8px] text-sm"
             >
               <SelectValue placeholder="筛选接待状态" />
             </SelectTrigger>
@@ -72,7 +72,7 @@ export function AccountsSettingsPage() {
           </Select>
         </div>
 
-        <Button className="h-10 rounded-[10px] px-4" type="button">
+        <Button className="h-10 px-4" type="button">
           <HugeiconsIcon
             color="currentColor"
             icon={Add01Icon}
@@ -84,10 +84,10 @@ export function AccountsSettingsPage() {
       </section>
 
       <section className="mt-6 overflow-hidden rounded-[10px] border border-border">
-        <Table aria-label="企微账号列表">
+        <Table aria-label="托管账号列表">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[34%] px-5 py-4">企微账号</TableHead>
+              <TableHead className="w-[34%] px-5 py-4">托管账号</TableHead>
               <TableHead className="w-[14%] px-5 py-4">接待状态</TableHead>
               <TableHead className="w-[28%] px-5 py-4">关联子账号</TableHead>
               <TableHead className="px-5 py-4">操作</TableHead>

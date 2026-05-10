@@ -403,7 +403,7 @@ export function ChatComposer({
           >
             <SelectTrigger
               aria-label="选择 Enter 键行为"
-              className="h-7 min-w-0 border-0 bg-transparent px-1.5 text-muted-foreground shadow-none focus:ring-0"
+              className="h-7 min-w-0 border-0 text-[12px] bg-transparent px-1.5 text-muted-foreground shadow-none focus:ring-0"
             >
               <span>{INPUT_ENTER_BEHAVIOR_LABELS[inputEnterBehavior]}</span>
             </SelectTrigger>
@@ -488,7 +488,7 @@ export function ChatComposer({
                 {selectedMentionMembers.map((member) => (
                   <div
                     key={member.id}
-                    className="flex items-center gap-2 rounded-[8px] px-2.5 py-1.5"
+                    className="flex items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-sm"
                   >
                     <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-muted-foreground">
                       {member.displayName.slice(0, 1)}

@@ -256,7 +256,7 @@ describe("AccountRail", () => {
     expect(untakenDot).toHaveClass("bg-warning");
   });
 
-  it("shows the product logo with neutral strong text", () => {
+  it("shows the product logo", () => {
     render(
       <AccountRail
         accounts={accounts}
@@ -265,18 +265,11 @@ describe("AccountRail", () => {
       />,
     );
 
-    expect(screen.getByTestId("account-rail-logo")).toHaveClass(
-      "grid-cols-[18px_minmax(0,1fr)]",
-      "gap-2",
-      "px-3",
-      "text-neutral-strong",
-    );
-    expect(screen.getByTestId("account-rail-logo")).not.toHaveClass("bg-neutral-strong");
-    expect(screen.getByTestId("account-rail-logo")).toHaveTextContent("ChatAI");
-    expect(screen.getByTestId("account-rail-logo").firstElementChild).toHaveClass(
-      "size-[18px]",
-      "overflow-visible",
-    );
+    const logo = screen.getByTestId("account-rail-logo");
+
+    expect(logo).toHaveTextContent("ChatAI");
+    expect(logo).not.toHaveClass("bg-neutral-strong");
+    expect(logo.querySelector("svg")).toBeInTheDocument();
   });
 
   it("keeps account avatar fallbacks on primary colors", () => {

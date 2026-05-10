@@ -25,6 +25,10 @@ export async function verifyPassword(hash: string, password: string) {
   }
 }
 
+export async function hashPassword(password: string) {
+  return argon2.hash(password, getArgon2HashOptions());
+}
+
 export function getArgon2HashOptions() {
   return {
     hashLength: readPositiveInteger("PASSWORD_ARGON2_HASH_LENGTH", 32),

@@ -901,7 +901,7 @@ function SubAccountDialog({
                 id={passwordId}
                 name={mode === "create" ? "newSubAccountPassword" : "updatedSubAccountPassword"}
                 onChange={(event) => updateField("password", event.target.value)}
-                placeholder="请输入"
+                placeholder={mode === "create" ? "请输入" : "留空则不修改密码"}
                 type={showPassword ? "text" : "password"}
                 value={formValues.password}
               />
@@ -921,11 +921,11 @@ function SubAccountDialog({
                 />
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {mode === "create"
-                ? "密码必须包含大写字母、小写字母、数字、符号"
-                : "留空则不修改密码"}
-            </p>
+            {mode === "create" ? (
+              <p className="text-xs text-muted-foreground">
+                密码必须包含大写字母、小写字母、数字、符号
+              </p>
+            ) : null}
           </div>
 
           <Field htmlFor={nameId} label="姓名">

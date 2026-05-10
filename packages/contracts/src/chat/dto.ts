@@ -137,18 +137,45 @@ export type WorkbenchPollResponse = {
   messageStatusChanges: WorkbenchMessageStatusChangeDto[];
 };
 
+export type WorkbenchOutgoingMessageTextSegment = {
+  type: "text";
+  text: string;
+};
+
+export type WorkbenchOutgoingMessageImageSegment = {
+  type: "image";
+  alt: string;
+  fileId?: string;
+  height?: number;
+  localUrl?: string;
+  url?: string;
+  width?: number;
+};
+
+export type WorkbenchOutgoingMessageSegment =
+  | WorkbenchOutgoingMessageTextSegment
+  | WorkbenchOutgoingMessageImageSegment;
+
 export type WorkbenchSendMessagePayload = {
   seatId: string;
   conversationId: string;
   clientMessageId: string;
-  contentType: "text";
-  content: string;
+  contentType?: "text";
+  content?: string;
+  segments?: WorkbenchOutgoingMessageSegment[];
+};
+
+export type WorkbenchSentMessageAck = {
+  messageId: string;
+  clientMessageId: string;
+  status: "accepted";
 };
 
 export type WorkbenchSendMessageResponse = {
   messageId: string;
   clientMessageId: string;
   status: "accepted";
+  messages?: WorkbenchSentMessageAck[];
 };
 
 export type WorkbenchConversationReadResponse = {

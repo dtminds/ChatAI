@@ -833,7 +833,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=10",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
     });
 
     expect(send.statusCode).toBe(200);
@@ -853,6 +853,109 @@ describe("backend app", () => {
       conversationId: "conv-001",
       status: "sent",
     });
+
+    await app.close();
+  });
+
+  it("expands segmented sends into separate backend messages", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const send = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        clientMessageId: "local-segment-test-001",
+        conversationId: "conv-001",
+        seatId: "drc",
+        segments: [
+          {
+            text: "第一段[打脸]",
+            type: "text",
+          },
+          {
+            alt: "截图",
+            height: 240,
+            localUrl: "data:image/png;base64,abc",
+            type: "image",
+            width: 320,
+          },
+          {
+            text: "第二段[强]",
+            type: "text",
+          },
+        ],
+      },
+      url: "/api/server/messages/send",
+    });
+    const poll = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+    });
+    const messages = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations/conv-001/messages?limit=20",
+    });
+
+    expect(send.statusCode).toBe(200);
+    expect(send.json().messages).toMatchObject([
+      {
+        clientMessageId: "local-segment-test-001",
+        status: "accepted",
+      },
+      {
+        clientMessageId: "local-segment-test-001_2",
+        status: "accepted",
+      },
+      {
+        clientMessageId: "local-segment-test-001_3",
+        status: "accepted",
+      },
+    ]);
+    expect(poll.statusCode).toBe(200);
+    expect(poll.json().messageStatusChanges).toMatchObject([
+      {
+        clientMessageId: "local-segment-test-001",
+        conversationId: "conv-001",
+        status: "sent",
+      },
+      {
+        clientMessageId: "local-segment-test-001_2",
+        conversationId: "conv-001",
+        status: "sent",
+      },
+      {
+        clientMessageId: "local-segment-test-001_3",
+        conversationId: "conv-001",
+        status: "sent",
+      },
+    ]);
+    expect(messages.statusCode).toBe(200);
+    expect(messages.json().slice(-3)).toMatchObject([
+      {
+        clientMessageId: "local-segment-test-001",
+        content: {
+          text: "第一段[打脸]",
+        },
+        contentType: "text",
+      },
+      {
+        clientMessageId: "local-segment-test-001_2",
+        content: {
+          alt: "截图",
+          imageUrl: "data:image/png;base64,abc",
+        },
+        contentType: "image",
+      },
+      {
+        clientMessageId: "local-segment-test-001_3",
+        content: {
+          text: "第二段[强]",
+        },
+        contentType: "text",
+      },
+    ]);
 
     await app.close();
   });

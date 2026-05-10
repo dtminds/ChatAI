@@ -77,7 +77,7 @@ export function ChatSettingsPage() {
       <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden">
         <SettingsSidebar activeSectionId={activeSectionId} />
 
-        <main className="h-full min-h-0 overflow-hidden pl-0 rounded-[20px_0_0_20px] border-l border-divider/80 bg-surface" style={{ boxShadow: "-5px 0 10px -4px var(--shadow-soft)" }}>
+        <main className="h-full min-h-0 overflow-hidden rounded-[14px_0_0_14px] bg-surface pl-0 shadow">
           <div className="h-full min-h-0 overflow-y-auto">
             <div className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col px-8 py-8">
               <SettingsContent sectionId={activeSectionId} />
@@ -138,7 +138,7 @@ function SettingsSidebar({
               className={cn(
                 "flex h-9 items-center gap-2 rounded-[8px] px-3 text-[14px] text-foreground transition-colors",
                 isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                   : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               )}
               key={section.id}

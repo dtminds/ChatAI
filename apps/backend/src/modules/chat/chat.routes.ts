@@ -40,10 +40,29 @@ const PollQuerySchema = Type.Object({
 
 const SendMessageBodySchema = Type.Object({
   clientMessageId: Type.String(),
-  content: Type.String(),
-  contentType: Type.Literal("text"),
+  content: Type.Optional(Type.String()),
+  contentType: Type.Optional(Type.Literal("text")),
   conversationId: Type.String(),
   seatId: Type.String(),
+  segments: Type.Optional(
+    Type.Array(
+      Type.Union([
+        Type.Object({
+          text: Type.String(),
+          type: Type.Literal("text"),
+        }),
+        Type.Object({
+          alt: Type.String(),
+          fileId: Type.Optional(Type.String()),
+          height: Type.Optional(Type.Number()),
+          localUrl: Type.Optional(Type.String()),
+          type: Type.Literal("image"),
+          url: Type.Optional(Type.String()),
+          width: Type.Optional(Type.Number()),
+        }),
+      ]),
+    ),
+  ),
 });
 
 const SeatParamsSchema = Type.Object({

@@ -1,4 +1,5 @@
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
+import type { LexicalEditor } from "lexical";
 import { Separator } from "@/components/ui/separator";
 import { ChatComposer } from "@/pages/chat/components/chat-composer";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
@@ -11,8 +12,8 @@ import type {
   GroupMember,
   Message,
 } from "@/pages/chat/chat-types";
-import type { WechatEmojiName } from "@/pages/chat/wechat-emoji";
 import type { MentionInsertPosition } from "@/pages/chat/components/chat-composer";
+import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
 type ChatPanelProps = {
   accountName?: string;
@@ -35,7 +36,6 @@ type ChatPanelProps = {
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
-  onEmojiSelect: (name: WechatEmojiName) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onMentionInsertPositionChange: (position: MentionInsertPosition) => void;
   onRemoveMentionMember: (memberId: string) => void;
@@ -43,11 +43,11 @@ type ChatPanelProps = {
   onLoadOlderMessages: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
-  onSendDraft: () => void;
+  onSendDraft: (segments: ComposerSegment[]) => void;
   scopeTransitionError?: string;
   messageListBottomRef: RefObject<HTMLDivElement | null>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
+  composerRef: RefObject<LexicalEditor | null>;
   workbenchBodyRef: RefObject<HTMLDivElement | null>;
 };
 
@@ -72,7 +72,6 @@ export function ChatPanel({
   onCustomerPanelResizeStart,
   onDraftChange,
   onEmojiPickerOpenChange,
-  onEmojiSelect,
   onEnterBehaviorChange,
   onMentionInsertPositionChange,
   onRemoveMentionMember,
@@ -84,7 +83,7 @@ export function ChatPanel({
   scopeTransitionError,
   messageListBottomRef,
   messageViewportRef,
-  textareaRef,
+  composerRef,
   workbenchBodyRef,
 }: ChatPanelProps) {
   return (
@@ -120,7 +119,6 @@ export function ChatPanel({
             mentionInsertPosition={mentionInsertPosition}
             onDraftChange={onDraftChange}
             onEmojiPickerOpenChange={onEmojiPickerOpenChange}
-            onEmojiSelect={onEmojiSelect}
             onEnterBehaviorChange={onEnterBehaviorChange}
             onMentionInsertPositionChange={onMentionInsertPositionChange}
             onRemoveMentionMember={onRemoveMentionMember}
@@ -128,7 +126,7 @@ export function ChatPanel({
             onSendDraft={onSendDraft}
             selectedMentionMembers={selectedMentionMembers}
             placeholder={composerPlaceholder}
-            textareaRef={textareaRef}
+            composerRef={composerRef}
           />
         </div>
 

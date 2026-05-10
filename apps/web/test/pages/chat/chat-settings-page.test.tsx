@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
@@ -21,6 +21,8 @@ describe("Chat settings pages", () => {
     window.localStorage.setItem("chatai.refreshToken", "test-refresh-token");
     resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+    document.documentElement.classList.remove("dark");
+    setSystemColorScheme(false);
   });
 
   it("opens settings from the account menu and returns to /chat", async () => {
@@ -93,6 +95,41 @@ describe("Chat settings pages", () => {
     );
   });
 
+  it("switches and persists light and dark mode from the appearance settings page", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings/appearance");
+
+    expect(await screen.findByRole("heading", { name: "外观模式" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "深色模式" }));
+
+    expect(document.documentElement).toHaveClass("dark");
+    expect(window.localStorage.getItem("chat-ai-theme")).toBe("dark");
+
+    await user.click(screen.getByRole("radio", { name: "浅色模式" }));
+
+    expect(document.documentElement).not.toHaveClass("dark");
+    expect(window.localStorage.getItem("chat-ai-theme")).toBe("light");
+  });
+
+  it("follows system mode from the appearance settings page", async () => {
+    const user = userEvent.setup();
+    const mediaQuery = setSystemColorScheme(true);
+    window.localStorage.setItem("chat-ai-theme", "light");
+
+    renderRoute("/chat/settings/appearance");
+
+    await user.click(await screen.findByRole("radio", { name: "跟随系统模式" }));
+
+    expect(document.documentElement).toHaveClass("dark");
+    expect(window.localStorage.getItem("chat-ai-theme")).toBe("system");
+
+    mediaQuery.setMatches(false);
+    await waitFor(() => {
+      expect(document.documentElement).not.toHaveClass("dark");
+    });
+  });
+
   it("shows basic UI component demos for settings development references", async () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings");
@@ -144,3 +181,37 @@ describe("Chat settings pages", () => {
     expect(screen.getByText("启用后会优先沿用最近一次服务关系。")).toBeInTheDocument();
   });
 });
+
+function setSystemColorScheme(matches: boolean) {
+  let currentMatches = matches;
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  const mediaQuery = {
+    get matches() {
+      return currentMatches;
+    },
+    media: "(prefers-color-scheme: dark)",
+    onchange: null,
+    addEventListener: vi.fn((event: string, listener: (event: MediaQueryListEvent) => void) => {
+      if (event === "change") {
+        listeners.add(listener);
+      }
+    }),
+    removeEventListener: vi.fn((event: string, listener: (event: MediaQueryListEvent) => void) => {
+      if (event === "change") {
+        listeners.delete(listener);
+      }
+    }),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+    setMatches(nextMatches: boolean) {
+      currentMatches = nextMatches;
+      const event = { matches: nextMatches } as MediaQueryListEvent;
+      listeners.forEach((listener) => listener(event));
+    },
+  };
+
+  vi.spyOn(window, "matchMedia").mockReturnValue(mediaQuery as unknown as MediaQueryList);
+
+  return mediaQuery;
+}

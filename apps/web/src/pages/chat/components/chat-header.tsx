@@ -9,11 +9,15 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from "@/components/ui/segmented-control";
+import {
+  applyThemePreference,
+  getDarkModeMediaQuery,
+  getInitialThemePreference,
+  isThemePreference,
+  writeThemePreference,
+  type ThemePreference,
+} from "@/lib/theme-preference";
 import type { Conversation } from "@/pages/chat/chat-types";
-
-const THEME_STORAGE_KEY = "chat-ai-theme";
-const DARK_MODE_QUERY = "(prefers-color-scheme: dark)";
-type ThemePreference = "dark" | "light" | "system";
 
 type ChatHeaderProps = {
   activeConversation?: Conversation;
@@ -22,13 +26,10 @@ type ChatHeaderProps = {
 export function ChatHeader({ activeConversation }: ChatHeaderProps) {
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [isSystemDarkMode, setIsSystemDarkMode] = useState(false);
-  const isDarkMode =
-    themePreference === "dark" ||
-    (themePreference === "system" && isSystemDarkMode);
 
   useLayoutEffect(() => {
-    document.documentElement.classList.toggle("dark", isDarkMode);
-  }, [isDarkMode]);
+    applyThemePreference(themePreference, isSystemDarkMode);
+  }, [isSystemDarkMode, themePreference]);
 
   useLayoutEffect(() => {
     setThemePreference(getInitialThemePreference());
@@ -107,38 +108,4 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
       </div>
     </div>
   );
-}
-
-function getInitialThemePreference(): ThemePreference {
-  return readThemePreference() ?? "system";
-}
-
-function getDarkModeMediaQuery() {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function"
-    ? window.matchMedia(DARK_MODE_QUERY)
-    : undefined;
-}
-
-function readThemePreference(): ThemePreference | undefined {
-  try {
-    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-
-    return isThemePreference(savedTheme)
-      ? savedTheme
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function isThemePreference(value: unknown): value is ThemePreference {
-  return value === "dark" || value === "light" || value === "system";
-}
-
-function writeThemePreference(theme: ThemePreference) {
-  try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  } catch {
-    // Theme persistence is best-effort; the UI state still updates without storage.
-  }
 }

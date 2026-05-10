@@ -1,4 +1,9 @@
-import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import {
+  CheckmarkCircle02Icon,
+  ComputerIcon,
+  Moon02Icon,
+  Sun02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useLayoutEffect, useState } from "react";
 
@@ -6,6 +11,10 @@ import {
   Avatar,
   AvatarFallback,
 } from "@/components/ui/avatar";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@/components/ui/segmented-control";
 import { cn } from "@/lib/utils";
 import {
   type AppearanceThemeId,
@@ -15,12 +24,28 @@ import {
   writeAppearanceTheme,
 } from "@/lib/appearance-theme";
 import {
+  applyThemePreference,
+  getDarkModeMediaQuery,
+  getInitialThemePreference,
+  isThemePreference,
+  writeThemePreference,
+  type ThemePreference,
+} from "@/lib/theme-preference";
+import {
   PageHeader,
 } from "@/pages/chat/settings/shared";
+
+const themeModeOptions = [
+  { value: "light", label: "浅色", icon: Sun02Icon },
+  { value: "dark", label: "深色", icon: Moon02Icon },
+  { value: "system", label: "跟随系统", icon: ComputerIcon },
+] as const;
 
 export function AppearanceSettingsPage() {
   const [appearanceTheme, setAppearanceTheme] =
     useState<AppearanceThemeId>("default");
+  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const [isSystemDarkMode, setIsSystemDarkMode] = useState(false);
 
   useLayoutEffect(() => {
     const initialTheme = getInitialAppearanceTheme();
@@ -29,19 +54,89 @@ export function AppearanceSettingsPage() {
     setAppearanceTheme(initialTheme);
   }, []);
 
+  useLayoutEffect(() => {
+    applyThemePreference(themePreference, isSystemDarkMode);
+  }, [isSystemDarkMode, themePreference]);
+
+  useLayoutEffect(() => {
+    setThemePreference(getInitialThemePreference());
+
+    const mediaQuery = getDarkModeMediaQuery();
+    if (!mediaQuery) {
+      return;
+    }
+
+    setIsSystemDarkMode(mediaQuery.matches);
+
+    const handleSystemThemeChange = (event: MediaQueryListEvent) => {
+      setIsSystemDarkMode(event.matches);
+    };
+
+    mediaQuery.addEventListener("change", handleSystemThemeChange);
+
+    return () => {
+      mediaQuery.removeEventListener("change", handleSystemThemeChange);
+    };
+  }, []);
+
   const handleAppearanceThemeChange = (nextTheme: AppearanceThemeId) => {
     applyAppearanceTheme(nextTheme);
     writeAppearanceTheme(nextTheme);
     setAppearanceTheme(nextTheme);
   };
 
+  const handleThemePreferenceChange = (nextThemePreference: string) => {
+    if (!isThemePreference(nextThemePreference)) {
+      return;
+    }
+
+    writeThemePreference(nextThemePreference);
+    setThemePreference(nextThemePreference);
+  };
+
   return (
     <>
       <PageHeader
-        description="选择工作台整体配色。明暗模式仍可在聊天页顶部单独切换。"
+        description="选择你偏好的颜色主题和外观模式"
         eyebrow="THEME"
         title="外观"
       />
+
+      <section aria-labelledby="appearance-mode-title" className="mb-6">
+        <h2 id="appearance-mode-title" className="text-base font-semibold text-foreground">
+          外观模式
+        </h2>
+        <SegmentedControl
+          aria-label="选择外观模式"
+          className="mt-3 h-9 rounded-full p-1"
+          onValueChange={handleThemePreferenceChange}
+          type="single"
+          value={themePreference}
+        >
+          {themeModeOptions.map((option) => (
+            <SegmentedControlItem
+              aria-label={`${option.label}模式`}
+              className="h-7 w-auto min-w-20 gap-1.5 rounded-full px-3 text-xs font-medium data-[state=on]:bg-foreground data-[state=on]:text-background"
+              key={option.value}
+              value={option.value}
+            >
+              <HugeiconsIcon
+                color="currentColor"
+                icon={option.icon}
+                size={15}
+                strokeWidth={1.8}
+              />
+              <span>{option.label}</span>
+            </SegmentedControlItem>
+          ))}
+        </SegmentedControl>
+      </section>
+
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-foreground">
+          颜色主题
+        </h2>
+      </div>
 
       <section aria-label="外观主题" className="grid gap-3 lg:grid-cols-2">
         {appearanceThemes.map((theme) => {

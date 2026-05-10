@@ -882,10 +882,10 @@ function SubAccountDialog({
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor={passwordId}>密码</Label>
               <Button
-                className="h-8 rounded-[8px] px-2 text-primary"
+                className="h-auto px-0"
                 onClick={handleGeneratePassword}
                 type="button"
-                variant="ghost"
+                variant="link"
               >
                 <HugeiconsIcon
                   color="currentColor"

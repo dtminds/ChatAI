@@ -2,47 +2,44 @@
 
 import type { CSSProperties } from "react";
 
-import { DotMatrixBase } from "@/lib/dotmatrix-core";
-import { useDotMatrixPhases } from "@/lib/dotmatrix-hooks";
-import { trBlPathNormFromIndex } from "@/lib/dotmatrix-core";
-import { usePrefersReducedMotion } from "@/lib/dotmatrix-hooks";
-import type { DotAnimationResolver } from "@/lib/dotmatrix-core";
-import type { DotMatrixCommonProps } from "@/lib/dotmatrix-core";
+import {
+  diagonalSnakeNormFromIndex,
+  diagonalSnakeOrderValue,
+  DotMatrixBase,
+} from "@/components/ui/dotmatrix/dotmatrix-core";
+import { useDotMatrixPhases, usePrefersReducedMotion } from "@/components/ui/dotmatrix/dotmatrix-hooks";
+import type { DotAnimationResolver, DotMatrixCommonProps } from "@/components/ui/dotmatrix/dotmatrix-core";
 
-export type DotmSquare1Props = DotMatrixCommonProps;
+export type DotmSquare5Props = DotMatrixCommonProps;
 
-const animationResolver: DotAnimationResolver = ({ isActive, index, row, col, reducedMotion, phase }) => {
+const animationResolver: DotAnimationResolver = ({ isActive, index, reducedMotion, phase }) => {
   if (!isActive) {
     return { className: "dmx-inactive" };
   }
 
-  const path = trBlPathNormFromIndex(index);
-  const slice = row + (4 - col);
-  const parity = slice % 2;
-  const style = {
-    "--dmx-path": path,
-    "--dmx-diagonal-parity": parity
-  } as CSSProperties;
+  const order = diagonalSnakeOrderValue(index);
+  const pathNorm = diagonalSnakeNormFromIndex(index);
+  const style = { "--dmx-diagonal-snake-order": order } as CSSProperties;
 
   if (reducedMotion || phase === "idle") {
     return {
       style: {
         ...style,
-        opacity: parity === 0 ? 0.88 : 0.14
+        opacity: 0.16 + pathNorm * 0.78
       }
     };
   }
 
-  return { className: "dmx-diagonal-alt-sweep", style };
+  return { className: "dmx-diagonal-snake", style };
 };
 
-export function DotmSquare1({
-  speed = 1.1,
+export function DotmSquare5({
+  speed = 1.35,
   pattern = "full",
   animated = true,
   hoverAnimated = false,
   ...rest
-}: DotmSquare1Props) {
+}: DotmSquare5Props) {
   const reducedMotion = usePrefersReducedMotion();
   const { phase: matrixPhase, onMouseEnter, onMouseLeave } = useDotMatrixPhases({
     animated: Boolean(animated && !reducedMotion),

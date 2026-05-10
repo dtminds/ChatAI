@@ -2,7 +2,7 @@ import { startTransition, useEffect, useRef, useState } from "react";
 import type { LexicalEditor } from "lexical";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { DotmSquare1 } from "@/components/ui/dotm-square-1";
+import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { cn } from "@/lib/utils";
 import { clearAuthTokens } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
@@ -223,14 +223,12 @@ function ChatWorkbenchContent({
     return (
       <div className="flex h-svh items-center justify-center bg-background px-6">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <span data-testid="workbench-loading-indicator">
-            <DotmSquare1
-              ariaLabel="正在加载"
-              className="text-foreground"
-              size={22}
-              dotSize={3}
-            />
-          </span>
+          <DotMatrixLoader
+            ariaLabel="正在加载"
+            className="text-foreground"
+            dotSize={3}
+            size={22}
+          />
           正在加载工作台数据...
         </div>
       </div>

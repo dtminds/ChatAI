@@ -43,8 +43,8 @@ export function ConversationCard({
       className={cn(
         "group relative mb-1 w-full overflow-visible border-b px-2.5 py-2.5 text-left",
         isActive
-          ? "rounded-xl border-transparent bg-secondary text-foreground"
-          : "border-divider/60 bg-surface",
+          ? "rounded-[8px] border-transparent bg-conversation-active text-conversation-active-foreground"
+          : "border-divider/60 bg-surface hover:bg-conversation-hover",
       )}
     >
       <Button
@@ -54,12 +54,17 @@ export function ConversationCard({
         variant="ghost"
       >
         <div className="relative">
-          <Avatar className="size-8">
+          <Avatar className="size-10">
             <AvatarImage
               alt={conversation.customerName}
               src={conversation.customerAvatarUrl}
             />
-            <AvatarFallback>{conversation.customerName.slice(0, 1)}</AvatarFallback>
+            <AvatarFallback
+              className={cn(
+                isActive &&
+                  "bg-conversation-active-foreground/20 text-conversation-active-foreground",
+              )}
+            />
           </Avatar>
           {conversation.unread > 0 ? (
             <div className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground">
@@ -70,7 +75,14 @@ export function ConversationCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5 pr-7">
-            <p className="truncate text-[14px] font-medium text-foreground">
+            <p
+              className={cn(
+                "truncate text-[14px] font-medium",
+                isActive
+                  ? "text-conversation-active-foreground"
+                  : "text-foreground",
+              )}
+            >
               {conversation.customerName}
             </p>
             {conversation.mode === "group" ? (
@@ -78,7 +90,7 @@ export function ConversationCard({
                 className={cn(
                   "rounded px-1 py-0.5 text-[10px]",
                   isActive
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-conversation-active-foreground/15 text-conversation-active-foreground"
                     : "bg-primary/10 text-primary",
                 )}
               >
@@ -88,10 +100,26 @@ export function ConversationCard({
           </div>
 
           <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-            <p className="truncate text-[12px] text-muted-foreground">
+            <p
+              className={cn(
+                "truncate text-[12px]",
+                isActive
+                  ? "text-conversation-active-muted-foreground"
+                  : "text-muted-foreground",
+              )}
+              data-testid="conversation-preview"
+            >
               {conversation.preview}
             </p>
-            <span className="shrink-0 whitespace-nowrap text-[12px] text-muted-foreground">
+            <span
+              className={cn(
+                "shrink-0 whitespace-nowrap text-[12px]",
+                isActive
+                  ? "text-conversation-active-muted-foreground"
+                  : "text-muted-foreground",
+              )}
+              data-testid="conversation-updated-at"
+            >
               {formatConversationTimestamp(conversation.updatedAt)}
             </span>
           </div>
@@ -105,6 +133,8 @@ export function ConversationCard({
             className={cn(
               "group/menu absolute right-2.5 top-2 size-6 rounded-md p-0 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
               conversation.isPinned ? "opacity-100" : "opacity-0",
+              isActive &&
+                "text-conversation-active-icon hover:bg-conversation-active-foreground/15 hover:text-conversation-active-foreground",
               isMenuOpen && "bg-muted text-foreground opacity-100",
             )}
             size="icon"
@@ -115,6 +145,7 @@ export function ConversationCard({
               <span
                 className={cn(
                   "group-hover:hidden group-focus-visible/menu:hidden text-primary",
+                  isActive && "text-conversation-active-icon",
                   isMenuOpen && "hidden",
                 )}
               >

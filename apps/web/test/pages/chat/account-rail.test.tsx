@@ -12,6 +12,7 @@ vi.mock("@/components/ui/avatar", () => ({
   AvatarFallback: ({ children, ...props }: ComponentProps<"span">) => (
     <span {...props}>{children}</span>
   ),
+  AvatarBadge: (props: ComponentProps<"span">) => <span {...props} />,
   AvatarImage: (props: ComponentProps<"img">) => <img {...props} />,
 }));
 
@@ -255,6 +256,28 @@ describe("AccountRail", () => {
     expect(untakenDot).toHaveClass("bg-warning");
   });
 
+  it("keeps account avatar fallbacks on primary colors", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("account-rail-footer-avatar-fallback").parentElement).toHaveClass(
+      "bg-primary",
+      "text-primary-foreground",
+    );
+    expect(
+      screen
+        .getByTestId("account-sidebar-item-account-1")
+        .querySelector(".bg-primary.text-primary-foreground"),
+    ).toBeInTheDocument();
+  });
+
   it("shows taken-over account unread badges on the avatar", () => {
     render(
       <AccountRail
@@ -282,5 +305,53 @@ describe("AccountRail", () => {
     );
 
     expect(screen.queryByText("2")).not.toBeInTheDocument();
+  });
+
+  it("keeps compact account status badges and takeover popovers", async () => {
+    const user = userEvent.setup();
+    const handleTakeOverAccount = vi.fn();
+    const compactAccounts: Account[] = [
+      ...accounts,
+      {
+        ...accounts[1],
+        id: "account-offline",
+        loginStatus: "offline",
+        name: "offline",
+        unreadCount: 0,
+      },
+    ];
+
+    render(
+      <AccountRail
+        accounts={compactAccounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        isCollapsed
+        onSelectAccount={vi.fn()}
+        onTakeOverAccount={handleTakeOverAccount}
+      />,
+    );
+
+    expect(screen.getByLabelText("lsave 状态 已接管")).toHaveClass("bg-success");
+    expect(screen.getByLabelText("support 状态 未接管")).toHaveClass("bg-warning");
+    expect(screen.getByLabelText("offline 状态 离线")).toHaveClass("bg-muted-foreground/50");
+    expect(screen.getByRole("button", { name: "选择 support" })).not.toHaveClass(
+      "hover:bg-surface-hover",
+    );
+
+    await user.hover(screen.getByRole("button", { name: "选择 lsave" }));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("lsave");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("已接管");
+
+    await user.unhover(screen.getByRole("button", { name: "选择 lsave" }));
+    await user.hover(screen.getByRole("button", { name: "选择 support" }));
+
+    expect(screen.getByText("support")).toBeInTheDocument();
+    expect(screen.getByText("当前账号未被你接管，你将无法")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "接管账号" }));
+
+    expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");
   });
 });

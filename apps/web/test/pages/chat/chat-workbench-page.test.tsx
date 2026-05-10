@@ -109,6 +109,46 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("collapses and expands the account sidebar into a compact rail", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    expect(screen.getByRole("button", { name: "聊天" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择 德瑞可" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "折叠侧栏" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    await user.click(screen.getByRole("button", { name: "折叠侧栏" }));
+
+    expect(screen.getByRole("button", { name: "工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "聊天" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "客户" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "任务" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择 德瑞可" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开账号菜单" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开侧栏" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.hover(screen.getByRole("button", { name: "客户" }));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("客户");
+
+    await user.click(screen.getByRole("button", { name: "展开侧栏" }));
+
+    expect(screen.getByRole("button", { name: "聊天" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择 德瑞可" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "折叠侧栏" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
   it("does not open member mentions in single chats", async () => {
     const user = userEvent.setup();
 
@@ -324,7 +364,7 @@ describe("ChatWorkbenchPage", () => {
     render(<ChatWorkbenchPage />);
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "念都堂" }));
+    await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
 
     await waitFor(() => {
       expect(
@@ -344,12 +384,12 @@ describe("ChatWorkbenchPage", () => {
     render(<ChatWorkbenchPage />);
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "念都堂" }));
+    await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
 
     await screen.findByRole("textbox", {
       name: "当前账号未接管，暂时无法发送消息",
     });
-    await user.hover(screen.getByRole("button", { name: "念都堂 未接管" }));
+    await user.hover(screen.getByRole("button", { name: "选择 念都堂" }));
     await user.click(screen.getByRole("button", { name: "接管账号" }));
 
     await waitFor(() => {

@@ -73,6 +73,7 @@ function ChatWorkbenchContent({
     useState<MentionInsertPosition>("start");
   const [selectedMentionMembers, setSelectedMentionMembers] = useState<GroupMember[]>([]);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [isAccountRailCollapsed, setIsAccountRailCollapsed] = useState(false);
   const [inputEnterBehavior, setInputEnterBehavior] =
     useState<InputEnterBehavior>("send");
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
@@ -260,12 +261,21 @@ function ChatWorkbenchContent({
 
   return (
     <div className="h-svh min-h-[720px] bg-sidebar">
-      <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden">
+      <div
+        className={cn(
+          "grid h-full overflow-hidden transition-[grid-template-columns] duration-200 ease-out",
+          isAccountRailCollapsed
+            ? "grid-cols-[3.5rem_minmax(0,1fr)]"
+            : "grid-cols-[14.5rem_minmax(0,1fr)]",
+        )}
+      >
         <AccountRail
           accounts={accounts}
           activeAccountId={activeAccountId}
           currentEmployee={me}
           currentEmployeeId={me?.id}
+          isCollapsed={isAccountRailCollapsed}
+          onCollapseChange={setIsAccountRailCollapsed}
           onLogout={handleLogout}
           onSelectAccount={setActiveAccount}
           onOpenSettings={onOpenSettings}

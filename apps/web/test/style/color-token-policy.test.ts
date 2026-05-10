@@ -6,6 +6,11 @@ const sourceRoot = join(process.cwd(), "src");
 const themeCss = readFileSync(join(sourceRoot, "styles/index.css"), "utf8");
 const allowedFiles = new Set(["pages/chat/mock-data.ts", "styles/index.css"]);
 const checkedExtensions = /\.(css|ts|tsx)$/;
+const appearanceThemeBlocks = [
+  ...themeCss.matchAll(
+    /html(?:\.dark)?\[data-appearance-theme="[^"]+"\]\s*\{[\s\S]*?\n\}/g,
+  ),
+].map((match) => match[0]);
 const hardcodedColorPatterns = [
   /#[0-9a-fA-F]{3,8}\b/g,
   /\b(?:rgb|rgba|hsl|hsla)\(/g,
@@ -114,9 +119,37 @@ describe("color token policy", () => {
     expect(themeCss).not.toContain("--surface-selected");
     expect(themeCss).not.toContain("--color-surface-active");
     expect(themeCss).not.toContain("--color-surface-selected");
+  });
+
+  test("exposes workbench conversation state tokens", () => {
+    expect(themeCss).toContain("--conversation-active: linear-gradient(");
+    expect(themeCss).toContain("111deg,");
+    expect(themeCss).toContain("oklch(0.6079 0.1899 257.09) 0%,");
+    expect(themeCss).toContain("oklch(0.6926 0.1605 258.85) 100%");
+    expect(themeCss).toContain("--conversation-active-foreground: oklch(1 0 0);");
+    expect(themeCss).toContain("--conversation-active-muted-foreground:");
+    expect(themeCss).toContain("--conversation-active-icon: oklch(0.9 0.08 259.76);");
+    expect(themeCss).toContain("--conversation-hover: var(--surface-hover);");
+    expect(themeCss).toContain("--color-conversation-active: var(--conversation-active);");
+    expect(themeCss).toContain("--color-conversation-active-foreground: var(--conversation-active-foreground);");
+    expect(themeCss).toContain("--color-conversation-active-muted-foreground: var(--conversation-active-muted-foreground);");
+    expect(themeCss).toContain("--color-conversation-active-icon: var(--conversation-active-icon);");
+    expect(themeCss).toContain("--color-conversation-hover: var(--conversation-hover);");
     expect(themeCss).not.toContain("--message-agent");
     expect(themeCss).not.toContain("--message-customer");
     expect(themeCss).not.toContain("--color-message-agent");
     expect(themeCss).not.toContain("--color-message-customer");
+  });
+
+  test("defines workbench conversation tokens for every appearance theme", () => {
+    expect(appearanceThemeBlocks).toHaveLength(18);
+
+    for (const block of appearanceThemeBlocks) {
+      expect(block).toContain("--conversation-active: linear-gradient(");
+      expect(block).toContain("--conversation-active-foreground:");
+      expect(block).toContain("--conversation-active-muted-foreground:");
+      expect(block).toContain("--conversation-active-icon:");
+      expect(block).toContain("--conversation-hover: var(--surface-hover);");
+    }
   });
 });

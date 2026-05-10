@@ -16,7 +16,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@hugeicons/core-free-icons": "^1.0.0",
+    "@hugeicons/core-free-icons": "^3.3.0",
     "@hugeicons/react": "^1.0.0",
     "@lexical/react": "^0.44.0",
     "@radix-ui/react-accordion": "^1.2.12",

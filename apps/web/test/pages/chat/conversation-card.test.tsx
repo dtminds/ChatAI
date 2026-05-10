@@ -29,4 +29,34 @@ describe("ConversationCard", () => {
 
     expect(screen.getByText("3")).toBeInTheDocument();
   });
+
+  it("uses conversation state tokens for active conversations", () => {
+    const { container } = render(
+      <ConversationCard
+        conversation={conversation}
+        isActive
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(container.firstElementChild).toHaveClass(
+      "bg-conversation-active",
+      "text-conversation-active-foreground",
+    );
+    expect(container.querySelector("[data-testid='conversation-preview']")).toHaveClass(
+      "text-conversation-active-muted-foreground",
+    );
+    expect(container.querySelector("[data-testid='conversation-updated-at']")).toHaveClass(
+      "text-conversation-active-muted-foreground",
+    );
+    const avatarFallback = container.querySelector(
+      ".bg-conversation-active-foreground\\/20.text-conversation-active-foreground",
+    );
+    expect(avatarFallback).toBeInTheDocument();
+    expect(avatarFallback).toHaveClass(
+      "bg-conversation-active-foreground/20",
+      "text-conversation-active-foreground",
+    );
+    expect(avatarFallback?.querySelector("svg")).toBeInTheDocument();
+  });
 });

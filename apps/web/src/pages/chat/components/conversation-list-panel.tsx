@@ -400,9 +400,7 @@ function SearchResultItem({
           alt={conversation.customerName}
           src={conversation.customerAvatarUrl}
         />
-        <AvatarFallback className="rounded-[8px]">
-          {conversation.customerName.slice(0, 1)}
-        </AvatarFallback>
+        <AvatarFallback className="rounded-[8px]" />
       </Avatar>
       <div className="min-w-0 self-center">
         <p className="truncate text-[14px] font-normal text-foreground">

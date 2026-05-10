@@ -59,7 +59,7 @@ export function AccountsSettingsPage() {
           <Select defaultValue="all">
             <SelectTrigger
               aria-label="筛选接待状态"
-              className="h-10 min-w-[180px] rounded-[8px] text-sm"
+              className="h-10 w-[180px] rounded-[8px] text-sm"
             >
               <SelectValue placeholder="筛选接待状态" />
             </SelectTrigger>
@@ -72,7 +72,7 @@ export function AccountsSettingsPage() {
           </Select>
         </div>
 
-        <Button className="h-10 rounded-[10px] px-4" type="button">
+        <Button className="h-10 px-4" type="button">
           <HugeiconsIcon
             color="currentColor"
             icon={Add01Icon}

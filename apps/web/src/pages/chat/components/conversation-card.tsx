@@ -131,7 +131,7 @@ export function ConversationCard({
           <Button
             aria-label="会话操作"
             className={cn(
-              "group/menu absolute right-2.5 top-2 size-6 rounded-md p-0 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
+              "group/menu absolute right-2.5 top-2 size-6 rounded-[6px] p-0 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/20 group-hover:opacity-100",
               conversation.isPinned ? "opacity-100" : "opacity-0",
               isActive &&
                 "text-conversation-active-icon hover:bg-conversation-active-foreground/15 hover:text-conversation-active-foreground",

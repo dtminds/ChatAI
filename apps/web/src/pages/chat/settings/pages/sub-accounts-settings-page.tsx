@@ -268,7 +268,7 @@ export function SubAccountsSettingsPage() {
         </div>
 
         <Button
-          className="h-10 rounded-[10px] px-4"
+          className="h-10 px-4"
           onClick={() => setDialogState({ mode: "create" })}
           type="button"
         >
@@ -655,12 +655,33 @@ function SeatSelectionList({
   selectedSeatIds: string[];
 }) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
   const selectedSeatIdSet = new Set(selectedSeatIds);
   const normalizedQuery = query.trim().toLowerCase();
   const filteredSeats = normalizedQuery
     ? seats.filter((seat) => seat.name.toLowerCase().includes(normalizedQuery))
     : seats;
   const selectedSeats = seats.filter((seat) => selectedSeatIdSet.has(seat.seatId));
+
+  useEffect(() => {
+    if (!isPickerOpen) {
+      return;
+    }
+
+    function closePickerOnOutsidePointerDown(event: PointerEvent) {
+      const target = event.target;
+
+      if (target instanceof Node && !pickerRef.current?.contains(target)) {
+        setIsPickerOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closePickerOnOutsidePointerDown, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", closePickerOnOutsidePointerDown, true);
+    };
+  }, [isPickerOpen]);
 
   return (
     <section className="space-y-3">
@@ -671,7 +692,7 @@ function SeatSelectionList({
         </span>
       </div>
 
-      <div className="relative">
+      <div className="relative" ref={pickerRef}>
         <Input
           aria-label="搜索并选择托管账号"
           className="h-9 rounded-[8px]"
@@ -935,11 +956,11 @@ function SubAccountDialog({
 
           <DialogFooter>
             <DialogClose asChild>
-              <Button className="rounded-[10px]" disabled={isSubmitting} type="button" variant="outline">
+              <Button disabled={isSubmitting} type="button" variant="outline">
                 取消
               </Button>
             </DialogClose>
-            <Button className="rounded-[10px]" disabled={isSubmitting} type="submit">
+            <Button disabled={isSubmitting} type="submit">
               确认提交
             </Button>
           </DialogFooter>

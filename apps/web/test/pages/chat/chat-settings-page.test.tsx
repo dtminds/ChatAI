@@ -217,6 +217,7 @@ describe("Chat settings pages", () => {
     await user.type(screen.getByLabelText("登录用户名"), "agent003");
     await user.type(screen.getByLabelText("密码"), "Strong1!");
     await user.type(screen.getByLabelText("姓名"), "客服三号");
+    await user.click(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
     await user.click(screen.getByRole("checkbox", { name: "德瑞可" }));
     expect(screen.getByText("已选择 1 个")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认提交" }));
@@ -282,6 +283,22 @@ describe("Chat settings pages", () => {
       "aria-disabled",
       "true",
     );
+  });
+
+  it("closes the managed account picker when clicking outside it", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings/sub-accounts");
+
+    await user.click(await screen.findByRole("button", { name: "新增子账号" }));
+    await user.click(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
+
+    expect(screen.getByRole("checkbox", { name: "德瑞可" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("dialog", { name: "添加子账号" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("checkbox", { name: "德瑞可" })).not.toBeInTheDocument();
+    });
   });
 
   it("summarizes many related WeCom seats with avatars and shows a display-only popover", async () => {

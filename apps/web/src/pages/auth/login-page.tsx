@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -108,7 +109,11 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
                           为了保障账号安全，请使用主账号登录，然后在设置中重置子账号的密码
                         </DialogDescription>
                       </DialogHeader>
-                      <DialogFooter showCloseButton />
+                      <DialogFooter>
+                        <DialogClose asChild>
+                          <Button variant="outline">关闭</Button>
+                        </DialogClose>
+                      </DialogFooter>
                     </DialogContent>
                   </Dialog>
                 </div>
@@ -130,7 +135,7 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
                 </p>
               ) : null}
 
-              <Button className="w-full rounded-md" disabled={isSubmitting} type="submit">
+              <Button className="w-full" disabled={isSubmitting} type="submit">
                 {isSubmitting ? "登录中..." : "登录"}
               </Button>
             </div>

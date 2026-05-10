@@ -79,7 +79,7 @@ describe("color token policy", () => {
     expect(themeCss).toContain("--sidebar: oklch(0.98 0 0);");
     expect(themeCss).toContain("--sidebar-foreground: oklch(0.14 0 0);");
     expect(themeCss).toContain("--sidebar-primary: oklch(0.2 0 0);");
-    expect(themeCss).toContain("--sidebar-accent: oklch(0.97 0 0);");
+    expect(themeCss).toContain("--sidebar-accent: oklch(0.955 0 0);");
     expect(themeCss).toContain("--sidebar-border: oklch(0.92 0 0);");
     expect(themeCss).toContain("--color-sidebar: var(--sidebar);");
     expect(themeCss).toContain("--color-sidebar-accent: var(--sidebar-accent);");

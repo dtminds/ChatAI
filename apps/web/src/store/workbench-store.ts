@@ -9,6 +9,13 @@ import {
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
 } from "@/pages/chat/api/workbench-gateway";
+import {
+  getComposerSegmentsPreview,
+  normalizeComposerSegments,
+  type ComposerImageSegment,
+  type ComposerSegment,
+  type ComposerTextSegment,
+} from "@/pages/chat/lib/composer-segments";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import type {
   Account,
@@ -57,6 +64,7 @@ type WorkbenchState = {
   setActiveAccount: (accountId: string) => Promise<void>;
   setActiveConversation: (conversationId: string) => Promise<void>;
   setActiveMode: (mode: ChatMode) => Promise<void>;
+  sendAgentMessageSegments: (segments: ComposerSegment[]) => Promise<void>;
   sendAgentTextMessage: (text: string) => Promise<void>;
   takeOverAccount: (accountId: string) => Promise<void>;
   retryFailedMessage: (messageId: string) => Promise<void>;
@@ -75,6 +83,7 @@ function createInitialState(): Omit<
   | "setActiveAccount"
   | "setActiveConversation"
   | "setActiveMode"
+  | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
   | "takeOverAccount"
   | "retryFailedMessage"
@@ -257,6 +266,27 @@ function updateConversationPreview(
     updatedAt,
     updatedAtMs,
   });
+}
+
+function buildSegmentClientMessageId(clientMessageId: string, index: number) {
+  return index === 0 ? clientMessageId : `${clientMessageId}_${index + 1}`;
+}
+
+function buildOptimisticMessageContent(segment: ComposerSegment): Message["content"] {
+  if (segment.type === "image") {
+    return {
+      alt: segment.alt,
+      height: segment.height,
+      imageUrl: segment.url ?? segment.localUrl ?? "",
+      type: "image",
+      width: segment.width,
+    };
+  }
+
+  return {
+    text: segment.text,
+    type: "text",
+  };
 }
 
 function isAccountTakenOverByCurrentUser(account: Account | undefined, me: EmployeeProfile | undefined) {
@@ -670,10 +700,10 @@ export function createWorkbenchStore() {
         }));
       }
     },
-    async sendAgentTextMessage(text) {
-      const normalizedText = text.trim();
+    async sendAgentMessageSegments(segments) {
+      const normalizedSegments = normalizeComposerSegments(segments);
 
-      if (!normalizedText) {
+      if (normalizedSegments.length === 0) {
         return;
       }
 
@@ -698,29 +728,31 @@ export function createWorkbenchStore() {
       }
       const timestamp = Date.now();
       const clientMessageId = `local_${timestamp}_${Math.random().toString(36).slice(2, 6)}`;
-      const optimisticMessage: Message = {
-        author: account ? `${account.name}-${account.operator}` : me.displayName,
-        clientMessageId,
-        content: {
-          text: normalizedText,
-          type: "text",
-        },
-        conversationId: activeConversationId,
-        id: clientMessageId,
-        role: "agent",
-        sender: {
-          avatarUrl: account?.avatarUrl,
-          id: `sender-agent-${activeAccountId}`,
-          name: account ? `${account.name}-${account.operator}` : me.displayName,
-        },
-        sentAt: formatWorkbenchTimestamp(timestamp),
-        status: "sending",
-      };
+      const optimisticMessages = normalizedSegments.map((segment, index) => {
+        const segmentClientMessageId = buildSegmentClientMessageId(clientMessageId, index);
+
+        return {
+          author: account ? `${account.name}-${account.operator}` : me.displayName,
+          clientMessageId: segmentClientMessageId,
+          content: buildOptimisticMessageContent(segment),
+          conversationId: activeConversationId,
+          id: segmentClientMessageId,
+          role: "agent" as const,
+          sender: {
+            avatarUrl: account?.avatarUrl,
+            id: `sender-agent-${activeAccountId}`,
+            name: account ? `${account.name}-${account.operator}` : me.displayName,
+          },
+          sentAt: formatWorkbenchTimestamp(timestamp + index),
+          status: "sending" as const,
+        } satisfies Message;
+      });
+      const preview = getComposerSegmentsPreview(normalizedSegments);
 
       set((currentState) => {
         const currentMessages =
           currentState.messagesByConversationId[activeConversationId] ?? [];
-        const nextMessages = [...currentMessages, optimisticMessage];
+        const nextMessages = [...currentMessages, ...optimisticMessages];
         const currentConversations =
           currentState.conversationListsByScope[activeAccountId] ?? [];
 
@@ -737,8 +769,8 @@ export function createWorkbenchStore() {
             [activeAccountId]: updateConversationPreview(
               currentConversations,
               activeConversationId,
-              normalizedText,
-              optimisticMessage.sentAt,
+              preview,
+              optimisticMessages[0]?.sentAt ?? formatWorkbenchTimestamp(timestamp),
               timestamp,
             ),
           },
@@ -746,7 +778,7 @@ export function createWorkbenchStore() {
             ...currentState.messagesByConversationId,
             [activeConversationId]: nextMessages,
           },
-          pendingMessages: [...currentState.pendingMessages, optimisticMessage],
+          pendingMessages: [...currentState.pendingMessages, ...optimisticMessages],
           sendStatusByConversationId: {
             ...currentState.sendStatusByConversationId,
             [activeConversationId]: "sending",
@@ -757,11 +789,16 @@ export function createWorkbenchStore() {
       try {
         const response = await sendTextMessage({
           clientMessageId,
-          content: normalizedText,
-          contentType: "text",
           conversationId: activeConversationId,
           seatId: activeAccountId,
+          segments: normalizedSegments,
         });
+        const ackByClientMessageId = new Map(
+          (response.messages ?? [response]).map((message) => [
+            message.clientMessageId,
+            message.messageId,
+          ]),
+        );
 
         set((currentState) => ({
           messagesByConversationId: {
@@ -769,10 +806,10 @@ export function createWorkbenchStore() {
             [activeConversationId]: (
               currentState.messagesByConversationId[activeConversationId] ?? []
             ).map((message) =>
-              message.clientMessageId === clientMessageId
+              message.clientMessageId && ackByClientMessageId.has(message.clientMessageId)
                 ? {
                     ...message,
-                    remoteMessageId: response.messageId,
+                    remoteMessageId: ackByClientMessageId.get(message.clientMessageId),
                   }
                 : message,
             ),
@@ -789,7 +826,10 @@ export function createWorkbenchStore() {
             [activeConversationId]: (
               currentState.messagesByConversationId[activeConversationId] ?? []
             ).map((message) =>
-              message.clientMessageId === clientMessageId
+              optimisticMessages.some(
+                (optimisticMessage) =>
+                  optimisticMessage.clientMessageId === message.clientMessageId,
+              )
                 ? {
                     ...message,
                     failReason:
@@ -800,7 +840,11 @@ export function createWorkbenchStore() {
             ),
           },
           pendingMessages: currentState.pendingMessages.filter(
-            (message) => message.clientMessageId !== clientMessageId,
+            (message) =>
+              !optimisticMessages.some(
+                (optimisticMessage) =>
+                  optimisticMessage.clientMessageId === message.clientMessageId,
+              ),
           ),
           sendStatusByConversationId: {
             ...currentState.sendStatusByConversationId,
@@ -808,6 +852,14 @@ export function createWorkbenchStore() {
           },
         }));
       }
+    },
+    async sendAgentTextMessage(text) {
+      await get().sendAgentMessageSegments([
+        {
+          text,
+          type: "text",
+        },
+      ]);
     },
     async retryFailedMessage(messageId) {
       const state = get();

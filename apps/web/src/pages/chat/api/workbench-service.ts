@@ -199,32 +199,37 @@ export function createMockWorkbenchService(): WorkbenchService {
         throw new Error("Conversation not found");
       }
 
-      const messageId = `msg-server-${state.nextId++}`;
-      const nextSeq = getNextMessageSeq(state, payload.conversationId);
       const now = Date.now();
-      const outcome = resolveSendOutcome(state, payload.seatId, payload.content);
-      const backendMessage = {
-        seatId: payload.seatId,
-        clientMessageId: payload.clientMessageId,
-        content: {
-          text: payload.content,
-        },
-        contentType: "text" as const,
-        conversationId: payload.conversationId,
-        createdAt: now,
-        customerId: conversation.customerId,
-        messageId,
-        senderType: "agent" as const,
-        seq: nextSeq,
-        status: outcome.status,
-      } satisfies WorkbenchMessageDto;
+      const segments = getPayloadSegments(payload);
+      const outcome = resolveSendOutcome(state, payload.seatId, segments);
+      const backendMessages = segments.map((segment, index) => {
+        const messageId = `msg-server-${state.nextId++}`;
+        const nextSeq = getNextMessageSeq(state, payload.conversationId) + index;
+
+        return {
+          seatId: payload.seatId,
+          clientMessageId: buildSegmentClientMessageId(payload.clientMessageId, index),
+          content: buildPayloadSegmentContent(segment),
+          contentType: segment.type,
+          conversationId: payload.conversationId,
+          createdAt: now + index,
+          customerId: conversation.customerId,
+          messageId,
+          senderType: "agent" as const,
+          seq: nextSeq,
+          status: outcome.status,
+        } satisfies WorkbenchMessageDto;
+      });
 
       const messages = state.messagesByConversationId[payload.conversationId] ?? [];
-      state.messagesByConversationId[payload.conversationId] = [...messages, backendMessage];
+      state.messagesByConversationId[payload.conversationId] = [
+        ...messages,
+        ...backendMessages,
+      ];
 
       const nextConversation = {
         ...conversation,
-        lastMessage: payload.content,
+        lastMessage: getPayloadPreview(segments),
         lastMessageTime: now,
       };
 
@@ -232,17 +237,24 @@ export function createMockWorkbenchService(): WorkbenchService {
       syncAccountUnread(state, payload.seatId);
       pushConversationEvent(state, nextConversation);
       pushAccountEvent(state, payload.seatId);
-      pushMessageStatusEvent(state, {
-        clientMessageId: payload.clientMessageId,
-        conversationId: payload.conversationId,
-        messageId,
-        reason: outcome.reason,
-        status: outcome.status,
+      backendMessages.forEach((message) => {
+        pushMessageStatusEvent(state, {
+          clientMessageId: message.clientMessageId,
+          conversationId: message.conversationId,
+          messageId: message.messageId,
+          reason: outcome.reason,
+          status: outcome.status,
+        });
       });
 
       return {
         clientMessageId: payload.clientMessageId,
-        messageId,
+        messageId: backendMessages[0]?.messageId ?? payload.clientMessageId,
+        messages: backendMessages.map((message) => ({
+          clientMessageId: message.clientMessageId ?? payload.clientMessageId,
+          messageId: message.messageId,
+          status: "accepted" as const,
+        })),
         status: "accepted",
       };
     },
@@ -587,9 +599,55 @@ function getNextMessageSeq(state: MockState, conversationId: string) {
   return (messages.at(-1)?.seq ?? 0) + 1;
 }
 
-function resolveSendOutcome(state: MockState, seatId: string, content: string) {
+function getPayloadSegments(payload: WorkbenchSendMessagePayload) {
+  if (payload.segments?.length) {
+    return payload.segments;
+  }
+
+  return [
+    {
+      text: payload.content ?? "",
+      type: "text" as const,
+    },
+  ];
+}
+
+function buildPayloadSegmentContent(
+  segment: ReturnType<typeof getPayloadSegments>[number],
+) {
+  if (segment.type === "image") {
+    return {
+      alt: segment.alt,
+      height: segment.height,
+      imageUrl: segment.url ?? segment.localUrl ?? "",
+      width: segment.width,
+    };
+  }
+
+  return {
+    text: segment.text,
+  };
+}
+
+function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {
+  const firstTextSegment = segments.find((segment) => segment.type === "text");
+
+  return firstTextSegment?.text ?? (segments.some((segment) => segment.type === "image") ? "[图片]" : "");
+}
+
+function buildSegmentClientMessageId(clientMessageId: string, index: number) {
+  return index === 0 ? clientMessageId : `${clientMessageId}_${index + 1}`;
+}
+
+function resolveSendOutcome(
+  state: MockState,
+  seatId: string,
+  segments: ReturnType<typeof getPayloadSegments>,
+) {
   const seat = findAccount(state, seatId);
-  const shouldFail = seat?.loginStatus === "offline" || /\[fail\]/i.test(content);
+  const shouldFail =
+    seat?.loginStatus === "offline" ||
+    segments.some((segment) => segment.type === "text" && /\[fail\]/i.test(segment.text));
 
   if (shouldFail) {
     return {

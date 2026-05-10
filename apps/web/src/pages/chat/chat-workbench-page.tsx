@@ -1,4 +1,5 @@
 import { startTransition, useEffect, useRef, useState } from "react";
+import type { LexicalEditor } from "lexical";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -12,10 +13,10 @@ import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-beh
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
-import { type WechatEmojiName, toWechatEmojiToken } from "@/pages/chat/wechat-emoji";
 import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
 import { useWorkbenchStore } from "@/store/workbench-store";
-import type { GroupMember } from "@/pages/chat/chat-types";
+import type { ChatMode, GroupMember } from "@/pages/chat/chat-types";
+import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
 export function ChatWorkbenchPage() {
   return <ChatWorkbenchContent />;
@@ -58,8 +59,7 @@ function ChatWorkbenchContent({
     pollWorkbench,
     retryFailedMessage,
     scopeTransitionError,
-    sendAgentTextMessage,
-    sendStatusByConversationId,
+    sendAgentMessageSegments,
     setActiveAccount,
     setActiveConversation,
     setActiveMode,
@@ -77,7 +77,7 @@ function ChatWorkbenchContent({
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const messageListBottomRef = useRef<HTMLDivElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerRef = useRef<LexicalEditor | null>(null);
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
@@ -104,17 +104,15 @@ function ChatWorkbenchContent({
     ) ?? visibleConversations[0];
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ?? [];
-  const activeGroupMembers =
-    (activeConversation && seedGroupMembersByConversationId[activeConversation.id]) ?? [];
+  const activeGroupMembers = activeConversation
+    ? getGroupMembersForConversation(activeConversation.id, activeConversation.mode)
+    : [];
   const activeHistoryStatus = activeConversation
     ? historyStatusByConversationId[activeConversation.id] ?? "idle"
     : "idle";
   const hasMoreHistory = activeConversation
     ? hasMoreHistoryByConversationId[activeConversation.id] !== false
     : false;
-  const activeSendStatus = activeConversation
-    ? sendStatusByConversationId[activeConversation.id] ?? "idle"
-    : "idle";
   const activeCustomer =
     (activeConversation &&
       customerProfilesById[activeConversation.customerId]) ??
@@ -124,17 +122,19 @@ function ChatWorkbenchContent({
     !!activeAccount?.takenOverEmployeeId &&
     activeAccount.takenOverEmployeeId === me?.id;
   const canSendMessage =
-    bootstrapStatus === "ready" &&
     !!activeConversation &&
     !isActiveAccountOffline &&
-    isActiveAccountTakenOver &&
-    activeSendStatus !== "sending";
+    isActiveAccountTakenOver;
   const composerPlaceholder = canSendMessage
     ? "请输入消息……"
+    : bootstrapStatus === "loading" && !activeConversation
+      ? "正在加载会话数据..."
     : isActiveAccountOffline
       ? "当前账号离线，暂时无法发送消息"
     : !isActiveAccountTakenOver
       ? "当前账号未接管，暂时无法发送消息"
+    : !activeConversation
+      ? "当前列表暂无可发送会话"
       : "当前会话暂不可发送消息";
 
   const { handleLoadOlderMessages, handleMessageViewportScroll } =
@@ -167,25 +167,25 @@ function ChatWorkbenchContent({
     pollWorkbench,
   });
 
-  const handleSendDraft = () => {
+  const handleSendDraft = (segments: ComposerSegment[]) => {
     const mentionText = selectedMentionMembers
       .map((member) => `@${member.displayName}`)
       .join(" ");
-    const normalizedDraft = formatDraftWithMentions({
-      draft,
+    const normalizedSegments = formatSegmentsWithMentions({
       mentionInsertPosition,
       mentionText,
+      segments,
     });
 
-    if (!normalizedDraft || !canSendMessage) {
+    if (normalizedSegments.length === 0 || !canSendMessage) {
       return;
     }
 
-    void sendAgentTextMessage(normalizedDraft);
+    void sendAgentMessageSegments(normalizedSegments);
     setDraft("");
     setMentionInsertPosition("start");
     setSelectedMentionMembers([]);
-    textareaRef.current?.focus();
+    composerRef.current?.focus();
   };
 
   const handleDraftChange = (nextDraft: string) => {
@@ -207,8 +207,7 @@ function ChatWorkbenchContent({
     );
 
     requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(triggerStart, triggerStart);
+      composerRef.current?.focus();
     });
   };
 
@@ -216,32 +215,7 @@ function ChatWorkbenchContent({
     setSelectedMentionMembers((currentMembers) =>
       currentMembers.filter((member) => member.id !== memberId),
     );
-    textareaRef.current?.focus();
-  };
-
-  const handleEmojiSelect = (name: WechatEmojiName) => {
-    const nextToken = toWechatEmojiToken(name);
-    const textarea = textareaRef.current;
-
-    setIsEmojiPickerOpen(false);
-
-    if (!textarea) {
-      setDraft((currentDraft) => `${currentDraft}${nextToken}`);
-      return;
-    }
-
-    const selectionStart = textarea.selectionStart ?? draft.length;
-    const selectionEnd = textarea.selectionEnd ?? draft.length;
-    const nextDraft =
-      draft.slice(0, selectionStart) + nextToken + draft.slice(selectionEnd);
-    const nextCursorPosition = selectionStart + nextToken.length;
-
-    setDraft(nextDraft);
-
-    requestAnimationFrame(() => {
-      textarea.focus();
-      textarea.setSelectionRange(nextCursorPosition, nextCursorPosition);
-    });
+    composerRef.current?.focus();
   };
 
   if (bootstrapStatus === "loading" && accounts.length === 0) {
@@ -331,7 +305,6 @@ function ChatWorkbenchContent({
               onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
               onDraftChange={handleDraftChange}
               onEmojiPickerOpenChange={setIsEmojiPickerOpen}
-              onEmojiSelect={handleEmojiSelect}
               onEnterBehaviorChange={setInputEnterBehavior}
               onMentionInsertPositionChange={setMentionInsertPosition}
               onRemoveMentionMember={handleRemoveMentionMember}
@@ -342,7 +315,7 @@ function ChatWorkbenchContent({
               onSendDraft={handleSendDraft}
               scopeTransitionError={scopeTransitionError}
               selectedMentionMembers={selectedMentionMembers}
-              textareaRef={textareaRef}
+              composerRef={composerRef}
               workbenchBodyRef={workbenchBodyRef}
             />
           </div>
@@ -352,26 +325,55 @@ function ChatWorkbenchContent({
   );
 }
 
-function formatDraftWithMentions({
-  draft,
+function formatSegmentsWithMentions({
+  segments,
   mentionInsertPosition,
   mentionText,
 }: {
-  draft: string;
+  segments: ComposerSegment[];
   mentionInsertPosition: MentionInsertPosition;
   mentionText: string;
-}) {
-  const normalizedDraft = draft.trim();
-
+}): ComposerSegment[] {
   if (!mentionText) {
-    return normalizedDraft;
+    return segments;
   }
 
-  if (!normalizedDraft) {
-    return mentionText;
+  if (segments.length === 0) {
+    return [
+      {
+        text: mentionText,
+        type: "text",
+      },
+    ];
   }
 
-  return mentionInsertPosition === "start"
-    ? `${mentionText} ${normalizedDraft}`
-    : `${normalizedDraft} ${mentionText}`;
+  if (mentionInsertPosition === "start") {
+    return [
+      {
+        text: `${mentionText} `,
+        type: "text",
+      },
+      ...segments,
+    ];
+  }
+
+  return [
+    ...segments,
+    {
+      text: ` ${mentionText}`,
+      type: "text",
+    },
+  ];
+}
+
+function getGroupMembersForConversation(conversationId: string, mode: ChatMode) {
+  if (mode !== "group") {
+    return [];
+  }
+
+  return (
+    seedGroupMembersByConversationId[conversationId] ??
+    seedGroupMembersByConversationId["conv-004"] ??
+    []
+  );
 }

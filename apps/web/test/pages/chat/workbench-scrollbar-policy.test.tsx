@@ -6,7 +6,7 @@ describe("workbench scrollbar policy", () => {
   it("keeps the conversation list on the default behavior and shows the message scrollbar only while scrolling", async () => {
     render(<ChatWorkbenchPage />);
 
-    await screen.findByPlaceholderText("请输入消息……");
+    await screen.findByRole("textbox", { name: "请输入消息……" });
 
     expect(screen.getByTestId("conversation-list-scroll-area")).toHaveAttribute(
       "data-scrollbar-visibility",

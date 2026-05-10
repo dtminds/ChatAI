@@ -1,6 +1,6 @@
 import {
-  type KeyboardEvent as ReactKeyboardEvent,
   type RefObject,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -14,6 +14,11 @@ import {
   SmileIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { LexicalComposer } from "@lexical/react/LexicalComposer";
+import { ContentEditable } from "@lexical/react/LexicalContentEditable";
+import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
+import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
+import type { LexicalEditor } from "lexical";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,15 +31,28 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   type InputEnterBehavior,
   INPUT_ENTER_BEHAVIOR_DESCRIPTIONS,
   INPUT_ENTER_BEHAVIOR_LABELS,
 } from "@/pages/chat/components/input-enter-behavior";
+import {
+  CLEAR_COMPOSER_COMMAND,
+  INSERT_COMPOSER_EMOJI_COMMAND,
+  INSERT_COMPOSER_IMAGE_COMMAND,
+} from "@/pages/chat/components/composer/lexical-commands";
+import {
+  ComposerEmojiNode,
+  ComposerImageNode,
+} from "@/pages/chat/components/composer/lexical-nodes";
+import {
+  ComposerRuntimePlugin,
+  MentionTextRemovalPlugin,
+} from "@/pages/chat/components/composer/lexical-plugins";
 import { WechatEmojiPicker } from "@/pages/chat/components/wechat-emoji-picker";
-import type { WechatEmojiName } from "@/pages/chat/wechat-emoji";
+import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
 import type { GroupMember } from "@/pages/chat/chat-types";
 
 export type MentionInsertPosition = "start" | "end";
@@ -49,15 +67,14 @@ type ChatComposerProps = {
   mentionInsertPosition: MentionInsertPosition;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
-  onEmojiSelect: (name: WechatEmojiName) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onMentionInsertPositionChange: (position: MentionInsertPosition) => void;
   onRemoveMentionMember: (memberId: string) => void;
   onSelectMentionMember: (member: GroupMember, triggerStart: number, triggerEnd: number) => void;
-  onSendDraft: () => void;
+  onSendDraft: (segments: ComposerSegment[]) => void;
   selectedMentionMembers: GroupMember[];
   placeholder: string;
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
+  composerRef: RefObject<LexicalEditor | null>;
 };
 
 export function ChatComposer({
@@ -70,7 +87,6 @@ export function ChatComposer({
   mentionInsertPosition,
   onDraftChange,
   onEmojiPickerOpenChange,
-  onEmojiSelect,
   onEnterBehaviorChange,
   onMentionInsertPositionChange,
   onRemoveMentionMember,
@@ -78,18 +94,39 @@ export function ChatComposer({
   onSendDraft,
   selectedMentionMembers,
   placeholder,
-  textareaRef,
+  composerRef,
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const mentionDropdownCloseTimerRef = useRef<number | null>(null);
+  const [draftText, setDraftText] = useState(draft);
+  const [segments, setSegments] = useState<ComposerSegment[]>([]);
   const [isMentionDropdownOpen, setIsMentionDropdownOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(draft.length);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isMentionPickerDismissed, setIsMentionPickerDismissed] = useState(false);
+  const [pendingMentionRemoval, setPendingMentionRemoval] = useState<{
+    end: number;
+    start: number;
+  } | null>(null);
+  const editorConfig = useMemo(
+    () => ({
+      namespace: "ChatComposer",
+      nodes: [ComposerEmojiNode, ComposerImageNode],
+      onError(error: Error) {
+        throw error;
+      },
+      theme: {
+        paragraph: "m-0",
+        root: "chat-composer-editor min-h-28 outline-none",
+      },
+    }),
+    [],
+  );
   const mentionSummaryLabel = `查看已 @ 的 ${selectedMentionMembers.length} 位群成员`;
   const mentionTrigger = useMemo(
-    () => getMentionTrigger(draft, cursorPosition),
-    [cursorPosition, draft],
+    () => getMentionTrigger(draftText, cursorPosition),
+    [cursorPosition, draftText],
   );
   const selectedMentionMemberIds = useMemo(
     () => new Set(selectedMentionMembers.map((member) => member.id)),
@@ -117,9 +154,15 @@ export function ChatComposer({
     !isMentionPickerDismissed &&
     filteredMentionMembers.length > 0;
   const canSubmitDraft =
-    canSendMessage && (!!draft.trim() || selectedMentionMembers.length > 0);
-  const composerActionButtonClass =
-    "size-8 rounded-md p-0 shadow-none";
+    canSendMessage && (segments.length > 0 || selectedMentionMembers.length > 0);
+  const composerActionButtonClass = "size-8 rounded-md p-0 shadow-none";
+
+  const registerEditor = useCallback(
+    (editor: LexicalEditor | null) => {
+      composerRef.current = editor;
+    },
+    [composerRef],
+  );
 
   useEffect(() => {
     setActiveMentionIndex(0);
@@ -139,6 +182,12 @@ export function ChatComposer({
       setIsMentionDropdownOpen(false);
     }
   }, [selectedMentionMembers.length]);
+
+  useEffect(() => {
+    if (draft === "" && draftText !== "") {
+      composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
+    }
+  }, [composerRef, draft, draftText]);
 
   const keepMentionDropdownOpen = () => {
     if (mentionDropdownCloseTimerRef.current) {
@@ -200,66 +249,100 @@ export function ChatComposer({
     };
   }, [isEmojiPickerOpen, onEmojiPickerOpenChange]);
 
-  const handleDraftKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    if (isMentionPickerOpen && mentionTrigger) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setIsMentionPickerDismissed(true);
-        return;
-      }
+  const handleDraftTextChange = useCallback(
+    (nextDraftText: string) => {
+      setDraftText(nextDraftText);
+      setCursorPosition(nextDraftText.length);
+      onDraftChange(nextDraftText);
+    },
+    [onDraftChange],
+  );
 
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setActiveMentionIndex((currentIndex) =>
-          Math.min(currentIndex + 1, filteredMentionMembers.length - 1),
-        );
-        return;
-      }
+  const handleMoveMentionPicker = useCallback(
+    (direction: "down" | "up") => {
+      setActiveMentionIndex((currentIndex) =>
+        direction === "down"
+          ? Math.min(currentIndex + 1, filteredMentionMembers.length - 1)
+          : Math.max(currentIndex - 1, 0),
+      );
+    },
+    [filteredMentionMembers.length],
+  );
 
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setActiveMentionIndex((currentIndex) => Math.max(currentIndex - 1, 0));
-        return;
-      }
-
-      if (event.key === "Enter") {
-        event.preventDefault();
-        const selectedMember = filteredMentionMembers[activeMentionIndex];
-
-        if (selectedMember) {
-          onSelectMentionMember(
-            selectedMember,
-            mentionTrigger.start,
-            mentionTrigger.end,
-          );
-        }
-
-        return;
-      }
-    }
-
-    if (event.key !== "Enter") {
+  const handleSelectActiveMention = useCallback(() => {
+    if (!mentionTrigger) {
       return;
     }
 
-    const shouldSend =
-      inputEnterBehavior === "newline" ? event.shiftKey : !event.shiftKey;
+    const selectedMember = filteredMentionMembers[activeMentionIndex];
 
-    if (shouldSend) {
-      event.preventDefault();
-      onSendDraft();
+    if (!selectedMember) {
+      return;
+    }
+
+    onSelectMentionMember(
+      selectedMember,
+      mentionTrigger.start,
+      mentionTrigger.end,
+    );
+    setPendingMentionRemoval({
+      end: mentionTrigger.end,
+      start: mentionTrigger.start,
+    });
+  }, [
+    activeMentionIndex,
+    filteredMentionMembers,
+    mentionTrigger,
+    onSelectMentionMember,
+  ]);
+
+  const handleImageFiles = (fileList: FileList | null) => {
+    const files = Array.from(fileList ?? []).filter((file) =>
+      file.type.startsWith("image/"),
+    );
+
+    for (const file of files) {
+      const reader = new FileReader();
+
+      reader.addEventListener("load", () => {
+        const src = typeof reader.result === "string" ? reader.result : "";
+
+        if (!src) {
+          return;
+        }
+
+        composerRef.current?.dispatchCommand(INSERT_COMPOSER_IMAGE_COMMAND, {
+          alt: file.name || "图片",
+          localUrl: src,
+          src,
+        });
+        composerRef.current?.focus();
+      });
+      reader.readAsDataURL(file);
     }
   };
 
-  const handleDraftChange = (nextDraft: string, nextCursorPosition: number | null) => {
-    onDraftChange(nextDraft);
-    setCursorPosition(nextCursorPosition ?? nextDraft.length);
+  const handleEmojiSelect = (name: WechatEmojiName) => {
+    const emoji = getWechatEmojiByName(name);
+
+    onEmojiPickerOpenChange(false);
+
+    if (!emoji) {
+      return;
+    }
+
+    composerRef.current?.dispatchCommand(INSERT_COMPOSER_EMOJI_COMMAND, emoji);
+    composerRef.current?.focus();
+  };
+
+  const handleSendDraft = () => {
+    onSendDraft(segments);
   };
 
   return (
     <div className="space-y-1.5 bg-surface px-4 py-2">
       <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-        <div className="flex items-center gap-1.5 ml-[-6px]">
+        <div className="ml-[-6px] flex items-center gap-1.5">
           <div className="relative" ref={emojiPickerRef}>
             <Button
               aria-label="微信表情"
@@ -277,19 +360,32 @@ export function ChatComposer({
 
             {isEmojiPickerOpen ? (
               <div className="absolute bottom-full left-[-24px] z-30 mb-3">
-                <WechatEmojiPicker onSelect={onEmojiSelect} />
+                <WechatEmojiPicker onSelect={handleEmojiSelect} />
               </div>
             ) : null}
           </div>
           <Button
             aria-label="发送图片"
             className={composerActionButtonClass}
+            onClick={() => imageInputRef.current?.click()}
             size="icon"
             type="button"
             variant="ghost"
           >
             <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={1.8} />
           </Button>
+          <input
+            accept="image/*"
+            aria-label="选择图片"
+            className="sr-only"
+            multiple
+            onChange={(event) => {
+              handleImageFiles(event.currentTarget.files);
+              event.currentTarget.value = "";
+            }}
+            ref={imageInputRef}
+            type="file"
+          />
           <Button
             aria-label="历史记录"
             className={composerActionButtonClass}
@@ -325,7 +421,7 @@ export function ChatComposer({
             aria-label="发送消息"
             className="size-7 rounded-full p-0 shadow-none"
             disabled={!canSubmitDraft}
-            onClick={onSendDraft}
+            onClick={handleSendDraft}
             size="icon"
           >
             <HugeiconsIcon icon={ArrowUp02Icon} size={14} strokeWidth={2} />
@@ -335,7 +431,7 @@ export function ChatComposer({
 
       <div className="relative">
         {selectedMentionMembers.length > 0 ? (
-          <div className="flex min-h-8 items-center gap-1 border-b border-divider/70 mb-1 text-[13px]">
+          <div className="mb-1 flex min-h-8 items-center gap-1 border-b border-divider/70 text-[13px]">
             <span className="shrink-0 text-muted-foreground">在</span>
 
             <Select
@@ -346,7 +442,7 @@ export function ChatComposer({
             >
               <SelectTrigger
                 aria-label="选择 @ 插入位置"
-                className="h-7 min-w-0 shrink-0 border-0 bg-transparent text-[13px] px-1 py-1 text-primary focus:ring-0"
+                className="h-7 min-w-0 shrink-0 border-0 shadow-none bg-transparent px-1 py-1 text-[13px] text-primary focus:ring-0"
               >
                 <span>{mentionInsertPosition === "start" ? "文首" : "文尾"}</span>
               </SelectTrigger>
@@ -356,7 +452,9 @@ export function ChatComposer({
               </SelectContent>
             </Select>
 
-            <span className="shrink-0 text-muted-foreground">@ {selectedMentionMembers.length} 人：</span>
+            <span className="shrink-0 text-muted-foreground">
+              @ {selectedMentionMembers.length} 人：
+            </span>
 
             <DropdownMenu
               open={isMentionDropdownOpen}
@@ -381,7 +479,7 @@ export function ChatComposer({
                 align="start"
                 side="top"
                 sideOffset={8}
-                className="w-56 max-h-64 overflow-y-auto"
+                className="max-h-64 w-56 overflow-y-auto"
                 onCloseAutoFocus={(e) => e.preventDefault()}
                 onFocusCapture={keepMentionDropdownOpen}
                 onMouseEnter={keepMentionDropdownOpen}
@@ -433,13 +531,17 @@ export function ChatComposer({
                   index === activeMentionIndex && "bg-surface-hover",
                 )}
                 key={member.id}
-                onClick={() =>
+                onClick={() => {
                   onSelectMentionMember(
                     member,
                     mentionTrigger.start,
                     mentionTrigger.end,
-                  )
-                }
+                  );
+                  setPendingMentionRemoval({
+                    end: mentionTrigger.end,
+                    start: mentionTrigger.start,
+                  });
+                }}
                 onMouseDown={(event) => event.preventDefault()}
                 role="option"
                 type="button"
@@ -456,19 +558,42 @@ export function ChatComposer({
           </div>
         ) : null}
 
-        <Textarea
-          className="chat-composer-textarea min-h-28 resize-none rounded-none border-0 bg-transparent py-1 pl-0 pr-0.5 text-[14px] shadow-none focus-visible:ring-0"
-          disabled={!canSendMessage}
-          onChange={(event) =>
-            handleDraftChange(event.target.value, event.target.selectionStart)
-          }
-          onClick={(event) => setCursorPosition(event.currentTarget.selectionStart)}
-          onKeyDown={handleDraftKeyDown}
-          onKeyUp={(event) => setCursorPosition(event.currentTarget.selectionStart)}
-          placeholder={placeholder}
-          ref={textareaRef}
-          value={draft}
-        />
+        <div className="relative">
+          <LexicalComposer initialConfig={editorConfig}>
+            <PlainTextPlugin
+              contentEditable={
+                <ContentEditable
+                  aria-label={placeholder}
+                  aria-multiline="true"
+                  className="chat-composer-textarea min-h-28 rounded-none border-0 bg-transparent py-1 pl-0 pr-0.5 text-[14px] leading-6 shadow-none outline-none focus-visible:ring-0"
+                  data-testid="chat-composer-editor"
+                />
+              }
+              placeholder={
+                <div className="pointer-events-none absolute left-0 top-1 text-[14px] text-muted-foreground">
+                  {placeholder}
+                </div>
+              }
+              ErrorBoundary={LexicalErrorBoundary}
+            />
+            <ComposerRuntimePlugin
+              canSendMessage={canSendMessage}
+              inputEnterBehavior={inputEnterBehavior}
+              isMentionPickerOpen={isMentionPickerOpen}
+              onDraftTextChange={handleDraftTextChange}
+              onEscapeMentionPicker={() => setIsMentionPickerDismissed(true)}
+              onMoveMentionPicker={handleMoveMentionPicker}
+              onSegmentsChange={setSegments}
+              onSelectActiveMention={handleSelectActiveMention}
+              onSendSegments={onSendDraft}
+              registerEditor={registerEditor}
+            />
+            <MentionTextRemovalPlugin
+              pendingRemoval={pendingMentionRemoval}
+              onRemovalComplete={() => setPendingMentionRemoval(null)}
+            />
+          </LexicalComposer>
+        </div>
       </div>
     </div>
   );

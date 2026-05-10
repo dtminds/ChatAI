@@ -134,6 +134,66 @@ describe("useWorkbenchStore", () => {
     expect(state.sinceVersion).toBeGreaterThan(0);
   });
 
+  it("sends text and image segments as separate optimistic messages", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        text: "第一段[打脸]",
+        type: "text",
+      },
+      {
+        alt: "截图",
+        localUrl: "data:image/png;base64,abc",
+        type: "image",
+        width: 320,
+        height: 240,
+      },
+      {
+        text: "第二段[强]",
+        type: "text",
+      },
+    ]);
+
+    const state = useWorkbenchStore.getState();
+    const latestMessages =
+      state.messagesByConversationId[state.activeConversationId].slice(-3);
+
+    expect(latestMessages).toMatchObject([
+      {
+        content: {
+          text: "第一段[打脸]",
+          type: "text",
+        },
+        role: "agent",
+        status: "sending",
+      },
+      {
+        content: {
+          alt: "截图",
+          imageUrl: "data:image/png;base64,abc",
+          type: "image",
+          width: 320,
+          height: 240,
+        },
+        role: "agent",
+        status: "sending",
+      },
+      {
+        content: {
+          text: "第二段[强]",
+          type: "text",
+        },
+        role: "agent",
+        status: "sending",
+      },
+    ]);
+    expect(state.pendingMessages).toHaveLength(3);
+    expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
+      "第一段[打脸]",
+    );
+  });
+
   it("switches account and falls back to the first available mode", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
 

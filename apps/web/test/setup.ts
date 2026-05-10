@@ -16,6 +16,54 @@ beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
   installLocalStorageMock();
 
+  const emptyRect = () => ({
+    bottom: 0,
+    height: 0,
+    left: 0,
+    right: 0,
+    toJSON: () => ({}),
+    top: 0,
+    width: 0,
+    x: 0,
+    y: 0,
+  });
+
+  if (!("getBoundingClientRect" in window.Range.prototype)) {
+    Object.defineProperty(window.Range.prototype, "getBoundingClientRect", {
+      writable: true,
+      value: vi.fn(emptyRect),
+    });
+  }
+
+  if (!("getClientRects" in window.Range.prototype)) {
+    Object.defineProperty(window.Range.prototype, "getClientRects", {
+      writable: true,
+      value: vi.fn(() => []),
+    });
+  }
+
+  if (!("getBoundingClientRect" in window.Node.prototype)) {
+    Object.defineProperty(window.Node.prototype, "getBoundingClientRect", {
+      writable: true,
+      value: vi.fn(emptyRect),
+    });
+  }
+
+  if (!("ClipboardEvent" in window)) {
+    class ClipboardEventMock extends Event {
+      clipboardData: DataTransfer | null = null;
+    }
+
+    Object.defineProperty(window, "ClipboardEvent", {
+      writable: true,
+      value: ClipboardEventMock,
+    });
+    Object.defineProperty(globalThis, "ClipboardEvent", {
+      writable: true,
+      value: ClipboardEventMock,
+    });
+  }
+
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({

@@ -15,6 +15,10 @@ import type {
   SettingsSubAccountUpdateRequest,
   SettingsWeComSeat,
 } from "@chatai/contracts";
+import {
+  isValidSettingsSubAccountPassword,
+  settingsSubAccountPasswordMessage,
+} from "@chatai/contracts";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
@@ -851,6 +855,13 @@ function SubAccountDialog({
       return;
     }
 
+    const normalizedPassword = formValues.password.trim();
+
+    if (normalizedPassword && !isValidSettingsSubAccountPassword(normalizedPassword)) {
+      setFormError(settingsSubAccountPasswordMessage);
+      return;
+    }
+
     await onSubmit(formValues, mode);
   }
 
@@ -923,7 +934,7 @@ function SubAccountDialog({
             </div>
             {mode === "create" ? (
               <p className="text-xs text-muted-foreground">
-                密码必须包含大写字母、小写字母、数字、符号
+                {settingsSubAccountPasswordMessage}
               </p>
             ) : null}
           </div>

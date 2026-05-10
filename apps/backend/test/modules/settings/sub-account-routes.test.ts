@@ -171,6 +171,53 @@ describe("settings sub-account routes", () => {
     await app.close();
   });
 
+  it("rejects weak sub-account passwords on create and update", async () => {
+    const hashSpy = vi.spyOn(argon2, "hash");
+    const { app, authorization } = await createSettingsApp();
+
+    const createResponse = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        account: "agent003",
+        name: "客服三号",
+        password: "weak",
+        seatIds: ["101"],
+      },
+      url: "/api/server/settings/sub-accounts",
+    });
+    const updateResponse = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        name: "客服二号改",
+        password: "weak",
+        seatIds: ["102"],
+      },
+      url: "/api/server/settings/sub-accounts/12",
+    });
+
+    expect(createResponse.statusCode).toBe(400);
+    expect(updateResponse.statusCode).toBe(400);
+    expect(createResponse.json()).toMatchObject({
+      error: {
+        code: "INVALID_SUB_ACCOUNT_PASSWORD",
+        message: "密码必须包含大写字母、小写字母、数字、符号",
+      },
+      success: false,
+    });
+    expect(updateResponse.json()).toMatchObject({
+      error: {
+        code: "INVALID_SUB_ACCOUNT_PASSWORD",
+        message: "密码必须包含大写字母、小写字母、数字、符号",
+      },
+      success: false,
+    });
+    expect(hashSpy).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
   it("disables, enables, and deletes sub-accounts", async () => {
     const { app, authorization, db } = await createSettingsApp();
 

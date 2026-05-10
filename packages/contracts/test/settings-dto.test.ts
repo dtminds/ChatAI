@@ -5,6 +5,10 @@ import {
   SettingsSubAccountsResponseSchema,
   SettingsSubAccountUpdateRequestSchema,
 } from "../src/settings/dto";
+import {
+  isValidSettingsSubAccountPassword,
+  settingsSubAccountPasswordMessage,
+} from "../src/settings/password";
 
 describe("settings sub-account DTOs", () => {
   it("accepts sub-account list responses with related seats", () => {
@@ -55,5 +59,16 @@ describe("settings sub-account DTOs", () => {
         seatIds: ["101"],
       }),
     ).toBe(false);
+  });
+
+  it("validates sub-account password complexity", () => {
+    expect(settingsSubAccountPasswordMessage).toBe(
+      "密码必须包含大写字母、小写字母、数字、符号",
+    );
+    expect(isValidSettingsSubAccountPassword("Strong1!")).toBe(true);
+    expect(isValidSettingsSubAccountPassword("strong1!")).toBe(false);
+    expect(isValidSettingsSubAccountPassword("STRONG1!")).toBe(false);
+    expect(isValidSettingsSubAccountPassword("Strong!!")).toBe(false);
+    expect(isValidSettingsSubAccountPassword("Strong11")).toBe(false);
   });
 });

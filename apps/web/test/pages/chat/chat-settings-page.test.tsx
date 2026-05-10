@@ -266,6 +266,49 @@ describe("Chat settings pages", () => {
     });
   });
 
+  it("validates sub-account password complexity before submitting", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings/sub-accounts");
+
+    await user.click(await screen.findByRole("button", { name: "新增子账号" }));
+    await user.type(screen.getByLabelText("登录用户名"), "agent003");
+    await user.type(screen.getByLabelText("密码"), "weak");
+    await user.type(screen.getByLabelText("姓名"), "客服三号");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    expect(
+      screen.getAllByText("密码必须包含大写字母、小写字母、数字、符号").some((element) =>
+        element.classList.contains("text-destructive"),
+      ),
+    ).toBe(true);
+    expect(mock.history.post).toHaveLength(0);
+
+    await user.clear(screen.getByLabelText("密码"));
+    await user.type(screen.getByLabelText("密码"), "Strong1!");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(mock.history.post).toHaveLength(1);
+    });
+  });
+
+  it("validates optional password changes when editing sub-accounts", async () => {
+    const user = userEvent.setup();
+    renderRoute("/chat/settings/sub-accounts");
+
+    await user.click(await screen.findByRole("button", { name: "打开 客服一号 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "编辑" }));
+    await user.type(screen.getByLabelText("密码"), "weak");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    expect(
+      screen.getAllByText("密码必须包含大写字母、小写字母、数字、符号").some((element) =>
+        element.classList.contains("text-destructive"),
+      ),
+    ).toBe(true);
+    expect(mock.history.put).toHaveLength(0);
+  });
+
   it("marks the main account and disables destructive row actions", async () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings/sub-accounts");

@@ -6,6 +6,10 @@ import type {
   SettingsSubAccountUpdateRequest,
   SettingsWeComSeat,
 } from "@chatai/contracts";
+import {
+  isValidSettingsSubAccountPassword,
+  settingsSubAccountPasswordMessage,
+} from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
@@ -71,8 +75,14 @@ export class SubAccountSettingsService {
     const normalizedAccount = payload.account.trim();
     const normalizedName = payload.name.trim();
 
-    if (!normalizedAccount || !normalizedName || !payload.password.trim()) {
+    const normalizedPassword = payload.password.trim();
+
+    if (!normalizedAccount || !normalizedName || !normalizedPassword) {
       throw new BadRequestError("INVALID_SUB_ACCOUNT", "请完整填写子账号信息");
+    }
+
+    if (!isValidSettingsSubAccountPassword(normalizedPassword)) {
+      throw new BadRequestError("INVALID_SUB_ACCOUNT_PASSWORD", settingsSubAccountPasswordMessage);
     }
 
     await this.assertAccountAvailable(normalizedAccount);
@@ -82,7 +92,7 @@ export class SubAccountSettingsService {
       .values({
         account: normalizedAccount,
         name: normalizedName,
-        password_hash: await hashPassword(payload.password),
+        password_hash: await hashPassword(normalizedPassword),
         platform: scope.platform,
         status: 1,
         type: 0,
@@ -121,8 +131,14 @@ export class SubAccountSettingsService {
       update_time: new Date(),
     };
 
-    if (payload.password?.trim()) {
-      updateValues.password_hash = await hashPassword(payload.password);
+    const normalizedPassword = payload.password?.trim() ?? "";
+
+    if (normalizedPassword) {
+      if (!isValidSettingsSubAccountPassword(normalizedPassword)) {
+        throw new BadRequestError("INVALID_SUB_ACCOUNT_PASSWORD", settingsSubAccountPasswordMessage);
+      }
+
+      updateValues.password_hash = await hashPassword(normalizedPassword);
     }
 
     await this.db

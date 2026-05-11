@@ -363,7 +363,9 @@ export function createWorkbenchStore() {
 
         set({
           readReceiptError:
-            error instanceof Error ? error.message : "标记已读失败",
+            error instanceof Error && error.message
+              ? error.message
+              : "标记已读失败",
         });
       }
     }
@@ -445,6 +447,7 @@ export function createWorkbenchStore() {
         bootstrapError: undefined,
         bootstrapStatus: "loading",
       });
+      const requestId = issueScopeRequestId();
 
       try {
         const bootstrapResult = await bootstrapWorkbench(
@@ -453,6 +456,10 @@ export function createWorkbenchStore() {
           MESSAGE_PAGE_SIZE,
         );
         const conversationPage = bootstrapResult.conversationPage;
+
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
 
         set({
           accounts: bootstrapResult.accounts,
@@ -489,7 +496,6 @@ export function createWorkbenchStore() {
             bootstrapResult.me,
           )
         ) {
-          const requestId = issueScopeRequestId();
           await markActiveConversationRead(
             bootstrapResult.activeConversationId,
             requestId,

@@ -1,15 +1,15 @@
 import { startTransition, type PointerEvent as ReactPointerEvent } from "react";
 import {
-  Chat01Icon,
+  ChatIcon,
   ChartBreakoutCircleIcon,
   LayoutAlignLeftIcon,
   LogoutSquare01Icon,
-  Menu11Icon,
+  DashboardCircleIcon,
   MoreVerticalIcon,
   PanelLeftIcon,
   Settings03Icon,
-  Task01Icon,
-  UserGroup03Icon,
+  Notification01Icon,
+  UserSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -34,10 +34,10 @@ import { AccountSidebarItem } from "@/pages/chat/components/account-sidebar-item
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
 
 const railItems = [
-  { label: "工作台", icon: Menu11Icon },
-  { label: "聊天", icon: Chat01Icon },
-  { label: "客户", icon: UserGroup03Icon },
-  { label: "任务", icon: Task01Icon },
+  { label: "工作台", icon: DashboardCircleIcon },
+  { label: "聊天", icon: ChatIcon },
+  { label: "客户", icon: UserSquareIcon },
+  { label: "任务", icon: Notification01Icon },
 ];
 
 type AccountRailProps = {
@@ -198,7 +198,7 @@ export function AccountRail({
                         color="currentColor"
                         icon={item.icon}
                         size={18}
-                        strokeWidth={1.8}
+                        strokeWidth={1.6}
                       />
                     </button>
                   </TooltipTrigger>
@@ -311,7 +311,7 @@ export function AccountRail({
               className={cn(
                 "flex h-8.5 w-full items-center gap-2 rounded-[8px] px-3 text-[14px] text-foreground transition-colors",
                 isActive
-                  ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               )}
               key={item.label}
@@ -320,8 +320,8 @@ export function AccountRail({
               <HugeiconsIcon
                 color="currentColor"
                 icon={item.icon}
-                size={18}
-                strokeWidth={1.8}
+                size={16}
+                strokeWidth={1.6}
               />
               <span>{item.label}</span>
             </button>

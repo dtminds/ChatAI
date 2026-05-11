@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import { describe, expect, it } from "vitest";
+import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
@@ -52,6 +53,18 @@ function DemoForm() {
 }
 
 describe("extended UI primitives", () => {
+  it("does not force child icon dimensions from the button primitive", () => {
+    render(
+      <Button aria-label="微信表情" size="icon" variant="ghost">
+        <svg aria-hidden="true" height="18" viewBox="0 0 18 18" width="18" />
+      </Button>,
+    );
+
+    expect(screen.getByRole("button", { name: "微信表情" })).not.toHaveClass(
+      "[&_svg]:size-4",
+    );
+  });
+
   it("labels the slider thumb when using aria-label and aria-labelledby", () => {
     render(
       <>

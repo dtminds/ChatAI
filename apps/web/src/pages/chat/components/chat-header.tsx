@@ -68,9 +68,6 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
             <p className="truncate text-[17px] font-semibold text-foreground">
               {activeConversation?.customerName ?? "请选择会话"}
             </p>
-            <span className="text-sm font-medium text-success">
-              @微信
-            </span>
           </div>
         </div>
 

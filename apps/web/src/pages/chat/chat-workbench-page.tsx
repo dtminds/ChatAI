@@ -25,6 +25,10 @@ import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type { ChatMode, GroupMember } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import {
+  CONVERSATION_LIST_PANEL_WIDTH,
+  MIN_WORKBENCH_CONTENT_WIDTH,
+} from "@/pages/chat/lib/panel-width";
 
 const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
 
@@ -113,7 +117,6 @@ function ChatWorkbenchContent({
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
-    isCustomerPanelVisible,
     isResizingCustomerPanel,
   } = useCustomerPanelResize(workbenchBodyRef);
   const {
@@ -301,7 +304,7 @@ function ChatWorkbenchContent({
   }
 
   return (
-    <div className="h-svh min-h-[720px] bg-sidebar">
+    <div className="h-svh min-h-[720px] overflow-hidden bg-sidebar">
       <div
         className={cn(
           "grid h-full",
@@ -333,14 +336,25 @@ function ChatWorkbenchContent({
           takeoverStatusByAccountId={takeoverStatusByAccountId}
         />
 
-        <div className="relative z-10 h-full min-h-0 pl-0">
+        <div
+          className="relative z-10 h-full min-h-0 overflow-x-auto rounded-[14px_0_0_14px] bg-surface pl-0 shadow"
+          data-testid="chat-workbench-scroll-container"
+        >
           <div
             className={cn(
-              "h-full min-h-0 rounded-[14px_0_0_14px] bg-surface shadow",
+              "h-full min-h-0",
               (isResizingAccountRail || isResizingCustomerPanel) && "select-none",
             )}
+            data-testid="chat-workbench-content"
+            style={{ minWidth: `${MIN_WORKBENCH_CONTENT_WIDTH}px` }}
           >
-            <div className="grid h-full min-h-0 overflow-hidden rounded-[inherit] lg:grid-cols-[16rem_minmax(0,1fr)]">
+            <div
+              className="grid h-full min-h-0 overflow-hidden rounded-[inherit]"
+              data-testid="chat-main-layout"
+              style={{
+                gridTemplateColumns: `${CONVERSATION_LIST_PANEL_WIDTH}px minmax(0, 1fr)`,
+              }}
+            >
               <ConversationListPanel
                 activeConversation={activeConversation}
                 activeMode={activeMode}
@@ -362,7 +376,6 @@ function ChatWorkbenchContent({
                 groupMembers={activeGroupMembers}
                 inputEnterBehavior={inputEnterBehavior}
                 isConversationLoading={isConversationLoading}
-                isCustomerPanelVisible={isCustomerPanelVisible}
                 isEmojiPickerOpen={isEmojiPickerOpen}
                 isResizingCustomerPanel={isResizingCustomerPanel}
                 mentionInsertPosition={mentionInsertPosition}

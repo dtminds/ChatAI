@@ -7,7 +7,6 @@ import {
 import {
   DEFAULT_CUSTOMER_PANEL_WIDTH,
   clampCustomerPanelWidth,
-  shouldShowCustomerPanel,
 } from "@/pages/chat/lib/panel-width";
 
 export function useCustomerPanelResize(
@@ -16,7 +15,6 @@ export function useCustomerPanelResize(
   const [customerPanelWidth, setCustomerPanelWidth] = useState(
     DEFAULT_CUSTOMER_PANEL_WIDTH,
   );
-  const [isCustomerPanelVisible, setIsCustomerPanelVisible] = useState(true);
   const [isResizingCustomerPanel, setIsResizingCustomerPanel] = useState(false);
 
   useEffect(() => {
@@ -35,7 +33,6 @@ export function useCustomerPanelResize(
         return;
       }
 
-      setIsCustomerPanelVisible(shouldShowCustomerPanel(availableWidth));
       setCustomerPanelWidth((currentWidth) =>
         clampCustomerPanelWidth(currentWidth, availableWidth),
       );
@@ -118,7 +115,6 @@ export function useCustomerPanelResize(
   return {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
-    isCustomerPanelVisible,
     isResizingCustomerPanel,
   };
 }

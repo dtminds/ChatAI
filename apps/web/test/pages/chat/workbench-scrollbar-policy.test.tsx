@@ -17,4 +17,22 @@ describe("workbench scrollbar policy", () => {
       "scroll",
     );
   });
+
+  it("keeps the chat workbench as a horizontal desktop layout below phone widths", async () => {
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    expect(screen.getByTestId("chat-workbench-scroll-container")).toHaveClass(
+      "overflow-x-auto",
+      "shadow",
+    );
+    expect(screen.getByTestId("chat-workbench-content")).not.toHaveClass("shadow");
+    expect(screen.getByTestId("chat-workbench-content")).toHaveStyle({
+      minWidth: "1100px",
+    });
+    expect(screen.getByTestId("chat-main-layout")).toHaveStyle({
+      gridTemplateColumns: "256px minmax(0, 1fr)",
+    });
+  });
 });

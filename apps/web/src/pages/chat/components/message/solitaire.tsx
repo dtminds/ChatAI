@@ -21,7 +21,7 @@ export function SolitaireMessageCard({
       className={getTextBubbleClassName(isAgent, isOwnMessage)}
       data-testid="solitaire-message-bubble"
     >
-      <div className="space-y-0.5">
+      <div>
         {titleLines.map((line, index) => (
           <p
             className={line.startsWith("#") ? "font-semibold text-primary" : undefined}
@@ -36,7 +36,7 @@ export function SolitaireMessageCard({
       </div>
 
       {content.items.length > 0 ? (
-        <ol className="mt-5 space-y-0.5">
+        <ol className="mt-5">
           {content.items.map((item, index) => (
             <li
               className="flex min-w-0 gap-1"

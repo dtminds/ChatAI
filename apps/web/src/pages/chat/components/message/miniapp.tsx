@@ -32,7 +32,7 @@ export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
         </p>
       </div>
 
-      <div className="mt-2.5 aspect-[5/4] overflow-hidden rounded-[8px] bg-surface-muted">
+      <div className="mt-2.5 aspect-[5/4] overflow-hidden rounded-[4px] bg-surface-muted">
         {content.coverImageUrl ? (
           <img
             alt={content.title}

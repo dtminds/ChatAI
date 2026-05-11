@@ -44,6 +44,7 @@
 - 交互控件优先使用 `apps/web/src/components/ui` 中已有基础组件，如 `Button`、`Input`、`DropdownMenu`。只有在封装基础组件或现有组件无法表达语义/交互时才使用原生元素，并同步处理可访问性、键盘行为和 `focus-visible`。
 - 图标统一使用 Hugeicons，不再引入 Lucide 或其他图标集。
 - 用户给 UI 截图时，截图只用于理解布局结构、信息层级、相对关系和状态，不允许根据截图像素尺寸、retina 分辨率或图片显示大小推导字号、间距、圆角、控件高度、弹窗宽高等具体 CSS 数值；尤其禁止因为截图看起来大就把文字、按钮或弹窗做大。具体尺寸优先沿用现有设计系统、shadcn 官方组件源码和项目已有 token。
+- 对截图的尺寸理解默认按视觉比例而不是像素值来判断，尤其是 retina 截图不要把显示尺寸当成真实 CSS 尺寸来套用。
 - 中文短提示类微文案：短的中文 UI tips、hints、placeholders、helper text、loading tips 和其它提示式文案，默认不要在末尾加标点；只有较长的段落式解释在确实能提升可读性时才保留末尾标点。
 - 工作台状态优先收敛到 `apps/web/src/store/workbench-store.ts`，避免页面局部状态失控。
 - `apps/web/src/pages/chat/api` 是前端工作台服务适配层；UI 组件不要直接拼后端 URL。

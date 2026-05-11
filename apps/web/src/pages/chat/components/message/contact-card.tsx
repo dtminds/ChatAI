@@ -12,20 +12,21 @@ export function ContactCardMessageCard({ content }: ContactCardMessageCardProps)
 
   return (
     <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 pb-1.5">
-      <div className="flex items-center gap-1.5 text-[12px] font-medium leading-5 text-muted-foreground">
-        <HugeiconsIcon
-          aria-hidden="true"
-          className="text-wechat-brand"
-          icon={WechatIcon}
-          size={16}
-        />
-        <span className="line-clamp-1">{company}</span>
-      </div>
-
       <div className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-2.5">
-        <p className="line-clamp-2 text-[14px] font-semibold leading-5 text-foreground">
-          {content.name}
-        </p>
+        <div className="min-w-0">
+          <p className="line-clamp-1 text-[14px] font-semibold leading-5 text-foreground">
+            {content.name}
+          </p>
+          <div className="mt-1 flex items-center gap-1.5 text-[12px] font-medium leading-5 text-muted-foreground">
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="text-wechat-brand"
+              icon={WechatIcon}
+              size={16}
+            />
+            <span className="line-clamp-1">{company}</span>
+          </div>
+        </div>
         <div
           className="flex shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-border bg-surface-muted text-muted-foreground"
           data-testid="contact-card-avatar-frame"

@@ -112,14 +112,14 @@ export function ChatPanel({
           <div className="relative">
             {scopeTransitionError ? (
               <div
-                className="absolute bottom-full left-0 right-0 z-20 mb-0 flex min-h-8 items-center justify-between gap-3 border-t border-destructive/20 bg-destructive/90 px-5 py-1.5 text-xs font-medium leading-5 text-destructive-foreground shadow-[0_-8px_24px_var(--shadow-medium)] backdrop-blur-sm"
+                className="absolute bottom-full left-0 right-0 z-20 mb-0 flex min-h-8 items-center justify-between gap-3 border-t border-destructive/10 bg-destructive/55 px-5 py-1.5 text-xs font-medium leading-5 text-destructive-foreground/90 shadow-[0_-4px_16px_var(--shadow-soft)] backdrop-blur-md"
                 data-testid="scope-transition-error"
                 role="status"
               >
                 <span className="min-w-0 truncate">{scopeTransitionError}</span>
                 <button
                   aria-label="关闭错误提示"
-                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] text-destructive-foreground/85 outline-none transition-colors hover:bg-white/15 hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-white/40"
+                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] text-destructive-foreground/75 outline-none transition-colors hover:bg-white/10 hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-white/30"
                   onClick={onDismissScopeTransitionError}
                   type="button"
                 >

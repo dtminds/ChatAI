@@ -149,6 +149,22 @@ describe("MessageContentRenderer image messages", () => {
     expect(image).not.toHaveAttribute("width", "0");
   });
 
+  it("renders an image-not-found icon when the image URL is empty", () => {
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "空图片",
+          height: 900,
+          imageUrl: "",
+          width: 1200,
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "图片不可用：空图片" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "空图片" })).not.toBeInTheDocument();
+  });
+
   it("closes the full preview when blank preview space is clicked", async () => {
     const user = userEvent.setup();
 

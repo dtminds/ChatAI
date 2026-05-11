@@ -59,6 +59,7 @@ type WorkbenchState = {
   sinceVersion: number;
   activeMessageSeq: number;
   pendingMessages: Message[];
+  dismissScopeTransitionError: () => void;
   initializeWorkbench: () => Promise<void>;
   setActiveAccount: (accountId: string) => Promise<void>;
   setActiveConversation: (conversationId: string) => Promise<void>;
@@ -88,6 +89,7 @@ function createInitialState(): Omit<
   | "retryFailedMessage"
   | "loadOlderMessages"
   | "pollWorkbench"
+  | "dismissScopeTransitionError"
 > {
   return {
     accounts: [],
@@ -331,6 +333,9 @@ export function createWorkbenchStore() {
 
   return create<WorkbenchStore>((set, get) => ({
     ...createInitialState(),
+    dismissScopeTransitionError() {
+      set({ scopeTransitionError: undefined });
+    },
     async takeOverAccount(accountId) {
       const state = get();
       const { me } = state;

@@ -1,3 +1,5 @@
+import { ImageNotFound01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 import {
   Dialog,
@@ -14,11 +16,29 @@ type ImageMessageCardProps = {
 
 export function ImageMessageCard({ content }: ImageMessageCardProps) {
   const mediaSize = getValidImageSize(content);
+  const imageUrl = content.imageUrl.trim();
+
+  if (!imageUrl) {
+    return (
+      <div
+        aria-label={`图片不可用：${content.alt}`}
+        className="inline-flex h-[120px] w-[120px] items-center justify-center rounded-[8px] border border-border/40 bg-muted-foreground/10 text-muted-foreground"
+        role="img"
+      >
+        <HugeiconsIcon
+          aria-hidden="true"
+          icon={ImageNotFound01Icon}
+          size={40}
+          strokeWidth={1.6}
+        />
+      </div>
+    );
+  }
 
   return (
     <ImagePreviewDialog
       alt={content.alt}
-      imageUrl={content.imageUrl}
+      imageUrl={imageUrl}
       triggerClassName="relative isolate inline-block overflow-hidden rounded-[8px] border border-border/40 bg-muted-foreground/10 p-0 outline-none transition-[border-color,filter] hover:brightness-[0.98] focus-visible:ring-4 focus-visible:ring-ring/25"
       triggerStyle={imageConstraintStyle}
     >
@@ -27,7 +47,7 @@ export function ImageMessageCard({ content }: ImageMessageCardProps) {
         className="block h-auto max-h-[360px] w-auto max-w-full object-cover"
         height={mediaSize?.height}
         loading="lazy"
-        src={getOptimizedMessageImageUrl(content.imageUrl)}
+        src={getOptimizedMessageImageUrl(imageUrl)}
         width={mediaSize?.width}
       />
     </ImagePreviewDialog>

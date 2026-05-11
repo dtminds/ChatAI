@@ -40,6 +40,7 @@ export type WorkbenchMessageContentType =
   | "h5"
   | "contact-card"
   | "location"
+  | "sphfeed"
   | "mini-program";
 
 export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed" | "read";

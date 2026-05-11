@@ -5,6 +5,7 @@ import { ImageMessageCard } from "@/pages/chat/components/message/image";
 import { LinkMessageCard } from "@/pages/chat/components/message/link";
 import { LocationMessageCard } from "@/pages/chat/components/message/location";
 import { MiniAppMessageCard } from "@/pages/chat/components/message/miniapp";
+import { SphFeedMessageCard } from "@/pages/chat/components/message/sphfeed";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
 import { VideoMessageCard } from "@/pages/chat/components/message/video";
 import { VoiceMessageCard } from "@/pages/chat/components/message/voice";
@@ -43,5 +44,7 @@ export function MessageContentRenderer({
       return <ContactCardMessageCard content={message.content} />;
     case "location":
       return <LocationMessageCard content={message.content} />;
+    case "sphfeed":
+      return <SphFeedMessageCard content={message.content} />;
   }
 }

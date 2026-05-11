@@ -522,6 +522,27 @@ describe("workbench MySQL mappers", () => {
       },
       contentType: "location",
     });
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          description: "杭州高架惊现鸵鸟飞奔，交警及时赶到引导带路，原来它是离家出走#鸵鸟 \n",
+          imageUrl: "https://finder.video.qq.com/cover.jpg",
+          linkUrl: "https://channels.weixin.qq.com/web/pages/feed?eid=export%2FUzFfBgAAxPiD",
+          title: "都市快报",
+        }),
+        msgtype: "sphfeed",
+      })),
+    ).toMatchObject({
+      content: {
+        description: "杭州高架惊现鸵鸟飞奔，交警及时赶到引导带路，原来它是离家出走#鸵鸟",
+        imageUrl: "https://finder.video.qq.com/cover.jpg",
+        sourceLabel: "视频号",
+        title: "都市快报",
+        url: "https://channels.weixin.qq.com/web/pages/feed?eid=export%2FUzFfBgAAxPiD",
+      },
+      contentType: "sphfeed",
+    });
   });
 
   it("maps media and file payload fields with complete URLs or object paths", () => {
@@ -577,21 +598,6 @@ describe("workbench MySQL mappers", () => {
       contentType: "text",
     });
 
-    expect(
-      mapMessageRow(messageRow({
-        content: JSON.stringify({
-          coverUrl: "https://cdn.example.com/sphfeed.jpg",
-          title: "视频号动态标题",
-          url: "https://channels.example.com/feed",
-        }),
-        msgtype: "sphfeed",
-      })),
-    ).toMatchObject({
-      content: {
-        text: "视频号动态标题",
-      },
-      contentType: "text",
-    });
   });
 });
 

@@ -257,6 +257,15 @@ function adaptChatMessageContent(
         type: "location",
         zoom: asOptionalNumber(content.zoom),
       };
+    case "sphfeed":
+      return {
+        description: String(content.description ?? ""),
+        imageUrl: asOptionalString(content.imageUrl),
+        sourceLabel: asOptionalString(content.sourceLabel),
+        title: String(content.title ?? ""),
+        type: "sphfeed",
+        url: asOptionalString(content.url),
+      };
     case "text":
     case "system":
     default:

@@ -136,6 +136,15 @@ export type LocationMessageContent = {
   zoom?: number;
 };
 
+export type SphFeedMessageContent = {
+  type: "sphfeed";
+  title: string;
+  description: string;
+  imageUrl?: string;
+  url?: string;
+  sourceLabel?: string;
+};
+
 export type MessageContent =
   | SystemMessageContent
   | TextMessageContent
@@ -146,7 +155,8 @@ export type MessageContent =
   | H5CardMessageContent
   | MiniProgramMessageContent
   | ContactCardMessageContent
-  | LocationMessageContent;
+  | LocationMessageContent
+  | SphFeedMessageContent;
 
 type BaseMessage = {
   id: string;
@@ -181,7 +191,8 @@ export type ChatMessage = BaseMessage & {
     | H5CardMessageContent
     | MiniProgramMessageContent
     | ContactCardMessageContent
-    | LocationMessageContent;
+    | LocationMessageContent
+    | SphFeedMessageContent;
 };
 
 export type Message = SystemMessage | ChatMessage;

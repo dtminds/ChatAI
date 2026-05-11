@@ -235,6 +235,36 @@ describe("adaptMessage", () => {
       },
     });
   });
+
+  it("adapts sphfeed message content", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            description: "杭州高架惊现鸵鸟飞奔",
+            imageUrl: "https://finder.video.qq.com/cover.jpg",
+            sourceLabel: "视频号",
+            title: "都市快报",
+            url: "https://channels.weixin.qq.com/web/pages/feed?eid=export%2FUzFfBgAAxPiD",
+          },
+          contentType: "sphfeed",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        description: "杭州高架惊现鸵鸟飞奔",
+        imageUrl: "https://finder.video.qq.com/cover.jpg",
+        sourceLabel: "视频号",
+        title: "都市快报",
+        type: "sphfeed",
+        url: "https://channels.weixin.qq.com/web/pages/feed?eid=export%2FUzFfBgAAxPiD",
+      },
+    });
+  });
 });
 
 const conversationDto: WorkbenchConversationSummaryDto = {

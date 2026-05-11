@@ -251,6 +251,8 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
       return "contact-card";
     case "location":
       return "location";
+    case "sphfeed":
+      return "sphfeed";
     case "weapp":
       return "mini-program";
     case "text":
@@ -331,6 +333,16 @@ function parseMessageContent(msgtype: string, rawContent: string | null) {
         longitude: readNumberField(parsed, "longitude"),
         title: readStringField(parsed, "title") || "位置",
         zoom: readNumberField(parsed, "zoom"),
+      };
+    case "sphfeed":
+      return {
+        description: readStringField(parsed, "description").trim(),
+        imageUrl: normalizeMediaAssetUrl(readStringField(parsed, "imageUrl")),
+        sourceLabel: "视频号",
+        title: readStringField(parsed, "title") || "视频号",
+        url: normalizeMediaAssetUrl(
+          readStringField(parsed, "linkUrl") || readStringField(parsed, "url"),
+        ),
       };
     case "weapp":
       return {

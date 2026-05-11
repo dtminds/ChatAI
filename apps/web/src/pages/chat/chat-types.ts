@@ -103,6 +103,7 @@ export type H5CardMessageContent = {
   type: "h5";
   title: string;
   description: string;
+  url?: string;
   previewImageUrl?: string;
   sourceLabel?: string;
 };
@@ -112,7 +113,27 @@ export type MiniProgramMessageContent = {
   title: string;
   appName: string;
   coverImageUrl?: string;
+  logoUrl?: string;
   sourceLabel?: string;
+};
+
+export type ContactCardMessageContent = {
+  type: "contact-card";
+  name: string;
+  avatarUrl?: string;
+  company?: string;
+  contactSerialNo?: string;
+  groupSerialNo?: string;
+  sourceLabel?: string;
+};
+
+export type LocationMessageContent = {
+  type: "location";
+  title: string;
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  zoom?: number;
 };
 
 export type MessageContent =
@@ -123,7 +144,9 @@ export type MessageContent =
   | VideoMessageContent
   | FileMessageContent
   | H5CardMessageContent
-  | MiniProgramMessageContent;
+  | MiniProgramMessageContent
+  | ContactCardMessageContent
+  | LocationMessageContent;
 
 type BaseMessage = {
   id: string;
@@ -146,6 +169,9 @@ export type SystemMessage = BaseMessage & {
 export type ChatMessage = BaseMessage & {
   role: "customer" | "agent";
   sender: MessageSender;
+  isGroupConversation?: boolean;
+  isOwnMessage?: boolean;
+  senderDisplayName?: string;
   content:
     | TextMessageContent
     | VoiceMessageContent
@@ -153,7 +179,9 @@ export type ChatMessage = BaseMessage & {
     | VideoMessageContent
     | FileMessageContent
     | H5CardMessageContent
-    | MiniProgramMessageContent;
+    | MiniProgramMessageContent
+    | ContactCardMessageContent
+    | LocationMessageContent;
 };
 
 export type Message = SystemMessage | ChatMessage;

@@ -243,10 +243,46 @@ describe("workbench MySQL mappers", () => {
       {
         senderAvatar: "https://example.com/group-member.png",
         senderName: "群内昵称",
+        senderType: "customer",
       },
       {
         senderAvatar: "",
         senderName: "group-member-missing",
+        senderType: "customer",
+      },
+    ]);
+  });
+
+  it("maps group ownership from third_from_id instead of nullable from_type", () => {
+    expect(
+      [
+        messageRow({
+          chat_type: 2,
+          conversation_group_id: "group-1",
+          from_type: null,
+          third_from_id: "seat-third-user-1",
+          third_group_id: "group-1",
+          third_user_id: "seat-third-user-1",
+        }),
+        messageRow({
+          chat_type: 2,
+          conversation_group_id: "group-1",
+          from_type: null,
+          third_from_id: "group-member-1",
+          third_group_id: "group-1",
+          third_user_id: "seat-third-user-1",
+        }),
+      ].map(mapMessageRow),
+    ).toMatchObject([
+      {
+        senderType: "agent",
+        thirdFromId: "seat-third-user-1",
+        thirdUserId: "seat-third-user-1",
+      },
+      {
+        senderType: "customer",
+        thirdFromId: "group-member-1",
+        thirdUserId: "seat-third-user-1",
       },
     ]);
   });
@@ -332,6 +368,32 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("does not coerce messages without a valid sent time to epoch", () => {
+    expect(
+      mapMessageRow(messageRow({
+        msgtime: 0,
+      })),
+    ).toMatchObject({
+      createdAt: undefined,
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        msgtime: "",
+      })),
+    ).toMatchObject({
+      createdAt: undefined,
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        msgtime: "not-a-date",
+      })),
+    ).toMatchObject({
+      createdAt: undefined,
+    });
+  });
+
   it("maps image content with complete URLs or object paths", () => {
     expect(
       mapMessageRow(messageRow({
@@ -354,6 +416,21 @@ describe("workbench MySQL mappers", () => {
     ).toEqual({
       alt: "图片",
       imageUrl: "https://b3.iyouke.com/media/20260508/272/a.jpg",
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          fileUrl: "https://wework.qpic.cn/wwpic3az/wwwx_eed91b8068b6ed56888938eca8bc3751/0",
+        }),
+        msgtype: "emotion",
+      })),
+    ).toMatchObject({
+      content: {
+        alt: "图片",
+        imageUrl: "https://wework.qpic.cn/wwpic3az/wwwx_eed91b8068b6ed56888938eca8bc3751/0",
+      },
+      contentType: "image",
     });
   });
 
@@ -382,21 +459,68 @@ describe("workbench MySQL mappers", () => {
     expect(
       mapMessageRow(messageRow({
         content: JSON.stringify({
+          description: "京东购物，多·快·好·省",
           appId: "wx-app-id",
-          fileUrl: "media/20260508/272/weapp.jpg",
+          fileUrl: "s5/20260511/272/2c37da84f0454991ad5a0b3cd56d991b.jpg",
           logoUrl: "https://cdn.example.com/logo.png",
-          title: "小程序标题",
+          title: "京东购物丨点外卖领国补",
         }),
         msgtype: "weapp",
       })),
     ).toMatchObject({
       content: {
-        appName: "wx-app-id",
-        coverImageUrl: "https://b3.iyouke.com/media/20260508/272/weapp.jpg",
+        appName: "京东购物丨点外卖领国补",
+        coverImageUrl: "https://b3.iyouke.com/s5/20260511/272/2c37da84f0454991ad5a0b3cd56d991b.jpg",
+        logoUrl: "https://cdn.example.com/logo.png",
         sourceLabel: "小程序",
-        title: "小程序标题",
+        title: "京东购物，多·快·好·省",
       },
       contentType: "mini-program",
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          avatar: "http://wx.qlogo.cn/mmhead/avatar/0",
+          company: "微信",
+          contactSerialNo: "D91D072C07D9CECFEC1271DB430B5EDF5194F219CF554649F1C4F9C615435A82",
+          groupSerialNo: "29F71A2ED8125854B6AA6EB6E582A8A9330A4B02FE42E908C5EF07B05A8F6A33",
+          name: "binarywang",
+        }),
+        msgtype: "card",
+      })),
+    ).toMatchObject({
+      content: {
+        avatarUrl: "http://wx.qlogo.cn/mmhead/avatar/0",
+        company: "微信",
+        contactSerialNo: "D91D072C07D9CECFEC1271DB430B5EDF5194F219CF554649F1C4F9C615435A82",
+        groupSerialNo: "29F71A2ED8125854B6AA6EB6E582A8A9330A4B02FE42E908C5EF07B05A8F6A33",
+        name: "binarywang",
+        sourceLabel: "个人名片",
+      },
+      contentType: "contact-card",
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          address: "浙江省杭州市钱塘区学府街515号智慧谷一栋",
+          latitude: "30.310369",
+          longitude: "120.371184",
+          title: "杭州智慧谷移动互联网大厦",
+          zoom: "15",
+        }),
+        msgtype: "location",
+      })),
+    ).toMatchObject({
+      content: {
+        address: "浙江省杭州市钱塘区学府街515号智慧谷一栋",
+        latitude: 30.310369,
+        longitude: 120.371184,
+        title: "杭州智慧谷移动互联网大厦",
+        zoom: 15,
+      },
+      contentType: "location",
     });
   });
 
@@ -451,15 +575,6 @@ describe("workbench MySQL mappers", () => {
         text: "[撤回消息]",
       },
       contentType: "text",
-    });
-
-    expect(
-      mapMessageRow(messageRow({
-        content: "{\"unsupportedDisplayText\":\"该消息类型暂不能展示\"}",
-        msgtype: "card",
-      })).content,
-    ).toEqual({
-      text: "该消息类型暂不能展示",
     });
 
     expect(

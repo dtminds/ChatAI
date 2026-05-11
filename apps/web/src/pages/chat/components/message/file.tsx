@@ -12,7 +12,7 @@ type FileMessageCardProps = {
 
 export function FileMessageCard({ content }: FileMessageCardProps) {
   return (
-    <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3">
+    <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 pb-2">
       <div className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-2.5">
         <div className="min-w-0">
           <p className="line-clamp-2 text-[14px] font-semibold leading-5 text-foreground">

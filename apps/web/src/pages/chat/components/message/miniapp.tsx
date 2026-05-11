@@ -12,7 +12,16 @@ export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
     <div className="w-[min(17rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5">
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
         <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <HugeiconsIcon icon={AiBrowserIcon} size={14} strokeWidth={1.9} />
+          {content.logoUrl ? (
+            <img
+              alt={content.appName}
+              className="size-full rounded-full object-cover"
+              loading="lazy"
+              src={content.logoUrl}
+            />
+          ) : (
+            <HugeiconsIcon icon={AiBrowserIcon} size={14} strokeWidth={1.9} />
+          )}
         </div>
         <span className="font-medium">{content.appName}</span>
       </div>
@@ -39,7 +48,7 @@ export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
       </div>
 
       <div className="mt-2.5 flex items-center gap-1 border-t border-divider pt-2 text-[11px] text-muted-foreground">
-        <MiniProgramMark className="shrink-0 text-foreground" />
+        <MiniProgramMark className="shrink-0 text-mini-program-brand" />
         <span>{content.sourceLabel ?? "小程序"}</span>
       </div>
     </div>
@@ -50,7 +59,8 @@ function MiniProgramMark({ className }: { className?: string }) {
   return (
     <svg
       aria-hidden="true"
-      className={cn("h-4 w-4", className)}
+      className={cn("h-[18px] w-[18px]", className)}
+      data-testid="mini-program-mark"
       viewBox="0 0 1024 1024"
     >
       <path

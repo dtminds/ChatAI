@@ -3,15 +3,18 @@ import { parseWechatEmojiText } from "@/pages/chat/wechat-emoji";
 
 type TextMessageBubbleProps = {
   isAgent: boolean;
+  isOwnMessage?: boolean;
   text: string;
 };
 
-export function TextMessageBubble({ isAgent, text }: TextMessageBubbleProps) {
+export function TextMessageBubble({ isAgent, isOwnMessage, text }: TextMessageBubbleProps) {
+  const isRightAligned = isAgent || Boolean(isOwnMessage);
+
   return (
-    <div
+      <div
       className={cn(
         "w-fit max-w-full rounded-[12px] px-3 py-2.5 text-[14px] leading-6",
-        isAgent
+        isRightAligned
           ? "bg-primary/15 text-foreground"
           : "bg-secondary text-foreground",
       )}

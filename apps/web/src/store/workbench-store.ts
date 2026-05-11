@@ -732,6 +732,8 @@ export function createWorkbenchStore() {
 
         return {
           author: account ? `${account.name}-${account.operator}` : me.displayName,
+          isGroupConversation: activeConversation.mode === "group",
+          isOwnMessage: true,
           clientMessageId: segmentClientMessageId,
           content: buildOptimisticMessageContent(segment),
           conversationId: activeConversationId,

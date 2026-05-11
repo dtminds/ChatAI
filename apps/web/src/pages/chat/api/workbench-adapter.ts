@@ -73,6 +73,7 @@ export function adaptMessage(
 ): Message {
   const sentAt = formatWorkbenchTimestamp(dto.createdAt);
   const status = adaptMessageStatus(dto.status);
+  const isGroupConversation = Boolean(dto.thirdGroupId);
 
   if (dto.senderType === "system") {
     return {
@@ -97,27 +98,41 @@ export function adaptMessage(
   const customer = customerProfilesById[dto.customerId];
   const account = accountsById[dto.seatId];
   const content = adaptChatMessageContent(dto.contentType, dto.content);
+  const isOwnMessage = isGroupConversation
+    ? dto.thirdFromId === dto.thirdUserId
+    : isAgent;
   const senderName = isAgent
     ? dto.senderName ||
       (me && account
         ? `${account.name}-${account.operator}`
         : account?.name ?? "当前客服")
-    : dto.senderName || customer?.name || "微信客户";
-  const senderAvatar =
-    dto.senderAvatar || (isAgent ? account?.avatarUrl : customer?.avatarUrl);
+    : isGroupConversation
+      ? dto.senderName || dto.thirdFromId || "群成员"
+      : dto.senderName || customer?.name || "微信客户";
+  const senderAvatar = dto.senderAvatar
+    || (isAgent
+      ? account?.avatarUrl
+      : isGroupConversation
+        ? ""
+        : customer?.avatarUrl);
 
   return {
     author: senderName,
     clientMessageId: dto.clientMessageId,
     content,
     conversationId: dto.conversationId,
+    isGroupConversation,
+    isOwnMessage,
     failReason: dto.failReason,
     id: dto.messageId,
     remoteMessageId: dto.messageId,
     role: isAgent ? "agent" : "customer",
+    senderDisplayName: isGroupConversation && !isOwnMessage ? senderName : undefined,
     sender: {
       avatarUrl: senderAvatar,
-      id: isAgent ? `sender-agent-${dto.seatId}` : `sender-customer-${dto.customerId}`,
+      id: isOwnMessage
+        ? `sender-agent-${dto.seatId}`
+        : `sender-customer-${dto.thirdFromId ?? dto.customerId}`,
       name: senderName,
     },
     sentAt,
@@ -131,7 +146,13 @@ export function formatWorkbenchTimestamp(value: number | Date | undefined) {
     return "";
   }
 
-  const date = value instanceof Date ? value : new Date(value);
+  const timestamp = value instanceof Date ? value.getTime() : value;
+
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return "";
+  }
+
+  const date = new Date(timestamp);
 
   return [
     date.getFullYear(),
@@ -206,14 +227,35 @@ function adaptChatMessageContent(
         sourceLabel: asOptionalString(content.sourceLabel),
         title: String(content.title ?? ""),
         type: "h5",
+        url: asOptionalString(content.url),
       };
     case "mini-program":
       return {
         appName: String(content.appName ?? ""),
         coverImageUrl: asOptionalString(content.coverImageUrl),
+        logoUrl: asOptionalString(content.logoUrl),
         sourceLabel: asOptionalString(content.sourceLabel),
         title: String(content.title ?? ""),
         type: "mini-program",
+      };
+    case "contact-card":
+      return {
+        avatarUrl: asOptionalString(content.avatarUrl),
+        company: asOptionalString(content.company),
+        contactSerialNo: asOptionalString(content.contactSerialNo),
+        groupSerialNo: asOptionalString(content.groupSerialNo),
+        name: String(content.name ?? ""),
+        sourceLabel: asOptionalString(content.sourceLabel),
+        type: "contact-card",
+      };
+    case "location":
+      return {
+        address: String(content.address ?? ""),
+        latitude: asOptionalNumber(content.latitude),
+        longitude: asOptionalNumber(content.longitude),
+        title: String(content.title ?? ""),
+        type: "location",
+        zoom: asOptionalNumber(content.zoom),
       };
     case "text":
     case "system":

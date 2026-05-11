@@ -144,16 +144,17 @@ export function mapMessageRow(row: MessageRow): WorkbenchMessageDto {
     content: parseMessageContent(row.msgtype, row.content),
     contentType: mapContentType(row.msgtype),
     conversationId: String(row.conversation_id),
-    createdAt: toTimestamp(row.msgtime),
+    createdAt: toOptionalTimestamp(row.msgtime),
     customerId,
     messageId: row.msgid,
     seatId: String(row.seat_id),
     senderAvatar: row.sender_avatar ?? "",
     senderName: row.sender_name,
-    senderType: mapSenderType(row.from_type),
+    senderType: mapSenderType(row),
     seq: toNumber(row.id),
     status: "read",
     thirdExternalUserId,
+    thirdFromId: row.third_from_id || undefined,
     thirdGroupId,
     thirdUserId: row.third_user_id,
   };
@@ -211,14 +212,23 @@ export function getGroupMemberHydrationKey(thirdGroupId: string, thirdUserId: st
   return `${thirdGroupId}\u0000${thirdUserId}`;
 }
 
-function mapSenderType(fromType: number | null): WorkbenchMessageDto["senderType"] {
-  switch (fromType) {
+function mapSenderType(row: MessageRow): WorkbenchMessageDto["senderType"] {
+  if (row.from_type === 3) {
+    return "system";
+  }
+
+  if (row.chat_type === 2) {
+    const thirdFromId = row.third_from_id.trim();
+    const thirdUserId = row.third_user_id.trim();
+
+    return thirdFromId && thirdFromId === thirdUserId ? "agent" : "customer";
+  }
+
+  switch (row.from_type) {
     case 1:
       return "agent";
     case 2:
       return "customer";
-    case 3:
-      return "system";
     default:
       return "system";
   }
@@ -227,6 +237,7 @@ function mapSenderType(fromType: number | null): WorkbenchMessageDto["senderType
 function mapContentType(msgtype: string): WorkbenchMessageContentType {
   switch (msgtype) {
     case "image":
+    case "emotion":
       return "image";
     case "voice":
       return "voice";
@@ -236,6 +247,10 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
       return "file";
     case "link":
       return "h5";
+    case "card":
+      return "contact-card";
+    case "location":
+      return "location";
     case "weapp":
       return "mini-program";
     case "text":
@@ -258,6 +273,7 @@ function parseMessageContent(msgtype: string, rawContent: string | null) {
 
   switch (msgtype) {
     case "image":
+    case "emotion":
       return {
         alt: "图片",
         imageUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
@@ -299,15 +315,30 @@ function parseMessageContent(msgtype: string, rawContent: string | null) {
           readStringField(parsed, "href") || readStringField(parsed, "linkUrl"),
         ),
       };
+    case "card":
+      return {
+        avatarUrl: normalizeMediaAssetUrl(readStringField(parsed, "avatar")),
+        company: readStringField(parsed, "company"),
+        contactSerialNo: readStringField(parsed, "contactSerialNo"),
+        groupSerialNo: readStringField(parsed, "groupSerialNo"),
+        name: readStringField(parsed, "name") || "未知联系人",
+        sourceLabel: "个人名片",
+      };
+    case "location":
+      return {
+        address: readStringField(parsed, "address"),
+        latitude: readNumberField(parsed, "latitude"),
+        longitude: readNumberField(parsed, "longitude"),
+        title: readStringField(parsed, "title") || "位置",
+        zoom: readNumberField(parsed, "zoom"),
+      };
     case "weapp":
       return {
-        appName:
-          readStringField(parsed, "appId") ||
-          readStringField(parsed, "originId") ||
-          "小程序",
+        appName: readStringField(parsed, "title") || "小程序",
         coverImageUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
+        logoUrl: normalizeMediaAssetUrl(readStringField(parsed, "logoUrl")),
         sourceLabel: "小程序",
-        title: readStringField(parsed, "title") || "小程序",
+        title: readStringField(parsed, "description") || "小程序",
       };
     default:
       return {
@@ -476,10 +507,6 @@ function toOptionalTimestamp(value: Date | number | string | null) {
   const timestamp = parseTimestamp(value);
 
   return timestamp && timestamp > 0 ? timestamp : undefined;
-}
-
-function toTimestamp(value: Date | number | string | null) {
-  return parseTimestamp(value) ?? 0;
 }
 
 function parseTimestamp(value: Date | number | string | null) {

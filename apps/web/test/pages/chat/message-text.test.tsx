@@ -32,6 +32,32 @@ describe("text message bubble layout", () => {
       wordBreak: "break-word",
     });
   });
+
+  it("shows the sender name for other group members", () => {
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("群消息"),
+          isGroupConversation: true,
+          isOwnMessage: false,
+          role: "customer",
+          sender: {
+            ...createTextMessage("群消息").sender,
+            name: "成员甲",
+          },
+          senderDisplayName: "成员甲",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("成员甲")).toBeInTheDocument();
+  });
+
+  it("does not show a sender name for single chat messages", () => {
+    render(<MessageRow message={createTextMessage("单聊消息")} />);
+
+    expect(screen.queryByText("成员甲")).not.toBeInTheDocument();
+  });
 });
 
 function createTextMessage(text: string): ChatMessage {

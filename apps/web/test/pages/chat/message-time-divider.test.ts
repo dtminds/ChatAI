@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatMessageDividerLabel } from "@/pages/chat/components/message-feed";
+import { render, screen } from "@testing-library/react";
+import { createElement } from "react";
+import {
+  ChatMessageList,
+  formatMessageDividerLabel,
+} from "@/pages/chat/components/message-feed";
+import type { ChatMessage } from "@/pages/chat/chat-types";
 
 describe("formatMessageDividerLabel", () => {
   afterEach(() => {
@@ -43,4 +49,42 @@ describe("formatMessageDividerLabel", () => {
 
     expect(formatMessageDividerLabel("not-a-date")).toBe("not-a-date");
   });
+
+  it("ignores invalid message timestamps when inserting dividers", () => {
+    vi.setSystemTime(new Date("2026-05-09T16:00:00"));
+
+    render(
+      createElement(ChatMessageList, {
+        messages: [
+          createMessage("message-1", "第一条", "2026-05-09 14:00:00"),
+          createMessage("message-2", "第二条", "2026-05-09 14:05:00"),
+          createMessage("message-3", "无有效时间", ""),
+          createMessage("message-4", "第四条", "2026-05-09 14:10:00"),
+        ],
+      }),
+    );
+
+    expect(screen.getByText("14:00")).toBeInTheDocument();
+    expect(screen.queryByText(/1970/)).not.toBeInTheDocument();
+    expect(screen.queryByText("14:10")).not.toBeInTheDocument();
+  });
 });
+
+function createMessage(id: string, text: string, sentAt: string): ChatMessage {
+  return {
+    author: "客户",
+    content: {
+      text,
+      type: "text",
+    },
+    conversationId: "conversation-1",
+    id,
+    role: "customer",
+    sender: {
+      id: "customer-1",
+      name: "客户",
+    },
+    sentAt,
+    status: "read",
+  };
+}

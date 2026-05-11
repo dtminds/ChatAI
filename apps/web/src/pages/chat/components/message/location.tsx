@@ -45,16 +45,16 @@ function LocationCardBody({ content }: { content: LocationMessageContent }) {
       <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 px-4">
         <div className="flex items-center gap-1">
           <HugeiconsIcon
-            className="mt-[1px] shrink-0 text-[#3d73e0]"
+            className="mt-[1px] shrink-0 text-primary"
             icon={Location01Icon}
             size={16}
             strokeWidth={2.2}
           />
-          <p className="min-w-0 line-clamp-1 text-[14px] font-semibold leading-4 text-[#24304a] [html.dark_&]:text-white">
+          <p className="min-w-0 line-clamp-1 text-[14px] font-semibold leading-4 text-foreground">
             {content.title}
           </p>
         </div>
-        <p className="mt-1 line-clamp-1 text-[12px] leading-4 text-[#5f6b7a] [html.dark_&]:text-white/70">
+        <p className="mt-1 line-clamp-1 text-[12px] leading-4 text-muted-foreground">
           {content.address}
         </p>
       </div>

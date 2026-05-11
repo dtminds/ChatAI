@@ -370,7 +370,7 @@ export class WorkbenchRepository {
       .limit(options.limit + 1)
       .execute();
 
-    const rawRows = rows.slice(0, options.limit).map((row) => row as MessageRow);
+    const rawRows = rows.slice(0, options.limit) as MessageRow[];
     const visibleRows = rawRows.filter((row) => row.msgtype !== "revoke");
     const messageRows = visibleRows.reverse();
     const hydrationSources = await this.getMessageHydrationSources(
@@ -385,7 +385,7 @@ export class WorkbenchRepository {
       messages: hydrateMessageRows(messageRows, hydrationSources).map((row) =>
         mapMessageRow(row),
       ),
-      nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id ?? null) : undefined,
+      nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id) : undefined,
       scannedCount: rawRows.length,
     };
   }

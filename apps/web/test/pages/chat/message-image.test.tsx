@@ -41,6 +41,32 @@ describe("MessageContentRenderer image messages", () => {
     expect(screen.queryByRole("dialog", { name: "图片预览" })).not.toBeInTheDocument();
   });
 
+  it("uses the optimized b5 image URL for thumbnails while previewing the original image", async () => {
+    const user = userEvent.setup();
+    const imageUrl =
+      "https://b5.bokr.com.cn/s5/20260511/272/fa4ccebe1fa94d60997824dd1a22656b.jpg";
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "客户发来的表情图片",
+          height: 900,
+          imageUrl,
+          width: 1200,
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "客户发来的表情图片" })).toHaveAttribute(
+      "src",
+      `${imageUrl}!w480.webp`,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：客户发来的表情图片" }));
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute("src", imageUrl);
+  });
+
   it("uses the natural image ratio when dimensions are missing", () => {
     render(
       <ImageMessageCard

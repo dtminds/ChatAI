@@ -27,6 +27,7 @@ type ChatPanelProps = {
   groupMembers: GroupMember[];
   inputEnterBehavior: InputEnterBehavior;
   isConversationLoading: boolean;
+  isConversationSettling: boolean;
   isEmojiPickerOpen: boolean;
   isResizingCustomerPanel: boolean;
   mentionInsertPosition: MentionInsertPosition;
@@ -63,6 +64,7 @@ export function ChatPanel({
   groupMembers,
   inputEnterBehavior,
   isConversationLoading,
+  isConversationSettling,
   isEmojiPickerOpen,
   isResizingCustomerPanel,
   mentionInsertPosition,
@@ -98,6 +100,7 @@ export function ChatPanel({
             activeHistoryStatus={activeHistoryStatus}
             hasMoreHistory={hasMoreHistory}
             isConversationLoading={isConversationLoading}
+            isConversationSettling={isConversationSettling}
             messageListBottomRef={messageListBottomRef}
             messages={messages}
             messageViewportRef={messageViewportRef}

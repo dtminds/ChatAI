@@ -4,7 +4,7 @@ import {
   BadRequestError,
 } from "../../shared/errors.js";
 
-const ALLOWED_MEDIA_HOST = "b3.iyouke.com";
+const ALLOWED_MEDIA_HOST = "b5.bokr.com.cn";
 const DEFAULT_MEDIA_PROXY_TIMEOUT_MS = 8000;
 
 export type ProxiedMediaAsset = {

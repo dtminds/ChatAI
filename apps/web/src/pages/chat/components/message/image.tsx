@@ -6,6 +6,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { ImageMessageContent } from "@/pages/chat/chat-types";
+import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 
 type ImageMessageCardProps = {
   content: ImageMessageContent;
@@ -26,7 +27,7 @@ export function ImageMessageCard({ content }: ImageMessageCardProps) {
         className="block h-auto max-h-[360px] w-auto max-w-full object-cover"
         height={mediaSize?.height}
         loading="lazy"
-        src={content.imageUrl}
+        src={getOptimizedMessageImageUrl(content.imageUrl)}
         width={mediaSize?.width}
       />
     </ImagePreviewDialog>

@@ -693,14 +693,14 @@ describe("backend app", () => {
     const response = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: `/api/server/media/proxy?url=${encodeURIComponent("https://b3.iyouke.com/bilin/20260421/272/voice.amr")}`,
+      url: `/api/server/media/proxy?url=${encodeURIComponent("https://b5.bokr.com.cn/bilin/20260421/272/voice.amr")}`,
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.headers["content-type"]).toContain("audio/amr");
     expect(response.body).toBe("\u0001\u0002\u0003");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+      "https://b5.bokr.com.cn/bilin/20260421/272/voice.amr",
       expect.objectContaining({
         signal: expect.any(AbortSignal),
       }),

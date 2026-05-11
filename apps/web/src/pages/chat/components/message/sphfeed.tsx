@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { SphFeedMessageContent } from "@/pages/chat/chat-types";
 import { getSafeMessageUrl } from "@/pages/chat/components/message/url";
 
@@ -13,7 +14,7 @@ export function SphFeedMessageCard({ content }: SphFeedMessageCardProps) {
     return (
       <div
         className="overflow-hidden rounded-[8px] border border-border bg-surface"
-        style={{ maxWidth: 217, width: "min(217px, calc(100vw - 7rem))" }}
+        style={sphFeedCardStyle}
       >
         {card}
       </div>
@@ -25,7 +26,7 @@ export function SphFeedMessageCard({ content }: SphFeedMessageCardProps) {
       className="block overflow-hidden rounded-[8px] border border-border bg-surface outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
       href={safeUrl}
       rel="noopener noreferrer"
-      style={{ maxWidth: 217, width: "min(217px, calc(100vw - 7rem))" }}
+      style={sphFeedCardStyle}
       target="_blank"
     >
       {card}
@@ -36,7 +37,11 @@ export function SphFeedMessageCard({ content }: SphFeedMessageCardProps) {
 function SphFeedCardBody({ content }: { content: SphFeedMessageContent }) {
   return (
     <>
-      <div className="relative aspect-[3/4] overflow-hidden bg-surface-muted">
+      <div
+        className="relative overflow-hidden bg-surface-muted"
+        data-testid="sphfeed-media"
+        style={sphFeedMediaStyle}
+      >
         {content.imageUrl ? (
           <img
             alt={content.title}
@@ -63,6 +68,16 @@ function SphFeedCardBody({ content }: { content: SphFeedMessageContent }) {
     </>
   );
 }
+
+const sphFeedCardStyle = {
+  maxWidth: "217px",
+  width: "217px",
+} satisfies CSSProperties;
+
+const sphFeedMediaStyle = {
+  aspectRatio: "3 / 4",
+  width: "217px",
+} satisfies CSSProperties;
 
 function SphFeedMark({ className }: { className?: string }) {
   return (

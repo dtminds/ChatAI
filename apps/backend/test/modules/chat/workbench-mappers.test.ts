@@ -501,7 +501,7 @@ describe("workbench MySQL mappers", () => {
       })).content,
     ).toEqual({
       alt: "图片",
-      imageUrl: "https://b3.iyouke.com/media/20260508/272/a.jpg",
+      imageUrl: "https://b5.bokr.com.cn/media/20260508/272/a.jpg",
     });
 
     expect(
@@ -556,7 +556,7 @@ describe("workbench MySQL mappers", () => {
     ).toMatchObject({
       content: {
         appName: "京东购物丨点外卖领国补",
-        coverImageUrl: "https://b3.iyouke.com/s5/20260511/272/2c37da84f0454991ad5a0b3cd56d991b.jpg",
+        coverImageUrl: "https://b5.bokr.com.cn/s5/20260511/272/2c37da84f0454991ad5a0b3cd56d991b.jpg",
         logoUrl: "https://cdn.example.com/logo.png",
         sourceLabel: "小程序",
         title: "京东购物，多·快·好·省",
@@ -708,7 +708,7 @@ describe("workbench MySQL mappers", () => {
         extension: "pdf",
         fileName: "报价单.pdf",
         fileSizeLabel: "6.09 MB",
-        fileUrl: "https://b3.iyouke.com/media/20260508/272/file.pdf",
+        fileUrl: "https://b5.bokr.com.cn/media/20260508/272/file.pdf",
         sourceLabel: "文件",
       },
       contentType: "file",

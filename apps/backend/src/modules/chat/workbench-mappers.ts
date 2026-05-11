@@ -490,7 +490,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const mediaAssetBaseUrl = "https://b3.iyouke.com";
+const mediaAssetBaseUrl = "https://b5.bokr.com.cn";
 
 function normalizeMediaAssetUrl(value: string) {
   const url = value.trim();

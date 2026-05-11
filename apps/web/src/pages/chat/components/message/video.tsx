@@ -2,6 +2,7 @@ import { PlayIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { CSSProperties } from "react";
 import type { VideoMessageContent } from "@/pages/chat/chat-types";
+import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 
 const DEFAULT_VIDEO_WIDTH = 320;
 const DEFAULT_VIDEO_HEIGHT = 240;
@@ -36,7 +37,7 @@ export function VideoMessageCard({
         alt={content.alt}
         className="block h-auto max-h-[360px] w-auto max-w-full object-cover"
         loading="lazy"
-        src={content.coverImageUrl}
+        src={getOptimizedMessageImageUrl(content.coverImageUrl)}
         width={mediaSize.width}
         height={mediaSize.height}
       />

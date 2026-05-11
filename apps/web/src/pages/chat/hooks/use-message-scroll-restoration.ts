@@ -4,6 +4,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
 } from "react";
 import {
   captureViewportAnchor,
@@ -13,11 +14,13 @@ import {
 type HistoryStatus = "idle" | "loading" | "error";
 
 const BOTTOM_PIN_THRESHOLD_PX = 48;
+const CONVERSATION_SETTLE_DELAY_MS = 1000;
 
 type UseMessageScrollRestorationOptions = {
   activeConversationId?: string;
   activeHistoryStatus: HistoryStatus;
   hasMoreHistory: boolean;
+  isConversationLoading: boolean;
   isHistoryLoading: boolean;
   loadOlderMessages: () => Promise<void>;
   messageCount: number;
@@ -29,6 +32,7 @@ export function useMessageScrollRestoration({
   activeConversationId,
   activeHistoryStatus,
   hasMoreHistory,
+  isConversationLoading,
   isHistoryLoading,
   loadOlderMessages,
   messageCount,
@@ -37,7 +41,6 @@ export function useMessageScrollRestoration({
 }: UseMessageScrollRestorationOptions) {
   const historyLoadInFlightRef = useRef(false);
   const isPinnedToBottomRef = useRef(true);
-  const pendingScrollFrameRef = useRef<number | undefined>(undefined);
   const pendingHistoryRestoreRef = useRef<{
     anchorId?: string;
     anchorOffsetTop?: number;
@@ -45,8 +48,11 @@ export function useMessageScrollRestoration({
     previousScrollHeight: number;
     previousScrollTop: number;
   } | null>(null);
+  const settlingTimerRef = useRef<number | undefined>(undefined);
+  const previousConversationLoadingRef = useRef(false);
   const previousConversationIdRef = useRef<string | undefined>(undefined);
   const previousMessageCountRef = useRef(0);
+  const [isConversationSettling, setIsConversationSettling] = useState(false);
 
   const scrollViewportToBottom = useCallback(() => {
     const viewport = messageViewportRef.current;
@@ -58,25 +64,14 @@ export function useMessageScrollRestoration({
     viewport.scrollTop = viewport.scrollHeight;
   }, [messageViewportRef]);
 
-  const schedulePinnedBottomScroll = useCallback(() => {
-    if (!isPinnedToBottomRef.current || pendingHistoryRestoreRef.current) {
+  const clearSettlingTimer = useCallback(() => {
+    if (settlingTimerRef.current == null) {
       return;
     }
 
-    if (pendingScrollFrameRef.current != null) {
-      window.cancelAnimationFrame(pendingScrollFrameRef.current);
-    }
-
-    pendingScrollFrameRef.current = window.requestAnimationFrame(() => {
-      pendingScrollFrameRef.current = undefined;
-
-      if (!isPinnedToBottomRef.current || pendingHistoryRestoreRef.current) {
-        return;
-      }
-
-      scrollViewportToBottom();
-    });
-  }, [scrollViewportToBottom]);
+    window.clearTimeout(settlingTimerRef.current);
+    settlingTimerRef.current = undefined;
+  }, []);
 
   const updatePinnedToBottomFromViewport = useCallback(() => {
     const viewport = messageViewportRef.current;
@@ -89,11 +84,6 @@ export function useMessageScrollRestoration({
       viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
 
     isPinnedToBottomRef.current = distanceToBottom <= BOTTOM_PIN_THRESHOLD_PX;
-
-    if (!isPinnedToBottomRef.current && pendingScrollFrameRef.current != null) {
-      window.cancelAnimationFrame(pendingScrollFrameRef.current);
-      pendingScrollFrameRef.current = undefined;
-    }
   }, [messageViewportRef]);
 
   const handleLoadOlderMessages = useCallback(async () => {
@@ -142,39 +132,58 @@ export function useMessageScrollRestoration({
 
     updatePinnedToBottomFromViewport();
 
+    if (!isPinnedToBottomRef.current) {
+      clearSettlingTimer();
+      setIsConversationSettling(false);
+    }
+
     if (!viewport || viewport.scrollTop > 48) {
       return;
     }
 
     void handleLoadOlderMessages();
-  }, [handleLoadOlderMessages, messageViewportRef, updatePinnedToBottomFromViewport]);
+  }, [
+    clearSettlingTimer,
+    handleLoadOlderMessages,
+    messageViewportRef,
+    updatePinnedToBottomFromViewport,
+  ]);
 
   useEffect(() => {
     return () => {
-      if (pendingScrollFrameRef.current != null) {
-        window.cancelAnimationFrame(pendingScrollFrameRef.current);
-      }
+      clearSettlingTimer();
     };
-  }, []);
+  }, [clearSettlingTimer]);
 
-  useLayoutEffect(() => {
-    const viewport = messageViewportRef.current;
+  useEffect(() => {
+    const wasConversationLoading = previousConversationLoadingRef.current;
+    previousConversationLoadingRef.current = isConversationLoading;
 
-    if (!viewport || typeof ResizeObserver === "undefined") {
+    if (isConversationLoading) {
+      clearSettlingTimer();
+      setIsConversationSettling(true);
       return;
     }
 
-    const observedElement = viewport.firstElementChild ?? viewport;
-    const observer = new ResizeObserver(() => {
-      schedulePinnedBottomScroll();
-    });
+    if (!wasConversationLoading) {
+      return;
+    }
 
-    observer.observe(observedElement);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [messageViewportRef, schedulePinnedBottomScroll]);
+    clearSettlingTimer();
+    settlingTimerRef.current = window.setTimeout(() => {
+      settlingTimerRef.current = undefined;
+      messageListBottomRef.current?.scrollIntoView({
+        block: "end",
+      });
+      scrollViewportToBottom();
+      setIsConversationSettling(false);
+    }, CONVERSATION_SETTLE_DELAY_MS);
+  }, [
+    clearSettlingTimer,
+    isConversationLoading,
+    messageListBottomRef,
+    scrollViewportToBottom,
+  ]);
 
   useLayoutEffect(() => {
     const previousConversationId = previousConversationIdRef.current;
@@ -219,10 +228,21 @@ export function useMessageScrollRestoration({
       pendingHistoryRestoreRef.current = null;
     }
 
-    const shouldScrollToBottom =
-      activeConversationId !== previousConversationId ||
-      (activeConversationId === previousConversationId &&
-        messageCount > previousMessageCount);
+    if (
+      isConversationLoading ||
+      previousConversationLoadingRef.current ||
+      isConversationSettling
+    ) {
+      previousConversationIdRef.current = activeConversationId;
+      previousMessageCountRef.current = messageCount;
+      return;
+    }
+
+    const isConversationChanged = activeConversationId !== previousConversationId;
+    const hasNewMessages =
+      activeConversationId === previousConversationId &&
+      messageCount > previousMessageCount;
+    const shouldScrollToBottom = isConversationChanged || hasNewMessages;
 
     if (!shouldScrollToBottom) {
       previousConversationIdRef.current = activeConversationId;
@@ -230,15 +250,40 @@ export function useMessageScrollRestoration({
       return;
     }
 
+    previousConversationIdRef.current = activeConversationId;
+    previousMessageCountRef.current = messageCount;
+
+    if (!activeConversationId || messageCount === 0) {
+      return;
+    }
+
+    if (hasNewMessages) {
+      messageListBottomRef.current?.scrollIntoView({
+        block: "end",
+      });
+      scrollViewportToBottom();
+      isPinnedToBottomRef.current = true;
+      return;
+    }
+
     messageListBottomRef.current?.scrollIntoView({
       block: "end",
     });
+    scrollViewportToBottom();
     isPinnedToBottomRef.current = true;
-    schedulePinnedBottomScroll();
-  }, [activeConversationId, messageCount, activeHistoryStatus]);
+  }, [
+    activeConversationId,
+    messageCount,
+    messageListBottomRef,
+    activeHistoryStatus,
+    isConversationLoading,
+    isConversationSettling,
+    scrollViewportToBottom,
+  ]);
 
   return {
     handleLoadOlderMessages,
     handleMessageViewportScroll,
+    isConversationSettling,
   };
 }

@@ -610,6 +610,49 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.queryByRole("button", { name: "加载更早的对话" })).not.toBeInTheDocument();
   });
 
+  it("does not offer older history while a newly selected conversation is still loading", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const conversationGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-002" && options?.beforeSeq == null) {
+          await conversationGate.promise;
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+
+    expect(
+      screen.getByRole("status", { name: "正在加载会话" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("message-loading-overlay")).toHaveClass(
+      "absolute",
+      "inset-0",
+      "items-center",
+      "justify-center",
+    );
+    expect(screen.getByTestId("message-scroll-area")).not.toContainElement(
+      screen.getByTestId("message-loading-overlay"),
+    );
+    expect(screen.getByTestId("message-content")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(screen.queryByText("正在刷新当前会话...")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加载更早的对话" })).not.toBeInTheDocument();
+
+    conversationGate.resolve();
+  });
+
   it("keeps all seed messages visible after the initial 50-message request", async () => {
     render(<ChatWorkbenchPage />);
 

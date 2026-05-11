@@ -35,6 +35,30 @@ describe("MessageContentRenderer video messages", () => {
     expect(screen.getByText("1:01")).toBeInTheDocument();
   });
 
+  it("uses the optimized b5 image URL for video covers", () => {
+    const coverImageUrl =
+      "https://b5.bokr.com.cn/s5/20260511/272/fa4ccebe1fa94d60997824dd1a22656b.jpg";
+
+    render(
+      <VideoMessageCard
+        content={{
+          ...createVideoContent({
+            alt: "b5 视频封面",
+            durationLabel: "1:01",
+            height: 360,
+            width: 640,
+          }),
+          coverImageUrl,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "b5 视频封面" })).toHaveAttribute(
+      "src",
+      `${coverImageUrl}!w480.webp`,
+    );
+  });
+
   it("renders a vertical video preview from the same content contract", () => {
     render(
       <MessageContentRenderer

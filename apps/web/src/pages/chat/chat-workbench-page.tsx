@@ -157,7 +157,7 @@ function ChatWorkbenchContent({
     ? historyStatusByConversationId[activeConversation.id] ?? "idle"
     : "idle";
   const hasMoreHistory = activeConversation
-    ? hasMoreHistoryByConversationId[activeConversation.id] !== false
+    ? hasMoreHistoryByConversationId[activeConversation.id] === true
     : false;
   const activeCustomer =
     (activeConversation &&
@@ -183,11 +183,16 @@ function ChatWorkbenchContent({
       ? "当前列表暂无可发送会话"
       : "当前会话暂不可发送消息";
 
-  const { handleLoadOlderMessages, handleMessageViewportScroll } =
+  const {
+    handleLoadOlderMessages,
+    handleMessageViewportScroll,
+    isConversationSettling,
+  } =
     useMessageScrollRestoration({
     activeConversationId: activeConversation?.id,
     activeHistoryStatus,
     hasMoreHistory,
+    isConversationLoading,
     isHistoryLoading: activeHistoryStatus === "loading",
     loadOlderMessages,
     messageCount: activeMessages.length,
@@ -376,6 +381,7 @@ function ChatWorkbenchContent({
                 groupMembers={activeGroupMembers}
                 inputEnterBehavior={inputEnterBehavior}
                 isConversationLoading={isConversationLoading}
+                isConversationSettling={isConversationSettling}
                 isEmojiPickerOpen={isEmojiPickerOpen}
                 isResizingCustomerPanel={isResizingCustomerPanel}
                 mentionInsertPosition={mentionInsertPosition}

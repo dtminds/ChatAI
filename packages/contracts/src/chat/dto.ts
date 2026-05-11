@@ -71,7 +71,7 @@ export type WorkbenchConversationSummaryDto = {
   customerName: string;
   customerAvatar: string;
   lastMessage: string;
-  lastMessageTime: number;
+  lastMessageTime?: number;
   unreadCount: number;
   mode: "single" | "group";
   isPinned?: boolean;
@@ -86,6 +86,8 @@ export type WorkbenchMessageBaseDto = {
   thirdUserId?: string;
   thirdExternalUserId?: string;
   thirdGroupId?: string;
+  senderName?: string;
+  senderAvatar?: string;
   senderType: "customer" | "agent" | "system";
   contentType: WorkbenchMessageContentType;
   status: WorkbenchMessageStatus;

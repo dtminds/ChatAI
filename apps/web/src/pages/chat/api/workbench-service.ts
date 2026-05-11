@@ -513,7 +513,7 @@ function getAccountUnreadCount(conversations: WorkbenchConversationSummaryDto[])
 
 function getAccountLastMessageTime(conversations: WorkbenchConversationSummaryDto[]) {
   return conversations.reduce(
-    (latest, conversation) => Math.max(latest, conversation.lastMessageTime),
+    (latest, conversation) => Math.max(latest, conversation.lastMessageTime ?? 0),
     0,
   );
 }
@@ -662,7 +662,9 @@ function resolveSendOutcome(
 }
 
 function sortConversations(conversations: WorkbenchConversationSummaryDto[]) {
-  return [...conversations].sort((left, right) => right.lastMessageTime - left.lastMessageTime);
+  return [...conversations].sort(
+    (left, right) => (right.lastMessageTime ?? 0) - (left.lastMessageTime ?? 0),
+  );
 }
 
 function collapseLatest<T>(

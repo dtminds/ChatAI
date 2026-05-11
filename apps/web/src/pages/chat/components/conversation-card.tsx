@@ -85,18 +85,6 @@ export function ConversationCard({
             >
               {conversation.customerName}
             </p>
-            {conversation.mode === "group" ? (
-              <span
-                className={cn(
-                  "rounded px-1 py-0.5 text-[10px]",
-                  isActive
-                    ? "bg-conversation-active-foreground/15 text-conversation-active-foreground"
-                    : "bg-primary/10 text-primary",
-                )}
-              >
-                群
-              </span>
-            ) : null}
           </div>
 
           <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">

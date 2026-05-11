@@ -30,6 +30,42 @@ describe("ConversationCard", () => {
     expect(screen.getByText("3")).toBeInTheDocument();
   });
 
+  it("does not render an epoch date when a conversation has no message time", () => {
+    render(
+      <ConversationCard
+        conversation={{
+          ...conversation,
+          preview: "",
+          updatedAt: "",
+          updatedAtMs: undefined,
+        }}
+        isActive
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("1970/01/01")).not.toBeInTheDocument();
+    expect(screen.getByTestId("conversation-updated-at")).toBeEmptyDOMElement();
+  });
+
+  it("does not render a group badge on group conversation cards", () => {
+    render(
+      <ConversationCard
+        conversation={{
+          ...conversation,
+          customerName: "测试群002",
+          mode: "group",
+          unread: 0,
+        }}
+        isActive
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("测试群002")).toBeInTheDocument();
+    expect(screen.queryByText("群")).not.toBeInTheDocument();
+  });
+
   it("uses conversation state tokens for active conversations", () => {
     const { container } = render(
       <ConversationCard

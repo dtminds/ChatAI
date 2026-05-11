@@ -567,7 +567,7 @@ function getSeatUnreadCount(conversations: WorkbenchConversationSummaryDto[]) {
 
 function getSeatLastMessageTime(conversations: WorkbenchConversationSummaryDto[]) {
   return conversations.reduce(
-    (latest, conversation) => Math.max(latest, conversation.lastMessageTime),
+    (latest, conversation) => Math.max(latest, conversation.lastMessageTime ?? 0),
     0,
   );
 }
@@ -578,7 +578,7 @@ function sortConversations(conversations: WorkbenchConversationSummaryDto[]) {
       return left.isPinned ? -1 : 1;
     }
 
-    return right.lastMessageTime - left.lastMessageTime;
+    return (right.lastMessageTime ?? 0) - (left.lastMessageTime ?? 0);
   });
 }
 

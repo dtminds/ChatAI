@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  getGroupMemberHydrationKey,
+  hydrateMessageRows,
   mapConversationRow,
   mapMessageRow,
   mapSeatRow,
@@ -66,6 +68,58 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("does not coerce conversations without a last message time to epoch", () => {
+    expect(
+      mapConversationRow({
+        chat_type: 2,
+        customer_avatar: "",
+        customer_name: null,
+        group_avatar: "https://example.com/group.png",
+        group_name: "测试群002",
+        id: 89,
+        last_message_content: null,
+        last_message_type: null,
+        last_msgtime: null,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "",
+        third_group_id: "group-2",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      conversationId: "89",
+      customerName: "测试群002",
+      lastMessage: "",
+      lastMessageTime: undefined,
+      mode: "group",
+    });
+
+    expect(
+      mapConversationRow({
+        chat_type: 2,
+        customer_avatar: "",
+        customer_name: null,
+        group_avatar: "https://example.com/group.png",
+        group_name: "测试群003",
+        id: 90,
+        last_message_content: null,
+        last_message_type: null,
+        last_msgtime: 0,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "",
+        third_group_id: "group-3",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      conversationId: "90",
+      customerName: "测试群003",
+      lastMessageTime: undefined,
+    });
+  });
+
   it("maps audit message rows and keeps unknown payloads safe", () => {
     expect(
       mapMessageRow(messageRow({
@@ -86,11 +140,148 @@ describe("workbench MySQL mappers", () => {
       customerId: "external-1",
       messageId: "remote-msg-101",
       seatId: "12",
+      senderAvatar: "",
+      senderName: undefined,
       senderType: "customer",
       seq: 101,
       status: "read",
       thirdExternalUserId: "external-1",
+      thirdGroupId: undefined,
       thirdUserId: "third-user-1",
+    });
+  });
+
+  it("hydrates private message senders from seats and contacts", () => {
+    expect(
+      hydrateMessageRows(
+        [
+          messageRow({
+            from_type: 1,
+            id: 101,
+            third_external_id: "external-1",
+            third_user_id: "seat-third-user-1",
+          }),
+          messageRow({
+            from_type: 2,
+            id: 102,
+            third_external_id: "external-2",
+            third_user_id: "seat-third-user-1",
+          }),
+        ],
+        {
+          contactsByThirdExternalId: new Map([
+            [
+              "external-2",
+              {
+                avatar: "https://example.com/customer.png",
+                name: "客户名称",
+                realName: "客户实名",
+              },
+            ],
+          ]),
+          groupMembersByGroupAndThirdUserId: new Map(),
+          seatsByThirdUserId: new Map([
+            [
+              "seat-third-user-1",
+              {
+                avatar: "https://example.com/seat.png",
+                name: "企业成员",
+              },
+            ],
+          ]),
+        },
+      ).map(mapMessageRow),
+    ).toMatchObject([
+      {
+        senderAvatar: "https://example.com/seat.png",
+        senderName: "企业成员",
+        senderType: "agent",
+      },
+      {
+        senderAvatar: "https://example.com/customer.png",
+        senderName: "客户实名",
+        senderType: "customer",
+      },
+    ]);
+  });
+
+  it("hydrates group message senders from group members with id fallback", () => {
+    expect(
+      hydrateMessageRows(
+        [
+          messageRow({
+            chat_type: 2,
+            from_type: 2,
+            id: 201,
+            third_from_id: "group-member-1",
+            third_group_id: "group-1",
+          }),
+          messageRow({
+            chat_type: 2,
+            from_type: 2,
+            id: 202,
+            third_from_id: "group-member-missing",
+            third_group_id: "group-1",
+          }),
+        ],
+        {
+          contactsByThirdExternalId: new Map(),
+          groupMembersByGroupAndThirdUserId: new Map([
+            [
+              getGroupMemberHydrationKey("group-1", "group-member-1"),
+              {
+                avatar: "https://example.com/group-member.png",
+                name: "群成员名称",
+                nickname: "群内昵称",
+              },
+            ],
+          ]),
+          seatsByThirdUserId: new Map(),
+        },
+      ).map(mapMessageRow),
+    ).toMatchObject([
+      {
+        senderAvatar: "https://example.com/group-member.png",
+        senderName: "群内昵称",
+      },
+      {
+        senderAvatar: "",
+        senderName: "group-member-missing",
+      },
+    ]);
+  });
+
+  it("leaves robot messages without avatar hydration for now", () => {
+    expect(
+      mapMessageRow(
+        hydrateMessageRows(
+          [
+            messageRow({
+              from_type: 3,
+              third_external_id: "external-robot",
+              third_from_id: "robot-1",
+            }),
+          ],
+          {
+            contactsByThirdExternalId: new Map([
+              [
+                "external-robot",
+                {
+                  avatar: "https://example.com/robot.png",
+                  name: "机器人",
+                  realName: "",
+                },
+              ],
+            ]),
+            groupMembersByGroupAndThirdUserId: new Map(),
+            seatsByThirdUserId: new Map(),
+          },
+        )[0],
+      ),
+    ).toMatchObject({
+      senderAvatar: "",
+      senderName: undefined,
+      senderType: "system",
     });
   });
 
@@ -304,6 +495,9 @@ function messageRow(
     msgtime: 1778240200000,
     msgtype: "text",
     seat_id: 12,
+    sender_avatar: "",
+    sender_name: undefined,
+    third_from_id: "",
     third_external_id: "external-1",
     third_group_id: "",
     third_user_id: "third-user-1",

@@ -46,6 +46,8 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
 }
 
 export function adaptConversation(dto: WorkbenchConversationSummaryDto): Conversation {
+  const lastMessageTime = normalizeOptionalTimestamp(dto.lastMessageTime);
+
   return {
     accountId: dto.seatId,
     customerAvatarUrl: dto.customerAvatar,
@@ -56,10 +58,10 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     mode: dto.mode,
     preview: dto.lastMessage,
     priority: dto.priority,
-    quietFor: formatQuietFor(dto.lastMessageTime),
+    quietFor: formatQuietFor(lastMessageTime),
     unread: dto.unreadCount,
-    updatedAt: formatWorkbenchTimestamp(dto.lastMessageTime),
-    updatedAtMs: dto.lastMessageTime,
+    updatedAt: formatWorkbenchTimestamp(lastMessageTime),
+    updatedAtMs: lastMessageTime,
   };
 }
 
@@ -96,11 +98,13 @@ export function adaptMessage(
   const account = accountsById[dto.seatId];
   const content = adaptChatMessageContent(dto.contentType, dto.content);
   const senderName = isAgent
-    ? me && account
-      ? `${account.name}-${account.operator}`
-      : account?.name ?? "当前客服"
-    : customer?.name ?? "微信客户";
-  const senderAvatar = isAgent ? account?.avatarUrl : customer?.avatarUrl;
+    ? dto.senderName ||
+      (me && account
+        ? `${account.name}-${account.operator}`
+        : account?.name ?? "当前客服")
+    : dto.senderName || customer?.name || "微信客户";
+  const senderAvatar =
+    dto.senderAvatar || (isAgent ? account?.avatarUrl : customer?.avatarUrl);
 
   return {
     author: senderName,
@@ -122,7 +126,11 @@ export function adaptMessage(
   };
 }
 
-export function formatWorkbenchTimestamp(value: number | Date) {
+export function formatWorkbenchTimestamp(value: number | Date | undefined) {
+  if (value == null) {
+    return "";
+  }
+
   const date = value instanceof Date ? value : new Date(value);
 
   return [
@@ -138,6 +146,10 @@ export function formatWorkbenchTimestamp(value: number | Date) {
         String(date.getSeconds()).padStart(2, "0"),
       ].join(":"),
     );
+}
+
+function normalizeOptionalTimestamp(value: number | undefined) {
+  return value && value > 0 ? value : undefined;
 }
 
 export function formatConversationPreview(text: string) {
@@ -228,7 +240,11 @@ function adaptMessageStatus(status: WorkbenchMessageDto["status"]): MessageStatu
   }
 }
 
-function formatQuietFor(lastMessageTime: number) {
+function formatQuietFor(lastMessageTime: number | undefined) {
+  if (lastMessageTime == null) {
+    return "";
+  }
+
   const diffMs = Date.now() - lastMessageTime;
   const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
 

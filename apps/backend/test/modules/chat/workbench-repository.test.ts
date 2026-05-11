@@ -34,4 +34,59 @@ describe("WorkbenchRepository", () => {
     ).resolves.toEqual([]);
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
   });
+
+  it("ignores nullable third-party ids when collecting message hydration sources", async () => {
+    const repository = new WorkbenchRepository(createFailingDb() as never);
+    const sources = await (
+      repository as unknown as {
+        getMessageHydrationSources: (
+          rows: Array<{
+            chat_type: number;
+            conversation_external_id: string | null | undefined;
+            conversation_group_id: string | null | undefined;
+            from_type: number | null;
+            third_external_id: string | null | undefined;
+            third_from_id: string | null | undefined;
+            third_group_id: string | null | undefined;
+            third_user_id: string | null | undefined;
+          }>,
+          uid: number,
+          platform: number,
+        ) => Promise<{
+          contactsByThirdExternalId: Map<string, unknown>;
+          groupMembersByGroupAndThirdUserId: Map<string, unknown>;
+          seatsByThirdUserId: Map<string, unknown>;
+        }>;
+      }
+    ).getMessageHydrationSources(
+      [
+        {
+          chat_type: 2,
+          conversation_external_id: undefined,
+          conversation_group_id: undefined,
+          from_type: 2,
+          third_external_id: null,
+          third_from_id: null,
+          third_group_id: undefined,
+          third_user_id: undefined,
+        },
+        {
+          chat_type: 1,
+          conversation_external_id: undefined,
+          conversation_group_id: undefined,
+          from_type: 2,
+          third_external_id: null,
+          third_from_id: undefined,
+          third_group_id: undefined,
+          third_user_id: null,
+        },
+      ],
+      9001,
+      5,
+    );
+
+    expect(sources.contactsByThirdExternalId.size).toBe(0);
+    expect(sources.groupMembersByGroupAndThirdUserId.size).toBe(0);
+    expect(sources.seatsByThirdUserId.size).toBe(0);
+  });
 });

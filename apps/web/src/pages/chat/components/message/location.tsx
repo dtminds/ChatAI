@@ -1,6 +1,5 @@
 import { MapPinIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { ReactNode } from "react";
 import type { LocationMessageContent } from "@/pages/chat/chat-types";
 
 type LocationMessageCardProps = {

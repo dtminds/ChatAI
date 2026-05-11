@@ -712,4 +712,29 @@ describe("useWorkbenchStore", () => {
     expect(state.isConversationLoading).toBe(false);
     expect(state.scopeTransitionError).toBe("切换会话失败");
   });
+
+  it("captures read receipt errors without marking the conversation transition as failed", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async markConversationRead(conversationId) {
+        if (conversationId === "conv-002") {
+          throw new Error("标记已读失败");
+        }
+
+        return baseService.markConversationRead(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeConversationId).toBe("conv-002");
+    expect(state.isConversationLoading).toBe(false);
+    expect(state.scopeTransitionError).toBeUndefined();
+    expect(state.readReceiptError).toBe("标记已读失败");
+  });
 });

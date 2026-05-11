@@ -8,7 +8,7 @@ import {
 import {
   MAX_CUSTOMER_PANEL_WIDTH,
   MIN_CUSTOMER_PANEL_WIDTH,
-  shouldShowCustomerPanel,
+  MIN_WORKBENCH_CONTENT_WIDTH,
   clampCustomerPanelWidth,
 } from "@/pages/chat/lib/panel-width";
 
@@ -29,13 +29,12 @@ describe("chat utility helpers", () => {
   it("clamps the customer panel width inside available workbench space", () => {
     expect(clampCustomerPanelWidth(120, 1000)).toBe(MIN_CUSTOMER_PANEL_WIDTH);
     expect(clampCustomerPanelWidth(1000, 1000)).toBe(MAX_CUSTOMER_PANEL_WIDTH);
-    expect(clampCustomerPanelWidth(380, 860)).toBe(336);
-    expect(clampCustomerPanelWidth(380, 780)).toBe(MIN_CUSTOMER_PANEL_WIDTH);
+    expect(clampCustomerPanelWidth(380, 1000)).toBe(380);
+    expect(clampCustomerPanelWidth(380, 895)).toBe(MIN_CUSTOMER_PANEL_WIDTH);
   });
 
-  it("shows the customer panel when the chat body has enough room for both panes", () => {
-    expect(shouldShowCustomerPanel(780)).toBe(true);
-    expect(shouldShowCustomerPanel(779)).toBe(false);
+  it("keeps a desktop workbench floor instead of reflowing into a phone layout", () => {
+    expect(MIN_WORKBENCH_CONTENT_WIDTH).toBe(1100);
   });
 
   it("clamps the account rail width within its resize range", () => {

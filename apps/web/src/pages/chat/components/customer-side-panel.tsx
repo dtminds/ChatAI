@@ -8,7 +8,6 @@ type CustomerSidePanelProps = {
   accountName?: string;
   customer?: CustomerProfile;
   isResizing: boolean;
-  isVisible: boolean;
   panelWidth: number;
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 };
@@ -17,14 +16,9 @@ export function CustomerSidePanel({
   accountName,
   customer,
   isResizing,
-  isVisible,
   panelWidth,
   onResizeStart,
 }: CustomerSidePanelProps) {
-  if (!isVisible) {
-    return null;
-  }
-
   return (
     <>
       <button
@@ -45,6 +39,7 @@ export function CustomerSidePanel({
       </button>
 
       <aside
+        aria-label="客户信息栏"
         className="flex min-h-0 min-w-0 flex-col bg-surface"
         style={{ width: `${panelWidth}px` }}
       >

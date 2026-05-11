@@ -1,6 +1,5 @@
 import { startTransition, type RefObject } from "react";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatMessageList } from "@/pages/chat/components/message-feed";
 import type { Message } from "@/pages/chat/chat-types";
 
@@ -8,13 +7,10 @@ type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
   hasMoreHistory: boolean;
   isConversationLoading: boolean;
-  isConversationSettling: boolean;
   messages: Message[];
   onLoadOlderMessages: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
-  scopeTransitionError?: string;
-  messageListBottomRef: RefObject<HTMLDivElement | null>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
 
@@ -22,75 +18,62 @@ export function ChatMessagePanel({
   activeHistoryStatus,
   hasMoreHistory,
   isConversationLoading,
-  isConversationSettling,
   messages,
   onLoadOlderMessages,
   onMessageViewportScroll,
   onRetryMessage,
-  scopeTransitionError,
-  messageListBottomRef,
   messageViewportRef,
 }: ChatMessagePanelProps) {
-  const isShowingConversationLoader =
-    isConversationLoading || isConversationSettling;
-
   return (
     <section className="relative min-h-0 flex-1 bg-surface">
-      <ScrollArea
-        className="h-full min-h-0"
+      <div
+        className="h-full min-h-0 overflow-hidden"
         data-testid="message-scroll-area"
-        type="scroll"
-        viewportTestId="message-viewport"
-        viewportProps={{
-          onScroll: onMessageViewportScroll,
-          style: {
-            overflowAnchor: "none",
-          },
-        }}
-        viewportRef={messageViewportRef}
       >
-        <div className="px-5 py-5">
-          <div
-            aria-hidden={isShowingConversationLoader ? "true" : undefined}
-            className={
-              isShowingConversationLoader
-                ? "pointer-events-none opacity-0"
-                : undefined
-            }
-            data-testid="message-content"
-          >
-            {hasMoreHistory ? (
-              <div className="mb-4 flex justify-center">
-                <button
-                  className="inline-flex h-8 min-w-36 items-center justify-center rounded-lg border border-dashed border-border bg-surface-muted px-4 text-xs font-medium text-muted-foreground transition-colors hover:border-input hover:bg-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted-foreground"
-                  disabled={activeHistoryStatus === "loading"}
-                  onClick={onLoadOlderMessages}
-                  type="button"
-                >
-                  {activeHistoryStatus === "loading"
-                    ? "正在加载更早对话..."
-                    : "加载更早的对话"}
-                </button>
-              </div>
-            ) : null}
-            {scopeTransitionError ? (
-              <div className="mb-4 rounded-xl border border-destructive/25 bg-destructive-muted px-4 py-3 text-sm text-destructive">
-                {scopeTransitionError}
-              </div>
-            ) : null}
-            <ChatMessageList
-              messages={messages}
-              onRetryMessage={(messageId) => {
-                startTransition(() => {
-                  void onRetryMessage(messageId);
-                });
-              }}
-            />
-            <div aria-hidden="true" ref={messageListBottomRef} />
+        <div
+          className="chat-message-viewport-scrollbar flex h-full min-h-0 flex-col-reverse overflow-y-auto"
+          data-testid="message-viewport"
+          onScroll={onMessageViewportScroll}
+          ref={messageViewportRef}
+          style={{ overflowAnchor: "none" }}
+        >
+          <div className="px-5 py-5">
+            <div
+              aria-hidden={isConversationLoading ? "true" : undefined}
+              className={
+                isConversationLoading
+                  ? "pointer-events-none opacity-0"
+                  : undefined
+              }
+              data-testid="message-content"
+            >
+              {hasMoreHistory ? (
+                <div className="mb-4 flex justify-center">
+                  <button
+                    className="inline-flex h-8 min-w-36 items-center justify-center rounded-lg border border-dashed border-border bg-surface-muted px-4 text-xs font-medium text-muted-foreground transition-colors hover:border-input hover:bg-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted-foreground"
+                    disabled={activeHistoryStatus === "loading"}
+                    onClick={onLoadOlderMessages}
+                    type="button"
+                  >
+                    {activeHistoryStatus === "loading"
+                      ? "正在加载更早对话..."
+                      : "加载更早的对话"}
+                  </button>
+                </div>
+              ) : null}
+              <ChatMessageList
+                messages={messages}
+                onRetryMessage={(messageId) => {
+                  startTransition(() => {
+                    void onRetryMessage(messageId);
+                  });
+                }}
+              />
+            </div>
           </div>
         </div>
-      </ScrollArea>
-      {isShowingConversationLoader ? (
+      </div>
+      {isConversationLoading ? (
         <div
           className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center text-sm text-muted-foreground"
           data-testid="message-loading-overlay"

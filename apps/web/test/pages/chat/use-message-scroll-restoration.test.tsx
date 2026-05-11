@@ -1,6 +1,6 @@
 import { act, render } from "@testing-library/react";
-import { useRef } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useRef, type ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 
 function defineScrollMetric(
@@ -16,26 +16,26 @@ function defineScrollMetric(
 
 function ScrollRestorationHarness({
   activeConversationId,
-  isConversationLoading = false,
+  hasMoreHistory = false,
+  loadOlderMessages = async () => undefined,
   messageCount,
+  children,
 }: {
   activeConversationId: string;
-  isConversationLoading?: boolean;
+  hasMoreHistory?: boolean;
+  loadOlderMessages?: () => Promise<void>;
   messageCount: number;
+  children?: ReactNode;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const { handleMessageViewportScroll, isConversationSettling } =
-    useMessageScrollRestoration({
+  const { handleMessageViewportScroll } = useMessageScrollRestoration({
     activeConversationId,
     activeHistoryStatus: "idle",
-    hasMoreHistory: false,
-    isConversationLoading,
+    hasMoreHistory,
     isHistoryLoading: false,
-    loadOlderMessages: async () => undefined,
+    loadOlderMessages,
     messageCount,
-    messageListBottomRef: bottomRef,
     messageViewportRef: viewportRef,
   });
 
@@ -45,162 +45,145 @@ function ScrollRestorationHarness({
       data-testid="viewport"
       onScroll={handleMessageViewportScroll}
     >
-      <div data-testid="settling-state">
-        {isConversationSettling ? "settling" : "ready"}
-      </div>
-      <div data-testid="content">
-        <div ref={bottomRef} data-testid="bottom" />
-      </div>
+      <div data-testid="content">{children}</div>
     </div>
   );
 }
 
 describe("useMessageScrollRestoration", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("waits for conversation content to settle before scrolling to the bottom once", async () => {
-    const scrollIntoView = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+  it("keeps the reverse list pinned to the visual bottom at scrollTop zero", () => {
     const { getByTestId, rerender } = render(
-      <ScrollRestorationHarness
-        activeConversationId="conv-a"
-        isConversationLoading
-        messageCount={0}
-      />,
+      <ScrollRestorationHarness activeConversationId="conv-a" messageCount={2} />,
     );
     const viewport = getByTestId("viewport");
 
     defineScrollMetric(viewport, "clientHeight", 100);
     defineScrollMetric(viewport, "scrollHeight", 400);
+    viewport.scrollTop = -180;
 
-    expect(getByTestId("settling-state")).toHaveTextContent("settling");
-
-    rerender(<ScrollRestorationHarness activeConversationId="conv-a" messageCount={2} />);
-
-    expect(getByTestId("settling-state")).toHaveTextContent("settling");
-    expect(scrollIntoView).not.toHaveBeenCalled();
-    expect(viewport.scrollTop).toBe(0);
-
-    await act(async () => {
-      vi.advanceTimersByTime(999);
-    });
-
-    expect(getByTestId("settling-state")).toHaveTextContent("settling");
-    expect(viewport.scrollTop).toBe(0);
-
-    await act(async () => {
-      vi.advanceTimersByTime(1);
-    });
-
-    expect(getByTestId("settling-state")).toHaveTextContent("ready");
-    expect(scrollIntoView).toHaveBeenCalled();
-    expect(viewport.scrollTop).toBe(400);
-  });
-
-  it("clears stale settling timers when switching conversations", async () => {
-    const scrollIntoView = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
-    const { getByTestId, rerender } = render(
-      <ScrollRestorationHarness
-        activeConversationId="conv-a"
-        isConversationLoading
-        messageCount={0}
-      />,
-    );
-    const viewport = getByTestId("viewport");
-
-    defineScrollMetric(viewport, "clientHeight", 100);
-    defineScrollMetric(viewport, "scrollHeight", 400);
-
-    rerender(<ScrollRestorationHarness activeConversationId="conv-a" messageCount={2} />);
-
-    await act(async () => {
-      vi.advanceTimersByTime(500);
-    });
-
-    rerender(
-      <ScrollRestorationHarness
-        activeConversationId="conv-b"
-        isConversationLoading
-        messageCount={0}
-      />,
-    );
     rerender(<ScrollRestorationHarness activeConversationId="conv-b" messageCount={2} />);
-    defineScrollMetric(viewport, "scrollHeight", 600);
 
-    await act(async () => {
-      vi.advanceTimersByTime(500);
-    });
-
-    expect(getByTestId("settling-state")).toHaveTextContent("settling");
-    expect(scrollIntoView).not.toHaveBeenCalled();
     expect(viewport.scrollTop).toBe(0);
-
-    await act(async () => {
-      vi.advanceTimersByTime(500);
-    });
-
-    expect(getByTestId("settling-state")).toHaveTextContent("ready");
-    expect(viewport.scrollTop).toBe(600);
   });
 
-  it("does not hide the current conversation again when later messages arrive", async () => {
-    const scrollIntoView = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+  it("does not move the reverse viewport when media above the visual bottom changes height", () => {
     const { getByTestId, rerender } = render(
-      <ScrollRestorationHarness
-        activeConversationId="conv-a"
-        isConversationLoading
-        messageCount={0}
-      />,
+      <ScrollRestorationHarness activeConversationId="conv-a" messageCount={2} />,
     );
     const viewport = getByTestId("viewport");
 
     defineScrollMetric(viewport, "clientHeight", 100);
     defineScrollMetric(viewport, "scrollHeight", 400);
+    expect(viewport.scrollTop).toBe(0);
 
+    defineScrollMetric(viewport, "scrollHeight", 640);
     rerender(<ScrollRestorationHarness activeConversationId="conv-a" messageCount={2} />);
 
-    await act(async () => {
-      vi.advanceTimersByTime(1000);
-    });
+    expect(viewport.scrollTop).toBe(0);
+  });
+
+  it("does not pull the reverse viewport back down after the user scrolls upward", () => {
+    const { getByTestId, rerender } = render(
+      <ScrollRestorationHarness activeConversationId="conv-a" messageCount={2} />,
+    );
+    const viewport = getByTestId("viewport");
+
+    defineScrollMetric(viewport, "clientHeight", 100);
+    defineScrollMetric(viewport, "scrollHeight", 400);
+    viewport.scrollTop = -120;
+    viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
 
     defineScrollMetric(viewport, "scrollHeight", 520);
     rerender(<ScrollRestorationHarness activeConversationId="conv-a" messageCount={3} />);
 
-    expect(getByTestId("settling-state")).toHaveTextContent("ready");
-    expect(scrollIntoView).toHaveBeenCalledTimes(2);
-    expect(viewport.scrollTop).toBe(520);
+    expect(viewport.scrollTop).toBe(-120);
   });
 
-  it("does not pull the viewport back down after the user scrolls upward", async () => {
+  it("keeps the user-scrolled reverse viewport position across later messages", () => {
+    const { getByTestId, rerender } = render(
+      <ScrollRestorationHarness activeConversationId="conv-a" messageCount={2} />,
+    );
+    const viewport = getByTestId("viewport");
+
+    defineScrollMetric(viewport, "clientHeight", 100);
+    defineScrollMetric(viewport, "scrollHeight", 400);
+    viewport.scrollTop = -120;
+    viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+
+    defineScrollMetric(viewport, "scrollHeight", 520);
+    rerender(<ScrollRestorationHarness activeConversationId="conv-a" messageCount={3} />);
+
+    defineScrollMetric(viewport, "scrollHeight", 640);
+    rerender(<ScrollRestorationHarness activeConversationId="conv-a" messageCount={4} />);
+
+    expect(viewport.scrollTop).toBe(-120);
+  });
+
+  it("keeps the reverse viewport offset when older messages are restored without a matched anchor", async () => {
+    let resolveLoadOlderMessages: (() => void) | undefined;
+    const loadOlderMessages = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveLoadOlderMessages = resolve;
+        }),
+    );
     const { getByTestId, rerender } = render(
       <ScrollRestorationHarness
         activeConversationId="conv-a"
-        isConversationLoading
-        messageCount={0}
+        hasMoreHistory
+        loadOlderMessages={loadOlderMessages}
+        messageCount={2}
+      >
+        <div data-scroll-anchor="msg-existing">Existing</div>
+      </ScrollRestorationHarness>,
+    );
+    const viewport = getByTestId("viewport");
+
+    defineScrollMetric(viewport, "clientHeight", 100);
+    defineScrollMetric(viewport, "scrollHeight", 400);
+    viewport.scrollTop = -298;
+
+    await act(async () => {
+      viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+
+    defineScrollMetric(viewport, "scrollHeight", 520);
+    rerender(
+      <ScrollRestorationHarness
+        activeConversationId="conv-a"
+        hasMoreHistory
+        loadOlderMessages={loadOlderMessages}
+        messageCount={4}
+      />,
+    );
+
+    expect(viewport.scrollTop).toBe(-298);
+
+    await act(async () => {
+      resolveLoadOlderMessages?.();
+    });
+  });
+
+  it("loads older messages near the visual top of the reverse list", async () => {
+    const loadOlderMessages = vi.fn(async () => undefined);
+    const { getByTestId } = render(
+      <ScrollRestorationHarness
+        activeConversationId="conv-a"
+        hasMoreHistory
+        loadOlderMessages={loadOlderMessages}
+        messageCount={2}
       />,
     );
     const viewport = getByTestId("viewport");
 
     defineScrollMetric(viewport, "clientHeight", 100);
     defineScrollMetric(viewport, "scrollHeight", 400);
-
-    rerender(<ScrollRestorationHarness activeConversationId="conv-a" messageCount={2} />);
-
-    await act(async () => {
-      vi.advanceTimersByTime(1000);
-    });
+    viewport.scrollTop = -298;
 
     await act(async () => {
-      viewport.scrollTop = 120;
       viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
-      vi.advanceTimersByTime(1000);
     });
 
-    expect(viewport.scrollTop).toBe(120);
+    expect(loadOlderMessages).toHaveBeenCalledTimes(1);
   });
 });

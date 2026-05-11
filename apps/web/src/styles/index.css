@@ -1121,4 +1121,43 @@ html.dark[data-appearance-theme="nature"] {
   .chat-composer-textarea::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
   }
+
+  .chat-message-viewport-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .chat-message-viewport-scrollbar:hover,
+  .chat-message-viewport-scrollbar:focus,
+  .chat-message-viewport-scrollbar:focus-within {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  .chat-message-viewport-scrollbar::-webkit-scrollbar {
+    width: var(--scrollbar-size);
+  }
+
+  .chat-message-viewport-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .chat-message-viewport-scrollbar::-webkit-scrollbar-thumb {
+    min-height: 32px;
+    border: var(--scrollbar-track-padding) solid transparent;
+    border-radius: var(--scrollbar-radius);
+    background: transparent;
+    background-clip: content-box;
+  }
+
+  .chat-message-viewport-scrollbar:hover::-webkit-scrollbar-thumb,
+  .chat-message-viewport-scrollbar:focus::-webkit-scrollbar-thumb,
+  .chat-message-viewport-scrollbar:focus-within::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    background-clip: content-box;
+  }
+
+  .chat-message-viewport-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+    background-clip: content-box;
+  }
 }

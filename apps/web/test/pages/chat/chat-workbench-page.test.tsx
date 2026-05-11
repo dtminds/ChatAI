@@ -682,8 +682,15 @@ describe("ChatWorkbenchPage", () => {
     await useWorkbenchStore.getState().setActiveConversation("conv-002");
 
     await waitFor(() => {
-      expect(screen.getByText("切换会话失败")).toBeInTheDocument();
+      expect(screen.getByTestId("scope-transition-error")).toHaveTextContent(
+        "切换会话失败",
+      );
     });
+    const errorBanner = screen.getByTestId("scope-transition-error");
+    expect(errorBanner).toHaveClass("absolute", "bottom-full");
+    expect(screen.getByTestId("message-content")).not.toContainElement(
+      errorBanner,
+    );
   });
 
   it("logs out from the account menu and clears stored auth tokens", async () => {

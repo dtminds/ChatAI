@@ -81,6 +81,7 @@ function ChatWorkbenchContent({
     bootstrapStatus,
     conversationListsByScope,
     customerProfilesById,
+    dismissScopeTransitionError,
     hasMoreHistoryByConversationId,
     historyStatusByConversationId,
     initializeWorkbench,
@@ -112,7 +113,6 @@ function ChatWorkbenchContent({
     useState<InputEnterBehavior>("send");
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
-  const messageListBottomRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
   const {
     customerPanelWidth,
@@ -186,17 +186,14 @@ function ChatWorkbenchContent({
   const {
     handleLoadOlderMessages,
     handleMessageViewportScroll,
-    isConversationSettling,
   } =
     useMessageScrollRestoration({
     activeConversationId: activeConversation?.id,
     activeHistoryStatus,
     hasMoreHistory,
-    isConversationLoading,
     isHistoryLoading: activeHistoryStatus === "loading",
     loadOlderMessages,
     messageCount: activeMessages.length,
-    messageListBottomRef,
     messageViewportRef,
     });
 
@@ -381,12 +378,10 @@ function ChatWorkbenchContent({
                 groupMembers={activeGroupMembers}
                 inputEnterBehavior={inputEnterBehavior}
                 isConversationLoading={isConversationLoading}
-                isConversationSettling={isConversationSettling}
                 isEmojiPickerOpen={isEmojiPickerOpen}
                 isResizingCustomerPanel={isResizingCustomerPanel}
                 mentionInsertPosition={mentionInsertPosition}
                 hasMoreHistory={hasMoreHistory}
-                messageListBottomRef={messageListBottomRef}
                 messages={activeMessages}
                 messageViewportRef={messageViewportRef}
                 onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
@@ -400,6 +395,7 @@ function ChatWorkbenchContent({
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={retryFailedMessage}
                 onSendDraft={handleSendDraft}
+                onDismissScopeTransitionError={dismissScopeTransitionError}
                 scopeTransitionError={scopeTransitionError}
                 selectedMentionMembers={selectedMentionMembers}
                 composerRef={composerRef}

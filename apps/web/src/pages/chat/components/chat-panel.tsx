@@ -1,4 +1,6 @@
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
 import { Separator } from "@/components/ui/separator";
 import { ChatComposer } from "@/pages/chat/components/chat-composer";
@@ -27,7 +29,6 @@ type ChatPanelProps = {
   groupMembers: GroupMember[];
   inputEnterBehavior: InputEnterBehavior;
   isConversationLoading: boolean;
-  isConversationSettling: boolean;
   isEmojiPickerOpen: boolean;
   isResizingCustomerPanel: boolean;
   mentionInsertPosition: MentionInsertPosition;
@@ -45,8 +46,8 @@ type ChatPanelProps = {
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   onSendDraft: (segments: ComposerSegment[]) => void;
+  onDismissScopeTransitionError: () => void;
   scopeTransitionError?: string;
-  messageListBottomRef: RefObject<HTMLDivElement | null>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
   composerRef: RefObject<LexicalEditor | null>;
   workbenchBodyRef: RefObject<HTMLDivElement | null>;
@@ -64,7 +65,6 @@ export function ChatPanel({
   groupMembers,
   inputEnterBehavior,
   isConversationLoading,
-  isConversationSettling,
   isEmojiPickerOpen,
   isResizingCustomerPanel,
   mentionInsertPosition,
@@ -82,8 +82,8 @@ export function ChatPanel({
   onMessageViewportScroll,
   onRetryMessage,
   onSendDraft,
+  onDismissScopeTransitionError,
   scopeTransitionError,
-  messageListBottomRef,
   messageViewportRef,
   composerRef,
   workbenchBodyRef,
@@ -100,37 +100,59 @@ export function ChatPanel({
             activeHistoryStatus={activeHistoryStatus}
             hasMoreHistory={hasMoreHistory}
             isConversationLoading={isConversationLoading}
-            isConversationSettling={isConversationSettling}
-            messageListBottomRef={messageListBottomRef}
             messages={messages}
             messageViewportRef={messageViewportRef}
             onLoadOlderMessages={onLoadOlderMessages}
             onMessageViewportScroll={onMessageViewportScroll}
             onRetryMessage={onRetryMessage}
-            scopeTransitionError={scopeTransitionError}
           />
 
           <Separator className="bg-divider" />
 
-          <ChatComposer
-            canSendMessage={canSendMessage}
-            draft={draft}
-            groupMembers={groupMembers}
-            isGroupConversation={activeConversation?.mode === "group"}
-            inputEnterBehavior={inputEnterBehavior}
-            isEmojiPickerOpen={isEmojiPickerOpen}
-            mentionInsertPosition={mentionInsertPosition}
-            onDraftChange={onDraftChange}
-            onEmojiPickerOpenChange={onEmojiPickerOpenChange}
-            onEnterBehaviorChange={onEnterBehaviorChange}
-            onMentionInsertPositionChange={onMentionInsertPositionChange}
-            onRemoveMentionMember={onRemoveMentionMember}
-            onSelectMentionMember={onSelectMentionMember}
-            onSendDraft={onSendDraft}
-            selectedMentionMembers={selectedMentionMembers}
-            placeholder={composerPlaceholder}
-            composerRef={composerRef}
-          />
+          <div className="relative">
+            {scopeTransitionError ? (
+              <div
+                className="absolute bottom-full left-0 right-0 z-20 mb-0 flex min-h-8 items-center justify-between gap-3 border-t border-destructive/20 bg-destructive/90 px-5 py-1.5 text-xs font-medium leading-5 text-destructive-foreground shadow-[0_-8px_24px_var(--shadow-medium)] backdrop-blur-sm"
+                data-testid="scope-transition-error"
+                role="status"
+              >
+                <span className="min-w-0 truncate">{scopeTransitionError}</span>
+                <button
+                  aria-label="关闭错误提示"
+                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] text-destructive-foreground/85 outline-none transition-colors hover:bg-white/15 hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-white/40"
+                  onClick={onDismissScopeTransitionError}
+                  type="button"
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={Cancel01Icon}
+                    size={14}
+                    strokeWidth={2}
+                  />
+                </button>
+              </div>
+            ) : null}
+
+            <ChatComposer
+              canSendMessage={canSendMessage}
+              draft={draft}
+              groupMembers={groupMembers}
+              isGroupConversation={activeConversation?.mode === "group"}
+              inputEnterBehavior={inputEnterBehavior}
+              isEmojiPickerOpen={isEmojiPickerOpen}
+              mentionInsertPosition={mentionInsertPosition}
+              onDraftChange={onDraftChange}
+              onEmojiPickerOpenChange={onEmojiPickerOpenChange}
+              onEnterBehaviorChange={onEnterBehaviorChange}
+              onMentionInsertPositionChange={onMentionInsertPositionChange}
+              onRemoveMentionMember={onRemoveMentionMember}
+              onSelectMentionMember={onSelectMentionMember}
+              onSendDraft={onSendDraft}
+              selectedMentionMembers={selectedMentionMembers}
+              placeholder={composerPlaceholder}
+              composerRef={composerRef}
+            />
+          </div>
         </div>
 
         <CustomerSidePanel

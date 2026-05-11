@@ -166,6 +166,51 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "聊天" })).toBeInTheDocument();
   });
 
+  it("resizes the expanded account sidebar and keeps the collapsed rail compact", async () => {
+    const user = userEvent.setup();
+
+    window.localStorage.removeItem("chatai.accountRailCollapsed");
+    window.localStorage.removeItem("chatai.accountRailWidth");
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    const shell = screen.getByTestId("chat-workbench-shell");
+    const resizeHandle = screen.getByRole("button", {
+      name: "调整账号侧栏宽度",
+    });
+
+    expect(shell).toHaveStyle({
+      gridTemplateColumns: "216px minmax(0, 1fr)",
+    });
+    expect(shell).toHaveClass("transition-[grid-template-columns]");
+
+    fireEvent.pointerDown(resizeHandle, { clientX: 216 });
+    expect(shell).not.toHaveClass("transition-[grid-template-columns]");
+
+    fireEvent.pointerMove(window, { clientX: 300 });
+    await waitFor(() => {
+      expect(shell).toHaveStyle({
+        gridTemplateColumns: "300px minmax(0, 1fr)",
+      });
+    });
+    expect(window.localStorage.getItem("chatai.accountRailWidth")).toBeNull();
+
+    fireEvent.pointerUp(window);
+
+    expect(window.localStorage.getItem("chatai.accountRailWidth")).toBe("300");
+    expect(shell).toHaveClass("transition-[grid-template-columns]");
+
+    await user.click(screen.getByRole("button", { name: "折叠侧栏" }));
+
+    expect(shell).toHaveStyle({
+      gridTemplateColumns: "3.5rem minmax(0, 1fr)",
+    });
+    expect(
+      screen.queryByRole("button", { name: "调整账号侧栏宽度" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("does not open member mentions in single chats", async () => {
     const user = userEvent.setup();
 

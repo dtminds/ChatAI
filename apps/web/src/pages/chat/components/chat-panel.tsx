@@ -27,6 +27,7 @@ type ChatPanelProps = {
   groupMembers: GroupMember[];
   inputEnterBehavior: InputEnterBehavior;
   isConversationLoading: boolean;
+  isCustomerPanelVisible: boolean;
   isEmojiPickerOpen: boolean;
   isResizingCustomerPanel: boolean;
   mentionInsertPosition: MentionInsertPosition;
@@ -63,6 +64,7 @@ export function ChatPanel({
   groupMembers,
   inputEnterBehavior,
   isConversationLoading,
+  isCustomerPanelVisible,
   isEmojiPickerOpen,
   isResizingCustomerPanel,
   mentionInsertPosition,
@@ -134,6 +136,7 @@ export function ChatPanel({
           accountName={accountName}
           customer={customer}
           isResizing={isResizingCustomerPanel}
+          isVisible={isCustomerPanelVisible}
           onResizeStart={onCustomerPanelResizeStart}
           panelWidth={customerPanelWidth}
         />

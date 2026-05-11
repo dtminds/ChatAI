@@ -1,4 +1,4 @@
-import { startTransition } from "react";
+import { startTransition, type PointerEvent as ReactPointerEvent } from "react";
 import {
   Chat01Icon,
   ChartBreakoutCircleIcon,
@@ -48,6 +48,7 @@ type AccountRailProps = {
   currentEmployeeId?: string;
   onCollapseChange?: (isCollapsed: boolean) => void;
   onLogout?: () => void | Promise<void>;
+  onResizeStart?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onSelectAccount: (accountId: string) => void | Promise<void>;
   onOpenSettings?: () => void;
   onTakeOverAccount?: (accountId: string) => void | Promise<void>;
@@ -80,6 +81,7 @@ export function AccountRail({
   onCollapseChange,
   onLogout,
   onOpenSettings,
+  onResizeStart,
   onSelectAccount,
   onTakeOverAccount,
   takeoverStatusByAccountId = {},
@@ -265,7 +267,7 @@ export function AccountRail({
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-sidebar px-3 py-4 text-sidebar-foreground">
+    <section className="relative flex h-full min-h-0 flex-col bg-sidebar px-3 py-4 text-sidebar-foreground">
       <div className="mb-3 flex items-center justify-between px-1">
         <div
           className="grid h-8.5 min-w-0 grid-cols-[18px_minmax(0,1fr)] items-center gap-2.5 px-3 text-neutral-strong"
@@ -391,6 +393,13 @@ export function AccountRail({
           {accountMenuContent}
         </DropdownMenu>
       </div>
+
+      <button
+        aria-label="调整账号侧栏宽度"
+        className="absolute inset-y-0 right-0 w-2 cursor-col-resize bg-transparent"
+        onPointerDown={onResizeStart}
+        type="button"
+      />
     </section>
   );
 }

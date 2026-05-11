@@ -74,7 +74,7 @@ export function ChatSettingsPage() {
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-sidebar">
-      <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden">
+      <div className="grid h-full grid-cols-[13.5rem_minmax(0,1fr)] overflow-hidden">
         <SettingsSidebar activeSectionId={activeSectionId} />
 
         <main className="h-full min-h-0 overflow-hidden rounded-[14px_0_0_14px] bg-surface pl-0 shadow">

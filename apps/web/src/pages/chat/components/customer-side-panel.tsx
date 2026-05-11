@@ -8,6 +8,7 @@ type CustomerSidePanelProps = {
   accountName?: string;
   customer?: CustomerProfile;
   isResizing: boolean;
+  isVisible: boolean;
   panelWidth: number;
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 };
@@ -16,15 +17,20 @@ export function CustomerSidePanel({
   accountName,
   customer,
   isResizing,
+  isVisible,
   panelWidth,
   onResizeStart,
 }: CustomerSidePanelProps) {
+  if (!isVisible) {
+    return null;
+  }
+
   return (
     <>
       <button
         aria-label="调整客户信息栏宽度"
         className={cn(
-          "relative hidden w-1 shrink-0 cursor-col-resize items-stretch justify-center bg-surface xl:flex",
+          "relative flex w-1 shrink-0 cursor-col-resize items-stretch justify-center bg-surface",
           isResizing ? "bg-accent" : "hover:bg-surface-hover",
         )}
         onPointerDown={onResizeStart}
@@ -39,7 +45,7 @@ export function CustomerSidePanel({
       </button>
 
       <aside
-        className="hidden min-h-0 min-w-0 flex-col bg-surface xl:flex"
+        className="flex min-h-0 min-w-0 flex-col bg-surface"
         style={{ width: `${panelWidth}px` }}
       >
         <Tabs className="h-full min-h-0 gap-0" defaultValue="system">

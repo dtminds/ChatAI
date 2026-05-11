@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { formatConversationTimestamp } from "@/pages/chat/lib/chat-time";
 import {
+  MAX_ACCOUNT_RAIL_WIDTH,
+  MIN_ACCOUNT_RAIL_WIDTH,
+  clampAccountRailWidth,
+} from "@/pages/chat/lib/account-rail-width";
+import {
   MAX_CUSTOMER_PANEL_WIDTH,
   MIN_CUSTOMER_PANEL_WIDTH,
+  shouldShowCustomerPanel,
   clampCustomerPanelWidth,
 } from "@/pages/chat/lib/panel-width";
 
@@ -23,6 +29,19 @@ describe("chat utility helpers", () => {
   it("clamps the customer panel width inside available workbench space", () => {
     expect(clampCustomerPanelWidth(120, 1000)).toBe(MIN_CUSTOMER_PANEL_WIDTH);
     expect(clampCustomerPanelWidth(1000, 1000)).toBe(MAX_CUSTOMER_PANEL_WIDTH);
-    expect(clampCustomerPanelWidth(380, 860)).toBe(340);
+    expect(clampCustomerPanelWidth(380, 860)).toBe(336);
+    expect(clampCustomerPanelWidth(380, 780)).toBe(MIN_CUSTOMER_PANEL_WIDTH);
+  });
+
+  it("shows the customer panel when the chat body has enough room for both panes", () => {
+    expect(shouldShowCustomerPanel(780)).toBe(true);
+    expect(shouldShowCustomerPanel(779)).toBe(false);
+  });
+
+  it("clamps the account rail width within its resize range", () => {
+    expect(clampAccountRailWidth(180)).toBe(MIN_ACCOUNT_RAIL_WIDTH);
+    expect(clampAccountRailWidth(280)).toBe(280);
+    expect(clampAccountRailWidth(400)).toBe(MAX_ACCOUNT_RAIL_WIDTH);
+    expect(clampAccountRailWidth(Number.NaN)).toBe(MIN_ACCOUNT_RAIL_WIDTH);
   });
 });

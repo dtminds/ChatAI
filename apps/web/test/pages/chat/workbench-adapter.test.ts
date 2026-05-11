@@ -78,6 +78,23 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("preserves revoked message state from backend messages", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          isRevoked: true,
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      id: "message-1",
+      isRevoked: true,
+    });
+  });
+
   it("marks group messages from the current seat as own messages", () => {
     expect(
       adaptMessage(

@@ -336,6 +336,7 @@ export class WorkbenchRepository {
         "message.content as content",
         "message.msgtype as msgtype",
         "message.msgtime as msgtime",
+        "message.revoke_status as revoke_status",
       ])
       .select((expressionBuilder) => [
         expressionBuilder.val(conversation.conversation_id).as("conversation_id"),

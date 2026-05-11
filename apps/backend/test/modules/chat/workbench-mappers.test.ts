@@ -715,6 +715,23 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("marks revoked original messages independently of content type", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          fileName: "报价单.pdf",
+          fileSize: 6389760,
+          fileUrl: "media/20260508/272/file.pdf",
+        }),
+        msgtype: "file",
+        revoke_status: 1,
+      })),
+    ).toMatchObject({
+      contentType: "file",
+      isRevoked: true,
+    });
+  });
+
   it("falls back unsupported payloads to readable text", () => {
     expect(
       mapMessageRow(messageRow({

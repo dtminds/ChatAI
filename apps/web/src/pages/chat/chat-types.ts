@@ -185,6 +185,7 @@ type BaseMessage = {
   remoteMessageId?: string;
   seq?: number;
   failReason?: string;
+  isRevoked?: boolean;
 };
 
 export type SystemMessage = BaseMessage & {

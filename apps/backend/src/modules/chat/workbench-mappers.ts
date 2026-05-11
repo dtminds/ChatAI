@@ -45,6 +45,7 @@ export type MessageRow = {
   msgid: string;
   msgtime: Date | number | string;
   msgtype: string;
+  revoke_status?: number | string | null;
   seat_id: number | string;
   sender_avatar?: string;
   sender_name?: string;
@@ -146,6 +147,7 @@ export function mapMessageRow(row: MessageRow): WorkbenchMessageDto {
     conversationId: String(row.conversation_id),
     createdAt: toOptionalTimestamp(row.msgtime),
     customerId,
+    isRevoked: toNumber(row.revoke_status ?? null) === 1 ? true : undefined,
     messageId: row.msgid,
     seatId: String(row.seat_id),
     senderAvatar: row.sender_avatar ?? "",

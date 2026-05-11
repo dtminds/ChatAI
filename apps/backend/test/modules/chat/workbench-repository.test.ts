@@ -31,7 +31,12 @@ describe("WorkbenchRepository", () => {
     ).resolves.toBeUndefined();
     await expect(
       repository.listMessages("not-a-conversation", { limit: 30 }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual({
+      filteredCount: 0,
+      hasMore: false,
+      messages: [],
+      scannedCount: 0,
+    });
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
   });
 

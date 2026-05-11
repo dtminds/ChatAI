@@ -182,8 +182,10 @@ export function hydrateMessageRows(
     }
 
     if (row.from_type === 1) {
-      const thirdUserId = row.third_user_id || "";
-      const seat = sources.seatsByThirdUserId.get(thirdUserId);
+      const thirdUserId = row.third_user_id || undefined;
+      const seat = thirdUserId
+        ? sources.seatsByThirdUserId.get(thirdUserId)
+        : undefined;
 
       return {
         ...row,

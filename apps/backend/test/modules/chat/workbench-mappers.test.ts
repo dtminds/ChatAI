@@ -342,6 +342,37 @@ describe("workbench MySQL mappers", () => {
     ]);
   });
 
+  it("skips seat hydration when sender identifiers are missing", () => {
+    expect(
+      hydrateMessageRows(
+        [
+          messageRow({
+            from_type: 1,
+            third_user_id: undefined,
+          }),
+        ],
+        {
+          contactsByThirdExternalId: new Map(),
+          groupMembersByGroupAndThirdUserId: new Map(),
+          seatsByThirdUserId: new Map([
+            [
+              "",
+              {
+                avatar: "https://example.com/empty-seat.png",
+                name: "空 key 坐席",
+              },
+            ],
+          ]),
+        },
+      ),
+    ).toMatchObject([
+      {
+        sender_avatar: "",
+        sender_name: undefined,
+      },
+    ]);
+  });
+
   it("leaves robot messages without avatar hydration for now", () => {
     expect(
       mapMessageRow(

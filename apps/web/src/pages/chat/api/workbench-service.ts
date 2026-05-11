@@ -81,23 +81,11 @@ export function setWorkbenchService(service: WorkbenchService) {
 }
 
 export function resetWorkbenchService() {
-  activeWorkbenchService = createWorkbenchService();
+  activeWorkbenchService = createMockWorkbenchService();
 }
 
-export function resolveWorkbenchServiceMode(
-  rawMode = import.meta.env.VITE_WORKBENCH_SERVICE_MODE,
-): WorkbenchServiceMode {
-  if (rawMode === "mock" || rawMode === "http") {
-    return rawMode;
-  }
-
-  return import.meta.env.MODE === "test" ? "mock" : "http";
-}
-
-export function createWorkbenchService(
-  mode = resolveWorkbenchServiceMode(),
-): WorkbenchService {
-  return mode === "http" ? createHttpWorkbenchService() : createMockWorkbenchService();
+export function createWorkbenchService(): WorkbenchService {
+  return createHttpWorkbenchService();
 }
 
 export function createMockWorkbenchService(): WorkbenchService {

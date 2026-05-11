@@ -2,7 +2,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeAll, expect, vi } from "vitest";
 import {
-  createWorkbenchService,
+  createMockWorkbenchService,
   setWorkbenchService,
 } from "../src/pages/chat/api/workbench-service";
 
@@ -105,7 +105,7 @@ afterEach(() => {
     cleanup();
   }
 
-  setWorkbenchService(createWorkbenchService("mock"));
+  setWorkbenchService(createMockWorkbenchService());
 });
 
 function installLocalStorageMock() {

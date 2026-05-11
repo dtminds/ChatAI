@@ -4,11 +4,9 @@ import type {
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { MysqlWorkbenchService, type WorkbenchService } from "./workbench.service.js";
-import { createWorkbenchJavaClient } from "./workbench-java-client.js";
-import { createMemoryWorkbenchService } from "./workbench-memory.service.js";
+import type { WorkbenchService } from "./workbench.service.js";
 import { fetchProxiedMediaAsset } from "./media-proxy.service.js";
-import { WorkbenchRepository } from "./workbench-repository.js";
+import { ServiceUnavailableError } from "../../shared/errors.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
@@ -78,19 +76,12 @@ type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
 
 export async function registerChatRoutes(app: FastifyInstance) {
-  const workbench: WorkbenchService = app.db
-    ? new MysqlWorkbenchService(
-        new WorkbenchRepository(app.db),
-        createWorkbenchJavaClient(),
-      )
-    : createMemoryWorkbenchService();
-
   app.get("/api/server/me", { preHandler: app.authenticate }, async (request) =>
-    workbench.getMe(getSubUserId(request)),
+    getWorkbenchService(app).getMe(getSubUserId(request)),
   );
 
   app.get("/api/server/seats", { preHandler: app.authenticate }, async (request) =>
-    workbench.getSeats(getSubUserId(request)),
+    getWorkbenchService(app).getSeats(getSubUserId(request)),
   );
 
   app.get<{ Querystring: MediaProxyQuery }>(
@@ -124,7 +115,10 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return workbench.getConversations(getSubUserId(request), request.query.seatId ?? "");
+      return getWorkbenchService(app).getConversations(
+        getSubUserId(request),
+        request.query.seatId ?? "",
+      );
     },
   );
 
@@ -141,7 +135,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return workbench.getMessages(
+      return getWorkbenchService(app).getMessages(
         getSubUserId(request),
         request.params.conversationId,
         {
@@ -161,7 +155,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return workbench.markConversationRead(
+      return getWorkbenchService(app).markConversationRead(
         getSubUserId(request),
         request.params.conversationId,
       );
@@ -184,7 +178,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
         sinceVersion: parseOptionalInteger(request.query.since_version) ?? 0,
       } satisfies WorkbenchPollRequest;
 
-      return workbench.poll(getSubUserId(request), pollRequest);
+      return getWorkbenchService(app).poll(getSubUserId(request), pollRequest);
     },
   );
 
@@ -197,7 +191,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) =>
-      workbench.sendMessage(
+      getWorkbenchService(app).sendMessage(
         getSubUserId(request),
         request.body satisfies WorkbenchSendMessagePayload,
       ),
@@ -212,7 +206,10 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return workbench.takeOverSeat(getSubUserId(request), request.params.seatId);
+      return getWorkbenchService(app).takeOverSeat(
+        getSubUserId(request),
+        request.params.seatId,
+      );
     },
   );
 }
@@ -229,4 +226,15 @@ function parseOptionalInteger(value: string | undefined) {
   const parsed = Number.parseInt(value, 10);
 
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function getWorkbenchService(app: FastifyInstance): WorkbenchService {
+  if (app.workbenchService) {
+    return app.workbenchService;
+  }
+
+  throw new ServiceUnavailableError(
+    "DATABASE_NOT_CONFIGURED",
+    "工作台服务暂不可用",
+  );
 }

@@ -3,6 +3,7 @@ import { solveChallenge, type Challenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/scrypt";
 import argon2 from "argon2";
 import { buildApp } from "../src/app";
+import { createMemoryWorkbenchService } from "../src/modules/chat/workbench-memory.service";
 
 async function createAuthenticatedApp() {
   const app = await buildApp();
@@ -17,6 +18,7 @@ async function createAuthenticatedApp() {
     session_version: 1,
     sub_user_id: "101",
   });
+  app.workbenchService = createMemoryWorkbenchService();
 
   return {
     app,
@@ -53,7 +55,7 @@ describe("backend app", () => {
       database: {
         configured: false,
       },
-      status: "ready",
+      status: "not-ready",
     });
 
     await app.close();
@@ -72,6 +74,27 @@ describe("backend app", () => {
       error: {
         code: "UNAUTHORIZED",
         message: "登录已失效",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("returns service unavailable for workbench routes when the database is missing", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    delete app.workbenchService;
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/seats",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "DATABASE_NOT_CONFIGURED",
       },
       success: false,
     });

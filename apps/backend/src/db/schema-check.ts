@@ -10,7 +10,7 @@ export async function checkSchema(db?: Kysely<Database>): Promise<SchemaCheckRes
   if (!db) {
     return {
       configured: false,
-      ok: true,
+      ok: false,
     };
   }
 

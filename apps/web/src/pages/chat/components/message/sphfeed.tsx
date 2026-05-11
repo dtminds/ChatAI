@@ -10,7 +10,10 @@ export function SphFeedMessageCard({ content }: SphFeedMessageCardProps) {
 
   if (!safeUrl) {
     return (
-      <div className="w-[min(19rem,calc(100vw-7rem))] overflow-hidden rounded-[8px] border border-border bg-surface">
+      <div
+        className="overflow-hidden rounded-[8px] border border-border bg-surface"
+        style={{ maxWidth: 217, width: "min(217px, calc(100vw - 7rem))" }}
+      >
         {card}
       </div>
     );
@@ -18,9 +21,10 @@ export function SphFeedMessageCard({ content }: SphFeedMessageCardProps) {
 
   return (
     <a
-      className="block w-[min(19rem,calc(100vw-7rem))] overflow-hidden rounded-[8px] border border-border bg-surface outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
+      className="block overflow-hidden rounded-[8px] border border-border bg-surface outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
       href={safeUrl}
       rel="noopener noreferrer"
+      style={{ maxWidth: 217, width: "min(217px, calc(100vw - 7rem))" }}
       target="_blank"
     >
       {card}
@@ -31,7 +35,7 @@ export function SphFeedMessageCard({ content }: SphFeedMessageCardProps) {
 function SphFeedCardBody({ content }: { content: SphFeedMessageContent }) {
   return (
     <>
-      <div className="aspect-[3/4] overflow-hidden bg-surface-muted">
+      <div className="relative aspect-[3/4] overflow-hidden bg-surface-muted">
         {content.imageUrl ? (
           <img
             alt={content.title}
@@ -44,13 +48,16 @@ function SphFeedCardBody({ content }: { content: SphFeedMessageContent }) {
             <SphFeedMark className="h-14 w-14" />
           </div>
         )}
-      </div>
 
-      <div className="flex items-center gap-1.5 p-3 text-[12px] leading-5 text-foreground">
-        <SphFeedMark className="h-[18px] w-[18px] shrink-0 text-warning" />
-        <span className="line-clamp-1 font-medium">
-          {content.title || content.sourceLabel || "视频号"}
-        </span>
+        <div
+          className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/65 via-black/35 to-transparent px-3 pb-2.5 pt-8 text-[12px] leading-5 text-white"
+          data-testid="sphfeed-overlay"
+        >
+          <SphFeedMark className="h-[18px] w-[18px] shrink-0 text-warning" />
+          <span className="line-clamp-1 font-medium">
+            {content.title || content.sourceLabel || "视频号"}
+          </span>
+        </div>
       </div>
     </>
   );

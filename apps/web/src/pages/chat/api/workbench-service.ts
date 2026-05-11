@@ -464,13 +464,40 @@ function buildContent(message: Message) {
         previewImageUrl: message.content.previewImageUrl,
         sourceLabel: message.content.sourceLabel,
         title: message.content.title,
+        url: message.content.url,
       };
     case "mini-program":
       return {
         appName: message.content.appName,
         coverImageUrl: message.content.coverImageUrl,
+        logoUrl: message.content.logoUrl,
         sourceLabel: message.content.sourceLabel,
         title: message.content.title,
+      };
+    case "contact-card":
+      return {
+        avatarUrl: message.content.avatarUrl,
+        company: message.content.company,
+        contactSerialNo: message.content.contactSerialNo,
+        groupSerialNo: message.content.groupSerialNo,
+        name: message.content.name,
+        sourceLabel: message.content.sourceLabel,
+      };
+    case "location":
+      return {
+        address: message.content.address,
+        latitude: message.content.latitude,
+        longitude: message.content.longitude,
+        title: message.content.title,
+        zoom: message.content.zoom,
+      };
+    case "sphfeed":
+      return {
+        description: message.content.description,
+        imageUrl: message.content.imageUrl,
+        sourceLabel: message.content.sourceLabel,
+        title: message.content.title,
+        url: message.content.url,
       };
   }
 }

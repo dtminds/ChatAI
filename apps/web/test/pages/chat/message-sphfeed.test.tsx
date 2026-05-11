@@ -22,6 +22,10 @@ describe("SphFeedMessageCard", () => {
 
     const link = screen.getByRole("link", { name: /都市快报/ });
 
+    expect(link).toHaveStyle({
+      maxWidth: "217px",
+    });
+    expect(screen.getByTestId("sphfeed-overlay")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "都市快报" })).toHaveAttribute(
       "src",
       "https://finder.video.qq.com/cover.jpg",

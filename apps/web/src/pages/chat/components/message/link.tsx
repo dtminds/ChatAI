@@ -1,13 +1,14 @@
 import { AnalysisTextLinkIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { H5CardMessageContent } from "@/pages/chat/chat-types";
+import { getSafeMessageUrl } from "@/pages/chat/components/message/url";
 
 type LinkMessageCardProps = {
   content: H5CardMessageContent;
 };
 
 export function LinkMessageCard({ content }: LinkMessageCardProps) {
-  const safeUrl = getSafeLinkUrl(content.url);
+  const safeUrl = getSafeMessageUrl(content.url);
   const card = (
     <>
       <p className="line-clamp-1 text-[14px] font-semibold leading-5 text-foreground">
@@ -51,23 +52,4 @@ export function LinkMessageCard({ content }: LinkMessageCardProps) {
       {card}
     </div>
   );
-}
-
-function getSafeLinkUrl(url: string | undefined) {
-  if (!url) {
-    return undefined;
-  }
-
-  if (url.startsWith("/")) {
-    return url;
-  }
-
-  try {
-    const parsedUrl = new URL(url);
-    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:"
-      ? url
-      : undefined;
-  } catch {
-    return undefined;
-  }
 }

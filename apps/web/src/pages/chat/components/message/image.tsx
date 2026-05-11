@@ -12,24 +12,18 @@ type ImageMessageCardProps = {
 };
 
 export function ImageMessageCard({ content }: ImageMessageCardProps) {
-  const frameStyle = getImageFrameStyle(content);
   const mediaSize = getValidImageSize(content);
-  const isIntrinsicSizeKnown = Boolean(mediaSize);
 
   return (
     <ImagePreviewDialog
       alt={content.alt}
       imageUrl={content.imageUrl}
-      triggerClassName="relative isolate overflow-hidden rounded-[8px] border border-border/40 bg-muted-foreground/10 outline-none transition-[border-color,filter] hover:brightness-[0.98] focus-visible:ring-4 focus-visible:ring-ring/25"
-      triggerStyle={frameStyle}
+      triggerClassName="relative isolate inline-block overflow-hidden rounded-[8px] border border-border/40 bg-muted-foreground/10 p-0 outline-none transition-[border-color,filter] hover:brightness-[0.98] focus-visible:ring-4 focus-visible:ring-ring/25"
+      triggerStyle={imageConstraintStyle}
     >
       <img
         alt={content.alt}
-        className={
-          isIntrinsicSizeKnown
-            ? "absolute inset-0 h-full w-full object-cover"
-            : "block h-auto max-h-80 w-auto max-w-full object-contain"
-        }
+        className="block h-auto max-h-[360px] w-auto max-w-full object-cover"
         height={mediaSize?.height}
         loading="lazy"
         src={content.imageUrl}
@@ -91,27 +85,11 @@ export function ImagePreviewDialog({
   );
 }
 
-function getImageFrameStyle(content: ImageMessageContent): CSSProperties {
-  const imageSize = getValidImageSize(content);
-
-  if (!imageSize) {
-    return {
-      maxWidth: "min(22rem, calc(100vw - 7rem))",
-      maxHeight: "20rem",
-    };
-  }
-
-  const { height: rawHeight, width: rawWidth } = imageSize;
-  const maxWidth = 360;
-  const maxHeight = 320;
-  const scale = Math.min(maxWidth / rawWidth, maxHeight / rawHeight, 1);
-
-  return {
-    width: `${Math.max(Math.round(rawWidth * scale), 160)}px`,
-    height: `${Math.max(Math.round(rawHeight * scale), 120)}px`,
-    maxWidth: "min(22rem, calc(100vw - 7rem))",
-  };
-}
+const imageConstraintStyle = {
+  maxWidth: "min(300px, 60%)",
+  maxHeight: "360px",
+  minWidth: "120px",
+} satisfies CSSProperties;
 
 function getValidImageSize(content: ImageMessageContent) {
   if (

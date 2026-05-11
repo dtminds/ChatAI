@@ -60,11 +60,44 @@ describe("MessageContentRenderer image messages", () => {
       width: "320px",
     });
     expect(trigger).toHaveStyle({
-      maxWidth: "min(22rem, calc(100vw - 7rem))",
+      maxHeight: "360px",
+      maxWidth: "min(300px, 60%)",
+      minWidth: "120px",
     });
-    expect(image).toHaveClass("object-contain");
+    expect(image).toHaveClass("object-cover");
+    expect(image).toHaveClass("h-auto", "max-h-[360px]", "w-auto", "max-w-full");
     expect(image).not.toHaveAttribute("height");
     expect(image).not.toHaveAttribute("width");
+  });
+
+  it("constrains loaded images with max dimensions while preserving natural ratio", () => {
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "大尺寸图片",
+          height: 900,
+          imageUrl: "https://cdn.example.com/chat/large-photo.jpg",
+          width: 1200,
+        })}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "查看大图：大尺寸图片" });
+    const image = screen.getByRole("img", { name: "大尺寸图片" });
+
+    expect(trigger).toHaveStyle({
+      maxHeight: "360px",
+      maxWidth: "min(300px, 60%)",
+      minWidth: "120px",
+    });
+    expect(trigger).not.toHaveStyle({
+      height: "225px",
+      width: "300px",
+    });
+    expect(image).toHaveClass("object-cover");
+    expect(image).toHaveAttribute("height", "900");
+    expect(image).toHaveAttribute("width", "1200");
+    expect(image).toHaveClass("h-auto", "max-h-[360px]", "w-auto", "max-w-full");
   });
 
   it("uses the natural image ratio for invalid image sizes", () => {

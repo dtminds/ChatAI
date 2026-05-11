@@ -287,6 +287,92 @@ describe("workbench MySQL mappers", () => {
     ]);
   });
 
+  it("maps group messages with missing sender identifiers without throwing", () => {
+    expect(
+      mapMessageRow(messageRow({
+        chat_type: 2,
+        conversation_group_id: "",
+        from_type: null,
+        msgid: "missing-sender-msg-1",
+        third_from_id: null,
+        third_group_id: null,
+        third_user_id: undefined,
+      })),
+    ).toMatchObject({
+      customerId: "missing-customer:88:missing-sender-msg-1",
+      senderType: "customer",
+      thirdFromId: undefined,
+      thirdUserId: undefined,
+    });
+  });
+
+  it("skips group member hydration when sender identifiers are missing", () => {
+    expect(
+      hydrateMessageRows(
+        [
+          messageRow({
+            chat_type: 2,
+            conversation_group_id: "group-1",
+            from_type: 2,
+            third_from_id: null,
+            third_group_id: "group-1",
+            third_user_id: undefined,
+          }),
+        ],
+        {
+          contactsByThirdExternalId: new Map(),
+          groupMembersByGroupAndThirdUserId: new Map([
+            [
+              getGroupMemberHydrationKey("group-1", ""),
+              {
+                avatar: "https://example.com/empty-key.png",
+                name: "空 key 成员",
+                nickname: "空 key 昵称",
+              },
+            ],
+          ]),
+          seatsByThirdUserId: new Map(),
+        },
+      ),
+    ).toMatchObject([
+      {
+        sender_avatar: "",
+        sender_name: undefined,
+      },
+    ]);
+  });
+
+  it("skips seat hydration when sender identifiers are missing", () => {
+    expect(
+      hydrateMessageRows(
+        [
+          messageRow({
+            from_type: 1,
+            third_user_id: undefined,
+          }),
+        ],
+        {
+          contactsByThirdExternalId: new Map(),
+          groupMembersByGroupAndThirdUserId: new Map(),
+          seatsByThirdUserId: new Map([
+            [
+              "",
+              {
+                avatar: "https://example.com/empty-seat.png",
+                name: "空 key 坐席",
+              },
+            ],
+          ]),
+        },
+      ),
+    ).toMatchObject([
+      {
+        sender_avatar: "",
+        sender_name: undefined,
+      },
+    ]);
+  });
+
   it("leaves robot messages without avatar hydration for now", () => {
     expect(
       mapMessageRow(

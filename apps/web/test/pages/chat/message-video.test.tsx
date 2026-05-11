@@ -27,7 +27,9 @@ describe("MessageContentRenderer video messages", () => {
       "/covers/stage.jpg",
     );
     expect(screen.getByRole("img", { name: "舞台活动视频封面" }).parentElement).toHaveStyle({
-      width: "320px",
+      maxHeight: "360px",
+      maxWidth: "min(300px, 60%)",
+      minWidth: "120px",
     });
     expect(screen.getByRole("button", { name: "播放视频：舞台活动视频封面" })).toBeInTheDocument();
     expect(screen.getByText("1:01")).toBeInTheDocument();
@@ -51,8 +53,11 @@ describe("MessageContentRenderer video messages", () => {
     expect(cover).toHaveAttribute("height", "640");
     expect(cover).toHaveAttribute("width", "360");
     expect(cover.parentElement).toHaveStyle({
-      width: "160px",
+      maxHeight: "360px",
+      maxWidth: "min(300px, 60%)",
+      minWidth: "120px",
     });
+    expect(cover).toHaveClass("object-cover");
     expect(screen.getByRole("button", { name: "播放视频：湖面竖版视频封面" })).toBeInTheDocument();
     expect(screen.getByText("0:11")).toBeInTheDocument();
   });
@@ -139,9 +144,11 @@ describe("MessageContentRenderer video messages", () => {
     const frame = cover.parentElement;
 
     expect(frame).toHaveStyle({
-      aspectRatio: "320 / 240",
-      width: "320px",
+      maxHeight: "360px",
+      maxWidth: "min(300px, 60%)",
+      minWidth: "120px",
     });
+    expect(cover).toHaveClass("h-auto", "max-h-[360px]", "w-auto", "max-w-full");
   });
 
   it("does not render an empty duration badge", () => {

@@ -7,6 +7,7 @@ import {
 import {
   DEFAULT_CUSTOMER_PANEL_WIDTH,
   clampCustomerPanelWidth,
+  shouldShowCustomerPanel,
 } from "@/pages/chat/lib/panel-width";
 
 export function useCustomerPanelResize(
@@ -15,6 +16,7 @@ export function useCustomerPanelResize(
   const [customerPanelWidth, setCustomerPanelWidth] = useState(
     DEFAULT_CUSTOMER_PANEL_WIDTH,
   );
+  const [isCustomerPanelVisible, setIsCustomerPanelVisible] = useState(true);
   const [isResizingCustomerPanel, setIsResizingCustomerPanel] = useState(false);
 
   useEffect(() => {
@@ -28,23 +30,51 @@ export function useCustomerPanelResize(
   }, [isResizingCustomerPanel]);
 
   useEffect(() => {
-    const syncCustomerPanelWidth = () => {
-      const availableWidth = workbenchBodyRef.current?.clientWidth;
-
+    const syncCustomerPanelLayout = (availableWidth: number) => {
       if (!availableWidth) {
         return;
       }
 
+      setIsCustomerPanelVisible(shouldShowCustomerPanel(availableWidth));
       setCustomerPanelWidth((currentWidth) =>
         clampCustomerPanelWidth(currentWidth, availableWidth),
       );
     };
 
-    syncCustomerPanelWidth();
-    window.addEventListener("resize", syncCustomerPanelWidth);
+    const workbenchBody = workbenchBodyRef.current;
+
+    if (!workbenchBody) {
+      return;
+    }
+
+    syncCustomerPanelLayout(workbenchBody.clientWidth);
+
+    if (typeof ResizeObserver === "undefined") {
+      const handleWindowResize = () => {
+        syncCustomerPanelLayout(workbenchBody.clientWidth);
+      };
+
+      window.addEventListener("resize", handleWindowResize);
+
+      return () => {
+        window.removeEventListener("resize", handleWindowResize);
+      };
+    }
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+
+      if (!entry) {
+        return;
+      }
+
+      syncCustomerPanelLayout(entry.contentRect.width);
+    });
+
+    resizeObserver.observe(workbenchBody);
 
     return () => {
-      window.removeEventListener("resize", syncCustomerPanelWidth);
+      resizeObserver.disconnect();
     };
   }, [workbenchBodyRef]);
 
@@ -88,6 +118,7 @@ export function useCustomerPanelResize(
   return {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
+    isCustomerPanelVisible,
     isResizingCustomerPanel,
   };
 }

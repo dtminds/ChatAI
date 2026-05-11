@@ -1,4 +1,10 @@
-import { startTransition, useEffect, useRef, useState } from "react";
+import {
+  startTransition,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import type { LexicalEditor } from "lexical";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -11,6 +17,7 @@ import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
 import type { MentionInsertPosition } from "@/pages/chat/components/chat-composer";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
+import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
@@ -106,8 +113,14 @@ function ChatWorkbenchContent({
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
+    isCustomerPanelVisible,
     isResizingCustomerPanel,
   } = useCustomerPanelResize(workbenchBodyRef);
+  const {
+    accountRailWidth,
+    handleAccountRailResizeStart,
+    isResizingAccountRail,
+  } = useAccountRailResize();
 
   async function handleLogout() {
     try {
@@ -291,11 +304,19 @@ function ChatWorkbenchContent({
     <div className="h-svh min-h-[720px] bg-sidebar">
       <div
         className={cn(
-          "grid h-full overflow-hidden transition-[grid-template-columns] duration-200 ease-out",
-          isAccountRailCollapsed
-            ? "grid-cols-[3.5rem_minmax(0,1fr)]"
-            : "grid-cols-[14.5rem_minmax(0,1fr)]",
+          "grid h-full",
+          isResizingAccountRail
+            ? "transition-none"
+            : "transition-[grid-template-columns] duration-200 ease-out",
         )}
+        data-testid="chat-workbench-shell"
+        style={
+          {
+            gridTemplateColumns: isAccountRailCollapsed
+              ? "3.5rem minmax(0, 1fr)"
+              : `${accountRailWidth}px minmax(0, 1fr)`,
+          } as CSSProperties
+        }
       >
         <AccountRail
           accounts={accounts}
@@ -305,63 +326,67 @@ function ChatWorkbenchContent({
           isCollapsed={isAccountRailCollapsed}
           onCollapseChange={handleAccountRailCollapseChange}
           onLogout={handleLogout}
+          onResizeStart={handleAccountRailResizeStart}
           onSelectAccount={setActiveAccount}
           onOpenSettings={onOpenSettings}
           onTakeOverAccount={takeOverAccount}
           takeoverStatusByAccountId={takeoverStatusByAccountId}
         />
 
-        <div className="h-full min-h-0 pl-0">
+        <div className="relative z-10 h-full min-h-0 pl-0">
           <div
             className={cn(
-              "grid h-full min-h-0 overflow-hidden rounded-[14px_0_0_14px] bg-surface shadow lg:grid-cols-[18rem_minmax(0,1fr)]",
-              isResizingCustomerPanel && "select-none",
+              "h-full min-h-0 rounded-[14px_0_0_14px] bg-surface shadow",
+              (isResizingAccountRail || isResizingCustomerPanel) && "select-none",
             )}
           >
-            <ConversationListPanel
-              activeConversation={activeConversation}
-              activeMode={activeMode}
-              conversations={visibleConversations}
-              onSelectConversation={setActiveConversation}
-              onSelectMode={setActiveMode}
-              searchableConversations={allConversations}
-            />
+            <div className="grid h-full min-h-0 overflow-hidden rounded-[inherit] lg:grid-cols-[16rem_minmax(0,1fr)]">
+              <ConversationListPanel
+                activeConversation={activeConversation}
+                activeMode={activeMode}
+                conversations={visibleConversations}
+                onSelectConversation={setActiveConversation}
+                onSelectMode={setActiveMode}
+                searchableConversations={allConversations}
+              />
 
-            <ChatPanel
-              accountName={activeAccount?.name}
-              activeConversation={activeConversation}
-              activeHistoryStatus={activeHistoryStatus}
-              canSendMessage={canSendMessage}
-              composerPlaceholder={composerPlaceholder}
-              customer={activeCustomer}
-              customerPanelWidth={customerPanelWidth}
-              draft={draft}
-              groupMembers={activeGroupMembers}
-              inputEnterBehavior={inputEnterBehavior}
-              isConversationLoading={isConversationLoading}
-              isEmojiPickerOpen={isEmojiPickerOpen}
-              isResizingCustomerPanel={isResizingCustomerPanel}
-              mentionInsertPosition={mentionInsertPosition}
-              hasMoreHistory={hasMoreHistory}
-              messageListBottomRef={messageListBottomRef}
-              messages={activeMessages}
-              messageViewportRef={messageViewportRef}
-              onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
-              onDraftChange={handleDraftChange}
-              onEmojiPickerOpenChange={setIsEmojiPickerOpen}
-              onEnterBehaviorChange={setInputEnterBehavior}
-              onMentionInsertPositionChange={setMentionInsertPosition}
-              onRemoveMentionMember={handleRemoveMentionMember}
-              onSelectMentionMember={handleSelectMentionMember}
-              onLoadOlderMessages={handleLoadOlderMessages}
-              onMessageViewportScroll={handleMessageViewportScroll}
-              onRetryMessage={retryFailedMessage}
-              onSendDraft={handleSendDraft}
-              scopeTransitionError={scopeTransitionError}
-              selectedMentionMembers={selectedMentionMembers}
-              composerRef={composerRef}
-              workbenchBodyRef={workbenchBodyRef}
-            />
+              <ChatPanel
+                accountName={activeAccount?.name}
+                activeConversation={activeConversation}
+                activeHistoryStatus={activeHistoryStatus}
+                canSendMessage={canSendMessage}
+                composerPlaceholder={composerPlaceholder}
+                customer={activeCustomer}
+                customerPanelWidth={customerPanelWidth}
+                draft={draft}
+                groupMembers={activeGroupMembers}
+                inputEnterBehavior={inputEnterBehavior}
+                isConversationLoading={isConversationLoading}
+                isCustomerPanelVisible={isCustomerPanelVisible}
+                isEmojiPickerOpen={isEmojiPickerOpen}
+                isResizingCustomerPanel={isResizingCustomerPanel}
+                mentionInsertPosition={mentionInsertPosition}
+                hasMoreHistory={hasMoreHistory}
+                messageListBottomRef={messageListBottomRef}
+                messages={activeMessages}
+                messageViewportRef={messageViewportRef}
+                onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
+                onDraftChange={handleDraftChange}
+                onEmojiPickerOpenChange={setIsEmojiPickerOpen}
+                onEnterBehaviorChange={setInputEnterBehavior}
+                onMentionInsertPositionChange={setMentionInsertPosition}
+                onRemoveMentionMember={handleRemoveMentionMember}
+                onSelectMentionMember={handleSelectMentionMember}
+                onLoadOlderMessages={handleLoadOlderMessages}
+                onMessageViewportScroll={handleMessageViewportScroll}
+                onRetryMessage={retryFailedMessage}
+                onSendDraft={handleSendDraft}
+                scopeTransitionError={scopeTransitionError}
+                selectedMentionMembers={selectedMentionMembers}
+                composerRef={composerRef}
+                workbenchBodyRef={workbenchBodyRef}
+              />
+            </div>
           </div>
         </div>
       </div>

@@ -72,6 +72,8 @@ export function MessageRow({
   }
 
   const isAgent = message.role === "agent";
+  const isGroupConversation = Boolean(message.isGroupConversation);
+  const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
 
   return (
     <div className={cn("flex items-start", isAgent ? "justify-end" : "justify-start")}>
@@ -109,6 +111,11 @@ export function MessageRow({
               )}
               data-testid="message-content-stack"
             >
+              {showSenderName ? (
+                <p className="px-1 text-[12px] leading-5 text-muted-foreground">
+                  {message.senderDisplayName}
+                </p>
+              ) : null}
               <MessageContentRenderer isAgent={isAgent} message={message} />
             </div>
           </div>
@@ -158,11 +165,12 @@ export function MessageAvatar({ message }: { message: ChatMessage }) {
 
 function buildFeedItems(messages: Message[]): FeedItem[] {
   const items: FeedItem[] = [];
+  let previousTimestampedMessage: Message | undefined;
 
-  messages.forEach((message, index) => {
-    const previous = messages[index - 1];
+  messages.forEach((message) => {
+    const hasValidTimestamp = parseWorkbenchDate(message.sentAt) !== null;
 
-    if (shouldInsertDivider(previous, message)) {
+    if (hasValidTimestamp && shouldInsertDivider(previousTimestampedMessage, message)) {
       items.push({
         id: `divider-${message.id}`,
         label: formatMessageDividerLabel(message.sentAt),
@@ -174,6 +182,10 @@ function buildFeedItems(messages: Message[]): FeedItem[] {
       message,
       type: "message",
     });
+
+    if (hasValidTimestamp) {
+      previousTimestampedMessage = message;
+    }
   });
 
   return items;

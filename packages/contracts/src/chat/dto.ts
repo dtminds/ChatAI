@@ -38,6 +38,10 @@ export type WorkbenchMessageContentType =
   | "video"
   | "file"
   | "h5"
+  | "contact-card"
+  | "location"
+  | "solitaire"
+  | "sphfeed"
   | "mini-program";
 
 export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed" | "read";
@@ -86,13 +90,14 @@ export type WorkbenchMessageBaseDto = {
   thirdUserId?: string;
   thirdExternalUserId?: string;
   thirdGroupId?: string;
+  thirdFromId?: string;
   senderName?: string;
   senderAvatar?: string;
   senderType: "customer" | "agent" | "system";
   contentType: WorkbenchMessageContentType;
   status: WorkbenchMessageStatus;
   content: Record<string, unknown>;
-  createdAt: number;
+  createdAt?: number;
   seq: number;
   clientMessageId?: string;
   failReason?: string;

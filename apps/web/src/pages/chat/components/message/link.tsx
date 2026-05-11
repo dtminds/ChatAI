@@ -7,8 +7,9 @@ type LinkMessageCardProps = {
 };
 
 export function LinkMessageCard({ content }: LinkMessageCardProps) {
-  return (
-    <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3">
+  const safeUrl = getSafeLinkUrl(content.url);
+  const card = (
+    <>
       <p className="line-clamp-1 text-[14px] font-semibold leading-5 text-foreground">
         {content.title}
       </p>
@@ -29,6 +30,44 @@ export function LinkMessageCard({ content }: LinkMessageCardProps) {
           </div>
         )}
       </div>
+    </>
+  );
+
+  if (safeUrl) {
+    return (
+      <a
+        className="block w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
+        href={safeUrl}
+        rel="noopener noreferrer"
+        target="_blank"
+      >
+        {card}
+      </a>
+    );
+  }
+
+  return (
+    <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3">
+      {card}
     </div>
   );
+}
+
+function getSafeLinkUrl(url: string | undefined) {
+  if (!url) {
+    return undefined;
+  }
+
+  if (url.startsWith("/")) {
+    return url;
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:"
+      ? url
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

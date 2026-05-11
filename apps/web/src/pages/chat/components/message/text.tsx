@@ -1,20 +1,16 @@
-import { cn } from "@/lib/utils";
+import { getTextBubbleClassName } from "@/pages/chat/components/message/bubble-style";
 import { parseWechatEmojiText } from "@/pages/chat/wechat-emoji";
 
 type TextMessageBubbleProps = {
   isAgent: boolean;
+  isOwnMessage?: boolean;
   text: string;
 };
 
-export function TextMessageBubble({ isAgent, text }: TextMessageBubbleProps) {
+export function TextMessageBubble({ isAgent, isOwnMessage, text }: TextMessageBubbleProps) {
   return (
     <div
-      className={cn(
-        "w-fit max-w-full rounded-[12px] px-3 py-2.5 text-[14px] leading-6",
-        isAgent
-          ? "bg-primary/15 text-foreground"
-          : "bg-secondary text-foreground",
-      )}
+      className={getTextBubbleClassName(isAgent, isOwnMessage)}
       data-testid="text-message-bubble"
     >
       <span

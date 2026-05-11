@@ -39,6 +39,8 @@
   --warning-muted: oklch(0.958 0.052 82);
   --info: var(--primary);
   --info-foreground: oklch(0.985 0 0);
+  --wechat-brand: #2aae67;
+  --mini-program-brand: #7081DA;
   --destructive-foreground: oklch(0.985 0 0);
   --destructive-muted: oklch(0.962 0.029 20);
   --shadow-soft: oklch(0 0 0 / 0.06);
@@ -992,6 +994,8 @@ html.dark[data-appearance-theme="nature"] {
   --color-warning-muted: var(--warning-muted);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
+  --color-wechat-brand: var(--wechat-brand);
+  --color-mini-program-brand: var(--mini-program-brand);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-muted: var(--destructive-muted);
   --color-sidebar: var(--sidebar);

@@ -11,6 +11,7 @@ import {
   KEY_ARROW_UP_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
+  PASTE_COMMAND,
   TextNode,
   type LexicalEditor,
 } from "lexical";
@@ -41,6 +42,7 @@ type ComposerRuntimePluginProps = {
   onDraftTextChange: (draftText: string) => void;
   onEscapeMentionPicker: () => void;
   onMoveMentionPicker: (direction: "down" | "up") => void;
+  onPasteImageFiles: (files: File[]) => void | Promise<void>;
   onSendSegments: (segments: ComposerSegment[]) => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSelectActiveMention: () => void;
@@ -54,6 +56,7 @@ export function ComposerRuntimePlugin({
   onDraftTextChange,
   onEscapeMentionPicker,
   onMoveMentionPicker,
+  onPasteImageFiles,
   onSelectActiveMention,
   onSendSegments,
   onSegmentsChange,
@@ -117,6 +120,24 @@ export function ComposerRuntimePlugin({
       COMMAND_PRIORITY_LOW,
     );
   }, [editor]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      PASTE_COMMAND,
+      (event) => {
+        const imageFiles = getClipboardImageFiles(event.clipboardData);
+
+        if (imageFiles.length === 0) {
+          return false;
+        }
+
+        event.preventDefault();
+        void onPasteImageFiles(imageFiles);
+        return true;
+      },
+      COMMAND_PRIORITY_HIGH,
+    );
+  }, [editor, onPasteImageFiles]);
 
   useEffect(() => {
     return editor.registerCommand(
@@ -238,4 +259,23 @@ export function MentionTextRemovalPlugin({
   }, [editor, onRemovalComplete, pendingRemoval]);
 
   return null;
+}
+
+function getClipboardImageFiles(clipboardData: DataTransfer | null) {
+  if (!clipboardData) {
+    return [];
+  }
+
+  const files = Array.from(clipboardData.files).filter((file) =>
+    file.type.startsWith("image/"),
+  );
+
+  if (files.length > 0) {
+    return files;
+  }
+
+  return Array.from(clipboardData.items)
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file !== null);
 }

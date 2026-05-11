@@ -296,7 +296,7 @@ export function ChatComposer({
     onSelectMentionMember,
   ]);
 
-  const handleImageFiles = async (fileList: FileList | null) => {
+  const handleImageFiles = async (fileList: FileList | File[] | null) => {
     const files = Array.from(fileList ?? []).filter((file) =>
       file.type.startsWith("image/"),
     );
@@ -585,6 +585,7 @@ export function ChatComposer({
               onMoveMentionPicker={handleMoveMentionPicker}
               onSegmentsChange={setSegments}
               onSelectActiveMention={handleSelectActiveMention}
+              onPasteImageFiles={handleImageFiles}
               onSendSegments={onSendDraft}
               registerEditor={registerEditor}
             />

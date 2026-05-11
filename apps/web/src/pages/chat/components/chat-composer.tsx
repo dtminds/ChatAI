@@ -155,7 +155,7 @@ export function ChatComposer({
     filteredMentionMembers.length > 0;
   const canSubmitDraft =
     canSendMessage && (segments.length > 0 || selectedMentionMembers.length > 0);
-  const composerActionButtonClass = "size-8 rounded-md p-0 shadow-none";
+  const composerActionButtonClass = "size-8 p-0 shadow-none";
 
   const registerEditor = useCallback(
     (editor: LexicalEditor | null) => {

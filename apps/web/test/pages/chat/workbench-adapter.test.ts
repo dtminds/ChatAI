@@ -265,6 +265,58 @@ describe("adaptMessage", () => {
       },
     });
   });
+
+  it("adapts solitaire message content", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            createMemberSerialNo: "7E3068915A444A58F73D7069C81A56F55194F219CF554649F1C4F9C615435A82",
+            example: "例 就这样吧",
+            items: [
+              {
+                content: "哼╭(╯^╰)╮",
+                memberSerialNo: "7E3068915A444A58F73D7069C81A56F55194F219CF554649F1C4F9C615435A82",
+                timestamp: 1778465705,
+              },
+              {
+                content: "缪勇飞 群昵称111",
+                memberSerialNo: "9AC41EA35455F6FFD1832E6EB0CD8C445194F219CF554649F1C4F9C615435A82",
+                timestamp: 1778486143,
+              },
+            ],
+            tail: "",
+            title: "#接龙\n哈哈哈",
+          },
+          contentType: "solitaire",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        createMemberSerialNo: "7E3068915A444A58F73D7069C81A56F55194F219CF554649F1C4F9C615435A82",
+        example: "例 就这样吧",
+        items: [
+          {
+            content: "哼╭(╯^╰)╮",
+            memberSerialNo: "7E3068915A444A58F73D7069C81A56F55194F219CF554649F1C4F9C615435A82",
+            timestamp: 1778465705,
+          },
+          {
+            content: "缪勇飞 群昵称111",
+            memberSerialNo: "9AC41EA35455F6FFD1832E6EB0CD8C445194F219CF554649F1C4F9C615435A82",
+            timestamp: 1778486143,
+          },
+        ],
+        tail: "",
+        title: "#接龙\n哈哈哈",
+        type: "solitaire",
+      },
+    });
+  });
 });
 
 const conversationDto: WorkbenchConversationSummaryDto = {

@@ -266,6 +266,15 @@ function adaptChatMessageContent(
         type: "sphfeed",
         url: asOptionalString(content.url),
       };
+    case "solitaire":
+      return {
+        createMemberSerialNo: asOptionalString(content.createMemberSerialNo),
+        example: asOptionalString(content.example),
+        items: adaptSolitaireItems(content.items),
+        tail: asOptionalString(content.tail),
+        title: String(content.title ?? ""),
+        type: "solitaire",
+      };
     case "text":
     case "system":
     default:
@@ -319,4 +328,24 @@ function asOptionalString(value: unknown) {
 
 function asOptionalNumber(value: unknown) {
   return typeof value === "number" ? value : undefined;
+}
+
+function adaptSolitaireItems(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => {
+    const itemRecord = isRecord(item) ? item : {};
+
+    return {
+      content: String(itemRecord.content ?? ""),
+      memberSerialNo: asOptionalString(itemRecord.memberSerialNo),
+      timestamp: asOptionalNumber(itemRecord.timestamp),
+    };
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

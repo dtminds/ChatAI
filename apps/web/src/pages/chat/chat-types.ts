@@ -145,6 +145,21 @@ export type SphFeedMessageContent = {
   sourceLabel?: string;
 };
 
+export type SolitaireMessageItem = {
+  content: string;
+  memberSerialNo?: string;
+  timestamp?: number;
+};
+
+export type SolitaireMessageContent = {
+  type: "solitaire";
+  title: string;
+  example?: string;
+  items: SolitaireMessageItem[];
+  tail?: string;
+  createMemberSerialNo?: string;
+};
+
 export type MessageContent =
   | SystemMessageContent
   | TextMessageContent
@@ -156,7 +171,8 @@ export type MessageContent =
   | MiniProgramMessageContent
   | ContactCardMessageContent
   | LocationMessageContent
-  | SphFeedMessageContent;
+  | SphFeedMessageContent
+  | SolitaireMessageContent;
 
 type BaseMessage = {
   id: string;
@@ -192,7 +208,8 @@ export type ChatMessage = BaseMessage & {
     | MiniProgramMessageContent
     | ContactCardMessageContent
     | LocationMessageContent
-    | SphFeedMessageContent;
+    | SphFeedMessageContent
+    | SolitaireMessageContent;
 };
 
 export type Message = SystemMessage | ChatMessage;

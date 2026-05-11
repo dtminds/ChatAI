@@ -499,6 +499,14 @@ function buildContent(message: Message) {
         title: message.content.title,
         url: message.content.url,
       };
+    case "solitaire":
+      return {
+        createMemberSerialNo: message.content.createMemberSerialNo,
+        example: message.content.example,
+        items: message.content.items,
+        tail: message.content.tail,
+        title: message.content.title,
+      };
   }
 }
 

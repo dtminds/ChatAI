@@ -40,6 +40,7 @@ export type WorkbenchMessageContentType =
   | "h5"
   | "contact-card"
   | "location"
+  | "solitaire"
   | "sphfeed"
   | "mini-program";
 

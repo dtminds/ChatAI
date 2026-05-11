@@ -251,6 +251,8 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
       return "contact-card";
     case "location":
       return "location";
+    case "solitaire":
+      return "solitaire";
     case "sphfeed":
       return "sphfeed";
     case "weapp":
@@ -343,6 +345,14 @@ function parseMessageContent(msgtype: string, rawContent: string | null) {
         url: normalizeMediaAssetUrl(
           readStringField(parsed, "linkUrl") || readStringField(parsed, "url"),
         ),
+      };
+    case "solitaire":
+      return {
+        createMemberSerialNo: readStringField(parsed, "createMemberSerialNo"),
+        example: readStringField(parsed, "example"),
+        items: readSolitaireItems(parsed),
+        tail: readStringField(parsed, "tail"),
+        title: readStringField(parsed, "title") || formatMessagePreview(msgtype, rawContent),
       };
     case "weapp":
       return {
@@ -447,6 +457,22 @@ function readNumberField(value: unknown, key: string) {
   const numeric = typeof field === "number" ? field : Number(field);
 
   return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+function readSolitaireItems(value: unknown) {
+  if (!isRecord(value) || !Array.isArray(value.items)) {
+    return [];
+  }
+
+  return value.items.map((item) => {
+    const itemRecord = isRecord(item) ? item : {};
+
+    return {
+      content: String(itemRecord.content ?? ""),
+      memberSerialNo: readStringField(itemRecord, "memberSerialNo"),
+      timestamp: readNumberField(itemRecord, "timestamp"),
+    };
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

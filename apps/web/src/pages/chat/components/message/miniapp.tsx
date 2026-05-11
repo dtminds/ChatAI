@@ -9,7 +9,7 @@ type MiniAppMessageCardProps = {
 
 export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
   return (
-    <div className="w-[min(17rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5">
+    <div className="w-[240px] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5">
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
         <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary">
           {content.logoUrl ? (

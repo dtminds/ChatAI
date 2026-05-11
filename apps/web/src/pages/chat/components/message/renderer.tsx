@@ -5,6 +5,7 @@ import { ImageMessageCard } from "@/pages/chat/components/message/image";
 import { LinkMessageCard } from "@/pages/chat/components/message/link";
 import { LocationMessageCard } from "@/pages/chat/components/message/location";
 import { MiniAppMessageCard } from "@/pages/chat/components/message/miniapp";
+import { SolitaireMessageCard } from "@/pages/chat/components/message/solitaire";
 import { SphFeedMessageCard } from "@/pages/chat/components/message/sphfeed";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
 import { VideoMessageCard } from "@/pages/chat/components/message/video";
@@ -46,5 +47,13 @@ export function MessageContentRenderer({
       return <LocationMessageCard content={message.content} />;
     case "sphfeed":
       return <SphFeedMessageCard content={message.content} />;
+    case "solitaire":
+      return (
+        <SolitaireMessageCard
+          content={message.content}
+          isAgent={isAgent}
+          isOwnMessage={message.isOwnMessage}
+        />
+      );
   }
 }

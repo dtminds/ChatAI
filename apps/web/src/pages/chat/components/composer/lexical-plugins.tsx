@@ -125,6 +125,10 @@ export function ComposerRuntimePlugin({
     return editor.registerCommand(
       PASTE_COMMAND,
       (event) => {
+        if (!isClipboardEvent(event)) {
+          return false;
+        }
+
         const imageFiles = getClipboardImageFiles(event.clipboardData);
 
         if (imageFiles.length === 0) {
@@ -278,4 +282,8 @@ function getClipboardImageFiles(clipboardData: DataTransfer | null) {
     .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
     .map((item) => item.getAsFile())
     .filter((file): file is File => file !== null);
+}
+
+function isClipboardEvent(event: Event): event is ClipboardEvent {
+  return "clipboardData" in event;
 }

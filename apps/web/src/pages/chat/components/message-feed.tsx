@@ -117,6 +117,7 @@ export function MessageRow({
                 </p>
               ) : null}
               <MessageContentRenderer isAgent={isAgent} message={message} />
+              {message.isRevoked ? <MessageRevokedState /> : null}
             </div>
           </div>
           {isAgent ? <MessageDeliveryState message={message} /> : null}
@@ -125,6 +126,14 @@ export function MessageRow({
         {isAgent ? <MessageAvatar message={message} /> : null}
       </div>
     </div>
+  );
+}
+
+function MessageRevokedState() {
+  return (
+    <p className="px-1 text-[12px] leading-5 text-muted-foreground">
+      已撤回
+    </p>
   );
 }
 

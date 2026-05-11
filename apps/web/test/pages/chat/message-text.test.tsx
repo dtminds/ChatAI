@@ -53,6 +53,54 @@ describe("text message bubble layout", () => {
     expect(screen.getByText("成员甲")).toBeInTheDocument();
   });
 
+  it("shows revoked state under a text message", () => {
+    render(<MessageRow message={{ ...createTextMessage("原始文本"), isRevoked: true }} />);
+
+    expect(screen.getByText("原始文本")).toBeInTheDocument();
+    expect(screen.getByText("已撤回")).toBeInTheDocument();
+  });
+
+  it("shows revoked state under a non-text message", () => {
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("图片"),
+          content: {
+            alt: "图片",
+            imageUrl: "https://example.com/image.png",
+            type: "image",
+          },
+          isRevoked: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("已撤回")).toBeInTheDocument();
+  });
+
+  it("does not show revoked state for system messages", () => {
+    render(
+      <MessageRow
+        message={{
+          author: "系统",
+          content: {
+            text: "系统提示",
+            type: "system",
+          },
+          conversationId: "conv-layout",
+          id: "sys-layout",
+          isRevoked: true,
+          role: "system",
+          sentAt: "2026-05-08 09:54:00",
+          status: "sent",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("系统提示")).toBeInTheDocument();
+    expect(screen.queryByText("已撤回")).not.toBeInTheDocument();
+  });
+
   it("does not show a sender name for single chat messages", () => {
     render(<MessageRow message={createTextMessage("单聊消息")} />);
 

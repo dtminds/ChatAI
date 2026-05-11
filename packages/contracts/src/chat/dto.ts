@@ -101,6 +101,7 @@ export type WorkbenchMessageBaseDto = {
   seq: number;
   clientMessageId?: string;
   failReason?: string;
+  isRevoked?: boolean;
 };
 
 export type WorkbenchMessageDto = WorkbenchMessageBaseDto;

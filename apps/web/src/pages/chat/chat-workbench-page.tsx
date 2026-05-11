@@ -17,6 +17,7 @@ import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
 import type { MentionInsertPosition } from "@/pages/chat/components/chat-composer";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
+import { CLEAR_COMPOSER_COMMAND } from "@/pages/chat/components/composer/lexical-commands";
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
@@ -238,6 +239,7 @@ function ChatWorkbenchContent({
     }
 
     void sendAgentMessageSegments(normalizedSegments);
+    composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
     setDraft("");
     setMentionInsertPosition("start");
     setSelectedMentionMembers([]);

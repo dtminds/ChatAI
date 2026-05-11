@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MockAdapter from "axios-mock-adapter";
 import { requestInstance } from "@/lib/request";
@@ -86,6 +86,42 @@ describe("ChatWorkbenchPage", () => {
       content: {
         text: "好的[打脸]",
         type: "text",
+      },
+      role: "agent",
+      status: "sending",
+    });
+  });
+
+  it("inserts a pasted clipboard image into the composer and sends it as an image segment", async () => {
+    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
+      type: "image/png",
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [clipboardImage],
+      },
+    });
+
+    expect(await screen.findByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => {
+      expect(
+        within(composer).queryByRole("img", { name: "clipboard.png" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+    ).toMatchObject({
+      content: {
+        imageUrl: expect.stringMatching(/^data:image\/png;base64,/),
+        type: "image",
       },
       role: "agent",
       status: "sending",

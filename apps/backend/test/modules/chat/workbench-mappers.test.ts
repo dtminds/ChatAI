@@ -287,6 +287,21 @@ describe("workbench MySQL mappers", () => {
     ]);
   });
 
+  it("maps group messages with missing sender identifiers without throwing", () => {
+    expect(
+      mapMessageRow(messageRow({
+        chat_type: 2,
+        from_type: null,
+        third_from_id: null,
+        third_user_id: undefined,
+      })),
+    ).toMatchObject({
+      senderType: "customer",
+      thirdFromId: undefined,
+      thirdUserId: undefined,
+    });
+  });
+
   it("leaves robot messages without avatar hydration for now", () => {
     expect(
       mapMessageRow(

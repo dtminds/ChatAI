@@ -48,10 +48,10 @@ export type MessageRow = {
   seat_id: number | string;
   sender_avatar?: string;
   sender_name?: string;
-  third_external_id: string;
-  third_from_id: string;
-  third_group_id: string;
-  third_user_id: string;
+  third_external_id: string | null | undefined;
+  third_from_id: string | null | undefined;
+  third_group_id: string | null | undefined;
+  third_user_id: string | null | undefined;
 };
 
 export type MessageHydrationSources = {
@@ -137,8 +137,8 @@ export function mapMessageRow(row: MessageRow): WorkbenchMessageDto {
   const thirdGroupId = row.third_group_id || row.conversation_group_id || undefined;
   const customerId =
     mode === "group"
-      ? row.conversation_group_id || row.third_group_id
-      : row.conversation_external_id || row.third_external_id;
+      ? row.conversation_group_id || row.third_group_id || ""
+      : row.conversation_external_id || row.third_external_id || "";
 
   return {
     content: parseMessageContent(row.msgtype, row.content),
@@ -156,7 +156,7 @@ export function mapMessageRow(row: MessageRow): WorkbenchMessageDto {
     thirdExternalUserId,
     thirdFromId: row.third_from_id || undefined,
     thirdGroupId,
-    thirdUserId: row.third_user_id,
+    thirdUserId: row.third_user_id || undefined,
   };
 }
 
@@ -166,7 +166,7 @@ export function hydrateMessageRows(
 ): MessageRow[] {
   return rows.map((row) => {
     if (row.chat_type === 2) {
-      const thirdFromId = row.third_from_id || row.third_user_id;
+      const thirdFromId = row.third_from_id || row.third_user_id || "";
       const member = sources.groupMembersByGroupAndThirdUserId.get(
         getGroupMemberHydrationKey(row.third_group_id || row.conversation_group_id, thirdFromId),
       );
@@ -179,7 +179,7 @@ export function hydrateMessageRows(
     }
 
     if (row.from_type === 1) {
-      const thirdUserId = row.third_user_id;
+      const thirdUserId = row.third_user_id || "";
       const seat = sources.seatsByThirdUserId.get(thirdUserId);
 
       return {
@@ -218,8 +218,8 @@ function mapSenderType(row: MessageRow): WorkbenchMessageDto["senderType"] {
   }
 
   if (row.chat_type === 2) {
-    const thirdFromId = row.third_from_id.trim();
-    const thirdUserId = row.third_user_id.trim();
+    const thirdFromId = (row.third_from_id || "").trim();
+    const thirdUserId = (row.third_user_id || "").trim();
 
     return thirdFromId && thirdFromId === thirdUserId ? "agent" : "customer";
   }

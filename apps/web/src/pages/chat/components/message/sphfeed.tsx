@@ -1,11 +1,12 @@
 import type { SphFeedMessageContent } from "@/pages/chat/chat-types";
+import { getSafeMessageUrl } from "@/pages/chat/components/message/url";
 
 type SphFeedMessageCardProps = {
   content: SphFeedMessageContent;
 };
 
 export function SphFeedMessageCard({ content }: SphFeedMessageCardProps) {
-  const safeUrl = getSafeSphFeedUrl(content.url);
+  const safeUrl = getSafeMessageUrl(content.url);
   const card = <SphFeedCardBody content={content} />;
 
   if (!safeUrl) {
@@ -76,23 +77,4 @@ function SphFeedMark({ className }: { className?: string }) {
       />
     </svg>
   );
-}
-
-function getSafeSphFeedUrl(url: string | undefined) {
-  if (!url) {
-    return undefined;
-  }
-
-  if (url.startsWith("/")) {
-    return url;
-  }
-
-  try {
-    const parsedUrl = new URL(url);
-    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:"
-      ? url
-      : undefined;
-  } catch {
-    return undefined;
-  }
 }

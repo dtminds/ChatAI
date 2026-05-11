@@ -76,6 +76,42 @@ describe("voice message playback", () => {
     });
   });
 
+  it("uses hydrated sender metadata from backend messages", () => {
+    const message = adaptMessage(
+      {
+        ...createVoiceDto(),
+        senderAvatar: "https://example.com/sender.png",
+        senderName: "后端补全昵称",
+      },
+      {
+        "customer-voice": {
+          avatarUrl: "https://example.com/profile.png",
+          city: "",
+          id: "customer-voice",
+          intentScore: 0,
+          metrics: [],
+          name: "客户档案昵称",
+          notes: [],
+          persona: "",
+          phone: "",
+          stage: "",
+          tags: [],
+          tasks: [],
+        },
+      },
+      {},
+      undefined,
+    );
+
+    expect(message).toMatchObject({
+      author: "后端补全昵称",
+      sender: {
+        avatarUrl: "https://example.com/sender.png",
+        name: "后端补全昵称",
+      },
+    });
+  });
+
   it("plays AMR voice messages through the media proxy in development", async () => {
     const user = userEvent.setup();
 

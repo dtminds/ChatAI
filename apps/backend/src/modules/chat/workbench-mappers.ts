@@ -46,9 +46,38 @@ export type MessageRow = {
   msgtime: Date | number | string;
   msgtype: string;
   seat_id: number | string;
+  sender_avatar?: string;
+  sender_name?: string;
   third_external_id: string;
+  third_from_id: string;
   third_group_id: string;
   third_user_id: string;
+};
+
+export type MessageHydrationSources = {
+  contactsByThirdExternalId: Map<
+    string,
+    {
+      avatar: string | null;
+      name: string | null;
+      realName: string | null;
+    }
+  >;
+  groupMembersByGroupAndThirdUserId: Map<
+    string,
+    {
+      avatar: string | null;
+      name: string | null;
+      nickname: string | null;
+    }
+  >;
+  seatsByThirdUserId: Map<
+    string,
+    {
+      avatar: string | null;
+      name: string | null;
+    }
+  >;
 };
 
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
@@ -90,7 +119,7 @@ export function mapConversationRow(
     customerName,
     isPinned: toNumber(row.pinned_time) > 0 ? true : undefined,
     lastMessage: formatMessagePreview(row.last_message_type, row.last_message_content),
-    lastMessageTime: toTimestamp(row.last_msgtime),
+    lastMessageTime: toOptionalTimestamp(row.last_msgtime),
     mode,
     priority: "medium",
     seatId: String(row.seat_id),
@@ -119,6 +148,8 @@ export function mapMessageRow(row: MessageRow): WorkbenchMessageDto {
     customerId,
     messageId: row.msgid,
     seatId: String(row.seat_id),
+    senderAvatar: row.sender_avatar ?? "",
+    senderName: row.sender_name,
     senderType: mapSenderType(row.from_type),
     seq: toNumber(row.id),
     status: "read",
@@ -126,6 +157,58 @@ export function mapMessageRow(row: MessageRow): WorkbenchMessageDto {
     thirdGroupId,
     thirdUserId: row.third_user_id,
   };
+}
+
+export function hydrateMessageRows(
+  rows: MessageRow[],
+  sources: MessageHydrationSources,
+): MessageRow[] {
+  return rows.map((row) => {
+    if (row.chat_type === 2) {
+      const thirdFromId = row.third_from_id || row.third_user_id;
+      const member = sources.groupMembersByGroupAndThirdUserId.get(
+        getGroupMemberHydrationKey(row.third_group_id || row.conversation_group_id, thirdFromId),
+      );
+
+      return {
+        ...row,
+        sender_avatar: member?.avatar ?? "",
+        sender_name: member?.nickname || member?.name || thirdFromId || undefined,
+      };
+    }
+
+    if (row.from_type === 1) {
+      const thirdUserId = row.third_user_id;
+      const seat = sources.seatsByThirdUserId.get(thirdUserId);
+
+      return {
+        ...row,
+        sender_avatar: seat?.avatar ?? "",
+        sender_name: seat?.name || thirdUserId || undefined,
+      };
+    }
+
+    if (row.from_type === 2) {
+      const thirdExternalId = row.third_external_id || row.conversation_external_id;
+      const contact = sources.contactsByThirdExternalId.get(thirdExternalId);
+
+      return {
+        ...row,
+        sender_avatar: contact?.avatar ?? "",
+        sender_name: contact?.realName || contact?.name || thirdExternalId || undefined,
+      };
+    }
+
+    // from_type=3 is a group robot. Avatar hydration rules are intentionally deferred.
+    return {
+      ...row,
+      sender_avatar: "",
+    };
+  });
+}
+
+export function getGroupMemberHydrationKey(thirdGroupId: string, thirdUserId: string) {
+  return `${thirdGroupId}\u0000${thirdUserId}`;
 }
 
 function mapSenderType(fromType: number | null): WorkbenchMessageDto["senderType"] {
@@ -392,7 +475,7 @@ function toNumber(value: number | string | null) {
 function toOptionalTimestamp(value: Date | number | string | null) {
   const timestamp = parseTimestamp(value);
 
-  return timestamp ?? undefined;
+  return timestamp && timestamp > 0 ? timestamp : undefined;
 }
 
 function toTimestamp(value: Date | number | string | null) {

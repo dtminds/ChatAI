@@ -1,10 +1,13 @@
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
+  getGroupMemberHydrationKey,
+  hydrateMessageRows,
   mapConversationRow,
   mapMessageRow,
   mapSeatRow,
   type ConversationRow,
+  type MessageHydrationSources,
   type MessageRow,
   type SeatRow,
 } from "./workbench-mappers.js";
@@ -206,13 +209,6 @@ export class WorkbenchRepository {
           .onRef("bind.uid", "=", "conversation.uid")
           .onRef("bind.platform", "=", "conversation.platform"),
       )
-      .leftJoin("xy_wap_embed_group_seat as group_seat", (join) =>
-        join
-          .onRef("group_seat.third_group_id", "=", "conversation.third_group_id")
-          .onRef("group_seat.third_userid", "=", "conversation.third_userid")
-          .onRef("group_seat.uid", "=", "conversation.uid")
-          .onRef("group_seat.platform", "=", "conversation.platform"),
-      )
       .select([
         "conversation.id as id",
         "conversation.chat_type as chat_type",
@@ -225,11 +221,11 @@ export class WorkbenchRepository {
         "last_message.content as last_message_content",
         "last_message.msgtype as last_message_type",
         "contact.avatar as customer_avatar",
-        "group_seat.avatar as group_avatar",
-        "group_seat.name as group_name",
       ])
       .select((expressionBuilder) => [
         expressionBuilder.val(seatNumericId).as("seat_id"),
+        expressionBuilder.val(null).as("group_avatar"),
+        expressionBuilder.val(null).as("group_name"),
         expressionBuilder.fn
           .coalesce("bind.remark", "contact.real_name", "contact.name")
           .as("customer_name"),
@@ -242,7 +238,21 @@ export class WorkbenchRepository {
       .orderBy("conversation.last_msgtime", "desc")
       .execute();
 
-    return rows.map((row) => mapConversationRow(row as ConversationRow));
+    const conversationRows = rows.map((row) => row as ConversationRow);
+    const groupsByThirdGroupId = await this.getConversationGroups(
+      conversationRows,
+      seat.uid,
+      seat.platform,
+    );
+
+    return conversationRows.map((row) =>
+      mapConversationRow({
+        ...row,
+        group_avatar:
+          groupsByThirdGroupId.get(row.third_group_id)?.avatar ?? row.group_avatar,
+        group_name: groupsByThirdGroupId.get(row.third_group_id)?.name ?? row.group_name,
+      }),
+    );
   }
 
   async getConversationLookup(conversationId: string): Promise<ConversationLookup | undefined> {
@@ -321,6 +331,7 @@ export class WorkbenchRepository {
         "message.from_type as from_type",
         "message.third_user_id as third_user_id",
         "message.third_external_id as third_external_id",
+        "message.third_from_id as third_from_id",
         "message.third_group_id as third_group_id",
         "message.content as content",
         "message.msgtype as msgtype",
@@ -357,7 +368,16 @@ export class WorkbenchRepository {
       .limit(options.limit)
       .execute();
 
-    return rows.reverse().map((row) => mapMessageRow(row as MessageRow));
+    const messageRows = rows.reverse().map((row) => row as MessageRow);
+    const hydrationSources = await this.getMessageHydrationSources(
+      messageRows,
+      conversation.uid,
+      conversation.platform,
+    );
+
+    return hydrateMessageRows(messageRows, hydrationSources).map((row) =>
+      mapMessageRow(row),
+    );
   }
 
   private async getSeatRecord(seatId: number) {
@@ -368,6 +388,156 @@ export class WorkbenchRepository {
       .where("biz_status", "=", 1)
       .executeTakeFirst();
   }
+
+  private async getConversationGroups(
+    rows: ConversationRow[],
+    uid: number,
+    platform: number,
+  ) {
+    const groupIds = uniqueNonEmpty(
+      rows.filter((row) => row.chat_type === 2).map((row) => row.third_group_id),
+    );
+
+    if (!groupIds.length) {
+      return new Map<string, { avatar: string | null; name: string | null }>();
+    }
+
+    const groups = await this.db
+      .selectFrom("xy_wap_embed_group_seat")
+      .select(["third_group_id", "avatar", "name"])
+      .where("uid", "=", uid)
+      .where("platform", "=", platform)
+      .where("third_group_id", "in", groupIds)
+      .where("biz_status", "=", 1)
+      .execute();
+
+    return new Map(
+      groups.map((group) => [
+        group.third_group_id,
+        {
+          avatar: group.avatar,
+          name: group.name,
+        },
+      ]),
+    );
+  }
+
+  private async getMessageHydrationSources(
+    rows: MessageRow[],
+    uid: number,
+    platform: number,
+  ): Promise<MessageHydrationSources> {
+    const groupMemberIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type === 2)
+        .map((row) => row.third_from_id || row.third_user_id),
+    );
+    const groupIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type === 2)
+        .map((row) => row.third_group_id || row.conversation_group_id),
+    );
+    const seatThirdUserIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type !== 2 && row.from_type === 1)
+        .map((row) => row.third_user_id),
+    );
+    const contactThirdExternalIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type !== 2 && row.from_type === 2)
+        .map((row) => row.third_external_id || row.conversation_external_id),
+    );
+
+    const [groupMembers, seats, contacts] = await Promise.all([
+      groupMemberIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_group_member as member")
+            .innerJoin("xy_wap_embed_group_seat as group_seat", (join) =>
+              join
+                .onRef("group_seat.id", "=", "member.group_seat_id")
+                .onRef("group_seat.uid", "=", "member.uid")
+                .onRef("group_seat.platform", "=", "member.platform"),
+            )
+            .select([
+              "member.third_userid as third_userid",
+              "member.avatar as avatar",
+              "member.name as name",
+              "member.nickname as nickname",
+              "group_seat.third_group_id as third_group_id",
+            ])
+            .where("member.uid", "=", uid)
+            .where("member.platform", "=", platform)
+            .where("member.third_userid", "in", groupMemberIds)
+            .where("member.biz_status", "=", 1)
+            .where("group_seat.third_group_id", "in", groupIds)
+            .where("group_seat.biz_status", "=", 1)
+            .execute()
+        : [],
+      seatThirdUserIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_user_seat")
+            .select(["third_userid", "third_avatar", "third_user_name"])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_userid", "in", seatThirdUserIds)
+            .where("biz_status", "=", 1)
+            .execute()
+        : [],
+      contactThirdExternalIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_contact")
+            .select(["third_external_userid", "avatar", "name", "real_name"])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_external_userid", "in", contactThirdExternalIds)
+            .where("biz_status", "=", 1)
+            .execute()
+        : [],
+    ]);
+
+    return {
+      contactsByThirdExternalId: new Map(
+        contacts.map((contact) => [
+          contact.third_external_userid,
+          {
+            avatar: contact.avatar,
+            name: contact.name,
+            realName: contact.real_name,
+          },
+        ]),
+      ),
+      groupMembersByGroupAndThirdUserId: new Map(
+        groupMembers.map((member) => [
+          getGroupMemberHydrationKey(member.third_group_id, member.third_userid),
+          {
+            avatar: member.avatar,
+            name: member.name,
+            nickname: member.nickname,
+          },
+        ]),
+      ),
+      seatsByThirdUserId: new Map(
+        seats.map((seat) => [
+          seat.third_userid,
+          {
+            avatar: seat.third_avatar,
+            name: seat.third_user_name,
+          },
+        ]),
+      ),
+    };
+  }
+}
+
+function uniqueNonEmpty(values: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(
+      values
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function parseMySqlId(value: string) {

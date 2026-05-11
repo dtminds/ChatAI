@@ -610,6 +610,53 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.queryByRole("button", { name: "加载更早的对话" })).not.toBeInTheDocument();
   });
 
+  it("does not auto-loop when older history only contains hidden revoke events", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const calls: Array<{ beforeSeq?: number; conversationId: string }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        calls.push({ beforeSeq: options?.beforeSeq, conversationId });
+
+        if (conversationId === "conv-001" && options?.beforeSeq != null) {
+          return {
+            filteredCount: 50,
+            hasMore: true,
+            messages: [],
+            nextBeforeSeq: Math.max(options.beforeSeq - 50, 1),
+            scannedCount: 50,
+          };
+        }
+
+        if (conversationId === "conv-001") {
+          const page = await baseService.getMessages(conversationId, options);
+
+          return {
+            ...page,
+            hasMore: true,
+            nextBeforeSeq: page.nextBeforeSeq ?? 5,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "加载更早的对话" }));
+
+    expect(
+      await screen.findByRole("button", {
+        name: "已跳过 50 条不可展示记录，继续加载更早消息",
+      }),
+    ).toBeInTheDocument();
+    expect(calls.filter((call) => call.beforeSeq != null)).toHaveLength(1);
+  });
+
   it("does not offer older history while a newly selected conversation is still loading", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

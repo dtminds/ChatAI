@@ -30,6 +30,12 @@ type HistoryStatus = "idle" | "loading";
 type SendStatus = "idle" | "sending";
 type TakeoverStatus = "idle" | "taking-over";
 
+type MessagePaginationState = {
+  hasMore: boolean;
+  nextBeforeSeq?: number;
+  skippedHiddenCount: number;
+};
+
 type PollState = {
   status: "idle" | "polling" | "error";
   intervalMs: number;
@@ -53,6 +59,7 @@ type WorkbenchState = {
   scopeTransitionError?: string;
   historyStatusByConversationId: Record<string, HistoryStatus>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
+  messagePaginationByConversationId: Record<string, MessagePaginationState>;
   sendStatusByConversationId: Record<string, SendStatus>;
   takeoverStatusByAccountId: Record<string, TakeoverStatus>;
   pollState: PollState;
@@ -105,6 +112,7 @@ function createInitialState(): Omit<
     historyStatusByConversationId: {},
     isConversationLoading: false,
     me: undefined,
+    messagePaginationByConversationId: {},
     messagesByConversationId: {},
     pendingMessages: [],
     pollState: {
@@ -138,6 +146,18 @@ function getActiveMessageSeq(
 ) {
   const messages = messagesByConversationId[conversationId] ?? [];
   return messages.reduce((max, message, index) => Math.max(max, message.seq ?? index + 1), 0);
+}
+
+function buildMessagePaginationState(page: {
+  hasMoreHistory: boolean;
+  nextBeforeSeq?: number;
+  skippedHiddenCount: number;
+}): MessagePaginationState {
+  return {
+    hasMore: page.hasMoreHistory,
+    nextBeforeSeq: page.nextBeforeSeq,
+    skippedHiddenCount: page.skippedHiddenCount,
+  };
 }
 
 function sortConversations(conversations: Conversation[]) {
@@ -434,6 +454,11 @@ export function createWorkbenchStore() {
                 [conversationPage.conversationId]: conversationPage.hasMoreHistory,
               }
             : {},
+          messagePaginationByConversationId: conversationPage
+            ? {
+                [conversationPage.conversationId]: buildMessagePaginationState(conversationPage),
+              }
+            : {},
           me: bootstrapResult.me,
           messagesByConversationId: conversationPage
             ? { [conversationPage.conversationId]: conversationPage.messages }
@@ -650,12 +675,19 @@ export function createWorkbenchStore() {
                     [conversationPage.conversationId]: conversationPage.hasMoreHistory,
                   }
                 : currentState.hasMoreHistoryByConversationId;
+              const nextPaginationByConversationId = conversationPage
+                ? {
+                    ...currentState.messagePaginationByConversationId,
+                    [conversationPage.conversationId]: buildMessagePaginationState(conversationPage),
+                  }
+                : currentState.messagePaginationByConversationId;
               const nextState: Partial<WorkbenchStore> = {
                 conversationListsByScope: {
                   ...currentState.conversationListsByScope,
                   [accountId]: scopeResult.conversations,
                 },
                 hasMoreHistoryByConversationId: nextHistoryByConversationId,
+                messagePaginationByConversationId: nextPaginationByConversationId,
                 messagesByConversationId: nextMessagesByConversationId,
                 pollState: {
                   ...currentState.pollState,
@@ -916,16 +948,10 @@ export function createWorkbenchStore() {
         return;
       }
 
-      const currentMessages = state.messagesByConversationId[conversationId] ?? [];
-      const firstSeq = currentMessages.reduce<number | undefined>((minSeq, message) => {
-        if (message.seq == null) {
-          return minSeq;
-        }
+      const pagination = state.messagePaginationByConversationId[conversationId];
+      const beforeSeq = pagination?.nextBeforeSeq;
 
-        return minSeq == null ? message.seq : Math.min(minSeq, message.seq);
-      }, undefined);
-
-      if (firstSeq == null) {
+      if (beforeSeq == null) {
         return;
       }
 
@@ -945,7 +971,7 @@ export function createWorkbenchStore() {
           },
           conversationId,
           {
-            beforeSeq: firstSeq,
+            beforeSeq,
             limit: MESSAGE_PAGE_SIZE,
           },
         );
@@ -958,6 +984,10 @@ export function createWorkbenchStore() {
           historyStatusByConversationId: {
             ...currentState.historyStatusByConversationId,
             [conversationId]: "idle",
+          },
+          messagePaginationByConversationId: {
+            ...currentState.messagePaginationByConversationId,
+            [conversationId]: buildMessagePaginationState(page),
           },
           messagesByConversationId: {
             ...currentState.messagesByConversationId,
@@ -1029,6 +1059,12 @@ export function createWorkbenchStore() {
                 [conversationPage.conversationId]: conversationPage.hasMoreHistory,
               }
             : currentState.hasMoreHistoryByConversationId,
+          messagePaginationByConversationId: conversationPage
+            ? {
+                ...currentState.messagePaginationByConversationId,
+                [conversationPage.conversationId]: buildMessagePaginationState(conversationPage),
+              }
+            : currentState.messagePaginationByConversationId,
           isConversationLoading: false,
           messagesByConversationId: conversationPage
             ? {
@@ -1117,6 +1153,10 @@ export function createWorkbenchStore() {
           hasMoreHistoryByConversationId: {
             ...currentState.hasMoreHistoryByConversationId,
             [conversationId]: page.hasMoreHistory,
+          },
+          messagePaginationByConversationId: {
+            ...currentState.messagePaginationByConversationId,
+            [conversationId]: buildMessagePaginationState(page),
           },
           isConversationLoading: false,
           messagesByConversationId: {

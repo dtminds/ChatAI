@@ -2,6 +2,7 @@ import type {
   WorkbenchConversationReadResponse,
   WorkbenchConversationSummaryDto,
   WorkbenchMessageDto,
+  WorkbenchMessagePageDto,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
   WorkbenchSeatDto,
@@ -27,7 +28,7 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
-  ): Promise<WorkbenchMessageDto[]> | WorkbenchMessageDto[];
+  ): Promise<WorkbenchMessagePageDto> | WorkbenchMessagePageDto;
   getSeats(subUserId: string): Promise<WorkbenchSeatDto[]> | WorkbenchSeatDto[];
   markConversationRead(
     subUserId: string,
@@ -118,8 +119,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
         ? await this.getMessages(subUserId, request.activeConversationId, {
             beforeSeq: undefined,
             limit: 50,
-          }).then((messages) =>
-            messages.filter((message) => message.seq > (request.activeMessageSeq ?? 0)),
+          }).then((page) =>
+            page.messages.filter((message) => message.seq > (request.activeMessageSeq ?? 0)),
           )
         : [];
 

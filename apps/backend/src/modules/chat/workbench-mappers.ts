@@ -137,8 +137,8 @@ export function mapMessageRow(row: MessageRow): WorkbenchMessageDto {
   const thirdGroupId = row.third_group_id || row.conversation_group_id || undefined;
   const customerId =
     mode === "group"
-      ? row.conversation_group_id || row.third_group_id || ""
-      : row.conversation_external_id || row.third_external_id || "";
+      ? row.conversation_group_id || row.third_group_id || buildMissingCustomerId(row)
+      : row.conversation_external_id || row.third_external_id || buildMissingCustomerId(row);
 
   return {
     content: parseMessageContent(row.msgtype, row.content),
@@ -166,10 +166,13 @@ export function hydrateMessageRows(
 ): MessageRow[] {
   return rows.map((row) => {
     if (row.chat_type === 2) {
-      const thirdFromId = row.third_from_id || row.third_user_id || "";
-      const member = sources.groupMembersByGroupAndThirdUserId.get(
-        getGroupMemberHydrationKey(row.third_group_id || row.conversation_group_id, thirdFromId),
-      );
+      const thirdFromId = row.third_from_id || row.third_user_id || undefined;
+      const thirdGroupId = row.third_group_id || row.conversation_group_id;
+      const member = thirdFromId
+        ? sources.groupMembersByGroupAndThirdUserId.get(
+          getGroupMemberHydrationKey(thirdGroupId, thirdFromId),
+        )
+        : undefined;
 
       return {
         ...row,
@@ -210,6 +213,10 @@ export function hydrateMessageRows(
 
 export function getGroupMemberHydrationKey(thirdGroupId: string, thirdUserId: string) {
   return `${thirdGroupId}\u0000${thirdUserId}`;
+}
+
+function buildMissingCustomerId(row: MessageRow) {
+  return `missing-customer:${row.conversation_id}:${row.msgid}`;
 }
 
 function mapSenderType(row: MessageRow): WorkbenchMessageDto["senderType"] {

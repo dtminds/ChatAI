@@ -5,9 +5,6 @@ import type { VideoMessageContent } from "@/pages/chat/chat-types";
 
 const DEFAULT_VIDEO_WIDTH = 320;
 const DEFAULT_VIDEO_HEIGHT = 240;
-const MAX_VIDEO_WIDTH = 320;
-const MAX_VIDEO_HEIGHT = 285;
-const MIN_VIDEO_DIMENSION = 140;
 
 type VideoMessageCardProps = {
   content: VideoMessageContent;
@@ -18,7 +15,6 @@ export function VideoMessageCard({
   content,
   onPlayClick,
 }: VideoMessageCardProps) {
-  const frameStyle = getVideoFrameStyle(content);
   const mediaSize = getValidVideoSize(content);
   const handlePlayClick = () => {
     if (onPlayClick) {
@@ -33,12 +29,12 @@ export function VideoMessageCard({
 
   return (
     <div
-      className="relative isolate overflow-hidden rounded-[8px] bg-muted-foreground/10 shadow-sm"
-      style={frameStyle}
+      className="relative isolate inline-block overflow-hidden rounded-[8px] bg-muted-foreground/10 shadow-sm"
+      style={videoConstraintStyle}
     >
       <img
         alt={content.alt}
-        className="absolute inset-0 h-full w-full object-cover"
+        className="block h-auto max-h-[360px] w-auto max-w-full object-cover"
         loading="lazy"
         src={content.coverImageUrl}
         width={mediaSize.width}
@@ -72,21 +68,11 @@ export function VideoMessageCard({
   );
 }
 
-function getVideoFrameStyle(content: VideoMessageContent): CSSProperties {
-  const { height: rawHeight, width: rawWidth } = getValidVideoSize(content);
-  const scale = Math.min(
-    MAX_VIDEO_WIDTH / rawWidth,
-    MAX_VIDEO_HEIGHT / rawHeight,
-    1,
-  );
-
-  return {
-    width: `${Math.max(Math.round(rawWidth * scale), MIN_VIDEO_DIMENSION)}px`,
-    height: "auto",
-    aspectRatio: `${rawWidth} / ${rawHeight}`,
-    maxWidth: "min(22rem, calc(100vw - 7rem))",
-  };
-}
+const videoConstraintStyle = {
+  maxWidth: "min(300px, 60%)",
+  maxHeight: "360px",
+  minWidth: "120px",
+} satisfies CSSProperties;
 
 function getValidVideoSize(content: VideoMessageContent) {
   return {

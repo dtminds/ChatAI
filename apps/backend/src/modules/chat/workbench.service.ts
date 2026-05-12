@@ -267,7 +267,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {
-    const subUserNumericId = Number(subUserId);
+    const subUserNumericId = /^[1-9]\d*$/.test(subUserId)
+      ? Number(subUserId)
+      : Number.NaN;
 
     if (!Number.isSafeInteger(subUserNumericId)) {
       throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");

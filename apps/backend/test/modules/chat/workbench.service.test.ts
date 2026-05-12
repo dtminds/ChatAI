@@ -72,7 +72,9 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.takeOverSeat).not.toHaveBeenCalled();
   });
 
-  it("rejects takeover when the sub-user id is not numeric", async () => {
+  it.each(["sub-user-001", "0123", " 123"])(
+    "rejects takeover when the sub-user id is not a strict MySQL id: %s",
+    async (subUserId) => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
       {
@@ -87,12 +89,13 @@ describe("MysqlWorkbenchService", () => {
       javaClient,
     );
 
-    await expect(service.takeOverSeat("sub-user-001", "12")).rejects.toMatchObject({
+    await expect(service.takeOverSeat(subUserId, "12")).rejects.toMatchObject({
       code: "SUB_USER_NOT_FOUND",
       statusCode: 404,
     });
     expect(javaClient.takeOverSeat).not.toHaveBeenCalled();
-  });
+    },
+  );
 
   it("rejects mark-read when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();

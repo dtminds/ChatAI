@@ -1,10 +1,18 @@
 import {
   apiSuccess,
   SettingsManagedAccountSubAccountsUpdateRequestSchema,
+  SettingsSidebarItemCreateRequestSchema,
+  SettingsSidebarItemsSortUpdateRequestSchema,
+  SettingsSidebarItemStatusUpdateRequestSchema,
+  SettingsSidebarItemUpdateRequestSchema,
   SettingsSubAccountCreateRequestSchema,
   SettingsSubAccountStatusUpdateRequestSchema,
   SettingsSubAccountUpdateRequestSchema,
   type SettingsManagedAccountSubAccountsUpdateRequest,
+  type SettingsSidebarItemCreateRequest,
+  type SettingsSidebarItemsSortUpdateRequest,
+  type SettingsSidebarItemStatusUpdateRequest,
+  type SettingsSidebarItemUpdateRequest,
   type SettingsSubAccountCreateRequest,
   type SettingsSubAccountStatusUpdateRequest,
   type SettingsSubAccountUpdateRequest,
@@ -12,6 +20,7 @@ import {
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { createManagedAccountSettingsService } from "./managed-accounts.service.js";
+import { createSidebarItemsSettingsService } from "./sidebar-items.service.js";
 import { createSubAccountSettingsService } from "./sub-accounts.service.js";
 
 const SubAccountParamsSchema = Type.Object({
@@ -22,8 +31,13 @@ const ManagedAccountParamsSchema = Type.Object({
   managedAccountId: Type.String(),
 });
 
+const SidebarItemParamsSchema = Type.Object({
+  sidebarItemId: Type.String(),
+});
+
 type SubAccountParams = Static<typeof SubAccountParamsSchema>;
 type ManagedAccountParams = Static<typeof ManagedAccountParamsSchema>;
+type SidebarItemParams = Static<typeof SidebarItemParamsSchema>;
 
 export async function registerSettingsRoutes(app: FastifyInstance) {
   app.get("/api/server/settings/managed-accounts", {
@@ -62,6 +76,111 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     apiSuccess(
       await createSubAccountSettingsService(app.db).list(getSubUserId(request)),
     ),
+  );
+
+  app.get("/api/server/settings/sidebar-items", {
+    preHandler: app.authenticate,
+  }, async (request) =>
+    apiSuccess(
+      await createSidebarItemsSettingsService(app.db).list(getSubUserId(request)),
+    ),
+  );
+
+  app.post<{ Body: SettingsSidebarItemCreateRequest }>(
+    "/api/server/settings/sidebar-items",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SettingsSidebarItemCreateRequestSchema,
+      },
+    },
+    async (request) =>
+      apiSuccess(
+        await createSidebarItemsSettingsService(app.db).create(
+          getSubUserId(request),
+          request.body,
+        ),
+      ),
+  );
+
+  app.put<{
+    Body: SettingsSidebarItemsSortUpdateRequest;
+  }>(
+    "/api/server/settings/sidebar-items/sort",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SettingsSidebarItemsSortUpdateRequestSchema,
+      },
+    },
+    async (request) =>
+      apiSuccess(
+        await createSidebarItemsSettingsService(app.db).updateSort(
+          getSubUserId(request),
+          request.body,
+        ),
+      ),
+  );
+
+  app.put<{
+    Body: SettingsSidebarItemUpdateRequest;
+    Params: SidebarItemParams;
+  }>(
+    "/api/server/settings/sidebar-items/:sidebarItemId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SettingsSidebarItemUpdateRequestSchema,
+        params: SidebarItemParamsSchema,
+      },
+    },
+    async (request) =>
+      apiSuccess(
+        await createSidebarItemsSettingsService(app.db).update(
+          getSubUserId(request),
+          request.params.sidebarItemId,
+          request.body,
+        ),
+      ),
+  );
+
+  app.patch<{
+    Body: SettingsSidebarItemStatusUpdateRequest;
+    Params: SidebarItemParams;
+  }>(
+    "/api/server/settings/sidebar-items/:sidebarItemId/status",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SettingsSidebarItemStatusUpdateRequestSchema,
+        params: SidebarItemParamsSchema,
+      },
+    },
+    async (request) =>
+      apiSuccess(
+        await createSidebarItemsSettingsService(app.db).updateStatus(
+          getSubUserId(request),
+          request.params.sidebarItemId,
+          request.body.status,
+        ),
+      ),
+  );
+
+  app.delete<{ Params: SidebarItemParams }>(
+    "/api/server/settings/sidebar-items/:sidebarItemId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: SidebarItemParamsSchema,
+      },
+    },
+    async (request) =>
+      apiSuccess(
+        await createSidebarItemsSettingsService(app.db).remove(
+          getSubUserId(request),
+          request.params.sidebarItemId,
+        ),
+      ),
   );
 
   app.post<{ Body: SettingsSubAccountCreateRequest }>(

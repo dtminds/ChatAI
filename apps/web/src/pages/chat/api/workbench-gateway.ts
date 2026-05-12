@@ -6,6 +6,7 @@ import {
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
 import type {
+  SettingsSidebarItem,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
   WorkbenchConversationUnpinResponse,
@@ -56,6 +57,7 @@ export type WorkbenchBootstrapResult = {
   conversationListsByScope: Record<string, Conversation[]>;
   conversationPage?: WorkbenchConversationPage;
   me: EmployeeProfile;
+  sidebarItems: SettingsSidebarItem[];
 };
 
 export type WorkbenchAccountScopeResult = {
@@ -103,9 +105,10 @@ export async function bootstrapWorkbench(
   pageSize = DEFAULT_MESSAGE_PAGE_SIZE,
 ): Promise<WorkbenchBootstrapResult> {
   const service = getWorkbenchService();
-  const [meDto, accountDtos] = await Promise.all([
+  const [meDto, accountDtos, sidebarItemsResponse] = await Promise.all([
     service.getMe(),
     service.getSeats(),
+    service.getSidebarItems().catch(() => ({ items: [] })),
   ]);
 
   const me = adaptEmployee(meDto);
@@ -140,7 +143,26 @@ export async function bootstrapWorkbench(
     },
     conversationPage,
     me,
+    sidebarItems: getSidebarItemsFromResponse(sidebarItemsResponse),
   };
+}
+
+function getSidebarItemsFromResponse(response: unknown): SettingsSidebarItem[] {
+  if (!response || typeof response !== "object") {
+    return [];
+  }
+
+  if (Array.isArray((response as { items?: unknown }).items)) {
+    return (response as { items: SettingsSidebarItem[] }).items;
+  }
+
+  const data = (response as { data?: unknown }).data;
+
+  if (data && typeof data === "object" && Array.isArray((data as { items?: unknown }).items)) {
+    return (data as { items: SettingsSidebarItem[] }).items;
+  }
+
+  return [];
 }
 
 export async function loadAccountScope(

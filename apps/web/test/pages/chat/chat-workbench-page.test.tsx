@@ -688,6 +688,33 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("disables conversation card actions when the active account is not taken over", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
+
+    await screen.findByRole("textbox", {
+      name: "当前账号未接管，暂时无法发送消息",
+    });
+    await user.click(screen.getAllByRole("button", { name: "会话操作" })[0]);
+
+    expect(screen.getByRole("menuitem", { name: /置顶/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: /标记已读/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: /不显示/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
   it("enables the composer after taking over the active account", async () => {
     const user = userEvent.setup();
 

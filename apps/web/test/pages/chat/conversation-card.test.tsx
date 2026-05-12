@@ -130,4 +130,41 @@ describe("ConversationCard", () => {
     expect(screen.getByRole("menuitem", { name: /标记未读/ })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /标记已读/ })).not.toBeInTheDocument();
   });
+
+  it("disables conversation action items when actions are unavailable", async () => {
+    const user = userEvent.setup();
+    const handleDelete = vi.fn();
+    const handleMarkRead = vi.fn();
+    const handlePin = vi.fn();
+
+    render(
+      <ConversationCard
+        conversation={conversation}
+        isActionDisabled
+        isActive
+        onDelete={handleDelete}
+        onMarkRead={handleMarkRead}
+        onPin={handlePin}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "会话操作" }));
+
+    const pinItem = screen.getByRole("menuitem", { name: /置顶/ });
+    const markReadItem = screen.getByRole("menuitem", { name: /标记已读/ });
+    const deleteItem = screen.getByRole("menuitem", { name: /不显示/ });
+
+    expect(pinItem).toHaveAttribute("aria-disabled", "true");
+    expect(markReadItem).toHaveAttribute("aria-disabled", "true");
+    expect(deleteItem).toHaveAttribute("aria-disabled", "true");
+
+    await user.click(pinItem);
+    await user.click(markReadItem);
+    await user.click(deleteItem);
+
+    expect(handlePin).not.toHaveBeenCalled();
+    expect(handleMarkRead).not.toHaveBeenCalled();
+    expect(handleDelete).not.toHaveBeenCalled();
+  });
 });

@@ -1,11 +1,4 @@
-import {
-  type RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp02Icon,
   Cancel01Icon,
@@ -488,11 +481,9 @@ export function ChatComposer({
                 {selectedMentionMembers.map((member) => (
                   <div
                     key={member.id}
-                    className="flex items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-sm"
+                    className="flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-sm"
                   >
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-muted-foreground">
-                      {member.displayName.slice(0, 1)}
-                    </span>
+                    <MentionMemberAvatar member={member} />
                     <span className="min-w-0 flex-1 truncate">{member.displayName}</span>
                     <button
                       aria-label={`移除 @${member.displayName}`}
@@ -527,7 +518,7 @@ export function ChatComposer({
               <button
                 aria-selected={index === activeMentionIndex}
                 className={cn(
-                  "flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-popover-foreground outline-none transition-colors hover:bg-surface-hover",
+                  "flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[13px] text-popover-foreground outline-none transition-colors hover:bg-surface-hover",
                   index === activeMentionIndex && "bg-surface-hover",
                 )}
                 key={member.id}
@@ -546,12 +537,7 @@ export function ChatComposer({
                 role="option"
                 type="button"
               >
-                <span
-                  aria-hidden="true"
-                  className="flex size-6 shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-muted-foreground"
-                >
-                  {member.displayName.slice(0, 1)}
-                </span>
+                <MentionMemberAvatar member={member} />
                 <span className="truncate">{member.displayName}</span>
               </button>
             ))}
@@ -597,6 +583,34 @@ export function ChatComposer({
         </div>
       </div>
     </div>
+  );
+}
+
+function MentionMemberAvatar({ member }: { member: GroupMember }) {
+  const [imageErrored, setImageErrored] = useState(false);
+
+  if (!member.avatarUrl || imageErrored) {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-primary/15 font-semibold text-[10px] text-muted-foreground"
+      >
+        {member.displayName.slice(0, 1)}
+      </span>
+    );
+  }
+
+  return (
+    <span className="relative flex size-5 shrink-0 overflow-hidden rounded-[6px]">
+      <img
+        alt=""
+        aria-hidden="true"
+        className="size-full object-cover"
+        data-testid="mention-member-avatar"
+        onError={() => setImageErrored(true)}
+        src={member.avatarUrl}
+      />
+    </span>
   );
 }
 

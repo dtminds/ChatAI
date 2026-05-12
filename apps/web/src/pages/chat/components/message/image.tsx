@@ -22,14 +22,13 @@ export function ImageMessageCard({ content }: ImageMessageCardProps) {
     return (
       <div
         aria-label={`图片不可用：${content.alt}`}
-        className="inline-flex h-[120px] w-[120px] items-center justify-center rounded-[8px] border border-border/40 bg-muted-foreground/10 text-muted-foreground"
+        className="inline-flex h-[120px] w-[120px] items-center justify-center rounded-[8px] border border-border/40 bg-muted-foreground/5 text-muted-foreground/30"
         role="img"
       >
         <HugeiconsIcon
           aria-hidden="true"
           icon={ImageNotFound01Icon}
-          size={40}
-          strokeWidth={1.6}
+          size={24}
         />
       </div>
     );

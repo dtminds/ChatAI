@@ -51,6 +51,7 @@ type WorkbenchState = {
   accounts: Account[];
   conversationListsByScope: Record<string, Conversation[]>;
   customerProfilesById: Record<string, CustomerProfile>;
+  groupMembersLoadingByConversationId: Record<string, boolean>;
   messagesByConversationId: Record<string, Message[]>;
   activeAccountId: string;
   activeConversationId: string;
@@ -76,7 +77,7 @@ type WorkbenchState = {
   setActiveAccount: (accountId: string) => Promise<void>;
   setActiveConversation: (conversationId: string) => Promise<void>;
   setActiveMode: (mode: ChatMode) => Promise<void>;
-  loadActiveGroupMembers: () => Promise<void>;
+  loadActiveGroupMembers: (options?: { force?: boolean }) => Promise<void>;
   sendAgentMessageSegments: (segments: ComposerSegment[]) => Promise<void>;
   sendAgentTextMessage: (text: string) => Promise<void>;
   takeOverAccount: (accountId: string) => Promise<void>;
@@ -116,6 +117,7 @@ function createInitialState(): Omit<
     bootstrapStatus: "idle",
     conversationListsByScope: {},
     customerProfilesById: defaultCustomerProfiles,
+    groupMembersLoadingByConversationId: {},
     groupMembersByConversationId: {},
     hasMoreHistoryByConversationId: {},
     historyStatusByConversationId: {},
@@ -327,7 +329,9 @@ function isAccountTakenOverByCurrentUser(account: Account | undefined, me: Emplo
 export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
+  let latestGroupMembersRequestId = 0;
   const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
+  const latestGroupMembersRequestIdByConversationId: Record<string, number> = {};
 
   function issueScopeRequestId() {
     latestScopeRequestId += 1;
@@ -352,6 +356,21 @@ export function createWorkbenchStore() {
     delete latestTakeoverRequestIdByAccountId[accountId];
   }
 
+  function issueGroupMembersRequestId(conversationId: string) {
+    latestGroupMembersRequestId += 1;
+    latestGroupMembersRequestIdByConversationId[conversationId] =
+      latestGroupMembersRequestId;
+    return latestGroupMembersRequestId;
+  }
+
+  function isCurrentGroupMembersRequest(conversationId: string, requestId: number) {
+    return latestGroupMembersRequestIdByConversationId[conversationId] === requestId;
+  }
+
+  function clearGroupMembersRequest(conversationId: string) {
+    delete latestGroupMembersRequestIdByConversationId[conversationId];
+  }
+
   function omitTakeoverStatus(
     takeoverStatusByAccountId: Record<string, TakeoverStatus>,
     accountId: string,
@@ -371,6 +390,7 @@ export function createWorkbenchStore() {
     async function loadGroupMembersForConversation(
       conversationId: string,
       requestId: number,
+      options: { force?: boolean } = {},
     ) {
       if (!conversationId) {
         return;
@@ -381,15 +401,27 @@ export function createWorkbenchStore() {
 
       if (
         conversation?.mode !== "group" ||
-        state.groupMembersByConversationId[conversationId]
+        (!options.force && state.groupMembersByConversationId[conversationId])
       ) {
         return;
       }
 
+      const groupMembersRequestId = issueGroupMembersRequestId(conversationId);
+
+      set((currentState) => ({
+        groupMembersLoadingByConversationId: {
+          ...currentState.groupMembersLoadingByConversationId,
+          [conversationId]: true,
+        },
+      }));
+
       try {
         const members = await loadGroupMembers(conversationId);
 
-        if (!isCurrentScopeRequest(requestId)) {
+        if (
+          !isCurrentScopeRequest(requestId) ||
+          !isCurrentGroupMembersRequest(conversationId, groupMembersRequestId)
+        ) {
           return;
         }
 
@@ -398,18 +430,35 @@ export function createWorkbenchStore() {
             ...currentState.groupMembersByConversationId,
             [conversationId]: members,
           },
+          groupMembersLoadingByConversationId: {
+            ...currentState.groupMembersLoadingByConversationId,
+            [conversationId]: false,
+          },
         }));
       } catch {
-        if (!isCurrentScopeRequest(requestId)) {
+        if (
+          !isCurrentScopeRequest(requestId) ||
+          !isCurrentGroupMembersRequest(conversationId, groupMembersRequestId)
+        ) {
           return;
         }
 
         set((currentState) => ({
-          groupMembersByConversationId: {
-            ...currentState.groupMembersByConversationId,
-            [conversationId]: [],
+          groupMembersByConversationId: options.force
+            ? currentState.groupMembersByConversationId
+            : {
+                ...currentState.groupMembersByConversationId,
+                [conversationId]: [],
+              },
+          groupMembersLoadingByConversationId: {
+            ...currentState.groupMembersLoadingByConversationId,
+            [conversationId]: false,
           },
         }));
+      } finally {
+        if (isCurrentGroupMembersRequest(conversationId, groupMembersRequestId)) {
+          clearGroupMembersRequest(conversationId);
+        }
       }
     }
 
@@ -455,11 +504,15 @@ export function createWorkbenchStore() {
       dismissReadReceiptError() {
         set({ readReceiptError: undefined });
       },
-      async loadActiveGroupMembers() {
+      async loadActiveGroupMembers(options) {
         const state = get();
         const requestId = latestScopeRequestId;
 
-        await loadGroupMembersForConversation(state.activeConversationId, requestId);
+        await loadGroupMembersForConversation(
+          state.activeConversationId,
+          requestId,
+          options,
+        );
       },
       async takeOverAccount(accountId) {
       const state = get();
@@ -574,6 +627,21 @@ export function createWorkbenchStore() {
             ? { [conversationPage.conversationId]: conversationPage.messages }
             : {},
         });
+
+        const bootstrapActiveConversation = bootstrapResult.conversationListsByScope[
+          bootstrapResult.activeAccountId
+        ]?.find(
+          (conversation) => conversation.id === bootstrapResult.activeConversationId,
+        );
+
+        if (bootstrapActiveConversation?.mode === "group") {
+          set((currentState) => ({
+            groupMembersLoadingByConversationId: {
+              ...currentState.groupMembersLoadingByConversationId,
+              [bootstrapResult.activeConversationId]: true,
+            },
+          }));
+        }
 
         await loadGroupMembersForConversation(
           bootstrapResult.activeConversationId,
@@ -1138,6 +1206,10 @@ export function createWorkbenchStore() {
           return;
         }
 
+        const nextConversation = scopeResult.conversations.find(
+          (conversation) => conversation.id === scopeResult.nextConversationId,
+        );
+
         set((currentState) => ({
           activeAccountId: accountId,
           activeConversationId: scopeResult.nextConversationId,
@@ -1175,6 +1247,15 @@ export function createWorkbenchStore() {
               }
             : currentState.messagesByConversationId,
           scopeTransitionError: undefined,
+          groupMembersLoadingByConversationId:
+            nextConversation?.mode === "group" &&
+            currentState.groupMembersByConversationId[scopeResult.nextConversationId] ===
+              undefined
+              ? {
+                  ...currentState.groupMembersLoadingByConversationId,
+                  [scopeResult.nextConversationId]: true,
+                }
+              : currentState.groupMembersLoadingByConversationId,
         }));
 
         await loadGroupMembersForConversation(
@@ -1213,11 +1294,25 @@ export function createWorkbenchStore() {
       }
 
       const requestId = issueScopeRequestId();
+      const currentConversation = getConversationById(state, conversationId);
+
       set({
         activeConversationId: conversationId,
         isConversationLoading: true,
         scopeTransitionError: undefined,
       });
+
+      if (currentConversation?.mode === "group") {
+        set((currentState) => ({
+          groupMembersLoadingByConversationId:
+            currentState.groupMembersByConversationId[conversationId] === undefined
+              ? {
+                  ...currentState.groupMembersLoadingByConversationId,
+                  [conversationId]: true,
+                }
+              : currentState.groupMembersLoadingByConversationId,
+        }));
+      }
 
       try {
         const page = await loadConversationMessagesPage(

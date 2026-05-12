@@ -3,7 +3,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { CustomerProfile } from "@/pages/chat/chat-types";
 import { InfoRow } from "@/pages/chat/components/info-row";
 
-export function CustomerSystemPanel({
+export function CustomerBasicInfoPanel({
   accountName,
   customer,
 }: {

@@ -1,6 +1,6 @@
 import MockAdapter from "axios-mock-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { routerConfig } from "@/router";
@@ -345,7 +345,7 @@ describe("Chat settings pages", () => {
     mock.onPatch("/server/settings/sidebar-items/201/status").reply(200, {
       data: {
         id: "201",
-        name: "企业名片新版",
+        name: "名片新版",
         sort: 1,
         status: "disabled",
         url: "https://example.com/card",
@@ -431,7 +431,7 @@ describe("Chat settings pages", () => {
     await user.click(screen.getByRole("menuitem", { name: "编辑" }));
     expect(screen.getByLabelText("页面地址")).toHaveValue("https://example.com/card");
     await user.clear(screen.getByLabelText("页面名称"));
-    await user.type(screen.getByLabelText("页面名称"), "企业名片新版");
+    await user.type(screen.getByLabelText("页面名称"), "名片新版");
     await user.click(screen.getByRole("button", { name: "确认提交" }));
 
     await waitFor(() => {
@@ -440,7 +440,7 @@ describe("Chat settings pages", () => {
       );
     });
 
-    await user.click(screen.getByRole("switch", { name: "停用 企业名片新版" }));
+    await user.click(screen.getByRole("switch", { name: "停用 名片新版" }));
     await waitFor(() => {
       expect(mock.history.patch[0]?.url).toBe("/server/settings/sidebar-items/201/status");
     });
@@ -449,7 +449,7 @@ describe("Chat settings pages", () => {
     });
 
     const paymentDragHandle = screen.getByRole("button", { name: "拖动 发起收款 调整排序" });
-    const updatedCardRow = screen.getByRole("row", { name: /企业名片新版/ });
+    const updatedCardRow = screen.getByRole("row", { name: /名片新版/ });
     const rowRects = [
       [updatedCardRow, { bottom: 40, right: 720, top: 0 }],
       [screen.getByRole("row", { name: /客户详情/ }), { bottom: 80, right: 720, top: 40 }],
@@ -525,6 +525,55 @@ describe("Chat settings pages", () => {
       "二号页面",
       "十号页面",
     ]);
+  });
+
+  it("limits sidebar item creation by count and name length", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: Array.from({ length: 10 }, (_, index) => ({
+          id: String(index + 1),
+          name: `页面${index + 1}`,
+          sort: index + 1,
+          status: "active",
+          url: `https://example.com/page-${index + 1}`,
+        })),
+      },
+      success: true,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新增页面" })).toBeDisabled();
+
+    cleanup();
+    mock.resetHandlers();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: [],
+      },
+      success: true,
+    });
+    mock.onPost("/server/settings/sidebar-items").reply(200, {
+      data: {
+        id: "1",
+        name: "TooLongName",
+        sort: 1,
+        status: "active",
+        url: "https://example.com/too-long",
+      },
+      success: true,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    await user.click(await screen.findByRole("button", { name: "新增页面" }));
+    await user.type(screen.getByLabelText("页面名称"), "超过四字了");
+    await user.type(screen.getByLabelText("页面地址"), "https://example.com/too-long");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    expect(screen.getByText("页面名称最多 8 个字符")).toBeInTheDocument();
+    expect(mock.history.post).toHaveLength(0);
   });
 
   it("creates, edits, toggles, and deletes sub-accounts from settings", async () => {

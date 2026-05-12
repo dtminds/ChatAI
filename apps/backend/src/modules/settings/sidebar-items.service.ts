@@ -31,6 +31,8 @@ const dbActiveStatus = 1;
 const dbDeletedStatus = 0;
 const dbShown = 1;
 const dbHidden = 0;
+const maxSidebarItems = 10;
+const maxSidebarItemNameWeight = 8;
 
 export class SidebarItemsSettingsService {
   constructor(private readonly db: Kysely<Database>) {}
@@ -49,7 +51,16 @@ export class SidebarItemsSettingsService {
   ): Promise<SettingsSidebarItem> {
     const scope = await this.getTenantScope(currentSubUserId);
     const normalized = normalizeSidebarPayload(payload);
-    const sort = payload.sort ?? (await this.getNextSort(scope));
+    const currentItems = await this.listRows(scope);
+
+    if (currentItems.length >= maxSidebarItems) {
+      throw new BadRequestError(
+        "SIDEBAR_ITEM_LIMIT_EXCEEDED",
+        "侧边栏页面最多添加 10 个",
+      );
+    }
+
+    const sort = payload.sort ?? getNextSortFromRows(currentItems);
 
     const inserted = await this.db
       .insertInto("xy_wap_embed_sider_bar_config")
@@ -230,10 +241,7 @@ export class SidebarItemsSettingsService {
   }
 
   private async getNextSort(scope: TenantScope) {
-    const rows = await this.listRows(scope);
-    const maxSort = rows.reduce((current, item) => Math.max(current, item.sort), 0);
-
-    return maxSort + 1;
+    return getNextSortFromRows(await this.listRows(scope));
   }
 
   private async assertItemInScope(scope: TenantScope, sidebarItemId: number) {
@@ -298,7 +306,25 @@ function normalizeSidebarPayload(payload: {
     throw new BadRequestError("INVALID_SIDEBAR_ITEM", "请完整填写侧边栏页面信息");
   }
 
+  if (getSidebarItemNameWeight(name) > maxSidebarItemNameWeight) {
+    throw new BadRequestError("INVALID_SIDEBAR_ITEM_NAME", "页面名称最多 8 个字符");
+  }
+
   return { name, url };
+}
+
+function getSidebarItemNameWeight(name: string) {
+  return Array.from(name).reduce((total, char) => total + (isCjkChar(char) ? 2 : 1), 0);
+}
+
+function getNextSortFromRows(rows: SidebarItemRow[]) {
+  const maxSort = rows.reduce((current, item) => Math.max(current, item.sort), 0);
+
+  return maxSort + 1;
+}
+
+function isCjkChar(char: string) {
+  return /\p{Script=Han}/u.test(char);
 }
 
 function normalizeSidebarItemIds(rawItemIds: string[]) {

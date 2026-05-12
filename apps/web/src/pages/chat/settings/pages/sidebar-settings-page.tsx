@@ -92,6 +92,8 @@ type PendingAction =
   | `status:${string}`;
 
 const emptyItems: SettingsSidebarItem[] = [];
+const maxSidebarItems = 10;
+const maxSidebarItemNameWeight = 8;
 
 export function SidebarSettingsPage() {
   const [items, setItems] = useState<SettingsSidebarItem[]>(emptyItems);
@@ -282,6 +284,7 @@ export function SidebarSettingsPage() {
 
             <Button
               className="h-10 px-4"
+              disabled={items.length >= maxSidebarItems}
               onClick={() => setDialogState({ mode: "create" })}
               type="button"
             >
@@ -607,7 +610,7 @@ function SidebarItemDragOverlay({
 }) {
   return (
     <div
-      className="grid grid-cols-[70%_15%_15%] items-center rounded-[8px] border border-border bg-popover text-sm text-popover-foreground shadow-lg"
+      className="grid grid-cols-[70%_15%_15%] items-center rounded-[8px] border border-border/80 bg-popover/85 text-sm text-popover-foreground shadow-lg"
       style={{
         height: size?.height,
         minHeight: 72,
@@ -705,6 +708,11 @@ function SidebarItemDialog({
       return;
     }
 
+    if (getSidebarItemNameWeight(normalizedName) > maxSidebarItemNameWeight) {
+      setErrorMessage("页面名称最多 8 个字符");
+      return;
+    }
+
     await onSubmit(state, {
       name: normalizedName,
       url: normalizedUrl,
@@ -772,6 +780,14 @@ function sortSidebarItems(items: SettingsSidebarItem[]) {
   return [...items].sort(
     (left, right) => left.sort - right.sort || Number(left.id) - Number(right.id),
   );
+}
+
+function getSidebarItemNameWeight(name: string) {
+  return Array.from(name).reduce((total, char) => total + (isCjkChar(char) ? 2 : 1), 0);
+}
+
+function isCjkChar(char: string) {
+  return /\p{Script=Han}/u.test(char);
 }
 
 function getErrorMessage(error: unknown) {

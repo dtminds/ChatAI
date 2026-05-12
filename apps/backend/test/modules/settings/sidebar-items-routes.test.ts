@@ -150,6 +150,65 @@ describe("settings sidebar item routes", () => {
 
     await app.close();
   });
+
+  it("rejects sidebar items over the count and name limits", async () => {
+    const { app, authorization, db } = await createSettingsApp();
+
+    db.setSidebarItems(
+      Array.from({ length: 10 }, (_, index) => ({
+        biz_status: 1,
+        id: index + 201,
+        name: `页面${index + 1}`,
+        platform: 5,
+        show: 1,
+        sort: index + 1,
+        uid: 9001,
+        url: `https://example.com/page-${index + 1}`,
+      })),
+    );
+
+    const overCount = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        name: "页面11",
+        url: "https://example.com/page-11",
+      },
+      url: "/api/server/settings/sidebar-items",
+    });
+
+    expect(overCount.statusCode).toBe(400);
+    expect(overCount.json()).toMatchObject({
+      error: {
+        code: "SIDEBAR_ITEM_LIMIT_EXCEEDED",
+        message: "侧边栏页面最多添加 10 个",
+      },
+      success: false,
+    });
+
+    db.setSidebarItems([]);
+
+    const overNameLength = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        name: "超过四字了",
+        url: "https://example.com/too-long",
+      },
+      url: "/api/server/settings/sidebar-items",
+    });
+
+    expect(overNameLength.statusCode).toBe(400);
+    expect(overNameLength.json()).toMatchObject({
+      error: {
+        code: "INVALID_SIDEBAR_ITEM_NAME",
+        message: "页面名称最多 8 个字符",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
 });
 
 async function createSettingsApp() {
@@ -180,7 +239,7 @@ function createSettingsDbMock() {
       uid: 9001,
     },
   ];
-  const sidebarItems = [
+  let sidebarItems = [
     {
       biz_status: 1,
       id: 201,
@@ -210,6 +269,9 @@ function createSettingsDbMock() {
       values: Record<string, unknown>;
     }>,
     transactionExecutions: 0,
+    setSidebarItems: (items: typeof sidebarItems) => {
+      sidebarItems = items;
+    },
     selectFrom(table: string) {
       const wheres: Array<[string, string, unknown]> = [];
       const builder = {

@@ -3,6 +3,13 @@ import type {
   SettingsManagedAccount,
   SettingsManagedAccountsResponse,
   SettingsManagedAccountSubAccountsUpdateRequest,
+  SettingsSidebarItem,
+  SettingsSidebarItemCreateRequest,
+  SettingsSidebarItemsResponse,
+  SettingsSidebarItemsSortUpdateRequest,
+  SettingsSidebarItemStatus,
+  SettingsSidebarItemStatusUpdateRequest,
+  SettingsSidebarItemUpdateRequest,
   SettingsSubAccount,
   SettingsSubAccountCreateRequest,
   SettingsSubAccountsResponse,
@@ -76,6 +83,64 @@ export async function updateSubAccountStatus(
 export async function deleteSubAccount(subAccountId: string) {
   const response = await http.delete<ApiSuccessEnvelope<{ deleted: boolean }>>(
     `/server/settings/sub-accounts/${subAccountId}`,
+  );
+
+  return response.data;
+}
+
+export async function listSidebarItems() {
+  const response = await http.get<ApiSuccessEnvelope<SettingsSidebarItemsResponse>>(
+    "/server/settings/sidebar-items",
+  );
+
+  return response.data;
+}
+
+export async function createSidebarItem(payload: SettingsSidebarItemCreateRequest) {
+  const response = await http.post<
+    ApiSuccessEnvelope<SettingsSidebarItem>,
+    SettingsSidebarItemCreateRequest
+  >("/server/settings/sidebar-items", payload);
+
+  return response.data;
+}
+
+export async function updateSidebarItem(
+  sidebarItemId: string,
+  payload: SettingsSidebarItemUpdateRequest,
+) {
+  const response = await http.put<
+    ApiSuccessEnvelope<SettingsSidebarItem>,
+    SettingsSidebarItemUpdateRequest
+  >(`/server/settings/sidebar-items/${sidebarItemId}`, payload);
+
+  return response.data;
+}
+
+export async function updateSidebarItemStatus(
+  sidebarItemId: string,
+  status: SettingsSidebarItemStatus,
+) {
+  const response = await http.patch<
+    ApiSuccessEnvelope<SettingsSidebarItem>,
+    SettingsSidebarItemStatusUpdateRequest
+  >(`/server/settings/sidebar-items/${sidebarItemId}/status`, { status });
+
+  return response.data;
+}
+
+export async function updateSidebarItemsSort(itemIds: string[]) {
+  const response = await http.put<
+    ApiSuccessEnvelope<SettingsSidebarItemsResponse>,
+    SettingsSidebarItemsSortUpdateRequest
+  >("/server/settings/sidebar-items/sort", { itemIds });
+
+  return response.data;
+}
+
+export async function deleteSidebarItem(sidebarItemId: string) {
+  const response = await http.delete<ApiSuccessEnvelope<{ deleted: boolean }>>(
+    `/server/settings/sidebar-items/${sidebarItemId}`,
   );
 
   return response.data;

@@ -5,6 +5,7 @@ import {
   Layers01Icon,
   PaintBrush02Icon,
   ShieldUserIcon,
+  SidebarRightIcon,
   UserSettings01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -16,6 +17,7 @@ import { AccountsSettingsPage } from "@/pages/chat/settings/pages/accounts-setti
 import { AppearanceSettingsPage } from "@/pages/chat/settings/pages/appearance-settings-page";
 import { ReceptionWorkflowSettingsPage } from "@/pages/chat/settings/pages/reception-workflow-settings-page";
 import { RolePermissionSettingsPage } from "@/pages/chat/settings/pages/role-permission-settings-page";
+import { SidebarSettingsPage } from "@/pages/chat/settings/pages/sidebar-settings-page";
 import { SubAccountsSettingsPage } from "@/pages/chat/settings/pages/sub-accounts-settings-page";
 import { UiComponentDemoPage } from "@/pages/chat/settings/pages/ui-component-demo-page";
 
@@ -43,6 +45,12 @@ const settingsSections = [
     label: "接待配置",
     path: "/chat/settings/workflow",
     icon: Configuration01Icon,
+  },
+  {
+    id: "sidebar",
+    label: "侧边栏",
+    path: "/chat/settings/sidebar",
+    icon: SidebarRightIcon,
   },
   {
     id: "appearance",
@@ -99,6 +107,8 @@ function SettingsContent({ sectionId }: { sectionId: SettingsSectionId }) {
       return <RolePermissionSettingsPage />;
     case "workflow":
       return <ReceptionWorkflowSettingsPage />;
+    case "sidebar":
+      return <SidebarSettingsPage />;
     case "appearance":
       return <AppearanceSettingsPage />;
     case "ui-kit":

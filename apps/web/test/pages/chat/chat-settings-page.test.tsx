@@ -203,6 +203,41 @@ describe("Chat settings pages", () => {
       },
       success: true,
     });
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: [
+          {
+            id: "201",
+            name: "企业名片",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/card",
+          },
+          {
+            id: "202",
+            name: "发起收款",
+            sort: 2,
+            status: "active",
+            url: "https://example.com/pay",
+          },
+          {
+            id: "203",
+            name: "客户详情",
+            sort: 3,
+            status: "disabled",
+            url: "https://example.com/customer",
+          },
+          {
+            id: "204",
+            name: "快捷回复",
+            sort: 4,
+            status: "active",
+            url: "https://example.com/replies",
+          },
+        ],
+      },
+      success: true,
+    });
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     document.documentElement.classList.remove("dark");
     setSystemColorScheme(false);
@@ -265,6 +300,148 @@ describe("Chat settings pages", () => {
 
     expect(screen.getByRole("heading", { name: "权限角色" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "角色权限矩阵" })).toBeInTheDocument();
+  });
+
+  it("manages sidebar items and previews active item ordering", async () => {
+    const user = userEvent.setup();
+    mock.onPost("/server/settings/sidebar-items").reply((config) => [
+      200,
+      {
+        data: {
+          id: "205",
+          sort: 5,
+          status: "active",
+          ...JSON.parse(config.data ?? "{}"),
+        },
+        success: true,
+      },
+    ]);
+    mock.onPut("/server/settings/sidebar-items/201").reply((config) => [
+      200,
+      {
+        data: {
+          id: "201",
+          sort: 1,
+          status: "active",
+          ...JSON.parse(config.data ?? "{}"),
+        },
+        success: true,
+      },
+    ]);
+    mock.onPatch("/server/settings/sidebar-items/201/status").reply(200, {
+      data: {
+        id: "201",
+        name: "企业名片",
+        sort: 1,
+        status: "disabled",
+        url: "https://example.com/card",
+      },
+      success: true,
+    });
+    mock.onPut("/server/settings/sidebar-items/sort").reply(200, {
+      data: {
+        items: [
+          {
+            id: "202",
+            name: "发起收款",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/pay",
+          },
+          {
+            id: "201",
+            name: "企业名片",
+            sort: 2,
+            status: "active",
+            url: "https://example.com/card",
+          },
+          {
+            id: "203",
+            name: "客户详情",
+            sort: 3,
+            status: "disabled",
+            url: "https://example.com/customer",
+          },
+          {
+            id: "204",
+            name: "快捷回复",
+            sort: 4,
+            status: "active",
+            url: "https://example.com/replies",
+          },
+        ],
+      },
+      success: true,
+    });
+    mock.onDelete("/server/settings/sidebar-items/203").reply(200, {
+      data: { deleted: true },
+      success: true,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "侧边栏菜单列表" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "聊天工具栏示意图" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "移动 发起收款 到上方" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "移动 企业名片 到上方" })).toBeDisabled();
+    expect(
+      within(screen.getByRole("complementary", { name: "聊天工具栏示意图" })).queryByText(
+        "客户详情",
+      ),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "新增页面" }));
+    expect(screen.getByRole("dialog", { name: "新增侧边栏页面" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("页面名称"), "素材中心");
+    await user.type(screen.getByLabelText("页面地址"), "https://example.com/assets");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(mock.history.post).toHaveLength(1);
+    });
+    expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
+      name: "素材中心",
+      url: "https://example.com/assets",
+    });
+
+    await user.click(screen.getByRole("button", { name: "编辑 企业名片" }));
+    await user.clear(screen.getByLabelText("页面名称"));
+    await user.type(screen.getByLabelText("页面名称"), "企业名片新版");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(mock.history.put.some((request) => request.url === "/server/settings/sidebar-items/201")).toBe(
+        true,
+      );
+    });
+
+    await user.click(screen.getByRole("switch", { name: "停用 企业名片新版" }));
+    await waitFor(() => {
+      expect(mock.history.patch[0]?.url).toBe("/server/settings/sidebar-items/201/status");
+    });
+    expect(JSON.parse(mock.history.patch[0]?.data ?? "{}")).toEqual({
+      status: "disabled",
+    });
+
+    await user.click(screen.getByRole("button", { name: "移动 发起收款 到上方" }));
+    await waitFor(() => {
+      expect(mock.history.put.some((request) => request.url === "/server/settings/sidebar-items/sort")).toBe(
+        true,
+      );
+    });
+    const sortRequest = mock.history.put.find(
+      (request) => request.url === "/server/settings/sidebar-items/sort",
+    );
+    expect(JSON.parse(sortRequest?.data ?? "{}")).toEqual({
+      itemIds: ["202", "201", "203", "204", "205"],
+    });
+
+    await user.click(screen.getByRole("button", { name: "删除 客户详情" }));
+    expect(screen.getByRole("alertdialog", { name: "删除侧边栏页面" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => {
+      expect(mock.history.delete[0]?.url).toBe("/server/settings/sidebar-items/203");
+    });
   });
 
   it("creates, edits, toggles, and deletes sub-accounts from settings", async () => {

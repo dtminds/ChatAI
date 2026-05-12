@@ -27,6 +27,7 @@ type ChatPanelProps = {
   customerPanelWidth: number;
   draft: string;
   groupMembers: GroupMember[];
+  isGroupMembersLoading: boolean;
   inputEnterBehavior: InputEnterBehavior;
   isConversationLoading: boolean;
   isEmojiPickerOpen: boolean;
@@ -42,6 +43,7 @@ type ChatPanelProps = {
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onMentionInsertPositionChange: (position: MentionInsertPosition) => void;
   onRemoveMentionMember: (memberId: string) => void;
+  onRefreshGroupMembers: () => void;
   onSelectMentionMember: (member: GroupMember, triggerStart: number, triggerEnd: number) => void;
   onLoadOlderMessages: () => void;
   onMessageViewportScroll: () => void;
@@ -64,6 +66,7 @@ export function ChatPanel({
   customerPanelWidth,
   draft,
   groupMembers,
+  isGroupMembersLoading,
   inputEnterBehavior,
   isConversationLoading,
   isEmojiPickerOpen,
@@ -79,6 +82,7 @@ export function ChatPanel({
   onEnterBehaviorChange,
   onMentionInsertPositionChange,
   onRemoveMentionMember,
+  onRefreshGroupMembers,
   onSelectMentionMember,
   onLoadOlderMessages,
   onMessageViewportScroll,
@@ -163,7 +167,9 @@ export function ChatPanel({
           conversationMode={activeConversation?.mode}
           customer={customer}
           groupMembers={groupMembers}
+          isGroupMembersLoading={isGroupMembersLoading}
           isResizing={isResizingCustomerPanel}
+          onRefreshGroupMembers={onRefreshGroupMembers}
           onResizeStart={onCustomerPanelResizeStart}
           panelWidth={customerPanelWidth}
         />

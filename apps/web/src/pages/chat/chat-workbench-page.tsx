@@ -82,6 +82,7 @@ function ChatWorkbenchContent({
     bootstrapStatus,
     conversationListsByScope,
     customerProfilesById,
+    groupMembersLoadingByConversationId,
     groupMembersByConversationId,
     dismissScopeTransitionError,
     dismissReadReceiptError,
@@ -89,6 +90,7 @@ function ChatWorkbenchContent({
     historyStatusByConversationId,
     initializeWorkbench,
     isConversationLoading,
+    loadActiveGroupMembers,
     loadOlderMessages,
     me,
     messagePaginationByConversationId,
@@ -159,6 +161,10 @@ function ChatWorkbenchContent({
     activeConversation?.mode === "group"
       ? groupMembersByConversationId[activeConversation.id] ?? []
       : [];
+  const isActiveGroupMembersLoading =
+    activeConversation?.mode === "group"
+      ? groupMembersLoadingByConversationId[activeConversation.id] === true
+      : false;
   const activeHistoryStatus = activeConversation
     ? historyStatusByConversationId[activeConversation.id] ?? "idle"
     : "idle";
@@ -399,6 +405,7 @@ function ChatWorkbenchContent({
                 customerPanelWidth={customerPanelWidth}
                 draft={draft}
                 groupMembers={activeGroupMembers}
+                isGroupMembersLoading={isActiveGroupMembersLoading}
                 inputEnterBehavior={inputEnterBehavior}
                 isConversationLoading={isConversationLoading}
                 isEmojiPickerOpen={isEmojiPickerOpen}
@@ -415,6 +422,9 @@ function ChatWorkbenchContent({
                 onMentionInsertPositionChange={setMentionInsertPosition}
                 onRemoveMentionMember={handleRemoveMentionMember}
                 onSelectMentionMember={handleSelectMentionMember}
+                onRefreshGroupMembers={() => {
+                  void loadActiveGroupMembers({ force: true });
+                }}
                 onLoadOlderMessages={handleLoadOlderMessages}
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={retryFailedMessage}

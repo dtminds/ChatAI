@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import MockAdapter from "axios-mock-adapter";
-import type { WorkbenchGroupMemberDto } from "@chatai/contracts";
+import { GROUP_MEMBER_TYPE } from "@chatai/contracts";
 import { requestInstance } from "@/lib/request";
 import {
   createMockWorkbenchService,
@@ -324,22 +324,82 @@ describe("ChatWorkbenchPage", () => {
   it("shows group members in the right sidebar grouped by member type", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
+    const groupMembersGate = createDeferred<Awaited<ReturnType<typeof baseService.getGroupMembers>>>();
+    const baseGroupMembersResponse = await baseService.getGroupMembers("conv-004");
 
     setWorkbenchService({
       ...baseService,
       async getGroupMembers(conversationId) {
-        const response = await baseService.getGroupMembers(conversationId);
-        const extraMember = {
+        expect(conversationId).toBe("conv-004");
+
+        return groupMembersGate.promise;
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+
+    const sidePanel = await screen.findByRole("complementary", {
+      name: "群成员信息栏",
+    });
+
+    expect(within(sidePanel).getByRole("tab", { name: "基础信息" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("heading", { name: "群成员 · 共 0 人" })).toBeInTheDocument();
+    expect(within(sidePanel).getByTestId("dot-matrix-loader")).toBeInTheDocument();
+    expect(within(sidePanel).queryByText("暂无群成员")).not.toBeInTheDocument();
+
+    groupMembersGate.resolve({
+      conversationId: "conv-004",
+      groupSeatId: "group-seat-conv-004",
+      items: [
+        {
           avatarUrl: "",
           displayName: "👩‍💼小陈",
           nickname: undefined,
           thirdUserId: "member-emoji",
-          type: response.items.find((member) => member.displayName === "丹阳草莓")!.type,
-        } satisfies WorkbenchGroupMemberDto;
+          type: GROUP_MEMBER_TYPE.NORMAL,
+        },
+        ...baseGroupMembersResponse.items,
+      ],
+      thirdGroupId: "third-group-conv-004",
+    });
+
+    await waitFor(() => {
+      expect(within(sidePanel).queryByTestId("dot-matrix-loader")).not.toBeInTheDocument();
+    });
+
+    expect(within(sidePanel).getByRole("heading", { name: "群成员 · 共 7 人" })).toBeInTheDocument();
+    expect(within(sidePanel).getByText("群主小可")).toBeInTheDocument();
+    expect(within(sidePanel).getByText("群主")).toBeInTheDocument();
+    expect(within(sidePanel).getByText("小林")).toBeInTheDocument();
+    expect(within(sidePanel).getByText("👩‍💼")).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("heading", { name: "普通成员" })).toBeInTheDocument();
+    expect(within(sidePanel).getByText("丹阳草莓")).toBeInTheDocument();
+  });
+
+  it("refreshes cached group members from the sidebar button", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    let requestCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        requestCount += 1;
+        const response = await baseService.getGroupMembers(conversationId);
 
         return {
           ...response,
-          items: [extraMember, ...response.items],
+          items:
+            requestCount === 2
+              ? response.items.map((member) =>
+                  member.displayName === "小林"
+                    ? { ...member, displayName: "小林（刷新）" }
+                    : member,
+                )
+              : response.items,
         };
       },
     });
@@ -353,14 +413,49 @@ describe("ChatWorkbenchPage", () => {
       name: "群成员信息栏",
     });
 
-    expect(within(sidePanel).getByRole("heading", { name: "管理员" })).toBeInTheDocument();
-    expect(within(sidePanel).getByRole("heading", { name: "群成员 · 共 7 人" })).toBeInTheDocument();
-    expect(within(sidePanel).getByText("群主小可")).toBeInTheDocument();
-    expect(within(sidePanel).getByText("群主")).toBeInTheDocument();
-    expect(within(sidePanel).getByText("小林")).toBeInTheDocument();
-    expect(within(sidePanel).getByText("👩‍💼")).toBeInTheDocument();
-    expect(within(sidePanel).getByRole("heading", { name: "普通成员" })).toBeInTheDocument();
-    expect(within(sidePanel).getByText("丹阳草莓")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(sidePanel).getByText("小林")).toBeInTheDocument();
+    });
+
+    await user.click(within(sidePanel).getByRole("button", { name: "刷新群成员" }));
+
+    await waitFor(() => {
+      expect(within(sidePanel).getByText("小林（刷新）")).toBeInTheDocument();
+    });
+
+    expect(requestCount).toBe(2);
+  });
+
+  it("keeps showing loading while switching to a group conversation", async () => {
+    const user = userEvent.setup();
+    const deferred = createDeferred<Awaited<ReturnType<ReturnType<typeof createMockWorkbenchService>["getGroupMembers"]>>>();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        expect(conversationId).toBe("conv-004");
+        return deferred.promise;
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+
+    const sidePanel = await screen.findByRole("complementary", {
+      name: "群成员信息栏",
+    });
+
+    expect(within(sidePanel).getByTestId("dot-matrix-loader")).toBeInTheDocument();
+    expect(within(sidePanel).queryByText("暂无群成员")).not.toBeInTheDocument();
+
+    deferred.resolve(await baseService.getGroupMembers("conv-004"));
+
+    await waitFor(() => {
+      expect(within(sidePanel).queryByTestId("dot-matrix-loader")).not.toBeInTheDocument();
+    });
   });
 
   it("keeps member mentions available for backend group conversation ids", async () => {

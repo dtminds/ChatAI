@@ -22,7 +22,10 @@ export function DotMatrixLoader({
   const Loader = dotMatrixLoaders[type];
 
   return (
-    <div className="inline-flex shrink-0 items-center justify-center leading-none">
+    <div
+      className="inline-flex shrink-0 items-center justify-center leading-none"
+      data-testid="dot-matrix-loader"
+    >
       <Loader {...props} className={cn("text-current", className)} />
     </div>
   );

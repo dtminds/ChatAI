@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import MockAdapter from "axios-mock-adapter";
 import { requestInstance } from "@/lib/request";
 import {
@@ -12,6 +13,18 @@ import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
 const mock = new MockAdapter(requestInstance);
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      warning: vi.fn(),
+    },
+  };
+});
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -40,6 +53,7 @@ async function pasteIntoComposer(
 describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
     mock.reset();
+    vi.mocked(toast.warning).mockClear();
     resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     window.localStorage.setItem("chatai.accessToken", "access-token-001");
@@ -781,6 +795,32 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByTestId("message-content")).not.toContainElement(
       errorBanner,
     );
+  });
+
+  it("shows read receipt failures as a toast instead of a scope transition error", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async markConversationRead(conversationId) {
+        if (conversationId === "conv-002") {
+          throw new Error("标记已读失败");
+        }
+
+        return baseService.markConversationRead(conversationId);
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith("标记已读失败");
+    });
+    expect(screen.queryByTestId("scope-transition-error")).not.toBeInTheDocument();
+    expect(useWorkbenchStore.getState().readReceiptError).toBeUndefined();
   });
 
   it("logs out from the account menu and clears stored auth tokens", async () => {

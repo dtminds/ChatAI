@@ -281,5 +281,5 @@ function getClipboardImageFiles(clipboardData: DataTransfer | null) {
 }
 
 function getEventClipboardData(event: ClipboardEvent | InputEvent | KeyboardEvent) {
-  return event instanceof ClipboardEvent ? event.clipboardData : null;
+  return "clipboardData" in event ? event.clipboardData : null;
 }

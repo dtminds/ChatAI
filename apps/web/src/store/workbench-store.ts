@@ -56,6 +56,7 @@ type WorkbenchState = {
   bootstrapStatus: AsyncStatus;
   bootstrapError?: string;
   isConversationLoading: boolean;
+  readReceiptError?: string;
   scopeTransitionError?: string;
   historyStatusByConversationId: Record<string, HistoryStatus>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
@@ -67,6 +68,7 @@ type WorkbenchState = {
   activeMessageSeq: number;
   pendingMessages: Message[];
   dismissScopeTransitionError: () => void;
+  dismissReadReceiptError: () => void;
   initializeWorkbench: () => Promise<void>;
   setActiveAccount: (accountId: string) => Promise<void>;
   setActiveConversation: (conversationId: string) => Promise<void>;
@@ -97,6 +99,7 @@ function createInitialState(): Omit<
   | "loadOlderMessages"
   | "pollWorkbench"
   | "dismissScopeTransitionError"
+  | "dismissReadReceiptError"
 > {
   return {
     accounts: [],
@@ -120,6 +123,7 @@ function createInitialState(): Omit<
       jitterMs: 350,
       status: "idle",
     },
+    readReceiptError: undefined,
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
     sinceVersion: 0,
@@ -351,12 +355,50 @@ export function createWorkbenchStore() {
     return nextTakeoverStatusByAccountId;
   }
 
-  return create<WorkbenchStore>((set, get) => ({
-    ...createInitialState(),
-    dismissScopeTransitionError() {
-      set({ scopeTransitionError: undefined });
-    },
-    async takeOverAccount(accountId) {
+  return create<WorkbenchStore>((set, get) => {
+    async function markActiveConversationRead(
+      conversationId: string,
+      requestId: number,
+    ) {
+      try {
+        const readResult = await markConversationRead(conversationId);
+
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
+        set((currentState) => ({
+          ...applyReadResult(
+            currentState,
+            readResult.conversationId,
+            readResult.seatId,
+            readResult.seatUnreadCount,
+          ),
+          readReceiptError: undefined,
+        }));
+      } catch (error) {
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
+        set({
+          readReceiptError:
+            error instanceof Error && error.message
+              ? error.message
+              : "标记已读失败",
+        });
+      }
+    }
+
+    return {
+      ...createInitialState(),
+      dismissScopeTransitionError() {
+        set({ scopeTransitionError: undefined });
+      },
+      dismissReadReceiptError() {
+        set({ readReceiptError: undefined });
+      },
+      async takeOverAccount(accountId) {
       const state = get();
       const { me } = state;
 
@@ -425,6 +467,7 @@ export function createWorkbenchStore() {
         bootstrapError: undefined,
         bootstrapStatus: "loading",
       });
+      const requestId = issueScopeRequestId();
 
       try {
         const bootstrapResult = await bootstrapWorkbench(
@@ -433,6 +476,10 @@ export function createWorkbenchStore() {
           MESSAGE_PAGE_SIZE,
         );
         const conversationPage = bootstrapResult.conversationPage;
+
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
 
         set({
           accounts: bootstrapResult.accounts,
@@ -474,23 +521,10 @@ export function createWorkbenchStore() {
             bootstrapResult.me,
           )
         ) {
-          const requestId = issueScopeRequestId();
-          const readResult = await markConversationRead(
+          await markActiveConversationRead(
             bootstrapResult.activeConversationId,
+            requestId,
           );
-
-          if (!isCurrentScopeRequest(requestId)) {
-            return;
-          }
-
-          set((currentState) => ({
-            ...applyReadResult(
-              currentState,
-              readResult.conversationId,
-              readResult.seatId,
-              readResult.seatUnreadCount,
-            ),
-          }));
         }
       } catch (error) {
         set({
@@ -1082,20 +1116,7 @@ export function createWorkbenchStore() {
             get().me,
           )
         ) {
-          const readResult = await markConversationRead(scopeResult.nextConversationId);
-
-          if (!isCurrentScopeRequest(requestId)) {
-            return;
-          }
-
-          set((currentState) => ({
-            ...applyReadResult(
-              currentState,
-              readResult.conversationId,
-              readResult.seatId,
-              readResult.seatUnreadCount,
-            ),
-          }));
+          await markActiveConversationRead(scopeResult.nextConversationId, requestId);
         }
       } catch (error) {
         if (isCurrentScopeRequest(requestId)) {
@@ -1175,20 +1196,7 @@ export function createWorkbenchStore() {
           return;
         }
 
-        const readResult = await markConversationRead(conversationId);
-
-        if (!isCurrentScopeRequest(requestId)) {
-          return;
-        }
-
-        set((currentState) => ({
-          ...applyReadResult(
-            currentState,
-            readResult.conversationId,
-            readResult.seatId,
-            readResult.seatUnreadCount,
-          ),
-        }));
+        await markActiveConversationRead(conversationId, requestId);
       } catch (error) {
         if (isCurrentScopeRequest(requestId)) {
           set({
@@ -1223,7 +1231,8 @@ export function createWorkbenchStore() {
         });
       }
     },
-  }));
+    };
+  });
 }
 
 export const useWorkbenchStore = createWorkbenchStore();

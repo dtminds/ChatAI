@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { LexicalEditor } from "lexical";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { cn } from "@/lib/utils";
@@ -83,6 +84,7 @@ function ChatWorkbenchContent({
     conversationListsByScope,
     customerProfilesById,
     dismissScopeTransitionError,
+    dismissReadReceiptError,
     hasMoreHistoryByConversationId,
     historyStatusByConversationId,
     initializeWorkbench,
@@ -93,6 +95,7 @@ function ChatWorkbenchContent({
     messagesByConversationId,
     pollState,
     pollWorkbench,
+    readReceiptError,
     retryFailedMessage,
     scopeTransitionError,
     sendAgentMessageSegments,
@@ -209,6 +212,15 @@ function ChatWorkbenchContent({
   useEffect(() => {
     void initializeWorkbench();
   }, [initializeWorkbench]);
+
+  useEffect(() => {
+    if (!readReceiptError) {
+      return;
+    }
+
+    toast.warning(readReceiptError);
+    dismissReadReceiptError();
+  }, [dismissReadReceiptError, readReceiptError]);
 
   useEffect(() => {
     setIsEmojiPickerOpen(false);

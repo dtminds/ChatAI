@@ -70,6 +70,11 @@ import {
 } from "@/pages/chat/settings/settings-service";
 import { Field, PageHeader } from "@/pages/chat/settings/shared";
 
+type DragOverlaySize = {
+  height: number;
+  width: number;
+};
+
 type DialogState =
   | {
       mode: "create";
@@ -92,6 +97,7 @@ export function SidebarSettingsPage() {
   const [items, setItems] = useState<SettingsSidebarItem[]>(emptyItems);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SettingsSidebarItem | null>(null);
+  const [dragOverlaySize, setDragOverlaySize] = useState<DragOverlaySize | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -296,6 +302,24 @@ export function SidebarSettingsPage() {
           ) : !isLoading && filteredItems.length > 0 && !isSearching ? (
             <Sortable
               getItemValue={(item) => item.id}
+              onDragCancel={() => {
+                setDragOverlaySize(null);
+              }}
+              onDragEnd={() => {
+                setDragOverlaySize(null);
+              }}
+              onDragStart={(event) => {
+                const rect = event.active.rect.current.initial;
+
+                setDragOverlaySize(
+                  rect
+                    ? {
+                        height: rect.height,
+                        width: rect.width,
+                      }
+                    : null,
+                );
+              }}
               onValueChange={(nextItems) => {
                 void handleSortChange(nextItems);
               }}
@@ -326,7 +350,9 @@ export function SidebarSettingsPage() {
                 {({ value }) => {
                   const activeItem = items.find((item) => item.id === String(value));
 
-                  return activeItem ? <SidebarItemDragOverlay item={activeItem} /> : null;
+                  return activeItem ? (
+                    <SidebarItemDragOverlay item={activeItem} size={dragOverlaySize} />
+                  ) : null;
                 }}
               </SortableOverlay>
             </Sortable>
@@ -572,15 +598,29 @@ function SidebarItemRow({
   );
 }
 
-function SidebarItemDragOverlay({ item }: { item: SettingsSidebarItem }) {
+function SidebarItemDragOverlay({
+  item,
+  size,
+}: {
+  item: SettingsSidebarItem;
+  size: DragOverlaySize | null;
+}) {
   return (
-    <div className="flex w-[min(420px,calc(100vw-32px))] items-center gap-3 rounded-[8px] border border-border bg-popover px-5 py-4 text-sm text-popover-foreground shadow-lg">
-      <div className="flex min-w-0 items-center gap-3">
+    <div
+      className="grid grid-cols-[70%_15%_15%] items-center rounded-[8px] border border-border bg-popover text-sm text-popover-foreground shadow-lg"
+      style={{
+        height: size?.height,
+        width: size?.width,
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-3 px-5">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-[6px] text-muted-foreground">
           <HugeiconsIcon icon={DragDropVerticalIcon} size={18} />
         </span>
         <span className="truncate font-medium">{item.name}</span>
       </div>
+      <div aria-hidden="true" />
+      <div aria-hidden="true" />
     </div>
   );
 }

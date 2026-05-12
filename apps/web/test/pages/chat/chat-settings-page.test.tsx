@@ -451,11 +451,11 @@ describe("Chat settings pages", () => {
     const paymentDragHandle = screen.getByRole("button", { name: "拖动 发起收款 调整排序" });
     const updatedCardRow = screen.getByRole("row", { name: /企业名片新版/ });
     const rowRects = [
-      [updatedCardRow, { bottom: 40, top: 0 }],
-      [screen.getByRole("row", { name: /客户详情/ }), { bottom: 80, top: 40 }],
-      [screen.getByRole("row", { name: /发起收款/ }), { bottom: 120, top: 80 }],
-      [screen.getByRole("row", { name: /快捷回复/ }), { bottom: 160, top: 120 }],
-      [screen.getByRole("row", { name: /素材中心/ }), { bottom: 200, top: 160 }],
+      [updatedCardRow, { bottom: 40, right: 720, top: 0 }],
+      [screen.getByRole("row", { name: /客户详情/ }), { bottom: 80, right: 720, top: 40 }],
+      [screen.getByRole("row", { name: /发起收款/ }), { bottom: 120, right: 720, top: 80 }],
+      [screen.getByRole("row", { name: /快捷回复/ }), { bottom: 160, right: 720, top: 120 }],
+      [screen.getByRole("row", { name: /素材中心/ }), { bottom: 200, right: 720, top: 160 }],
     ] as const;
     const rectSpies = rowRects.map(([row, rect]) =>
       vi.spyOn(row, "getBoundingClientRect").mockReturnValue(createDomRect(rect)),

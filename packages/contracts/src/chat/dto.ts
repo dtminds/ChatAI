@@ -207,6 +207,14 @@ export type WorkbenchConversationReadResponse = {
 
 export type WorkbenchConversationUnreadResponse = WorkbenchConversationReadResponse;
 
+export type WorkbenchConversationPinResponse = {
+  conversationId: string;
+  seatId: string;
+  isPinned: boolean;
+};
+
+export type WorkbenchConversationUnpinResponse = WorkbenchConversationPinResponse;
+
 export type WorkbenchGroupMemberType =
   (typeof GROUP_MEMBER_TYPE)[keyof typeof GROUP_MEMBER_TYPE];
 

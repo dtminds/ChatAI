@@ -1,5 +1,7 @@
 import type {
+  WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
+  WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
   WorkbenchConversationSummaryDto,
   WorkbenchGroupMembersResponse,
@@ -45,6 +47,10 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchConversationUnreadResponse> | WorkbenchConversationUnreadResponse;
+  pinConversation(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchConversationPinResponse> | WorkbenchConversationPinResponse;
   poll(
     subUserId: string,
     request: WorkbenchPollRequest,
@@ -57,6 +63,10 @@ export type WorkbenchService = {
     subUserId: string,
     seatId: string,
   ): Promise<WorkbenchTakeOverSeatResponse> | WorkbenchTakeOverSeatResponse;
+  unpinConversation(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchConversationUnpinResponse> | WorkbenchConversationUnpinResponse;
 };
 
 export class MysqlWorkbenchService implements WorkbenchService {
@@ -171,6 +181,22 @@ export class MysqlWorkbenchService implements WorkbenchService {
     };
   }
 
+  async pinConversation(subUserId: string, conversationId: string) {
+    const conversation = await this.getOperableConversation(subUserId, conversationId);
+
+    await this.javaClient.pinConversation({
+      conversationId: conversation.id,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
+    return {
+      conversationId: conversation.id,
+      isPinned: true,
+      seatId: conversation.seatId,
+    };
+  }
+
   async poll(subUserId: string, request: WorkbenchPollRequest) {
     if (request.currentSeatId) {
       await this.assertSeatAccess(subUserId, request.currentSeatId);
@@ -213,6 +239,22 @@ export class MysqlWorkbenchService implements WorkbenchService {
     await this.assertSeatAccess(subUserId, seatId);
 
     return this.javaClient.takeOverSeat({ seatId, subUserId });
+  }
+
+  async unpinConversation(subUserId: string, conversationId: string) {
+    const conversation = await this.getOperableConversation(subUserId, conversationId);
+
+    await this.javaClient.unpinConversation({
+      conversationId: conversation.id,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
+    return {
+      conversationId: conversation.id,
+      isPinned: false,
+      seatId: conversation.seatId,
+    };
   }
 
   private async assertSeatAccess(subUserId: string, seatId: string) {

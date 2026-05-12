@@ -25,12 +25,16 @@ export function ConversationCard({
   isActive,
   onMarkRead,
   onMarkUnread,
+  onPin,
+  onUnpin,
   onSelect,
 }: {
   conversation: Conversation;
   isActive: boolean;
   onMarkRead?: () => void;
   onMarkUnread?: () => void;
+  onPin?: () => void;
+  onUnpin?: () => void;
   onSelect: () => void;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -38,6 +42,7 @@ export function ConversationCard({
     {
       label: conversation.isPinned ? "取消置顶" : "置顶",
       icon: conversation.isPinned ? PinOffIcon : PinIcon,
+      onSelect: conversation.isPinned ? onUnpin : onPin,
     },
     conversation.unread > 0
       ? { label: "标记已读", icon: ChatDone01Icon, onSelect: onMarkRead }

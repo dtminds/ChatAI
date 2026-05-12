@@ -178,6 +178,38 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/pin",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) => {
+      return getWorkbenchService(app).pinConversation(
+        getSubUserId(request),
+        request.params.conversationId,
+      );
+    },
+  );
+
+  app.post<{ Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/unpin",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) => {
+      return getWorkbenchService(app).unpinConversation(
+        getSubUserId(request),
+        request.params.conversationId,
+      );
+    },
+  );
+
   app.get<{ Params: ConversationParams }>(
     "/api/server/conversations/:conversationId/group-members",
     {

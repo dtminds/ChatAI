@@ -489,7 +489,7 @@ export function ChatComposer({
                 {selectedMentionMembers.map((member) => (
                   <div
                     key={member.id}
-                    className="flex items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-sm"
+                    className="flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-sm"
                   >
                     <MentionMemberAvatar member={member} />
                     <span className="min-w-0 flex-1 truncate">{member.displayName}</span>
@@ -526,7 +526,7 @@ export function ChatComposer({
               <button
                 aria-selected={index === activeMentionIndex}
                 className={cn(
-                  "flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-popover-foreground outline-none transition-colors hover:bg-surface-hover",
+                  "flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[13px] text-popover-foreground outline-none transition-colors hover:bg-surface-hover",
                   index === activeMentionIndex && "bg-surface-hover",
                 )}
                 key={member.id}
@@ -601,7 +601,7 @@ function MentionMemberAvatar({ member }: { member: GroupMember }) {
     return (
       <span
         aria-hidden="true"
-        className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/15 font-semibold text-[11px] text-muted-foreground"
+        className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-primary/15 font-semibold text-[10px] text-muted-foreground"
       >
         {member.displayName.slice(0, 1)}
       </span>
@@ -609,7 +609,7 @@ function MentionMemberAvatar({ member }: { member: GroupMember }) {
   }
 
   return (
-    <span className="relative flex size-6 shrink-0 overflow-hidden rounded-md">
+    <span className="relative flex size-5 shrink-0 overflow-hidden rounded-[6px]">
       <img
         alt=""
         aria-hidden="true"

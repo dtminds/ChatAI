@@ -2,6 +2,7 @@ import {
   adaptAccount,
   adaptConversation,
   adaptEmployee,
+  adaptGroupMember,
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
 import type {
@@ -18,6 +19,7 @@ import type {
   Conversation,
   CustomerProfile,
   EmployeeProfile,
+  GroupMember,
   Message,
   MessageStatus,
 } from "@/pages/chat/chat-types";
@@ -187,6 +189,14 @@ export async function loadConversationMessagesPage(
     nextBeforeSeq: page.nextBeforeSeq,
     skippedHiddenCount: page.filteredCount,
   };
+}
+
+export async function loadGroupMembers(
+  conversationId: string,
+): Promise<GroupMember[]> {
+  const response = await getWorkbenchService().getGroupMembers(conversationId);
+
+  return response.items.map(adaptGroupMember);
 }
 
 export async function markConversationRead(

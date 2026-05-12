@@ -220,26 +220,37 @@ export const seedGroupMembersByConversationId: Record<string, GroupMember[]> = {
       id: "member-001",
       displayName: "小林",
       avatarUrl: customerAvatarXiaoyuUrl,
+      type: 1,
     },
     {
       id: "member-002",
       displayName: "睿白鸽",
       avatarUrl: customerAvatarRuiUrl,
+      type: 0,
+    },
+    {
+      id: "member-owner",
+      displayName: "群主小可",
+      avatarUrl: agentAvatarUrl,
+      type: 2,
     },
     {
       id: "member-003",
       displayName: "丹阳草莓",
       avatarUrl: customerAvatarUrl,
+      type: 0,
     },
     {
       id: "member-004",
       displayName: "德瑞可-小可",
       avatarUrl: agentAvatarUrl,
+      type: 0,
     },
     {
       id: "member-005",
       displayName: "睡觉",
       avatarUrl: customerAvatarSleepUrl,
+      type: 0,
     },
   ],
 };

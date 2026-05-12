@@ -1,4 +1,9 @@
-import type { WorkbenchMessagePageDto } from "@chatai/contracts";
+import {
+  GROUP_MEMBER_TYPE,
+  type WorkbenchGroupMemberDto,
+  type WorkbenchGroupMembersResponse,
+  type WorkbenchMessagePageDto,
+} from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
@@ -12,6 +17,13 @@ import {
   type MessageRow,
   type SeatRow,
 } from "./workbench-mappers.js";
+const BIZ_STATUS_ACTIVE = 1;
+const CHAT_TYPE_GROUP = 2;
+const GROUP_MEMBER_SORT_RANK = {
+  [GROUP_MEMBER_TYPE.OWNER]: 0,
+  [GROUP_MEMBER_TYPE.ADMIN]: 1,
+  [GROUP_MEMBER_TYPE.NORMAL]: 2,
+} as const;
 
 export type ConversationLookup = {
   id: string;
@@ -282,6 +294,65 @@ export class WorkbenchRepository {
           seatId: String(row.seat_id),
         }
       : undefined;
+  }
+
+  async listGroupMembers(conversationId: string): Promise<WorkbenchGroupMembersResponse | undefined> {
+    const conversationNumericId = parseMySqlId(conversationId);
+
+    if (conversationNumericId == null) {
+      return undefined;
+    }
+
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .innerJoin("xy_wap_embed_group_seat as group_seat", (join) =>
+        join
+          .onRef("group_seat.third_group_id", "=", "conversation.third_group_id")
+          .onRef("group_seat.uid", "=", "conversation.uid")
+          .onRef("group_seat.platform", "=", "conversation.platform"),
+      )
+      .select([
+        "conversation.id as conversation_id",
+        "conversation.third_group_id as third_group_id",
+        "conversation.uid as uid",
+        "conversation.platform as platform",
+        "group_seat.id as group_seat_id",
+      ])
+      .where("conversation.id", "=", conversationNumericId)
+      .where("conversation.chat_type", "=", CHAT_TYPE_GROUP)
+      .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("group_seat.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .executeTakeFirst();
+
+    if (!conversation) {
+      return undefined;
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_group_member as member")
+      .select([
+        "member.third_userid as third_user_id",
+        "member.avatar as avatar_url",
+        "member.name as name",
+        "member.nickname as nickname",
+        "member.type as type",
+      ])
+      .where("member.group_seat_id", "=", conversation.group_seat_id)
+      .where("member.uid", "=", conversation.uid)
+      .where("member.platform", "=", conversation.platform)
+      .where("member.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .execute();
+
+    const items = rows
+      .map((row) => mapGroupMemberRow(row as GroupMemberRow))
+      .sort(sortGroupMembers);
+
+    return {
+      conversationId: String(conversation.conversation_id),
+      groupSeatId: String(conversation.group_seat_id),
+      items,
+      thirdGroupId: conversation.third_group_id,
+    };
   }
 
   async listMessages(
@@ -610,4 +681,50 @@ function parseMySqlId(value: string) {
   }
 
   return numeric;
+}
+
+type GroupMemberRow = {
+  avatar_url: string | null;
+  name: string | null;
+  nickname: string | null;
+  third_user_id: string;
+  type: number | null;
+};
+
+function mapGroupMemberRow(row: GroupMemberRow): WorkbenchGroupMemberDto {
+  return {
+    avatarUrl: row.avatar_url ?? "",
+    displayName: row.nickname?.trim() || row.name?.trim() || row.third_user_id,
+    nickname: row.nickname?.trim() || undefined,
+    thirdUserId: row.third_user_id,
+    type: normalizeGroupMemberType(row.type),
+  };
+}
+
+function normalizeGroupMemberType(value: number | null): WorkbenchGroupMemberDto["type"] {
+  if (value === GROUP_MEMBER_TYPE.ADMIN || value === GROUP_MEMBER_TYPE.OWNER) {
+    return value;
+  }
+
+  return GROUP_MEMBER_TYPE.NORMAL;
+}
+
+function sortGroupMembers(left: WorkbenchGroupMemberDto, right: WorkbenchGroupMemberDto) {
+  const leftRank = getGroupMemberRank(left.type);
+  const rightRank = getGroupMemberRank(right.type);
+
+  if (leftRank !== rightRank) {
+    return leftRank - rightRank;
+  }
+
+  const leftName = left.displayName.localeCompare(right.displayName, "zh-Hans-CN");
+  if (leftName !== 0) {
+    return leftName;
+  }
+
+  return left.thirdUserId.localeCompare(right.thirdUserId, "zh-Hans-CN");
+}
+
+function getGroupMemberRank(type: WorkbenchGroupMemberDto["type"]) {
+  return GROUP_MEMBER_SORT_RANK[type];
 }

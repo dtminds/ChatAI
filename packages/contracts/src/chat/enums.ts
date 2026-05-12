@@ -12,5 +12,11 @@ export const TakeoverStatusSchema = Type.Union([
   Type.Literal("TAKEN_BY_OTHER"),
 ]);
 
+export const GROUP_MEMBER_TYPE = {
+  NORMAL: 0,
+  ADMIN: 1,
+  OWNER: 2,
+} as const;
+
 export type LoginStatus = Static<typeof LoginStatusSchema>;
 export type TakeoverStatus = Static<typeof TakeoverStatusSchema>;

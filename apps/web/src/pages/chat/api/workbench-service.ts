@@ -1,6 +1,7 @@
 import {
   seedAccounts,
   seedConversations,
+  seedGroupMembersByConversationId,
   seedMessages,
 } from "@/pages/chat/mock-data";
 import { http } from "@/lib/request";
@@ -10,6 +11,7 @@ import {
   type WorkbenchConversationChangeDto,
   type WorkbenchConversationReadResponse,
   type WorkbenchConversationSummaryDto,
+  type WorkbenchGroupMembersResponse,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
   type WorkbenchMessagePageDto,
@@ -28,6 +30,7 @@ export type WorkbenchService = {
   getConversations: (seatId: string) => Promise<WorkbenchConversationSummaryDto[]>;
   getMe: () => Promise<WorkbenchSubUserDto>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
+  getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
@@ -63,6 +66,7 @@ type MockState = {
   conversationsByAccount: Record<string, WorkbenchConversationSummaryDto[]>;
   subUser: WorkbenchSubUserDto;
   events: WorkbenchEvent[];
+  groupMembersByConversationId: Record<string, WorkbenchGroupMembersResponse["items"]>;
   messagesByConversationId: Record<string, WorkbenchMessageDto[]>;
   nextId: number;
   version: number;
@@ -135,6 +139,18 @@ export function createMockWorkbenchService(): WorkbenchService {
         nextBeforeSeq: scannedMessages[0]?.seq,
         scannedCount: scannedMessages.length,
       };
+    },
+    async getGroupMembers(conversationId) {
+      const members =
+        state.groupMembersByConversationId[conversationId] ??
+        state.groupMembersByConversationId["conv-004"];
+
+      return clone({
+        conversationId,
+        groupSeatId: `group-seat-${conversationId}`,
+        items: members,
+        thirdGroupId: `third-group-${conversationId}`,
+      });
     },
     async markConversationRead(conversationId) {
       const conversation = findConversation(state, conversationId);
@@ -316,6 +332,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
         },
       );
     },
+    getGroupMembers(conversationId) {
+      return http.get<WorkbenchGroupMembersResponse>(
+        `/server/conversations/${conversationId}/group-members`,
+      );
+    },
     markConversationRead(conversationId) {
       return http.post<WorkbenchConversationReadResponse>(
         `/server/conversations/${conversationId}/read`,
@@ -391,6 +412,17 @@ function buildInitialState(): MockState {
       ),
     ]),
   ) as Record<string, WorkbenchMessageDto[]>;
+  const groupMembersByConversationId = Object.fromEntries(
+    Object.entries(seedGroupMembersByConversationId).map(([conversationId, members]) => [
+      conversationId,
+      members.map((member) => ({
+        avatarUrl: member.avatarUrl ?? "",
+        displayName: member.displayName,
+        thirdUserId: member.id,
+        type: member.type,
+      })),
+    ]),
+  ) as MockState["groupMembersByConversationId"];
 
   return {
     seats,
@@ -400,6 +432,7 @@ function buildInitialState(): MockState {
       subUserId: CURRENT_SUB_USER_ID,
     },
     events: [],
+    groupMembersByConversationId,
     messagesByConversationId,
     nextId: 1,
     version: INITIAL_VERSION,

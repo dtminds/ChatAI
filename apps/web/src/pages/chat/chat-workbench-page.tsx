@@ -23,9 +23,8 @@ import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
-import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
 import { useWorkbenchStore } from "@/store/workbench-store";
-import type { ChatMode, GroupMember } from "@/pages/chat/chat-types";
+import type { GroupMember } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import {
   CONVERSATION_LIST_PANEL_WIDTH,
@@ -83,6 +82,7 @@ function ChatWorkbenchContent({
     bootstrapStatus,
     conversationListsByScope,
     customerProfilesById,
+    groupMembersByConversationId,
     dismissScopeTransitionError,
     dismissReadReceiptError,
     hasMoreHistoryByConversationId,
@@ -155,9 +155,10 @@ function ChatWorkbenchContent({
     ) ?? visibleConversations[0];
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ?? [];
-  const activeGroupMembers = activeConversation
-    ? getGroupMembersForConversation(activeConversation.id, activeConversation.mode)
-    : [];
+  const activeGroupMembers =
+    activeConversation?.mode === "group"
+      ? groupMembersByConversationId[activeConversation.id] ?? []
+      : [];
   const activeHistoryStatus = activeConversation
     ? historyStatusByConversationId[activeConversation.id] ?? "idle"
     : "idle";
@@ -471,16 +472,4 @@ function formatSegmentsWithMentions({
       type: "text",
     },
   ];
-}
-
-function getGroupMembersForConversation(conversationId: string, mode: ChatMode) {
-  if (mode !== "group") {
-    return [];
-  }
-
-  return (
-    seedGroupMembersByConversationId[conversationId] ??
-    seedGroupMembersByConversationId["conv-004"] ??
-    []
-  );
 }

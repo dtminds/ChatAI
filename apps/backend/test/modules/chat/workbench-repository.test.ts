@@ -89,6 +89,7 @@ describe("WorkbenchRepository", () => {
       messages: [],
       scannedCount: 0,
     });
+    await expect(repository.listGroupMembers("not-a-conversation")).resolves.toBeUndefined();
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
   });
 

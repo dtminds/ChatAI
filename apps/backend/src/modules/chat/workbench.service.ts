@@ -1,6 +1,7 @@
 import type {
   WorkbenchConversationReadResponse,
   WorkbenchConversationSummaryDto,
+  WorkbenchGroupMembersResponse,
   WorkbenchMessageDto,
   WorkbenchMessagePageDto,
   WorkbenchPollRequest,
@@ -29,6 +30,10 @@ export type WorkbenchService = {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ): Promise<WorkbenchMessagePageDto> | WorkbenchMessagePageDto;
+  getGroupMembers(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchGroupMembersResponse> | WorkbenchGroupMembersResponse;
   getSeats(subUserId: string): Promise<WorkbenchSeatDto[]> | WorkbenchSeatDto[];
   markConversationRead(
     subUserId: string,
@@ -93,6 +98,24 @@ export class MysqlWorkbenchService implements WorkbenchService {
       beforeSeq: options?.beforeSeq,
       limit: options?.limit ?? 30,
     });
+  }
+
+  async getGroupMembers(subUserId: string, conversationId: string) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const groupMembers = await this.repository.listGroupMembers(conversationId);
+
+    if (!groupMembers) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    return groupMembers;
   }
 
   async markConversationRead(subUserId: string, conversationId: string) {

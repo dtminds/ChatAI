@@ -128,21 +128,23 @@ function GroupMembersPanel({ groupMembers }: { groupMembers: GroupMember[] }) {
 
   return (
     <ScrollArea className="h-full min-h-0">
-      <div className="space-y-5 px-4 py-4">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">群成员</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            共 {groupMembers.length} 人
-          </p>
-        </div>
+      <div className="space-y-4 px-4 py-4">
+        <h2 className="text-sm font-semibold leading-5 text-foreground whitespace-nowrap">
+          群成员 · 共 {groupMembers.length} 人
+        </h2>
 
         {groups.length > 0 ? (
           groups.map((group) => (
-            <section className="space-y-2" key={group.label}>
-              <h3 className="text-xs font-medium text-muted-foreground">
+            <section className="space-y-1.5" key={group.label}>
+              <h3
+                className={cn(
+                  "text-xs font-medium leading-4",
+                  group.label === "管理员" ? "text-success" : "text-warning",
+                )}
+              >
                 {group.label}
               </h3>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {group.items.map((member) => (
                   <GroupMemberRow key={member.id} member={member} />
                 ))}
@@ -161,20 +163,20 @@ function GroupMembersPanel({ groupMembers }: { groupMembers: GroupMember[] }) {
 
 function GroupMemberRow({ member }: { member: GroupMember }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-[6px] px-1 py-2">
-      <Avatar className="size-8 shrink-0">
+    <div className="flex min-w-0 items-center gap-2 rounded-[6px] px-1 py-1.5">
+      <Avatar className="size-7 shrink-0">
         <AvatarImage alt={member.displayName} src={member.avatarUrl} />
-        <AvatarFallback className="text-xs">
+        <AvatarFallback className="text-[11px]">
           {member.displayName.slice(0, 1)}
         </AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-foreground">
+        <div className="truncate text-[13px] font-medium leading-4 text-foreground">
           {member.displayName}
         </div>
       </div>
       {member.type === GROUP_MEMBER_TYPE.OWNER ? (
-        <Badge variant="secondary" className="shrink-0 rounded-[6px] text-[11px]">
+        <Badge variant="secondary" className="h-4 shrink-0 rounded-[4px] px-1 text-[10px]">
           群主
         </Badge>
       ) : null}

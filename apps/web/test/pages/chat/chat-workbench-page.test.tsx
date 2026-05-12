@@ -333,6 +333,7 @@ describe("ChatWorkbenchPage", () => {
     });
 
     expect(within(sidePanel).getByRole("heading", { name: "管理员" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("heading", { name: "群成员 · 共 6 人" })).toBeInTheDocument();
     expect(within(sidePanel).getByText("群主小可")).toBeInTheDocument();
     expect(within(sidePanel).getByText("群主")).toBeInTheDocument();
     expect(within(sidePanel).getByText("小林")).toBeInTheDocument();

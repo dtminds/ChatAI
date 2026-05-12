@@ -239,10 +239,68 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
   });
+
+  it("rejects delete when the conversation seat is not taken over by the current sub-user", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "202",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.deleteConversation("101", "88")).rejects.toMatchObject({
+      code: "SEAT_NOT_TAKEN_OVER",
+      statusCode: 403,
+    });
+    expect(javaClient.deleteConversation).not.toHaveBeenCalled();
+  });
+
+  it("deletes a taken-over conversation through Java and hides it locally", async () => {
+    const javaClient = createJavaClient();
+    const hideConversation = vi.fn().mockResolvedValue(undefined);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+        hideConversation,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.deleteConversation("101", "88")).resolves.toEqual({
+      conversationId: "88",
+      seatId: "12",
+    });
+    expect(javaClient.deleteConversation).toHaveBeenCalledWith({
+      conversationId: "88",
+      platform: 5,
+      uid: 9001,
+    });
+    expect(hideConversation).toHaveBeenCalledWith({
+      conversationId: "88",
+      platform: 5,
+      uid: 9001,
+    });
+  });
 });
 
 function createJavaClient(): WorkbenchJavaClient {
   return {
+    deleteConversation: vi.fn().mockResolvedValue(undefined),
     markConversationRead: vi.fn().mockResolvedValue(undefined),
     markConversationUnread: vi.fn().mockResolvedValue(undefined),
     pinConversation: vi.fn().mockResolvedValue(undefined),

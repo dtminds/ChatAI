@@ -835,6 +835,32 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("deletes conversations from the row action menu", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const observedConversationIds: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async deleteConversation(conversationId) {
+        observedConversationIds.push(conversationId);
+
+        return baseService.deleteConversation(conversationId);
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getAllByRole("button", { name: "会话操作" })[1]);
+    await user.click(screen.getByRole("menuitem", { name: "不显示" }));
+
+    await waitFor(() => {
+      expect(observedConversationIds).toEqual(["conv-002"]);
+    });
+    expect(screen.queryByText("睿白鸽")).not.toBeInTheDocument();
+  });
+
   it("does not show removed chat header actions", async () => {
     render(<ChatWorkbenchPage />);
 

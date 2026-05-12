@@ -17,6 +17,7 @@ import {
   type MessageRow,
   type SeatRow,
 } from "./workbench-mappers.js";
+const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
 const CHAT_TYPE_GROUP = 2;
 const GROUP_MEMBER_SORT_RANK = {
@@ -391,6 +392,29 @@ export class WorkbenchRepository {
       .updateTable("xy_wap_embed_conversation")
       .set({
         pinned_time: input.isPinned ? Math.floor(Date.now() / 1000) : 0,
+      })
+      .where("id", "=", conversationNumericId)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .execute();
+  }
+
+  async hideConversation(input: {
+    conversationId: string;
+    platform: number;
+    uid: number;
+  }) {
+    const conversationNumericId = parseMySqlId(input.conversationId);
+
+    if (conversationNumericId == null) {
+      return;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_conversation")
+      .set({
+        biz_status: BIZ_STATUS_HIDDEN,
       })
       .where("id", "=", conversationNumericId)
       .where("uid", "=", input.uid)

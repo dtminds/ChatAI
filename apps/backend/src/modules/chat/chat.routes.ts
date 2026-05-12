@@ -210,6 +210,22 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/delete",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) => {
+      return getWorkbenchService(app).deleteConversation(
+        getSubUserId(request),
+        request.params.conversationId,
+      );
+    },
+  );
+
   app.get<{ Params: ConversationParams }>(
     "/api/server/conversations/:conversationId/group-members",
     {

@@ -106,6 +106,7 @@ function ChatWorkbenchContent({
     setActiveAccount,
     setActiveConversation,
     setActiveMode,
+    sidebarItems,
     takeOverAccount,
     takeoverStatusByAccountId,
   } = useWorkbenchStore();
@@ -419,6 +420,7 @@ function ChatWorkbenchContent({
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
                 messageViewportRef={messageViewportRef}
+                sidebarItems={sidebarItems}
                 onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
                 onDraftChange={handleDraftChange}
                 onEmojiPickerOpenChange={setIsEmojiPickerOpen}

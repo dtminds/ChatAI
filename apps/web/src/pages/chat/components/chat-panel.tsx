@@ -14,6 +14,7 @@ import type {
   GroupMember,
   Message,
 } from "@/pages/chat/chat-types";
+import type { SettingsSidebarItem } from "@chatai/contracts";
 import type { MentionInsertPosition } from "@/pages/chat/components/chat-composer";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
@@ -51,6 +52,7 @@ type ChatPanelProps = {
   onSendDraft: (segments: ComposerSegment[]) => void;
   onDismissScopeTransitionError: () => void;
   scopeTransitionError?: string;
+  sidebarItems: SettingsSidebarItem[];
   messageViewportRef: RefObject<HTMLDivElement | null>;
   composerRef: RefObject<LexicalEditor | null>;
   workbenchBodyRef: RefObject<HTMLDivElement | null>;
@@ -90,6 +92,7 @@ export function ChatPanel({
   onSendDraft,
   onDismissScopeTransitionError,
   scopeTransitionError,
+  sidebarItems,
   messageViewportRef,
   composerRef,
   workbenchBodyRef,
@@ -172,6 +175,7 @@ export function ChatPanel({
           onRefreshGroupMembers={onRefreshGroupMembers}
           onResizeStart={onCustomerPanelResizeStart}
           panelWidth={customerPanelWidth}
+          sidebarItems={sidebarItems}
         />
       </div>
     </section>

@@ -8,6 +8,7 @@ import type {
   CustomerProfile,
   GroupMember,
 } from "@/pages/chat/chat-types";
+import type { SettingsSidebarItem } from "@chatai/contracts";
 
 type CustomerSidePanelProps = {
   accountName?: string;
@@ -17,6 +18,7 @@ type CustomerSidePanelProps = {
   isGroupMembersLoading: boolean;
   isResizing: boolean;
   panelWidth: number;
+  sidebarItems: SettingsSidebarItem[];
   onRefreshGroupMembers: () => void;
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 };
@@ -29,10 +31,14 @@ export function CustomerSidePanel({
   isGroupMembersLoading,
   isResizing,
   panelWidth,
+  sidebarItems,
   onRefreshGroupMembers,
   onResizeStart,
 }: CustomerSidePanelProps) {
   const isGroupConversation = conversationMode === "group";
+  const activeSidebarItems = sortSidebarItems(sidebarItems).filter(
+    (item) => item.status === "active",
+  );
 
   return (
     <>
@@ -67,12 +73,15 @@ export function CustomerSidePanel({
               >
                 <span className="truncate">基础信息</span>
               </TabsTrigger>
-              <TabsTrigger
-                className="h-10 min-w-0 rounded-none bg-transparent px-0 py-2 text-[13px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                value="baidu"
-              >
-                <span className="truncate">百度</span>
-              </TabsTrigger>
+              {activeSidebarItems.map((item) => (
+                <TabsTrigger
+                  className="h-10 min-w-0 rounded-none bg-transparent px-0 py-2 text-[13px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                  key={item.id}
+                  value={getSidebarTabValue(item)}
+                >
+                  <span className="truncate">{item.name}</span>
+                </TabsTrigger>
+              ))}
             </TabsList>
           </div>
 
@@ -88,15 +97,44 @@ export function CustomerSidePanel({
             )}
           </TabsContent>
 
-          <TabsContent className="mt-0 min-h-0 flex-1 overflow-hidden" value="baidu">
-            <iframe
-              className="h-full w-full border-0 bg-background"
-              src="https://www.baidu.com"
-              title="百度客户扩展页"
-            />
-          </TabsContent>
+          {activeSidebarItems.map((item) => (
+            <TabsContent
+              className="mt-0 min-h-0 flex-1 overflow-hidden"
+              key={item.id}
+              value={getSidebarTabValue(item)}
+            >
+              <iframe
+                className="h-full w-full border-0 bg-background"
+                src={item.url}
+                title={`${item.name}扩展页`}
+              />
+            </TabsContent>
+          ))}
         </Tabs>
       </aside>
     </>
   );
+}
+
+function getSidebarTabValue(item: SettingsSidebarItem) {
+  return `sidebar:${item.id}`;
+}
+
+function sortSidebarItems(items: SettingsSidebarItem[]) {
+  return [...items].sort((left, right) => {
+    const sortDiff = left.sort - right.sort;
+
+    if (sortDiff !== 0) {
+      return sortDiff;
+    }
+
+    const leftId = Number(left.id);
+    const rightId = Number(right.id);
+
+    if (Number.isFinite(leftId) && Number.isFinite(rightId)) {
+      return leftId - rightId;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
 }

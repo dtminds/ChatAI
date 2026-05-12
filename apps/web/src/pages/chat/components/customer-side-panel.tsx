@@ -12,6 +12,7 @@ import type { SettingsSidebarItem } from "@chatai/contracts";
 import { sortSidebarItems } from "@/pages/chat/lib/sidebar-items";
 
 const collapsedSidebarEntryCount = 4;
+const sidebarExpandedStorageKey = "chatai.customerSidePanel.sidebarExpanded";
 
 type CustomerSidePanelProps = {
   accountName?: string;
@@ -42,7 +43,7 @@ export function CustomerSidePanel({
   const activeSidebarItems = sortSidebarItems(sidebarItems).filter(
     (item) => item.status === "active",
   );
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(readSidebarExpandedPreference);
   const sidebarEntries = [
     { id: "system", kind: "system" as const, name: "基础信息", value: "system" },
     ...activeSidebarItems.map((item) => ({
@@ -98,7 +99,14 @@ export function CustomerSidePanel({
             {hasOverflowSidebarEntries ? (
               <button
                 className="h-10 shrink-0 px-0 py-2 text-[13px] font-medium text-primary hover:text-primary/85 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
-                onClick={() => setIsSidebarExpanded((current) => !current)}
+                onClick={() => {
+                  setIsSidebarExpanded((current) => {
+                    const nextValue = !current;
+                    writeSidebarExpandedPreference(nextValue);
+
+                    return nextValue;
+                  });
+                }}
                 type="button"
               >
                 {isSidebarExpanded ? "收起" : "展开"}
@@ -126,6 +134,8 @@ export function CustomerSidePanel({
             >
               <iframe
                 className="h-full w-full border-0 bg-background"
+                referrerPolicy="no-referrer-when-downgrade"
+                sandbox="allow-scripts allow-same-origin allow-forms"
                 src={item.url}
                 title={`${item.name}扩展页`}
               />
@@ -139,4 +149,20 @@ export function CustomerSidePanel({
 
 function getSidebarTabValue(item: SettingsSidebarItem) {
   return `sidebar:${item.id}`;
+}
+
+function readSidebarExpandedPreference() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.localStorage.getItem(sidebarExpandedStorageKey) === "true";
+}
+
+function writeSidebarExpandedPreference(isExpanded: boolean) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(sidebarExpandedStorageKey, String(isExpanded));
 }

@@ -210,6 +210,50 @@ describe("settings sidebar item routes", () => {
     await app.close();
   });
 
+  it("rejects invalid and non-HTTPS sidebar item URLs", async () => {
+    const { app, authorization } = await createSettingsApp();
+
+    const invalidUrl = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        name: "素材中心",
+        url: "not-a-url",
+      },
+      url: "/api/server/settings/sidebar-items",
+    });
+
+    expect(invalidUrl.statusCode).toBe(400);
+    expect(invalidUrl.json()).toMatchObject({
+      error: {
+        code: "INVALID_SIDEBAR_URL",
+        message: "请输入有效的页面地址",
+      },
+      success: false,
+    });
+
+    const httpUrl = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        name: "素材中心",
+        url: "http://example.com/assets",
+      },
+      url: "/api/server/settings/sidebar-items",
+    });
+
+    expect(httpUrl.statusCode).toBe(400);
+    expect(httpUrl.json()).toMatchObject({
+      error: {
+        code: "INVALID_SIDEBAR_URL",
+        message: "页面地址必须使用 HTTPS 协议",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
   it("accepts safe bigint insert ids when creating sidebar items", async () => {
     const { app, authorization, db } = await createSettingsApp();
 

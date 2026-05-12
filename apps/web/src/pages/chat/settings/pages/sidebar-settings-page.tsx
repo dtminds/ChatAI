@@ -785,7 +785,7 @@ function getSidebarItemNameWeight(name: string) {
 }
 
 function isCjkChar(char: string) {
-  return /\p{Script=Han}/u.test(char);
+  return /[^\x00-\xff]/.test(char);
 }
 
 function getErrorMessage(error: unknown) {

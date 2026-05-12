@@ -311,6 +311,18 @@ function normalizeSidebarPayload(payload: {
     throw new BadRequestError("INVALID_SIDEBAR_ITEM", "请完整填写侧边栏页面信息");
   }
 
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    throw new BadRequestError("INVALID_SIDEBAR_URL", "请输入有效的页面地址");
+  }
+
+  if (parsedUrl.protocol !== "https:") {
+    throw new BadRequestError("INVALID_SIDEBAR_URL", "页面地址必须使用 HTTPS 协议");
+  }
+
   if (getSidebarItemNameWeight(name) > maxSidebarItemNameWeight) {
     throw new BadRequestError("INVALID_SIDEBAR_ITEM_NAME", "页面名称最多 8 个字符");
   }
@@ -329,7 +341,7 @@ function getNextSortFromRows(rows: SidebarItemRow[]) {
 }
 
 function isCjkChar(char: string) {
-  return /\p{Script=Han}/u.test(char);
+  return /[^\x00-\xff]/.test(char);
 }
 
 function normalizeSidebarItemIds(rawItemIds: string[]) {

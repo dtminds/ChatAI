@@ -390,7 +390,7 @@ export class WorkbenchRepository {
     await this.db
       .updateTable("xy_wap_embed_conversation")
       .set({
-        pinned_time: input.isPinned ? Date.now() : 0,
+        pinned_time: input.isPinned ? Math.floor(Date.now() / 1000) : 0,
       })
       .where("id", "=", conversationNumericId)
       .where("uid", "=", input.uid)

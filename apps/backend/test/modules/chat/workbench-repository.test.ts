@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MessageRow } from "../../../src/modules/chat/workbench-mappers.js";
 import { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
 
@@ -170,6 +170,7 @@ describe("WorkbenchRepository", () => {
   it("updates conversation pinned time in tenant scope", async () => {
     const updates: Array<Record<string, unknown>> = [];
     const wheres: Array<[string, string, unknown]> = [];
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_778_564_899_123);
     const repository = new WorkbenchRepository(
       {
         updateTable(table: string) {
@@ -201,15 +202,14 @@ describe("WorkbenchRepository", () => {
       uid: 9001,
     });
 
-    expect(updates).toHaveLength(1);
-    expect(updates[0]?.pinned_time).toEqual(expect.any(Number));
-    expect(Number(updates[0]?.pinned_time)).toBeGreaterThan(0);
+    expect(updates).toEqual([{ pinned_time: 1_778_564_899 }]);
     expect(wheres).toEqual([
       ["id", "=", 88],
       ["uid", "=", 9001],
       ["platform", "=", 5],
       ["biz_status", "=", 1],
     ]);
+    nowSpy.mockRestore();
   });
 
   it("clears conversation pinned time in tenant scope", async () => {

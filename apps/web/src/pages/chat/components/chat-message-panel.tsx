@@ -28,6 +28,7 @@ export function ChatMessagePanel({
     <section className="relative min-h-0 flex-1 bg-surface">
       <div
         className="h-full min-h-0 overflow-hidden"
+        data-scrollbar-visibility="scroll"
         data-testid="message-scroll-area"
       >
         <div

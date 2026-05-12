@@ -420,6 +420,50 @@ describe("useWorkbenchStore", () => {
     expect(conv002?.unread).toBe(0);
   });
 
+  it("does not let bootstrap read receipts reclaim a newer account switch", async () => {
+    const baseService = createMockWorkbenchService();
+    const bootstrapMessagesStarted = createDeferred();
+    const bootstrapMessagesGate = createDeferred();
+    const accountSwitchMessagesStarted = createDeferred();
+    const accountSwitchMessagesGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          bootstrapMessagesStarted.resolve();
+          await bootstrapMessagesGate.promise;
+        }
+
+        if (conversationId === "conv-005" && options?.beforeSeq == null) {
+          accountSwitchMessagesStarted.resolve();
+          await accountSwitchMessagesGate.promise;
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    const initializePromise = useWorkbenchStore.getState().initializeWorkbench();
+
+    await bootstrapMessagesStarted.promise;
+    const accountSwitchPromise = useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    await accountSwitchMessagesStarted.promise;
+    bootstrapMessagesGate.resolve();
+    await initializePromise;
+
+    accountSwitchMessagesGate.resolve();
+    await accountSwitchPromise;
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.activeConversationId).toBe("conv-005");
+    expect(state.isConversationLoading).toBe(false);
+    expect(state.messagesByConversationId["conv-005"]).toBeDefined();
+  });
+
   it("isolates scope request tracking across store instances", async () => {
     const baseService = createMockWorkbenchService();
     const slowConversationGate = createDeferred();
@@ -711,5 +755,50 @@ describe("useWorkbenchStore", () => {
 
     expect(state.isConversationLoading).toBe(false);
     expect(state.scopeTransitionError).toBe("切换会话失败");
+  });
+
+  it("captures read receipt errors without marking the conversation transition as failed", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async markConversationRead(conversationId) {
+        if (conversationId === "conv-002") {
+          throw new Error("标记已读失败");
+        }
+
+        return baseService.markConversationRead(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeConversationId).toBe("conv-002");
+    expect(state.isConversationLoading).toBe(false);
+    expect(state.scopeTransitionError).toBeUndefined();
+    expect(state.readReceiptError).toBe("标记已读失败");
+  });
+
+  it("uses a fallback read receipt error when the thrown error message is empty", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async markConversationRead(conversationId) {
+        if (conversationId === "conv-002") {
+          throw new Error("");
+        }
+
+        return baseService.markConversationRead(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    expect(useWorkbenchStore.getState().readReceiptError).toBe("标记已读失败");
   });
 });

@@ -18,7 +18,7 @@ type CustomerSidePanelProps = {
   isGroupMembersLoading: boolean;
   isResizing: boolean;
   panelWidth: number;
-  sidebarItems: SettingsSidebarItem[];
+  sidebarItems?: SettingsSidebarItem[];
   onRefreshGroupMembers: () => void;
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 };
@@ -31,7 +31,7 @@ export function CustomerSidePanel({
   isGroupMembersLoading,
   isResizing,
   panelWidth,
-  sidebarItems,
+  sidebarItems = [],
   onRefreshGroupMembers,
   onResizeStart,
 }: CustomerSidePanelProps) {

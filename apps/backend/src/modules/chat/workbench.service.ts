@@ -1,5 +1,6 @@
 import type {
   WorkbenchConversationReadResponse,
+  WorkbenchConversationUnreadResponse,
   WorkbenchConversationSummaryDto,
   WorkbenchGroupMembersResponse,
   WorkbenchMessageDto,
@@ -13,6 +14,7 @@ import type {
   WorkbenchTakeOverSeatResponse,
 } from "@chatai/contracts";
 import {
+  ForbiddenError,
   NotFoundError,
   UnauthorizedError,
 } from "../../shared/errors.js";
@@ -39,6 +41,10 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchConversationReadResponse> | WorkbenchConversationReadResponse;
+  markConversationUnread(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchConversationUnreadResponse> | WorkbenchConversationUnreadResponse;
   poll(
     subUserId: string,
     request: WorkbenchPollRequest,
@@ -119,15 +125,50 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async markConversationRead(subUserId: string, conversationId: string) {
-    const conversation = await this.repository.getConversationLookup(conversationId);
+    const conversation = await this.getOperableConversation(subUserId, conversationId);
 
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
+    await this.javaClient.markConversationRead({
+      conversationId: conversation.id,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
 
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    const seatUnreadCount = await this.repository.getSeatUnreadCountAfterMarkRead({
+      conversationId: conversation.id,
+      platform: conversation.platform,
+      seatId: conversation.seatId,
+      uid: conversation.uid,
+    });
 
-    return this.javaClient.markConversationRead({ conversationId, subUserId });
+    return {
+      conversationId: conversation.id,
+      seatId: conversation.seatId,
+      seatUnreadCount,
+      unreadCount: 0,
+    };
+  }
+
+  async markConversationUnread(subUserId: string, conversationId: string) {
+    const conversation = await this.getOperableConversation(subUserId, conversationId);
+
+    await this.javaClient.markConversationUnread({
+      conversationId: conversation.id,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
+    const nextUnreadCount = 1;
+    const nextSeatUnreadCount = Math.max(
+      0,
+      conversation.seatUnreadCount + nextUnreadCount - conversation.unreadCount,
+    );
+
+    return {
+      conversationId: conversation.id,
+      seatId: conversation.seatId,
+      seatUnreadCount: nextSeatUnreadCount,
+      unreadCount: nextUnreadCount,
+    };
   }
 
   async poll(subUserId: string, request: WorkbenchPollRequest) {
@@ -180,5 +221,21 @@ export class MysqlWorkbenchService implements WorkbenchService {
     if (!canAccess) {
       throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
     }
+  }
+
+  private async getOperableConversation(subUserId: string, conversationId: string) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (conversation.seatHostSubUserId !== subUserId) {
+      throw new ForbiddenError("SEAT_NOT_TAKEN_OVER", "当前账号尚未由你接管");
+    }
+
+    return conversation;
   }
 }

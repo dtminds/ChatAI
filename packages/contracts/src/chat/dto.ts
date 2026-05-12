@@ -205,6 +205,8 @@ export type WorkbenchConversationReadResponse = {
   seatUnreadCount: number;
 };
 
+export type WorkbenchConversationUnreadResponse = WorkbenchConversationReadResponse;
+
 export type WorkbenchGroupMemberType =
   (typeof GROUP_MEMBER_TYPE)[keyof typeof GROUP_MEMBER_TYPE];
 

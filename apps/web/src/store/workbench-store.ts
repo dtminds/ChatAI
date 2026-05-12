@@ -6,6 +6,7 @@ import {
   loadAccountScope,
   loadConversationMessagesPage,
   markConversationRead,
+  markConversationUnread,
   pollWorkbench,
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
@@ -74,10 +75,12 @@ type WorkbenchState = {
   dismissScopeTransitionError: () => void;
   dismissReadReceiptError: () => void;
   initializeWorkbench: () => Promise<void>;
+  markConversationRead: (conversationId: string) => Promise<void>;
   setActiveAccount: (accountId: string) => Promise<void>;
   setActiveConversation: (conversationId: string) => Promise<void>;
   setActiveMode: (mode: ChatMode) => Promise<void>;
   loadActiveGroupMembers: (options?: { force?: boolean }) => Promise<void>;
+  markConversationUnread: (conversationId: string) => Promise<void>;
   sendAgentMessageSegments: (segments: ComposerSegment[]) => Promise<void>;
   sendAgentTextMessage: (text: string) => Promise<void>;
   takeOverAccount: (accountId: string) => Promise<void>;
@@ -94,10 +97,12 @@ const MESSAGE_PAGE_SIZE = 50;
 function createInitialState(): Omit<
   WorkbenchState,
   | "initializeWorkbench"
+  | "markConversationRead"
   | "setActiveAccount"
   | "setActiveConversation"
   | "setActiveMode"
   | "loadActiveGroupMembers"
+  | "markConversationUnread"
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
   | "takeOverAccount"
@@ -258,6 +263,38 @@ function applyReadResult(
         ? {
             ...conversation,
             unread: 0,
+          }
+        : conversation,
+  );
+
+  return {
+    accounts: state.accounts.map((account) =>
+      account.id === accountId
+        ? {
+            ...account,
+            unreadCount: seatUnreadCount,
+          }
+        : account,
+    ),
+    conversationListsByScope: {
+      ...state.conversationListsByScope,
+      [accountId]: nextConversations,
+    },
+  };
+}
+
+function applyUnreadResult(
+  state: WorkbenchStore,
+  conversationId: string,
+  accountId: string,
+  seatUnreadCount: number,
+) {
+  const nextConversations = (state.conversationListsByScope[accountId] ?? []).map(
+    (conversation) =>
+      conversation.id === conversationId
+        ? {
+            ...conversation,
+            unread: 1,
           }
         : conversation,
   );
@@ -503,6 +540,60 @@ export function createWorkbenchStore() {
       },
       dismissReadReceiptError() {
         set({ readReceiptError: undefined });
+      },
+      async markConversationUnread(conversationId) {
+        const state = get();
+        const conversation = getConversationById(state, conversationId);
+        const account = state.accounts.find(
+          (item) => item.id === conversation?.accountId,
+        );
+
+        if (
+          !conversation ||
+          conversation.unread > 0 ||
+          !isAccountTakenOverByCurrentUser(account, state.me)
+        ) {
+          return;
+        }
+
+        try {
+          const unreadResult = await markConversationUnread(conversationId);
+
+          set((currentState) => ({
+            ...applyUnreadResult(
+              currentState,
+              unreadResult.conversationId,
+              unreadResult.seatId,
+              unreadResult.seatUnreadCount,
+            ),
+            readReceiptError: undefined,
+          }));
+        } catch (error) {
+          set({
+            readReceiptError:
+              error instanceof Error && error.message
+                ? error.message
+                : "标记未读失败",
+          });
+        }
+      },
+      async markConversationRead(conversationId) {
+        const requestId = latestScopeRequestId;
+        const state = get();
+        const conversation = getConversationById(state, conversationId);
+        const account = state.accounts.find(
+          (item) => item.id === conversation?.accountId,
+        );
+
+        if (
+          !conversation ||
+          conversation.unread <= 0 ||
+          !isAccountTakenOverByCurrentUser(account, state.me)
+        ) {
+          return;
+        }
+
+        await markActiveConversationRead(conversationId, requestId);
       },
       async loadActiveGroupMembers(options) {
         const state = get();

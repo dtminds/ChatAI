@@ -40,6 +40,12 @@ chatai-prod
 
 测试环境和生产环境应使用相同镜像构建流程，通过不同 ConfigMap / Secret 区分配置。云上测试环境也建议使用 `NODE_ENV=production`，避免走本地测试 mock 或开发兜底逻辑。
 
+三类环境的 Java 内部接口约定如下：
+
+- 开发环境：`JAVA_INTERNAL_API_BASE_URL=https://scrm-api-test01.st.iyouke.com/`
+- 测试环境：使用测试 Java 内部地址，由测试 namespace 的 Secret / ConfigMap 提供
+- 生产环境：使用生产 Java 内部地址，由生产 namespace 的 Secret / ConfigMap 提供
+
 ## 构建前检查
 
 发布镜像前先在 CI 或本地执行：
@@ -160,6 +166,8 @@ JAVA_INTERNAL_API_TOKEN=<java-internal-api-token>
 - `NODE_ENV=production` 时必须配置 `JWT_PRIVATE_KEY` 和 `JWT_PUBLIC_KEY`，否则 backend 会拒绝启动。
 - 云上真实环境必须配置 `DATABASE_URL`。未配置数据库时 backend 会退到内存服务，只适合本地开发。
 - `JAVA_INTERNAL_API_BASE_URL` 和 `JAVA_INTERNAL_API_TOKEN` 用于转发发送消息、会话已读、席位接管等写操作。
+- `JAVA_INTERNAL_API_BASE_URL` 只应配置在 backend 所在环境，不要放进 web 的 `VITE_*` 构建变量。
+- 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。
 - `REDIS_ENABLED=false` 是当前阶段可接受配置，Redis 不是必需依赖。
 
 ## Ingress 路由

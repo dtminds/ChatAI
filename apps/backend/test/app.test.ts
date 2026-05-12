@@ -909,6 +909,45 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("updates unread state and emits poll changes after marking a conversation unread", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const unread = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/conversations/conv-002/unread",
+    });
+    const poll = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
+    });
+
+    expect(unread.statusCode).toBe(200);
+    expect(unread.json()).toMatchObject({
+      conversationId: "conv-002",
+      seatId: "drc",
+      unreadCount: 1,
+    });
+    expect(unread.json().seatUnreadCount).toBeGreaterThan(0);
+    expect(poll.statusCode).toBe(200);
+    expect(poll.json()).toMatchObject({
+      activeConversationMessages: [],
+      nextVersion: expect.any(Number),
+    });
+    expect(poll.json().seatChanges[0]).toMatchObject({
+      seatId: "drc",
+      unreadCount: unread.json().seatUnreadCount,
+    });
+    expect(poll.json().conversationChanges[0]).toMatchObject({
+      conversationId: "conv-002",
+      type: "upsert",
+      unreadCount: 1,
+    });
+
+    await app.close();
+  });
+
   it("accepts sent messages and reports final send status through polling", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

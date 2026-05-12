@@ -27,7 +27,12 @@ const GROUP_MEMBER_SORT_RANK = {
 
 export type ConversationLookup = {
   id: string;
+  platform: number;
   seatId: string;
+  seatHostSubUserId?: string;
+  seatUnreadCount: number;
+  uid: number;
+  unreadCount: number;
 };
 
 export class WorkbenchRepository {
@@ -283,17 +288,91 @@ export class WorkbenchRepository {
           .onRef("seat.uid", "=", "conversation.uid")
           .onRef("seat.platform", "=", "conversation.platform"),
       )
-      .select(["conversation.id as id", "seat.id as seat_id"])
+      .select([
+        "conversation.id as id",
+        "conversation.platform as platform",
+        "conversation.unread_cnt as unread_cnt",
+        "conversation.uid as uid",
+        "seat.host_sub_id as seat_host_sub_id",
+        "seat.id as seat_id",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder
+          .selectFrom("xy_wap_embed_conversation as unread_conversation")
+          .select((subExpressionBuilder) =>
+            subExpressionBuilder.fn
+              .coalesce(
+                subExpressionBuilder.fn.sum<number>("unread_conversation.unread_cnt"),
+                subExpressionBuilder.val(0),
+              )
+              .as("seat_unread_count"),
+          )
+          .whereRef("unread_conversation.uid", "=", "conversation.uid")
+          .whereRef("unread_conversation.platform", "=", "conversation.platform")
+          .whereRef("unread_conversation.third_userid", "=", "conversation.third_userid")
+          .where("unread_conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+          .as("seat_unread_count"),
+      ])
       .where("conversation.id", "=", conversationNumericId)
       .where("conversation.biz_status", "=", 1)
+      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
       .executeTakeFirst();
 
     return row
       ? {
           id: String(row.id),
+          platform: row.platform,
           seatId: String(row.seat_id),
+          seatHostSubUserId:
+            row.seat_host_sub_id == null || row.seat_host_sub_id <= 0
+              ? undefined
+              : String(row.seat_host_sub_id),
+          seatUnreadCount: Number(row.seat_unread_count ?? 0),
+          uid: row.uid,
+          unreadCount: Number(row.unread_cnt ?? 0),
         }
       : undefined;
+  }
+
+  async getSeatUnreadCountAfterMarkRead(input: {
+    conversationId: string;
+    platform: number;
+    seatId: string;
+    uid: number;
+  }) {
+    const conversationNumericId = parseMySqlId(input.conversationId);
+    const seatNumericId = parseMySqlId(input.seatId);
+
+    if (conversationNumericId == null || seatNumericId == null) {
+      return 0;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select((expressionBuilder) =>
+        expressionBuilder.fn
+          .coalesce(
+            expressionBuilder.fn.sum<number>("unread_cnt"),
+            expressionBuilder.val(0),
+          )
+          .as("unread_count"),
+      )
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("id", "!=", conversationNumericId)
+      .where("third_userid", "=", (expressionBuilder) =>
+        expressionBuilder
+          .selectFrom("xy_wap_embed_user_seat")
+          .select("third_userid")
+          .where("id", "=", seatNumericId)
+          .where("uid", "=", input.uid)
+          .where("platform", "=", input.platform)
+          .where("biz_status", "=", BIZ_STATUS_ACTIVE),
+      )
+      .executeTakeFirst();
+
+    return Number(row?.unread_count ?? 0);
   }
 
   async listGroupMembers(conversationId: string): Promise<WorkbenchGroupMembersResponse | undefined> {

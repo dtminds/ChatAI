@@ -6,6 +6,7 @@ import type { Message } from "@/pages/chat/chat-types";
 type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
   hasMoreHistory: boolean;
+  historyLoadLabel?: string;
   isConversationLoading: boolean;
   messages: Message[];
   onLoadOlderMessages: () => void;
@@ -17,6 +18,7 @@ type ChatMessagePanelProps = {
 export function ChatMessagePanel({
   activeHistoryStatus,
   hasMoreHistory,
+  historyLoadLabel,
   isConversationLoading,
   messages,
   onLoadOlderMessages,
@@ -58,7 +60,7 @@ export function ChatMessagePanel({
                   >
                     {activeHistoryStatus === "loading"
                       ? "正在加载更早对话..."
-                      : "加载更早的对话"}
+                      : historyLoadLabel ?? "加载更早的对话"}
                   </button>
                 </div>
               ) : null}

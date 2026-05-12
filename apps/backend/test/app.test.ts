@@ -673,8 +673,15 @@ describe("backend app", () => {
       unreadCount: 2,
     });
     expect(messages.statusCode).toBe(200);
-    expect(messages.json()).toHaveLength(5);
-    expect(messages.json()[0]).toMatchObject({
+    expect(messages.json()).toMatchObject({
+      filteredCount: 0,
+      hasMore: true,
+      messages: expect.any(Array),
+      nextBeforeSeq: 5,
+      scannedCount: 5,
+    });
+    expect(messages.json().messages).toHaveLength(5);
+    expect(messages.json().messages[0]).toMatchObject({
       conversationId: "conv-001",
       seq: 5,
     });
@@ -762,7 +769,33 @@ describe("backend app", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual([]);
+    expect(response.json()).toEqual({
+      filteredCount: 0,
+      hasMore: false,
+      messages: [],
+      scannedCount: 0,
+    });
+
+    await app.close();
+  });
+
+  it("returns cursor progress when a message page only contains hidden revoke events", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations/conv-revoke-only/messages?limit=2",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      filteredCount: 2,
+      hasMore: true,
+      messages: [],
+      nextBeforeSeq: 9,
+      scannedCount: 2,
+    });
 
     await app.close();
   });
@@ -955,7 +988,7 @@ describe("backend app", () => {
       },
     ]);
     expect(messages.statusCode).toBe(200);
-    expect(messages.json().slice(-3)).toMatchObject([
+    expect(messages.json().messages.slice(-3)).toMatchObject([
       {
         clientMessageId: "local-segment-test-001",
         content: {

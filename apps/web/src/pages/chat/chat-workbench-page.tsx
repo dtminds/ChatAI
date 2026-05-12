@@ -91,6 +91,7 @@ function ChatWorkbenchContent({
     isConversationLoading,
     loadOlderMessages,
     me,
+    messagePaginationByConversationId,
     messagesByConversationId,
     pollState,
     pollWorkbench,
@@ -163,6 +164,13 @@ function ChatWorkbenchContent({
   const hasMoreHistory = activeConversation
     ? hasMoreHistoryByConversationId[activeConversation.id] === true
     : false;
+  const skippedHiddenCount = activeConversation
+    ? messagePaginationByConversationId[activeConversation.id]?.skippedHiddenCount ?? 0
+    : 0;
+  const historyLoadLabel =
+    skippedHiddenCount > 0
+      ? `已跳过 ${skippedHiddenCount} 条不可展示记录，继续加载更早消息`
+      : undefined;
   const activeCustomer =
     (activeConversation &&
       customerProfilesById[activeConversation.customerId]) ??
@@ -396,6 +404,7 @@ function ChatWorkbenchContent({
                 isResizingCustomerPanel={isResizingCustomerPanel}
                 mentionInsertPosition={mentionInsertPosition}
                 hasMoreHistory={hasMoreHistory}
+                historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
                 messageViewportRef={messageViewportRef}
                 onCustomerPanelResizeStart={handleCustomerPanelResizeStart}

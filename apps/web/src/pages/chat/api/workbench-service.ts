@@ -12,6 +12,7 @@ import {
   type WorkbenchConversationSummaryDto,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
+  type WorkbenchMessagePageDto,
   type WorkbenchMessageStatus,
   type WorkbenchMessageStatusChangeDto,
   type WorkbenchPollRequest,
@@ -26,7 +27,7 @@ export type WorkbenchService = {
   getSeats: () => Promise<WorkbenchSeatDto[]>;
   getConversations: (seatId: string) => Promise<WorkbenchConversationSummaryDto[]>;
   getMe: () => Promise<WorkbenchSubUserDto>;
-  getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessageDto[]>;
+  getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
@@ -109,12 +110,31 @@ export function createMockWorkbenchService(): WorkbenchService {
       );
       const beforeSeq = options?.beforeSeq;
       const limit = options?.limit ?? 30;
-      const visibleMessages =
-        beforeSeq == null
-          ? messages.slice(-limit)
-          : messages.filter((message) => message.seq < beforeSeq).slice(-limit);
+      if (limit <= 0) {
+        return {
+          filteredCount: 0,
+          hasMore: false,
+          messages: [],
+          scannedCount: 0,
+        };
+      }
 
-      return clone(visibleMessages);
+      const candidateMessages =
+        beforeSeq == null
+          ? messages
+          : messages.filter((message) => message.seq < beforeSeq);
+      const scannedMessages = candidateMessages.slice(-(limit + 1)).slice(-limit);
+      const visibleMessages = scannedMessages.filter(
+        (message) => message.contentType !== "system" || message.content.type !== "revoke",
+      );
+
+      return {
+        filteredCount: scannedMessages.length - visibleMessages.length,
+        hasMore: candidateMessages.length > limit,
+        messages: clone(visibleMessages),
+        nextBeforeSeq: scannedMessages[0]?.seq,
+        scannedCount: scannedMessages.length,
+      };
     },
     async markConversationRead(conversationId) {
       const conversation = findConversation(state, conversationId);
@@ -286,7 +306,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.get<WorkbenchSubUserDto>("/server/me");
     },
     getMessages(conversationId, options) {
-      return http.get<WorkbenchMessageDto[]>(
+      return http.get<WorkbenchMessagePageDto>(
         `/server/conversations/${conversationId}/messages`,
         {
           params: {

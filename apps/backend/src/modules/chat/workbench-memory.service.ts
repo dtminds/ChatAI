@@ -6,6 +6,7 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchSubUserDto,
   WorkbenchMessageDto,
+  WorkbenchMessagePageDto,
   WorkbenchMessageStatus,
   WorkbenchMessageStatusChangeDto,
   WorkbenchPollRequest,
@@ -93,15 +94,32 @@ export function createMemoryWorkbenchService() {
       );
       const beforeSeq = options?.beforeSeq;
       const limit = options?.limit ?? 30;
-      const visibleMessages =
-        beforeSeq == null
-          ? sliceLatest(messages, limit)
-          : sliceLatest(
-              messages.filter((message) => message.seq < beforeSeq),
-              limit,
-            );
+      if (limit <= 0) {
+        return {
+          filteredCount: 0,
+          hasMore: false,
+          messages: [],
+          scannedCount: 0,
+        } satisfies WorkbenchMessagePageDto;
+      }
 
-      return clone(visibleMessages);
+      const candidateMessages =
+        beforeSeq == null
+          ? messages
+          : messages.filter((message) => message.seq < beforeSeq);
+      const scannedMessages =
+        sliceLatest(candidateMessages, limit + 1).slice(-limit);
+      const visibleMessages = scannedMessages.filter(
+        (message) => message.contentType !== "system" || message.content.type !== "revoke",
+      );
+
+      return {
+        filteredCount: scannedMessages.length - visibleMessages.length,
+        hasMore: candidateMessages.length > limit,
+        messages: clone(visibleMessages),
+        nextBeforeSeq: scannedMessages[0]?.seq,
+        scannedCount: scannedMessages.length,
+      } satisfies WorkbenchMessagePageDto;
     },
     markConversationRead(
       _subUserId: string,
@@ -269,6 +287,7 @@ function buildInitialState(): MemoryWorkbenchState {
       conversation("conv-002", "drc", "cust-002", "睿白鸽", customerAvatarRuiUrl, "早餐能不能换成酸奶和坚果？", "2026-04-13 15:04:16", 0, "single", "medium"),
       conversation("conv-003", "drc", "cust-003", "+1.", customerAvatarPlusUrl, "体重平台期了，今天想加一次有氧。", "2026-04-13 05:09:59", 4, "single", "medium"),
       conversation("conv-004", "drc", "cust-004", "营养群-4月减脂冲刺", customerAvatarGroupUrl, "今天的打卡图请统一发到群公告下方。", "2026-04-11 09:44:38", 7, "group", "low"),
+      conversation("conv-revoke-only", "drc", "cust-revoke-only", "撤回测试", customerAvatarUrl, "[撤回消息]", "2026-04-10 10:01:00", 0, "single", "low"),
     ]),
     ndt: sortConversations([
       conversation("conv-005", "ndt", "cust-005", "小宇._", customerAvatarXiaoyuUrl, "好，那我今天先从晚餐控碳开始。", "2026-04-14 10:39:38", 1, "single", "medium"),
@@ -310,6 +329,11 @@ function buildInitialState(): MemoryWorkbenchState {
       ],
       "conv-004": [
         message("msg-013", "conv-004", "drc", "cust-004", "system", "system", { text: "群聊占位数据，后续可在轮询模型稳定后单独扩展。" }, "2026-04-11 09:44:38", 1, "read"),
+      ],
+      "conv-revoke-only": [
+        message("msg-revoke-009", "conv-revoke-only", "drc", "cust-revoke-only", "system", "system", { revokeMsgId: "516", revokeOriginMsgId: "1022531", type: "revoke" }, "2026-04-10 10:00:00", 9, "read"),
+        message("msg-revoke-010", "conv-revoke-only", "drc", "cust-revoke-only", "system", "system", { revokeMsgId: "517", revokeOriginMsgId: "1022532", type: "revoke" }, "2026-04-10 10:01:00", 10, "read"),
+        message("msg-revoke-older", "conv-revoke-only", "drc", "cust-revoke-only", "customer", "text", { text: "更早的可展示消息" }, "2026-04-10 09:59:00", 8, "read"),
       ],
       "conv-005": [
         message("msg-014", "conv-005", "ndt", "cust-005", "customer", "text", { text: "好，那我今天先从晚餐控碳开始。" }, "2026-04-14 10:39:38", 1, "read"),

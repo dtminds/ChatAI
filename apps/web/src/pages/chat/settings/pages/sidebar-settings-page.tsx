@@ -92,7 +92,7 @@ type PendingAction =
   | `status:${string}`;
 
 const emptyItems: SettingsSidebarItem[] = [];
-const maxSidebarItems = 10;
+const maxSidebarItems = 8;
 const maxSidebarItemNameWeight = 8;
 
 export function SidebarSettingsPage() {
@@ -641,7 +641,7 @@ function SidebarPreview({ items }: { items: SettingsSidebarItem[] }) {
         <div className="flex h-12 items-center justify-center border-b border-primary/30 bg-primary text-sm font-semibold text-primary-foreground">
           聊天工具栏
         </div>
-        <div className="grid grid-cols-2 border-divider bg-surface text-sm text-foreground sm:grid-cols-3">
+        <div className="grid grid-cols-4 border-divider bg-surface text-sm text-foreground">
           {activeItems.map((item) => (
             <div
               className="flex h-14 min-w-0 items-center justify-center border-b border-r border-divider px-2 text-center last:border-r-0"

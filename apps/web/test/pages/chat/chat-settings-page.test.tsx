@@ -532,7 +532,7 @@ describe("Chat settings pages", () => {
     mock.resetHandlers();
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
-        items: Array.from({ length: 10 }, (_, index) => ({
+        items: Array.from({ length: 8 }, (_, index) => ({
           id: String(index + 1),
           name: `页面${index + 1}`,
           sort: index + 1,

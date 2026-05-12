@@ -146,21 +146,25 @@ export class SidebarItemsSettingsService {
       throw new BadRequestError("INVALID_SIDEBAR_SORT", "侧边栏排序无效");
     }
 
-    await Promise.all(
-      itemIds.map((itemId, index) =>
-        this.db
-          .updateTable("xy_wap_embed_sider_bar_config")
-          .set({
-            sort: index + 1,
-            update_time: new Date(),
-          })
-          .where("id", "=", itemId)
-          .where("uid", "=", scope.uid)
-          .where("platform", "=", scope.platform)
-          .where("biz_status", "=", dbActiveStatus)
-          .execute(),
-      ),
-    );
+    const now = new Date();
+
+    await this.db.transaction().execute(async (trx) => {
+      await Promise.all(
+        itemIds.map((itemId, index) =>
+          trx
+            .updateTable("xy_wap_embed_sider_bar_config")
+            .set({
+              sort: index + 1,
+              update_time: now,
+            })
+            .where("id", "=", itemId)
+            .where("uid", "=", scope.uid)
+            .where("platform", "=", scope.platform)
+            .where("biz_status", "=", dbActiveStatus)
+            .execute(),
+        ),
+      );
+    });
 
     return this.list(currentSubUserId);
   }

@@ -444,6 +444,41 @@ describe("Chat settings pages", () => {
     });
   });
 
+  it("keeps sidebar preview fallback ordering aligned with numeric database ids", async () => {
+    mock.resetHandlers();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: [
+          {
+            id: "10",
+            name: "十号页面",
+            sort: 9,
+            status: "active",
+            url: "https://example.com/ten",
+          },
+          {
+            id: "2",
+            name: "二号页面",
+            sort: 9,
+            status: "active",
+            url: "https://example.com/two",
+          },
+        ],
+      },
+      success: true,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    const fallbackPreviewItems = within(
+      await screen.findByRole("complementary", { name: "聊天工具栏示意图" }),
+    ).getAllByText(/号页面/);
+
+    expect(fallbackPreviewItems.map((item) => item.textContent)).toEqual([
+      "二号页面",
+      "十号页面",
+    ]);
+  });
+
   it("creates, edits, toggles, and deletes sub-accounts from settings", async () => {
     const user = userEvent.setup();
     mock.onPost("/server/settings/sub-accounts").reply((config) => [

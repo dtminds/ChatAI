@@ -97,6 +97,11 @@ describe("settings sidebar item routes", () => {
     expect(disable.statusCode).toBe(200);
     expect(sort.statusCode).toBe(200);
     expect(remove.statusCode).toBe(200);
+    expect(db.transactionExecutions).toBe(1);
+    const sortUpdateTimes = db.updatedSidebarItems.slice(2, 5).map((item) =>
+      item.values.update_time,
+    );
+    expect(new Set(sortUpdateTimes).size).toBe(1);
     expect(db.updatedSidebarItems).toEqual([
       {
         id: 202,
@@ -204,6 +209,7 @@ function createSettingsDbMock() {
       id: number | undefined;
       values: Record<string, unknown>;
     }>,
+    transactionExecutions: 0,
     selectFrom(table: string) {
       const wheres: Array<[string, string, unknown]> = [];
       const builder = {
@@ -308,6 +314,14 @@ function createSettingsDbMock() {
       };
 
       return builder;
+    },
+    transaction() {
+      return {
+        execute: async (callback: (trx: typeof state) => Promise<unknown>) => {
+          state.transactionExecutions += 1;
+          return callback(state);
+        },
+      };
     },
   };
 

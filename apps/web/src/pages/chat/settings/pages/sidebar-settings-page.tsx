@@ -656,7 +656,9 @@ function SidebarItemDialog({
 }
 
 function sortSidebarItems(items: SettingsSidebarItem[]) {
-  return [...items].sort((left, right) => left.sort - right.sort || left.id.localeCompare(right.id));
+  return [...items].sort(
+    (left, right) => left.sort - right.sort || Number(left.id) - Number(right.id),
+  );
 }
 
 function getErrorMessage(error: unknown) {

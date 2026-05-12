@@ -141,8 +141,26 @@ export async function bootstrapWorkbench(
     },
     conversationPage,
     me,
-    sidebarItems: sidebarItemsResponse.items,
+    sidebarItems: getSidebarItemsFromResponse(sidebarItemsResponse),
   };
+}
+
+function getSidebarItemsFromResponse(response: unknown): SettingsSidebarItem[] {
+  if (!response || typeof response !== "object") {
+    return [];
+  }
+
+  if (Array.isArray((response as { items?: unknown }).items)) {
+    return (response as { items: SettingsSidebarItem[] }).items;
+  }
+
+  const data = (response as { data?: unknown }).data;
+
+  if (data && typeof data === "object" && Array.isArray((data as { items?: unknown }).items)) {
+    return (data as { items: SettingsSidebarItem[] }).items;
+  }
+
+  return [];
 }
 
 export async function loadAccountScope(

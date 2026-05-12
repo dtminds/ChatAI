@@ -27,6 +27,39 @@ describe("workbench gateway message paging", () => {
     expect(observedLimits).toEqual([50]);
   });
 
+  it("unwraps sidebar items from the settings API envelope during bootstrap", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSidebarItems() {
+        return {
+          data: {
+            items: [
+              {
+                id: "1",
+                name: "快捷回复",
+                sort: 1,
+                status: "active" as const,
+                url: "https://example.com/replies",
+              },
+            ],
+          },
+          success: true,
+        };
+      },
+    } as WorkbenchService);
+
+    await expect(bootstrapWorkbench("single", {})).resolves.toMatchObject({
+      sidebarItems: [
+        {
+          id: "1",
+          name: "快捷回复",
+        },
+      ],
+    });
+  });
+
   it("loads account scope conversations with 50 messages by default", async () => {
     const observedLimits: Array<number | undefined> = [];
     const service = createObservedMessageService(observedLimits);

@@ -26,6 +26,7 @@ import {
   type WorkbenchTakeOverSeatResponse,
 } from "@chatai/contracts";
 import type { Message } from "@/pages/chat/chat-types";
+import type { ApiSuccessEnvelope } from "@/pages/chat/settings/settings-service";
 
 export type WorkbenchService = {
   getSeats: () => Promise<WorkbenchSeatDto[]>;
@@ -354,8 +355,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
     getMe() {
       return http.get<WorkbenchSubUserDto>("/server/me");
     },
-    getSidebarItems() {
-      return http.get<SettingsSidebarItemsResponse>("/server/settings/sidebar-items");
+    async getSidebarItems() {
+      const response = await http.get<ApiSuccessEnvelope<SettingsSidebarItemsResponse>>(
+        "/server/settings/sidebar-items",
+      );
+
+      return response.data;
     },
     getMessages(conversationId, options) {
       return http.get<WorkbenchMessagePageDto>(

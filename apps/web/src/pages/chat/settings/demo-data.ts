@@ -1,9 +1,3 @@
-import {
-  GridTableIcon,
-  SecurityCheckIcon,
-  SlidersHorizontalIcon,
-} from "@hugeicons/core-free-icons";
-
 export const qywxAccounts = [
   {
     id: "QW-10001",
@@ -55,27 +49,6 @@ export const roles = [
       { label: "可管理", enabled: false },
       { label: "可导出", enabled: false },
     ],
-  },
-] as const;
-
-export const workflowOptions = [
-  {
-    title: "在线接待",
-    description: "按账号在线状态、接待能力和历史关系提示当前服务负载。",
-    enabled: true,
-    icon: SlidersHorizontalIcon,
-  },
-  {
-    title: "超时转接",
-    description: "客服长时间未响应时，提醒组长介入处理当前服务账号。",
-    enabled: true,
-    icon: GridTableIcon,
-  },
-  {
-    title: "敏感词质检",
-    description: "对命中规则的消息生成质检任务，便于运营回溯。",
-    enabled: false,
-    icon: SecurityCheckIcon,
   },
 ] as const;
 

@@ -565,7 +565,7 @@ function SidebarItemRow({
 
   return (
     <SortableItem asChild disabled={isPending} value={item.id}>
-      <TableRow className="data-dragging:bg-muted/70">
+      <TableRow className="data-dragging:bg-muted/55 data-dragging:text-muted-foreground data-dragging:opacity-60">
         {rowContent}
       </TableRow>
     </SortableItem>
@@ -574,15 +574,13 @@ function SidebarItemRow({
 
 function SidebarItemDragOverlay({ item }: { item: SettingsSidebarItem }) {
   return (
-    <div className="grid w-[min(520px,calc(100vw-32px))] grid-cols-[1fr_88px_80px] items-center rounded-[8px] border border-border bg-popover px-5 py-4 text-sm text-popover-foreground shadow-lg">
+    <div className="flex w-[min(420px,calc(100vw-32px))] items-center gap-3 rounded-[8px] border border-border bg-popover px-5 py-4 text-sm text-popover-foreground shadow-lg">
       <div className="flex min-w-0 items-center gap-3">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-[6px] text-muted-foreground">
           <HugeiconsIcon icon={DragDropVerticalIcon} size={18} />
         </span>
         <span className="truncate font-medium">{item.name}</span>
       </div>
-      <span className="text-muted-foreground">{item.status === "active" ? "显示" : "隐藏"}</span>
-      <span className="text-muted-foreground">移动中</span>
     </div>
   );
 }

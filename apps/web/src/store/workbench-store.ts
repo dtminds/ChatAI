@@ -772,14 +772,15 @@ export function createWorkbenchStore() {
             item.id === account.id
               ? {
                   ...item,
-                  unreadCount: Math.max(0, item.unreadCount - conversation.unread),
+                  unreadCount: Math.max(
+                    0,
+                    (item.unreadCount ?? 0) - conversation.unread,
+                  ),
                 }
               : item,
           ),
           activeConversationId: nextActiveConversationId,
-          activeMessageSeq: shouldSwitchActive && !nextActiveConversationId
-            ? 0
-            : latestState.activeMessageSeq,
+          activeMessageSeq: shouldSwitchActive ? 0 : latestState.activeMessageSeq,
           activeMode: nextActiveMode,
           conversationListsByScope: {
             ...latestState.conversationListsByScope,

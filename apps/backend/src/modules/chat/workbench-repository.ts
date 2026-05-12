@@ -17,6 +17,7 @@ import {
   type MessageRow,
   type SeatRow,
 } from "./workbench-mappers.js";
+const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
 const CHAT_TYPE_GROUP = 2;
 const GROUP_MEMBER_SORT_RANK = {
@@ -413,7 +414,7 @@ export class WorkbenchRepository {
     await this.db
       .updateTable("xy_wap_embed_conversation")
       .set({
-        biz_status: 0,
+        biz_status: BIZ_STATUS_HIDDEN,
       })
       .where("id", "=", conversationNumericId)
       .where("uid", "=", input.uid)

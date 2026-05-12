@@ -191,6 +191,7 @@ pnpm backend:db:codegen -- xy_wap_embed_user_relation
 
 ## 关键文件
 
+- 腾讯云容器部署指南：[docs/deployment/tencent-cloud-containers.md](docs/deployment/tencent-cloud-containers.md)
 - 工作台设计：[docs/superpowers/specs/2026-04-19-chat-workbench-design.md](docs/superpowers/specs/2026-04-19-chat-workbench-design.md)
 - Backend 架构设计：[docs/superpowers/specs/2026-05-08-backend-architecture-design.md](docs/superpowers/specs/2026-05-08-backend-architecture-design.md)
 - Web 请求封装：[apps/web/src/lib/request.ts](apps/web/src/lib/request.ts)

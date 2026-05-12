@@ -18,6 +18,11 @@ const GROUP_MEMBER_SORT_RANK = {
   [GROUP_MEMBER_TYPE.NORMAL]: 2,
 } as const;
 
+const groupMemberNameSegmenter =
+  typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : undefined;
+
 type CustomerSidePanelProps = {
   accountName?: string;
   conversationMode?: ChatMode;
@@ -167,7 +172,7 @@ function GroupMemberRow({ member }: { member: GroupMember }) {
       <Avatar className="size-7 shrink-0">
         <AvatarImage alt={member.displayName} src={member.avatarUrl} />
         <AvatarFallback className="text-[11px]">
-          {member.displayName.slice(0, 1)}
+          {getFirstGroupMemberNameGrapheme(member.displayName)}
         </AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
@@ -181,6 +186,21 @@ function GroupMemberRow({ member }: { member: GroupMember }) {
         </Badge>
       ) : null}
     </div>
+  );
+}
+
+function getFirstGroupMemberNameGrapheme(value: string) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  return (
+    groupMemberNameSegmenter?.segment(trimmedValue)[Symbol.iterator]().next()
+      .value?.segment ??
+    [...trimmedValue][0] ??
+    ""
   );
 }
 

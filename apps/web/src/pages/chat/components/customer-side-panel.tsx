@@ -9,6 +9,7 @@ import type {
   GroupMember,
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
+import { sortSidebarItems } from "@/pages/chat/lib/sidebar-items";
 
 const collapsedSidebarEntryCount = 4;
 
@@ -138,23 +139,4 @@ export function CustomerSidePanel({
 
 function getSidebarTabValue(item: SettingsSidebarItem) {
   return `sidebar:${item.id}`;
-}
-
-function sortSidebarItems(items: SettingsSidebarItem[]) {
-  return [...items].sort((left, right) => {
-    const sortDiff = left.sort - right.sort;
-
-    if (sortDiff !== 0) {
-      return sortDiff;
-    }
-
-    const leftId = Number(left.id);
-    const rightId = Number(right.id);
-
-    if (Number.isFinite(leftId) && Number.isFinite(rightId)) {
-      return leftId - rightId;
-    }
-
-    return left.id.localeCompare(right.id);
-  });
 }

@@ -148,21 +148,38 @@ export async function bootstrapWorkbench(
 }
 
 function getSidebarItemsFromResponse(response: unknown): SettingsSidebarItem[] {
-  if (!response || typeof response !== "object") {
-    return [];
+  return getSidebarItemsPayload(response)?.items ?? [];
+}
+
+function getSidebarItemsPayload(response: unknown) {
+  if (isSidebarItemsPayload(response)) {
+    return response;
   }
 
-  if (Array.isArray((response as { items?: unknown }).items)) {
-    return (response as { items: SettingsSidebarItem[] }).items;
+  if (!isObjectRecord(response)) {
+    return undefined;
   }
 
-  const data = (response as { data?: unknown }).data;
+  return isSidebarItemsPayload(response.data) ? response.data : undefined;
+}
 
-  if (data && typeof data === "object" && Array.isArray((data as { items?: unknown }).items)) {
-    return (data as { items: SettingsSidebarItem[] }).items;
-  }
+function isSidebarItemsPayload(value: unknown): value is { items: SettingsSidebarItem[] } {
+  return isObjectRecord(value) && Array.isArray(value.items) && value.items.every(isSidebarItem);
+}
 
-  return [];
+function isSidebarItem(value: unknown): value is SettingsSidebarItem {
+  return (
+    isObjectRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.sort === "number" &&
+    (value.status === "active" || value.status === "disabled") &&
+    typeof value.url === "string"
+  );
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
 }
 
 export async function loadAccountScope(

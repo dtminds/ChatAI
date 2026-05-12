@@ -74,9 +74,14 @@ export class SidebarItemsSettingsService {
         url: normalized.url,
       })
       .executeTakeFirstOrThrow();
-    const sidebarItemId = Number(
-      "insertId" in inserted ? inserted.insertId : (inserted as { id?: number }).id,
-    );
+    const sidebarItemId = parseInsertedMySqlId(inserted);
+
+    if (sidebarItemId == null) {
+      throw new ServiceUnavailableError(
+        "SIDEBAR_ITEM_ID_UNAVAILABLE",
+        "设置服务暂不可用",
+      );
+    }
 
     return this.getItemOrThrow(scope, sidebarItemId);
   }
@@ -335,9 +340,28 @@ function normalizeSidebarItemIds(rawItemIds: string[]) {
   return itemIds.length === rawItemIds.length ? itemIds : [];
 }
 
-function parseMySqlId(value: string | number | null | undefined) {
+function parseInsertedMySqlId(result: unknown) {
+  if (!result || typeof result !== "object") {
+    return undefined;
+  }
+
+  const inserted = result as {
+    id?: bigint | number | string | null;
+    insertId?: bigint | number | string | null;
+  };
+
+  return parseMySqlId(inserted.insertId ?? inserted.id);
+}
+
+function parseMySqlId(value: bigint | string | number | null | undefined) {
   if (typeof value === "number") {
     return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  }
+
+  if (typeof value === "bigint") {
+    return value > 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)
+      ? Number(value)
+      : undefined;
   }
 
   if (!value) {

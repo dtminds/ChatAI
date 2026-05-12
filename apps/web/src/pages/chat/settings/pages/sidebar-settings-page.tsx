@@ -69,6 +69,7 @@ import {
   updateSidebarItemStatus,
 } from "@/pages/chat/settings/settings-service";
 import { cn } from "@/lib/utils";
+import { sortSidebarItems } from "@/pages/chat/lib/sidebar-items";
 import { Field, PageHeader } from "@/pages/chat/settings/shared";
 
 type DragOverlaySize = {
@@ -776,12 +777,6 @@ function SidebarItemDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function sortSidebarItems(items: SettingsSidebarItem[]) {
-  return [...items].sort(
-    (left, right) => left.sort - right.sort || Number(left.id) - Number(right.id),
   );
 }
 

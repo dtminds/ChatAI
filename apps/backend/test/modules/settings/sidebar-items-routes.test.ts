@@ -209,6 +209,33 @@ describe("settings sidebar item routes", () => {
 
     await app.close();
   });
+
+  it("accepts safe bigint insert ids when creating sidebar items", async () => {
+    const { app, authorization, db } = await createSettingsApp();
+
+    db.nextInsertId = 203n;
+
+    const create = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        name: "素材中心",
+        url: "https://example.com/assets",
+      },
+      url: "/api/server/settings/sidebar-items",
+    });
+
+    expect(create.statusCode).toBe(200);
+    expect(create.json()).toMatchObject({
+      data: {
+        id: "203",
+        name: "素材中心",
+      },
+      success: true,
+    });
+
+    await app.close();
+  });
 });
 
 async function createSettingsApp() {
@@ -263,6 +290,7 @@ function createSettingsDbMock() {
   ];
   const state = {
     insertedSidebarItem: undefined as Record<string, unknown> | undefined,
+    nextInsertId: 203 as bigint | number,
     sidebarListWheres: [] as Array<[string, string, unknown]>,
     updatedSidebarItems: [] as Array<{
       id: number | undefined;
@@ -327,7 +355,7 @@ function createSettingsDbMock() {
       }
 
       const builder = {
-        executeTakeFirstOrThrow: async () => ({ insertId: 203 }),
+        executeTakeFirstOrThrow: async () => ({ insertId: state.nextInsertId }),
         values: (values: Record<string, unknown>) => {
           state.insertedSidebarItem = values;
           sidebarItems.push({

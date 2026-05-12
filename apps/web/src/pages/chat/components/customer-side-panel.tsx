@@ -129,7 +129,7 @@ function GroupMembersPanel({ groupMembers }: { groupMembers: GroupMember[] }) {
   return (
     <ScrollArea className="h-full min-h-0">
       <div className="space-y-4 px-4 py-4">
-        <h2 className="text-sm font-semibold leading-5 text-foreground whitespace-nowrap">
+        <h2 className="text-xs font-semibold leading-4 text-foreground whitespace-nowrap">
           群成员 · 共 {groupMembers.length} 人
         </h2>
 

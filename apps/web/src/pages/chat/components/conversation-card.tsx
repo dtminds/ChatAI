@@ -4,7 +4,7 @@ import {
   PinIcon,
   PinOffIcon,
   BubbleChatNotificationIcon,
-  MailOpenIcon,
+  ChatDone01Icon,
   ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -40,7 +40,7 @@ export function ConversationCard({
       icon: conversation.isPinned ? PinOffIcon : PinIcon,
     },
     conversation.unread > 0
-      ? { label: "标记已读", icon: MailOpenIcon, onSelect: onMarkRead }
+      ? { label: "标记已读", icon: ChatDone01Icon, onSelect: onMarkRead }
       : { label: "标记未读", icon: BubbleChatNotificationIcon, onSelect: onMarkUnread },
     { label: "不显示", icon: ViewOffSlashIcon },
   ];

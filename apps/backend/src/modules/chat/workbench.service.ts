@@ -13,6 +13,7 @@ import type {
   WorkbenchTakeOverSeatResponse,
 } from "@chatai/contracts";
 import {
+  ForbiddenError,
   NotFoundError,
   UnauthorizedError,
 } from "../../shared/errors.js";
@@ -127,7 +128,30 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    return this.javaClient.markConversationRead({ conversationId, subUserId });
+    if (conversation.seatHostSubUserId !== subUserId) {
+      throw new ForbiddenError("SEAT_NOT_TAKEN_OVER", "当前账号尚未由你接管");
+    }
+
+    await this.javaClient.markConversationRead({
+      conversationId: conversation.id,
+      platform: conversation.platform,
+      seatId: conversation.seatId,
+      uid: conversation.uid,
+    });
+
+    const conversations = await this.repository.listConversations(conversation.seatId);
+    const seatUnreadCount = conversations.reduce(
+      (total, item) =>
+        total + (item.conversationId === conversation.id ? 0 : item.unreadCount),
+      0,
+    );
+
+    return {
+      conversationId: conversation.id,
+      seatId: conversation.seatId,
+      seatUnreadCount,
+      unreadCount: 0,
+    };
   }
 
   async poll(subUserId: string, request: WorkbenchPollRequest) {

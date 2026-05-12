@@ -30,4 +30,33 @@ describe("createWorkbenchJavaClient", () => {
       }),
     );
   });
+
+  it("posts conversation mark-read payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await createWorkbenchJavaClient().markConversationRead({
+      conversationId: "88",
+      platform: 5,
+      seatId: "12",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/mark-read",
+      expect.objectContaining({
+        body: JSON.stringify({
+          conversationId: 88,
+          platform: 5,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
 });

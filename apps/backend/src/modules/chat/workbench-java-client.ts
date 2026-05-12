@@ -1,5 +1,4 @@
 import type {
-  WorkbenchConversationReadResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchTakeOverSeatResponse,
@@ -11,11 +10,20 @@ import {
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 
+type JavaApiResponse<T> = {
+  data?: T;
+  error?: number;
+  errorMsg?: string;
+  success?: boolean;
+};
+
 export type WorkbenchJavaClient = {
   markConversationRead(input: {
     conversationId: string;
-    subUserId: string;
-  }): Promise<WorkbenchConversationReadResponse>;
+    platform: number;
+    seatId: string;
+    uid: number;
+  }): Promise<void>;
   sendMessage(input: {
     payload: WorkbenchSendMessagePayload;
     subUserId: string;
@@ -32,12 +40,16 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
 
   return {
     markConversationRead(input) {
-      return postJava<WorkbenchConversationReadResponse>(
+      return postJavaEnvelope<boolean>(
         baseUrl,
         token,
-        "/internal/workbench/conversations/read",
-        input,
-      );
+        "/third-internal/wap-embed/conversation/mark-read",
+        {
+          conversationId: Number(input.conversationId),
+          platform: input.platform,
+          uid: input.uid,
+        },
+      ).then(() => undefined);
     },
     sendMessage(input) {
       return postJava<WorkbenchSendMessageResponse>(
@@ -107,6 +119,25 @@ async function postJava<T>(
   }
 
   return (await response.json()) as T;
+}
+
+async function postJavaEnvelope<T>(
+  baseUrl: string | undefined,
+  token: string | undefined,
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const response = await postJava<JavaApiResponse<T>>(baseUrl, token, path, body);
+
+  if (!response.success) {
+    throw new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败", {
+      error: response.error,
+      errorMsg: response.errorMsg,
+      path,
+    });
+  }
+
+  return response.data as T;
 }
 
 function readJavaApiTimeoutMs() {

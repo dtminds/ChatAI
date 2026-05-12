@@ -817,6 +817,27 @@ describe("useWorkbenchStore", () => {
     expect(state.readReceiptError).toBe("标记已读失败");
   });
 
+  it("skips mark-read when the active account is not taken over by the current user", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedConversationIds: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async markConversationRead(conversationId) {
+        observedConversationIds.push(conversationId);
+
+        return baseService.markConversationRead(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    await useWorkbenchStore.getState().setActiveConversation("conv-005");
+
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-005");
+    expect(observedConversationIds).toEqual(["conv-001"]);
+  });
+
   it("uses a fallback read receipt error when the thrown error message is empty", async () => {
     const baseService = createMockWorkbenchService();
 

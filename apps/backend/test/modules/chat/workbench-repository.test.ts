@@ -93,6 +93,32 @@ describe("WorkbenchRepository", () => {
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
   });
 
+  it("returns conversation tenant scope and takeover sub-user for Java write operations", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_conversation as conversation");
+
+          return createQueryBuilder({
+            id: 88,
+            platform: 5,
+            seat_host_sub_id: 101,
+            seat_id: 12,
+            uid: 9001,
+          });
+        },
+      } as never,
+    );
+
+    await expect(repository.getConversationLookup("88")).resolves.toEqual({
+      id: "88",
+      platform: 5,
+      seatHostSubUserId: "101",
+      seatId: "12",
+      uid: 9001,
+    });
+  });
+
   it("ignores nullable third-party ids when collecting message hydration sources", async () => {
     const repository = new WorkbenchRepository(createFailingDb() as never);
     const sources = await (

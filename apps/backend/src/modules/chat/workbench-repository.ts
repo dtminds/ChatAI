@@ -27,7 +27,10 @@ const GROUP_MEMBER_SORT_RANK = {
 
 export type ConversationLookup = {
   id: string;
+  platform: number;
   seatId: string;
+  seatHostSubUserId?: string;
+  uid: number;
 };
 
 export class WorkbenchRepository {
@@ -283,15 +286,28 @@ export class WorkbenchRepository {
           .onRef("seat.uid", "=", "conversation.uid")
           .onRef("seat.platform", "=", "conversation.platform"),
       )
-      .select(["conversation.id as id", "seat.id as seat_id"])
+      .select([
+        "conversation.id as id",
+        "conversation.platform as platform",
+        "conversation.uid as uid",
+        "seat.host_sub_id as seat_host_sub_id",
+        "seat.id as seat_id",
+      ])
       .where("conversation.id", "=", conversationNumericId)
       .where("conversation.biz_status", "=", 1)
+      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
       .executeTakeFirst();
 
     return row
       ? {
           id: String(row.id),
+          platform: row.platform,
           seatId: String(row.seat_id),
+          seatHostSubUserId:
+            row.seat_host_sub_id == null || row.seat_host_sub_id <= 0
+              ? undefined
+              : String(row.seat_host_sub_id),
+          uid: row.uid,
         }
       : undefined;
   }

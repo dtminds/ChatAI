@@ -23,6 +23,7 @@ import { formatConversationTimestamp } from "@/pages/chat/lib/chat-time";
 export function ConversationCard({
   conversation,
   isActive,
+  onDelete,
   onMarkRead,
   onMarkUnread,
   onPin,
@@ -31,6 +32,7 @@ export function ConversationCard({
 }: {
   conversation: Conversation;
   isActive: boolean;
+  onDelete?: () => void;
   onMarkRead?: () => void;
   onMarkUnread?: () => void;
   onPin?: () => void;
@@ -47,7 +49,7 @@ export function ConversationCard({
     conversation.unread > 0
       ? { label: "标记已读", icon: ChatDone01Icon, onSelect: onMarkRead }
       : { label: "标记未读", icon: BubbleChatNotificationIcon, onSelect: onMarkUnread },
-    { label: "不显示", icon: ViewOffSlashIcon },
+    { label: "不显示", icon: ViewOffSlashIcon, onSelect: onDelete },
   ];
 
   return (

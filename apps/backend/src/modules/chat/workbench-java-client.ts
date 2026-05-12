@@ -18,6 +18,11 @@ type JavaApiResponse<T> = {
 };
 
 export type WorkbenchJavaClient = {
+  deleteConversation(input: {
+    conversationId: string;
+    platform: number;
+    uid: number;
+  }): Promise<void>;
   markConversationRead(input: {
     conversationId: string;
     platform: number;
@@ -53,6 +58,14 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
   return {
+    deleteConversation(input) {
+      return postConversationOperate(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/delete",
+        input,
+      );
+    },
     markConversationRead(input) {
       return postConversationOperate(
         baseUrl,

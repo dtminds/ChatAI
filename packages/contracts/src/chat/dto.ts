@@ -215,6 +215,11 @@ export type WorkbenchConversationPinResponse = {
 
 export type WorkbenchConversationUnpinResponse = WorkbenchConversationPinResponse;
 
+export type WorkbenchConversationDeleteResponse = {
+  conversationId: string;
+  seatId: string;
+};
+
 export type WorkbenchGroupMemberType =
   (typeof GROUP_MEMBER_TYPE)[keyof typeof GROUP_MEMBER_TYPE];
 

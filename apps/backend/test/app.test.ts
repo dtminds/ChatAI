@@ -1008,6 +1008,45 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("removes a conversation and emits poll changes after deleting it", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/conversations/conv-002/delete",
+    });
+    const conversations = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations?seatId=drc",
+    });
+    const poll = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      conversationId: "conv-002",
+      seatId: "drc",
+    });
+    expect(conversations.json()).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ conversationId: "conv-002" }),
+      ]),
+    );
+    expect(poll.statusCode).toBe(200);
+    expect(poll.json().conversationChanges[0]).toEqual({
+      conversationId: "conv-002",
+      seatId: "drc",
+      type: "remove",
+    });
+
+    await app.close();
+  });
+
   it("accepts sent messages and reports final send status through polling", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

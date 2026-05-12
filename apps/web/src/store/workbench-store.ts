@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { formatConversationPreview, formatWorkbenchTimestamp } from "@/pages/chat/api/workbench-adapter";
 import {
   bootstrapWorkbench,
+  deleteConversation as deleteConversationRequest,
   loadAccountConversations,
   loadGroupMembers,
   loadAccountScope,
@@ -75,6 +76,7 @@ type WorkbenchState = {
   sinceVersion: number;
   activeMessageSeq: number;
   pendingMessages: Message[];
+  deleteConversation: (conversationId: string) => Promise<void>;
   dismissScopeTransitionError: () => void;
   dismissReadReceiptError: () => void;
   initializeWorkbench: () => Promise<void>;
@@ -101,6 +103,7 @@ const MESSAGE_PAGE_SIZE = 50;
 
 function createInitialState(): Omit<
   WorkbenchState,
+  | "deleteConversation"
   | "initializeWorkbench"
   | "markConversationRead"
   | "pinConversation"
@@ -198,6 +201,45 @@ function mergeConversationList(
     conversation,
     ...currentList.filter((item) => item.id !== conversation.id),
   ]);
+}
+
+function findNextConversationIdAfterRemove(
+  conversations: Conversation[],
+  removedConversationId: string,
+  mode: ChatMode,
+) {
+  const removedIndex = conversations.findIndex(
+    (conversation) => conversation.id === removedConversationId,
+  );
+
+  if (removedIndex < 0) {
+    return "";
+  }
+
+  const nextConversations = conversations.filter(
+    (conversation) => conversation.id !== removedConversationId,
+  );
+  const sameModeConversations = nextConversations.filter(
+    (conversation) => conversation.mode === mode,
+  );
+
+  if (sameModeConversations.length === 0) {
+    return nextConversations[0]?.id ?? "";
+  }
+
+  const nextSameMode = sameModeConversations.find(
+    (conversation) => conversations.indexOf(conversation) > removedIndex,
+  );
+
+  return nextSameMode?.id ?? sameModeConversations.at(-1)?.id ?? "";
+}
+
+function getConversationMode(
+  conversations: Conversation[],
+  conversationId: string,
+  fallbackMode: ChatMode,
+) {
+  return conversations.find((conversation) => conversation.id === conversationId)?.mode ?? fallbackMode;
 }
 
 function upsertMessageList(currentMessages: Message[], nextMessages: Message[]) {
@@ -591,8 +633,167 @@ export function createWorkbenchStore() {
       }
     }
 
+    async function loadConversationAfterDelete(
+      conversationId: string,
+      requestId: number,
+    ) {
+      if (!conversationId) {
+        set({
+          activeMessageSeq: 0,
+          isConversationLoading: false,
+        });
+        return;
+      }
+
+      set({
+        isConversationLoading: true,
+        scopeTransitionError: undefined,
+      });
+
+      const state = get();
+
+      try {
+        const page = await loadConversationMessagesPage(
+          {
+            accounts: state.accounts,
+            customerProfilesById: state.customerProfilesById,
+            me: state.me,
+          },
+          conversationId,
+          {
+            limit: MESSAGE_PAGE_SIZE,
+          },
+        );
+
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
+        set((currentState) => ({
+          activeMessageSeq: getActiveMessageSeq(
+            {
+              ...currentState.messagesByConversationId,
+              [conversationId]: page.messages,
+            },
+            conversationId,
+          ),
+          hasMoreHistoryByConversationId: {
+            ...currentState.hasMoreHistoryByConversationId,
+            [conversationId]: page.hasMoreHistory,
+          },
+          isConversationLoading: false,
+          messagePaginationByConversationId: {
+            ...currentState.messagePaginationByConversationId,
+            [conversationId]: buildMessagePaginationState(page),
+          },
+          messagesByConversationId: {
+            ...currentState.messagesByConversationId,
+            [conversationId]: page.messages,
+          },
+          scopeTransitionError: undefined,
+        }));
+
+        await loadGroupMembersForConversation(conversationId, requestId);
+
+        const latestState = get();
+        const activeAccount = latestState.accounts.find(
+          (account) => account.id === latestState.activeAccountId,
+        );
+
+        if (!isAccountTakenOverByCurrentUser(activeAccount, latestState.me)) {
+          return;
+        }
+
+        await markActiveConversationRead(conversationId, requestId);
+      } catch (error) {
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
+        set({
+          isConversationLoading: false,
+          scopeTransitionError:
+            error instanceof Error ? error.message : "切换会话失败",
+        });
+      }
+    }
+
     return {
       ...createInitialState(),
+      async deleteConversation(conversationId) {
+        const state = get();
+        const conversation = getConversationById(state, conversationId);
+        const account = state.accounts.find(
+          (item) => item.id === conversation?.accountId,
+        );
+
+        if (!conversation || !account || !isAccountTakenOverByCurrentUser(account, state.me)) {
+          return;
+        }
+
+        try {
+          await deleteConversationRequest(conversationId);
+        } catch (error) {
+          set({
+            readReceiptError:
+              error instanceof Error && error.message
+                ? error.message
+                : "不显示会话失败",
+          });
+          return;
+        }
+
+        const currentState = get();
+        const conversations = currentState.conversationListsByScope[account.id] ?? [];
+        const shouldSwitchActive =
+          currentState.activeAccountId === account.id &&
+          currentState.activeConversationId === conversationId;
+        const nextActiveConversationId = shouldSwitchActive
+          ? findNextConversationIdAfterRemove(
+              conversations,
+              conversationId,
+              currentState.activeMode,
+            )
+          : currentState.activeConversationId;
+        const nextConversations = conversations.filter(
+          (item) => item.id !== conversationId,
+        );
+        const nextActiveMode = shouldSwitchActive
+          ? getConversationMode(
+              nextConversations,
+              nextActiveConversationId,
+              currentState.activeMode,
+            )
+          : currentState.activeMode;
+        const requestId = shouldSwitchActive ? issueScopeRequestId() : latestScopeRequestId;
+
+        set((latestState) => ({
+          accounts: latestState.accounts.map((item) =>
+            item.id === account.id
+              ? {
+                  ...item,
+                  unreadCount: Math.max(0, item.unreadCount - conversation.unread),
+                }
+              : item,
+          ),
+          activeConversationId: nextActiveConversationId,
+          activeMessageSeq: shouldSwitchActive && !nextActiveConversationId
+            ? 0
+            : latestState.activeMessageSeq,
+          activeMode: nextActiveMode,
+          conversationListsByScope: {
+            ...latestState.conversationListsByScope,
+            [account.id]: (latestState.conversationListsByScope[account.id] ?? []).filter(
+              (item) => item.id !== conversationId,
+            ),
+          },
+          readReceiptError: undefined,
+        }));
+
+        if (shouldSwitchActive) {
+          await loadConversationAfterDelete(nextActiveConversationId, requestId);
+        }
+      },
       dismissScopeTransitionError() {
         set({ scopeTransitionError: undefined });
       },

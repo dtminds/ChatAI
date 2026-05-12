@@ -399,6 +399,29 @@ export class WorkbenchRepository {
       .execute();
   }
 
+  async hideConversation(input: {
+    conversationId: string;
+    platform: number;
+    uid: number;
+  }) {
+    const conversationNumericId = parseMySqlId(input.conversationId);
+
+    if (conversationNumericId == null) {
+      return;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_conversation")
+      .set({
+        biz_status: 0,
+      })
+      .where("id", "=", conversationNumericId)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .execute();
+  }
+
   async listGroupMembers(conversationId: string): Promise<WorkbenchGroupMembersResponse | undefined> {
     const conversationNumericId = parseMySqlId(conversationId);
 

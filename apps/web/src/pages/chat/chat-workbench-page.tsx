@@ -82,6 +82,7 @@ function ChatWorkbenchContent({
     bootstrapStatus,
     conversationListsByScope,
     customerProfilesById,
+    deleteConversation,
     groupMembersLoadingByConversationId,
     groupMembersByConversationId,
     dismissScopeTransitionError,
@@ -394,6 +395,7 @@ function ChatWorkbenchContent({
                 activeConversation={activeConversation}
                 activeMode={activeMode}
                 conversations={visibleConversations}
+                onDeleteConversation={deleteConversation}
                 onMarkConversationRead={markConversationRead}
                 onMarkConversationUnread={markConversationUnread}
                 onPinConversation={pinConversation}

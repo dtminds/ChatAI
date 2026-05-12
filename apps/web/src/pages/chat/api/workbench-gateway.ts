@@ -6,6 +6,7 @@ import {
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
 import type {
+  WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
   WorkbenchConversationUnpinResponse,
@@ -218,6 +219,12 @@ export async function markConversationUnread(
   conversationId: string,
 ): Promise<WorkbenchConversationUnreadResponse> {
   return getWorkbenchService().markConversationUnread(conversationId);
+}
+
+export async function deleteConversation(
+  conversationId: string,
+): Promise<WorkbenchConversationDeleteResponse> {
+  return getWorkbenchService().deleteConversation(conversationId);
 }
 
 export async function pinConversation(

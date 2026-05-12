@@ -98,6 +98,17 @@
 - 构建 contracts：`pnpm contracts:build`
 - 按配置生成 Kysely 类型：`pnpm backend:db:codegen`
 
+## Pre-PR Verification
+
+- 提交或开 PR 前，必须运行和受影响 CI job 对齐的构建命令；不能只用局部 typecheck 或局部 test 代替 CI build。
+- 改动 `apps/web` 下任意业务代码、测试、路由、样式或前端契约消费时，必须运行：`pnpm --filter @chatai/web build`。这个命令包含 `tsc -b` 和 Vite build，会检查 web 端测试 TypeScript，不能用 `pnpm --filter @chatai/web typecheck` 替代。
+- 改动 `apps/web` 下可被测试覆盖的逻辑时，必须同时运行相关 Vitest 用例，例如：`pnpm --filter @chatai/web test <test-file>`；但相关测试通过不能替代 web build。
+- 改动 `apps/backend` 时，必须运行 backend 对应 build，并运行相关 backend 测试；涉及数据库访问、路由契约或鉴权逻辑时，优先补充/更新对应测试。
+- 改动 `packages/contracts` 时，必须运行 contracts build，并运行受影响消费方的 build；同时影响 web 和 backend 时，两侧 build 都要跑。
+- 跨 `packages/contracts`、`apps/backend`、`apps/web` 的接口或 DTO 改动，提交前必须至少跑 contracts build、backend build、web build，以及相关契约/适配层测试。
+- 如果因环境、依赖或外部服务导致上述命令无法运行，提交或 PR 说明里必须明确写出未运行的命令、失败原因和风险；不能省略。
+- 每次提交前必须运行：`git diff --check`。
+
 ## Naming and Domain Notes
 
 - 当前业务是账号维度的接管、账号 unread、会话 unread、会话消息和轮询同步。

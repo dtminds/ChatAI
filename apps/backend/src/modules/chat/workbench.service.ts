@@ -157,13 +157,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: conversation.uid,
     });
 
-    const unreadDelta = conversation.unreadCount > 0 ? 0 : 1;
+    const nextUnreadCount = 1;
+    const nextSeatUnreadCount = Math.max(
+      0,
+      conversation.seatUnreadCount + nextUnreadCount - conversation.unreadCount,
+    );
 
     return {
       conversationId: conversation.id,
       seatId: conversation.seatId,
-      seatUnreadCount: conversation.seatUnreadCount + unreadDelta,
-      unreadCount: 1,
+      seatUnreadCount: nextSeatUnreadCount,
+      unreadCount: nextUnreadCount,
     };
   }
 

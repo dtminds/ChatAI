@@ -9,6 +9,7 @@ import {
   resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
+import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
@@ -285,7 +286,12 @@ describe("ChatWorkbenchPage", () => {
     await pasteIntoComposer(user, composer, "@小");
 
     expect(screen.getByRole("listbox", { name: "选择群成员" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "小林" })).toBeInTheDocument();
+    const xiaolinOption = screen.getByRole("option", { name: "小林" });
+    expect(xiaolinOption).toBeInTheDocument();
+    expect(within(xiaolinOption).getByTestId("mention-member-avatar")).toHaveAttribute(
+      "src",
+      seedGroupMembersByConversationId["conv-004"][0].avatarUrl,
+    );
 
     await user.keyboard("{Enter}");
 

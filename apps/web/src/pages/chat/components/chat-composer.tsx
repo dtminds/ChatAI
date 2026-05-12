@@ -3,8 +3,8 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
+  useRef,
 } from "react";
 import {
   ArrowUp02Icon,
@@ -19,6 +19,7 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import type { LexicalEditor } from "lexical";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -490,9 +491,7 @@ export function ChatComposer({
                     key={member.id}
                     className="flex items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-sm"
                   >
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-muted-foreground">
-                      {member.displayName.slice(0, 1)}
-                    </span>
+                    <MentionMemberAvatar member={member} />
                     <span className="min-w-0 flex-1 truncate">{member.displayName}</span>
                     <button
                       aria-label={`移除 @${member.displayName}`}
@@ -546,12 +545,7 @@ export function ChatComposer({
                 role="option"
                 type="button"
               >
-                <span
-                  aria-hidden="true"
-                  className="flex size-6 shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-muted-foreground"
-                >
-                  {member.displayName.slice(0, 1)}
-                </span>
+                <MentionMemberAvatar member={member} />
                 <span className="truncate">{member.displayName}</span>
               </button>
             ))}
@@ -597,6 +591,34 @@ export function ChatComposer({
         </div>
       </div>
     </div>
+  );
+}
+
+function MentionMemberAvatar({ member }: { member: GroupMember }) {
+  const [imageErrored, setImageErrored] = useState(false);
+
+  if (!member.avatarUrl || imageErrored) {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/15 font-semibold text-[11px] text-muted-foreground"
+      >
+        {member.displayName.slice(0, 1)}
+      </span>
+    );
+  }
+
+  return (
+    <span className="relative flex size-6 shrink-0 overflow-hidden rounded-md">
+      <img
+        alt=""
+        aria-hidden="true"
+        className="size-full object-cover"
+        data-testid="mention-member-avatar"
+        onError={() => setImageErrored(true)}
+        src={member.avatarUrl}
+      />
+    </span>
   );
 }
 

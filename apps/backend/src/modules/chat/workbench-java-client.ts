@@ -28,6 +28,11 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+  pinConversation(input: {
+    conversationId: string;
+    platform: number;
+    uid: number;
+  }): Promise<void>;
   sendMessage(input: {
     payload: WorkbenchSendMessagePayload;
     subUserId: string;
@@ -36,6 +41,11 @@ export type WorkbenchJavaClient = {
     seatId: string;
     subUserId: string;
   }): Promise<WorkbenchTakeOverSeatResponse>;
+  unpinConversation(input: {
+    conversationId: string;
+    platform: number;
+    uid: number;
+  }): Promise<void>;
 };
 
 export function createWorkbenchJavaClient(): WorkbenchJavaClient {
@@ -59,6 +69,14 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         input,
       );
     },
+    pinConversation(input) {
+      return postConversationOperate(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/pin",
+        input,
+      );
+    },
     sendMessage(input) {
       return postJava<WorkbenchSendMessageResponse>(
         baseUrl,
@@ -72,6 +90,14 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         baseUrl,
         token,
         "/internal/workbench/seats/take-over",
+        input,
+      );
+    },
+    unpinConversation(input) {
+      return postConversationOperate(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/unpin",
         input,
       );
     },

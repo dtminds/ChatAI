@@ -100,6 +100,7 @@ function ChatWorkbenchContent({
     pollState,
     pollWorkbench,
     readReceiptError,
+    pinConversation,
     retryFailedMessage,
     scopeTransitionError,
     sendAgentMessageSegments,
@@ -108,6 +109,7 @@ function ChatWorkbenchContent({
     setActiveMode,
     takeOverAccount,
     takeoverStatusByAccountId,
+    unpinConversation,
   } = useWorkbenchStore();
 
   const [draft, setDraft] = useState("");
@@ -394,8 +396,10 @@ function ChatWorkbenchContent({
                 conversations={visibleConversations}
                 onMarkConversationRead={markConversationRead}
                 onMarkConversationUnread={markConversationUnread}
+                onPinConversation={pinConversation}
                 onSelectConversation={setActiveConversation}
                 onSelectMode={setActiveMode}
+                onUnpinConversation={unpinConversation}
                 searchableConversations={allConversations}
               />
 

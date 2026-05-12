@@ -25,8 +25,10 @@ type ConversationListPanelProps = {
   conversations: Conversation[];
   onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
   onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
+  onPinConversation?: (conversationId: string) => void | Promise<void>;
   onSelectConversation: (conversationId: string) => void | Promise<void>;
   onSelectMode: (mode: ChatMode) => void | Promise<void>;
+  onUnpinConversation?: (conversationId: string) => void | Promise<void>;
   searchableConversations?: Conversation[];
 };
 
@@ -36,8 +38,10 @@ export function ConversationListPanel({
   conversations,
   onMarkConversationRead,
   onMarkConversationUnread,
+  onPinConversation,
   onSelectConversation,
   onSelectMode,
+  onUnpinConversation,
   searchableConversations = conversations,
 }: ConversationListPanelProps) {
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -216,10 +220,16 @@ export function ConversationListPanel({
                     onMarkUnread={() => {
                       void onMarkConversationUnread?.(conversation.id);
                     }}
+                    onPin={() => {
+                      void onPinConversation?.(conversation.id);
+                    }}
                     onSelect={() => {
                       startTransition(() => {
                         void onSelectConversation(conversation.id);
                       });
+                    }}
+                    onUnpin={() => {
+                      void onUnpinConversation?.(conversation.id);
                     }}
                   />
                 ))}

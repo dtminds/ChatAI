@@ -164,6 +164,16 @@ JAVA_INTERNAL_API_TOKEN=<java-internal-api-token>
 注意事项：
 
 - `NODE_ENV=production` 时必须配置 `JWT_PRIVATE_KEY` 和 `JWT_PUBLIC_KEY`，否则 backend 会拒绝启动。
+- 本地开发环境没有配置 `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` 也能运行，是因为 backend 会退回到 `JWT_DEV_SECRET`；如果 `JWT_DEV_SECRET` 也没有，会继续使用默认值 `dev-only-change-me`。这个兜底只适合本地开发，不要用于测试或生产环境。
+- `JWT_PRIVATE_KEY` 是 backend 签发 JWT 的私钥，必须保密；`JWT_PUBLIC_KEY` 是校验 JWT 的公钥。测试环境和生产环境建议使用不同密钥对。
+- 可以用 OpenSSL 生成 RSA 密钥对：
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out jwt-private.pem
+openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
+```
+
+- 在 TKE Secret 中写入 key 内容时要保留 PEM 换行，例如 `-----BEGIN PRIVATE KEY-----` 到 `-----END PRIVATE KEY-----` 的完整内容。
 - 云上真实环境必须配置 `DATABASE_URL`。未配置数据库时 backend 会退到内存服务，只适合本地开发。
 - `JAVA_INTERNAL_API_BASE_URL` 和 `JAVA_INTERNAL_API_TOKEN` 用于转发发送消息、会话已读、席位接管等写操作。
 - `JAVA_INTERNAL_API_BASE_URL` 只应配置在 backend 所在环境，不要放进 web 的 `VITE_*` 构建变量。

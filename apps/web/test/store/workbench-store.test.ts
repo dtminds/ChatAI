@@ -904,6 +904,129 @@ describe("useWorkbenchStore", () => {
     expect(observedConversationIds).toEqual([]);
   });
 
+  it("pins a conversation and reloads the active account conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedPinnedConversationIds: string[] = [];
+    const observedConversationScopes: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId) {
+        observedConversationScopes.push(accountId);
+
+        return baseService.getConversations(accountId);
+      },
+      async pinConversation(conversationId) {
+        observedPinnedConversationIds.push(conversationId);
+
+        return baseService.pinConversation(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    observedConversationScopes.length = 0;
+
+    await useWorkbenchStore.getState().pinConversation("conv-002");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(observedPinnedConversationIds).toEqual(["conv-002"]);
+    expect(observedConversationScopes).toEqual(["drc"]);
+    expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
+      isPinned: true,
+    });
+  });
+
+  it("keeps pin reload results when the user switches accounts before reload finishes", async () => {
+    const baseService = createMockWorkbenchService();
+    const reloadRequested = createDeferred();
+    const deferredReload =
+      createDeferred<Awaited<ReturnType<typeof baseService.getConversations>>>();
+    let deferDrcReload = false;
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId) {
+        if (deferDrcReload && accountId === "drc") {
+          reloadRequested.resolve();
+
+          return deferredReload.promise;
+        }
+
+        return baseService.getConversations(accountId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    deferDrcReload = true;
+
+    const pinPromise = useWorkbenchStore.getState().pinConversation("conv-002");
+    await reloadRequested.promise;
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    deferredReload.resolve(await baseService.getConversations("drc"));
+    await pinPromise;
+
+    const state = useWorkbenchStore.getState();
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
+      isPinned: true,
+    });
+  });
+
+  it("skips pin when the active account is not taken over by the current user", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedPinnedConversationIds: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async pinConversation(conversationId) {
+        observedPinnedConversationIds.push(conversationId);
+
+        return baseService.pinConversation(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    await useWorkbenchStore.getState().pinConversation("conv-006");
+
+    expect(observedPinnedConversationIds).toEqual([]);
+  });
+
+  it("unpins a conversation and reloads the active account conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedUnpinnedConversationIds: string[] = [];
+    const observedConversationScopes: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId) {
+        observedConversationScopes.push(accountId);
+
+        return baseService.getConversations(accountId);
+      },
+      async unpinConversation(conversationId) {
+        observedUnpinnedConversationIds.push(conversationId);
+
+        return baseService.unpinConversation(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    observedConversationScopes.length = 0;
+
+    await useWorkbenchStore.getState().unpinConversation("conv-001");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(observedUnpinnedConversationIds).toEqual(["conv-001"]);
+    expect(observedConversationScopes).toEqual(["drc"]);
+    expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")).toMatchObject({
+      isPinned: undefined,
+    });
+  });
+
   it("uses a fallback read receipt error when the thrown error message is empty", async () => {
     const baseService = createMockWorkbenchService();
 

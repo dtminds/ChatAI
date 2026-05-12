@@ -18,6 +18,7 @@
     "lib": "@/lib"
   },
   "registries": {
-    "@dotmatrix": "https://dotmatrix.zzzzshawn.cloud/r/{name}.json"
+    "@dotmatrix": "https://dotmatrix.zzzzshawn.cloud/r/{name}.json",
+    "@diceui": "https://diceui.com/r/{name}.json"
   }
 }

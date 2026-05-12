@@ -12,7 +12,7 @@ import type {
   SettingsSidebarItemCreateRequest,
   SettingsSidebarItemUpdateRequest,
 } from "@chatai/contracts";
-import { type DragEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -45,6 +45,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import {
+  Sortable,
+  SortableContent,
+  SortableItem,
+  SortableItemHandle,
+  SortableOverlay,
+} from "@/components/ui/sortable";
 import {
   Table,
   TableBody,
@@ -85,7 +92,6 @@ export function SidebarSettingsPage() {
   const [items, setItems] = useState<SettingsSidebarItem[]>(emptyItems);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SettingsSidebarItem | null>(null);
-  const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -135,6 +141,7 @@ export function SidebarSettingsPage() {
         item.url.toLowerCase().includes(normalizedQuery),
     );
   }, [items, query]);
+  const isSearching = query.trim().length > 0;
 
   async function handleSubmit(
     state: DialogState,
@@ -189,21 +196,14 @@ export function SidebarSettingsPage() {
     }
   }
 
-  async function handleDragSort(draggedItemId: string, targetItemId: string) {
-    if (draggedItemId === targetItemId) {
+  async function handleSortChange(nextItems: SettingsSidebarItem[]) {
+    const currentItemIds = items.map((item) => item.id).join(",");
+    const nextItemIds = nextItems.map((item) => item.id).join(",");
+
+    if (currentItemIds === nextItemIds) {
       return;
     }
 
-    const currentIndex = items.findIndex((currentItem) => currentItem.id === draggedItemId);
-    const nextIndex = items.findIndex((currentItem) => currentItem.id === targetItemId);
-
-    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= items.length) {
-      return;
-    }
-
-    const nextItems = [...items];
-    const [movedItem] = nextItems.splice(currentIndex, 1);
-    nextItems.splice(nextIndex, 0, movedItem);
     const optimisticItems = nextItems.map((nextItem, index) => ({
       ...nextItem,
       sort: index + 1,
@@ -293,85 +293,66 @@ export function SidebarSettingsPage() {
             <section className="mt-6 rounded-[10px] border border-destructive/30 bg-destructive-muted p-5 text-sm text-destructive">
               {errorMessage}
             </section>
+          ) : !isLoading && filteredItems.length > 0 && !isSearching ? (
+            <Sortable
+              getItemValue={(item) => item.id}
+              onValueChange={(nextItems) => {
+                void handleSortChange(nextItems);
+              }}
+              value={items}
+            >
+              <SidebarItemsTable
+                items={filteredItems}
+                renderRow={(item) => (
+                  <SidebarItemRow
+                    isPending={
+                      pendingAction === `delete:${item.id}` ||
+                      pendingAction === `edit:${item.id}` ||
+                      pendingAction === `status:${item.id}` ||
+                      pendingAction === "sort"
+                    }
+                    item={item}
+                    key={item.id}
+                    onDelete={() => setDeleteTarget(item)}
+                    onEdit={() => setDialogState({ mode: "edit", item })}
+                    onToggleStatus={() => {
+                      void handleToggleStatus(item);
+                    }}
+                  />
+                )}
+                sortable
+              />
+              <SortableOverlay>
+                {({ value }) => {
+                  const activeItem = items.find((item) => item.id === String(value));
+
+                  return activeItem ? <SidebarItemDragOverlay item={activeItem} /> : null;
+                }}
+              </SortableOverlay>
+            </Sortable>
           ) : (
-            <section className="mt-6 overflow-hidden rounded-[10px] border border-border">
-              <Table aria-label="侧边栏菜单列表">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[40%] px-5 py-4">页面</TableHead>
-                    <TableHead className="w-[36%] px-5 py-4">页面地址</TableHead>
-                    <TableHead className="w-[12%] px-5 py-4">显示</TableHead>
-                    <TableHead className="px-5 py-4">操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    <TableRow>
-                      <TableCell className="px-5 py-10" colSpan={4}>
-                        <div
-                          aria-label="正在加载侧边栏页面"
-                          className="flex items-center justify-center gap-3 text-sm text-muted-foreground"
-                          role="status"
-                        >
-                          <DotMatrixLoader
-                            ariaLabel="正在加载"
-                            className="text-foreground"
-                            dotSize={3}
-                            size={22}
-                          />
-                          <span>正在加载侧边栏页面</span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : filteredItems.length > 0 ? (
-                    filteredItems.map((item) => {
-                      return (
-                        <SidebarItemRow
-                          isDragging={draggingItemId === item.id}
-                          isPending={
-                            pendingAction === `delete:${item.id}` ||
-                            pendingAction === `edit:${item.id}` ||
-                            pendingAction === `status:${item.id}` ||
-                            pendingAction === "sort"
-                          }
-                          item={item}
-                          key={item.id}
-                          onDelete={() => setDeleteTarget(item)}
-                          onDragEnd={() => {
-                            setDraggingItemId(null);
-                          }}
-                          onDragOver={(event) => {
-                            event.preventDefault();
-                          }}
-                          onDragStart={() => {
-                            setDraggingItemId(item.id);
-                          }}
-                          onDrop={() => {
-                            const draggedItemId = draggingItemId;
-
-                            setDraggingItemId(null);
-
-                            if (draggedItemId) {
-                              void handleDragSort(draggedItemId, item.id);
-                            }
-                          }}
-                          onEdit={() => setDialogState({ mode: "edit", item })}
-                          onToggleStatus={() => {
-                            void handleToggleStatus(item);
-                          }}
-                        />
-                      );
-                    })
-                  ) : (
-                    <TableRow>
-                      <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={4}>
-                        暂无侧边栏页面
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </section>
+            <SidebarItemsTable
+              items={filteredItems}
+              renderRow={(item) => (
+                <SidebarItemRow
+                  isPending={
+                    pendingAction === `delete:${item.id}` ||
+                    pendingAction === `edit:${item.id}` ||
+                    pendingAction === `status:${item.id}` ||
+                    pendingAction === "sort"
+                  }
+                  item={item}
+                  key={item.id}
+                  onDelete={() => setDeleteTarget(item)}
+                  onEdit={() => setDialogState({ mode: "edit", item })}
+                  onToggleStatus={() => {
+                    void handleToggleStatus(item);
+                  }}
+                  sortable={false}
+                />
+              )}
+              showLoading={isLoading}
+            />
           )}
         </section>
 
@@ -429,57 +410,111 @@ export function SidebarSettingsPage() {
   );
 }
 
+function SidebarItemsTable({
+  items,
+  renderRow,
+  showLoading = false,
+  sortable = false,
+}: {
+  items: SettingsSidebarItem[];
+  renderRow: (item: SettingsSidebarItem) => React.ReactNode;
+  showLoading?: boolean;
+  sortable?: boolean;
+}) {
+  const body = showLoading ? (
+    <TableBody>
+      <TableRow>
+        <TableCell className="px-5 py-10" colSpan={3}>
+          <div
+            aria-label="正在加载侧边栏页面"
+            className="flex items-center justify-center gap-3 text-sm text-muted-foreground"
+            role="status"
+          >
+            <DotMatrixLoader
+              ariaLabel="正在加载"
+              className="text-foreground"
+              dotSize={3}
+              size={22}
+            />
+            <span>正在加载侧边栏页面</span>
+          </div>
+        </TableCell>
+      </TableRow>
+    </TableBody>
+  ) : sortable ? (
+    <SortableContent asChild>
+      <TableBody>{items.map(renderRow)}</TableBody>
+    </SortableContent>
+  ) : (
+    <TableBody>
+      {items.length > 0 ? (
+        items.map(renderRow)
+      ) : (
+        <TableRow>
+          <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={3}>
+            暂无侧边栏页面
+          </TableCell>
+        </TableRow>
+      )}
+    </TableBody>
+  );
+
+  return (
+    <section className="mt-6 overflow-hidden rounded-[10px] border border-border">
+      <Table aria-label="侧边栏菜单列表">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[70%] px-5 py-4">页面</TableHead>
+            <TableHead className="w-[15%] px-5 py-4">显示</TableHead>
+            <TableHead className="px-5 py-4">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        {body}
+      </Table>
+    </section>
+  );
+}
+
 function SidebarItemRow({
-  isDragging,
   isPending,
   item,
   onDelete,
-  onDragEnd,
-  onDragOver,
-  onDragStart,
-  onDrop,
   onEdit,
   onToggleStatus,
+  sortable = true,
 }: {
-  isDragging: boolean;
   isPending: boolean;
   item: SettingsSidebarItem;
   onDelete: () => void;
-  onDragEnd: () => void;
-  onDragOver: (event: DragEvent<HTMLTableRowElement>) => void;
-  onDragStart: () => void;
-  onDrop: () => void;
   onEdit: () => void;
   onToggleStatus: () => void;
+  sortable?: boolean;
 }) {
   const isActive = item.status === "active";
-
-  return (
-    <TableRow
-      className={isDragging ? "bg-muted/70" : undefined}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-    >
+  const rowContent = (
+    <>
       <TableCell className="px-5 py-5">
         <div className="flex min-w-0 items-center gap-3">
-          <button
-            aria-label={`拖动 ${item.name} 调整排序`}
-            className="flex size-7 shrink-0 cursor-grab items-center justify-center rounded-[6px] text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={isPending}
-            draggable={!isPending}
-            onDragEnd={onDragEnd}
-            onDragStart={onDragStart}
-            type="button"
-          >
-            <HugeiconsIcon icon={DragDropVerticalIcon} size={16} strokeWidth={1.8} />
-          </button>
+          {sortable ? (
+            <SortableItemHandle asChild>
+              <button
+                aria-label={`拖动 ${item.name} 调整排序`}
+                className="flex size-7 shrink-0 items-center justify-center rounded-[6px] text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isPending}
+                type="button"
+              >
+                <HugeiconsIcon icon={DragDropVerticalIcon} size={18} />
+              </button>
+            </SortableItemHandle>
+          ) : (
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-[6px] text-muted-foreground/60">
+              <HugeiconsIcon icon={DragDropVerticalIcon} size={18} />
+            </span>
+          )}
           <div className="min-w-0">
             <p className="truncate font-medium text-foreground">{item.name}</p>
           </div>
         </div>
-      </TableCell>
-      <TableCell className="px-5 py-5">
-        <p className="max-w-[220px] truncate text-sm text-muted-foreground">{item.url}</p>
       </TableCell>
       <TableCell className="px-5 py-5">
         <div className="flex items-center">
@@ -521,7 +556,34 @@ function SidebarItemRow({
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>
-    </TableRow>
+    </>
+  );
+
+  if (!sortable) {
+    return <TableRow>{rowContent}</TableRow>;
+  }
+
+  return (
+    <SortableItem asChild disabled={isPending} value={item.id}>
+      <TableRow className="data-dragging:bg-muted/70">
+        {rowContent}
+      </TableRow>
+    </SortableItem>
+  );
+}
+
+function SidebarItemDragOverlay({ item }: { item: SettingsSidebarItem }) {
+  return (
+    <div className="grid w-[min(520px,calc(100vw-32px))] grid-cols-[1fr_88px_80px] items-center rounded-[8px] border border-border bg-popover px-5 py-4 text-sm text-popover-foreground shadow-lg">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-[6px] text-muted-foreground">
+          <HugeiconsIcon icon={DragDropVerticalIcon} size={18} />
+        </span>
+        <span className="truncate font-medium">{item.name}</span>
+      </div>
+      <span className="text-muted-foreground">{item.status === "active" ? "显示" : "隐藏"}</span>
+      <span className="text-muted-foreground">移动中</span>
+    </div>
   );
 }
 

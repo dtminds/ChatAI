@@ -10,6 +10,20 @@ import { requestInstance } from "@/lib/request";
 
 const mock = new MockAdapter(requestInstance);
 
+function createDomRect(rect: Partial<DOMRect>): DOMRect {
+  return {
+    bottom: rect.bottom ?? 0,
+    height: rect.height ?? Math.max((rect.bottom ?? 0) - (rect.top ?? 0), 0),
+    left: rect.left ?? 0,
+    right: rect.right ?? 0,
+    toJSON: () => ({}),
+    top: rect.top ?? 0,
+    width: rect.width ?? Math.max((rect.right ?? 0) - (rect.left ?? 0), 0),
+    x: rect.x ?? rect.left ?? 0,
+    y: rect.y ?? rect.top ?? 0,
+  };
+}
+
 function renderRoute(initialEntry = "/chat") {
   const router = createMemoryRouter(routerConfig, {
     initialEntries: [initialEntry],
@@ -384,9 +398,13 @@ describe("Chat settings pages", () => {
 
     expect(sidebarTable).toBeInTheDocument();
     expect(within(sidebarTable).getByRole("columnheader", { name: "显示" })).toBeInTheDocument();
+    expect(
+      within(sidebarTable).queryByRole("columnheader", { name: "页面地址" }),
+    ).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByRole("columnheader", { name: "状态" })).not.toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "聊天工具栏示意图" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "拖动 发起收款 调整排序" })).toBeInTheDocument();
+    expect(within(sidebarTable).queryByText("https://example.com/card")).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByText("启用")).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByText("停用")).not.toBeInTheDocument();
     expect(
@@ -411,6 +429,7 @@ describe("Chat settings pages", () => {
 
     await user.click(screen.getByRole("button", { name: "打开 企业名片 操作菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "编辑" }));
+    expect(screen.getByLabelText("页面地址")).toHaveValue("https://example.com/card");
     await user.clear(screen.getByLabelText("页面名称"));
     await user.type(screen.getByLabelText("页面名称"), "企业名片新版");
     await user.click(screen.getByRole("button", { name: "确认提交" }));
@@ -429,9 +448,29 @@ describe("Chat settings pages", () => {
       status: "disabled",
     });
 
-    fireEvent.dragStart(screen.getByRole("button", { name: "拖动 发起收款 调整排序" }));
-    fireEvent.dragOver(screen.getByRole("row", { name: /企业名片新版/ }));
-    fireEvent.drop(screen.getByRole("row", { name: /企业名片新版/ }));
+    const paymentDragHandle = screen.getByRole("button", { name: "拖动 发起收款 调整排序" });
+    const updatedCardRow = screen.getByRole("row", { name: /企业名片新版/ });
+    const rowRects = [
+      [updatedCardRow, { bottom: 40, top: 0 }],
+      [screen.getByRole("row", { name: /客户详情/ }), { bottom: 80, top: 40 }],
+      [screen.getByRole("row", { name: /发起收款/ }), { bottom: 120, top: 80 }],
+      [screen.getByRole("row", { name: /快捷回复/ }), { bottom: 160, top: 120 }],
+      [screen.getByRole("row", { name: /素材中心/ }), { bottom: 200, top: 160 }],
+    ] as const;
+    const rectSpies = rowRects.map(([row, rect]) =>
+      vi.spyOn(row, "getBoundingClientRect").mockReturnValue(createDomRect(rect)),
+    );
+
+    fireEvent.mouseDown(paymentDragHandle, {
+      clientY: 100,
+    });
+    fireEvent.mouseMove(document, {
+      clientY: 20,
+    });
+    fireEvent.mouseUp(document, {
+      clientY: 20,
+    });
+    rectSpies.forEach((spy) => spy.mockRestore());
     await waitFor(() => {
       expect(mock.history.put.some((request) => request.url === "/server/settings/sidebar-items/sort")).toBe(
         true,

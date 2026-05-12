@@ -23,6 +23,8 @@ type ConversationListPanelProps = {
   activeConversation?: Conversation;
   activeMode: ChatMode;
   conversations: Conversation[];
+  onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
+  onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
   onSelectConversation: (conversationId: string) => void | Promise<void>;
   onSelectMode: (mode: ChatMode) => void | Promise<void>;
   searchableConversations?: Conversation[];
@@ -32,6 +34,8 @@ export function ConversationListPanel({
   activeConversation,
   activeMode,
   conversations,
+  onMarkConversationRead,
+  onMarkConversationUnread,
   onSelectConversation,
   onSelectMode,
   searchableConversations = conversations,
@@ -206,6 +210,12 @@ export function ConversationListPanel({
                     conversation={conversation}
                     isActive={conversation.id === activeConversation?.id}
                     key={conversation.id}
+                    onMarkRead={() => {
+                      void onMarkConversationRead?.(conversation.id);
+                    }}
+                    onMarkUnread={() => {
+                      void onMarkConversationUnread?.(conversation.id);
+                    }}
                     onSelect={() => {
                       startTransition(() => {
                         void onSelectConversation(conversation.id);

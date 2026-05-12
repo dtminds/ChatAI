@@ -10,6 +10,7 @@ import {
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
   type WorkbenchConversationReadResponse,
+  type WorkbenchConversationUnreadResponse,
   type WorkbenchConversationSummaryDto,
   type WorkbenchGroupMembersResponse,
   type WorkbenchSubUserDto,
@@ -32,6 +33,7 @@ export type WorkbenchService = {
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
+  markConversationUnread: (conversationId: string) => Promise<WorkbenchConversationUnreadResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
@@ -174,6 +176,30 @@ export function createMockWorkbenchService(): WorkbenchService {
         seatUnreadCount: findAccount(state, nextConversation.seatId)?.unreadCount ?? 0,
         conversationId,
         unreadCount: 0,
+      };
+    },
+    async markConversationUnread(conversationId) {
+      const conversation = findConversation(state, conversationId);
+
+      if (!conversation) {
+        throw new Error("Conversation not found");
+      }
+
+      const nextConversation = {
+        ...conversation,
+        unreadCount: 1,
+      };
+
+      upsertConversation(state, nextConversation);
+      syncAccountUnread(state, nextConversation.seatId);
+      pushConversationEvent(state, nextConversation);
+      pushAccountEvent(state, nextConversation.seatId);
+
+      return {
+        seatId: nextConversation.seatId,
+        seatUnreadCount: findAccount(state, nextConversation.seatId)?.unreadCount ?? 0,
+        conversationId,
+        unreadCount: 1,
       };
     },
     async poll(request) {
@@ -340,6 +366,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
     markConversationRead(conversationId) {
       return http.post<WorkbenchConversationReadResponse>(
         `/server/conversations/${conversationId}/read`,
+      );
+    },
+    markConversationUnread(conversationId) {
+      return http.post<WorkbenchConversationUnreadResponse>(
+        `/server/conversations/${conversationId}/unread`,
       );
     },
     poll(request) {

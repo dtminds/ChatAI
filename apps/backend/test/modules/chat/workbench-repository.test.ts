@@ -36,6 +36,8 @@ function createMessagesDb(rows: MessageRow[]) {
 }
 
 function createQueryBuilder(result: unknown) {
+  let currentResult = result;
+
   return {
     innerJoin() {
       return this;
@@ -46,17 +48,23 @@ function createQueryBuilder(result: unknown) {
     orderBy() {
       return this;
     },
-    select() {
+    select(selection?: unknown) {
+      if (typeof selection === "function") {
+        currentResult = Array.isArray(currentResult)
+          ? currentResult.map((item) => ({ ...item, seat_unread_count: 6 }))
+          : { ...(currentResult as object), seat_unread_count: 6 };
+      }
+
       return this;
     },
     where() {
       return this;
     },
     execute() {
-      return Promise.resolve(Array.isArray(result) ? result : [result]);
+      return Promise.resolve(Array.isArray(currentResult) ? currentResult : [currentResult]);
     },
     executeTakeFirst() {
-      return Promise.resolve(Array.isArray(result) ? result[0] : result);
+      return Promise.resolve(Array.isArray(currentResult) ? currentResult[0] : currentResult);
     },
   };
 }
@@ -104,7 +112,9 @@ describe("WorkbenchRepository", () => {
             platform: 5,
             seat_host_sub_id: 101,
             seat_id: 12,
+            seat_unread_count: 6,
             uid: 9001,
+            unread_cnt: 2,
           });
         },
       } as never,
@@ -115,8 +125,33 @@ describe("WorkbenchRepository", () => {
       platform: 5,
       seatHostSubUserId: "101",
       seatId: "12",
+      seatUnreadCount: 6,
       uid: 9001,
+      unreadCount: 2,
     });
+  });
+
+  it("calculates seat unread after mark-read with a lightweight aggregate query", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_conversation");
+
+          return createQueryBuilder({
+            unread_count: 5,
+          });
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getSeatUnreadCountAfterMarkRead({
+        conversationId: "88",
+        platform: 5,
+        seatId: "12",
+        uid: 9001,
+      }),
+    ).resolves.toBe(5);
   });
 
   it("ignores nullable third-party ids when collecting message hydration sources", async () => {

@@ -33,6 +33,24 @@ function getSeedUnreadAfterRead(accountId: string, readConversationId: string) {
   );
 }
 
+function getSeedUnreadAfterReadAndUnread(
+  accountId: string,
+  readConversationId: string,
+  unreadConversationId: string,
+) {
+  return (seedConversations[accountId] ?? []).reduce((total, conversation) => {
+    if (conversation.id === readConversationId) {
+      return total;
+    }
+
+    if (conversation.id === unreadConversationId) {
+      return total + 1;
+    }
+
+    return total + conversation.unread;
+  }, 0);
+}
+
 function getSeedMessageIdAt(conversationId: string, index: number) {
   return seedMessages[conversationId]?.[index]?.id;
 }
@@ -836,6 +854,54 @@ describe("useWorkbenchStore", () => {
 
     expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-005");
     expect(observedConversationIds).toEqual(["conv-001"]);
+  });
+
+  it("marks a read conversation unread when the active account is taken over", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedConversationIds: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async markConversationUnread(conversationId) {
+        observedConversationIds.push(conversationId);
+
+        return baseService.markConversationUnread(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+    await useWorkbenchStore.getState().markConversationUnread("conv-002");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(observedConversationIds).toEqual(["conv-002"]);
+    expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
+      unread: 1,
+    });
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
+      getSeedUnreadAfterReadAndUnread("drc", "conv-001", "conv-002"),
+    );
+  });
+
+  it("skips mark-unread when the active account is not taken over by the current user", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedConversationIds: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async markConversationUnread(conversationId) {
+        observedConversationIds.push(conversationId);
+
+        return baseService.markConversationUnread(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    await useWorkbenchStore.getState().markConversationUnread("conv-006");
+
+    expect(observedConversationIds).toEqual([]);
   });
 
   it("uses a fallback read receipt error when the thrown error message is empty", async () => {

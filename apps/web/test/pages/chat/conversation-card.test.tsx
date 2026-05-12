@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationCard } from "@/pages/chat/components/conversation-card";
 import type { Conversation } from "@/pages/chat/chat-types";
@@ -94,5 +95,39 @@ describe("ConversationCard", () => {
       "text-conversation-active-foreground",
     );
     expect(avatarFallback?.querySelector("svg")).toBeInTheDocument();
+  });
+
+  it("shows mark-read for unread conversations and mark-unread for read conversations", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ConversationCard
+        conversation={conversation}
+        isActive
+        onMarkRead={vi.fn()}
+        onMarkUnread={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "会话操作" }));
+
+    expect(screen.getByRole("menuitem", { name: /标记已读/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /标记未读/ })).not.toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    rerender(
+      <ConversationCard
+        conversation={{ ...conversation, unread: 0 }}
+        isActive
+        onMarkRead={vi.fn()}
+        onMarkUnread={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "会话操作" }));
+
+    expect(screen.getByRole("menuitem", { name: /标记未读/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /标记已读/ })).not.toBeInTheDocument();
   });
 });

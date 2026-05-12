@@ -21,7 +21,11 @@ export type WorkbenchJavaClient = {
   markConversationRead(input: {
     conversationId: string;
     platform: number;
-    seatId: string;
+    uid: number;
+  }): Promise<void>;
+  markConversationUnread(input: {
+    conversationId: string;
+    platform: number;
     uid: number;
   }): Promise<void>;
   sendMessage(input: {
@@ -40,16 +44,20 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
 
   return {
     markConversationRead(input) {
-      return postJavaEnvelope<boolean>(
+      return postConversationOperate(
         baseUrl,
         token,
         "/third-internal/wap-embed/conversation/mark-read",
-        {
-          conversationId: Number(input.conversationId),
-          platform: input.platform,
-          uid: input.uid,
-        },
-      ).then(() => undefined);
+        input,
+      );
+    },
+    markConversationUnread(input) {
+      return postConversationOperate(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/mark-unread",
+        input,
+      );
     },
     sendMessage(input) {
       return postJava<WorkbenchSendMessageResponse>(
@@ -68,6 +76,23 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
       );
     },
   };
+}
+
+async function postConversationOperate(
+  baseUrl: string | undefined,
+  token: string | undefined,
+  path: string,
+  input: {
+    conversationId: string;
+    platform: number;
+    uid: number;
+  },
+) {
+  await postJavaEnvelope<boolean>(baseUrl, token, path, {
+    conversationId: Number(input.conversationId),
+    platform: input.platform,
+    uid: input.uid,
+  });
 }
 
 async function postJava<T>(

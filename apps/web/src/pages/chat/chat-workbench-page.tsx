@@ -92,6 +92,8 @@ function ChatWorkbenchContent({
     isConversationLoading,
     loadActiveGroupMembers,
     loadOlderMessages,
+    markConversationRead,
+    markConversationUnread,
     me,
     messagePaginationByConversationId,
     messagesByConversationId,
@@ -390,6 +392,8 @@ function ChatWorkbenchContent({
                 activeConversation={activeConversation}
                 activeMode={activeMode}
                 conversations={visibleConversations}
+                onMarkConversationRead={markConversationRead}
+                onMarkConversationUnread={markConversationUnread}
                 onSelectConversation={setActiveConversation}
                 onSelectMode={setActiveMode}
                 searchableConversations={allConversations}

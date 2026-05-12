@@ -3,6 +3,7 @@ import type {
   WorkbenchSeatDto,
   WorkbenchConversationChangeDto,
   WorkbenchConversationReadResponse,
+  WorkbenchConversationUnreadResponse,
   WorkbenchConversationSummaryDto,
   WorkbenchGroupMembersResponse,
   WorkbenchSubUserDto,
@@ -160,6 +161,33 @@ export function createMemoryWorkbenchService() {
         seatUnreadCount: findSeat(state, nextConversation.seatId)?.unreadCount ?? 0,
         conversationId,
         unreadCount: 0,
+      };
+    },
+    markConversationUnread(
+      _subUserId: string,
+      conversationId: string,
+    ): WorkbenchConversationUnreadResponse {
+      const conversation = findConversation(state, conversationId);
+
+      if (!conversation) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      const nextConversation = {
+        ...conversation,
+        unreadCount: 1,
+      };
+
+      upsertConversation(state, nextConversation);
+      syncSeatUnread(state, nextConversation.seatId);
+      pushConversationEvent(state, nextConversation);
+      pushSeatEvent(state, nextConversation.seatId);
+
+      return {
+        seatId: nextConversation.seatId,
+        seatUnreadCount: findSeat(state, nextConversation.seatId)?.unreadCount ?? 0,
+        conversationId,
+        unreadCount: 1,
       };
     },
     poll(_subUserId: string, request: WorkbenchPollRequest): WorkbenchPollResponse {

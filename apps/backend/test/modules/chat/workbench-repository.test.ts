@@ -244,6 +244,48 @@ describe("WorkbenchRepository", () => {
     expect(updates).toEqual([{ pinned_time: 0 }]);
   });
 
+  it("hides a conversation in tenant scope", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const wheres: Array<[string, string, unknown]> = [];
+    const repository = new WorkbenchRepository(
+      {
+        updateTable(table: string) {
+          expect(table).toBe("xy_wap_embed_conversation");
+
+          return {
+            set(update: Record<string, unknown>) {
+              updates.push(update);
+
+              return this;
+            },
+            where(column: string, operator: string, value: unknown) {
+              wheres.push([column, operator, value]);
+
+              return this;
+            },
+            execute() {
+              return Promise.resolve([]);
+            },
+          };
+        },
+      } as never,
+    );
+
+    await repository.hideConversation({
+      conversationId: "88",
+      platform: 5,
+      uid: 9001,
+    });
+
+    expect(updates).toEqual([{ biz_status: 0 }]);
+    expect(wheres).toEqual([
+      ["id", "=", 88],
+      ["uid", "=", 9001],
+      ["platform", "=", 5],
+      ["biz_status", "=", 1],
+    ]);
+  });
+
   it("ignores nullable third-party ids when collecting message hydration sources", async () => {
     const repository = new WorkbenchRepository(createFailingDb() as never);
     const sources = await (

@@ -1,4 +1,5 @@
 import type {
+  WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
   WorkbenchConversationUnpinResponse,
@@ -24,6 +25,10 @@ import type { WorkbenchJavaClient } from "./workbench-java-client.js";
 import type { WorkbenchRepository } from "./workbench-repository.js";
 
 export type WorkbenchService = {
+  deleteConversation(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchConversationDeleteResponse> | WorkbenchConversationDeleteResponse;
   getConversations(
     subUserId: string,
     seatId: string,
@@ -74,6 +79,26 @@ export class MysqlWorkbenchService implements WorkbenchService {
     private readonly repository: WorkbenchRepository,
     private readonly javaClient: WorkbenchJavaClient,
   ) {}
+
+  async deleteConversation(subUserId: string, conversationId: string) {
+    const conversation = await this.getOperableConversation(subUserId, conversationId);
+
+    await this.javaClient.deleteConversation({
+      conversationId: conversation.id,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+    await this.repository.hideConversation({
+      conversationId: conversation.id,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
+    return {
+      conversationId: conversation.id,
+      seatId: conversation.seatId,
+    };
+  }
 
   async getMe(subUserId: string) {
     const subUser = await this.repository.getSubUser(subUserId);

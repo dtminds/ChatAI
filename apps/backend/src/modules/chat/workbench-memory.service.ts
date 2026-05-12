@@ -1,4 +1,5 @@
 import type {
+  WorkbenchConversationDeleteResponse,
   WorkbenchSeatChangeDto,
   WorkbenchSeatDto,
   WorkbenchConversationChangeDto,
@@ -80,6 +81,12 @@ export function createMemoryWorkbenchService() {
   const state = buildInitialState();
 
   return {
+    deleteConversation(
+      _subUserId: string,
+      conversationId: string,
+    ): WorkbenchConversationDeleteResponse {
+      return removeConversation(state, conversationId);
+    },
     getSeats(_subUserId: string) {
       return clone(state.seats);
     },
@@ -583,6 +590,29 @@ function setConversationPinned(
   };
 }
 
+function removeConversation(
+  state: MemoryWorkbenchState,
+  conversationId: string,
+): WorkbenchConversationDeleteResponse {
+  const conversation = findConversation(state, conversationId);
+
+  if (!conversation) {
+    throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+  }
+
+  state.conversationsBySeat[conversation.seatId] = (
+    state.conversationsBySeat[conversation.seatId] ?? []
+  ).filter((item) => item.conversationId !== conversationId);
+  syncSeatUnread(state, conversation.seatId);
+  pushConversationRemoveEvent(state, conversation.seatId, conversationId);
+  pushSeatEvent(state, conversation.seatId);
+
+  return {
+    conversationId,
+    seatId: conversation.seatId,
+  };
+}
+
 function syncSeatUnread(state: MemoryWorkbenchState, seatId: string) {
   const seat = findSeat(state, seatId);
 
@@ -623,6 +653,23 @@ function pushConversationEvent(
     payload: {
       ...conversation,
       type: "upsert",
+    },
+    type: "conversation",
+    version: state.version,
+  });
+}
+
+function pushConversationRemoveEvent(
+  state: MemoryWorkbenchState,
+  seatId: string,
+  conversationId: string,
+) {
+  state.version += 1;
+  state.events.push({
+    payload: {
+      conversationId,
+      seatId,
+      type: "remove",
     },
     type: "conversation",
     version: state.version,

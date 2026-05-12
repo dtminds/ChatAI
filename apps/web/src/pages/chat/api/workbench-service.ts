@@ -7,6 +7,7 @@ import {
 import { http } from "@/lib/request";
 import {
   type ApiSuccessEnvelope,
+  type WorkbenchConversationDeleteResponse,
   type WorkbenchSeatChangeDto,
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
@@ -31,6 +32,7 @@ import {
 import type { Message } from "@/pages/chat/chat-types";
 
 export type WorkbenchService = {
+  deleteConversation: (conversationId: string) => Promise<WorkbenchConversationDeleteResponse>;
   getSeats: () => Promise<WorkbenchSeatDto[]>;
   getConversations: (seatId: string) => Promise<WorkbenchConversationSummaryDto[]>;
   getMe: () => Promise<WorkbenchSubUserDto>;
@@ -108,6 +110,9 @@ export function createMockWorkbenchService(): WorkbenchService {
   return {
     async getSeats() {
       return clone(state.seats);
+    },
+    async deleteConversation(conversationId) {
+      return removeConversation(state, conversationId);
     },
     async getConversations(seatId) {
       const conversations = state.conversationsByAccount[seatId] ?? [];
@@ -352,6 +357,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
   return {
     getSeats() {
       return http.get<WorkbenchSeatDto[]>("/server/seats");
+    },
+    deleteConversation(conversationId) {
+      return http.post<WorkbenchConversationDeleteResponse>(
+        `/server/conversations/${conversationId}/delete`,
+      );
     },
     getConversations(seatId) {
       return http.get<WorkbenchConversationSummaryDto[]>("/server/conversations", {
@@ -709,6 +719,29 @@ function setConversationPinned(
   };
 }
 
+function removeConversation(
+  state: MockState,
+  conversationId: string,
+): WorkbenchConversationDeleteResponse {
+  const conversation = findConversation(state, conversationId);
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  state.conversationsByAccount[conversation.seatId] = (
+    state.conversationsByAccount[conversation.seatId] ?? []
+  ).filter((item) => item.conversationId !== conversationId);
+  syncAccountUnread(state, conversation.seatId);
+  pushConversationRemoveEvent(state, conversation.seatId, conversationId);
+  pushAccountEvent(state, conversation.seatId);
+
+  return {
+    conversationId,
+    seatId: conversation.seatId,
+  };
+}
+
 function syncAccountUnread(state: MockState, seatId: string) {
   const seat = findAccount(state, seatId);
 
@@ -746,6 +779,23 @@ function pushConversationEvent(state: MockState, conversation: WorkbenchConversa
     payload: {
       ...conversation,
       type: "upsert",
+    },
+    type: "conversation",
+    version: state.version,
+  });
+}
+
+function pushConversationRemoveEvent(
+  state: MockState,
+  seatId: string,
+  conversationId: string,
+) {
+  state.version += 1;
+  state.events.push({
+    payload: {
+      conversationId,
+      seatId,
+      type: "remove",
     },
     type: "conversation",
     version: state.version,

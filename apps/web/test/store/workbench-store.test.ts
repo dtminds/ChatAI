@@ -1027,6 +1027,114 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("deletes a conversation locally without reloading conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedDeletedConversationIds: string[] = [];
+    const observedConversationScopes: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async deleteConversation(conversationId) {
+        observedDeletedConversationIds.push(conversationId);
+
+        return baseService.deleteConversation(conversationId);
+      },
+      async getConversations(accountId) {
+        observedConversationScopes.push(accountId);
+
+        return baseService.getConversations(accountId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    observedConversationScopes.length = 0;
+
+    await useWorkbenchStore.getState().deleteConversation("conv-003");
+
+    const state = useWorkbenchStore.getState();
+    expect(observedDeletedConversationIds).toEqual(["conv-003"]);
+    expect(observedConversationScopes).toEqual([]);
+    expect(state.conversationListsByScope.drc.map((conversation) => conversation.id)).not.toContain("conv-003");
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
+      getSeedUnreadAfterRead("drc", "conv-001") - 4,
+    );
+  });
+
+  it("selects the next conversation after deleting the active conversation", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedMessageConversationIds: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        observedMessageConversationIds.push(conversationId);
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    observedMessageConversationIds.length = 0;
+
+    await useWorkbenchStore.getState().deleteConversation("conv-001");
+
+    const state = useWorkbenchStore.getState();
+    expect(state.conversationListsByScope.drc.map((conversation) => conversation.id)).not.toContain("conv-001");
+    expect(state.activeConversationId).toBe("conv-002");
+    expect(observedMessageConversationIds).toEqual(["conv-002"]);
+    expect(state.messagesByConversationId["conv-002"]?.length).toBeGreaterThan(0);
+  });
+
+  it("resets active message sequence immediately when deleting the active conversation", async () => {
+    const baseService = createMockWorkbenchService();
+    const messageLoadStarted = createDeferred();
+    const messageLoadGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-002") {
+          messageLoadStarted.resolve();
+          await messageLoadGate.promise;
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    expect(useWorkbenchStore.getState().activeMessageSeq).toBeGreaterThan(0);
+
+    const deletePromise = useWorkbenchStore.getState().deleteConversation("conv-001");
+    await messageLoadStarted.promise;
+
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    expect(useWorkbenchStore.getState().activeMessageSeq).toBe(0);
+
+    messageLoadGate.resolve();
+    await deletePromise;
+  });
+
+  it("skips delete when the active account is not taken over by the current user", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedDeletedConversationIds: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async deleteConversation(conversationId) {
+        observedDeletedConversationIds.push(conversationId);
+
+        return baseService.deleteConversation(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    await useWorkbenchStore.getState().deleteConversation("conv-006");
+
+    expect(observedDeletedConversationIds).toEqual([]);
+  });
+
   it("uses a fallback read receipt error when the thrown error message is empty", async () => {
     const baseService = createMockWorkbenchService();
 

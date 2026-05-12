@@ -1,3 +1,4 @@
+import type { WorkbenchMessagePageDto } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
@@ -352,11 +353,11 @@ export class WorkbenchRepository {
       beforeSeq?: number;
       limit: number;
     },
-  ) {
+  ): Promise<WorkbenchMessagePageDto> {
     const conversationNumericId = parseMySqlId(conversationId);
 
     if (conversationNumericId == null || options.limit <= 0) {
-      return [];
+      return emptyMessagePage();
     }
 
     const conversation = await this.db
@@ -382,7 +383,7 @@ export class WorkbenchRepository {
       .executeTakeFirst();
 
     if (!conversation) {
-      return [];
+      return emptyMessagePage();
     }
 
     let query = this.db
@@ -429,19 +430,27 @@ export class WorkbenchRepository {
 
     const rows = await query
       .orderBy("message.id", "desc")
-      .limit(options.limit)
+      .limit(options.limit + 1)
       .execute();
 
-    const messageRows = rows.reverse().map((row) => row as MessageRow);
+    const rawRows = rows.slice(0, options.limit) as MessageRow[];
+    const visibleRows = rawRows.filter((row) => !isHiddenMessageRow(row));
+    const messageRows = visibleRows.reverse();
     const hydrationSources = await this.getMessageHydrationSources(
       messageRows,
       conversation.uid,
       conversation.platform,
     );
 
-    return hydrateMessageRows(messageRows, hydrationSources).map((row) =>
-      mapMessageRow(row),
-    );
+    return {
+      filteredCount: rawRows.length - visibleRows.length,
+      hasMore: rows.length > options.limit,
+      messages: hydrateMessageRows(messageRows, hydrationSources).map((row) =>
+        mapMessageRow(row),
+      ),
+      nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id) : undefined,
+      scannedCount: rawRows.length,
+    };
   }
 
   private async getSeatRecord(seatId: number) {
@@ -591,6 +600,54 @@ export class WorkbenchRepository {
       ),
     };
   }
+}
+
+function emptyMessagePage(): WorkbenchMessagePageDto {
+  return {
+    filteredCount: 0,
+    hasMore: false,
+    messages: [],
+    scannedCount: 0,
+  };
+}
+
+function isHiddenMessageRow(row: MessageRow) {
+  if (row.msgtype === "revoke") {
+    return true;
+  }
+
+  if (row.msgtype !== "system") {
+    return false;
+  }
+
+  return parseSystemMessageEventType(row.content) === "revoke";
+}
+
+function parseSystemMessageEventType(rawContent: string | null) {
+  if (!rawContent) {
+    return undefined;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(rawContent);
+    return isRecord(parsed) && typeof parsed.type === "string" ? parsed.type : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function toNumber(value: number | string | null | undefined) {
+  if (value == null) {
+    return undefined;
+  }
+
+  const numberValue = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function uniqueNonEmpty(values: Array<string | null | undefined>) {

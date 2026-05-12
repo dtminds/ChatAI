@@ -106,6 +106,14 @@ export type WorkbenchMessageBaseDto = {
 
 export type WorkbenchMessageDto = WorkbenchMessageBaseDto;
 
+export type WorkbenchMessagePageDto = {
+  messages: WorkbenchMessageDto[];
+  nextBeforeSeq?: number;
+  hasMore: boolean;
+  scannedCount: number;
+  filteredCount: number;
+};
+
 export type WorkbenchSeatChangeDto = {
   seatId: string;
   unreadCount: number;

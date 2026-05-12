@@ -3,6 +3,7 @@ import { solveChallenge, type Challenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/scrypt";
 import argon2 from "argon2";
 import { buildApp } from "../src/app";
+import { createMemoryWorkbenchService } from "../src/modules/chat/workbench-memory.service";
 
 async function createAuthenticatedApp() {
   const app = await buildApp();
@@ -17,6 +18,7 @@ async function createAuthenticatedApp() {
     session_version: 1,
     sub_user_id: "101",
   });
+  app.workbenchService = createMemoryWorkbenchService();
 
   return {
     app,
@@ -53,7 +55,7 @@ describe("backend app", () => {
       database: {
         configured: false,
       },
-      status: "ready",
+      status: "not-ready",
     });
 
     await app.close();
@@ -72,6 +74,27 @@ describe("backend app", () => {
       error: {
         code: "UNAUTHORIZED",
         message: "登录已失效",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("returns service unavailable for workbench routes when the database is missing", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    delete app.workbenchService;
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/seats",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "DATABASE_NOT_CONFIGURED",
       },
       success: false,
     });
@@ -650,8 +673,15 @@ describe("backend app", () => {
       unreadCount: 2,
     });
     expect(messages.statusCode).toBe(200);
-    expect(messages.json()).toHaveLength(5);
-    expect(messages.json()[0]).toMatchObject({
+    expect(messages.json()).toMatchObject({
+      filteredCount: 0,
+      hasMore: true,
+      messages: expect.any(Array),
+      nextBeforeSeq: 5,
+      scannedCount: 5,
+    });
+    expect(messages.json().messages).toHaveLength(5);
+    expect(messages.json().messages[0]).toMatchObject({
       conversationId: "conv-001",
       seq: 5,
     });
@@ -739,7 +769,33 @@ describe("backend app", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual([]);
+    expect(response.json()).toEqual({
+      filteredCount: 0,
+      hasMore: false,
+      messages: [],
+      scannedCount: 0,
+    });
+
+    await app.close();
+  });
+
+  it("returns cursor progress when a message page only contains hidden revoke events", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations/conv-revoke-only/messages?limit=2",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      filteredCount: 2,
+      hasMore: true,
+      messages: [],
+      nextBeforeSeq: 9,
+      scannedCount: 2,
+    });
 
     await app.close();
   });
@@ -970,7 +1026,7 @@ describe("backend app", () => {
       },
     ]);
     expect(messages.statusCode).toBe(200);
-    expect(messages.json().slice(-3)).toMatchObject([
+    expect(messages.json().messages.slice(-3)).toMatchObject([
       {
         clientMessageId: "local-segment-test-001",
         content: {

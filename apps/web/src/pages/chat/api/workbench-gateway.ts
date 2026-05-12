@@ -41,6 +41,8 @@ export type WorkbenchConversationPage = {
   conversationId: string;
   hasMoreHistory: boolean;
   messages: Message[];
+  nextBeforeSeq?: number;
+  skippedHiddenCount: number;
 };
 
 export type WorkbenchBootstrapResult = {
@@ -177,13 +179,15 @@ export async function loadConversationMessagesPage(
   },
 ): Promise<WorkbenchConversationPage> {
   const service = getWorkbenchService();
-  const messageDtos = await service.getMessages(conversationId, options);
-  const messages = adaptMessages(messageDtos, context);
+  const page = await service.getMessages(conversationId, options);
+  const messages = adaptMessages(page.messages, context);
 
   return {
     conversationId,
-    hasMoreHistory: messageDtos.length >= (options?.limit ?? DEFAULT_MESSAGE_PAGE_SIZE),
+    hasMoreHistory: page.hasMore,
     messages,
+    nextBeforeSeq: page.nextBeforeSeq,
+    skippedHiddenCount: page.filteredCount,
   };
 }
 

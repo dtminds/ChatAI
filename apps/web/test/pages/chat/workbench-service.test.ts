@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { resolveWorkbenchServiceMode } from "@/pages/chat/api/workbench-service";
+import { createWorkbenchService } from "@/pages/chat/api/workbench-service";
 
-describe("resolveWorkbenchServiceMode", () => {
-  it("respects explicit service mode configuration", () => {
-    expect(resolveWorkbenchServiceMode("http")).toBe("http");
-    expect(resolveWorkbenchServiceMode("mock")).toBe("mock");
-  });
+describe("createWorkbenchService", () => {
+  it("uses the HTTP workbench service by default", async () => {
+    const service = createWorkbenchService();
 
-  it("uses mock mode by default in tests", () => {
-    expect(resolveWorkbenchServiceMode(undefined)).toBe("mock");
-    expect(resolveWorkbenchServiceMode("unexpected" as "mock")).toBe("mock");
+    await expect(service.getMe()).rejects.toMatchObject({
+      message: expect.any(String),
+    });
   });
 });

@@ -35,6 +35,7 @@ type ChatPanelProps = {
   messages: Message[];
   selectedMentionMembers: GroupMember[];
   hasMoreHistory: boolean;
+  historyLoadLabel?: string;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
@@ -71,6 +72,7 @@ export function ChatPanel({
   messages,
   selectedMentionMembers,
   hasMoreHistory,
+  historyLoadLabel,
   onCustomerPanelResizeStart,
   onDraftChange,
   onEmojiPickerOpenChange,
@@ -99,6 +101,7 @@ export function ChatPanel({
           <ChatMessagePanel
             activeHistoryStatus={activeHistoryStatus}
             hasMoreHistory={hasMoreHistory}
+            historyLoadLabel={historyLoadLabel}
             isConversationLoading={isConversationLoading}
             messages={messages}
             messageViewportRef={messageViewportRef}

@@ -68,6 +68,7 @@ import {
   updateSidebarItemsSort,
   updateSidebarItemStatus,
 } from "@/pages/chat/settings/settings-service";
+import { cn } from "@/lib/utils";
 import { Field, PageHeader } from "@/pages/chat/settings/shared";
 
 type DragOverlaySize = {
@@ -638,23 +639,25 @@ function SidebarPreview({ items }: { items: SettingsSidebarItem[] }) {
       className="sticky top-8 h-fit rounded-[10px] border border-border bg-surface p-4"
     >
       <div className="overflow-hidden rounded-[10px] border border-divider bg-surface">
-        <div className="flex h-12 items-center justify-center border-b border-primary/30 bg-primary text-sm font-semibold text-primary-foreground">
-          聊天工具栏
-        </div>
-        <div className="grid grid-cols-4 border-divider bg-surface text-sm text-foreground">
-          {activeItems.map((item) => (
-            <div
-              className="flex h-14 min-w-0 items-center justify-center border-b border-r border-divider px-2 text-center last:border-r-0"
-              key={item.id}
-            >
-              <span className="truncate">{item.name}</span>
-            </div>
-          ))}
-          {activeItems.length === 0 ? (
-            <div className="col-span-3 flex h-28 items-center justify-center text-sm text-muted-foreground">
-              暂无启用页面
-            </div>
-          ) : null}
+        <div className="border-b border-divider px-4 py-2">
+          <div className="grid grid-cols-4 gap-x-4 gap-y-1 text-sm">
+            {activeItems.map((item, index) => (
+              <div
+                className={cn(
+                  "flex h-10 min-w-0 items-center justify-center px-0 py-2 text-muted-foreground",
+                  index === 0 && "font-semibold text-foreground",
+                )}
+                key={item.id}
+              >
+                <span className="truncate">{item.name}</span>
+              </div>
+            ))}
+            {activeItems.length === 0 ? (
+              <div className="col-span-4 flex h-10 items-center justify-center text-sm text-muted-foreground">
+                暂无启用页面
+              </div>
+            ) : null}
+          </div>
         </div>
         <div className="h-56 bg-muted/35" />
       </div>

@@ -62,13 +62,13 @@ export function CustomerSidePanel({
           <div className="border-b border-divider px-4 py-2">
             <TabsList className="grid h-auto w-full grid-cols-4 gap-x-4 gap-y-1 rounded-none bg-transparent p-0">
               <TabsTrigger
-                className="h-10 min-w-0 rounded-none border-b-2 border-transparent px-0 py-2 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                className="h-10 min-w-0 rounded-none bg-transparent px-0 py-2 text-[13px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
                 value="system"
               >
                 <span className="truncate">基础信息</span>
               </TabsTrigger>
               <TabsTrigger
-                className="h-10 min-w-0 rounded-none border-b-2 border-transparent px-0 py-2 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                className="h-10 min-w-0 rounded-none bg-transparent px-0 py-2 text-[13px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
                 value="baidu"
               >
                 <span className="truncate">百度</span>

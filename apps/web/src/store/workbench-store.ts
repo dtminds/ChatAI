@@ -2,14 +2,17 @@ import { create } from "zustand";
 import { formatConversationPreview, formatWorkbenchTimestamp } from "@/pages/chat/api/workbench-adapter";
 import {
   bootstrapWorkbench,
+  loadAccountConversations,
   loadGroupMembers,
   loadAccountScope,
   loadConversationMessagesPage,
   markConversationRead,
   markConversationUnread,
+  pinConversation,
   pollWorkbench,
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
+  unpinConversation,
 } from "@/pages/chat/api/workbench-gateway";
 import {
   getComposerSegmentsPreview,
@@ -78,6 +81,7 @@ type WorkbenchState = {
   dismissReadReceiptError: () => void;
   initializeWorkbench: () => Promise<void>;
   markConversationRead: (conversationId: string) => Promise<void>;
+  pinConversation: (conversationId: string) => Promise<void>;
   setActiveAccount: (accountId: string) => Promise<void>;
   setActiveConversation: (conversationId: string) => Promise<void>;
   setActiveMode: (mode: ChatMode) => Promise<void>;
@@ -86,6 +90,7 @@ type WorkbenchState = {
   sendAgentMessageSegments: (segments: ComposerSegment[]) => Promise<void>;
   sendAgentTextMessage: (text: string) => Promise<void>;
   takeOverAccount: (accountId: string) => Promise<void>;
+  unpinConversation: (conversationId: string) => Promise<void>;
   retryFailedMessage: (messageId: string) => Promise<void>;
   loadOlderMessages: () => Promise<void>;
   pollWorkbench: () => Promise<void>;
@@ -100,6 +105,7 @@ function createInitialState(): Omit<
   WorkbenchState,
   | "initializeWorkbench"
   | "markConversationRead"
+  | "pinConversation"
   | "setActiveAccount"
   | "setActiveConversation"
   | "setActiveMode"
@@ -108,6 +114,7 @@ function createInitialState(): Omit<
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
   | "takeOverAccount"
+  | "unpinConversation"
   | "retryFailedMessage"
   | "loadOlderMessages"
   | "pollWorkbench"
@@ -536,6 +543,57 @@ export function createWorkbenchStore() {
       }
     }
 
+    async function reloadAccountConversations(accountId: string) {
+      const conversations = await loadAccountConversations(accountId);
+
+      set((currentState) => ({
+        conversationListsByScope: {
+          ...currentState.conversationListsByScope,
+          [accountId]: conversations,
+        },
+      }));
+    }
+
+    async function setConversationPinned(
+      conversationId: string,
+      isPinned: boolean,
+    ) {
+      const requestId = latestScopeRequestId;
+      const state = get();
+      const conversation = getConversationById(state, conversationId);
+      const account = state.accounts.find(
+        (item) => item.id === conversation?.accountId,
+      );
+
+      if (!conversation || !account || !isAccountTakenOverByCurrentUser(account, state.me)) {
+        return;
+      }
+
+      try {
+        if (isPinned) {
+          await pinConversation(conversationId);
+        } else {
+          await unpinConversation(conversationId);
+        }
+
+        await reloadAccountConversations(account.id);
+        set({ readReceiptError: undefined });
+      } catch (error) {
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
+        set({
+          readReceiptError:
+            error instanceof Error && error.message
+              ? error.message
+              : isPinned
+                ? "置顶失败"
+                : "取消置顶失败",
+        });
+      }
+    }
+
     return {
       ...createInitialState(),
       dismissScopeTransitionError() {
@@ -597,6 +655,9 @@ export function createWorkbenchStore() {
         }
 
         await markActiveConversationRead(conversationId, requestId);
+      },
+      async pinConversation(conversationId) {
+        await setConversationPinned(conversationId, true);
       },
       async loadActiveGroupMembers(options) {
         const state = get();
@@ -665,6 +726,9 @@ export function createWorkbenchStore() {
         }));
         clearTakeoverRequest(accountId);
       }
+    },
+    async unpinConversation(conversationId) {
+      await setConversationPinned(conversationId, false);
     },
     async initializeWorkbench() {
       const state = get();

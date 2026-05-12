@@ -2,7 +2,9 @@ import type {
   WorkbenchSeatChangeDto,
   WorkbenchSeatDto,
   WorkbenchConversationChangeDto,
+  WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
+  WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
   WorkbenchConversationSummaryDto,
   WorkbenchGroupMembersResponse,
@@ -190,6 +192,12 @@ export function createMemoryWorkbenchService() {
         unreadCount: 1,
       };
     },
+    pinConversation(
+      _subUserId: string,
+      conversationId: string,
+    ): WorkbenchConversationPinResponse {
+      return setConversationPinned(state, conversationId, true);
+    },
     poll(_subUserId: string, request: WorkbenchPollRequest): WorkbenchPollResponse {
       const relevantEvents = state.events.filter((event) => event.version > request.sinceVersion);
       const seatChanges = collapseLatest(
@@ -318,6 +326,12 @@ export function createMemoryWorkbenchService() {
       pushSeatEvent(state, seatId);
 
       return { seat: clone(nextSeat) };
+    },
+    unpinConversation(
+      _subUserId: string,
+      conversationId: string,
+    ): WorkbenchConversationUnpinResponse {
+      return setConversationPinned(state, conversationId, false);
     },
   };
 }
@@ -538,6 +552,35 @@ function upsertConversation(
       (conversation) => conversation.conversationId !== nextConversation.conversationId,
     ),
   ]);
+}
+
+function setConversationPinned(
+  state: MemoryWorkbenchState,
+  conversationId: string,
+  isPinned: boolean,
+) {
+  const conversation = findConversation(state, conversationId);
+
+  if (!conversation) {
+    throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+  }
+
+  const nextConversation = {
+    ...conversation,
+    isPinned: isPinned ? true : undefined,
+  };
+
+  upsertConversation(state, nextConversation);
+  pushConversationEvent(state, {
+    ...nextConversation,
+    isPinned,
+  });
+
+  return {
+    conversationId,
+    isPinned,
+    seatId: nextConversation.seatId,
+  };
 }
 
 function syncSeatUnread(state: MemoryWorkbenchState, seatId: string) {

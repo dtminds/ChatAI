@@ -9,7 +9,9 @@ import {
   type WorkbenchSeatChangeDto,
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
+  type WorkbenchConversationPinResponse,
   type WorkbenchConversationReadResponse,
+  type WorkbenchConversationUnpinResponse,
   type WorkbenchConversationUnreadResponse,
   type WorkbenchConversationSummaryDto,
   type WorkbenchGroupMembersResponse,
@@ -37,9 +39,11 @@ export type WorkbenchService = {
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
   markConversationUnread: (conversationId: string) => Promise<WorkbenchConversationUnreadResponse>;
+  pinConversation: (conversationId: string) => Promise<WorkbenchConversationPinResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
+  unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
 };
 
 export type WorkbenchServiceMode = "mock" | "http";
@@ -209,6 +213,12 @@ export function createMockWorkbenchService(): WorkbenchService {
         conversationId,
         unreadCount: 1,
       };
+    },
+    async pinConversation(conversationId) {
+      return setConversationPinned(state, conversationId, true);
+    },
+    async unpinConversation(conversationId) {
+      return setConversationPinned(state, conversationId, false);
     },
     async poll(request) {
       const relevantEvents = state.events.filter((event) => event.version > request.sinceVersion);
@@ -388,6 +398,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
         `/server/conversations/${conversationId}/unread`,
       );
     },
+    pinConversation(conversationId) {
+      return http.post<WorkbenchConversationPinResponse>(
+        `/server/conversations/${conversationId}/pin`,
+      );
+    },
     poll(request) {
       return http.get<WorkbenchPollResponse>("/server/poll", {
         params: {
@@ -407,6 +422,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
     takeOverSeat(seatId) {
       return http.post<WorkbenchTakeOverSeatResponse>(
         `/server/seats/${seatId}/take-over`,
+      );
+    },
+    unpinConversation(conversationId) {
+      return http.post<WorkbenchConversationUnpinResponse>(
+        `/server/conversations/${conversationId}/unpin`,
       );
     },
   };
@@ -658,6 +678,35 @@ function upsertConversation(state: MockState, nextConversation: WorkbenchConvers
       (conversation) => conversation.conversationId !== nextConversation.conversationId,
     ),
   ]);
+}
+
+function setConversationPinned(
+  state: MockState,
+  conversationId: string,
+  isPinned: boolean,
+) {
+  const conversation = findConversation(state, conversationId);
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  const nextConversation = {
+    ...conversation,
+    isPinned: isPinned ? true : undefined,
+  };
+
+  upsertConversation(state, nextConversation);
+  pushConversationEvent(state, {
+    ...nextConversation,
+    isPinned,
+  });
+
+  return {
+    conversationId,
+    isPinned,
+    seatId: nextConversation.seatId,
+  };
 }
 
 function syncAccountUnread(state: MockState, seatId: string) {

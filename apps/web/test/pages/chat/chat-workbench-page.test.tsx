@@ -839,6 +839,56 @@ describe("ChatWorkbenchPage", () => {
     expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
   });
 
+  it("pins conversations from the row action menu", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const observedConversationIds: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async pinConversation(conversationId) {
+        observedConversationIds.push(conversationId);
+
+        return baseService.pinConversation(conversationId);
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getAllByRole("button", { name: "会话操作" })[1]);
+    await user.click(screen.getByRole("menuitem", { name: "置顶" }));
+
+    await waitFor(() => {
+      expect(observedConversationIds).toEqual(["conv-002"]);
+    });
+  });
+
+  it("unpins conversations from the row action menu", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const observedConversationIds: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async unpinConversation(conversationId) {
+        observedConversationIds.push(conversationId);
+
+        return baseService.unpinConversation(conversationId);
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getAllByRole("button", { name: "会话操作" })[0]);
+    await user.click(screen.getByRole("menuitem", { name: "取消置顶" }));
+
+    await waitFor(() => {
+      expect(observedConversationIds).toEqual(["conv-001"]);
+    });
+  });
+
   it("does not show removed chat header actions", async () => {
     render(<ChatWorkbenchPage />);
 

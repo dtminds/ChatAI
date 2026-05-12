@@ -7,7 +7,9 @@ import {
 } from "@/pages/chat/api/workbench-adapter";
 import type {
   SettingsSidebarItem,
+  WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
+  WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
   WorkbenchMessageStatus,
   WorkbenchSendMessagePayload,
@@ -193,6 +195,12 @@ export async function loadAccountScope(
   };
 }
 
+export async function loadAccountConversations(accountId: string): Promise<Conversation[]> {
+  const conversationDtos = await getWorkbenchService().getConversations(accountId);
+
+  return conversationDtos.map(adaptConversation);
+}
+
 export async function loadConversationMessagesPage(
   context: GatewayContext,
   conversationId: string,
@@ -232,6 +240,18 @@ export async function markConversationUnread(
   conversationId: string,
 ): Promise<WorkbenchConversationUnreadResponse> {
   return getWorkbenchService().markConversationUnread(conversationId);
+}
+
+export async function pinConversation(
+  conversationId: string,
+): Promise<WorkbenchConversationPinResponse> {
+  return getWorkbenchService().pinConversation(conversationId);
+}
+
+export async function unpinConversation(
+  conversationId: string,
+): Promise<WorkbenchConversationUnpinResponse> {
+  return getWorkbenchService().unpinConversation(conversationId);
 }
 
 export async function sendTextMessage(

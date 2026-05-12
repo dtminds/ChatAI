@@ -948,6 +948,66 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("updates pinned state and emits poll changes after pinning a conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const pin = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/conversations/conv-002/pin",
+    });
+    const poll = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
+    });
+
+    expect(pin.statusCode).toBe(200);
+    expect(pin.json()).toEqual({
+      conversationId: "conv-002",
+      isPinned: true,
+      seatId: "drc",
+    });
+    expect(poll.statusCode).toBe(200);
+    expect(poll.json().conversationChanges[0]).toMatchObject({
+      conversationId: "conv-002",
+      isPinned: true,
+      type: "upsert",
+    });
+
+    await app.close();
+  });
+
+  it("updates pinned state and emits poll changes after unpinning a conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const unpin = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/conversations/conv-001/unpin",
+    });
+    const poll = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+    });
+
+    expect(unpin.statusCode).toBe(200);
+    expect(unpin.json()).toEqual({
+      conversationId: "conv-001",
+      isPinned: false,
+      seatId: "drc",
+    });
+    expect(poll.statusCode).toBe(200);
+    expect(poll.json().conversationChanges[0]).toMatchObject({
+      conversationId: "conv-001",
+      isPinned: false,
+      type: "upsert",
+    });
+
+    await app.close();
+  });
+
   it("accepts sent messages and reports final send status through polling", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

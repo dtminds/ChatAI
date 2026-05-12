@@ -610,6 +610,7 @@ function SidebarItemDragOverlay({
       className="grid grid-cols-[70%_15%_15%] items-center rounded-[8px] border border-border bg-popover text-sm text-popover-foreground shadow-lg"
       style={{
         height: size?.height,
+        minHeight: 72,
         width: size?.width,
       }}
     >

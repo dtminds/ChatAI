@@ -1,3 +1,5 @@
+import type { WorkbenchGroupMemberType } from "@chatai/contracts";
+
 export type ChatMode = "single" | "group";
 
 export type MessageRole = "customer" | "agent" | "system";
@@ -13,7 +15,7 @@ export type GroupMember = {
   id: string;
   displayName: string;
   avatarUrl?: string;
-  type: 0 | 1 | 2;
+  type: WorkbenchGroupMemberType;
 };
 
 export type Account = {

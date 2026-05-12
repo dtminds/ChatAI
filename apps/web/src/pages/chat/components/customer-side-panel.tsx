@@ -1,4 +1,5 @@
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useMemo, type PointerEvent as ReactPointerEvent } from "react";
+import { GROUP_MEMBER_TYPE } from "@chatai/contracts";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -10,6 +11,12 @@ import type {
   CustomerProfile,
   GroupMember,
 } from "@/pages/chat/chat-types";
+
+const GROUP_MEMBER_SORT_RANK = {
+  [GROUP_MEMBER_TYPE.OWNER]: 0,
+  [GROUP_MEMBER_TYPE.ADMIN]: 1,
+  [GROUP_MEMBER_TYPE.NORMAL]: 2,
+} as const;
 
 type CustomerSidePanelProps = {
   accountName?: string;
@@ -96,20 +103,28 @@ export function CustomerSidePanel({
 }
 
 function GroupMembersPanel({ groupMembers }: { groupMembers: GroupMember[] }) {
-  const groups = [
-    {
-      items: groupMembers
-        .filter((member) => member.type === 2 || member.type === 1)
-        .sort(sortGroupMembers),
-      label: "管理员",
-    },
-    {
-      items: groupMembers
-        .filter((member) => member.type === 0)
-        .sort(sortGroupMembers),
-      label: "普通成员",
-    },
-  ].filter((group) => group.items.length > 0);
+  const groups = useMemo(
+    () =>
+      [
+        {
+          items: groupMembers
+            .filter(
+              (member) =>
+                member.type === GROUP_MEMBER_TYPE.OWNER ||
+                member.type === GROUP_MEMBER_TYPE.ADMIN,
+            )
+            .sort(sortGroupMembers),
+          label: "管理员",
+        },
+        {
+          items: groupMembers
+            .filter((member) => member.type === GROUP_MEMBER_TYPE.NORMAL)
+            .sort(sortGroupMembers),
+          label: "普通成员",
+        },
+      ].filter((group) => group.items.length > 0),
+    [groupMembers],
+  );
 
   return (
     <ScrollArea className="h-full min-h-0">
@@ -158,7 +173,7 @@ function GroupMemberRow({ member }: { member: GroupMember }) {
           {member.displayName}
         </div>
       </div>
-      {member.type === 2 ? (
+      {member.type === GROUP_MEMBER_TYPE.OWNER ? (
         <Badge variant="secondary" className="shrink-0 rounded-[6px] text-[11px]">
           群主
         </Badge>
@@ -168,8 +183,8 @@ function GroupMemberRow({ member }: { member: GroupMember }) {
 }
 
 function sortGroupMembers(left: GroupMember, right: GroupMember) {
-  const leftRank = left.type === 2 ? 0 : left.type === 1 ? 1 : 2;
-  const rightRank = right.type === 2 ? 0 : right.type === 1 ? 1 : 2;
+  const leftRank = GROUP_MEMBER_SORT_RANK[left.type];
+  const rightRank = GROUP_MEMBER_SORT_RANK[right.type];
 
   if (leftRank !== rightRank) {
     return leftRank - rightRank;

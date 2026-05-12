@@ -1,5 +1,9 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { LoginStatusSchema, TakeoverStatusSchema } from "./enums.js";
+import {
+  GROUP_MEMBER_TYPE,
+  LoginStatusSchema,
+  TakeoverStatusSchema,
+} from "./enums.js";
 
 export const ChatSeatSchema = Type.Object({
   displayName: Type.String(),
@@ -201,7 +205,8 @@ export type WorkbenchConversationReadResponse = {
   seatUnreadCount: number;
 };
 
-export type WorkbenchGroupMemberType = 0 | 1 | 2;
+export type WorkbenchGroupMemberType =
+  (typeof GROUP_MEMBER_TYPE)[keyof typeof GROUP_MEMBER_TYPE];
 
 export type WorkbenchGroupMemberDto = {
   thirdUserId: string;

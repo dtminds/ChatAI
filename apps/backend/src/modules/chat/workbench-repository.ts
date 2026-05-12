@@ -1,4 +1,9 @@
-import type { WorkbenchMessagePageDto } from "@chatai/contracts";
+import {
+  GROUP_MEMBER_TYPE,
+  type WorkbenchGroupMemberDto,
+  type WorkbenchGroupMembersResponse,
+  type WorkbenchMessagePageDto,
+} from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
@@ -12,10 +17,13 @@ import {
   type MessageRow,
   type SeatRow,
 } from "./workbench-mappers.js";
-import type {
-  WorkbenchGroupMemberDto,
-  WorkbenchGroupMembersResponse,
-} from "@chatai/contracts";
+const BIZ_STATUS_ACTIVE = 1;
+const CHAT_TYPE_GROUP = 2;
+const GROUP_MEMBER_SORT_RANK = {
+  [GROUP_MEMBER_TYPE.OWNER]: 0,
+  [GROUP_MEMBER_TYPE.ADMIN]: 1,
+  [GROUP_MEMBER_TYPE.NORMAL]: 2,
+} as const;
 
 export type ConversationLookup = {
   id: string;
@@ -311,9 +319,9 @@ export class WorkbenchRepository {
         "group_seat.id as group_seat_id",
       ])
       .where("conversation.id", "=", conversationNumericId)
-      .where("conversation.chat_type", "=", 2)
-      .where("conversation.biz_status", "=", 1)
-      .where("group_seat.biz_status", "=", 1)
+      .where("conversation.chat_type", "=", CHAT_TYPE_GROUP)
+      .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("group_seat.biz_status", "=", BIZ_STATUS_ACTIVE)
       .executeTakeFirst();
 
     if (!conversation) {
@@ -332,7 +340,7 @@ export class WorkbenchRepository {
       .where("member.group_seat_id", "=", conversation.group_seat_id)
       .where("member.uid", "=", conversation.uid)
       .where("member.platform", "=", conversation.platform)
-      .where("member.biz_status", "=", 1)
+      .where("member.biz_status", "=", BIZ_STATUS_ACTIVE)
       .execute();
 
     const items = rows
@@ -693,12 +701,12 @@ function mapGroupMemberRow(row: GroupMemberRow): WorkbenchGroupMemberDto {
   };
 }
 
-function normalizeGroupMemberType(value: number | null): 0 | 1 | 2 {
-  if (value === 1 || value === 2) {
+function normalizeGroupMemberType(value: number | null): WorkbenchGroupMemberDto["type"] {
+  if (value === GROUP_MEMBER_TYPE.ADMIN || value === GROUP_MEMBER_TYPE.OWNER) {
     return value;
   }
 
-  return 0;
+  return GROUP_MEMBER_TYPE.NORMAL;
 }
 
 function sortGroupMembers(left: WorkbenchGroupMemberDto, right: WorkbenchGroupMemberDto) {
@@ -717,14 +725,6 @@ function sortGroupMembers(left: WorkbenchGroupMemberDto, right: WorkbenchGroupMe
   return left.thirdUserId.localeCompare(right.thirdUserId, "zh-Hans-CN");
 }
 
-function getGroupMemberRank(type: 0 | 1 | 2) {
-  if (type === 2) {
-    return 0;
-  }
-
-  if (type === 1) {
-    return 1;
-  }
-
-  return 2;
+function getGroupMemberRank(type: WorkbenchGroupMemberDto["type"]) {
+  return GROUP_MEMBER_SORT_RANK[type];
 }

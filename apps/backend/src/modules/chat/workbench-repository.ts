@@ -371,7 +371,7 @@ export class WorkbenchRepository {
       .execute();
 
     const rawRows = rows.slice(0, options.limit) as MessageRow[];
-    const visibleRows = rawRows.filter((row) => row.msgtype !== "revoke");
+    const visibleRows = rawRows.filter((row) => !isHiddenMessageRow(row));
     const messageRows = visibleRows.reverse();
     const hydrationSources = await this.getMessageHydrationSources(
       messageRows,
@@ -548,6 +548,31 @@ function emptyMessagePage(): WorkbenchMessagePageDto {
   };
 }
 
+function isHiddenMessageRow(row: MessageRow) {
+  if (row.msgtype === "revoke") {
+    return true;
+  }
+
+  if (row.msgtype !== "system") {
+    return false;
+  }
+
+  return parseSystemMessageEventType(row.content) === "revoke";
+}
+
+function parseSystemMessageEventType(rawContent: string | null) {
+  if (!rawContent) {
+    return undefined;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(rawContent);
+    return isRecord(parsed) && typeof parsed.type === "string" ? parsed.type : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function toNumber(value: number | string | null | undefined) {
   if (value == null) {
     return undefined;
@@ -556,6 +581,10 @@ function toNumber(value: number | string | null | undefined) {
   const numberValue = typeof value === "number" ? value : Number(value);
 
   return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function uniqueNonEmpty(values: Array<string | null | undefined>) {

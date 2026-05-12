@@ -6,6 +6,7 @@ import {
 } from "@/pages/chat/mock-data";
 import { http } from "@/lib/request";
 import {
+  type ApiSuccessEnvelope,
   type WorkbenchSeatChangeDto,
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
@@ -28,7 +29,6 @@ import {
   type WorkbenchTakeOverSeatResponse,
 } from "@chatai/contracts";
 import type { Message } from "@/pages/chat/chat-types";
-import type { ApiSuccessEnvelope } from "@/pages/chat/settings/settings-service";
 
 export type WorkbenchService = {
   getSeats: () => Promise<WorkbenchSeatDto[]>;

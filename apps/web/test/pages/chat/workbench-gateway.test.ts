@@ -48,7 +48,7 @@ describe("workbench gateway message paging", () => {
           success: true,
         };
       },
-    } as WorkbenchService);
+    } as unknown as WorkbenchService);
 
     await expect(bootstrapWorkbench("single", {})).resolves.toMatchObject({
       sidebarItems: [

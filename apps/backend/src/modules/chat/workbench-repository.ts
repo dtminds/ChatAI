@@ -36,6 +36,13 @@ export type ConversationLookup = {
   unreadCount: number;
 };
 
+export type SeatOperateScope = {
+  platform: number;
+  seatId: string;
+  thirdUserId: string;
+  uid: number;
+};
+
 export class WorkbenchRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
@@ -160,6 +167,27 @@ export class WorkbenchRepository {
       .execute();
 
     return rows[0] ? mapSeatRow(rows[0] as SeatRow) : undefined;
+  }
+
+  async getSeatOperateScope(seatId: string): Promise<SeatOperateScope | undefined> {
+    const seatNumericId = parseMySqlId(seatId);
+
+    if (seatNumericId == null) {
+      return undefined;
+    }
+
+    const seat = await this.getSeatRecord(seatNumericId);
+
+    if (!seat) {
+      return undefined;
+    }
+
+    return {
+      platform: seat.platform,
+      seatId: String(seat.id),
+      thirdUserId: seat.third_userid,
+      uid: seat.uid,
+    };
   }
 
   async canAccessSeat(subUserId: string, seatId: string) {
@@ -417,6 +445,31 @@ export class WorkbenchRepository {
         biz_status: BIZ_STATUS_HIDDEN,
       })
       .where("id", "=", conversationNumericId)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .execute();
+  }
+
+  async updateSeatHostSubUser(input: {
+    platform: number;
+    seatId: string;
+    subUserId: string;
+    uid: number;
+  }) {
+    const seatNumericId = parseMySqlId(input.seatId);
+    const subUserNumericId = parseMySqlId(input.subUserId);
+
+    if (seatNumericId == null || subUserNumericId == null) {
+      return;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_user_seat")
+      .set({
+        host_sub_id: subUserNumericId,
+      })
+      .where("id", "=", seatNumericId)
       .where("uid", "=", input.uid)
       .where("platform", "=", input.platform)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)

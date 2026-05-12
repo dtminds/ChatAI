@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import MockAdapter from "axios-mock-adapter";
+import type { WorkbenchGroupMemberDto } from "@chatai/contracts";
 import { requestInstance } from "@/lib/request";
 import {
   createMockWorkbenchService,
@@ -322,6 +323,26 @@ describe("ChatWorkbenchPage", () => {
 
   it("shows group members in the right sidebar grouped by member type", async () => {
     const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        const response = await baseService.getGroupMembers(conversationId);
+        const extraMember = {
+          avatarUrl: "",
+          displayName: "👩‍💼小陈",
+          nickname: undefined,
+          thirdUserId: "member-emoji",
+          type: response.items.find((member) => member.displayName === "丹阳草莓")!.type,
+        } satisfies WorkbenchGroupMemberDto;
+
+        return {
+          ...response,
+          items: [extraMember, ...response.items],
+        };
+      },
+    });
 
     render(<ChatWorkbenchPage />);
 
@@ -333,10 +354,11 @@ describe("ChatWorkbenchPage", () => {
     });
 
     expect(within(sidePanel).getByRole("heading", { name: "管理员" })).toBeInTheDocument();
-    expect(within(sidePanel).getByRole("heading", { name: "群成员 · 共 6 人" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("heading", { name: "群成员 · 共 7 人" })).toBeInTheDocument();
     expect(within(sidePanel).getByText("群主小可")).toBeInTheDocument();
     expect(within(sidePanel).getByText("群主")).toBeInTheDocument();
     expect(within(sidePanel).getByText("小林")).toBeInTheDocument();
+    expect(within(sidePanel).getByText("👩‍💼")).toBeInTheDocument();
     expect(within(sidePanel).getByRole("heading", { name: "普通成员" })).toBeInTheDocument();
     expect(within(sidePanel).getByText("丹阳草莓")).toBeInTheDocument();
   });

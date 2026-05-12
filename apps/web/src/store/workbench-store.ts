@@ -21,6 +21,7 @@ import {
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
+import type { SettingsSidebarItem } from "@chatai/contracts";
 import type {
   Account,
   ChatMessage,
@@ -76,6 +77,7 @@ type WorkbenchState = {
   sinceVersion: number;
   activeMessageSeq: number;
   pendingMessages: Message[];
+  sidebarItems: SettingsSidebarItem[];
   deleteConversation: (conversationId: string) => Promise<void>;
   dismissScopeTransitionError: () => void;
   dismissReadReceiptError: () => void;
@@ -150,6 +152,7 @@ function createInitialState(): Omit<
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
     sinceVersion: 0,
+    sidebarItems: [],
     takeoverStatusByAccountId: {},
   };
 }
@@ -983,6 +986,7 @@ export function createWorkbenchStore() {
           messagesByConversationId: conversationPage
             ? { [conversationPage.conversationId]: conversationPage.messages }
             : {},
+          sidebarItems: bootstrapResult.sidebarItems,
         });
 
         const bootstrapActiveConversation = bootstrapResult.conversationListsByScope[

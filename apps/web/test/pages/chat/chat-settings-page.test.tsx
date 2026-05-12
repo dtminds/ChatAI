@@ -1,6 +1,6 @@
 import MockAdapter from "axios-mock-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { routerConfig } from "@/router";
@@ -9,6 +9,20 @@ import { useWorkbenchStore } from "@/store/workbench-store";
 import { requestInstance } from "@/lib/request";
 
 const mock = new MockAdapter(requestInstance);
+
+function createDomRect(rect: Partial<DOMRect>): DOMRect {
+  return {
+    bottom: rect.bottom ?? 0,
+    height: rect.height ?? Math.max((rect.bottom ?? 0) - (rect.top ?? 0), 0),
+    left: rect.left ?? 0,
+    right: rect.right ?? 0,
+    toJSON: () => ({}),
+    top: rect.top ?? 0,
+    width: rect.width ?? Math.max((rect.right ?? 0) - (rect.left ?? 0), 0),
+    x: rect.x ?? rect.left ?? 0,
+    y: rect.y ?? rect.top ?? 0,
+  };
+}
 
 function renderRoute(initialEntry = "/chat") {
   const router = createMemoryRouter(routerConfig, {
@@ -203,6 +217,41 @@ describe("Chat settings pages", () => {
       },
       success: true,
     });
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: [
+          {
+            id: "201",
+            name: "企业名片",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/card",
+          },
+          {
+            id: "202",
+            name: "发起收款",
+            sort: 2,
+            status: "active",
+            url: "https://example.com/pay",
+          },
+          {
+            id: "203",
+            name: "客户详情",
+            sort: 3,
+            status: "disabled",
+            url: "https://example.com/customer",
+          },
+          {
+            id: "204",
+            name: "快捷回复",
+            sort: 4,
+            status: "active",
+            url: "https://example.com/replies",
+          },
+        ],
+      },
+      success: true,
+    });
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
     document.documentElement.classList.remove("dark");
     setSystemColorScheme(false);
@@ -265,6 +314,287 @@ describe("Chat settings pages", () => {
 
     expect(screen.getByRole("heading", { name: "权限角色" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "角色权限矩阵" })).toBeInTheDocument();
+  });
+
+  it("manages sidebar items and previews active item ordering", async () => {
+    const user = userEvent.setup();
+    mock.onPost("/server/settings/sidebar-items").reply((config) => [
+      200,
+      {
+        data: {
+          id: "205",
+          sort: 5,
+          status: "active",
+          ...JSON.parse(config.data ?? "{}"),
+        },
+        success: true,
+      },
+    ]);
+    mock.onPut("/server/settings/sidebar-items/201").reply((config) => [
+      200,
+      {
+        data: {
+          id: "201",
+          sort: 1,
+          status: "active",
+          ...JSON.parse(config.data ?? "{}"),
+        },
+        success: true,
+      },
+    ]);
+    mock.onPatch("/server/settings/sidebar-items/201/status").reply(200, {
+      data: {
+        id: "201",
+        name: "名片新版",
+        sort: 1,
+        status: "disabled",
+        url: "https://example.com/card",
+      },
+      success: true,
+    });
+    mock.onPut("/server/settings/sidebar-items/sort").reply(200, {
+      data: {
+        items: [
+          {
+            id: "202",
+            name: "发起收款",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/pay",
+          },
+          {
+            id: "201",
+            name: "企业名片",
+            sort: 2,
+            status: "active",
+            url: "https://example.com/card",
+          },
+          {
+            id: "203",
+            name: "客户详情",
+            sort: 3,
+            status: "disabled",
+            url: "https://example.com/customer",
+          },
+          {
+            id: "204",
+            name: "快捷回复",
+            sort: 4,
+            status: "active",
+            url: "https://example.com/replies",
+          },
+        ],
+      },
+      success: true,
+    });
+    mock.onDelete("/server/settings/sidebar-items/203").reply(200, {
+      data: { deleted: true },
+      success: true,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
+    const sidebarTable = screen.getByRole("table", { name: "侧边栏菜单列表" });
+
+    expect(sidebarTable).toBeInTheDocument();
+    expect(within(sidebarTable).getByRole("columnheader", { name: "显示" })).toBeInTheDocument();
+    expect(
+      within(sidebarTable).queryByRole("columnheader", { name: "页面地址" }),
+    ).not.toBeInTheDocument();
+    expect(within(sidebarTable).queryByRole("columnheader", { name: "状态" })).not.toBeInTheDocument();
+    const sidebarPreview = screen.getByRole("complementary", { name: "聊天工具栏示意图" });
+    expect(sidebarPreview).toBeInTheDocument();
+    expect(within(sidebarPreview).queryByText("基础信息")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "拖动 发起收款 调整排序" })).toBeInTheDocument();
+    expect(within(sidebarTable).queryByText("https://example.com/card")).not.toBeInTheDocument();
+    expect(within(sidebarTable).queryByText("启用")).not.toBeInTheDocument();
+    expect(within(sidebarTable).queryByText("停用")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("complementary", { name: "聊天工具栏示意图" })).queryByText(
+        "客户详情",
+      ),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "新增页面" }));
+    expect(screen.getByRole("dialog", { name: "新增侧边栏页面" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("页面名称"), "素材中心");
+    await user.type(screen.getByLabelText("页面地址"), "https://example.com/assets");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(mock.history.post).toHaveLength(1);
+    });
+    expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
+      name: "素材中心",
+      url: "https://example.com/assets",
+    });
+
+    await user.click(screen.getByRole("button", { name: "打开 企业名片 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "编辑" }));
+    expect(screen.getByLabelText("页面地址")).toHaveValue("https://example.com/card");
+    await user.clear(screen.getByLabelText("页面名称"));
+    await user.type(screen.getByLabelText("页面名称"), "名片新版");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(mock.history.put.some((request) => request.url === "/server/settings/sidebar-items/201")).toBe(
+        true,
+      );
+    });
+
+    await user.click(screen.getByRole("switch", { name: "停用 名片新版" }));
+    await waitFor(() => {
+      expect(mock.history.patch[0]?.url).toBe("/server/settings/sidebar-items/201/status");
+    });
+    expect(JSON.parse(mock.history.patch[0]?.data ?? "{}")).toEqual({
+      status: "disabled",
+    });
+
+    const paymentDragHandle = screen.getByRole("button", { name: "拖动 发起收款 调整排序" });
+    const updatedCardRow = screen.getByRole("row", { name: /名片新版/ });
+    const rowRects = [
+      [updatedCardRow, { bottom: 40, right: 720, top: 0 }],
+      [screen.getByRole("row", { name: /客户详情/ }), { bottom: 80, right: 720, top: 40 }],
+      [screen.getByRole("row", { name: /发起收款/ }), { bottom: 120, right: 720, top: 80 }],
+      [screen.getByRole("row", { name: /快捷回复/ }), { bottom: 160, right: 720, top: 120 }],
+      [screen.getByRole("row", { name: /素材中心/ }), { bottom: 200, right: 720, top: 160 }],
+    ] as const;
+    const rectSpies = rowRects.map(([row, rect]) =>
+      vi.spyOn(row, "getBoundingClientRect").mockReturnValue(createDomRect(rect)),
+    );
+
+    fireEvent.mouseDown(paymentDragHandle, {
+      clientY: 100,
+    });
+    fireEvent.mouseMove(document, {
+      clientY: 20,
+    });
+    fireEvent.mouseUp(document, {
+      clientY: 20,
+    });
+    rectSpies.forEach((spy) => spy.mockRestore());
+    await waitFor(() => {
+      expect(mock.history.put.some((request) => request.url === "/server/settings/sidebar-items/sort")).toBe(
+        true,
+      );
+    });
+    const sortRequest = mock.history.put.find(
+      (request) => request.url === "/server/settings/sidebar-items/sort",
+    );
+    expect(JSON.parse(sortRequest?.data ?? "{}")).toEqual({
+      itemIds: ["202", "201", "203", "204", "205"],
+    });
+
+    await user.click(screen.getByRole("button", { name: "打开 客户详情 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    expect(screen.getByRole("alertdialog", { name: "删除侧边栏页面" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => {
+      expect(mock.history.delete[0]?.url).toBe("/server/settings/sidebar-items/203");
+    });
+  });
+
+  it("keeps sidebar preview fallback ordering aligned with numeric database ids", async () => {
+    mock.resetHandlers();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: [
+          {
+            id: "10",
+            name: "十号页面",
+            sort: 9,
+            status: "active",
+            url: "https://example.com/ten",
+          },
+          {
+            id: "2",
+            name: "二号页面",
+            sort: 9,
+            status: "active",
+            url: "https://example.com/two",
+          },
+        ],
+      },
+      success: true,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    const fallbackPreviewItems = within(
+      await screen.findByRole("complementary", { name: "聊天工具栏示意图" }),
+    ).getAllByText(/号页面/);
+
+    expect(fallbackPreviewItems.map((item) => item.textContent)).toEqual([
+      "二号页面",
+      "十号页面",
+    ]);
+  });
+
+  it("limits sidebar item creation by count and name length", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: Array.from({ length: 10 }, (_, index) => ({
+          id: String(index + 1),
+          name: `页面${index + 1}`,
+          sort: index + 1,
+          status: "active",
+          url: `https://example.com/page-${index + 1}`,
+        })),
+      },
+      success: true,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新增页面" })).toBeDisabled();
+
+    cleanup();
+    mock.resetHandlers();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: Array.from({ length: 9 }, (_, index) => ({
+          id: String(index + 1),
+          name: `页面${index + 1}`,
+          sort: index + 1,
+          status: "active",
+          url: `https://example.com/page-${index + 1}`,
+        })),
+      },
+      success: true,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新增页面" })).toBeEnabled();
+
+    cleanup();
+    mock.resetHandlers();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: [],
+      },
+      success: true,
+    });
+    mock.onPost("/server/settings/sidebar-items").reply(200, {
+      data: {
+        id: "1",
+        name: "TooLongName",
+        sort: 1,
+        status: "active",
+        url: "https://example.com/too-long",
+      },
+      success: true,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    await user.click(await screen.findByRole("button", { name: "新增页面" }));
+    await user.type(screen.getByLabelText("页面名称"), "超过四字了");
+    await user.type(screen.getByLabelText("页面地址"), "https://example.com/too-long");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    expect(screen.getByText("页面名称最多 8 个字符")).toBeInTheDocument();
+    expect(mock.history.post).toHaveLength(0);
   });
 
   it("creates, edits, toggles, and deletes sub-accounts from settings", async () => {

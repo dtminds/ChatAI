@@ -6,6 +6,7 @@ import {
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
 import type {
+  SettingsSidebarItem,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
@@ -57,6 +58,7 @@ export type WorkbenchBootstrapResult = {
   conversationListsByScope: Record<string, Conversation[]>;
   conversationPage?: WorkbenchConversationPage;
   me: EmployeeProfile;
+  sidebarItems: SettingsSidebarItem[];
 };
 
 export type WorkbenchAccountScopeResult = {
@@ -104,9 +106,10 @@ export async function bootstrapWorkbench(
   pageSize = DEFAULT_MESSAGE_PAGE_SIZE,
 ): Promise<WorkbenchBootstrapResult> {
   const service = getWorkbenchService();
-  const [meDto, accountDtos] = await Promise.all([
+  const [meDto, accountDtos, sidebarItemsResponse] = await Promise.all([
     service.getMe(),
     service.getSeats(),
+    service.getSidebarItems().catch(() => ({ items: [] })),
   ]);
 
   const me = adaptEmployee(meDto);
@@ -141,7 +144,43 @@ export async function bootstrapWorkbench(
     },
     conversationPage,
     me,
+    sidebarItems: getSidebarItemsFromResponse(sidebarItemsResponse),
   };
+}
+
+function getSidebarItemsFromResponse(response: unknown): SettingsSidebarItem[] {
+  return getSidebarItemsPayload(response)?.items ?? [];
+}
+
+function getSidebarItemsPayload(response: unknown) {
+  if (isSidebarItemsPayload(response)) {
+    return response;
+  }
+
+  if (!isObjectRecord(response)) {
+    return undefined;
+  }
+
+  return isSidebarItemsPayload(response.data) ? response.data : undefined;
+}
+
+function isSidebarItemsPayload(value: unknown): value is { items: SettingsSidebarItem[] } {
+  return isObjectRecord(value) && Array.isArray(value.items) && value.items.every(isSidebarItem);
+}
+
+function isSidebarItem(value: unknown): value is SettingsSidebarItem {
+  return (
+    isObjectRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.sort === "number" &&
+    (value.status === "active" || value.status === "disabled") &&
+    typeof value.url === "string"
+  );
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
 }
 
 export async function loadAccountScope(

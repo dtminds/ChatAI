@@ -6,6 +6,7 @@ import {
 } from "@/pages/chat/mock-data";
 import { http } from "@/lib/request";
 import {
+  type ApiSuccessEnvelope,
   type WorkbenchConversationDeleteResponse,
   type WorkbenchSeatChangeDto,
   type WorkbenchSeatDto,
@@ -24,6 +25,7 @@ import {
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
   type WorkbenchSendMessagePayload,
+  type SettingsSidebarItemsResponse,
   type WorkbenchSendMessageResponse,
   type WorkbenchTakeOverSeatResponse,
 } from "@chatai/contracts";
@@ -34,6 +36,7 @@ export type WorkbenchService = {
   getSeats: () => Promise<WorkbenchSeatDto[]>;
   getConversations: (seatId: string) => Promise<WorkbenchConversationSummaryDto[]>;
   getMe: () => Promise<WorkbenchSubUserDto>;
+  getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
@@ -118,6 +121,11 @@ export function createMockWorkbenchService(): WorkbenchService {
     },
     async getMe() {
       return clone(state.subUser);
+    },
+    async getSidebarItems() {
+      return {
+        items: [],
+      };
     },
     async getMessages(conversationId, options) {
       const messages = [...(state.messagesByConversationId[conversationId] ?? [])].sort(
@@ -366,6 +374,13 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     getMe() {
       return http.get<WorkbenchSubUserDto>("/server/me");
+    },
+    async getSidebarItems() {
+      const response = await http.get<ApiSuccessEnvelope<SettingsSidebarItemsResponse>>(
+        "/server/settings/sidebar-items",
+      );
+
+      return response.data;
     },
     getMessages(conversationId, options) {
       return http.get<WorkbenchMessagePageDto>(

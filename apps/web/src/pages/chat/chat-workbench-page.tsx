@@ -108,6 +108,7 @@ function ChatWorkbenchContent({
     setActiveAccount,
     setActiveConversation,
     setActiveMode,
+    sidebarItems,
     takeOverAccount,
     takeoverStatusByAccountId,
     unpinConversation,
@@ -195,6 +196,8 @@ function ChatWorkbenchContent({
     !!activeConversation &&
     !isActiveAccountOffline &&
     isActiveAccountTakenOver;
+  const isConversationActionDisabled =
+    isActiveAccountOffline || !isActiveAccountTakenOver;
   const composerPlaceholder = canSendMessage
     ? "请输入消息……"
     : bootstrapStatus === "loading" && !activeConversation
@@ -395,6 +398,7 @@ function ChatWorkbenchContent({
                 activeConversation={activeConversation}
                 activeMode={activeMode}
                 conversations={visibleConversations}
+                isConversationActionDisabled={isConversationActionDisabled}
                 onDeleteConversation={deleteConversation}
                 onMarkConversationRead={markConversationRead}
                 onMarkConversationUnread={markConversationUnread}
@@ -425,6 +429,7 @@ function ChatWorkbenchContent({
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
                 messageViewportRef={messageViewportRef}
+                sidebarItems={sidebarItems}
                 onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
                 onDraftChange={handleDraftChange}
                 onEmojiPickerOpenChange={setIsEmojiPickerOpen}

@@ -1,6 +1,9 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
+  SettingsSidebarItemCreateRequestSchema,
+  SettingsSidebarItemsResponseSchema,
+  SettingsSidebarItemsSortUpdateRequestSchema,
   SettingsSubAccountCreateRequestSchema,
   SettingsSubAccountsResponseSchema,
   SettingsSubAccountUpdateRequestSchema,
@@ -70,5 +73,42 @@ describe("settings sub-account DTOs", () => {
     expect(isValidSettingsSubAccountPassword("STRONG1!")).toBe(false);
     expect(isValidSettingsSubAccountPassword("Strong!!")).toBe(false);
     expect(isValidSettingsSubAccountPassword("Strong11")).toBe(false);
+  });
+
+  it("accepts sidebar item responses and rejects extra create fields", () => {
+    expect(
+      Value.Check(SettingsSidebarItemsResponseSchema, {
+        items: [
+          {
+            id: "201",
+            name: "企业名片",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/card",
+          },
+          {
+            id: "202",
+            name: "客户详情",
+            sort: 2,
+            status: "disabled",
+            url: "https://example.com/customer",
+          },
+        ],
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(SettingsSidebarItemCreateRequestSchema, {
+        name: "素材中心",
+        show: 1,
+        url: "https://example.com/assets",
+      }),
+    ).toBe(false);
+
+    expect(
+      Value.Check(SettingsSidebarItemsSortUpdateRequestSchema, {
+        itemIds: ["202", "201"],
+      }),
+    ).toBe(true);
   });
 });

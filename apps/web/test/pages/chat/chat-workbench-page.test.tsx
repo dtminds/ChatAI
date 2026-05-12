@@ -379,6 +379,60 @@ describe("ChatWorkbenchPage", () => {
     expect(within(sidePanel).getByText("丹阳草莓")).toBeInTheDocument();
   });
 
+  it("loads custom sidebar items during workbench bootstrap and reuses them across conversations", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const getSidebarItems = vi.fn(async () => ({
+      items: [
+        {
+          id: "sidebar-2",
+          name: "客户详情",
+          sort: 2,
+          status: "active" as const,
+          url: "https://example.com/customer",
+        },
+        {
+          id: "sidebar-1",
+          name: "快捷回复",
+          sort: 1,
+          status: "active" as const,
+          url: "https://example.com/replies",
+        },
+        {
+          id: "sidebar-3",
+          name: "隐藏页面",
+          sort: 3,
+          status: "disabled" as const,
+          url: "https://example.com/hidden",
+        },
+      ],
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      getSidebarItems,
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const sidePanel = await screen.findByRole("complementary", {
+      name: "客户信息栏",
+    });
+
+    expect(within(sidePanel).getByRole("tab", { name: "基础信息" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("tab", { name: "快捷回复" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("tab", { name: "客户详情" })).toBeInTheDocument();
+    expect(within(sidePanel).queryByRole("tab", { name: "隐藏页面" })).not.toBeInTheDocument();
+    expect(getSidebarItems).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
+    });
+    expect(getSidebarItems).toHaveBeenCalledTimes(1);
+  });
+
   it("refreshes cached group members from the sidebar button", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
@@ -632,6 +686,33 @@ describe("ChatWorkbenchPage", () => {
         screen.queryByText("当前账号未接管，暂时无法发送消息。"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("disables conversation card actions when the active account is not taken over", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
+
+    await screen.findByRole("textbox", {
+      name: "当前账号未接管，暂时无法发送消息",
+    });
+    await user.click(screen.getAllByRole("button", { name: "会话操作" })[0]);
+
+    expect(screen.getByRole("menuitem", { name: /置顶/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: /标记已读/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: /不显示/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("enables the composer after taking over the active account", async () => {

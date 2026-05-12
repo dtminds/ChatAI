@@ -22,6 +22,7 @@ import { formatConversationTimestamp } from "@/pages/chat/lib/chat-time";
 
 export function ConversationCard({
   conversation,
+  isActionDisabled = false,
   isActive,
   onDelete,
   onMarkRead,
@@ -31,6 +32,7 @@ export function ConversationCard({
   onSelect,
 }: {
   conversation: Conversation;
+  isActionDisabled?: boolean;
   isActive: boolean;
   onDelete?: () => void;
   onMarkRead?: () => void;
@@ -168,7 +170,11 @@ export function ConversationCard({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {conversationMenuItems.map((item) => (
-            <DropdownMenuItem key={item.label} onSelect={item.onSelect}>
+            <DropdownMenuItem
+              disabled={isActionDisabled}
+              key={item.label}
+              onSelect={item.onSelect}
+            >
               <HugeiconsIcon
                 color="currentColor"
                 icon={item.icon}

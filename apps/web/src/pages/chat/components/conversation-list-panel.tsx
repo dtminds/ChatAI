@@ -23,6 +23,7 @@ type ConversationListPanelProps = {
   activeConversation?: Conversation;
   activeMode: ChatMode;
   conversations: Conversation[];
+  isConversationActionDisabled?: boolean;
   onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
   onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
   onDeleteConversation?: (conversationId: string) => void | Promise<void>;
@@ -37,6 +38,7 @@ export function ConversationListPanel({
   activeConversation,
   activeMode,
   conversations,
+  isConversationActionDisabled = false,
   onMarkConversationRead,
   onMarkConversationUnread,
   onDeleteConversation,
@@ -214,6 +216,7 @@ export function ConversationListPanel({
                 {conversations.map((conversation) => (
                   <ConversationCard
                     conversation={conversation}
+                    isActionDisabled={isConversationActionDisabled}
                     isActive={conversation.id === activeConversation?.id}
                     key={conversation.id}
                     onDelete={() => {

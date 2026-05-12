@@ -78,6 +78,42 @@ export const SettingsSubAccountStatusUpdateRequestSchema = Type.Object({
   status: SettingsSubAccountStatusSchema,
 }, { additionalProperties: false });
 
+export const SettingsSidebarItemStatusSchema = Type.Union([
+  Type.Literal("active"),
+  Type.Literal("disabled"),
+]);
+
+export const SettingsSidebarItemSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  sort: Type.Number(),
+  status: SettingsSidebarItemStatusSchema,
+  url: Type.String(),
+});
+
+export const SettingsSidebarItemsResponseSchema = Type.Object({
+  items: Type.Array(SettingsSidebarItemSchema),
+});
+
+export const SettingsSidebarItemCreateRequestSchema = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  sort: Type.Optional(Type.Number({ minimum: 1 })),
+  url: Type.String({ minLength: 1 }),
+}, { additionalProperties: false });
+
+export const SettingsSidebarItemUpdateRequestSchema = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  url: Type.String({ minLength: 1 }),
+}, { additionalProperties: false });
+
+export const SettingsSidebarItemStatusUpdateRequestSchema = Type.Object({
+  status: SettingsSidebarItemStatusSchema,
+}, { additionalProperties: false });
+
+export const SettingsSidebarItemsSortUpdateRequestSchema = Type.Object({
+  itemIds: Type.Array(Type.String()),
+}, { additionalProperties: false });
+
 export type SettingsSubAccountStatus = Static<
   typeof SettingsSubAccountStatusSchema
 >;
@@ -108,4 +144,23 @@ export type SettingsSubAccountUpdateRequest = Static<
 >;
 export type SettingsSubAccountStatusUpdateRequest = Static<
   typeof SettingsSubAccountStatusUpdateRequestSchema
+>;
+export type SettingsSidebarItemStatus = Static<
+  typeof SettingsSidebarItemStatusSchema
+>;
+export type SettingsSidebarItem = Static<typeof SettingsSidebarItemSchema>;
+export type SettingsSidebarItemsResponse = Static<
+  typeof SettingsSidebarItemsResponseSchema
+>;
+export type SettingsSidebarItemCreateRequest = Static<
+  typeof SettingsSidebarItemCreateRequestSchema
+>;
+export type SettingsSidebarItemUpdateRequest = Static<
+  typeof SettingsSidebarItemUpdateRequestSchema
+>;
+export type SettingsSidebarItemStatusUpdateRequest = Static<
+  typeof SettingsSidebarItemStatusUpdateRequestSchema
+>;
+export type SettingsSidebarItemsSortUpdateRequest = Static<
+  typeof SettingsSidebarItemsSortUpdateRequestSchema
 >;

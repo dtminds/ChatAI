@@ -402,7 +402,9 @@ describe("Chat settings pages", () => {
       within(sidebarTable).queryByRole("columnheader", { name: "页面地址" }),
     ).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByRole("columnheader", { name: "状态" })).not.toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "聊天工具栏示意图" })).toBeInTheDocument();
+    const sidebarPreview = screen.getByRole("complementary", { name: "聊天工具栏示意图" });
+    expect(sidebarPreview).toBeInTheDocument();
+    expect(within(sidebarPreview).queryByText("基础信息")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "拖动 发起收款 调整排序" })).toBeInTheDocument();
     expect(within(sidebarTable).queryByText("https://example.com/card")).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByText("启用")).not.toBeInTheDocument();

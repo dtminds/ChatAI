@@ -1,4 +1,4 @@
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { CustomerBasicInfoPanel } from "@/pages/chat/components/customer-basic-info-panel";
@@ -9,6 +9,8 @@ import type {
   GroupMember,
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
+
+const collapsedSidebarEntryCount = 4;
 
 type CustomerSidePanelProps = {
   accountName?: string;
@@ -39,6 +41,21 @@ export function CustomerSidePanel({
   const activeSidebarItems = sortSidebarItems(sidebarItems).filter(
     (item) => item.status === "active",
   );
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const sidebarEntries = [
+    { id: "system", kind: "system" as const, name: "基础信息", value: "system" },
+    ...activeSidebarItems.map((item) => ({
+      id: item.id,
+      item,
+      kind: "custom" as const,
+      name: item.name,
+      value: getSidebarTabValue(item),
+    })),
+  ];
+  const hasOverflowSidebarEntries = sidebarEntries.length > collapsedSidebarEntryCount;
+  const visibleSidebarEntries = isSidebarExpanded
+    ? sidebarEntries
+    : sidebarEntries.slice(0, collapsedSidebarEntryCount);
 
   return (
     <>
@@ -65,24 +82,27 @@ export function CustomerSidePanel({
         style={{ width: `${panelWidth}px` }}
       >
         <Tabs className="h-full min-h-0 gap-0" defaultValue="system">
-          <div className="border-b border-divider px-4 py-2">
+          <div className="flex items-start gap-4 border-b border-divider px-4 py-2">
             <TabsList className="grid h-auto w-full grid-cols-4 gap-x-4 gap-y-1 rounded-none bg-transparent p-0">
-              <TabsTrigger
-                className="h-10 min-w-0 rounded-none bg-transparent px-0 py-2 text-[13px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                value="system"
-              >
-                <span className="truncate">基础信息</span>
-              </TabsTrigger>
-              {activeSidebarItems.map((item) => (
+              {visibleSidebarEntries.map((entry) => (
                 <TabsTrigger
                   className="h-10 min-w-0 rounded-none bg-transparent px-0 py-2 text-[13px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                  key={item.id}
-                  value={getSidebarTabValue(item)}
+                  key={`${entry.kind}:${entry.id}`}
+                  value={entry.value}
                 >
-                  <span className="truncate">{item.name}</span>
+                  <span className="truncate">{entry.name}</span>
                 </TabsTrigger>
               ))}
             </TabsList>
+            {hasOverflowSidebarEntries ? (
+              <button
+                className="h-10 shrink-0 px-0 py-2 text-[13px] font-medium text-primary hover:text-primary/85 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+                onClick={() => setIsSidebarExpanded((current) => !current)}
+                type="button"
+              >
+                {isSidebarExpanded ? "收起" : "展开"}
+              </button>
+            ) : null}
           </div>
 
           <TabsContent className="mt-0 min-h-0 flex-1" value="system">

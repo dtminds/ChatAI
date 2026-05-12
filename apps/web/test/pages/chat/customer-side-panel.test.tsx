@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
 
@@ -24,5 +25,37 @@ describe("CustomerSidePanel", () => {
 
     expect(within(sidePanel).getByRole("tab", { name: "基础信息" })).toBeInTheDocument();
     expect(within(sidePanel).getAllByRole("tab")).toHaveLength(1);
+  });
+
+  it("collapses custom tabs to the first row and expands them on demand", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CustomerSidePanel
+        {...defaultProps}
+        sidebarItems={Array.from({ length: 5 }, (_, index) => ({
+          id: String(index + 1),
+          name: `页面${index + 1}`,
+          sort: index + 1,
+          status: "active",
+          url: `https://example.com/page-${index + 1}`,
+        }))}
+      />,
+    );
+
+    const sidePanel = screen.getByRole("complementary", { name: "客户信息栏" });
+
+    expect(within(sidePanel).getByRole("tab", { name: "基础信息" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("tab", { name: "页面1" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("tab", { name: "页面2" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("tab", { name: "页面3" })).toBeInTheDocument();
+    expect(within(sidePanel).queryByRole("tab", { name: "页面4" })).not.toBeInTheDocument();
+    expect(within(sidePanel).getByRole("button", { name: "展开" })).toBeInTheDocument();
+
+    await user.click(within(sidePanel).getByRole("button", { name: "展开" }));
+
+    expect(within(sidePanel).getByRole("tab", { name: "页面4" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("tab", { name: "页面5" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("button", { name: "收起" })).toBeInTheDocument();
   });
 });

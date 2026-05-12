@@ -101,6 +101,19 @@ describe("WorkbenchRepository", () => {
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
   });
 
+  it("does not update pinned state when the conversation id is invalid", async () => {
+    const repository = new WorkbenchRepository(createFailingDb() as never);
+
+    await expect(
+      repository.updateConversationPinned({
+        conversationId: "not-a-conversation",
+        isPinned: true,
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("returns conversation tenant scope and takeover sub-user for Java write operations", async () => {
     const repository = new WorkbenchRepository(
       {
@@ -152,6 +165,83 @@ describe("WorkbenchRepository", () => {
         uid: 9001,
       }),
     ).resolves.toBe(5);
+  });
+
+  it("updates conversation pinned time in tenant scope", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const wheres: Array<[string, string, unknown]> = [];
+    const repository = new WorkbenchRepository(
+      {
+        updateTable(table: string) {
+          expect(table).toBe("xy_wap_embed_conversation");
+
+          return {
+            set(update: Record<string, unknown>) {
+              updates.push(update);
+
+              return this;
+            },
+            where(column: string, operator: string, value: unknown) {
+              wheres.push([column, operator, value]);
+
+              return this;
+            },
+            execute() {
+              return Promise.resolve([]);
+            },
+          };
+        },
+      } as never,
+    );
+
+    await repository.updateConversationPinned({
+      conversationId: "88",
+      isPinned: true,
+      platform: 5,
+      uid: 9001,
+    });
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.pinned_time).toEqual(expect.any(Number));
+    expect(Number(updates[0]?.pinned_time)).toBeGreaterThan(0);
+    expect(wheres).toEqual([
+      ["id", "=", 88],
+      ["uid", "=", 9001],
+      ["platform", "=", 5],
+      ["biz_status", "=", 1],
+    ]);
+  });
+
+  it("clears conversation pinned time in tenant scope", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        updateTable() {
+          return {
+            set(update: Record<string, unknown>) {
+              updates.push(update);
+
+              return this;
+            },
+            where() {
+              return this;
+            },
+            execute() {
+              return Promise.resolve([]);
+            },
+          };
+        },
+      } as never,
+    );
+
+    await repository.updateConversationPinned({
+      conversationId: "88",
+      isPinned: false,
+      platform: 5,
+      uid: 9001,
+    });
+
+    expect(updates).toEqual([{ pinned_time: 0 }]);
   });
 
   it("ignores nullable third-party ids when collecting message hydration sources", async () => {

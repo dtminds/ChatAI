@@ -189,6 +189,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
       platform: conversation.platform,
       uid: conversation.uid,
     });
+    await this.repository.updateConversationPinned({
+      conversationId: conversation.id,
+      isPinned: true,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
 
     return {
       conversationId: conversation.id,
@@ -246,6 +252,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.javaClient.unpinConversation({
       conversationId: conversation.id,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+    await this.repository.updateConversationPinned({
+      conversationId: conversation.id,
+      isPinned: false,
       platform: conversation.platform,
       uid: conversation.uid,
     });

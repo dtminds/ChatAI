@@ -170,6 +170,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("pins a taken-over conversation through Java", async () => {
     const javaClient = createJavaClient();
+    const updateConversationPinned = vi.fn().mockResolvedValue(undefined);
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -180,6 +181,7 @@ describe("MysqlWorkbenchService", () => {
           seatHostSubUserId: "101",
           uid: 9001,
         }),
+        updateConversationPinned,
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -194,10 +196,17 @@ describe("MysqlWorkbenchService", () => {
       platform: 5,
       uid: 9001,
     });
+    expect(updateConversationPinned).toHaveBeenCalledWith({
+      conversationId: "88",
+      isPinned: true,
+      platform: 5,
+      uid: 9001,
+    });
   });
 
   it("unpins a taken-over conversation through Java", async () => {
     const javaClient = createJavaClient();
+    const updateConversationPinned = vi.fn().mockResolvedValue(undefined);
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -208,6 +217,7 @@ describe("MysqlWorkbenchService", () => {
           seatHostSubUserId: "101",
           uid: 9001,
         }),
+        updateConversationPinned,
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -219,6 +229,12 @@ describe("MysqlWorkbenchService", () => {
     });
     expect(javaClient.unpinConversation).toHaveBeenCalledWith({
       conversationId: "88",
+      platform: 5,
+      uid: 9001,
+    });
+    expect(updateConversationPinned).toHaveBeenCalledWith({
+      conversationId: "88",
+      isPinned: false,
       platform: 5,
       uid: 9001,
     });

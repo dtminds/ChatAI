@@ -540,12 +540,8 @@ export function createWorkbenchStore() {
       }
     }
 
-    async function reloadAccountConversations(accountId: string, requestId: number) {
+    async function reloadAccountConversations(accountId: string) {
       const conversations = await loadAccountConversations(accountId);
-
-      if (!isCurrentScopeRequest(requestId)) {
-        return;
-      }
 
       set((currentState) => ({
         conversationListsByScope: {
@@ -577,7 +573,7 @@ export function createWorkbenchStore() {
           await unpinConversation(conversationId);
         }
 
-        await reloadAccountConversations(account.id, requestId);
+        await reloadAccountConversations(account.id);
         set({ readReceiptError: undefined });
       } catch (error) {
         if (!isCurrentScopeRequest(requestId)) {

@@ -937,6 +937,43 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("keeps pin reload results when the user switches accounts before reload finishes", async () => {
+    const baseService = createMockWorkbenchService();
+    const reloadRequested = createDeferred();
+    const deferredReload =
+      createDeferred<Awaited<ReturnType<typeof baseService.getConversations>>>();
+    let deferDrcReload = false;
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId) {
+        if (deferDrcReload && accountId === "drc") {
+          reloadRequested.resolve();
+
+          return deferredReload.promise;
+        }
+
+        return baseService.getConversations(accountId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    deferDrcReload = true;
+
+    const pinPromise = useWorkbenchStore.getState().pinConversation("conv-002");
+    await reloadRequested.promise;
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    deferredReload.resolve(await baseService.getConversations("drc"));
+    await pinPromise;
+
+    const state = useWorkbenchStore.getState();
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
+      isPinned: true,
+    });
+  });
+
   it("skips pin when the active account is not taken over by the current user", async () => {
     const baseService = createMockWorkbenchService();
     const observedPinnedConversationIds: string[] = [];

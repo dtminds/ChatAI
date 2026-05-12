@@ -1,10 +1,9 @@
 import {
   Add01Icon,
-  ArrowDown01Icon,
-  ArrowUp01Icon,
   Delete02Icon,
   DragDropVerticalIcon,
   Edit02Icon,
+  MoreHorizontalIcon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -13,7 +12,7 @@ import type {
   SettingsSidebarItemCreateRequest,
   SettingsSidebarItemUpdateRequest,
 } from "@chatai/contracts";
-import { useEffect, useMemo, useState } from "react";
+import { type DragEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -37,6 +36,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -55,7 +61,7 @@ import {
   updateSidebarItemsSort,
   updateSidebarItemStatus,
 } from "@/pages/chat/settings/settings-service";
-import { Field, PageHeader, StatusText } from "@/pages/chat/settings/shared";
+import { Field, PageHeader } from "@/pages/chat/settings/shared";
 
 type DialogState =
   | {
@@ -79,6 +85,7 @@ export function SidebarSettingsPage() {
   const [items, setItems] = useState<SettingsSidebarItem[]>(emptyItems);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SettingsSidebarItem | null>(null);
+  const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -182,9 +189,13 @@ export function SidebarSettingsPage() {
     }
   }
 
-  async function handleMove(item: SettingsSidebarItem, direction: -1 | 1) {
-    const currentIndex = items.findIndex((currentItem) => currentItem.id === item.id);
-    const nextIndex = currentIndex + direction;
+  async function handleDragSort(draggedItemId: string, targetItemId: string) {
+    if (draggedItemId === targetItemId) {
+      return;
+    }
+
+    const currentIndex = items.findIndex((currentItem) => currentItem.id === draggedItemId);
+    const nextIndex = items.findIndex((currentItem) => currentItem.id === targetItemId);
 
     if (currentIndex < 0 || nextIndex < 0 || nextIndex >= items.length) {
       return;
@@ -287,17 +298,16 @@ export function SidebarSettingsPage() {
               <Table aria-label="侧边栏菜单列表">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[34%] px-5 py-4">页面</TableHead>
-                    <TableHead className="w-[28%] px-5 py-4">页面地址</TableHead>
-                    <TableHead className="w-[14%] px-5 py-4">状态</TableHead>
-                    <TableHead className="w-[14%] px-5 py-4">排序</TableHead>
+                    <TableHead className="w-[40%] px-5 py-4">页面</TableHead>
+                    <TableHead className="w-[36%] px-5 py-4">页面地址</TableHead>
+                    <TableHead className="w-[12%] px-5 py-4">显示</TableHead>
                     <TableHead className="px-5 py-4">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell className="px-5 py-10" colSpan={5}>
+                      <TableCell className="px-5 py-10" colSpan={4}>
                         <div
                           aria-label="正在加载侧边栏页面"
                           className="flex items-center justify-center gap-3 text-sm text-muted-foreground"
@@ -315,12 +325,9 @@ export function SidebarSettingsPage() {
                     </TableRow>
                   ) : filteredItems.length > 0 ? (
                     filteredItems.map((item) => {
-                      const itemIndex = items.findIndex((currentItem) => currentItem.id === item.id);
-
                       return (
                         <SidebarItemRow
-                          isFirst={itemIndex === 0}
-                          isLast={itemIndex === items.length - 1}
+                          isDragging={draggingItemId === item.id}
                           isPending={
                             pendingAction === `delete:${item.id}` ||
                             pendingAction === `edit:${item.id}` ||
@@ -330,10 +337,25 @@ export function SidebarSettingsPage() {
                           item={item}
                           key={item.id}
                           onDelete={() => setDeleteTarget(item)}
-                          onEdit={() => setDialogState({ mode: "edit", item })}
-                          onMove={(direction) => {
-                            void handleMove(item, direction);
+                          onDragEnd={() => {
+                            setDraggingItemId(null);
                           }}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                          }}
+                          onDragStart={() => {
+                            setDraggingItemId(item.id);
+                          }}
+                          onDrop={() => {
+                            const draggedItemId = draggingItemId;
+
+                            setDraggingItemId(null);
+
+                            if (draggedItemId) {
+                              void handleDragSort(draggedItemId, item.id);
+                            }
+                          }}
+                          onEdit={() => setDialogState({ mode: "edit", item })}
                           onToggleStatus={() => {
                             void handleToggleStatus(item);
                           }}
@@ -342,7 +364,7 @@ export function SidebarSettingsPage() {
                     })
                   ) : (
                     <TableRow>
-                      <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={5}>
+                      <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={4}>
                         暂无侧边栏页面
                       </TableCell>
                     </TableRow>
@@ -408,36 +430,51 @@ export function SidebarSettingsPage() {
 }
 
 function SidebarItemRow({
-  isFirst,
-  isLast,
+  isDragging,
   isPending,
   item,
   onDelete,
+  onDragEnd,
+  onDragOver,
+  onDragStart,
+  onDrop,
   onEdit,
-  onMove,
   onToggleStatus,
 }: {
-  isFirst: boolean;
-  isLast: boolean;
+  isDragging: boolean;
   isPending: boolean;
   item: SettingsSidebarItem;
   onDelete: () => void;
+  onDragEnd: () => void;
+  onDragOver: (event: DragEvent<HTMLTableRowElement>) => void;
+  onDragStart: () => void;
+  onDrop: () => void;
   onEdit: () => void;
-  onMove: (direction: -1 | 1) => void;
   onToggleStatus: () => void;
 }) {
   const isActive = item.status === "active";
 
   return (
-    <TableRow>
+    <TableRow
+      className={isDragging ? "bg-muted/70" : undefined}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <TableCell className="px-5 py-5">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-[6px] text-muted-foreground">
+          <button
+            aria-label={`拖动 ${item.name} 调整排序`}
+            className="flex size-7 shrink-0 cursor-grab items-center justify-center rounded-[6px] text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isPending}
+            draggable={!isPending}
+            onDragEnd={onDragEnd}
+            onDragStart={onDragStart}
+            type="button"
+          >
             <HugeiconsIcon icon={DragDropVerticalIcon} size={16} strokeWidth={1.8} />
-          </span>
+          </button>
           <div className="min-w-0">
             <p className="truncate font-medium text-foreground">{item.name}</p>
-            <p className="mt-1 text-xs text-muted-foreground">排序 {item.sort}</p>
           </div>
         </div>
       </TableCell>
@@ -445,69 +482,44 @@ function SidebarItemRow({
         <p className="max-w-[220px] truncate text-sm text-muted-foreground">{item.url}</p>
       </TableCell>
       <TableCell className="px-5 py-5">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center">
           <Switch
             aria-label={`${isActive ? "停用" : "启用"} ${item.name}`}
             checked={isActive}
             disabled={isPending}
             onCheckedChange={onToggleStatus}
           />
-          <StatusText tone={isActive ? "success" : "muted"}>
-            {isActive ? "启用" : "停用"}
-          </StatusText>
         </div>
       </TableCell>
       <TableCell className="px-5 py-5">
-        <div className="flex items-center gap-1">
-          <Button
-            aria-label={`移动 ${item.name} 到上方`}
-            className="size-8 rounded-[8px]"
-            disabled={isFirst || isPending}
-            onClick={() => onMove(-1)}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={ArrowUp01Icon} size={15} strokeWidth={1.8} />
-          </Button>
-          <Button
-            aria-label={`移动 ${item.name} 到下方`}
-            className="size-8 rounded-[8px]"
-            disabled={isLast || isPending}
-            onClick={() => onMove(1)}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={ArrowDown01Icon} size={15} strokeWidth={1.8} />
-          </Button>
-        </div>
-      </TableCell>
-      <TableCell className="px-5 py-5">
-        <div className="flex items-center gap-1">
-          <Button
-            aria-label={`编辑 ${item.name}`}
-            className="size-8 rounded-[8px]"
-            disabled={isPending}
-            onClick={onEdit}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Edit02Icon} size={15} strokeWidth={1.8} />
-          </Button>
-          <Button
-            aria-label={`删除 ${item.name}`}
-            className="size-8 rounded-[8px] text-destructive hover:text-destructive"
-            disabled={isPending}
-            onClick={onDelete}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Delete02Icon} size={15} strokeWidth={1.8} />
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={`打开 ${item.name} 操作菜单`}
+              className="size-8 rounded-[8px]"
+              disabled={isPending}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={1.8} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[116px]">
+            <DropdownMenuItem onSelect={() => onEdit()}>
+              <HugeiconsIcon icon={Edit02Icon} size={15} strokeWidth={1.8} />
+              编辑
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive data-[highlighted]:text-destructive"
+              onSelect={() => onDelete()}
+            >
+              <HugeiconsIcon icon={Delete02Icon} size={15} strokeWidth={1.8} />
+              删除
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </TableCell>
     </TableRow>
   );

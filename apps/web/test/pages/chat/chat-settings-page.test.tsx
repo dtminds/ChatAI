@@ -1,6 +1,6 @@
 import MockAdapter from "axios-mock-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { routerConfig } from "@/router";
@@ -331,7 +331,7 @@ describe("Chat settings pages", () => {
     mock.onPatch("/server/settings/sidebar-items/201/status").reply(200, {
       data: {
         id: "201",
-        name: "企业名片",
+        name: "企业名片新版",
         sort: 1,
         status: "disabled",
         url: "https://example.com/card",
@@ -380,10 +380,15 @@ describe("Chat settings pages", () => {
     renderRoute("/chat/settings/sidebar");
 
     expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "侧边栏菜单列表" })).toBeInTheDocument();
+    const sidebarTable = screen.getByRole("table", { name: "侧边栏菜单列表" });
+
+    expect(sidebarTable).toBeInTheDocument();
+    expect(within(sidebarTable).getByRole("columnheader", { name: "显示" })).toBeInTheDocument();
+    expect(within(sidebarTable).queryByRole("columnheader", { name: "状态" })).not.toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "聊天工具栏示意图" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "移动 发起收款 到上方" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "移动 企业名片 到上方" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "拖动 发起收款 调整排序" })).toBeInTheDocument();
+    expect(within(sidebarTable).queryByText("启用")).not.toBeInTheDocument();
+    expect(within(sidebarTable).queryByText("停用")).not.toBeInTheDocument();
     expect(
       within(screen.getByRole("complementary", { name: "聊天工具栏示意图" })).queryByText(
         "客户详情",
@@ -404,7 +409,8 @@ describe("Chat settings pages", () => {
       url: "https://example.com/assets",
     });
 
-    await user.click(screen.getByRole("button", { name: "编辑 企业名片" }));
+    await user.click(screen.getByRole("button", { name: "打开 企业名片 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "编辑" }));
     await user.clear(screen.getByLabelText("页面名称"));
     await user.type(screen.getByLabelText("页面名称"), "企业名片新版");
     await user.click(screen.getByRole("button", { name: "确认提交" }));
@@ -423,7 +429,9 @@ describe("Chat settings pages", () => {
       status: "disabled",
     });
 
-    await user.click(screen.getByRole("button", { name: "移动 发起收款 到上方" }));
+    fireEvent.dragStart(screen.getByRole("button", { name: "拖动 发起收款 调整排序" }));
+    fireEvent.dragOver(screen.getByRole("row", { name: /企业名片新版/ }));
+    fireEvent.drop(screen.getByRole("row", { name: /企业名片新版/ }));
     await waitFor(() => {
       expect(mock.history.put.some((request) => request.url === "/server/settings/sidebar-items/sort")).toBe(
         true,
@@ -436,7 +444,8 @@ describe("Chat settings pages", () => {
       itemIds: ["202", "201", "203", "204", "205"],
     });
 
-    await user.click(screen.getByRole("button", { name: "删除 客户详情" }));
+    await user.click(screen.getByRole("button", { name: "打开 客户详情 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
     expect(screen.getByRole("alertdialog", { name: "删除侧边栏页面" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => {

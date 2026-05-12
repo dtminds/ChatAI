@@ -4,6 +4,7 @@ import {
   PinIcon,
   PinOffIcon,
   BubbleChatNotificationIcon,
+  ChatDone01Icon,
   ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -22,10 +23,14 @@ import { formatConversationTimestamp } from "@/pages/chat/lib/chat-time";
 export function ConversationCard({
   conversation,
   isActive,
+  onMarkRead,
+  onMarkUnread,
   onSelect,
 }: {
   conversation: Conversation;
   isActive: boolean;
+  onMarkRead?: () => void;
+  onMarkUnread?: () => void;
   onSelect: () => void;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -34,7 +39,9 @@ export function ConversationCard({
       label: conversation.isPinned ? "取消置顶" : "置顶",
       icon: conversation.isPinned ? PinOffIcon : PinIcon,
     },
-    { label: "标记未读", icon: BubbleChatNotificationIcon },
+    conversation.unread > 0
+      ? { label: "标记已读", icon: ChatDone01Icon, onSelect: onMarkRead }
+      : { label: "标记未读", icon: BubbleChatNotificationIcon, onSelect: onMarkUnread },
     { label: "不显示", icon: ViewOffSlashIcon },
   ];
 
@@ -154,7 +161,7 @@ export function ConversationCard({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {conversationMenuItems.map((item) => (
-            <DropdownMenuItem key={item.label}>
+            <DropdownMenuItem key={item.label} onSelect={item.onSelect}>
               <HugeiconsIcon
                 color="currentColor"
                 icon={item.icon}

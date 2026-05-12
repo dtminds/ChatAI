@@ -1,7 +1,6 @@
 import {
   AccountSetting01Icon,
   ArrowLeft02Icon,
-  Configuration01Icon,
   Layers01Icon,
   PaintBrush02Icon,
   ShieldUserIcon,
@@ -15,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AccountsSettingsPage } from "@/pages/chat/settings/pages/accounts-settings-page";
 import { AppearanceSettingsPage } from "@/pages/chat/settings/pages/appearance-settings-page";
-import { ReceptionWorkflowSettingsPage } from "@/pages/chat/settings/pages/reception-workflow-settings-page";
 import { RolePermissionSettingsPage } from "@/pages/chat/settings/pages/role-permission-settings-page";
 import { SidebarSettingsPage } from "@/pages/chat/settings/pages/sidebar-settings-page";
 import { SubAccountsSettingsPage } from "@/pages/chat/settings/pages/sub-accounts-settings-page";
@@ -39,12 +37,6 @@ const settingsSections = [
     label: "权限角色",
     path: "/chat/settings/roles",
     icon: ShieldUserIcon,
-  },
-  {
-    id: "workflow",
-    label: "接待配置",
-    path: "/chat/settings/workflow",
-    icon: Configuration01Icon,
   },
   {
     id: "sidebar",
@@ -105,8 +97,6 @@ function SettingsContent({ sectionId }: { sectionId: SettingsSectionId }) {
       return <SubAccountsSettingsPage />;
     case "roles":
       return <RolePermissionSettingsPage />;
-    case "workflow":
-      return <ReceptionWorkflowSettingsPage />;
     case "sidebar":
       return <SidebarSettingsPage />;
     case "appearance":

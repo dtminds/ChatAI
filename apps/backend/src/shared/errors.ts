@@ -34,6 +34,12 @@ export class NotFoundError extends AppError {
   }
 }
 
+export class ForbiddenError extends AppError {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
+    super(code, message, 403, details);
+  }
+}
+
 export class BadGatewayError extends AppError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
     super(code, message, 502, details);

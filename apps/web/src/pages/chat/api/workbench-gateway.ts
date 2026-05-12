@@ -7,6 +7,7 @@ import {
 } from "@/pages/chat/api/workbench-adapter";
 import type {
   WorkbenchConversationReadResponse,
+  WorkbenchConversationUnreadResponse,
   WorkbenchMessageStatus,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -203,6 +204,12 @@ export async function markConversationRead(
   conversationId: string,
 ): Promise<WorkbenchConversationReadResponse> {
   return getWorkbenchService().markConversationRead(conversationId);
+}
+
+export async function markConversationUnread(
+  conversationId: string,
+): Promise<WorkbenchConversationUnreadResponse> {
+  return getWorkbenchService().markConversationUnread(conversationId);
 }
 
 export async function sendTextMessage(

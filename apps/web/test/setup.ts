@@ -1,6 +1,6 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup } from "@testing-library/react";
-import { afterEach, beforeAll, expect, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
 import {
   createMockWorkbenchService,
   setWorkbenchService,
@@ -98,6 +98,10 @@ beforeAll(() => {
     writable: true,
     value: ResizeObserverMock,
   });
+});
+
+beforeEach(() => {
+  setWorkbenchService(createMockWorkbenchService());
 });
 
 afterEach(() => {

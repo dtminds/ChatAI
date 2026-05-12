@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { formatConversationPreview, formatWorkbenchTimestamp } from "@/pages/chat/api/workbench-adapter";
 import {
   bootstrapWorkbench,
+  loadGroupMembers,
   loadAccountScope,
   loadConversationMessagesPage,
   markConversationRead,
@@ -22,6 +23,7 @@ import type {
   Conversation,
   CustomerProfile,
   EmployeeProfile,
+  GroupMember,
   Message,
 } from "@/pages/chat/chat-types";
 
@@ -53,6 +55,7 @@ type WorkbenchState = {
   readReceiptError?: string;
   scopeTransitionError?: string;
   historyStatusByConversationId: Record<string, HistoryStatus>;
+  groupMembersByConversationId: Record<string, GroupMember[]>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
   sendStatusByConversationId: Record<string, SendStatus>;
   takeoverStatusByAccountId: Record<string, TakeoverStatus>;
@@ -66,6 +69,7 @@ type WorkbenchState = {
   setActiveAccount: (accountId: string) => Promise<void>;
   setActiveConversation: (conversationId: string) => Promise<void>;
   setActiveMode: (mode: ChatMode) => Promise<void>;
+  loadActiveGroupMembers: () => Promise<void>;
   sendAgentMessageSegments: (segments: ComposerSegment[]) => Promise<void>;
   sendAgentTextMessage: (text: string) => Promise<void>;
   takeOverAccount: (accountId: string) => Promise<void>;
@@ -85,6 +89,7 @@ function createInitialState(): Omit<
   | "setActiveAccount"
   | "setActiveConversation"
   | "setActiveMode"
+  | "loadActiveGroupMembers"
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
   | "takeOverAccount"
@@ -104,6 +109,7 @@ function createInitialState(): Omit<
     bootstrapStatus: "idle",
     conversationListsByScope: {},
     customerProfilesById: defaultCustomerProfiles,
+    groupMembersByConversationId: {},
     hasMoreHistoryByConversationId: {},
     historyStatusByConversationId: {},
     isConversationLoading: false,
@@ -335,7 +341,58 @@ export function createWorkbenchStore() {
     return nextTakeoverStatusByAccountId;
   }
 
+  function getConversationById(state: WorkbenchStore, conversationId: string) {
+    return Object.values(state.conversationListsByScope)
+      .flat()
+      .find((conversation) => conversation.id === conversationId);
+  }
+
   return create<WorkbenchStore>((set, get) => {
+    async function loadGroupMembersForConversation(
+      conversationId: string,
+      requestId: number,
+    ) {
+      if (!conversationId) {
+        return;
+      }
+
+      const state = get();
+      const conversation = getConversationById(state, conversationId);
+
+      if (
+        conversation?.mode !== "group" ||
+        state.groupMembersByConversationId[conversationId]
+      ) {
+        return;
+      }
+
+      try {
+        const members = await loadGroupMembers(conversationId);
+
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
+        set((currentState) => ({
+          groupMembersByConversationId: {
+            ...currentState.groupMembersByConversationId,
+            [conversationId]: members,
+          },
+        }));
+      } catch {
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
+        set((currentState) => ({
+          groupMembersByConversationId: {
+            ...currentState.groupMembersByConversationId,
+            [conversationId]: [],
+          },
+        }));
+      }
+    }
+
     async function markActiveConversationRead(
       conversationId: string,
       requestId: number,
@@ -377,6 +434,12 @@ export function createWorkbenchStore() {
       },
       dismissReadReceiptError() {
         set({ readReceiptError: undefined });
+      },
+      async loadActiveGroupMembers() {
+        const state = get();
+        const requestId = latestScopeRequestId;
+
+        await loadGroupMembersForConversation(state.activeConversationId, requestId);
       },
       async takeOverAccount(accountId) {
       const state = get();
@@ -486,6 +549,11 @@ export function createWorkbenchStore() {
             ? { [conversationPage.conversationId]: conversationPage.messages }
             : {},
         });
+
+        await loadGroupMembersForConversation(
+          bootstrapResult.activeConversationId,
+          requestId,
+        );
 
         if (
           bootstrapResult.activeConversationId &&
@@ -1073,6 +1141,11 @@ export function createWorkbenchStore() {
           scopeTransitionError: undefined,
         }));
 
+        await loadGroupMembersForConversation(
+          scopeResult.nextConversationId,
+          requestId,
+        );
+
         if (
           scopeResult.nextConversationId &&
           isAccountTakenOverByCurrentUser(
@@ -1146,6 +1219,8 @@ export function createWorkbenchStore() {
           },
           scopeTransitionError: undefined,
         }));
+
+        await loadGroupMembersForConversation(conversationId, requestId);
 
         const latestState = get();
         const activeAccount = latestState.accounts.find(

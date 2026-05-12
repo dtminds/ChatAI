@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { WorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
+  loadGroupMembers,
   loadAccountScope,
 } from "@/pages/chat/api/workbench-gateway";
 import {
@@ -58,6 +59,40 @@ describe("workbench gateway message paging", () => {
     });
 
     expect(observedLimits).toEqual([50]);
+  });
+
+  it("adapts group members from the workbench service", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        expect(conversationId).toBe("conv-004");
+
+        return {
+          conversationId,
+          groupSeatId: "group-seat-conv-004",
+          thirdGroupId: "third-group-conv-004",
+          items: [
+            {
+              avatarUrl: "/owner.png",
+              displayName: "群主小可",
+              thirdUserId: "owner-001",
+              type: 2,
+            },
+          ],
+        };
+      },
+    });
+
+    await expect(loadGroupMembers("conv-004")).resolves.toEqual([
+      {
+        avatarUrl: "/owner.png",
+        displayName: "群主小可",
+        id: "owner-001",
+        type: 2,
+      },
+    ]);
   });
 });
 

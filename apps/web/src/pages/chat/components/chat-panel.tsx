@@ -157,7 +157,9 @@ export function ChatPanel({
 
         <CustomerSidePanel
           accountName={accountName}
+          conversationMode={activeConversation?.mode}
           customer={customer}
+          groupMembers={groupMembers}
           isResizing={isResizingCustomerPanel}
           onResizeStart={onCustomerPanelResizeStart}
           panelWidth={customerPanelWidth}

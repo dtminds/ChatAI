@@ -1,5 +1,6 @@
 import type {
   WorkbenchConversationSummaryDto,
+  WorkbenchGroupMemberDto,
   WorkbenchMessageDto,
   WorkbenchSeatDto,
   WorkbenchSubUserDto,
@@ -62,6 +63,15 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     unread: dto.unreadCount,
     updatedAt: formatWorkbenchTimestamp(lastMessageTime),
     updatedAtMs: lastMessageTime,
+  };
+}
+
+export function adaptGroupMember(dto: WorkbenchGroupMemberDto) {
+  return {
+    avatarUrl: dto.avatarUrl,
+    displayName: dto.displayName,
+    id: dto.thirdUserId,
+    type: dto.type,
   };
 }
 

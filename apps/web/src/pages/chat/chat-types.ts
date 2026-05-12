@@ -13,6 +13,7 @@ export type GroupMember = {
   id: string;
   displayName: string;
   avatarUrl?: string;
+  type: 0 | 1 | 2;
 };
 
 export type Account = {

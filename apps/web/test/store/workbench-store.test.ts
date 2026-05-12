@@ -84,6 +84,41 @@ describe("useWorkbenchStore", () => {
     expect(observedLimits).toEqual([50, 50]);
   });
 
+  it("loads group members once when opening a group conversation", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedConversationIds: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        observedConversationIds.push(conversationId);
+
+        return baseService.getGroupMembers(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(observedConversationIds).toEqual(["conv-004"]);
+    expect(state.groupMembersByConversationId["conv-004"]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          displayName: "群主小可",
+          type: 2,
+        }),
+        expect.objectContaining({
+          displayName: "小林",
+          type: 1,
+        }),
+      ]),
+    );
+  });
+
   it("bootstraps conversations that contain video messages", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().setActiveConversation("conv-002");

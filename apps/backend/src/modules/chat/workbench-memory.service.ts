@@ -4,6 +4,7 @@ import type {
   WorkbenchConversationChangeDto,
   WorkbenchConversationReadResponse,
   WorkbenchConversationSummaryDto,
+  WorkbenchGroupMembersResponse,
   WorkbenchSubUserDto,
   WorkbenchMessageDto,
   WorkbenchMessageStatus,
@@ -41,6 +42,7 @@ type WorkbenchEvent =
 type MemoryWorkbenchState = {
   seats: WorkbenchSeatDto[];
   conversationsBySeat: Record<string, WorkbenchConversationSummaryDto[]>;
+  groupMembersByConversationId: Record<string, WorkbenchGroupMembersResponse>;
   subUser: WorkbenchSubUserDto;
   events: WorkbenchEvent[];
   messagesByConversationId: Record<string, WorkbenchMessageDto[]>;
@@ -102,6 +104,18 @@ export function createMemoryWorkbenchService() {
             );
 
       return clone(visibleMessages);
+    },
+    getGroupMembers(
+      _subUserId: string,
+      conversationId: string,
+    ): WorkbenchGroupMembersResponse {
+      const response = state.groupMembersByConversationId[conversationId];
+
+      if (!response) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      return clone(response);
     },
     markConversationRead(
       _subUserId: string,
@@ -283,6 +297,45 @@ function buildInitialState(): MemoryWorkbenchState {
   return {
     seats,
     conversationsBySeat,
+    groupMembersByConversationId: {
+      "conv-004": {
+        conversationId: "conv-004",
+        groupSeatId: "group-seat-conv-004",
+        thirdGroupId: "third-group-conv-004",
+        items: [
+          {
+            avatarUrl: customerAvatarGroupUrl,
+            displayName: "群主小可",
+            thirdUserId: "member-owner",
+            type: 2,
+          },
+          {
+            avatarUrl: customerAvatarXiaoyuUrl,
+            displayName: "小林",
+            thirdUserId: "member-admin",
+            type: 1,
+          },
+          {
+            avatarUrl: customerAvatarUrl,
+            displayName: "丹阳草莓",
+            thirdUserId: "member-user",
+            type: 0,
+          },
+          {
+            avatarUrl: customerAvatarRuiUrl,
+            displayName: "睿白鸽",
+            thirdUserId: "member-rui",
+            type: 0,
+          },
+          {
+            avatarUrl: seatAvatarDrcUrl,
+            displayName: "德瑞可-小可",
+            thirdUserId: "member-agent",
+            type: 0,
+          },
+        ],
+      },
+    },
     subUser: {
       displayName: "林洒",
       subUserId: CURRENT_SUB_USER_ID,

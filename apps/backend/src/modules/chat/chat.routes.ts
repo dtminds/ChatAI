@@ -168,6 +168,18 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get<{ Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/group-members",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) =>
+      workbench.getGroupMembers(getSubUserId(request), request.params.conversationId),
+  );
+
   app.get<{ Querystring: PollQuery }>(
     "/api/server/poll",
     {

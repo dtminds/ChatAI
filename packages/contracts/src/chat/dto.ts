@@ -193,6 +193,23 @@ export type WorkbenchConversationReadResponse = {
   seatUnreadCount: number;
 };
 
+export type WorkbenchGroupMemberType = 0 | 1 | 2;
+
+export type WorkbenchGroupMemberDto = {
+  thirdUserId: string;
+  displayName: string;
+  avatarUrl: string;
+  nickname?: string;
+  type: WorkbenchGroupMemberType;
+};
+
+export type WorkbenchGroupMembersResponse = {
+  conversationId: string;
+  thirdGroupId: string;
+  groupSeatId: string;
+  items: WorkbenchGroupMemberDto[];
+};
+
 export type WorkbenchTakeOverSeatResponse = {
   seat: WorkbenchSeatDto;
 };

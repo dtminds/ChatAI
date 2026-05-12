@@ -314,6 +314,26 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("shows group members in the right sidebar grouped by member type", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+
+    const sidePanel = await screen.findByRole("complementary", {
+      name: "群成员信息栏",
+    });
+
+    expect(within(sidePanel).getByRole("heading", { name: "管理员" })).toBeInTheDocument();
+    expect(within(sidePanel).getByText("群主小可")).toBeInTheDocument();
+    expect(within(sidePanel).getByText("群主")).toBeInTheDocument();
+    expect(within(sidePanel).getByText("小林")).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("heading", { name: "普通成员" })).toBeInTheDocument();
+    expect(within(sidePanel).getByText("丹阳草莓")).toBeInTheDocument();
+  });
+
   it("keeps member mentions available for backend group conversation ids", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

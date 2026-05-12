@@ -744,6 +744,44 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("returns group members for a group conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations/conv-004/group-members",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      conversationId: "conv-004",
+      groupSeatId: "group-seat-conv-004",
+      thirdGroupId: "third-group-conv-004",
+    });
+    expect(response.json().items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          displayName: "群主小可",
+          thirdUserId: "member-owner",
+          type: 2,
+        }),
+        expect.objectContaining({
+          displayName: "小林",
+          thirdUserId: "member-admin",
+          type: 1,
+        }),
+        expect.objectContaining({
+          displayName: "丹阳草莓",
+          thirdUserId: "member-user",
+          type: 0,
+        }),
+      ]),
+    );
+
+    await app.close();
+  });
+
   it("keeps pinned conversations before newer unpinned conversations", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

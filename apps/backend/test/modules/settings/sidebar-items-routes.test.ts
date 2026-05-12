@@ -155,7 +155,7 @@ describe("settings sidebar item routes", () => {
     const { app, authorization, db } = await createSettingsApp();
 
     db.setSidebarItems(
-      Array.from({ length: 8 }, (_, index) => ({
+      Array.from({ length: 10 }, (_, index) => ({
         biz_status: 1,
         id: index + 201,
         name: `页面${index + 1}`,
@@ -171,8 +171,8 @@ describe("settings sidebar item routes", () => {
       headers: { authorization },
       method: "POST",
       payload: {
-        name: "页面9",
-        url: "https://example.com/page-9",
+        name: "页面11",
+        url: "https://example.com/page-11",
       },
       url: "/api/server/settings/sidebar-items",
     });
@@ -181,7 +181,7 @@ describe("settings sidebar item routes", () => {
     expect(overCount.json()).toMatchObject({
       error: {
         code: "SIDEBAR_ITEM_LIMIT_EXCEEDED",
-        message: "侧边栏页面最多添加 8 个",
+        message: "侧边栏页面最多添加 10 个",
       },
       success: false,
     });

@@ -93,7 +93,7 @@ type PendingAction =
   | `status:${string}`;
 
 const emptyItems: SettingsSidebarItem[] = [];
-const maxSidebarItems = 8;
+const maxSidebarItems = 10;
 const maxSidebarItemNameWeight = 8;
 
 export function SidebarSettingsPage() {
@@ -632,6 +632,7 @@ function SidebarItemDragOverlay({
 
 function SidebarPreview({ items }: { items: SettingsSidebarItem[] }) {
   const activeItems = sortSidebarItems(items).filter((item) => item.status === "active");
+  const previewItems = [{ id: "system", name: "基础信息" }, ...activeItems];
 
   return (
     <aside
@@ -641,7 +642,7 @@ function SidebarPreview({ items }: { items: SettingsSidebarItem[] }) {
       <div className="overflow-hidden rounded-[10px] border border-divider bg-surface">
         <div className="border-b border-divider px-4 py-2">
           <div className="grid grid-cols-4 gap-x-4 gap-y-1 text-sm">
-            {activeItems.map((item, index) => (
+            {previewItems.map((item, index) => (
               <div
                 className={cn(
                   "flex h-10 min-w-0 items-center justify-center px-0 py-2 text-muted-foreground",
@@ -652,11 +653,6 @@ function SidebarPreview({ items }: { items: SettingsSidebarItem[] }) {
                 <span className="truncate">{item.name}</span>
               </div>
             ))}
-            {activeItems.length === 0 ? (
-              <div className="col-span-4 flex h-10 items-center justify-center text-sm text-muted-foreground">
-                暂无启用页面
-              </div>
-            ) : null}
           </div>
         </div>
         <div className="h-56 bg-muted/35" />

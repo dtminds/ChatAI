@@ -31,7 +31,7 @@ const dbActiveStatus = 1;
 const dbDeletedStatus = 0;
 const dbShown = 1;
 const dbHidden = 0;
-const maxSidebarItems = 8;
+const maxSidebarItems = 10;
 const maxSidebarItemNameWeight = 8;
 
 export class SidebarItemsSettingsService {
@@ -56,7 +56,7 @@ export class SidebarItemsSettingsService {
     if (currentItems.length >= maxSidebarItems) {
       throw new BadRequestError(
         "SIDEBAR_ITEM_LIMIT_EXCEEDED",
-        "侧边栏页面最多添加 8 个",
+        "侧边栏页面最多添加 10 个",
       );
     }
 

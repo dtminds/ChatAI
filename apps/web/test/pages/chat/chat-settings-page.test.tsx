@@ -532,7 +532,7 @@ describe("Chat settings pages", () => {
     mock.resetHandlers();
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
-        items: Array.from({ length: 8 }, (_, index) => ({
+        items: Array.from({ length: 10 }, (_, index) => ({
           id: String(index + 1),
           name: `页面${index + 1}`,
           sort: index + 1,
@@ -546,6 +546,25 @@ describe("Chat settings pages", () => {
 
     expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新增页面" })).toBeDisabled();
+
+    cleanup();
+    mock.resetHandlers();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: Array.from({ length: 9 }, (_, index) => ({
+          id: String(index + 1),
+          name: `页面${index + 1}`,
+          sort: index + 1,
+          status: "active",
+          url: `https://example.com/page-${index + 1}`,
+        })),
+      },
+      success: true,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新增页面" })).toBeEnabled();
 
     cleanup();
     mock.resetHandlers();

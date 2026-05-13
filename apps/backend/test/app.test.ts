@@ -515,7 +515,6 @@ describe("backend app", () => {
         "x-workbench-client": "chat-ai-ui",
       },
       method: "POST",
-      payload: {},
       url: "/api/auth/refresh",
     });
 

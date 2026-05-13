@@ -2,7 +2,6 @@ import {
   apiError,
   apiSuccess,
   AuthLoginRequestSchema,
-  AuthRefreshRequestSchema,
   type AuthLoginRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
@@ -78,11 +77,6 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   );
   app.post(
     "/api/auth/refresh",
-    {
-      schema: {
-        body: AuthRefreshRequestSchema,
-      },
-    },
     async (request, reply) => {
       const refreshToken = readAuthCookie(request, REFRESH_TOKEN_COOKIE_NAME);
 

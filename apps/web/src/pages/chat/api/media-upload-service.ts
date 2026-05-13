@@ -5,6 +5,7 @@ import type { WorkbenchUploadCredentialResponse } from "@chatai/contracts";
 
 const DEFAULT_IMAGE_UPLOAD_PREFIX = "chat-images/";
 const DEFAULT_IMAGE_EXTENSION = "bin";
+const MEDIA_ASSET_BASE_URL = "https://b5.bokr.com.cn";
 const UPLOAD_SLICE_SIZE = 1024 * 1024;
 
 export async function resolveImageSegmentsForSend(
@@ -31,7 +32,7 @@ export async function resolveImageSegmentsForSend(
       credential,
       contentType: blob.type,
     });
-    const result = await cos.uploadFile({
+    await cos.uploadFile({
       Body: blob,
       Bucket: credential.bucket,
       ContentType: blob.type || undefined,
@@ -45,12 +46,7 @@ export async function resolveImageSegmentsForSend(
       fileId: key,
       height: segment.height,
       type: "image",
-      url: buildObjectUrl({
-        bucket: credential.bucket,
-        key,
-        location: result.Location,
-        region: credential.region,
-      }),
+      url: buildObjectUrl(key),
       width: segment.width,
     });
   }
@@ -141,22 +137,8 @@ function getImageExtension(contentType: string) {
   return subtype.replace(/[^a-z0-9]/g, "") || DEFAULT_IMAGE_EXTENSION;
 }
 
-function buildObjectUrl({
-  bucket,
-  key,
-  location,
-  region,
-}: {
-  bucket: string;
-  key: string;
-  location?: string;
-  region: string;
-}) {
-  if (location) {
-    return location.startsWith("http") ? location : `https://${location}`;
-  }
-
-  return `https://${bucket}.cos.${region}.myqcloud.com/${encodeCosKey(key)}`;
+function buildObjectUrl(key: string) {
+  return `${MEDIA_ASSET_BASE_URL}/${encodeCosKey(key)}`;
 }
 
 function encodeCosKey(key: string) {

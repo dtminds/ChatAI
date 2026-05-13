@@ -107,7 +107,7 @@ describe("resolveImageSegmentsForSend", () => {
         fileId: "chat-images/1778659200000-4fzyo82m.png",
         height: 240,
         type: "image",
-        url: "https://mock-bucket-1250000000.cos.ap-guangzhou.myqcloud.com/chat-images/1778659200000-4fzyo82m.png",
+        url: "https://b5.bokr.com.cn/chat-images/1778659200000-4fzyo82m.png",
         width: 320,
       },
     ]);
@@ -144,7 +144,7 @@ describe("resolveImageSegmentsForSend", () => {
       fileId: expect.stringMatching(/^chat-images\/.+\.png$/),
       type: "image",
       url: expect.stringMatching(
-        /^https:\/\/mock-bucket-1250000000\.cos\.ap-guangzhou\.myqcloud\.com\/chat-images\/.+\.png$/,
+        /^https:\/\/b5\.bokr\.com\.cn\/chat-images\/.+\.png$/,
       ),
     });
   });

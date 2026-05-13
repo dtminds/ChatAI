@@ -18,7 +18,7 @@ import type { RequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { AltchaField } from "./altcha-field";
 import { login } from "./auth-service";
-import { storeAuthTokens } from "./auth-tokens";
+import { notifyAuthSessionChanged } from "./auth-tokens";
 
 export function LoginPage() {
   return (
@@ -54,9 +54,9 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
     setIsSubmitting(true);
 
     try {
-      const response = await login({ account, altcha, password });
+      await login({ account, altcha, password });
 
-      storeAuthTokens(response.data);
+      notifyAuthSessionChanged();
       navigate("/chat", { replace: true });
     } catch (error) {
       setErrorMessage((error as RequestError).message ?? "登录失败，请重试");

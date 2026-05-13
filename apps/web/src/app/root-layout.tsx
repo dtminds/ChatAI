@@ -5,36 +5,63 @@ import {
   applyAppearanceTheme,
   getInitialAppearanceTheme,
 } from "@/lib/appearance-theme";
-import {
-  hasStoredAuthToken,
-  subscribeAuthTokensChanged,
-} from "@/pages/auth/auth-tokens";
+import { getAuthSession } from "@/pages/auth/auth-service";
+import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
 
 const PUBLIC_PATHS = new Set(["/login"]);
 
 export function RootLayout() {
   const location = useLocation();
-  const [hasAuthToken, setHasAuthToken] = useState(hasStoredAuthToken);
+  const [authStatus, setAuthStatus] = useState<"checking" | "authenticated" | "anonymous">(
+    PUBLIC_PATHS.has(location.pathname) ? "anonymous" : "checking",
+  );
 
   useEffect(() => {
     applyAppearanceTheme(getInitialAppearanceTheme());
   }, []);
 
   useEffect(() => {
-    const syncAuthTokenState = () => {
-      setHasAuthToken(hasStoredAuthToken());
+    let isActive = true;
+
+    if (PUBLIC_PATHS.has(location.pathname)) {
+      setAuthStatus("anonymous");
+      return undefined;
+    }
+
+    const syncAuthSessionState = async () => {
+      setAuthStatus("checking");
+
+      try {
+        await getAuthSession();
+
+        if (isActive) {
+          setAuthStatus("authenticated");
+        }
+      } catch {
+        if (isActive) {
+          setAuthStatus("anonymous");
+        }
+      }
     };
 
-    const unsubscribe = subscribeAuthTokensChanged(syncAuthTokenState);
-    window.addEventListener("storage", syncAuthTokenState);
+    void syncAuthSessionState();
+    const unsubscribe = subscribeAuthSessionChanged(syncAuthSessionState);
 
     return () => {
+      isActive = false;
       unsubscribe();
-      window.removeEventListener("storage", syncAuthTokenState);
     };
-  }, []);
+  }, [location.pathname]);
 
-  if (!PUBLIC_PATHS.has(location.pathname) && !hasAuthToken) {
+  if (!PUBLIC_PATHS.has(location.pathname) && authStatus === "checking") {
+    return (
+      <div className="min-h-svh bg-background text-foreground">
+        <Toaster position="top-right" richColors />
+      </div>
+    );
+  }
+
+  if (!PUBLIC_PATHS.has(location.pathname) && authStatus === "anonymous") {
     return <Navigate replace state={{ from: location }} to="/login" />;
   }
 

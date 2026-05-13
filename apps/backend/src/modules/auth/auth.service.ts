@@ -1,8 +1,8 @@
 import type {
   AuthLoginRequest,
   AuthLoginResponse,
-  AuthRefreshResponse,
   JwtUser,
+  WorkbenchSubUserDto,
 } from "@chatai/contracts";
 import { createHash, randomBytes } from "node:crypto";
 import type { Kysely } from "kysely";
@@ -14,6 +14,8 @@ import { verifyPassword } from "./password.service.js";
 
 const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 20 * 60;
 const REFRESH_TOKEN_EXPIRES_IN_DAYS = 14;
+export const REFRESH_TOKEN_EXPIRES_IN_SECONDS =
+  REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60;
 
 type SubUserCredentialRow = {
   id: number;
@@ -41,11 +43,20 @@ export class InvalidCredentialsError extends AppError {
   }
 }
 
+export type AuthSessionTokens = {
+  accessToken: string;
+  expiresIn: number;
+  refreshToken: string;
+  refreshTokenExpiresIn: number;
+  subUser?: WorkbenchSubUserDto;
+  tokenType: "Bearer";
+};
+
 export async function loginWithPassword(
   app: FastifyInstance,
   payload: AuthLoginRequest,
   metadata: LoginRequestMetadata = {},
-): Promise<AuthLoginResponse> {
+): Promise<AuthSessionTokens> {
   const altcha = await verifyAltchaPayload(payload.altcha);
 
   if (!altcha.verified) {
@@ -77,6 +88,7 @@ export async function loginWithPassword(
     accessToken,
     expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
     refreshToken: session.refreshToken,
+    refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
     subUser: {
       displayName: subUser.name,
       subUserId,
@@ -88,7 +100,7 @@ export async function loginWithPassword(
 export async function refreshAccessToken(
   app: FastifyInstance,
   refreshToken: string,
-): Promise<AuthRefreshResponse> {
+): Promise<AuthSessionTokens> {
   if (!app.db) {
     throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "登录服务暂不可用");
   }
@@ -108,7 +120,39 @@ export async function refreshAccessToken(
     }),
     expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
     refreshToken,
+    refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
     tokenType: "Bearer",
+  };
+}
+
+export async function getCurrentSession(
+  app: FastifyInstance,
+  user: JwtUser,
+): Promise<AuthLoginResponse["subUser"]> {
+  if (!app.db) {
+    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "登录服务暂不可用");
+  }
+
+  const subUserId = Number(user.subUserId);
+
+  if (!Number.isSafeInteger(subUserId)) {
+    throw new UnauthorizedError();
+  }
+
+  const subUser = await app.db
+    .selectFrom("xy_wap_embed_sub_user")
+    .select(["id", "name"])
+    .where("id", "=", subUserId)
+    .where("status", "=", 1)
+    .executeTakeFirst();
+
+  if (!subUser) {
+    throw new UnauthorizedError();
+  }
+
+  return {
+    displayName: subUser.name,
+    subUserId: String(subUser.id),
   };
 }
 

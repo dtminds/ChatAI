@@ -34,11 +34,23 @@ function renderRoute(initialEntry = "/chat") {
   return router;
 }
 
+function mockAuthenticatedSession() {
+  mock.onGet("/auth/session").reply(200, {
+    data: {
+      subUser: {
+        displayName: "客服一号",
+        subUserId: "101",
+      },
+    },
+    success: true,
+  });
+}
+
 describe("Chat settings pages", () => {
   beforeEach(() => {
-    window.localStorage.setItem("chatai.refreshToken", "test-refresh-token");
     resetWorkbenchService();
     mock.reset();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sub-accounts").reply(200, {
       data: {
         seats: [
@@ -286,7 +298,7 @@ describe("Chat settings pages", () => {
     expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "在线状态" })).toBeInTheDocument();
-    expect(screen.getByText("德瑞可")).toBeInTheDocument();
+    expect(await screen.findByText("德瑞可")).toBeInTheDocument();
     expect(screen.getByText("离线")).toBeInTheDocument();
     expect(screen.getByText("念都堂")).toBeInTheDocument();
     expect(screen.getByText("在线")).toBeInTheDocument();
@@ -496,6 +508,7 @@ describe("Chat settings pages", () => {
 
   it("keeps sidebar preview fallback ordering aligned with numeric database ids", async () => {
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
         items: [
@@ -532,6 +545,7 @@ describe("Chat settings pages", () => {
   it("limits sidebar item creation by count and name length", async () => {
     const user = userEvent.setup();
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
         items: Array.from({ length: 10 }, (_, index) => ({
@@ -551,6 +565,7 @@ describe("Chat settings pages", () => {
 
     cleanup();
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
         items: Array.from({ length: 9 }, (_, index) => ({
@@ -570,6 +585,7 @@ describe("Chat settings pages", () => {
 
     cleanup();
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
         items: [],
@@ -797,7 +813,7 @@ describe("Chat settings pages", () => {
 
     expect(await screen.findByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
     expect(
-      screen.getByText("客服一号（接管中），主账号，客服二号等5人"),
+      await screen.findByText("客服一号（接管中），主账号，客服二号等5人"),
     ).toBeInTheDocument();
     expect(screen.getByText("未关联")).toBeInTheDocument();
 
@@ -932,6 +948,7 @@ describe("Chat settings pages", () => {
   it("shows a single related WeCom seat as one avatar without a total count", async () => {
     const user = userEvent.setup();
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sub-accounts").reply(200, {
       data: {
         seats: [
@@ -972,6 +989,7 @@ describe("Chat settings pages", () => {
 
   it("centers the sub-account loading state with the shared loader", async () => {
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sub-accounts").reply(
       () => new Promise(() => undefined),
     );

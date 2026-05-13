@@ -4,12 +4,8 @@ import axios, {
   type AxiosRequestConfig,
   type AxiosResponse,
 } from "axios";
-import {
-  clearAuthTokens,
-  getRefreshToken,
-  storeAuthTokens,
-} from "@/pages/auth/auth-tokens";
-import type { AuthRefreshRequest, AuthRefreshResponse } from "@chatai/contracts";
+import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
+import type { AuthRefreshResponse } from "@chatai/contracts";
 
 export type RequestError = {
   message: string;
@@ -28,6 +24,7 @@ type ApiErrorEnvelope = {
 export const requestInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
   timeout: 15000,
+  withCredentials: true,
 });
 
 type AuthRetryConfig = AxiosRequestConfig & {
@@ -42,12 +39,6 @@ requestInstance.interceptors.request.use((config) => {
 
   headers.set("X-Workbench-Client", "chat-ai-ui");
   headers.set("Accept", "application/json");
-
-  const accessToken = window.localStorage.getItem("chatai.accessToken");
-
-  if (accessToken) {
-    headers.set("Authorization", `Bearer ${accessToken}`);
-  }
 
   config.headers = headers;
 
@@ -89,20 +80,13 @@ function isRequestError(error: unknown): error is RequestError {
   return typeof (error as RequestError).message === "string";
 }
 
-async function refreshAuth(refreshToken: string) {
-  refreshRequest ??= request<
-    { data: AuthRefreshResponse },
-    AuthRefreshRequest
-  >({
-    data: { refreshToken },
+async function refreshAuth() {
+  refreshRequest ??= request<{ data: AuthRefreshResponse }>({
     method: "POST",
     _skipAuthRetry: true,
     url: "/auth/refresh",
   })
-    .then((refresh) => {
-      storeAuthTokens(refresh.data);
-      return refresh.data;
-    })
+    .then((refresh) => refresh.data)
     .finally(() => {
       refreshRequest = null;
     });
@@ -123,31 +107,25 @@ export async function request<TResponse = unknown, TPayload = unknown>(
     return response.data;
   } catch (error) {
     if (shouldRefreshAuth(error, config)) {
-      const refreshToken = getRefreshToken();
+      try {
+        await refreshAuth();
 
-      if (refreshToken) {
-        try {
-          await refreshAuth(refreshToken);
+        const retryConfig = {
+          ...config,
+          _authRetry: true,
+        };
 
-          const retryConfig = {
-            ...config,
-            _authRetry: true,
-          };
+        const retryResponse = await requestInstance.request<
+          TResponse,
+          AxiosResponse<TResponse>,
+          TPayload
+        >(retryConfig);
 
-          const retryResponse = await requestInstance.request<
-            TResponse,
-            AxiosResponse<TResponse>,
-            TPayload
-          >(retryConfig);
-
-          return retryResponse.data;
-        } catch (refreshError) {
-          clearAuthTokens();
-          return Promise.reject(normalizeError(refreshError));
-        }
+        return retryResponse.data;
+      } catch (refreshError) {
+        notifyAuthSessionChanged();
+        return Promise.reject(normalizeError(refreshError));
       }
-
-      clearAuthTokens();
     }
 
     return Promise.reject(normalizeError(error));

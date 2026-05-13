@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { cn } from "@/lib/utils";
-import { clearAuthTokens } from "@/pages/auth/auth-tokens";
+import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
@@ -142,7 +142,7 @@ function ChatWorkbenchContent({
     try {
       await logout();
     } finally {
-      clearAuthTokens();
+      notifyAuthSessionChanged();
     }
   }
 

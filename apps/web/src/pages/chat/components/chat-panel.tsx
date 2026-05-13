@@ -47,6 +47,7 @@ type ChatPanelProps = {
   onRefreshGroupMembers: () => void;
   onSelectMentionMember: (member: GroupMember, triggerStart: number, triggerEnd: number) => void;
   onLoadOlderMessages: () => void;
+  onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   onSendDraft: (segments: ComposerSegment[]) => void;
@@ -87,6 +88,7 @@ export function ChatPanel({
   onRefreshGroupMembers,
   onSelectMentionMember,
   onLoadOlderMessages,
+  onOpenQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
   onSendDraft,
@@ -113,6 +115,7 @@ export function ChatPanel({
             messages={messages}
             messageViewportRef={messageViewportRef}
             onLoadOlderMessages={onLoadOlderMessages}
+            onOpenQuotedMessage={onOpenQuotedMessage}
             onMessageViewportScroll={onMessageViewportScroll}
             onRetryMessage={onRetryMessage}
           />

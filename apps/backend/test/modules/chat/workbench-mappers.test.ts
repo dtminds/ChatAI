@@ -151,6 +151,40 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("maps quote messages to normalized quote content", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          content: "正式引用消息",
+          quoteMsgId: 538,
+          quoteOriginMsgId: "1022715",
+        }),
+        msgtype: "quote",
+      })),
+    ).toMatchObject({
+      content: {
+        quoteMsgId: "538",
+        text: "正式引用消息",
+      },
+      contentType: "quote",
+    });
+  });
+
+  it("keeps malformed quote payloads safe", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: "not-json",
+        msgtype: "quote",
+      })),
+    ).toMatchObject({
+      content: {
+        quoteMsgId: "",
+        text: "",
+      },
+      contentType: "quote",
+    });
+  });
+
   it("hydrates private message senders from seats and contacts", () => {
     expect(
       hydrateMessageRows(

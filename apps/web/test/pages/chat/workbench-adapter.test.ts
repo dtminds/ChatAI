@@ -334,6 +334,40 @@ describe("adaptMessage", () => {
       },
     });
   });
+
+  it("adapts quote message content with normalized preview data", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            quoteMsgId: "538",
+            quotedMessage: {
+              contentType: "image",
+              imageUrl: "https://cdn.example.com/quote.jpg",
+              senderName: "范双飞",
+            },
+            text: "这是什么活动",
+          },
+          contentType: "quote",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        quoteMsgId: "538",
+        quotedMessage: {
+          contentType: "image",
+          imageUrl: "https://cdn.example.com/quote.jpg",
+          senderName: "范双飞",
+        },
+        text: "这是什么活动",
+        type: "quote",
+      },
+    });
+  });
 });
 
 const conversationDto: WorkbenchConversationSummaryDto = {

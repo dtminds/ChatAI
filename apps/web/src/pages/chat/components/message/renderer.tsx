@@ -5,6 +5,7 @@ import { ImageMessageCard } from "@/pages/chat/components/message/image";
 import { LinkMessageCard } from "@/pages/chat/components/message/link";
 import { LocationMessageCard } from "@/pages/chat/components/message/location";
 import { MiniAppMessageCard } from "@/pages/chat/components/message/miniapp";
+import { QuoteMessageCard } from "@/pages/chat/components/message/quote";
 import { SolitaireMessageCard } from "@/pages/chat/components/message/solitaire";
 import { SphFeedMessageCard } from "@/pages/chat/components/message/sphfeed";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
@@ -14,11 +15,13 @@ import { VoiceMessageCard } from "@/pages/chat/components/message/voice";
 type MessageContentRendererProps = {
   isAgent: boolean;
   message: ChatMessage;
+  onOpenQuotedMessage?: (quoteMsgId: string) => void;
 };
 
 export function MessageContentRenderer({
   isAgent,
   message,
+  onOpenQuotedMessage,
 }: MessageContentRendererProps) {
   switch (message.content.type) {
     case "text":
@@ -53,6 +56,15 @@ export function MessageContentRenderer({
           content={message.content}
           isAgent={isAgent}
           isOwnMessage={message.isOwnMessage}
+        />
+      );
+    case "quote":
+      return (
+        <QuoteMessageCard
+          content={message.content}
+          isAgent={isAgent}
+          isOwnMessage={message.isOwnMessage}
+          onOpenQuotedMessage={onOpenQuotedMessage}
         />
       );
   }

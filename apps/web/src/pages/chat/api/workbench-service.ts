@@ -624,6 +624,12 @@ function buildContent(message: Message) {
         tail: message.content.tail,
         title: message.content.title,
       };
+    case "quote":
+      return {
+        quoteMsgId: message.content.quoteMsgId,
+        quotedMessage: message.content.quotedMessage,
+        text: message.content.text,
+      };
   }
 }
 

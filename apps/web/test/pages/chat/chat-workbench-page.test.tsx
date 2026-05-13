@@ -1058,6 +1058,127 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getAllByText("这是最新的权益清单截图，你帮我确认下。").length).toBeGreaterThan(0);
   });
 
+  it("scrolls to a loaded original message when clicking a quote preview", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              {
+                content: { text: "测试被引用" },
+                contentType: "text",
+                conversationId: "conv-001",
+                createdAt: 1778240200000,
+                customerId: "cust-001",
+                messageId: "remote-original",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 538,
+                status: "read",
+              },
+              {
+                content: {
+                  quoteMsgId: "538",
+                  quotedMessage: {
+                    contentType: "text",
+                    senderName: "客户",
+                    text: "测试被引用",
+                  },
+                  text: "正式引用消息",
+                },
+                contentType: "quote",
+                conversationId: "conv-001",
+                createdAt: 1778240300000,
+                customerId: "cust-001",
+                messageId: "remote-quote",
+                seatId: "drc",
+                senderType: "agent",
+                seq: 539,
+                status: "read",
+              },
+            ],
+            scannedCount: 2,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    try {
+      render(<ChatWorkbenchPage />);
+
+      await screen.findByRole("textbox", { name: "请输入消息……" });
+      await user.click(screen.getByRole("button", { name: /测试被引用/ }));
+
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        behavior: "smooth",
+        block: "start",
+      });
+      expect(toast.warning).not.toHaveBeenCalledWith("当前未加载原始消息");
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("shows a toast when a quote original message is not loaded", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              {
+                content: {
+                  quoteMsgId: "999",
+                  quotedMessage: {
+                    contentType: "text",
+                    senderName: "客户",
+                    text: "未加载原文",
+                  },
+                  text: "正式引用消息",
+                },
+                contentType: "quote",
+                conversationId: "conv-001",
+                createdAt: 1778240300000,
+                customerId: "cust-001",
+                messageId: "remote-quote",
+                seatId: "drc",
+                senderType: "agent",
+                seq: 539,
+                status: "read",
+              },
+            ],
+            scannedCount: 1,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: /未加载原文/ }));
+
+    expect(toast.warning).toHaveBeenCalledWith("当前未加载原始消息");
+  });
+
   it("shows scope transition errors in the workbench", async () => {
     const baseService = createMockWorkbenchService();
 

@@ -46,7 +46,17 @@ export type WorkbenchMessageContentType =
   | "location"
   | "solitaire"
   | "sphfeed"
-  | "mini-program";
+  | "mini-program"
+  | "quote";
+
+export type WorkbenchQuotedMessagePreviewDto = {
+  contentType: WorkbenchMessageContentType;
+  fallbackText?: string;
+  imageUrl?: string;
+  senderName: string;
+  text?: string;
+  title?: string;
+};
 
 export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed" | "read";
 

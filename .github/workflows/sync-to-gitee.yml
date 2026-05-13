@@ -20,15 +20,11 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H gitee.com >> ~/.ssh/known_hosts
           
-          # 2. 从 GitHub mirror clone
-          git clone --mirror https://x-access-token:${GITHUB_TOKEN}@github.com/dtminds/ChatAI.git repo.git
+          # 2. 从 GitHub bare clone（--bare 而非 --mirror）
+          git clone --bare https://x-access-token:${GITHUB_TOKEN}@github.com/dtminds/ChatAI.git repo.git
           
-          # 3. 推送到 Gitee（排除 GitHub PR refs）
+          # 3. 推送到 Gitee（只推送分支和标签，排除 PR refs）
           cd repo.git
           git remote set-url origin git@gitee.com:dtminds/ChatAI.git
-          
-          # 推送所有分支
           git push origin '+refs/heads/*:refs/heads/*'
-          
-          # 推送所有标签
           git push origin '+refs/tags/*:refs/tags/*'

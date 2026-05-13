@@ -150,7 +150,11 @@ function MessageRevokedState() {
 }
 
 function MessageDeliveryState({ message }: { message: ChatMessage }) {
-  if (message.status === "sent" || message.status === "read") {
+  if (
+    message.status === "accepted" ||
+    message.status === "sent" ||
+    message.status === "read"
+  ) {
     return null;
   }
 

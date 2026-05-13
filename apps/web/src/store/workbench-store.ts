@@ -1384,7 +1384,7 @@ export function createWorkbenchStore() {
               name: account ? `${account.name}-${account.operator}` : me.displayName,
             },
             sentAt: formatWorkbenchTimestamp(timestamp + index),
-            status: "sending" as const,
+            status: "accepted" as const,
           } satisfies Message;
         });
         const preview = getComposerSegmentsPreview(normalizedSegments);

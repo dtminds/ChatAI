@@ -112,7 +112,7 @@ describe("ChatWorkbenchPage", () => {
         type: "text",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
   });
 
@@ -136,7 +136,7 @@ describe("ChatWorkbenchPage", () => {
         type: "text",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
   });
 
@@ -172,7 +172,7 @@ describe("ChatWorkbenchPage", () => {
         type: "image",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
   });
 
@@ -886,7 +886,7 @@ describe("ChatWorkbenchPage", () => {
 
       expect(latestMessage).toMatchObject({
         remoteMessageId: expect.any(String),
-        status: "sending",
+        status: "accepted",
       });
     });
 
@@ -906,7 +906,7 @@ describe("ChatWorkbenchPage", () => {
         useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
 
       expect(latestMessage).toMatchObject({
-        status: "sending",
+        status: "accepted",
       });
       expect(latestMessage?.id).not.toBe(beforeRetryId);
     });

@@ -22,9 +22,9 @@ export async function resolveImageSegmentsForSend(
   const cos = createCosClient(credential);
   const uploads = new Map<ComposerSegment, ComposerSegment>();
 
-  for (const segment of localImageSegments) {
+  await Promise.all(localImageSegments.map(async (segment) => {
     if (segment.type !== "image" || !segment.localUrl) {
-      continue;
+      return;
     }
 
     const blob = await dataUrlToBlob(segment.localUrl);
@@ -49,7 +49,7 @@ export async function resolveImageSegmentsForSend(
       url: buildObjectUrl(key),
       width: segment.width,
     });
-  }
+  }));
 
   return segments.map((segment) => uploads.get(segment) ?? segment);
 }

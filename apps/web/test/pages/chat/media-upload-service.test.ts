@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { waitFor } from "@testing-library/react";
 import type { WorkbenchUploadCredentialResponse } from "@chatai/contracts";
 import {
   createMockWorkbenchService,
@@ -184,6 +185,45 @@ describe("resolveImageSegmentsForSend", () => {
     );
   });
 
+  it("uploads multiple local image segments in parallel", async () => {
+    const credential = createUploadCredential();
+    const baseService = createMockWorkbenchService();
+    const getUploadCredential = vi.fn(async () => credential);
+    const firstUpload = createDeferred();
+    const secondUpload = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      getUploadCredential,
+    });
+    cosUploadFileMock
+      .mockImplementationOnce(() => firstUpload.promise)
+      .mockImplementationOnce(() => secondUpload.promise);
+
+    const resultPromise = resolveImageSegmentsForSend("conv-001", [
+      {
+        alt: "截图 A",
+        localUrl: "data:image/png;base64,YQ==",
+        type: "image",
+      },
+      {
+        alt: "截图 B",
+        localUrl: "data:image/png;base64,Yg==",
+        type: "image",
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(cosUploadFileMock).toHaveBeenCalledTimes(2);
+    });
+
+    firstUpload.resolve({ ETag: '"mock-etag-a"' });
+    secondUpload.resolve({ ETag: '"mock-etag-b"' });
+
+    await expect(resultPromise).resolves.toHaveLength(2);
+    expect(getUploadCredential).toHaveBeenCalledTimes(1);
+  });
+
   it("does not request credentials for text-only segments", async () => {
     const baseService = createMockWorkbenchService();
     const getUploadCredential = vi.fn(baseService.getUploadCredential);
@@ -210,3 +250,18 @@ describe("resolveImageSegmentsForSend", () => {
     expect(cosUploadFileMock).not.toHaveBeenCalled();
   });
 });
+
+function createDeferred<T = unknown>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return {
+    promise,
+    reject,
+    resolve,
+  };
+}

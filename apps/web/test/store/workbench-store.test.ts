@@ -175,7 +175,7 @@ describe("useWorkbenchStore", () => {
         type: "text",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
     expect(state.pendingMessages).toHaveLength(1);
     expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
@@ -227,7 +227,7 @@ describe("useWorkbenchStore", () => {
           type: "text",
         },
         role: "agent",
-        status: "sending",
+        status: "accepted",
       },
       {
         content: {
@@ -238,7 +238,7 @@ describe("useWorkbenchStore", () => {
           height: 240,
         },
         role: "agent",
-        status: "sending",
+        status: "accepted",
       },
       {
         content: {
@@ -246,7 +246,7 @@ describe("useWorkbenchStore", () => {
           type: "text",
         },
         role: "agent",
-        status: "sending",
+        status: "accepted",
       },
     ]);
     expect(state.pendingMessages).toHaveLength(3);
@@ -542,7 +542,7 @@ describe("useWorkbenchStore", () => {
         type: "text",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
     expect(latestMessage?.id).not.toBe(failedMessage?.id);
   });
@@ -1022,7 +1022,7 @@ describe("useWorkbenchStore", () => {
         type: "text",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
   });
 

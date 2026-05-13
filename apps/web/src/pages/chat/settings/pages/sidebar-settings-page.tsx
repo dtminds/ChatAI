@@ -661,7 +661,7 @@ function SidebarPreview({ items }: { items: SettingsSidebarItem[] }) {
             ) : null}
           </div>
         </div>
-        <div className="h-56 bg-muted/35" />
+        <div className="h-96 bg-muted/35" />
       </div>
       <p className="mt-4 flex items-start gap-1.5 text-xs leading-5 text-muted-foreground">
         <HugeiconsIcon

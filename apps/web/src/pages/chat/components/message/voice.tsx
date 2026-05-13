@@ -2,6 +2,7 @@ import { VolumeHighIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import BenzAMRRecorder from "benz-amr-recorder";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { blobLooksLikeWav } from "@/lib/blob-wav";
 import { request } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import type { VoiceMessageContent } from "@/pages/chat/chat-types";
@@ -31,6 +32,8 @@ export function VoiceMessageCard({
   const playbackIdRef = useRef(Symbol("voice-message-playback"));
   const amrBlobRef = useRef<Blob | null>(null);
   const amrUrlRef = useRef<string | null>(null);
+  const wavPreparedForUrlRef = useRef<string | null>(null);
+  const wavObjectUrlRef = useRef<string | null>(null);
   const amrRef = useRef<BenzAMRRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playbackState, setPlaybackState] = useState<
@@ -45,6 +48,15 @@ export function VoiceMessageCard({
     }
   }, []);
 
+  const revokeWavPlaybackUrl = useCallback(() => {
+    if (!wavObjectUrlRef.current) {
+      return;
+    }
+
+    URL.revokeObjectURL(wavObjectUrlRef.current);
+    wavObjectUrlRef.current = null;
+  }, []);
+
   const stopPlayback = useCallback((options: CleanupOptions = {}) => {
     audioRef.current?.pause();
     if (options.destroyAmr) {
@@ -52,13 +64,15 @@ export function VoiceMessageCard({
       amrRef.current = null;
       amrBlobRef.current = null;
       amrUrlRef.current = null;
+      revokeWavPlaybackUrl();
+      wavPreparedForUrlRef.current = null;
     } else {
       amrRef.current?.stop();
     }
 
     clearActivePlayback();
     setPlaybackState("idle");
-  }, [clearActivePlayback]);
+  }, [clearActivePlayback, revokeWavPlaybackUrl]);
 
   const finishPlayback = useCallback(() => {
     clearActivePlayback();
@@ -141,7 +155,58 @@ export function VoiceMessageCard({
       amrBlobRef.current = null;
       amrRef.current = null;
       amrUrlRef.current = null;
+      wavPreparedForUrlRef.current = null;
+      revokeWavPlaybackUrl();
+      audioRef.current?.pause();
+      audioRef.current = null;
     }
+
+    let blob = amrBlobRef.current;
+
+    if (!blob) {
+      blob = await downloadProxiedVoiceForPlayback(audioUrl);
+      amrBlobRef.current = blob;
+    }
+
+    if (!isCurrentPlayback(generation)) {
+      return;
+    }
+
+    if (await blobLooksLikeWav(blob)) {
+      destroyAmrRecorder(amrRef.current);
+      amrRef.current = null;
+
+      if (wavPreparedForUrlRef.current !== audioUrl) {
+        revokeWavPlaybackUrl();
+        wavPreparedForUrlRef.current = audioUrl;
+        wavObjectUrlRef.current = URL.createObjectURL(blob);
+        audioRef.current?.pause();
+        audioRef.current = null;
+      }
+
+      if (!audioRef.current && wavObjectUrlRef.current) {
+        audioRef.current = new Audio(wavObjectUrlRef.current);
+        audioRef.current.addEventListener("ended", finishPlayback);
+        audioRef.current.addEventListener("error", failPlayback);
+      }
+
+      amrUrlRef.current = audioUrl;
+
+      if (!isCurrentPlayback(generation)) {
+        return;
+      }
+
+      setPlaybackState("playing");
+      audioRef.current!.currentTime = 0;
+      await audioRef.current!.play();
+
+      return;
+    }
+
+    revokeWavPlaybackUrl();
+    wavPreparedForUrlRef.current = null;
+    audioRef.current?.pause();
+    audioRef.current = null;
 
     if (!amrRef.current) {
       amrRef.current = new BenzAMRRecorder();
@@ -150,15 +215,10 @@ export function VoiceMessageCard({
     }
 
     if (!amrRef.current.isInit()) {
-      if (shouldProxyAmrAudio()) {
-        amrBlobRef.current ??= await downloadAmrVoice(audioUrl);
-        await amrRef.current.initWithBlob(amrBlobRef.current);
-      } else {
-        await amrRef.current.initWithUrl(audioUrl);
-      }
-
-      amrUrlRef.current = audioUrl;
+      await amrRef.current.initWithBlob(blob);
     }
+
+    amrUrlRef.current = audioUrl;
 
     if (!isCurrentPlayback(generation)) {
       return;
@@ -203,18 +263,17 @@ function isAmrUrl(url: string) {
   return /\.amr(?:[?#].*)?$/i.test(url);
 }
 
-function shouldProxyAmrAudio() {
-  return import.meta.env.DEV;
-}
-
-function downloadAmrVoice(url: string) {
+function downloadProxiedVoiceForPlayback(url: string) {
   return request<Blob>({
+    headers: {
+      Accept: "*/*",
+    },
     method: "GET",
     params: {
       url,
     },
     responseType: "blob",
-    url: "/server/media/proxy",
+    url: "/server/media/proxy/play",
   });
 }
 

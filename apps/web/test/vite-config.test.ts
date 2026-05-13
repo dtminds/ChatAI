@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDevProxyConfig,
+  createViteConfig,
   getRepoRoot,
   getViteDevServerConfig,
 } from "../vite.config";
@@ -30,6 +31,11 @@ describe("vite config env", () => {
       secure: true,
       target: "https://chat-test.bork.com.cn",
     });
+    expect(config.proxy?.["/__chatai-dev-media"]).toMatchObject({
+      changeOrigin: true,
+      secure: true,
+      target: "https://oss.bilinl.com",
+    });
   });
 
   it("defaults to local backend proxy for development", () => {
@@ -39,6 +45,9 @@ describe("vite config env", () => {
     expect(config.port).toBe(8086);
     expect(config.proxy?.["/api"]).toMatchObject({
       target: "http://127.0.0.1:3001",
+    });
+    expect(config.proxy?.["/__chatai-dev-media"]).toMatchObject({
+      target: "https://oss.bilinl.com",
     });
   });
 
@@ -50,6 +59,20 @@ describe("vite config env", () => {
 
     expect(proxy?.["/api"]).toMatchObject({
       secure: false,
+    });
+  });
+
+  it("preview server mirrors API and OSS bypass proxy mounts", () => {
+    const config = createViteConfig("development");
+
+    expect(config.preview?.proxy?.["/api"]).toMatchObject({
+      changeOrigin: true,
+      secure: true,
+      target: "http://127.0.0.1:3001",
+    });
+
+    expect(config.preview?.proxy?.["/__chatai-dev-media"]).toMatchObject({
+      target: "https://oss.bilinl.com",
     });
   });
 

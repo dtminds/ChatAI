@@ -709,6 +709,36 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("proxies allowlisted media through authenticated voice playback", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: {
+          "content-type": "audio/amr",
+        },
+        status: 200,
+      }),
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/proxy/play?url=${encodeURIComponent("https://oss.bilinl.com/files/demo.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("audio/amr");
+    expect(response.body).toBe("\u0001\u0002\u0003");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://oss.bilinl.com/files/demo.amr",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
   it("proxies allowlisted media through the authenticated server API", async () => {
     const { app, authorization } = await createAuthenticatedApp();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -731,6 +761,93 @@ describe("backend app", () => {
     expect(response.body).toBe("\u0001\u0002\u0003");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://b5.bokr.com.cn/bilin/20260421/272/voice.amr",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("proxies allowlisted bilin OSS media through the authenticated server API", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(new Uint8Array([9, 9, 9]), {
+        headers: {
+          "content-type": "application/octet-stream",
+        },
+        status: 200,
+      }),
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/proxy?url=${encodeURIComponent("https://oss.bilinl.com/files/demo.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://oss.bilinl.com/files/demo.amr",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("transcodes allowlisted OSS speech for unauthenticated login demos", async () => {
+    const app = await buildApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: {
+          "content-type": "audio/amr",
+        },
+        status: 200,
+      }),
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/server/public/oss-media/play?url=${encodeURIComponent("https://oss.bilinl.com/files/demo.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(String(response.headers["cache-control"] ?? "")).toContain("public");
+    expect(response.headers["content-type"]).toContain("audio/amr");
+    expect(response.body).toBe("\u0001\u0002\u0003");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://oss.bilinl.com/files/demo.amr",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("proxies allowlisted OSS media without authentication for login page playback", async () => {
+    const app = await buildApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: {
+          "content-type": "application/octet-stream",
+        },
+        status: 200,
+      }),
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/server/public/oss-media?url=${encodeURIComponent("https://oss.bilinl.com/files/demo.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(String(response.headers["cache-control"] ?? "")).toContain("public");
+    expect(response.body).toBe("\u0001\u0002\u0003");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://oss.bilinl.com/files/demo.amr",
       expect.objectContaining({
         signal: expect.any(AbortSignal),
       }),

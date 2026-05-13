@@ -46,6 +46,17 @@ export function buildDevProxyConfig(env: ViteDevEnv = {}) {
       secure,
       target,
     } satisfies ProxyOptions,
+    /**
+     * 未登录页面（例如登录页）无法带 JWT 调 /api/server/media/proxy，
+     * 开发环境经由 Vite 直连 OSS，避免 CORS + 鉴权阻拦。
+     * 语音 SILK 播放请走 /api/server/public/oss-media/play（需后端运行以转 WAV）。
+     */
+    "/__chatai-dev-media": {
+      changeOrigin: true,
+      rewrite: (path) => path.replace(/^\/__chatai-dev-media/, "") || "/",
+      secure: true,
+      target: "https://oss.bilinl.com",
+    } satisfies ProxyOptions,
   };
 }
 
@@ -65,10 +76,15 @@ export function getViteDevServerConfig(
 
 export function createViteConfig(mode = "development"): UserConfig {
   const repoRoot = getRepoRoot();
+  const envForPreview = readEnv({}, mode, repoRoot);
 
   return {
     envDir: repoRoot,
     plugins: [react(), tailwindcss()],
+    preview: {
+      host: envForPreview.VITE_DEV_SERVER_HOST ?? "127.0.0.1",
+      proxy: buildDevProxyConfig(envForPreview),
+    },
     server: getViteDevServerConfig({}, mode, repoRoot),
     resolve: {
       alias: {

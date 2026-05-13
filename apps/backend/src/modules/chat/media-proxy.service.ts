@@ -4,7 +4,10 @@ import {
   BadRequestError,
 } from "../../shared/errors.js";
 
-const ALLOWED_MEDIA_HOST = "b5.bokr.com.cn";
+const ALLOWED_MEDIA_HOSTS = new Set([
+  "b5.bokr.com.cn",
+  "oss.bilinl.com",
+]);
 const DEFAULT_MEDIA_PROXY_TIMEOUT_MS = 8000;
 
 export type ProxiedMediaAsset = {
@@ -61,7 +64,7 @@ function parseAllowedMediaUrl(rawUrl: string) {
     throw new BadRequestError("INVALID_MEDIA_URL", "媒体资源地址无效");
   }
 
-  if (url.protocol !== "https:" || url.hostname !== ALLOWED_MEDIA_HOST) {
+  if (url.protocol !== "https:" || !ALLOWED_MEDIA_HOSTS.has(url.hostname)) {
     throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "媒体资源地址不允许访问");
   }
 

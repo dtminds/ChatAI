@@ -112,7 +112,7 @@ describe("voice message playback", () => {
     });
   });
 
-  it("plays AMR voice messages through the media proxy in development", async () => {
+  it("downloads AMR voice messages through playback proxy", async () => {
     const user = userEvent.setup();
 
     render(
@@ -130,17 +130,64 @@ describe("voice message playback", () => {
 
     await waitFor(() => {
       expect(mocks.request).toHaveBeenCalledWith({
+        headers: {
+          Accept: "*/*",
+        },
         method: "GET",
         params: {
           url: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
         },
         responseType: "blob",
-        url: "/server/media/proxy",
+        url: "/server/media/proxy/play",
       });
       expect(mocks.amrInitWithBlob).toHaveBeenCalledWith(expect.any(Blob));
       expect(mocks.amrInitWithUrl).not.toHaveBeenCalled();
       expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("plays WAV responses from SILK-derived AMR with native Audio", async () => {
+    const user = userEvent.setup();
+    const audioPlay = vi.fn().mockResolvedValue(undefined);
+    const audioPause = vi.fn();
+
+    vi.stubGlobal(
+      "Audio",
+      vi.fn(function AudioMock(this: {
+        addEventListener: ReturnType<typeof vi.fn>;
+        currentTime: number;
+        pause: typeof audioPause;
+        play: typeof audioPlay;
+        src: string;
+      }, src: string) {
+        this.addEventListener = vi.fn();
+        this.currentTime = 0;
+        this.pause = audioPause;
+        this.play = audioPlay;
+        this.src = src;
+      }),
+    );
+    mocks.request.mockResolvedValueOnce(minimalSilentWavBlob());
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://oss.bilinl.com/test/voice.amr",
+          durationLabel: "2\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 2\"" }));
+
+    await waitFor(() => {
+      expect(audioPlay).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.amrInitWithBlob).not.toHaveBeenCalled();
+    expect(mocks.amrInitWithUrl).not.toHaveBeenCalled();
+    expect(globalThis.Audio).toHaveBeenCalled();
   });
 
   it("keeps the volume icon static while a voice message is playing", async () => {
@@ -252,9 +299,10 @@ describe("voice message playback", () => {
 
     resolveFirstDownload(new Blob(["first-amr"]));
 
-    await waitFor(() => {
-      expect(mocks.amrInitWithBlob).toHaveBeenCalledTimes(2);
-    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mocks.amrInitWithBlob).toHaveBeenCalledTimes(1);
     expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
   });
 
@@ -311,7 +359,7 @@ describe("voice message playback", () => {
     expect(mocks.amrDestroy).toHaveBeenCalledTimes(1);
   });
 
-  it("plays AMR voice messages from the original URL in production", async () => {
+  it("downloads AMR voice messages through playback proxy in production builds", async () => {
     vi.stubEnv("DEV", false);
     const user = userEvent.setup();
 
@@ -329,13 +377,20 @@ describe("voice message playback", () => {
     await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
 
     await waitFor(() => {
-      expect(mocks.amrInitWithUrl).toHaveBeenCalledWith(
-        "https://b3.bork.com.cn/bilin/20260421/272/voice.amr",
-      );
+      expect(mocks.request).toHaveBeenCalledWith({
+        headers: {
+          Accept: "*/*",
+        },
+        method: "GET",
+        params: {
+          url: "https://b3.bork.com.cn/bilin/20260421/272/voice.amr",
+        },
+        responseType: "blob",
+        url: "/server/media/proxy/play",
+      });
       expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
     });
-    expect(mocks.request).not.toHaveBeenCalled();
-    expect(mocks.amrInitWithBlob).not.toHaveBeenCalled();
+    expect(mocks.amrInitWithUrl).not.toHaveBeenCalled();
   });
 
   it("plays browser-supported voice message URLs with native Audio", async () => {
@@ -416,4 +471,36 @@ function createVoiceDto(): WorkbenchMessageDto {
     seq: 1,
     status: "read",
   };
+}
+
+function minimalSilentWavBlob() {
+  const sampleRate = 8000;
+  const numSamples = 2;
+  const dataSize = numSamples * 2;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeAscii = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, dataSize, true);
+  view.setInt16(44, 0, true);
+  view.setInt16(46, 0, true);
+
+  return new Blob([buffer], { type: "audio/wav" });
 }

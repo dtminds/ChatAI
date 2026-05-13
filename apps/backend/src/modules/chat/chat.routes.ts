@@ -6,6 +6,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import type { WorkbenchService } from "./workbench.service.js";
 import { fetchProxiedMediaAsset } from "./media-proxy.service.js";
+import { resolveVoicePlaybackPayload } from "./voice-playback.service.js";
 import { ServiceUnavailableError } from "../../shared/errors.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
@@ -85,6 +86,46 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.get<{ Querystring: MediaProxyQuery }>(
+    "/api/server/public/oss-media",
+    {
+      schema: {
+        querystring: MediaProxyQuerySchema,
+      },
+    },
+    async (request, reply) => {
+      const media = await fetchProxiedMediaAsset(request.query.url);
+
+      reply.header("cache-control", "public, max-age=300");
+      reply.header("content-type", media.contentType);
+
+      if (media.contentLength) {
+        reply.header("content-length", media.contentLength);
+      }
+
+      return reply.send(media.body);
+    },
+  );
+
+  app.get<{ Querystring: MediaProxyQuery }>(
+    "/api/server/public/oss-media/play",
+    {
+      schema: {
+        querystring: MediaProxyQuerySchema,
+      },
+    },
+    async (request, reply) => {
+      const media = await fetchProxiedMediaAsset(request.query.url);
+      const playback = await resolveVoicePlaybackPayload(media);
+
+      reply.header("cache-control", "public, max-age=300");
+      reply.header("content-type", playback.contentType);
+      reply.header("content-length", playback.contentLength);
+
+      return reply.send(playback.body);
+    },
+  );
+
+  app.get<{ Querystring: MediaProxyQuery }>(
     "/api/server/media/proxy",
     {
       preHandler: app.authenticate,
@@ -103,6 +144,26 @@ export async function registerChatRoutes(app: FastifyInstance) {
       }
 
       return reply.send(media.body);
+    },
+  );
+
+  app.get<{ Querystring: MediaProxyQuery }>(
+    "/api/server/media/proxy/play",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: MediaProxyQuerySchema,
+      },
+    },
+    async (request, reply) => {
+      const media = await fetchProxiedMediaAsset(request.query.url);
+      const playback = await resolveVoicePlaybackPayload(media);
+
+      reply.header("cache-control", "private, max-age=300");
+      reply.header("content-type", playback.contentType);
+      reply.header("content-length", playback.contentLength);
+
+      return reply.send(playback.body);
     },
   );
 

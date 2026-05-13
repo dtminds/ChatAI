@@ -29,7 +29,7 @@ describe("MessageContentRenderer quote messages", () => {
           quoteMsgId: "538",
           quotedMessage: {
             contentType: "text",
-            senderName: "哼 ╭(╯^╰)╮",
+            senderName: "Sender Alpha",
             text: "测试被引用",
           },
           text: "正式引用消息",
@@ -38,7 +38,7 @@ describe("MessageContentRenderer quote messages", () => {
       />,
     );
 
-    expect(screen.getByText("哼 ╭(╯^╰)╮：测试被引用")).toBeInTheDocument();
+    expect(screen.getByText("Sender Alpha：测试被引用")).toBeInTheDocument();
     expect(screen.getByTestId("quote-text-preview")).toHaveClass("text-[12px]");
   });
 
@@ -51,7 +51,7 @@ describe("MessageContentRenderer quote messages", () => {
           quotedMessage: {
             contentType: "image",
             imageUrl: "https://cdn.example.com/quoted.jpg",
-            senderName: "范双飞",
+            senderName: "Alex Sender",
           },
           text: "这是什么活动",
           type: "quote",
@@ -59,11 +59,11 @@ describe("MessageContentRenderer quote messages", () => {
       />,
     );
 
-    const image = screen.getByRole("img", { name: "引用图片：范双飞" });
+    const image = screen.getByRole("img", { name: "引用图片：Alex Sender" });
 
     expect(screen.getByTestId("quote-image-preview")).toHaveClass("items-start", "text-[12px]");
     expect(screen.getByTestId("quote-image-sender")).toHaveClass("min-w-0", "shrink", "truncate");
-    expect(screen.getByText("范双飞：")).toBeInTheDocument();
+    expect(screen.getByText("Alex Sender：")).toBeInTheDocument();
     expect(image).toHaveAttribute("src", "https://cdn.example.com/quoted.jpg");
     expect(image).toHaveClass("aspect-square", "object-cover");
   });
@@ -77,7 +77,7 @@ describe("MessageContentRenderer quote messages", () => {
           quotedMessage: {
             contentType: "contact-card",
             imageUrl: "https://cdn.example.com/avatar.png",
-            senderName: "郁佳杰",
+            senderName: "Casey Sender",
             title: "binarywang",
           },
           text: "引用名片",
@@ -86,7 +86,7 @@ describe("MessageContentRenderer quote messages", () => {
       />,
     );
 
-    expect(screen.getByText("郁佳杰：")).toBeInTheDocument();
+    expect(screen.getByText("Casey Sender：")).toBeInTheDocument();
     expect(screen.getByText("binarywang")).toBeInTheDocument();
     expect(screen.getByTestId("quote-generic-preview")).toHaveClass("items-start", "text-[12px]");
     expect(screen.getByTestId("quote-generic-text-row")).toHaveClass("items-center");
@@ -109,7 +109,7 @@ describe("MessageContentRenderer quote messages", () => {
           quoteMsgId: "mini-program",
           quotedMessage: {
             contentType: "mini-program",
-            senderName: "客服",
+            senderName: "Support Agent",
             title: "生椰拿铁",
           },
           text: "引用小程序",
@@ -127,7 +127,7 @@ describe("MessageContentRenderer quote messages", () => {
           quoteMsgId: "sphfeed",
           quotedMessage: {
             contentType: "sphfeed",
-            senderName: "客服",
+            senderName: "Support Agent",
             title: "天眼新闻",
           },
           text: "引用视频号",
@@ -145,7 +145,7 @@ describe("MessageContentRenderer quote messages", () => {
           quoteMsgId: "voice",
           quotedMessage: {
             contentType: "voice",
-            senderName: "客服",
+            senderName: "Support Agent",
             title: "2''",
           },
           text: "引用语音",
@@ -165,7 +165,7 @@ describe("MessageContentRenderer quote messages", () => {
           quoteMsgId: "h5",
           quotedMessage: {
             contentType: "h5",
-            senderName: "客服",
+            senderName: "Support Agent",
             title: "公众号链接",
           },
           text: "引用公众号链接",
@@ -184,7 +184,7 @@ describe("MessageContentRenderer quote messages", () => {
           quoteMsgId: "file",
           quotedMessage: {
             contentType: "file",
-            senderName: "客服",
+            senderName: "Support Agent",
             title: "报价单.pdf",
           },
           text: "引用文件",
@@ -206,7 +206,7 @@ describe("MessageContentRenderer quote messages", () => {
           quoteMsgId: "contact-card",
           quotedMessage: {
             contentType: "contact-card",
-            senderName: "客服",
+            senderName: "Support Agent",
             title: "binarywang",
           },
           text: "引用名片",
@@ -227,7 +227,7 @@ describe("MessageContentRenderer quote messages", () => {
           quoteMsgId: "video",
           quotedMessage: {
             contentType: "video",
-            senderName: "客服",
+            senderName: "Support Agent",
             title: "视频",
           },
           text: "引用视频",
@@ -253,7 +253,7 @@ describe("MessageContentRenderer quote messages", () => {
           quoteMsgId: "538",
           quotedMessage: {
             contentType: "text",
-            senderName: "哼 ╭(╯^╰)╮",
+            senderName: "Sender Alpha",
             text: "测试被引用",
           },
           text: "正式引用消息",
@@ -276,14 +276,14 @@ describe("MessageContentRenderer quote messages", () => {
 
 function createQuoteMessage(content: ChatMessage["content"]): ChatMessage {
   return {
-    author: "客服",
+    author: "Support Agent",
     content,
     conversationId: "conv-quote",
     id: "msg-quote",
     role: "agent",
     sender: {
       id: "agent-quote",
-      name: "客服",
+      name: "Support Agent",
     },
     sentAt: "2026-05-13 10:00:00",
     status: "read",

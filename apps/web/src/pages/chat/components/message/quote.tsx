@@ -15,6 +15,10 @@ import type {
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
+import {
+  LoadableMessageImage,
+  MessageMediaFallback,
+} from "@/pages/chat/components/message/media-fallback";
 import { SphFeedMark } from "@/pages/chat/components/message/sphfeed";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
 
@@ -117,14 +121,19 @@ function QuoteMessagePreview({
         >
           {formatSenderPrefix(quotedMessage.senderName)}
         </span>
-        {quotedMessage.imageUrl ? (
-          <img
+        {quotedMessage.imageUrl?.trim() ? (
+          <QuotedPreviewImage
             alt={`引用图片：${quotedMessage.senderName}`}
-            className="aspect-square size-10 shrink-0 rounded-[4px] object-cover"
-            loading="lazy"
-            src={quotedMessage.imageUrl}
+            fallbackLabel="引用图片不可用"
+            fallbackTestId="quote-image-fallback"
+            src={quotedMessage.imageUrl.trim()}
           />
-        ) : null}
+        ) : (
+          <QuotedPreviewImageFallback
+            label="引用图片不可用"
+            testId="quote-image-fallback"
+          />
+        )}
       </div>
     );
   }
@@ -132,6 +141,7 @@ function QuoteMessagePreview({
   const title = quotedMessage.title || quotedMessage.fallbackText || getContentTypeLabel(
     quotedMessage.contentType,
   );
+  const previewImageUrl = quotedMessage.imageUrl?.trim();
 
   return (
     <div
@@ -152,15 +162,64 @@ function QuoteMessagePreview({
         <QuotePreviewIcon contentType={quotedMessage.contentType} />
         <span className="min-w-0 truncate">{title}</span>
       </div>
-      {quotedMessage.imageUrl ? (
-        <img
+      {previewImageUrl ? (
+        <QuotedPreviewImage
           alt={`引用预览：${title}`}
-          className="aspect-square size-10 shrink-0 rounded-[4px] object-cover"
-          loading="lazy"
-          src={quotedMessage.imageUrl}
+          fallbackLabel="引用预览图片不可用"
+          fallbackTestId="quote-generic-image-fallback"
+          src={previewImageUrl}
+        />
+      ) : quotedMessage.contentType === "video" ? (
+        <QuotedPreviewImageFallback
+          label={`引用视频封面不可用：${title}`}
+          testId="quote-video-fallback"
         />
       ) : null}
     </div>
+  );
+}
+
+function QuotedPreviewImage({
+  alt,
+  fallbackLabel,
+  fallbackTestId,
+  src,
+}: {
+  alt: string;
+  fallbackLabel: string;
+  fallbackTestId: string;
+  src: string;
+}) {
+  return (
+    <LoadableMessageImage
+      alt={alt}
+      className="aspect-square size-10 shrink-0 rounded-[4px] object-cover"
+      fallback={(
+        <QuotedPreviewImageFallback
+          label={fallbackLabel}
+          testId={fallbackTestId}
+        />
+      )}
+      loading="lazy"
+      src={src}
+    />
+  );
+}
+
+function QuotedPreviewImageFallback({
+  label,
+  testId,
+}: {
+  label: string;
+  testId: string;
+}) {
+  return (
+    <MessageMediaFallback
+      className="flex aspect-square size-10 shrink-0 items-center justify-center rounded-[4px] bg-muted-foreground/5 text-muted-foreground/30"
+      iconSize={16}
+      label={label}
+      testId={testId}
+    />
   );
 }
 

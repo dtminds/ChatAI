@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { ChatMessage, ImageMessageContent } from "@/pages/chat/chat-types";
@@ -163,6 +163,29 @@ describe("MessageContentRenderer image messages", () => {
 
     expect(screen.getByRole("img", { name: "图片不可用：空图片" })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "空图片" })).not.toBeInTheDocument();
+  });
+
+  it("renders an image-not-found fallback when the thumbnail fails to load", () => {
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "加载失败图片",
+          height: 900,
+          imageUrl: "https://cdn.example.com/chat/broken.jpg",
+          width: 1200,
+        })}
+      />,
+    );
+
+    fireEvent.error(screen.getByRole("img", { name: "加载失败图片" }));
+
+    expect(screen.getByRole("img", { name: "图片不可用：加载失败图片" }))
+      .toBeInTheDocument();
+    expect(screen.getByTestId("image-message-fallback")).toHaveClass(
+      "h-[120px]",
+      "w-[120px]",
+    );
+    expect(screen.queryByRole("img", { name: "加载失败图片" })).not.toBeInTheDocument();
   });
 
   it("closes the full preview when blank preview space is clicked", async () => {

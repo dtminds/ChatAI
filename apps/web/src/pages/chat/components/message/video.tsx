@@ -2,6 +2,10 @@ import { PlayIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { CSSProperties } from "react";
 import type { VideoMessageContent } from "@/pages/chat/chat-types";
+import {
+  LoadableMessageImage,
+  MessageMediaFallback,
+} from "@/pages/chat/components/message/media-fallback";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 
 const DEFAULT_VIDEO_WIDTH = 320;
@@ -17,6 +21,7 @@ export function VideoMessageCard({
   onPlayClick,
 }: VideoMessageCardProps) {
   const mediaSize = getValidVideoSize(content);
+  const coverImageUrl = content.coverImageUrl?.trim() ?? "";
   const handlePlayClick = () => {
     if (onPlayClick) {
       onPlayClick();
@@ -33,14 +38,19 @@ export function VideoMessageCard({
       className="relative isolate inline-block overflow-hidden rounded-[8px] bg-muted-foreground/10 shadow-sm"
       style={videoConstraintStyle}
     >
-      <img
-        alt={content.alt}
-        className="block h-auto max-h-[360px] w-auto max-w-full object-cover"
-        loading="lazy"
-        src={getOptimizedMessageImageUrl(content.coverImageUrl)}
-        width={mediaSize.width}
-        height={mediaSize.height}
-      />
+      {coverImageUrl ? (
+        <LoadableMessageImage
+          alt={content.alt}
+          className="block h-auto max-h-[360px] w-auto max-w-full object-cover"
+          fallback={<VideoCoverFallback alt={content.alt} />}
+          loading="lazy"
+          src={getOptimizedMessageImageUrl(coverImageUrl)}
+          width={mediaSize.width}
+          height={mediaSize.height}
+        />
+      ) : (
+        <VideoCoverFallback alt={content.alt} />
+      )}
       <div className="absolute inset-0 bg-black/5" />
 
       <button
@@ -66,6 +76,16 @@ export function VideoMessageCard({
         </span>
       ) : null}
     </div>
+  );
+}
+
+function VideoCoverFallback({ alt }: { alt: string }) {
+  return (
+    <MessageMediaFallback
+      className="flex h-[120px] w-[120px] items-center justify-center bg-muted-foreground/5 text-muted-foreground/30"
+      label={`视频封面不可用：${alt}`}
+      testId="video-cover-fallback"
+    />
   );
 }
 

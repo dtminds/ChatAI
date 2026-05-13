@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
 import {
   $applyNodeReplacement,
+  $getNodeByKey,
   DecoratorNode,
   type EditorConfig,
   type LexicalNode,
@@ -174,10 +179,9 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
 
   decorate() {
     return (
-      <img
+      <ComposerImagePreview
         alt={this.__alt}
-        className="block max-h-44 max-w-60 rounded-lg border border-border object-contain"
-        draggable={false}
+        nodeKey={this.__key}
         src={this.__src}
       />
     );
@@ -248,4 +252,66 @@ export function $isComposerImageNode(
   node: LexicalNode | null | undefined,
 ): node is ComposerImageNode {
   return node instanceof ComposerImageNode;
+}
+
+function ComposerImagePreview({
+  alt,
+  nodeKey,
+  src,
+}: {
+  alt: string;
+  nodeKey: NodeKey;
+  src: string;
+}) {
+  const [editor] = useLexicalComposerContext();
+  const isEditable = useLexicalEditable();
+
+  const removeImage = () => {
+    if (!isEditable) {
+      return;
+    }
+
+    editor.update(() => {
+      const node = $getNodeByKey(nodeKey);
+
+      if ($isComposerImageNode(node)) {
+        node.remove();
+      }
+    });
+    editor.focus();
+  };
+
+  return (
+    <span className="relative inline-block max-w-full align-top">
+      <img
+        alt={alt}
+        className="block max-h-44 max-w-60 rounded-lg border border-border object-contain"
+        draggable={false}
+        src={src}
+      />
+      <button
+        aria-label={`移除图片 ${alt}`}
+        className="absolute right-1.5 top-1.5 inline-flex size-[22px] items-center justify-center rounded-full bg-black/55 text-white shadow-sm transition-colors hover:bg-black/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/50 disabled:pointer-events-none disabled:opacity-50"
+        disabled={!isEditable}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          removeImage();
+        }}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        type="button"
+      >
+        <HugeiconsIcon
+          aria-hidden="true"
+          color="currentColor"
+          icon={Cancel01Icon}
+          size={12}
+          strokeWidth={2}
+        />
+      </button>
+    </span>
+  );
 }

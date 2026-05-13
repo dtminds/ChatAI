@@ -408,11 +408,50 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
   });
+
+  it("gets upload credentials for an accessible conversation tenant", async () => {
+    const javaClient = createJavaClient();
+    const uploadCredential = {
+      allowPerfixs: ["chat-images/"],
+      bucket: "examplebucket-1250000000",
+      credentials: {
+        sessionToken: "session-token",
+        tmpSecretId: "tmp-secret-id",
+        tmpSecretKey: "tmp-secret-key",
+        token: "token",
+      },
+      expiration: "2026-05-13T12:00:00Z",
+      expiredTime: 1778673600,
+      region: "ap-guangzhou",
+      requestId: "request-001",
+      startTime: 1778670000,
+    };
+    vi.mocked(javaClient.getUploadCredential).mockResolvedValue(uploadCredential);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getUploadCredential("101", "88")).resolves.toEqual(uploadCredential);
+    expect(javaClient.getUploadCredential).toHaveBeenCalledWith({
+      uid: 9001,
+    });
+  });
 });
 
 function createJavaClient(): WorkbenchJavaClient {
   return {
     deleteConversation: vi.fn().mockResolvedValue(undefined),
+    getUploadCredential: vi.fn(),
     markConversationRead: vi.fn().mockResolvedValue(undefined),
     markConversationUnread: vi.fn().mockResolvedValue(undefined),
     pinConversation: vi.fn().mockResolvedValue(undefined),

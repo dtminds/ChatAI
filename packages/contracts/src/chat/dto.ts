@@ -248,6 +248,22 @@ export type WorkbenchGroupMembersResponse = {
   items: WorkbenchGroupMemberDto[];
 };
 
+export type WorkbenchUploadCredentialResponse = {
+  allowPerfixs: string[];
+  bucket: string;
+  credentials: {
+    sessionToken: string;
+    tmpSecretId: string;
+    tmpSecretKey: string;
+    token?: string;
+  };
+  expiration: string;
+  expiredTime: number;
+  region: string;
+  requestId: string;
+  startTime: number;
+};
+
 export type WorkbenchTakeOverSeatResponse = {
   seat: WorkbenchSeatDto;
 };

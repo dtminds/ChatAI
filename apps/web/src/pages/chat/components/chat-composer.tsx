@@ -4,6 +4,7 @@ import {
   Cancel01Icon,
   ChatDelayIcon,
   Image01Icon,
+  Loading03Icon,
   SmileIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -57,6 +58,7 @@ type ChatComposerProps = {
   inputEnterBehavior: InputEnterBehavior;
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
+  isSending: boolean;
   mentionInsertPosition: MentionInsertPosition;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
@@ -64,6 +66,7 @@ type ChatComposerProps = {
   onMentionInsertPositionChange: (position: MentionInsertPosition) => void;
   onRemoveMentionMember: (memberId: string) => void;
   onSelectMentionMember: (member: GroupMember, triggerStart: number, triggerEnd: number) => void;
+  onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
   selectedMentionMembers: GroupMember[];
   placeholder: string;
@@ -77,6 +80,7 @@ export function ChatComposer({
   inputEnterBehavior,
   isGroupConversation,
   isEmojiPickerOpen,
+  isSending,
   mentionInsertPosition,
   onDraftChange,
   onEmojiPickerOpenChange,
@@ -84,6 +88,7 @@ export function ChatComposer({
   onMentionInsertPositionChange,
   onRemoveMentionMember,
   onSelectMentionMember,
+  onSegmentsChange,
   onSendDraft,
   selectedMentionMembers,
   placeholder,
@@ -142,12 +147,16 @@ export function ChatComposer({
   }, [groupMembers, isGroupConversation, mentionTrigger, selectedMentionMemberIds]);
   const isMentionPickerOpen =
     canSendMessage &&
+    !isSending &&
     isGroupConversation &&
     !!mentionTrigger &&
     !isMentionPickerDismissed &&
     filteredMentionMembers.length > 0;
   const canSubmitDraft =
-    canSendMessage && (segments.length > 0 || selectedMentionMembers.length > 0);
+    canSendMessage &&
+    !isSending &&
+    (segments.length > 0 || selectedMentionMembers.length > 0);
+  const canEditComposer = canSendMessage && !isSending;
   const composerActionButtonClass = "size-8 p-0 shadow-none";
 
   const registerEditor = useCallback(
@@ -290,6 +299,10 @@ export function ChatComposer({
   ]);
 
   const handleImageFiles = async (fileList: FileList | File[] | null) => {
+    if (isSending) {
+      return;
+    }
+
     const files = Array.from(fileList ?? []).filter((file) =>
       file.type.startsWith("image/"),
     );
@@ -316,6 +329,10 @@ export function ChatComposer({
   };
 
   const handleEmojiSelect = (name: WechatEmojiName) => {
+    if (isSending) {
+      return;
+    }
+
     const emoji = getWechatEmojiByName(name);
 
     onEmojiPickerOpenChange(false);
@@ -329,8 +346,20 @@ export function ChatComposer({
   };
 
   const handleSendDraft = () => {
+    if (!canSubmitDraft) {
+      return;
+    }
+
     onSendDraft(segments);
   };
+
+  const handleSegmentsChange = useCallback(
+    (nextSegments: ComposerSegment[]) => {
+      setSegments(nextSegments);
+      onSegmentsChange(nextSegments);
+    },
+    [onSegmentsChange],
+  );
 
   return (
     <div className="space-y-1.5 bg-surface px-4 py-2">
@@ -343,6 +372,7 @@ export function ChatComposer({
                 composerActionButtonClass,
                 isEmojiPickerOpen && "bg-primary/10 text-primary",
               )}
+              disabled={isSending}
               onClick={() => onEmojiPickerOpenChange(!isEmojiPickerOpen)}
               size="icon"
               type="button"
@@ -360,6 +390,7 @@ export function ChatComposer({
           <Button
             aria-label="发送图片"
             className={composerActionButtonClass}
+            disabled={isSending}
             onClick={() => imageInputRef.current?.click()}
             size="icon"
             type="button"
@@ -397,6 +428,7 @@ export function ChatComposer({
             <SelectTrigger
               aria-label="选择 Enter 键行为"
               className="h-7 min-w-0 border-0 text-[12px] bg-transparent px-1.5 text-muted-foreground shadow-none focus:ring-0"
+              disabled={isSending}
             >
               <span>{INPUT_ENTER_BEHAVIOR_LABELS[inputEnterBehavior]}</span>
             </SelectTrigger>
@@ -412,12 +444,18 @@ export function ChatComposer({
 
           <Button
             aria-label="发送消息"
+            aria-busy={isSending}
             className="size-7 rounded-full p-0 shadow-none"
-            disabled={!canSubmitDraft}
+            disabled={isSending || !canSubmitDraft}
             onClick={handleSendDraft}
             size="icon"
           >
-            <HugeiconsIcon icon={ArrowUp02Icon} size={14} strokeWidth={2} />
+            <HugeiconsIcon
+              className={cn(isSending && "animate-spin")}
+              icon={isSending ? Loading03Icon : ArrowUp02Icon}
+              size={14}
+              strokeWidth={2}
+            />
           </Button>
         </div>
       </div>
@@ -436,6 +474,7 @@ export function ChatComposer({
               <SelectTrigger
                 aria-label="选择 @ 插入位置"
                 className="h-7 min-w-0 shrink-0 border-0 shadow-none bg-transparent px-1 py-1 text-[13px] text-primary focus:ring-0"
+                disabled={isSending}
               >
                 <span>{mentionInsertPosition === "start" ? "文首" : "文尾"}</span>
               </SelectTrigger>
@@ -458,6 +497,7 @@ export function ChatComposer({
                 <button
                   aria-label={mentionSummaryLabel}
                   className="min-w-0 flex-1 truncate text-left text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                  disabled={isSending}
                   onBlur={scheduleMentionDropdownClose}
                   onFocus={keepMentionDropdownOpen}
                   onMouseEnter={keepMentionDropdownOpen}
@@ -488,6 +528,7 @@ export function ChatComposer({
                     <button
                       aria-label={`移除 @${member.displayName}`}
                       className="inline-flex size-5 shrink-0 items-center justify-center rounded transition-colors hover:bg-surface-muted hover:text-destructive"
+                      disabled={isSending}
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -563,13 +604,13 @@ export function ChatComposer({
               ErrorBoundary={LexicalErrorBoundary}
             />
             <ComposerRuntimePlugin
-              canSendMessage={canSendMessage}
+              canSendMessage={canEditComposer}
               inputEnterBehavior={inputEnterBehavior}
               isMentionPickerOpen={isMentionPickerOpen}
               onDraftTextChange={handleDraftTextChange}
               onEscapeMentionPicker={() => setIsMentionPickerDismissed(true)}
               onMoveMentionPicker={handleMoveMentionPicker}
-              onSegmentsChange={setSegments}
+              onSegmentsChange={handleSegmentsChange}
               onSelectActiveMention={handleSelectActiveMention}
               onPasteImageFiles={handleImageFiles}
               onSendSegments={onSendDraft}

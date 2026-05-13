@@ -29,6 +29,10 @@ const MediaProxyQuerySchema = Type.Object({
   url: Type.String({ minLength: 1 }),
 });
 
+const MediaUploadCredentialBodySchema = Type.Object({
+  conversationId: Type.String(),
+});
+
 const PollQuerySchema = Type.Object({
   active_conversation_id: Type.Optional(Type.String()),
   active_message_seq: Type.Optional(NumericStringSchema),
@@ -71,6 +75,7 @@ type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
 type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
 type MediaProxyQuery = Static<typeof MediaProxyQuerySchema>;
+type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
@@ -104,6 +109,21 @@ export async function registerChatRoutes(app: FastifyInstance) {
 
       return reply.send(media.body);
     },
+  );
+
+  app.post<{ Body: MediaUploadCredentialBody }>(
+    "/api/server/media/upload-credential",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MediaUploadCredentialBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app).getUploadCredential(
+        getSubUserId(request),
+        request.body.conversationId,
+      ),
   );
 
   app.get<{ Querystring: ConversationListQuery }>(

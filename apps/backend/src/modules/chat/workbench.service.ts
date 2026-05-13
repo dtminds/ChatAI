@@ -15,6 +15,7 @@ import type {
   WorkbenchSendMessageResponse,
   WorkbenchSubUserDto,
   WorkbenchTakeOverSeatResponse,
+  WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import {
   ForbiddenError,
@@ -46,6 +47,10 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchGroupMembersResponse> | WorkbenchGroupMembersResponse;
+  getUploadCredential(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchUploadCredentialResponse> | WorkbenchUploadCredentialResponse;
   getSeats(subUserId: string): Promise<WorkbenchSeatDto[]> | WorkbenchSeatDto[];
   markConversationRead(
     subUserId: string,
@@ -160,6 +165,20 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     return groupMembers;
+  }
+
+  async getUploadCredential(subUserId: string, conversationId: string) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    return this.javaClient.getUploadCredential({
+      uid: conversation.uid,
+    });
   }
 
   async markConversationRead(subUserId: string, conversationId: string) {

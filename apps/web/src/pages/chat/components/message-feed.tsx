@@ -1,4 +1,4 @@
-import { ReloadIcon } from "@hugeicons/core-free-icons";
+import { ExclamationMarkIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -104,12 +104,12 @@ export function MessageRow({
             {isAgent && message.status === "failed" && onRetryMessage ? (
               <button
                 aria-label="重试发送"
-                className="mb-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-destructive/25 bg-surface text-destructive transition-colors hover:bg-destructive-muted"
+                className="mb-1 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
                 onClick={() => onRetryMessage(message.id)}
                 title="重试发送"
                 type="button"
               >
-                <HugeiconsIcon icon={ReloadIcon} size={13} strokeWidth={2} />
+                <HugeiconsIcon icon={ExclamationMarkIcon} size={10} strokeWidth={2.4} />
               </button>
             ) : null}
             <div

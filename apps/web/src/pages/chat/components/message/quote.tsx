@@ -140,7 +140,7 @@ function QuoteMessagePreview({
       {...openProps}
     >
       <div
-        className="flex min-w-0 items-center gap-1.5"
+        className="flex min-w-0 items-center gap-1"
         data-testid="quote-generic-text-row"
       >
         <span

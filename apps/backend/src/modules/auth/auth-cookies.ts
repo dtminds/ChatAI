@@ -3,11 +3,19 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 export const ACCESS_TOKEN_COOKIE_NAME = "chatai_access_token";
 export const REFRESH_TOKEN_COOKIE_NAME = "chatai_refresh_token";
 
-const cookiePath = "/api";
-const authCookieOptions = {
+const accessTokenCookiePath = "/api";
+const refreshTokenCookiePath = "/api/auth/refresh";
+const sharedAuthCookieOptions = {
   httpOnly: true,
-  path: cookiePath,
   sameSite: "lax" as const,
+};
+const accessTokenCookieOptions = {
+  ...sharedAuthCookieOptions,
+  path: accessTokenCookiePath,
+};
+const refreshTokenCookieOptions = {
+  ...sharedAuthCookieOptions,
+  path: refreshTokenCookiePath,
 };
 
 type AuthCookieInput = {
@@ -20,12 +28,12 @@ type AuthCookieInput = {
 export function setAuthCookies(reply: FastifyReply, input: AuthCookieInput) {
   reply
     .setCookie(ACCESS_TOKEN_COOKIE_NAME, input.accessToken, {
-      ...authCookieOptions,
+      ...accessTokenCookieOptions,
       maxAge: input.accessTokenMaxAgeSeconds,
       secure: isSecureCookieEnabled(),
     })
     .setCookie(REFRESH_TOKEN_COOKIE_NAME, input.refreshToken, {
-      ...authCookieOptions,
+      ...refreshTokenCookieOptions,
       maxAge: input.refreshTokenMaxAgeSeconds,
       secure: isSecureCookieEnabled(),
     });
@@ -33,8 +41,8 @@ export function setAuthCookies(reply: FastifyReply, input: AuthCookieInput) {
 
 export function clearAuthCookies(reply: FastifyReply) {
   reply
-    .clearCookie(ACCESS_TOKEN_COOKIE_NAME, authCookieOptions)
-    .clearCookie(REFRESH_TOKEN_COOKIE_NAME, authCookieOptions);
+    .clearCookie(ACCESS_TOKEN_COOKIE_NAME, accessTokenCookieOptions)
+    .clearCookie(REFRESH_TOKEN_COOKIE_NAME, refreshTokenCookieOptions);
 }
 
 export function readAuthCookie(

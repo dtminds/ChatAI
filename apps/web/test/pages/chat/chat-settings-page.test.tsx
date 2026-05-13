@@ -417,7 +417,7 @@ describe("Chat settings pages", () => {
     const sidebarPreview = screen.getByRole("complementary", { name: "聊天工具栏示意图" });
     expect(sidebarPreview).toBeInTheDocument();
     expect(within(sidebarPreview).queryByText("基础信息")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "拖动 发起收款 调整排序" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "拖动 发起收款 调整排序" })).toBeInTheDocument();
     expect(within(sidebarTable).queryByText("https://example.com/card")).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByText("启用")).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByText("停用")).not.toBeInTheDocument();
@@ -560,7 +560,7 @@ describe("Chat settings pages", () => {
     });
     renderRoute("/chat/settings/sidebar");
 
-    expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "打开 页面10 操作菜单" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新增页面" })).toBeDisabled();
 
     cleanup();
@@ -580,7 +580,7 @@ describe("Chat settings pages", () => {
     });
     renderRoute("/chat/settings/sidebar");
 
-    expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "打开 页面9 操作菜单" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新增页面" })).toBeEnabled();
 
     cleanup();
@@ -914,7 +914,7 @@ describe("Chat settings pages", () => {
     renderRoute("/chat/settings/sub-accounts");
 
     expect(await screen.findByRole("table", { name: "子账号列表" })).toBeInTheDocument();
-    expect(screen.getByLabelText("关联托管账号 德瑞可")).toBeInTheDocument();
+    expect(await screen.findByLabelText("关联托管账号 德瑞可")).toBeInTheDocument();
     expect(screen.getByLabelText("关联托管账号 念都堂")).toBeInTheDocument();
     expect(screen.getByLabelText("关联托管账号 中台号")).toBeInTheDocument();
     expect(screen.getByText("+1")).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it } from "vitest";
@@ -47,6 +47,8 @@ describe("auth routes", () => {
     });
 
     render(<RouterProvider router={router} />);
+
+    expect(screen.getByRole("status", { name: "正在验证登录状态" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/chat");

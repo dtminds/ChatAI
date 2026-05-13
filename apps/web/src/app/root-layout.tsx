@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Toaster } from "@/components/ui/sonner";
 import {
   applyAppearanceTheme,
@@ -68,6 +69,20 @@ export function RootLayout() {
   if (!PUBLIC_PATHS.has(location.pathname) && authStatus === "checking") {
     return (
       <div className="min-h-svh bg-background text-foreground">
+        <main className="flex min-h-svh items-center justify-center">
+          <div
+            aria-label="正在验证登录状态"
+            className="inline-flex items-center gap-3 text-sm text-muted-foreground"
+            role="status"
+          >
+            <DotMatrixLoader
+              ariaLabel="正在验证"
+              className="text-muted-foreground"
+              type="square-5"
+            />
+            <span>正在验证登录状态</span>
+          </div>
+        </main>
         <Toaster position="top-right" richColors />
       </div>
     );

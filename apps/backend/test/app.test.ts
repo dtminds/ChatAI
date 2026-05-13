@@ -308,6 +308,10 @@ describe("backend app", () => {
         expect.stringContaining("SameSite=Lax"),
       ]),
     );
+    expect(readSetCookieHeader(response, ACCESS_TOKEN_COOKIE_NAME)).toContain("Path=/api");
+    expect(readSetCookieHeader(response, REFRESH_TOKEN_COOKIE_NAME)).toContain(
+      "Path=/api/auth/refresh",
+    );
 
     const decoded = app.jwt.verify(readSetCookieValue(response, ACCESS_TOKEN_COOKIE_NAME));
 
@@ -1387,6 +1391,15 @@ function readSetCookieValue(
   response: { headers: Record<string, unknown> },
   cookieName: string,
 ) {
+  const cookie = readSetCookieHeader(response, cookieName);
+
+  return decodeURIComponent(cookie.split(";")[0]?.split("=")[1] ?? "");
+}
+
+function readSetCookieHeader(
+  response: { headers: Record<string, unknown> },
+  cookieName: string,
+) {
   const cookie = getSetCookieHeaders(response).find((header) =>
     header.startsWith(`${cookieName}=`),
   );
@@ -1395,7 +1408,7 @@ function readSetCookieValue(
     throw new Error(`Missing ${cookieName} cookie`);
   }
 
-  return decodeURIComponent(cookie.split(";")[0]?.split("=")[1] ?? "");
+  return cookie;
 }
 
 function buildCookieHeader(

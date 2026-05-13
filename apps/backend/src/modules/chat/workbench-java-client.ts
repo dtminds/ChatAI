@@ -9,6 +9,25 @@ import {
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 
+export const JAVA_MSG_TYPE = {
+  IMAGE: 2002,
+  TEXT: 2001,
+} as const;
+
+export const JAVA_SEND_TYPE = {
+  GROUP: 2,
+  SINGLE: 1,
+} as const;
+
+export const JAVA_MENTION_LOCATION = {
+  END: 1,
+  START: 0,
+} as const;
+
+export const JAVA_MENTION_HIT_TYPE = {
+  MEMBER: 2,
+} as const;
+
 type JavaApiResponse<T> = {
   data?: T;
   error?: number;
@@ -22,14 +41,14 @@ export type JavaSendMessageData = {
   isHit?: number;
   msgContent: string;
   msgNum: number;
-  msgType: 2001 | 2002;
+  msgType: (typeof JAVA_MSG_TYPE)[keyof typeof JAVA_MSG_TYPE];
 };
 
 export type JavaSendMessageInput = {
   clientMessageId: string;
   message: JavaSendMessageData;
   platform: number;
-  sendType: 1 | 2;
+  sendType: (typeof JAVA_SEND_TYPE)[keyof typeof JAVA_SEND_TYPE];
   thirdExternalUserid?: string;
   thirdGroupId?: string;
   thirdUserId: string;

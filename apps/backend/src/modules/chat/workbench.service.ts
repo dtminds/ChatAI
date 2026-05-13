@@ -28,6 +28,12 @@ import type {
   WorkbenchJavaClient,
 } from "./workbench-java-client.js";
 import {
+  JAVA_MENTION_HIT_TYPE,
+  JAVA_MENTION_LOCATION,
+  JAVA_MSG_TYPE,
+  JAVA_SEND_TYPE,
+} from "./workbench-java-client.js";
+import {
   parseMySqlId,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
@@ -291,7 +297,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       clientMessageId: payload.clientMessageId,
       message: buildJavaSendMessageData(payload, getSingleSendSegment(payload)),
       platform: conversation.platform,
-      sendType: conversation.thirdGroupId ? 2 : 1,
+      sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
       ...(conversation.thirdExternalUserId
         ? { thirdExternalUserid: conversation.thirdExternalUserId }
         : {}),
@@ -410,21 +416,24 @@ function buildJavaSendMessageData(
     return {
       msgContent: segment.url ?? segment.localUrl ?? "",
       msgNum: 1,
-      msgType: 2002,
+      msgType: JAVA_MSG_TYPE.IMAGE,
     };
   }
 
   const message: JavaSendMessageData = {
     msgContent: segment.text,
     msgNum: 1,
-    msgType: 2001,
+    msgType: JAVA_MSG_TYPE.TEXT,
   };
   const mentionMemberIds = payload.mention?.memberIds.filter(Boolean) ?? [];
 
   if (mentionMemberIds.length > 0) {
-    message.atLocation = payload.mention?.location === "end" ? 1 : 0;
+    message.atLocation =
+      payload.mention?.location === "end"
+        ? JAVA_MENTION_LOCATION.END
+        : JAVA_MENTION_LOCATION.START;
     message.atWxSerialNos = mentionMemberIds;
-    message.isHit = 2;
+    message.isHit = JAVA_MENTION_HIT_TYPE.MEMBER;
   }
 
   return message;

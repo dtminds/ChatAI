@@ -26,6 +26,7 @@ import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type { GroupMember } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
 import {
   CONVERSATION_LIST_PANEL_WIDTH,
   MIN_WORKBENCH_CONTENT_WIDTH,
@@ -303,6 +304,27 @@ function ChatWorkbenchContent({
     composerRef.current?.focus();
   };
 
+  const handleOpenQuotedMessage = (quoteMsgId: string) => {
+    const quoteSeq = Number(quoteMsgId);
+    const originalMessage = Number.isSafeInteger(quoteSeq)
+      ? activeMessages.find((message) => message.seq === quoteSeq)
+      : undefined;
+    const viewport = messageViewportRef.current;
+    const anchor = viewport && originalMessage
+      ? findViewportAnchor(viewport, originalMessage.id)
+      : null;
+
+    if (!anchor) {
+      toast.warning("当前未加载原始消息");
+      return;
+    }
+
+    anchor.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
   if (bootstrapStatus === "loading" && accounts.length === 0) {
     return (
       <div className="flex h-svh items-center justify-center bg-background px-6">
@@ -441,6 +463,7 @@ function ChatWorkbenchContent({
                   void loadActiveGroupMembers({ force: true });
                 }}
                 onLoadOlderMessages={handleLoadOlderMessages}
+                onOpenQuotedMessage={handleOpenQuotedMessage}
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={retryFailedMessage}
                 onSendDraft={handleSendDraft}

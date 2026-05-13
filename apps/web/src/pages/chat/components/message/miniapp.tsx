@@ -1,5 +1,6 @@
 import { AiBrowserIcon, AiFileIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 import type { MiniProgramMessageContent } from "@/pages/chat/chat-types";
 
@@ -55,12 +56,13 @@ export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
   );
 }
 
-function MiniProgramMark({ className }: { className?: string }) {
+export function MiniProgramMark({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
       aria-hidden="true"
       className={cn("h-[18px] w-[18px]", className)}
       data-testid="mini-program-mark"
+      {...props}
       viewBox="0 0 1024 1024"
     >
       <path

@@ -9,6 +9,7 @@ const TIMESTAMP_BREAK_MS = 30 * 60 * 1000;
 
 type ChatMessageListProps = {
   messages: Message[];
+  onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onRetryMessage?: (messageId: string) => void;
 };
 
@@ -23,7 +24,11 @@ type FeedItem =
       type: "message";
     };
 
-export function ChatMessageList({ messages, onRetryMessage }: ChatMessageListProps) {
+export function ChatMessageList({
+  messages,
+  onOpenQuotedMessage,
+  onRetryMessage,
+}: ChatMessageListProps) {
   const items = buildFeedItems(messages);
 
   return (
@@ -37,6 +42,7 @@ export function ChatMessageList({ messages, onRetryMessage }: ChatMessageListPro
           <div data-scroll-anchor={item.message.id} key={item.message.id}>
             <MessageRow
               message={item.message}
+              onOpenQuotedMessage={onOpenQuotedMessage}
               onRetryMessage={onRetryMessage}
             />
           </div>
@@ -58,9 +64,11 @@ export function MessageTimeDivider({ label }: { label: string }) {
 
 export function MessageRow({
   message,
+  onOpenQuotedMessage,
   onRetryMessage,
 }: {
   message: Message;
+  onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onRetryMessage?: (messageId: string) => void;
 }) {
   if (message.role === "system") {
@@ -116,7 +124,11 @@ export function MessageRow({
                   {message.senderDisplayName}
                 </p>
               ) : null}
-              <MessageContentRenderer isAgent={isAgent} message={message} />
+              <MessageContentRenderer
+                isAgent={isAgent}
+                message={message}
+                onOpenQuotedMessage={onOpenQuotedMessage}
+              />
               {message.isRevoked ? <MessageRevokedState /> : null}
             </div>
           </div>

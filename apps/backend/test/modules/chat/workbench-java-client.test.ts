@@ -202,4 +202,50 @@ describe("createWorkbenchJavaClient", () => {
       }),
     );
   });
+
+  it("requests COS upload credentials from the Java internal API with tenant uid", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const uploadCredential = {
+      allowPerfixs: ["chat-images/"],
+      bucket: "examplebucket-1250000000",
+      credentials: {
+        sessionToken: "session-token",
+        tmpSecretId: "tmp-secret-id",
+        tmpSecretKey: "tmp-secret-key",
+        token: "token",
+      },
+      expiration: "2026-05-13T12:00:00Z",
+      expiredTime: 1778673600,
+      region: "ap-guangzhou",
+      requestId: "request-001",
+      startTime: 1778670000,
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: uploadCredential,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().getUploadCredential({ uid: 9001 }),
+    ).resolves.toEqual(uploadCredential);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/file/get-upload-credential",
+      expect.objectContaining({
+        body: JSON.stringify({
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
 });

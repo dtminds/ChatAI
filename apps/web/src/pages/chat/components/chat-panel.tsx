@@ -32,6 +32,7 @@ type ChatPanelProps = {
   inputEnterBehavior: InputEnterBehavior;
   isConversationLoading: boolean;
   isEmojiPickerOpen: boolean;
+  isSendingDraft: boolean;
   isResizingCustomerPanel: boolean;
   mentionInsertPosition: MentionInsertPosition;
   messages: Message[];
@@ -39,6 +40,7 @@ type ChatPanelProps = {
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onComposerSegmentsChange: (segments: ComposerSegment[]) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
@@ -73,6 +75,7 @@ export function ChatPanel({
   inputEnterBehavior,
   isConversationLoading,
   isEmojiPickerOpen,
+  isSendingDraft,
   isResizingCustomerPanel,
   mentionInsertPosition,
   messages,
@@ -80,6 +83,7 @@ export function ChatPanel({
   hasMoreHistory,
   historyLoadLabel,
   onCustomerPanelResizeStart,
+  onComposerSegmentsChange,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
@@ -153,6 +157,7 @@ export function ChatPanel({
               isGroupConversation={activeConversation?.mode === "group"}
               inputEnterBehavior={inputEnterBehavior}
               isEmojiPickerOpen={isEmojiPickerOpen}
+              isSending={isSendingDraft}
               mentionInsertPosition={mentionInsertPosition}
               onDraftChange={onDraftChange}
               onEmojiPickerOpenChange={onEmojiPickerOpenChange}
@@ -160,6 +165,7 @@ export function ChatPanel({
               onMentionInsertPositionChange={onMentionInsertPositionChange}
               onRemoveMentionMember={onRemoveMentionMember}
               onSelectMentionMember={onSelectMentionMember}
+              onSegmentsChange={onComposerSegmentsChange}
               onSendDraft={onSendDraft}
               selectedMentionMembers={selectedMentionMembers}
               placeholder={composerPlaceholder}

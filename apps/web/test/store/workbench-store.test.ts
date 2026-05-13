@@ -1,14 +1,19 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMockWorkbenchService,
   resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
+import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
 import {
   seedConversations,
   seedMessages,
 } from "@/pages/chat/mock-data";
 import { createWorkbenchStore, useWorkbenchStore } from "@/store/workbench-store";
+
+vi.mock("@/pages/chat/api/media-upload-service", () => ({
+  resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
+}));
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -58,6 +63,9 @@ function getSeedMessageIdAt(conversationId: string, index: number) {
 describe("useWorkbenchStore", () => {
   beforeEach(() => {
     resetWorkbenchService();
+    vi.mocked(resolveImageSegmentsForSend).mockImplementation(
+      async (_conversationId, segments) => segments,
+    );
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
 
@@ -167,7 +175,7 @@ describe("useWorkbenchStore", () => {
         type: "text",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
     expect(state.pendingMessages).toHaveLength(1);
     expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
@@ -219,7 +227,7 @@ describe("useWorkbenchStore", () => {
           type: "text",
         },
         role: "agent",
-        status: "sending",
+        status: "accepted",
       },
       {
         content: {
@@ -230,7 +238,7 @@ describe("useWorkbenchStore", () => {
           height: 240,
         },
         role: "agent",
-        status: "sending",
+        status: "accepted",
       },
       {
         content: {
@@ -238,13 +246,244 @@ describe("useWorkbenchStore", () => {
           type: "text",
         },
         role: "agent",
-        status: "sending",
+        status: "accepted",
       },
     ]);
     expect(state.pendingMessages).toHaveLength(3);
     expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
       "第一段[打脸]",
     );
+  });
+
+  it("resolves image segments before sending them to the message API", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        alt: "截图 A",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+      {
+        alt: "截图 B",
+        fileId: "chat-images/conv-001/b.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/b.png",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        alt: "截图 A",
+        localUrl: "data:image/png;base64,aaa",
+        type: "image",
+      },
+      {
+        alt: "截图 B",
+        localUrl: "data:image/png;base64,bbb",
+        type: "image",
+      },
+    ]);
+
+    expect(resolveImageSegmentsForSend).toHaveBeenCalledTimes(1);
+    expect(resolveImageSegmentsForSend).toHaveBeenCalledWith("conv-001", [
+      {
+        alt: "截图 A",
+        localUrl: "data:image/png;base64,aaa",
+        type: "image",
+      },
+      {
+        alt: "截图 B",
+        localUrl: "data:image/png;base64,bbb",
+        type: "image",
+      },
+    ]);
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        segments: [
+          {
+            alt: "截图 A",
+            fileId: "chat-images/conv-001/a.png",
+            type: "image",
+            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+          },
+          {
+            alt: "截图 B",
+            fileId: "chat-images/conv-001/b.png",
+            type: "image",
+            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/b.png",
+          },
+        ],
+      }),
+    );
+  });
+
+  it("resolves composer image segments even when url is the local data URL", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const dataUrl = "data:image/png;base64,aaa";
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        alt: "location_bg.png",
+        fileId: "chat-images/conv-001/location_bg.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/location_bg.png",
+      },
+      {
+        text: "12321",
+        type: "text",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        alt: "location_bg.png",
+        localUrl: dataUrl,
+        type: "image",
+        url: dataUrl,
+      },
+      {
+        text: "12321",
+        type: "text",
+      },
+    ]);
+
+    expect(resolveImageSegmentsForSend).toHaveBeenCalledWith("conv-001", [
+      {
+        alt: "location_bg.png",
+        localUrl: dataUrl,
+        type: "image",
+        url: dataUrl,
+      },
+      {
+        text: "12321",
+        type: "text",
+      },
+    ]);
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        segments: [
+          {
+            alt: "location_bg.png",
+            fileId: "chat-images/conv-001/location_bg.png",
+            type: "image",
+            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/location_bg.png",
+          },
+          {
+            text: "12321",
+            type: "text",
+          },
+        ],
+      }),
+    );
+  });
+
+  it("does not resolve image uploads before sending text-only messages", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("纯文本消息");
+
+    expect(resolveImageSegmentsForSend).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        segments: [
+          {
+            text: "纯文本消息",
+            type: "text",
+          },
+        ],
+      }),
+    );
+  });
+
+  it("does not create optimistic image messages when image upload fails", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockRejectedValue(new Error("COS 上传失败"));
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const beforeMessages =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        alt: "截图",
+        localUrl: "data:image/png;base64,aaa",
+        type: "image",
+      },
+    ]);
+
+    const state = useWorkbenchStore.getState();
+
+    expect(result).toEqual({
+      errorCode: "UNKNOWN",
+      errorMessage: "COS 上传失败",
+      reason: "image-upload",
+      ok: false,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(state.messagesByConversationId["conv-001"]).toEqual(beforeMessages);
+    expect(state.pendingMessages).toHaveLength(0);
+  });
+
+  it("does not create optimistic messages when the send API fails", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(async () => {
+      throw new Error("发送接口失败");
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const beforeMessages =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        text: "这条不应落到消息列表",
+        type: "text",
+      },
+    ]);
+
+    expect(result).toEqual({
+      errorCode: "UNKNOWN",
+      errorMessage: "发送接口失败",
+      reason: "send",
+      ok: false,
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(useWorkbenchStore.getState().messagesByConversationId["conv-001"]).toEqual(
+      beforeMessages,
+    );
+    expect(useWorkbenchStore.getState().pendingMessages).toHaveLength(0);
   });
 
   it("switches account and falls back to the first available mode", async () => {
@@ -303,7 +542,7 @@ describe("useWorkbenchStore", () => {
         type: "text",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
     expect(latestMessage?.id).not.toBe(failedMessage?.id);
   });
@@ -783,7 +1022,7 @@ describe("useWorkbenchStore", () => {
         type: "text",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
   });
 

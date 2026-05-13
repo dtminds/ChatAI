@@ -950,6 +950,32 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("returns upload credentials for an authenticated conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+      },
+      url: "/api/server/media/upload-credential",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      bucket: expect.any(String),
+      credentials: {
+        sessionToken: expect.any(String),
+        tmpSecretId: expect.any(String),
+        tmpSecretKey: expect.any(String),
+      },
+      region: expect.any(String),
+    });
+
+    await app.close();
+  });
+
   it("returns an empty message page when limit is zero", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

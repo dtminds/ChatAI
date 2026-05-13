@@ -16,6 +16,7 @@ import type {
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSeatChangeDto,
+  WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import type {
@@ -246,6 +247,12 @@ export async function loadGroupMembers(
   const response = await getWorkbenchService().getGroupMembers(conversationId);
 
   return response.items.map(adaptGroupMember);
+}
+
+export async function getUploadCredential(
+  conversationId: string,
+): Promise<WorkbenchUploadCredentialResponse> {
+  return getWorkbenchService().getUploadCredential(conversationId);
 }
 
 export async function markConversationRead(

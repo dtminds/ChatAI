@@ -1,6 +1,6 @@
 import { useLayoutEffect, useState } from "react";
 import {
-  ComputerIcon,
+  ModernTvIcon,
   Moon02Icon,
   Sun02Icon,
 } from "@hugeicons/core-free-icons";
@@ -96,7 +96,7 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
           <SegmentedControlItem aria-label="跟随系统" value="system">
             <HugeiconsIcon
               color="currentColor"
-              icon={ComputerIcon}
+              icon={ModernTvIcon}
               size={16}
               strokeWidth={1.8}
             />

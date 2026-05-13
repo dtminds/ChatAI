@@ -87,8 +87,9 @@ describe("MessageContentRenderer image messages", () => {
     });
     expect(trigger).toHaveStyle({
       maxHeight: "360px",
-      maxWidth: "min(300px, 60%)",
+      maxWidth: "300px",
       minWidth: "120px",
+      width: "fit-content",
     });
     expect(image).toHaveClass("object-cover");
     expect(image).toHaveClass("h-auto", "max-h-[360px]", "w-auto", "max-w-full");
@@ -113,8 +114,9 @@ describe("MessageContentRenderer image messages", () => {
 
     expect(trigger).toHaveStyle({
       maxHeight: "360px",
-      maxWidth: "min(300px, 60%)",
+      maxWidth: "300px",
       minWidth: "120px",
+      width: "fit-content",
     });
     expect(trigger).not.toHaveStyle({
       height: "225px",

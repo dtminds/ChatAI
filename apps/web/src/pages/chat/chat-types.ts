@@ -7,7 +7,7 @@ export type ChatMode = "single" | "group";
 
 export type MessageRole = "customer" | "agent" | "system";
 
-export type MessageStatus = "pending" | "sending" | "sent" | "failed" | "read";
+export type MessageStatus = "pending" | "sending" | "accepted" | "sent" | "failed" | "read";
 
 export type EmployeeProfile = {
   id: string;

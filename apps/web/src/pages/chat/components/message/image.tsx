@@ -109,9 +109,10 @@ export function ImagePreviewDialog({
 }
 
 const imageConstraintStyle = {
-  maxWidth: "min(300px, 60%)",
   maxHeight: "360px",
+  maxWidth: "300px",
   minWidth: "120px",
+  width: "fit-content",
 } satisfies CSSProperties;
 
 function getValidImageSize(content: ImageMessageContent) {

@@ -28,6 +28,7 @@ import {
   type SettingsSidebarItemsResponse,
   type WorkbenchSendMessageResponse,
   type WorkbenchTakeOverSeatResponse,
+  type WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import type { Message } from "@/pages/chat/chat-types";
 
@@ -39,6 +40,7 @@ export type WorkbenchService = {
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
+  getUploadCredential: (conversationId: string) => Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
   markConversationUnread: (conversationId: string) => Promise<WorkbenchConversationUnreadResponse>;
   pinConversation: (conversationId: string) => Promise<WorkbenchConversationPinResponse>;
@@ -170,6 +172,27 @@ export function createMockWorkbenchService(): WorkbenchService {
         items: members,
         thirdGroupId: `third-group-${conversationId}`,
       });
+    },
+    async getUploadCredential(conversationId) {
+      if (!findConversation(state, conversationId)) {
+        throw new Error("Conversation not found");
+      }
+
+      return {
+        allowPerfixs: ["chat-images/"],
+        bucket: "mock-bucket-1250000000",
+        credentials: {
+          sessionToken: "mock-session-token",
+          tmpSecretId: "mock-tmp-secret-id",
+          tmpSecretKey: "mock-tmp-secret-key",
+          token: "mock-token",
+        },
+        expiration: "2026-05-13T12:00:00Z",
+        expiredTime: 1778673600,
+        region: "ap-guangzhou",
+        requestId: "mock-upload-credential-request",
+        startTime: 1778670000,
+      };
     },
     async markConversationRead(conversationId) {
       const conversation = findConversation(state, conversationId);
@@ -397,6 +420,14 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.get<WorkbenchGroupMembersResponse>(
         `/server/conversations/${conversationId}/group-members`,
       );
+    },
+    getUploadCredential(conversationId) {
+      return http.post<
+        WorkbenchUploadCredentialResponse,
+        { conversationId: string }
+      >("/server/media/upload-credential", {
+        conversationId,
+      });
     },
     markConversationRead(conversationId) {
       return http.post<WorkbenchConversationReadResponse>(

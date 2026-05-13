@@ -1,6 +1,7 @@
 import type {
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
+  WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import {
   BadGatewayError,
@@ -22,6 +23,9 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+  getUploadCredential(input: {
+    uid: number;
+  }): Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead(input: {
     conversationId: string;
     platform: number;
@@ -64,6 +68,14 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         baseUrl,
         token,
         "/third-internal/wap-embed/conversation/delete",
+        input,
+      );
+    },
+    getUploadCredential(input) {
+      return postJavaEnvelope<WorkbenchUploadCredentialResponse>(
+        baseUrl,
+        token,
+        "/third-internal/file/get-upload-credential",
         input,
       );
     },

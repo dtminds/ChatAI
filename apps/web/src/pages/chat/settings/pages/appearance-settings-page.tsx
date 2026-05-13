@@ -1,6 +1,6 @@
 import {
   CheckmarkCircle02Icon,
-  ComputerIcon,
+  ModernTvIcon,
   Moon02Icon,
   Sun02Icon,
 } from "@hugeicons/core-free-icons";
@@ -38,7 +38,7 @@ import {
 const themeModeOptions = [
   { value: "light", label: "浅色", icon: Sun02Icon },
   { value: "dark", label: "深色", icon: Moon02Icon },
-  { value: "system", label: "跟随系统", icon: ComputerIcon },
+  { value: "system", label: "跟随系统", icon: ModernTvIcon },
 ] as const;
 
 export function AppearanceSettingsPage() {

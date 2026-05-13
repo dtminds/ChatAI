@@ -7,7 +7,7 @@ const accessTokenCookiePath = "/api";
 const refreshTokenCookiePath = "/api/auth/refresh";
 const sharedAuthCookieOptions = {
   httpOnly: true,
-  sameSite: "lax" as const,
+  sameSite: "strict" as const,
 };
 const accessTokenCookieOptions = {
   ...sharedAuthCookieOptions,
@@ -41,8 +41,14 @@ export function setAuthCookies(reply: FastifyReply, input: AuthCookieInput) {
 
 export function clearAuthCookies(reply: FastifyReply) {
   reply
-    .clearCookie(ACCESS_TOKEN_COOKIE_NAME, accessTokenCookieOptions)
-    .clearCookie(REFRESH_TOKEN_COOKIE_NAME, refreshTokenCookieOptions);
+    .clearCookie(ACCESS_TOKEN_COOKIE_NAME, {
+      ...accessTokenCookieOptions,
+      secure: isSecureCookieEnabled(),
+    })
+    .clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
+      ...refreshTokenCookieOptions,
+      secure: isSecureCookieEnabled(),
+    });
 }
 
 export function readAuthCookie(

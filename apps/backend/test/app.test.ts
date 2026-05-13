@@ -305,7 +305,7 @@ describe("backend app", () => {
     expect(response.headers["set-cookie"]).toEqual(
       expect.arrayContaining([
         expect.stringContaining("HttpOnly"),
-        expect.stringContaining("SameSite=Lax"),
+        expect.stringContaining("SameSite=Strict"),
       ]),
     );
     expect(readSetCookieHeader(response, ACCESS_TOKEN_COOKIE_NAME)).toContain("Path=/api");
@@ -366,6 +366,55 @@ describe("backend app", () => {
         expect.stringContaining("Secure"),
       ]),
     );
+
+    await app.close();
+  });
+
+  it("marks cleared auth cookies secure when the secure cookie flag is enabled", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    process.env.AUTH_COOKIE_SECURE = "true";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    const app = await buildApp();
+    app.db = createAuthDbMock({
+      account: "agent001",
+      id: 101,
+      name: "客服一号",
+      password_hash: await argon2.hash("correct-password", {
+        hashLength: 32,
+        memoryCost: 4096,
+        parallelism: 1,
+        timeCost: 2,
+        type: argon2.argon2id,
+      }),
+      platform: 1,
+      uid: 9001,
+    });
+    const login = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha: await createSolvedAltchaPayload(app),
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+    const logout = await app.inject({
+      headers: {
+        cookie: buildCookieHeader(login, ACCESS_TOKEN_COOKIE_NAME),
+        "x-workbench-client": "chat-ai-ui",
+      },
+      method: "POST",
+      url: "/api/auth/logout",
+    });
+
+    expect(logout.statusCode).toBe(200);
+    expect(readSetCookieHeader(logout, ACCESS_TOKEN_COOKIE_NAME)).toContain("Secure");
+    expect(readSetCookieHeader(logout, REFRESH_TOKEN_COOKIE_NAME)).toContain("Secure");
 
     await app.close();
   });

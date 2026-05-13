@@ -86,7 +86,7 @@ describe("MessageContentRenderer quote messages", () => {
       />,
     );
 
-    expect(screen.getByText("郁佳杰")).toBeInTheDocument();
+    expect(screen.getByText("郁佳杰：")).toBeInTheDocument();
     expect(screen.getByText("binarywang")).toBeInTheDocument();
     expect(screen.getByTestId("quote-generic-preview")).toHaveClass("items-start", "text-[12px]");
     expect(screen.getByTestId("quote-generic-text-row")).toHaveClass("items-center");

@@ -147,7 +147,7 @@ function QuoteMessagePreview({
           className="min-w-0 shrink truncate"
           data-testid="quote-generic-sender"
         >
-          {quotedMessage.senderName}
+          {formatSenderPrefix(quotedMessage.senderName)}
         </span>
         <QuotePreviewIcon contentType={quotedMessage.contentType} />
         <span className="min-w-0 truncate">{title}</span>

@@ -4,7 +4,11 @@ export const ACCESS_TOKEN_COOKIE_NAME = "chatai_access_token";
 export const REFRESH_TOKEN_COOKIE_NAME = "chatai_refresh_token";
 
 const cookiePath = "/api";
-const sameSite = "Lax";
+const authCookieOptions = {
+  httpOnly: true,
+  path: cookiePath,
+  sameSite: "lax" as const,
+};
 
 type AuthCookieInput = {
   accessToken: string;
@@ -14,68 +18,30 @@ type AuthCookieInput = {
 };
 
 export function setAuthCookies(reply: FastifyReply, input: AuthCookieInput) {
-  reply.header("set-cookie", [
-    serializeCookie(ACCESS_TOKEN_COOKIE_NAME, input.accessToken, {
+  reply
+    .setCookie(ACCESS_TOKEN_COOKIE_NAME, input.accessToken, {
+      ...authCookieOptions,
       maxAge: input.accessTokenMaxAgeSeconds,
-    }),
-    serializeCookie(REFRESH_TOKEN_COOKIE_NAME, input.refreshToken, {
+      secure: isSecureCookieEnabled(),
+    })
+    .setCookie(REFRESH_TOKEN_COOKIE_NAME, input.refreshToken, {
+      ...authCookieOptions,
       maxAge: input.refreshTokenMaxAgeSeconds,
-    }),
-  ]);
+      secure: isSecureCookieEnabled(),
+    });
 }
 
 export function clearAuthCookies(reply: FastifyReply) {
-  reply.header("set-cookie", [
-    serializeCookie(ACCESS_TOKEN_COOKIE_NAME, "", { maxAge: 0 }),
-    serializeCookie(REFRESH_TOKEN_COOKIE_NAME, "", { maxAge: 0 }),
-  ]);
+  reply
+    .clearCookie(ACCESS_TOKEN_COOKIE_NAME, authCookieOptions)
+    .clearCookie(REFRESH_TOKEN_COOKIE_NAME, authCookieOptions);
 }
 
 export function readAuthCookie(
   request: FastifyRequest,
   name: typeof ACCESS_TOKEN_COOKIE_NAME | typeof REFRESH_TOKEN_COOKIE_NAME,
 ) {
-  return parseCookieHeader(request.headers.cookie)[name];
-}
-
-function serializeCookie(
-  name: string,
-  value: string,
-  options: { maxAge: number },
-) {
-  const parts = [
-    `${name}=${encodeURIComponent(value)}`,
-    `Max-Age=${options.maxAge}`,
-    `Path=${cookiePath}`,
-    "HttpOnly",
-    `SameSite=${sameSite}`,
-  ];
-
-  if (isSecureCookieEnabled()) {
-    parts.push("Secure");
-  }
-
-  return parts.join("; ");
-}
-
-function parseCookieHeader(cookieHeader: string | undefined) {
-  if (!cookieHeader) {
-    return {} as Record<string, string>;
-  }
-
-  return Object.fromEntries(
-    cookieHeader
-      .split(";")
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((part) => {
-        const separatorIndex = part.indexOf("=");
-        const name = separatorIndex >= 0 ? part.slice(0, separatorIndex) : part;
-        const value = separatorIndex >= 0 ? part.slice(separatorIndex + 1) : "";
-
-        return [name, decodeURIComponent(value)];
-      }),
-  );
+  return request.cookies[name];
 }
 
 function isSecureCookieEnabled() {

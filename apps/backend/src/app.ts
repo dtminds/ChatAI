@@ -1,3 +1,4 @@
+import fastifyCookie from "@fastify/cookie";
 import Fastify from "fastify";
 import { checkSchema } from "./db/schema-check.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
@@ -15,6 +16,7 @@ export async function buildApp() {
   });
 
   await registerErrorHandler(app);
+  await app.register(fastifyCookie);
   await app.register(dbPlugin);
   await app.register(authPlugin);
 

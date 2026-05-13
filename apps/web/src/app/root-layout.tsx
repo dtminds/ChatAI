@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import {
@@ -15,6 +15,12 @@ export function RootLayout() {
   const [authStatus, setAuthStatus] = useState<"checking" | "authenticated" | "anonymous">(
     PUBLIC_PATHS.has(location.pathname) ? "anonymous" : "checking",
   );
+  const authStatusRef = useRef(authStatus);
+
+  function updateAuthStatus(nextStatus: typeof authStatus) {
+    authStatusRef.current = nextStatus;
+    setAuthStatus(nextStatus);
+  }
 
   useEffect(() => {
     applyAppearanceTheme(getInitialAppearanceTheme());
@@ -24,28 +30,34 @@ export function RootLayout() {
     let isActive = true;
 
     if (PUBLIC_PATHS.has(location.pathname)) {
-      setAuthStatus("anonymous");
+      updateAuthStatus("anonymous");
       return undefined;
     }
 
-    const syncAuthSessionState = async () => {
-      setAuthStatus("checking");
+    const syncAuthSessionState = async (options: { force?: boolean } = {}) => {
+      if (!options.force && authStatusRef.current === "authenticated") {
+        return;
+      }
+
+      updateAuthStatus("checking");
 
       try {
         await getAuthSession();
 
         if (isActive) {
-          setAuthStatus("authenticated");
+          updateAuthStatus("authenticated");
         }
       } catch {
         if (isActive) {
-          setAuthStatus("anonymous");
+          updateAuthStatus("anonymous");
         }
       }
     };
 
     void syncAuthSessionState();
-    const unsubscribe = subscribeAuthSessionChanged(syncAuthSessionState);
+    const unsubscribe = subscribeAuthSessionChanged(() => {
+      void syncAuthSessionState({ force: true });
+    });
 
     return () => {
       isActive = false;

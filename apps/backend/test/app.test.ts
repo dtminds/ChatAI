@@ -565,6 +565,12 @@ describe("backend app", () => {
       success: false,
     });
     expect(oldRefresh.statusCode).toBe(401);
+    expect(getSetCookieHeaders(oldRefresh)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(`${ACCESS_TOKEN_COOKIE_NAME}=; Max-Age=0`),
+        expect.stringContaining(`${REFRESH_TOKEN_COOKIE_NAME}=; Max-Age=0`),
+      ]),
+    );
 
     await app.close();
   });

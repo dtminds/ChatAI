@@ -94,18 +94,23 @@ export async function registerAuthRoutes(app: FastifyInstance) {
           .send(apiError("UNAUTHORIZED", "登录已失效"));
       }
 
-      const refresh = await refreshAccessToken(app, refreshToken);
+      try {
+        const refresh = await refreshAccessToken(app, refreshToken);
 
-      setAuthCookies(reply, {
-        accessToken: refresh.accessToken,
-        accessTokenMaxAgeSeconds: refresh.expiresIn,
-        refreshToken: refresh.refreshToken,
-        refreshTokenMaxAgeSeconds: refresh.refreshTokenExpiresIn,
-      });
+        setAuthCookies(reply, {
+          accessToken: refresh.accessToken,
+          accessTokenMaxAgeSeconds: refresh.expiresIn,
+          refreshToken: refresh.refreshToken,
+          refreshTokenMaxAgeSeconds: refresh.refreshTokenExpiresIn,
+        });
 
-      return apiSuccess({
-        expiresIn: refresh.expiresIn,
-      });
+        return apiSuccess({
+          expiresIn: refresh.expiresIn,
+        });
+      } catch (error) {
+        clearAuthCookies(reply);
+        throw error;
+      }
     },
   );
   app.get("/api/auth/session", { preHandler: app.authenticate }, async (request) =>

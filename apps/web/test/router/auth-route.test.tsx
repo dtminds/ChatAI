@@ -86,4 +86,38 @@ describe("auth routes", () => {
       expect(router.state.location.pathname).toBe("/login");
     });
   });
+
+  it("does not recheck an authenticated session on private-route navigation", async () => {
+    mock.onGet("/auth/session").reply(200, {
+      data: {
+        subUser: {
+          displayName: "客服一号",
+          subUserId: "101",
+        },
+      },
+      success: true,
+    });
+    const router = createMemoryRouter(routerConfig, {
+      initialEntries: ["/chat"],
+    });
+
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+
+    await router.navigate("/chat/settings");
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat/settings");
+    });
+    expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(1);
+
+    notifyAuthSessionChanged();
+
+    await waitFor(() => {
+      expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(2);
+    });
+  });
 });

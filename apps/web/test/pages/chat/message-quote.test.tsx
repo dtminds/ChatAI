@@ -62,6 +62,7 @@ describe("MessageContentRenderer quote messages", () => {
     const image = screen.getByRole("img", { name: "引用图片：范双飞" });
 
     expect(screen.getByTestId("quote-image-preview")).toHaveClass("items-start", "text-[12px]");
+    expect(screen.getByTestId("quote-image-sender")).toHaveClass("min-w-0", "shrink", "truncate");
     expect(screen.getByText("范双飞：")).toBeInTheDocument();
     expect(image).toHaveAttribute("src", "https://cdn.example.com/quoted.jpg");
     expect(image).toHaveClass("aspect-square", "object-cover");
@@ -89,6 +90,11 @@ describe("MessageContentRenderer quote messages", () => {
     expect(screen.getByText("binarywang")).toBeInTheDocument();
     expect(screen.getByTestId("quote-generic-preview")).toHaveClass("items-start", "text-[12px]");
     expect(screen.getByTestId("quote-generic-text-row")).toHaveClass("items-center");
+    expect(screen.getByTestId("quote-generic-sender")).toHaveClass(
+      "min-w-0",
+      "shrink",
+      "truncate",
+    );
     expect(screen.getByRole("img", { name: "引用预览：binarywang" })).toHaveAttribute(
       "src",
       "https://cdn.example.com/avatar.png",

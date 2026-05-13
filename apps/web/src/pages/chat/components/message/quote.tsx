@@ -111,7 +111,10 @@ function QuoteMessagePreview({
         data-testid="quote-image-preview"
         {...openProps}
       >
-        <span className="min-w-0 shrink text-nowrap">
+        <span
+          className="min-w-0 shrink truncate"
+          data-testid="quote-image-sender"
+        >
           {formatSenderPrefix(quotedMessage.senderName)}
         </span>
         {quotedMessage.imageUrl ? (
@@ -140,7 +143,12 @@ function QuoteMessagePreview({
         className="flex min-w-0 items-center gap-1.5"
         data-testid="quote-generic-text-row"
       >
-        <span className="shrink-0">{quotedMessage.senderName}</span>
+        <span
+          className="min-w-0 shrink truncate"
+          data-testid="quote-generic-sender"
+        >
+          {quotedMessage.senderName}
+        </span>
         <QuotePreviewIcon contentType={quotedMessage.contentType} />
         <span className="min-w-0 truncate">{title}</span>
       </div>

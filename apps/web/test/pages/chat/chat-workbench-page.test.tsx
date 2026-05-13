@@ -184,6 +184,35 @@ describe("ChatWorkbenchPage", () => {
     expect(composer).toHaveClass("max-h-80", "overflow-y-auto");
   });
 
+  it("scrolls the composer editor to the bottom after a pasted image loads", async () => {
+    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
+      type: "image/png",
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    Object.defineProperty(composer, "scrollHeight", {
+      configurable: true,
+      value: 960,
+    });
+    composer.scrollTop = 120;
+
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [clipboardImage],
+      },
+    });
+
+    const image = await screen.findByRole("img", { name: "clipboard.png" });
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(composer.scrollTop).toBe(960);
+    });
+  });
+
   it("removes a composer image from its close button", async () => {
     const clipboardImage = new File(["image-bytes"], "clipboard.png", {
       type: "image/png",

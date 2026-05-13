@@ -266,6 +266,18 @@ function ComposerImagePreview({
   const [editor] = useLexicalComposerContext();
   const isEditable = useLexicalEditable();
 
+  const scrollComposerToBottom = () => {
+    window.requestAnimationFrame(() => {
+      const rootElement = editor.getRootElement();
+
+      if (!rootElement) {
+        return;
+      }
+
+      rootElement.scrollTop = rootElement.scrollHeight;
+    });
+  };
+
   const removeImage = () => {
     if (!isEditable) {
       return;
@@ -287,6 +299,7 @@ function ComposerImagePreview({
         alt={alt}
         className="block max-h-44 max-w-60 rounded-lg border border-border object-contain"
         draggable={false}
+        onLoad={scrollComposerToBottom}
         src={src}
       />
       <button

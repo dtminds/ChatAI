@@ -114,6 +114,70 @@ describe("WorkbenchRepository", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("does not update seat host when the seat or sub-user id is invalid", async () => {
+    const repository = new WorkbenchRepository(createFailingDb() as never);
+
+    await expect(
+      repository.updateSeatHostSubUser({
+        platform: 5,
+        seatId: "not-a-seat",
+        subUserId: "101",
+        uid: 9001,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.updateSeatHostSubUser({
+        platform: 5,
+        seatId: "12",
+        subUserId: "not-a-sub-user",
+        uid: 9001,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("updates seat host sub-user in tenant scope", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const wheres: Array<[string, string, unknown]> = [];
+    const repository = new WorkbenchRepository(
+      {
+        updateTable(table: string) {
+          expect(table).toBe("xy_wap_embed_user_seat");
+
+          return {
+            set(update: Record<string, unknown>) {
+              updates.push(update);
+
+              return this;
+            },
+            where(column: string, operator: string, value: unknown) {
+              wheres.push([column, operator, value]);
+
+              return this;
+            },
+            execute() {
+              return Promise.resolve([]);
+            },
+          };
+        },
+      } as never,
+    );
+
+    await repository.updateSeatHostSubUser({
+      platform: 5,
+      seatId: "12",
+      subUserId: "101",
+      uid: 9001,
+    });
+
+    expect(updates).toEqual([{ host_sub_id: 101 }]);
+    expect(wheres).toEqual([
+      ["id", "=", 12],
+      ["uid", "=", 9001],
+      ["platform", "=", 5],
+      ["biz_status", "=", 1],
+    ]);
+  });
+
   it("returns conversation tenant scope and takeover sub-user for Java write operations", async () => {
     const repository = new WorkbenchRepository(
       {

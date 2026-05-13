@@ -22,7 +22,10 @@ import {
   UnauthorizedError,
 } from "../../shared/errors.js";
 import type { WorkbenchJavaClient } from "./workbench-java-client.js";
-import type { WorkbenchRepository } from "./workbench-repository.js";
+import {
+  parseMySqlId,
+  type WorkbenchRepository,
+} from "./workbench-repository.js";
 
 export type WorkbenchService = {
   deleteConversation(
@@ -267,9 +270,40 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {
+    const subUserNumericId = parseMySqlId(subUserId);
+
+    if (subUserNumericId == null) {
+      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
+    }
+
     await this.assertSeatAccess(subUserId, seatId);
 
-    return this.javaClient.takeOverSeat({ seatId, subUserId });
+    const seat = await this.repository.getSeatOperateScope(seatId);
+
+    if (!seat) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    await this.javaClient.takeOverSeat({
+      platform: seat.platform,
+      subId: subUserNumericId,
+      thirdUserId: seat.thirdUserId,
+      uid: seat.uid,
+    });
+    await this.repository.updateSeatHostSubUser({
+      platform: seat.platform,
+      seatId: seat.seatId,
+      subUserId,
+      uid: seat.uid,
+    });
+
+    const nextSeat = await this.repository.getSeat(seatId);
+
+    if (!nextSeat) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    return { seat: nextSeat };
   }
 
   async unpinConversation(subUserId: string, conversationId: string) {

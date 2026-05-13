@@ -12,21 +12,53 @@ describe("createWorkbenchJavaClient", () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ seat: { seatId: "drc" } }), {
+      new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
         headers: { "content-type": "application/json" },
         status: 200,
       }),
     );
 
     await createWorkbenchJavaClient().takeOverSeat({
-      seatId: "drc",
-      subUserId: "101",
+      platform: 5,
+      subId: 101,
+      thirdUserId: "zhangsan",
+      uid: 9001,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/internal/workbench/seats/take-over",
+      "https://java.internal/third-internal/wap-embed/user-seat/host",
       expect.objectContaining({
         signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("posts seat takeover payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await createWorkbenchJavaClient().takeOverSeat({
+      platform: 5,
+      subId: 101,
+      thirdUserId: "zhangsan",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/user-seat/host",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platform: 5,
+          subId: 101,
+          thirdUserId: "zhangsan",
+          uid: 9001,
+        }),
+        method: "POST",
       }),
     );
   });

@@ -1,7 +1,6 @@
 import type {
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
-  WorkbenchTakeOverSeatResponse,
 } from "@chatai/contracts";
 import {
   BadGatewayError,
@@ -43,9 +42,11 @@ export type WorkbenchJavaClient = {
     subUserId: string;
   }): Promise<WorkbenchSendMessageResponse>;
   takeOverSeat(input: {
-    seatId: string;
-    subUserId: string;
-  }): Promise<WorkbenchTakeOverSeatResponse>;
+    platform: number;
+    subId: number;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<void>;
   unpinConversation(input: {
     conversationId: string;
     platform: number;
@@ -99,12 +100,12 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
       );
     },
     takeOverSeat(input) {
-      return postJava<WorkbenchTakeOverSeatResponse>(
+      return postJavaEnvelope<boolean>(
         baseUrl,
         token,
-        "/internal/workbench/seats/take-over",
+        "/third-internal/wap-embed/user-seat/host",
         input,
-      );
+      ).then(() => undefined);
     },
     unpinConversation(input) {
       return postConversationOperate(

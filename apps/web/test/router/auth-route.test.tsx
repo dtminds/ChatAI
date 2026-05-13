@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import MockAdapter from "axios-mock-adapter";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { RootLayout } from "@/app/root-layout";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { requestInstance } from "@/lib/request";
 import { routerConfig } from "@/router";
@@ -9,6 +10,10 @@ import { routerConfig } from "@/router";
 const mock = new MockAdapter(requestInstance);
 
 describe("auth routes", () => {
+  beforeEach(() => {
+    setSecureContext(true);
+  });
+
   afterEach(() => {
     mock.reset();
   });
@@ -53,6 +58,61 @@ describe("auth routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/chat");
     });
+  });
+
+  it("checks the session again after a private route redirects to login then login succeeds", async () => {
+    mock.onGet("/auth/session").replyOnce(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+    mock.onGet("/auth/session").reply(200, {
+      data: {
+        subUser: {
+          displayName: "客服一号",
+          subUserId: "101",
+        },
+      },
+      success: true,
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: <RootLayout />,
+          children: [
+            {
+              path: "login",
+              element: <div>登录页占位</div>,
+            },
+            {
+              path: "chat",
+              element: <div>聊天页占位</div>,
+            },
+          ],
+        },
+      ],
+      {
+        initialEntries: ["/chat"],
+      },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/login");
+    });
+    expect(screen.getByText("登录页占位")).toBeInTheDocument();
+
+    await router.navigate("/chat");
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(await screen.findByText("聊天页占位")).toBeInTheDocument();
+    expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(2);
   });
 
   it("redirects an active private route when the auth session is cleared", async () => {
@@ -123,3 +183,15 @@ describe("auth routes", () => {
     });
   });
 });
+
+function setSecureContext(value: boolean) {
+  Object.defineProperty(globalThis, "isSecureContext", {
+    configurable: true,
+    value,
+  });
+
+  Object.defineProperty(window, "isSecureContext", {
+    configurable: true,
+    value,
+  });
+}

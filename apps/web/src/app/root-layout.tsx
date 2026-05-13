@@ -10,17 +10,26 @@ import { getAuthSession } from "@/pages/auth/auth-service";
 import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
 
 const PUBLIC_PATHS = new Set(["/login"]);
+type AuthStatus = "checking" | "authenticated" | "anonymous";
+type AuthState = {
+  checkedPath: string | null;
+  status: AuthStatus;
+};
 
 export function RootLayout() {
   const location = useLocation();
-  const [authStatus, setAuthStatus] = useState<"checking" | "authenticated" | "anonymous">(
-    PUBLIC_PATHS.has(location.pathname) ? "anonymous" : "checking",
-  );
-  const authStatusRef = useRef(authStatus);
+  const [authState, setAuthState] = useState<AuthState>({
+    checkedPath: null,
+    status: PUBLIC_PATHS.has(location.pathname) ? "anonymous" : "checking",
+  });
+  const authStatusRef = useRef(authState.status);
 
-  function updateAuthStatus(nextStatus: typeof authStatus) {
+  function updateAuthState(nextStatus: AuthStatus, checkedPath: string | null = null) {
     authStatusRef.current = nextStatus;
-    setAuthStatus(nextStatus);
+    setAuthState({
+      checkedPath,
+      status: nextStatus,
+    });
   }
 
   useEffect(() => {
@@ -31,7 +40,7 @@ export function RootLayout() {
     let isActive = true;
 
     if (PUBLIC_PATHS.has(location.pathname)) {
-      updateAuthStatus("anonymous");
+      updateAuthState("anonymous");
       return undefined;
     }
 
@@ -40,17 +49,17 @@ export function RootLayout() {
         return;
       }
 
-      updateAuthStatus("checking");
+      updateAuthState("checking");
 
       try {
         await getAuthSession();
 
         if (isActive) {
-          updateAuthStatus("authenticated");
+          updateAuthState("authenticated");
         }
       } catch {
         if (isActive) {
-          updateAuthStatus("anonymous");
+          updateAuthState("anonymous", location.pathname);
         }
       }
     };
@@ -66,7 +75,16 @@ export function RootLayout() {
     };
   }, [location.pathname]);
 
-  if (!PUBLIC_PATHS.has(location.pathname) && authStatus === "checking") {
+  const isPublicPath = PUBLIC_PATHS.has(location.pathname);
+  const shouldVerifyPrivatePath =
+    !isPublicPath &&
+    authState.status !== "authenticated" &&
+    authState.checkedPath !== location.pathname;
+
+  if (
+    !isPublicPath &&
+    (authState.status === "checking" || shouldVerifyPrivatePath)
+  ) {
     return (
       <div className="min-h-svh bg-background text-foreground">
         <main className="flex min-h-svh items-center justify-center">
@@ -88,7 +106,7 @@ export function RootLayout() {
     );
   }
 
-  if (!PUBLIC_PATHS.has(location.pathname) && authStatus === "anonymous") {
+  if (!isPublicPath && authState.status === "anonymous") {
     return <Navigate replace state={{ from: location }} to="/login" />;
   }
 

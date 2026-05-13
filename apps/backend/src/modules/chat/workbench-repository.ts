@@ -7,6 +7,9 @@ import {
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
+  buildMissingQuotedMessagePreview,
+  buildQuotedMessagePreview,
+  getQuoteMessageAuditId,
   getGroupMemberHydrationKey,
   hydrateMessageRows,
   mapConversationRow,
@@ -15,6 +18,7 @@ import {
   type ConversationRow,
   type MessageHydrationSources,
   type MessageRow,
+  type MessageRowQuotePreview,
   type SeatRow,
 } from "./workbench-mappers.js";
 const BIZ_STATUS_HIDDEN = 0;
@@ -34,6 +38,13 @@ export type ConversationLookup = {
   seatUnreadCount: number;
   uid: number;
   unreadCount: number;
+};
+
+export type SeatOperateScope = {
+  platform: number;
+  seatId: string;
+  thirdUserId: string;
+  uid: number;
 };
 
 export class WorkbenchRepository {
@@ -160,6 +171,27 @@ export class WorkbenchRepository {
       .execute();
 
     return rows[0] ? mapSeatRow(rows[0] as SeatRow) : undefined;
+  }
+
+  async getSeatOperateScope(seatId: string): Promise<SeatOperateScope | undefined> {
+    const seatNumericId = parseMySqlId(seatId);
+
+    if (seatNumericId == null) {
+      return undefined;
+    }
+
+    const seat = await this.getSeatRecord(seatNumericId);
+
+    if (!seat) {
+      return undefined;
+    }
+
+    return {
+      platform: seat.platform,
+      seatId: String(seat.id),
+      thirdUserId: seat.third_userid,
+      uid: seat.uid,
+    };
   }
 
   async canAccessSeat(subUserId: string, seatId: string) {
@@ -423,6 +455,31 @@ export class WorkbenchRepository {
       .execute();
   }
 
+  async updateSeatHostSubUser(input: {
+    platform: number;
+    seatId: string;
+    subUserId: string;
+    uid: number;
+  }) {
+    const seatNumericId = parseMySqlId(input.seatId);
+    const subUserNumericId = parseMySqlId(input.subUserId);
+
+    if (seatNumericId == null || subUserNumericId == null) {
+      return;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_user_seat")
+      .set({
+        host_sub_id: subUserNumericId,
+      })
+      .where("id", "=", seatNumericId)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .execute();
+  }
+
   async listGroupMembers(conversationId: string): Promise<WorkbenchGroupMembersResponse | undefined> {
     const conversationNumericId = parseMySqlId(conversationId);
 
@@ -571,21 +628,124 @@ export class WorkbenchRepository {
     const rawRows = rows.slice(0, options.limit) as MessageRow[];
     const visibleRows = rawRows.filter((row) => !isHiddenMessageRow(row));
     const messageRows = visibleRows.reverse();
+    const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
+    const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
     const hydrationSources = await this.getMessageHydrationSources(
-      messageRows,
+      allRowsToHydrate,
       conversation.uid,
       conversation.platform,
+    );
+    const hydratedMessageRows = hydrateMessageRows(messageRows, hydrationSources);
+    const hydratedFetchedQuoteRows = hydrateMessageRows(
+      quotedRows.fetchedRows,
+      hydrationSources,
+    );
+    const currentQuoteRowsById = new Map(
+      hydratedMessageRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const fetchedQuoteRowsById = new Map(
+      hydratedFetchedQuoteRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const quotePreviewsByRowId = this.buildQuotePreviewsByRowId(
+      hydratedMessageRows,
+      currentQuoteRowsById,
+      fetchedQuoteRowsById,
     );
 
     return {
       filteredCount: rawRows.length - visibleRows.length,
       hasMore: rows.length > options.limit,
-      messages: hydrateMessageRows(messageRows, hydrationSources).map((row) =>
-        mapMessageRow(row),
+      messages: hydratedMessageRows.map((row) =>
+        mapMessageRow(row, quotePreviewsByRowId.get(toNumber(row.id))),
       ),
       nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id) : undefined,
       scannedCount: rawRows.length,
     };
+  }
+
+  private async getQuotedMessageRows(
+    rows: MessageRow[],
+    conversation: {
+      chat_type: number;
+      conversation_external_id: string;
+      conversation_group_id: string;
+      platform: number;
+      third_userid: string;
+      uid: number;
+    },
+  ) {
+    const quoteIds = uniqueNumbers(rows.map(getQuoteMessageAuditId));
+    const currentRowIds = new Set(rows.map((row) => toNumber(row.id)));
+    const missingQuoteIds = quoteIds.filter((id) => !currentRowIds.has(id));
+
+    if (!missingQuoteIds.length) {
+      return { fetchedRows: [] as MessageRow[] };
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.msgid as msgid",
+        "message.chat_type as chat_type",
+        "message.from_type as from_type",
+        "message.third_user_id as third_user_id",
+        "message.third_external_id as third_external_id",
+        "message.third_from_id as third_from_id",
+        "message.third_group_id as third_group_id",
+        "message.content as content",
+        "message.msgtype as msgtype",
+        "message.msgtime as msgtime",
+        "message.revoke_status as revoke_status",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder.val(0).as("conversation_id"),
+        expressionBuilder.val(0).as("seat_id"),
+        expressionBuilder
+          .val(conversation.conversation_external_id)
+          .as("conversation_external_id"),
+        expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
+      ])
+      .where("message.id", "in", missingQuoteIds)
+      .where("message.uid", "=", conversation.uid)
+      .where("message.platform", "=", conversation.platform)
+      .where("message.third_user_id", "=", conversation.third_userid);
+
+    if (conversation.chat_type === CHAT_TYPE_GROUP) {
+      query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
+    } else {
+      query = query.where(
+        "message.third_external_id",
+        "=",
+        conversation.conversation_external_id,
+      );
+    }
+
+    return { fetchedRows: (await query.execute()) as MessageRow[] };
+  }
+
+  private buildQuotePreviewsByRowId(
+    rows: MessageRow[],
+    currentRowsById: Map<number | undefined, MessageRow>,
+    fetchedRowsById: Map<number | undefined, MessageRow>,
+  ) {
+    const previews = new Map<number | undefined, MessageRowQuotePreview>();
+
+    rows.forEach((row) => {
+      const quoteId = getQuoteMessageAuditId(row);
+
+      if (quoteId == null) {
+        return;
+      }
+
+      const quotedRow = currentRowsById.get(quoteId) ?? fetchedRowsById.get(quoteId);
+      previews.set(
+        toNumber(row.id),
+        quotedRow ? buildQuotedMessagePreview(quotedRow) : buildMissingQuotedMessagePreview(),
+      );
+    });
+
+    return previews;
   }
 
   private async getSeatRecord(seatId: number) {
@@ -796,7 +956,17 @@ function uniqueNonEmpty(values: Array<string | null | undefined>) {
   );
 }
 
-function parseMySqlId(value: string) {
+function uniqueNumbers(values: Array<number | undefined>) {
+  return Array.from(
+    new Set(
+      values.filter((value): value is number =>
+        typeof value === "number" && Number.isSafeInteger(value) && value > 0,
+      ),
+    ),
+  );
+}
+
+export function parseMySqlId(value: string) {
   if (!/^[1-9]\d*$/.test(value)) {
     return undefined;
   }

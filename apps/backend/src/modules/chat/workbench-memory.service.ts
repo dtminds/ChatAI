@@ -19,6 +19,7 @@ import type {
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchTakeOverSeatResponse,
+  WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import { NotFoundError } from "../../shared/errors.js";
 
@@ -144,6 +145,32 @@ export function createMemoryWorkbenchService() {
       }
 
       return clone(response);
+    },
+    getUploadCredential(
+      _subUserId: string,
+      conversationId: string,
+    ): WorkbenchUploadCredentialResponse {
+      const conversation = findConversation(state, conversationId);
+
+      if (!conversation) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      return {
+        allowPerfixs: ["chat-images/"],
+        bucket: "mock-bucket-1250000000",
+        credentials: {
+          sessionToken: "mock-session-token",
+          tmpSecretId: "mock-tmp-secret-id",
+          tmpSecretKey: "mock-tmp-secret-key",
+          token: "mock-token",
+        },
+        expiration: "2026-05-13T12:00:00Z",
+        expiredTime: 1778673600,
+        region: "ap-guangzhou",
+        requestId: "mock-upload-credential-request",
+        startTime: 1778670000,
+      };
     },
     markConversationRead(
       _subUserId: string,

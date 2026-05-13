@@ -1,4 +1,4 @@
-import { ReloadIcon } from "@hugeicons/core-free-icons";
+import { ExclamationMarkIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,7 @@ const TIMESTAMP_BREAK_MS = 30 * 60 * 1000;
 
 type ChatMessageListProps = {
   messages: Message[];
+  onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onRetryMessage?: (messageId: string) => void;
 };
 
@@ -23,7 +24,11 @@ type FeedItem =
       type: "message";
     };
 
-export function ChatMessageList({ messages, onRetryMessage }: ChatMessageListProps) {
+export function ChatMessageList({
+  messages,
+  onOpenQuotedMessage,
+  onRetryMessage,
+}: ChatMessageListProps) {
   const items = buildFeedItems(messages);
 
   return (
@@ -37,6 +42,7 @@ export function ChatMessageList({ messages, onRetryMessage }: ChatMessageListPro
           <div data-scroll-anchor={item.message.id} key={item.message.id}>
             <MessageRow
               message={item.message}
+              onOpenQuotedMessage={onOpenQuotedMessage}
               onRetryMessage={onRetryMessage}
             />
           </div>
@@ -58,9 +64,11 @@ export function MessageTimeDivider({ label }: { label: string }) {
 
 export function MessageRow({
   message,
+  onOpenQuotedMessage,
   onRetryMessage,
 }: {
   message: Message;
+  onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onRetryMessage?: (messageId: string) => void;
 }) {
   if (message.role === "system") {
@@ -96,12 +104,12 @@ export function MessageRow({
             {isAgent && message.status === "failed" && onRetryMessage ? (
               <button
                 aria-label="重试发送"
-                className="mb-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-destructive/25 bg-surface text-destructive transition-colors hover:bg-destructive-muted"
+                className="mb-1 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
                 onClick={() => onRetryMessage(message.id)}
                 title="重试发送"
                 type="button"
               >
-                <HugeiconsIcon icon={ReloadIcon} size={13} strokeWidth={2} />
+                <HugeiconsIcon icon={ExclamationMarkIcon} size={10} strokeWidth={2.4} />
               </button>
             ) : null}
             <div
@@ -116,7 +124,11 @@ export function MessageRow({
                   {message.senderDisplayName}
                 </p>
               ) : null}
-              <MessageContentRenderer isAgent={isAgent} message={message} />
+              <MessageContentRenderer
+                isAgent={isAgent}
+                message={message}
+                onOpenQuotedMessage={onOpenQuotedMessage}
+              />
               {message.isRevoked ? <MessageRevokedState /> : null}
             </div>
           </div>
@@ -138,7 +150,11 @@ function MessageRevokedState() {
 }
 
 function MessageDeliveryState({ message }: { message: ChatMessage }) {
-  if (message.status === "sent" || message.status === "read") {
+  if (
+    message.status === "accepted" ||
+    message.status === "sent" ||
+    message.status === "read"
+  ) {
     return null;
   }
 

@@ -2,6 +2,7 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchMessageContentType,
   WorkbenchMessageDto,
+  WorkbenchQuotedMessagePreviewDto,
   WorkbenchSeatDto,
 } from "@chatai/contracts";
 
@@ -54,6 +55,8 @@ export type MessageRow = {
   third_group_id: string | null | undefined;
   third_user_id: string | null | undefined;
 };
+
+export type MessageRowQuotePreview = WorkbenchQuotedMessagePreviewDto;
 
 export type MessageHydrationSources = {
   contactsByThirdExternalId: Map<
@@ -131,7 +134,10 @@ export function mapConversationRow(
   };
 }
 
-export function mapMessageRow(row: MessageRow): WorkbenchMessageDto {
+export function mapMessageRow(
+  row: MessageRow,
+  quotePreview?: MessageRowQuotePreview,
+): WorkbenchMessageDto {
   const mode = row.chat_type === 2 ? "group" : "single";
   const thirdExternalUserId =
     row.third_external_id || row.conversation_external_id || undefined;
@@ -142,7 +148,7 @@ export function mapMessageRow(row: MessageRow): WorkbenchMessageDto {
       : row.conversation_external_id || row.third_external_id || buildMissingCustomerId(row);
 
   return {
-    content: parseMessageContent(row.msgtype, row.content),
+    content: parseMessageContent(row.msgtype, row.content, quotePreview),
     contentType: mapContentType(row.msgtype),
     conversationId: String(row.conversation_id),
     createdAt: toOptionalTimestamp(row.msgtime),
@@ -268,6 +274,8 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
       return "sphfeed";
     case "weapp":
       return "mini-program";
+    case "quote":
+      return "quote";
     case "text":
       return "text";
     default:
@@ -275,8 +283,20 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
   }
 }
 
-function parseMessageContent(msgtype: string, rawContent: string | null) {
+function parseMessageContent(
+  msgtype: string,
+  rawContent: string | null,
+  quotePreview?: MessageRowQuotePreview,
+) {
   const parsed = parseContent(rawContent);
+
+  if (msgtype === "quote") {
+    return {
+      quoteMsgId: readQuoteMsgId(parsed),
+      quotedMessage: quotePreview,
+      text: isRecord(parsed) ? readStringField(parsed, "content") : "",
+    };
+  }
 
   if (msgtype === "text") {
     if (typeof parsed === "object" && parsed && "text" in parsed) {
@@ -430,9 +450,135 @@ function formatMessagePreview(msgtype: string | null, rawContent: string | null)
       return "[群接龙]";
     case "chatrecord":
       return "[聊天记录]";
+    case "quote":
+      return "[引用消息]";
     default:
       return rawContent ?? "";
   }
+}
+
+export function getQuoteMessageAuditId(row: MessageRow) {
+  if (row.msgtype !== "quote") {
+    return undefined;
+  }
+
+  const quoteMsgId = readQuoteMsgId(parseContent(row.content));
+  const numeric = Number(quoteMsgId);
+
+  return Number.isSafeInteger(numeric) && numeric > 0 ? numeric : undefined;
+}
+
+export function buildQuotedMessagePreview(row: MessageRow): MessageRowQuotePreview {
+  const mapped = mapMessageRow(row);
+  const senderName = row.sender_name || getSenderFallbackName(row);
+
+  switch (mapped.contentType) {
+    case "text":
+      return {
+        contentType: "text",
+        senderName,
+        text: String(mapped.content.text ?? ""),
+      };
+    case "image":
+      return {
+        contentType: "image",
+        imageUrl: readRecordString(mapped.content, "imageUrl"),
+        senderName,
+      };
+    default: {
+      const imageUrl = getPreviewImageUrl(mapped.content);
+      const title = getPreviewTitle(mapped.content, mapped.contentType, row.content);
+
+      return {
+        contentType: mapped.contentType,
+        ...(imageUrl ? { imageUrl } : {}),
+        senderName,
+        title,
+      };
+    }
+  }
+}
+
+export function buildMissingQuotedMessagePreview(): MessageRowQuotePreview {
+  return {
+    contentType: "text",
+    fallbackText: "引用消息不可用",
+    senderName: "",
+    text: "引用消息不可用",
+  };
+}
+
+function readQuoteMsgId(value: unknown) {
+  if (!isRecord(value)) {
+    return "";
+  }
+
+  const field = value.quoteMsgId;
+
+  if (typeof field === "number" && Number.isSafeInteger(field)) {
+    return String(field);
+  }
+
+  return typeof field === "string" ? field.trim() : "";
+}
+
+function getSenderFallbackName(row: MessageRow) {
+  if (row.chat_type === 2) {
+    return row.third_from_id || row.third_user_id || "";
+  }
+
+  if (row.from_type === 1) {
+    return row.third_user_id || "";
+  }
+
+  if (row.from_type === 2) {
+    return row.third_external_id || row.conversation_external_id || "";
+  }
+
+  return "";
+}
+
+function getPreviewImageUrl(content: Record<string, unknown>) {
+  return (
+    readRecordString(content, "previewImageUrl") ||
+    readRecordString(content, "coverImageUrl") ||
+    readRecordString(content, "imageUrl") ||
+    readRecordString(content, "avatarUrl")
+  );
+}
+
+function getPreviewTitle(
+  content: Record<string, unknown>,
+  contentType: WorkbenchMessageContentType,
+  rawContent: string | null,
+) {
+  return (
+    readRecordString(content, "title") ||
+    readRecordString(content, "name") ||
+    readRecordString(content, "fileName") ||
+    readRecordString(content, "appName") ||
+    readRecordString(content, "address") ||
+    formatMessagePreview(reverseMapContentType(contentType), rawContent)
+  );
+}
+
+function reverseMapContentType(contentType: WorkbenchMessageContentType) {
+  switch (contentType) {
+    case "h5":
+      return "link";
+    case "mini-program":
+      return "weapp";
+    case "contact-card":
+      return "card";
+    default:
+      return contentType;
+  }
+}
+
+function readRecordString(value: Record<string, unknown>, key: string) {
+  const field = value[key];
+
+  return typeof field === "string" ? field : "";
 }
 
 function parseContent(rawContent: string | null): unknown {

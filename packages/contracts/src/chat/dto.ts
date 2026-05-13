@@ -46,7 +46,17 @@ export type WorkbenchMessageContentType =
   | "location"
   | "solitaire"
   | "sphfeed"
-  | "mini-program";
+  | "mini-program"
+  | "quote";
+
+export type WorkbenchQuotedMessagePreviewDto = {
+  contentType: WorkbenchMessageContentType;
+  fallbackText?: string;
+  imageUrl?: string;
+  senderName: string;
+  text?: string;
+  title?: string;
+};
 
 export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed" | "read";
 
@@ -236,6 +246,22 @@ export type WorkbenchGroupMembersResponse = {
   thirdGroupId: string;
   groupSeatId: string;
   items: WorkbenchGroupMemberDto[];
+};
+
+export type WorkbenchUploadCredentialResponse = {
+  allowPerfixs: string[];
+  bucket: string;
+  credentials: {
+    sessionToken: string;
+    tmpSecretId: string;
+    tmpSecretKey: string;
+    token?: string;
+  };
+  expiration: string;
+  expiredTime: number;
+  region: string;
+  requestId: string;
+  startTime: number;
 };
 
 export type WorkbenchTakeOverSeatResponse = {

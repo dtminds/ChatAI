@@ -6,12 +6,24 @@ import {
   type CSSProperties,
 } from "react";
 import type { LexicalEditor } from "lexical";
+import { AlertCircleIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { clearAuthTokens } from "@/pages/auth/auth-tokens";
+import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
@@ -24,14 +36,25 @@ import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-re
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
-import type { GroupMember } from "@/pages/chat/chat-types";
+import type { ChatMode, GroupMember } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
 import {
   CONVERSATION_LIST_PANEL_WIDTH,
   MIN_WORKBENCH_CONTENT_WIDTH,
 } from "@/pages/chat/lib/panel-width";
 
 const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
+
+type PendingComposerDiscardSwitch =
+  | {
+      conversationId: string;
+      type: "conversation";
+    }
+  | {
+      mode: ChatMode;
+      type: "mode";
+    };
 
 function getInitialAccountRailCollapsed() {
   try {
@@ -119,6 +142,14 @@ function ChatWorkbenchContent({
     useState<MentionInsertPosition>("start");
   const [selectedMentionMembers, setSelectedMentionMembers] = useState<GroupMember[]>([]);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [composerSegments, setComposerSegments] = useState<ComposerSegment[]>([]);
+  const [sendFailureDialog, setSendFailureDialog] = useState<{
+    description: string;
+    title: string;
+  } | null>(null);
+  const [isSendingDraft, setIsSendingDraft] = useState(false);
+  const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
+    useState<PendingComposerDiscardSwitch | null>(null);
   const [isAccountRailCollapsed, setIsAccountRailCollapsed] = useState(
     getInitialAccountRailCollapsed,
   );
@@ -127,6 +158,7 @@ function ChatWorkbenchContent({
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
+  const isSendingDraftRef = useRef(false);
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
@@ -142,7 +174,7 @@ function ChatWorkbenchContent({
     try {
       await logout();
     } finally {
-      clearAuthTokens();
+      notifyAuthSessionChanged();
     }
   }
 
@@ -251,7 +283,15 @@ function ChatWorkbenchContent({
     pollWorkbench,
   });
 
-  const handleSendDraft = (segments: ComposerSegment[]) => {
+  const clearComposer = () => {
+    composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
+    setDraft("");
+    setComposerSegments([]);
+    setMentionInsertPosition("start");
+    setSelectedMentionMembers([]);
+  };
+
+  const handleSendDraft = async (segments: ComposerSegment[]) => {
     const mentionText = selectedMentionMembers
       .map((member) => `@${member.displayName}`)
       .join(" ");
@@ -265,16 +305,100 @@ function ChatWorkbenchContent({
       return;
     }
 
-    void sendAgentMessageSegments(normalizedSegments);
-    composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
-    setDraft("");
-    setMentionInsertPosition("start");
-    setSelectedMentionMembers([]);
-    composerRef.current?.focus();
+    if (isSendingDraftRef.current) {
+      return;
+    }
+
+    isSendingDraftRef.current = true;
+    setIsSendingDraft(true);
+
+    try {
+      const result = await sendAgentMessageSegments(normalizedSegments);
+
+      if (!result.ok) {
+        setSendFailureDialog(
+          getSendFailureDialogCopy(result.reason, result.errorCode),
+        );
+        composerRef.current?.focus();
+        return;
+      }
+
+      clearComposer();
+      composerRef.current?.focus();
+    } finally {
+      isSendingDraftRef.current = false;
+      setIsSendingDraft(false);
+    }
   };
 
   const handleDraftChange = (nextDraft: string) => {
     setDraft(nextDraft);
+  };
+
+  const handleComposerSegmentsChange = (nextSegments: ComposerSegment[]) => {
+    setComposerSegments(nextSegments);
+  };
+
+  const hasUnsentComposerContent = () =>
+    draft.trim().length > 0 ||
+    selectedMentionMembers.length > 0 ||
+    composerSegments.length > 0;
+
+  const handleSelectConversation = async (conversationId: string) => {
+    if (conversationId === activeConversationId) {
+      return;
+    }
+
+    if (hasUnsentComposerContent()) {
+      setPendingComposerDiscardSwitch({
+        conversationId,
+        type: "conversation",
+      });
+      return;
+    }
+
+    clearComposer();
+    await setActiveConversation(conversationId);
+  };
+
+  const handleSelectMode = async (mode: ChatMode) => {
+    if (mode === activeMode) {
+      return;
+    }
+
+    if (hasUnsentComposerContent()) {
+      setPendingComposerDiscardSwitch({
+        mode,
+        type: "mode",
+      });
+      return;
+    }
+
+    clearComposer();
+    await setActiveMode(mode);
+  };
+
+  const cancelPendingComposerDiscardSwitch = () => {
+    setPendingComposerDiscardSwitch(null);
+    composerRef.current?.focus();
+  };
+
+  const confirmPendingComposerDiscardSwitch = async () => {
+    const pendingSwitch = pendingComposerDiscardSwitch;
+
+    if (!pendingSwitch) {
+      return;
+    }
+
+    setPendingComposerDiscardSwitch(null);
+    clearComposer();
+
+    if (pendingSwitch.type === "conversation") {
+      await setActiveConversation(pendingSwitch.conversationId);
+      return;
+    }
+
+    await setActiveMode(pendingSwitch.mode);
   };
 
   const handleSelectMentionMember = (
@@ -301,6 +425,27 @@ function ChatWorkbenchContent({
       currentMembers.filter((member) => member.id !== memberId),
     );
     composerRef.current?.focus();
+  };
+
+  const handleOpenQuotedMessage = (quoteMsgId: string) => {
+    const quoteSeq = Number(quoteMsgId);
+    const originalMessage = Number.isSafeInteger(quoteSeq)
+      ? activeMessages.find((message) => message.seq === quoteSeq)
+      : undefined;
+    const viewport = messageViewportRef.current;
+    const anchor = viewport && originalMessage
+      ? findViewportAnchor(viewport, originalMessage.id)
+      : null;
+
+    if (!anchor) {
+      toast.warning("当前未加载原始消息");
+      return;
+    }
+
+    anchor.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   };
 
   if (bootstrapStatus === "loading" && accounts.length === 0) {
@@ -403,8 +548,8 @@ function ChatWorkbenchContent({
                 onMarkConversationRead={markConversationRead}
                 onMarkConversationUnread={markConversationUnread}
                 onPinConversation={pinConversation}
-                onSelectConversation={setActiveConversation}
-                onSelectMode={setActiveMode}
+                onSelectConversation={handleSelectConversation}
+                onSelectMode={handleSelectMode}
                 onUnpinConversation={unpinConversation}
                 searchableConversations={allConversations}
               />
@@ -423,6 +568,7 @@ function ChatWorkbenchContent({
                 inputEnterBehavior={inputEnterBehavior}
                 isConversationLoading={isConversationLoading}
                 isEmojiPickerOpen={isEmojiPickerOpen}
+                isSendingDraft={isSendingDraft}
                 isResizingCustomerPanel={isResizingCustomerPanel}
                 mentionInsertPosition={mentionInsertPosition}
                 hasMoreHistory={hasMoreHistory}
@@ -431,6 +577,7 @@ function ChatWorkbenchContent({
                 messageViewportRef={messageViewportRef}
                 sidebarItems={sidebarItems}
                 onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
+                onComposerSegmentsChange={handleComposerSegmentsChange}
                 onDraftChange={handleDraftChange}
                 onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                 onEnterBehaviorChange={setInputEnterBehavior}
@@ -441,6 +588,7 @@ function ChatWorkbenchContent({
                   void loadActiveGroupMembers({ force: true });
                 }}
                 onLoadOlderMessages={handleLoadOlderMessages}
+                onOpenQuotedMessage={handleOpenQuotedMessage}
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={retryFailedMessage}
                 onSendDraft={handleSendDraft}
@@ -454,8 +602,90 @@ function ChatWorkbenchContent({
           </div>
         </div>
       </div>
+      <AlertDialog
+        open={sendFailureDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSendFailureDialog(null);
+            composerRef.current?.focus();
+          }
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <div className="flex items-start gap-3">
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-destructive"
+              color="currentColor"
+              icon={AlertCircleIcon}
+              size={20}
+              strokeWidth={2}
+            />
+            <AlertDialogHeader className="min-w-0 flex-1 space-y-1.5 text-left">
+              <AlertDialogTitle>{sendFailureDialog?.title}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {sendFailureDialog?.description}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogAction variant="destructive">知道了</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={pendingComposerDiscardSwitch !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            cancelPendingComposerDiscardSwitch();
+          }
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>切换会话？</AlertDialogTitle>
+            <AlertDialogDescription>
+              切换后，输入框中的未发送内容会被清空。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>继续编辑</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                void confirmPendingComposerDiscardSwitch();
+              }}
+            >
+              确认切换
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
+}
+
+function getSendFailureDialogCopy(
+  reason: "image-upload" | "send" | "unavailable",
+  errorCode: string,
+) {
+  if (reason === "image-upload") {
+    return {
+      title: "图片上传失败，请稍后重试",
+      description: `ErrorCode: ${errorCode}`,
+    };
+  }
+
+  if (reason === "unavailable") {
+    return {
+      title: "当前无法发送消息，请稍后重试",
+      description: `ErrorCode: ${errorCode}`,
+    };
+  }
+
+  return {
+    title: "发送失败，请稍后重试",
+    description: `ErrorCode: ${errorCode}`,
+  };
 }
 
 function formatSegmentsWithMentions({

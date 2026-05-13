@@ -1,0 +1,28 @@
+name: Sync GitHub to Gitee
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror to Gitee
+        env:
+          GITEE_KEY: ${{ secrets.GITEE_RSA_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 1. 配置 Gitee SSH 认证
+          mkdir -p ~/.ssh
+          echo "$GITEE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H gitee.com >> ~/.ssh/known_hosts
+          
+          # 2. 从 GitHub bare clone（--bare 而非 --mirror）
+          git clone --bare https://x-access-token:${GITHUB_TOKEN}@github.com/dtminds/ChatAI.git repo.git
+          
+          # 3. 推送到 Gitee（只推送分支和标签，排除 PR refs）
+          cd repo.git
+          git remote set-url origin git@gitee.com:dtminds/ChatAI.git
+          git push origin '+refs/heads/*:refs/heads/*'
+          git push origin '+refs/tags/*:refs/tags/*'

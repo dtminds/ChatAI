@@ -1,7 +1,7 @@
 import type {
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
-  WorkbenchTakeOverSeatResponse,
+  WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import {
   BadGatewayError,
@@ -23,6 +23,9 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+  getUploadCredential(input: {
+    uid: number;
+  }): Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead(input: {
     conversationId: string;
     platform: number;
@@ -43,9 +46,11 @@ export type WorkbenchJavaClient = {
     subUserId: string;
   }): Promise<WorkbenchSendMessageResponse>;
   takeOverSeat(input: {
-    seatId: string;
-    subUserId: string;
-  }): Promise<WorkbenchTakeOverSeatResponse>;
+    platform: number;
+    subId: number;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<void>;
   unpinConversation(input: {
     conversationId: string;
     platform: number;
@@ -63,6 +68,14 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         baseUrl,
         token,
         "/third-internal/wap-embed/conversation/delete",
+        input,
+      );
+    },
+    getUploadCredential(input) {
+      return postJavaEnvelope<WorkbenchUploadCredentialResponse>(
+        baseUrl,
+        token,
+        "/third-internal/file/get-upload-credential",
         input,
       );
     },
@@ -99,12 +112,12 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
       );
     },
     takeOverSeat(input) {
-      return postJava<WorkbenchTakeOverSeatResponse>(
+      return postJavaEnvelope<boolean>(
         baseUrl,
         token,
-        "/internal/workbench/seats/take-over",
+        "/third-internal/wap-embed/user-seat/host",
         input,
-      );
+      ).then(() => undefined);
     },
     unpinConversation(input) {
       return postConversationOperate(

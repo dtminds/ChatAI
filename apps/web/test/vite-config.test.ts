@@ -20,11 +20,11 @@ describe("vite config env", () => {
   it("uses configured host, port, and API proxy target in development", () => {
     const config = getViteDevServerConfig({
       VITE_DEV_API_PROXY_TARGET: "https://chat-test.bork.com.cn",
-      VITE_DEV_SERVER_HOST: "chat-dev.bork.com.cn",
+      VITE_DEV_SERVER_HOST: "chat-dev.bokr.com.cn",
       VITE_DEV_SERVER_PORT: "8086",
     });
 
-    expect(config.host).toBe("chat-dev.bork.com.cn");
+    expect(config.host).toBe("chat-dev.bokr.com.cn");
     expect(config.port).toBe(8086);
     expect(config.proxy?.["/api"]).toMatchObject({
       changeOrigin: true,
@@ -42,6 +42,7 @@ describe("vite config env", () => {
     const config = getViteDevServerConfig({}, "development", createEnvDir());
 
     expect(config.host).toBe("127.0.0.1");
+    expect(config.allowedHosts).toContain("chat-dev.bokr.com.cn");
     expect(config.port).toBe(8086);
     expect(config.proxy?.["/api"]).toMatchObject({
       target: "http://127.0.0.1:3001",
@@ -83,7 +84,7 @@ describe("vite config env", () => {
         join(envDir, ".env.dev-test-api"),
         [
           "VITE_DEV_API_PROXY_TARGET=https://chat-test.bork.com.cn",
-          "VITE_DEV_SERVER_HOST=chat-dev.bork.com.cn",
+          "VITE_DEV_SERVER_HOST=chat-dev.bokr.com.cn",
           "VITE_DEV_SERVER_PORT=8086",
         ].join("\n"),
       ),
@@ -91,7 +92,7 @@ describe("vite config env", () => {
 
     const config = getViteDevServerConfig({}, "dev-test-api", envDir);
 
-    expect(config.host).toBe("chat-dev.bork.com.cn");
+    expect(config.host).toBe("chat-dev.bokr.com.cn");
     expect(config.proxy?.["/api"]).toMatchObject({
       target: "https://chat-test.bork.com.cn",
     });

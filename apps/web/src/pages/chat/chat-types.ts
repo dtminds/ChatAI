@@ -1,10 +1,13 @@
-import type { WorkbenchGroupMemberType } from "@chatai/contracts";
+import type {
+  WorkbenchGroupMemberType,
+  WorkbenchMessageContentType,
+} from "@chatai/contracts";
 
 export type ChatMode = "single" | "group";
 
 export type MessageRole = "customer" | "agent" | "system";
 
-export type MessageStatus = "pending" | "sending" | "sent" | "failed" | "read";
+export type MessageStatus = "pending" | "sending" | "accepted" | "sent" | "failed" | "read";
 
 export type EmployeeProfile = {
   id: string;
@@ -163,6 +166,22 @@ export type SolitaireMessageContent = {
   createMemberSerialNo?: string;
 };
 
+export type QuotedMessagePreviewContent = {
+  contentType: WorkbenchMessageContentType;
+  fallbackText?: string;
+  imageUrl?: string;
+  senderName: string;
+  text?: string;
+  title?: string;
+};
+
+export type QuoteMessageContent = {
+  type: "quote";
+  text: string;
+  quoteMsgId: string;
+  quotedMessage?: QuotedMessagePreviewContent;
+};
+
 export type MessageContent =
   | SystemMessageContent
   | TextMessageContent
@@ -175,7 +194,8 @@ export type MessageContent =
   | ContactCardMessageContent
   | LocationMessageContent
   | SphFeedMessageContent
-  | SolitaireMessageContent;
+  | SolitaireMessageContent
+  | QuoteMessageContent;
 
 type BaseMessage = {
   id: string;
@@ -213,7 +233,8 @@ export type ChatMessage = BaseMessage & {
     | ContactCardMessageContent
     | LocationMessageContent
     | SphFeedMessageContent
-    | SolitaireMessageContent;
+    | SolitaireMessageContent
+    | QuoteMessageContent;
 };
 
 export type Message = SystemMessage | ChatMessage;

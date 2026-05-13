@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
 import { formatConversationPreview, formatWorkbenchTimestamp } from "@/pages/chat/api/workbench-adapter";
 import {
   bootstrapWorkbench,
@@ -37,6 +38,17 @@ type AsyncStatus = "idle" | "loading" | "ready" | "error";
 type HistoryStatus = "idle" | "loading";
 type SendStatus = "idle" | "sending";
 type TakeoverStatus = "idle" | "taking-over";
+
+type SendMessageResult =
+  | {
+      ok: true;
+    }
+  | {
+      errorCode: string;
+      errorMessage: string;
+      reason: "image-upload" | "send" | "unavailable";
+      ok: false;
+    };
 
 type MessagePaginationState = {
   hasMore: boolean;
@@ -89,8 +101,8 @@ type WorkbenchState = {
   setActiveMode: (mode: ChatMode) => Promise<void>;
   loadActiveGroupMembers: (options?: { force?: boolean }) => Promise<void>;
   markConversationUnread: (conversationId: string) => Promise<void>;
-  sendAgentMessageSegments: (segments: ComposerSegment[]) => Promise<void>;
-  sendAgentTextMessage: (text: string) => Promise<void>;
+  sendAgentMessageSegments: (segments: ComposerSegment[]) => Promise<SendMessageResult>;
+  sendAgentTextMessage: (text: string) => Promise<SendMessageResult>;
   takeOverAccount: (accountId: string) => Promise<void>;
   unpinConversation: (conversationId: string) => Promise<void>;
   retryFailedMessage: (messageId: string) => Promise<void>;
@@ -1271,14 +1283,19 @@ export function createWorkbenchStore() {
       const normalizedSegments = normalizeComposerSegments(segments);
 
       if (normalizedSegments.length === 0) {
-        return;
+        return { ok: true };
       }
 
       const state = get();
       const { activeAccountId, activeConversationId, me } = state;
 
       if (!activeAccountId || !activeConversationId || !me) {
-        return;
+        return {
+          errorCode: "UNAVAILABLE",
+          errorMessage: "当前无法发送消息",
+          reason: "unavailable",
+          ok: false,
+        };
       }
 
       const account = state.accounts.find((item) => item.id === activeAccountId);
@@ -1291,76 +1308,56 @@ export function createWorkbenchStore() {
         account?.loginStatus === "offline" ||
         !isAccountTakenOverByCurrentUser(account, me)
       ) {
-        return;
+        return {
+          errorCode: "UNAVAILABLE",
+          errorMessage: "当前无法发送消息",
+          reason: "unavailable",
+          ok: false,
+        };
       }
       const timestamp = Date.now();
       const clientMessageId = `local_${timestamp}_${Math.random().toString(36).slice(2, 6)}`;
-      const optimisticMessages = normalizedSegments.map((segment, index) => {
-        const segmentClientMessageId = buildSegmentClientMessageId(clientMessageId, index);
 
-        return {
-          author: account ? `${account.name}-${account.operator}` : me.displayName,
-          isGroupConversation: activeConversation.mode === "group",
-          isOwnMessage: true,
-          clientMessageId: segmentClientMessageId,
-          content: buildOptimisticMessageContent(segment),
-          conversationId: activeConversationId,
-          id: segmentClientMessageId,
-          role: "agent" as const,
-          sender: {
-            avatarUrl: account?.avatarUrl,
-            id: `sender-agent-${activeAccountId}`,
-            name: account ? `${account.name}-${account.operator}` : me.displayName,
-          },
-          sentAt: formatWorkbenchTimestamp(timestamp + index),
-          status: "sending" as const,
-        } satisfies Message;
-      });
-      const preview = getComposerSegmentsPreview(normalizedSegments);
+      set((currentState) => ({
+        sendStatusByConversationId: {
+          ...currentState.sendStatusByConversationId,
+          [activeConversationId]: "sending",
+        },
+      }));
 
-      set((currentState) => {
-        const currentMessages =
-          currentState.messagesByConversationId[activeConversationId] ?? [];
-        const nextMessages = [...currentMessages, ...optimisticMessages];
-        const currentConversations =
-          currentState.conversationListsByScope[activeAccountId] ?? [];
+      let segmentsForSend = normalizedSegments;
 
-        return {
-          activeMessageSeq: getActiveMessageSeq(
-            {
-              ...currentState.messagesByConversationId,
-              [activeConversationId]: nextMessages,
-            },
-            activeConversationId,
-          ),
-          conversationListsByScope: {
-            ...currentState.conversationListsByScope,
-            [activeAccountId]: updateConversationPreview(
-              currentConversations,
+      try {
+        segmentsForSend = normalizedSegments.some(
+          (segment) => segment.type === "image",
+        )
+          ? await resolveImageSegmentsForSend(
               activeConversationId,
-              preview,
-              optimisticMessages[0]?.sentAt ?? formatWorkbenchTimestamp(timestamp),
-              timestamp,
-            ),
-          },
-          messagesByConversationId: {
-            ...currentState.messagesByConversationId,
-            [activeConversationId]: nextMessages,
-          },
-          pendingMessages: [...currentState.pendingMessages, ...optimisticMessages],
+              normalizedSegments,
+            )
+          : normalizedSegments;
+      } catch (error) {
+        set((currentState) => ({
           sendStatusByConversationId: {
             ...currentState.sendStatusByConversationId,
-            [activeConversationId]: "sending",
+            [activeConversationId]: "idle",
           },
+        }));
+
+        return {
+          errorCode: getRequestErrorCode(error),
+          errorMessage: error instanceof Error ? error.message : "图片上传失败",
+          reason: "image-upload",
+          ok: false,
         };
-      });
+      }
 
       try {
         const response = await sendTextMessage({
           clientMessageId,
           conversationId: activeConversationId,
           seatId: activeAccountId,
-          segments: normalizedSegments,
+          segments: segmentsForSend,
         });
         const ackByClientMessageId = new Map(
           (response.messages ?? [response]).map((message) => [
@@ -1368,62 +1365,86 @@ export function createWorkbenchStore() {
             message.messageId,
           ]),
         );
+        const optimisticMessages = normalizedSegments.map((segment, index) => {
+          const segmentClientMessageId = buildSegmentClientMessageId(clientMessageId, index);
 
-        set((currentState) => ({
-          messagesByConversationId: {
-            ...currentState.messagesByConversationId,
-            [activeConversationId]: (
-              currentState.messagesByConversationId[activeConversationId] ?? []
-            ).map((message) =>
-              message.clientMessageId && ackByClientMessageId.has(message.clientMessageId)
-                ? {
-                    ...message,
-                    remoteMessageId: ackByClientMessageId.get(message.clientMessageId),
-                  }
-                : message,
+          return {
+            author: account ? `${account.name}-${account.operator}` : me.displayName,
+            isGroupConversation: activeConversation.mode === "group",
+            isOwnMessage: true,
+            clientMessageId: segmentClientMessageId,
+            content: buildOptimisticMessageContent(segment),
+            conversationId: activeConversationId,
+            id: segmentClientMessageId,
+            role: "agent" as const,
+            remoteMessageId: ackByClientMessageId.get(segmentClientMessageId),
+            sender: {
+              avatarUrl: account?.avatarUrl,
+              id: `sender-agent-${activeAccountId}`,
+              name: account ? `${account.name}-${account.operator}` : me.displayName,
+            },
+            sentAt: formatWorkbenchTimestamp(timestamp + index),
+            status: "accepted" as const,
+          } satisfies Message;
+        });
+        const preview = getComposerSegmentsPreview(normalizedSegments);
+
+        set((currentState) => {
+          const currentMessages =
+            currentState.messagesByConversationId[activeConversationId] ?? [];
+          const nextMessages = [...currentMessages, ...optimisticMessages];
+          const currentConversations =
+            currentState.conversationListsByScope[activeAccountId] ?? [];
+
+          return {
+            activeMessageSeq: getActiveMessageSeq(
+              {
+                ...currentState.messagesByConversationId,
+                [activeConversationId]: nextMessages,
+              },
+              activeConversationId,
             ),
-          },
-          sendStatusByConversationId: {
-            ...currentState.sendStatusByConversationId,
-            [activeConversationId]: "idle",
-          },
-        }));
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [activeAccountId]: updateConversationPreview(
+                currentConversations,
+                activeConversationId,
+                preview,
+                optimisticMessages[0]?.sentAt ?? formatWorkbenchTimestamp(timestamp),
+                timestamp,
+              ),
+            },
+            messagesByConversationId: {
+              ...currentState.messagesByConversationId,
+              [activeConversationId]: nextMessages,
+            },
+            pendingMessages: [...currentState.pendingMessages, ...optimisticMessages],
+            sendStatusByConversationId: {
+              ...currentState.sendStatusByConversationId,
+              [activeConversationId]: "idle",
+            },
+          };
+        });
+
+        return { ok: true };
       } catch (error) {
         set((currentState) => ({
-          messagesByConversationId: {
-            ...currentState.messagesByConversationId,
-            [activeConversationId]: (
-              currentState.messagesByConversationId[activeConversationId] ?? []
-            ).map((message) =>
-              optimisticMessages.some(
-                (optimisticMessage) =>
-                  optimisticMessage.clientMessageId === message.clientMessageId,
-              )
-                ? {
-                    ...message,
-                    failReason:
-                      error instanceof Error ? error.message : "消息发送失败",
-                    status: "failed",
-                  }
-                : message,
-            ),
-          },
-          pendingMessages: currentState.pendingMessages.filter(
-            (message) =>
-              !optimisticMessages.some(
-                (optimisticMessage) =>
-                  optimisticMessage.clientMessageId === message.clientMessageId,
-              ),
-          ),
           sendStatusByConversationId: {
             ...currentState.sendStatusByConversationId,
             [activeConversationId]: "idle",
           },
         }));
+
+        return {
+          errorCode: getRequestErrorCode(error),
+          errorMessage: error instanceof Error ? error.message : "消息发送失败",
+          reason: "send",
+          ok: false,
+        };
       }
     },
     async sendAgentTextMessage(text) {
-      await get().sendAgentMessageSegments([
+      return get().sendAgentMessageSegments([
         {
           text,
           type: "text",
@@ -1764,6 +1785,42 @@ export function createWorkbenchStore() {
     },
     };
   });
+}
+
+function getRequestErrorCode(error: unknown) {
+  if (isErrorWithStatus(error)) {
+    return String(error.status);
+  }
+
+  if (isErrorWithCode(error)) {
+    return error.code;
+  }
+
+  if (error instanceof Error) {
+    const statusMatch = /\b([1-5]\d{2})\b/.exec(error.message);
+
+    return statusMatch?.[1] ?? "UNKNOWN";
+  }
+
+  return "UNKNOWN";
+}
+
+function isErrorWithStatus(error: unknown): error is { status: number | string } {
+  if (!error || typeof error !== "object" || !("status" in error)) {
+    return false;
+  }
+
+  const status = (error as { status?: unknown }).status;
+
+  return typeof status === "number" || typeof status === "string";
+}
+
+function isErrorWithCode(error: unknown): error is { code: string } {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return false;
+  }
+
+  return typeof (error as { code?: unknown }).code === "string";
 }
 
 export const useWorkbenchStore = createWorkbenchStore();

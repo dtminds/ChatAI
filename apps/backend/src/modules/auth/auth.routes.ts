@@ -2,14 +2,23 @@ import {
   apiError,
   apiSuccess,
   AuthLoginRequestSchema,
-  AuthRefreshRequestSchema,
   type AuthLoginRequest,
-  type AuthRefreshRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createAltchaChallenge, verifyAltchaPayload } from "./altcha.service.js";
-import { loginWithPassword, refreshAccessToken, revokeSession } from "./auth.service.js";
+import {
+  getCurrentSession,
+  loginWithPassword,
+  refreshAccessToken,
+  revokeSession,
+} from "./auth.service.js";
+import {
+  clearAuthCookies,
+  readAuthCookie,
+  REFRESH_TOKEN_COOKIE_NAME,
+  setAuthCookies,
+} from "./auth-cookies.js";
 
 const AltchaVerifyBodySchema = Type.Object({
   altcha: Type.String(),
@@ -47,26 +56,69 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         body: AuthLoginRequestSchema,
       },
     },
-    async (request) =>
-      apiSuccess(
-        await loginWithPassword(app, request.body, {
-          ip: getRequestIp(request),
-          userAgent: request.headers["user-agent"],
-        }),
-      ),
-  );
-  app.post<{ Body: AuthRefreshRequest }>(
-    "/api/auth/refresh",
-    {
-      schema: {
-        body: AuthRefreshRequestSchema,
-      },
+    async (request, reply) => {
+      const login = await loginWithPassword(app, request.body, {
+        ip: getRequestIp(request),
+        userAgent: request.headers["user-agent"],
+      });
+
+      setAuthCookies(reply, {
+        accessToken: login.accessToken,
+        accessTokenMaxAgeSeconds: login.expiresIn,
+        refreshToken: login.refreshToken,
+        refreshTokenMaxAgeSeconds: login.refreshTokenExpiresIn,
+      });
+
+      return apiSuccess({
+        expiresIn: login.expiresIn,
+        subUser: login.subUser,
+      });
     },
-    async (request) => apiSuccess(await refreshAccessToken(app, request.body.refreshToken)),
   );
-  app.post("/api/auth/logout", { preHandler: app.authenticate }, async (request) =>
-    apiSuccess(await revokeSession(app, request.user)),
+  app.post(
+    "/api/auth/refresh",
+    async (request, reply) => {
+      const refreshToken = readAuthCookie(request, REFRESH_TOKEN_COOKIE_NAME);
+
+      if (!refreshToken) {
+        clearAuthCookies(reply);
+
+        return reply
+          .code(401)
+          .send(apiError("UNAUTHORIZED", "登录已失效"));
+      }
+
+      try {
+        const refresh = await refreshAccessToken(app, refreshToken);
+
+        setAuthCookies(reply, {
+          accessToken: refresh.accessToken,
+          accessTokenMaxAgeSeconds: refresh.expiresIn,
+          refreshToken: refresh.refreshToken,
+          refreshTokenMaxAgeSeconds: refresh.refreshTokenExpiresIn,
+        });
+
+        return apiSuccess({
+          expiresIn: refresh.expiresIn,
+        });
+      } catch (error) {
+        clearAuthCookies(reply);
+        throw error;
+      }
+    },
   );
+  app.get("/api/auth/session", { preHandler: app.authenticate }, async (request) =>
+    apiSuccess({
+      subUser: await getCurrentSession(app, request.user),
+    }),
+  );
+  app.post("/api/auth/logout", { preHandler: app.authenticate }, async (request, reply) => {
+    const result = await revokeSession(app, request.user);
+
+    clearAuthCookies(reply);
+
+    return apiSuccess(result);
+  });
 }
 
 function getRequestIp(request: FastifyRequest) {

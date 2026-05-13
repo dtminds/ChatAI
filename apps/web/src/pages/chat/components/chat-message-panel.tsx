@@ -10,6 +10,7 @@ type ChatMessagePanelProps = {
   isConversationLoading: boolean;
   messages: Message[];
   onLoadOlderMessages: () => void;
+  onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
@@ -22,6 +23,7 @@ export function ChatMessagePanel({
   isConversationLoading,
   messages,
   onLoadOlderMessages,
+  onOpenQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
   messageViewportRef,
@@ -66,6 +68,7 @@ export function ChatMessagePanel({
               ) : null}
               <ChatMessageList
                 messages={messages}
+                onOpenQuotedMessage={onOpenQuotedMessage}
                 onRetryMessage={(messageId) => {
                   startTransition(() => {
                     void onRetryMessage(messageId);

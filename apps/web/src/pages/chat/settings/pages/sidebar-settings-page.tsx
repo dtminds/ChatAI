@@ -1,5 +1,6 @@
 import {
   Add01Icon,
+  AlertCircleIcon,
   Delete02Icon,
   DragDropVerticalIcon,
   Edit02Icon,
@@ -660,10 +661,19 @@ function SidebarPreview({ items }: { items: SettingsSidebarItem[] }) {
             ) : null}
           </div>
         </div>
-        <div className="h-56 bg-muted/35" />
+        <div className="h-96 bg-muted/35" />
       </div>
-      <p className="mt-4 text-xs leading-5 text-muted-foreground">
-        电脑端聊天工具栏为固定宽度，新增页面会按左侧排序依次展示。
+      <p className="mt-4 flex items-start gap-1.5 text-xs leading-5 text-muted-foreground">
+        <HugeiconsIcon
+          aria-hidden="true"
+          className="mt-0.5 shrink-0"
+          data-icon-name="alert-circle"
+          data-testid="sidebar-preview-note-icon"
+          icon={AlertCircleIcon}
+          size={14}
+          strokeWidth={1.8}
+        />
+        聊天工具栏为固定宽度，新增页面会按左侧排序依次展示
       </p>
     </aside>
   );

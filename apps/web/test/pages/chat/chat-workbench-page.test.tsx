@@ -10,9 +10,11 @@ import {
   resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
+import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
 import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
 const mock = new MockAdapter(requestInstance);
 
@@ -27,6 +29,23 @@ vi.mock("sonner", async (importOriginal) => {
     },
   };
 });
+
+vi.mock("@/pages/chat/api/media-upload-service", () => ({
+  resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments: ComposerSegment[]) =>
+    segments.map((segment: ComposerSegment) =>
+      segment.type === "image"
+        ? {
+            alt: segment.alt,
+            fileId: "chat-images/conv-001/mock-image.png",
+            height: segment.height,
+            type: "image",
+            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/mock-image.png",
+            width: segment.width,
+          }
+        : segment,
+    ),
+  ),
+}));
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -56,10 +75,23 @@ describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
     mock.reset();
     vi.mocked(toast.warning).mockClear();
+    vi.mocked(resolveImageSegmentsForSend).mockImplementation(
+      async (_conversationId, segments) =>
+        segments.map((segment: ComposerSegment) =>
+          segment.type === "image"
+            ? {
+                alt: segment.alt,
+                fileId: "chat-images/conv-001/mock-image.png",
+                height: segment.height,
+                type: "image",
+                url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/mock-image.png",
+                width: segment.width,
+              }
+            : segment,
+        ),
+    );
     resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
-    window.localStorage.setItem("chatai.accessToken", "access-token-001");
-    window.localStorage.setItem("chatai.refreshToken", "refresh-token-001");
   });
 
   it("sends a message from the composer", async () => {
@@ -80,7 +112,7 @@ describe("ChatWorkbenchPage", () => {
         type: "text",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
   });
 
@@ -104,7 +136,7 @@ describe("ChatWorkbenchPage", () => {
         type: "text",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
   });
 
@@ -140,8 +172,257 @@ describe("ChatWorkbenchPage", () => {
         type: "image",
       },
       role: "agent",
-      status: "sending",
+      status: "accepted",
     });
+  });
+
+  it("keeps overflowing composer content scrollable inside the editor", async () => {
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    expect(composer).toHaveClass("max-h-80", "overflow-y-auto");
+  });
+
+  it("scrolls the composer editor to the bottom after a pasted image loads", async () => {
+    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
+      type: "image/png",
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    Object.defineProperty(composer, "scrollHeight", {
+      configurable: true,
+      value: 960,
+    });
+    composer.scrollTop = 120;
+
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [clipboardImage],
+      },
+    });
+
+    const image = await screen.findByRole("img", { name: "clipboard.png" });
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(composer.scrollTop).toBe(960);
+    });
+  });
+
+  it("removes a composer image from its close button", async () => {
+    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
+      type: "image/png",
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [clipboardImage],
+      },
+    });
+
+    expect(await screen.findByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
+
+    await userEvent.click(
+      within(composer).getByRole("button", { name: "移除图片 clipboard.png" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        within(composer).queryByRole("img", { name: "clipboard.png" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+  });
+
+  it("keeps composer content and shows a dialog when the send API rejects", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        throw new Error("发送接口失败");
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    const beforeMessageCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+
+    await pasteIntoComposer(user, composer, "这条消息保留在输入框");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    expect(await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("ErrorCode: UNKNOWN")).toBeInTheDocument();
+    expect(toast.warning).not.toHaveBeenCalledWith("发送接口失败");
+    expect(composer).toHaveTextContent("这条消息保留在输入框");
+    expect(useWorkbenchStore.getState().messagesByConversationId["conv-001"]).toHaveLength(
+      beforeMessageCount,
+    );
+  });
+
+  it("shows the HTTP status code when the send API rejects with a request error", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        throw {
+          code: "ERR_BAD_REQUEST",
+          message: "Unauthorized",
+          status: 401,
+        };
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    await pasteIntoComposer(user, composer, "这条消息会 401");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    expect(await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("ErrorCode: 401")).toBeInTheDocument();
+  });
+
+  it("keeps composer images and shows a dialog when image upload fails", async () => {
+    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
+      type: "image/png",
+    });
+
+    vi.mocked(resolveImageSegmentsForSend).mockRejectedValue(new Error("COS 上传失败"));
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    const beforeMessageCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [clipboardImage],
+      },
+    });
+
+    expect(await screen.findByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    expect(await screen.findByRole("alertdialog", { name: "图片上传失败，请稍后重试" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("ErrorCode: UNKNOWN")).toBeInTheDocument();
+    expect(toast.warning).not.toHaveBeenCalledWith("COS 上传失败");
+    expect(within(composer).getByRole("img", { hidden: true, name: "clipboard.png" }))
+      .toBeInTheDocument();
+    expect(useWorkbenchStore.getState().messagesByConversationId["conv-001"]).toHaveLength(
+      beforeMessageCount,
+    );
+  });
+
+  it("shows a sending state and prevents duplicate sends while waiting for the send API", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessageGate =
+      createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();
+    const sendMessage = vi.fn((payload: Parameters<typeof baseService.sendMessage>[0]) => {
+      void payload;
+      return sendMessageGate.promise;
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "发送中不要重复");
+
+    const sendButton = screen.getByRole("button", { name: "发送消息" });
+    await user.dblClick(sendButton);
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+      expect(sendButton).toBeDisabled();
+      expect(sendButton).toHaveAttribute("aria-busy", "true");
+      expect(composer).toHaveAttribute("contenteditable", "false");
+    });
+
+    sendMessageGate.resolve({
+      clientMessageId: "client-msg-test",
+      messageId: "msg-server-test",
+      messages: [
+        {
+          clientMessageId: "client-msg-test",
+          messageId: "msg-server-test",
+          status: "accepted",
+        },
+      ],
+      status: "accepted",
+    });
+
+    await waitFor(() => {
+      expect(composer).toHaveTextContent("");
+      expect(sendButton).toHaveAttribute("aria-busy", "false");
+    });
+  });
+
+  it("shows a dialog before switching conversations when the composer has unsent text", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm");
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "未发送内容");
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+
+    expect(await screen.findByRole("alertdialog", { name: "切换会话？" }))
+      .toBeInTheDocument();
+    expect(
+      screen.getByText("切换后，输入框中的未发送内容会被清空。"),
+    ).toBeInTheDocument();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+    expect(composer).toHaveTextContent("未发送内容");
+
+    confirmSpy.mockRestore();
+  });
+
+  it("clears composer content after confirming a conversation switch", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm");
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "切换后清空");
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+    await user.click(await screen.findByRole("button", { name: "确认切换" }));
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    expect(composer).toHaveTextContent("");
+    expect(confirmSpy).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
   });
 
   it("switches conversation mode and shows the matching conversation", async () => {
@@ -642,7 +923,7 @@ describe("ChatWorkbenchPage", () => {
 
       expect(latestMessage).toMatchObject({
         remoteMessageId: expect.any(String),
-        status: "sending",
+        status: "accepted",
       });
     });
 
@@ -662,7 +943,7 @@ describe("ChatWorkbenchPage", () => {
         useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
 
       expect(latestMessage).toMatchObject({
-        status: "sending",
+        status: "accepted",
       });
       expect(latestMessage?.id).not.toBe(beforeRetryId);
     });
@@ -738,7 +1019,7 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
-  it("keeps the composer available while the active conversation is sending", async () => {
+  it("disables the composer while the active conversation send request is pending", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const sendGate = createDeferred();
@@ -763,7 +1044,7 @@ describe("ChatWorkbenchPage", () => {
         useWorkbenchStore.getState().sendStatusByConversationId["conv-001"],
       ).toBe("sending");
     });
-    expect(screen.getByRole("textbox", { name: "请输入消息……" })).not.toHaveAttribute(
+    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
       "aria-readonly",
       "true",
     );
@@ -775,6 +1056,10 @@ describe("ChatWorkbenchPage", () => {
         useWorkbenchStore.getState().sendStatusByConversationId["conv-001"],
       ).toBe("idle");
     });
+    expect(screen.getByRole("textbox", { name: "请输入消息……" })).not.toHaveAttribute(
+      "aria-readonly",
+      "true",
+    );
   });
 
   it("keeps the composer available while refreshing existing workbench data", async () => {
@@ -1060,6 +1345,127 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getAllByText("这是最新的权益清单截图，你帮我确认下。").length).toBeGreaterThan(0);
   });
 
+  it("scrolls to a loaded original message when clicking a quote preview", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              {
+                content: { text: "测试被引用" },
+                contentType: "text",
+                conversationId: "conv-001",
+                createdAt: 1778240200000,
+                customerId: "cust-001",
+                messageId: "remote-original",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 538,
+                status: "read",
+              },
+              {
+                content: {
+                  quoteMsgId: "538",
+                  quotedMessage: {
+                    contentType: "text",
+                    senderName: "客户",
+                    text: "测试被引用",
+                  },
+                  text: "正式引用消息",
+                },
+                contentType: "quote",
+                conversationId: "conv-001",
+                createdAt: 1778240300000,
+                customerId: "cust-001",
+                messageId: "remote-quote",
+                seatId: "drc",
+                senderType: "agent",
+                seq: 539,
+                status: "read",
+              },
+            ],
+            scannedCount: 2,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    try {
+      render(<ChatWorkbenchPage />);
+
+      await screen.findByRole("textbox", { name: "请输入消息……" });
+      await user.click(screen.getByRole("button", { name: /测试被引用/ }));
+
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        behavior: "smooth",
+        block: "start",
+      });
+      expect(toast.warning).not.toHaveBeenCalledWith("当前未加载原始消息");
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("shows a toast when a quote original message is not loaded", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              {
+                content: {
+                  quoteMsgId: "999",
+                  quotedMessage: {
+                    contentType: "text",
+                    senderName: "客户",
+                    text: "未加载原文",
+                  },
+                  text: "正式引用消息",
+                },
+                contentType: "quote",
+                conversationId: "conv-001",
+                createdAt: 1778240300000,
+                customerId: "cust-001",
+                messageId: "remote-quote",
+                seatId: "drc",
+                senderType: "agent",
+                seq: 539,
+                status: "read",
+              },
+            ],
+            scannedCount: 1,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: /未加载原文/ }));
+
+    expect(toast.warning).toHaveBeenCalledWith("当前未加载原始消息");
+  });
+
   it("shows scope transition errors in the workbench", async () => {
     const baseService = createMockWorkbenchService();
 
@@ -1124,7 +1530,7 @@ describe("ChatWorkbenchPage", () => {
     expect(useWorkbenchStore.getState().readReceiptError).toBeUndefined();
   });
 
-  it("logs out from the account menu and clears stored auth tokens", async () => {
+  it("logs out from the account menu", async () => {
     const user = userEvent.setup();
     mock.onPost("/auth/logout").reply(200, {
       data: {
@@ -1140,8 +1546,7 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
 
     await waitFor(() => {
-      expect(window.localStorage.getItem("chatai.accessToken")).toBeNull();
-      expect(window.localStorage.getItem("chatai.refreshToken")).toBeNull();
+      expect(mock.history.post[0]?.url).toBe("/auth/logout");
     });
     expect(mock.history.post).toHaveLength(1);
     expect(mock.history.post[0]?.url).toBe("/auth/logout");

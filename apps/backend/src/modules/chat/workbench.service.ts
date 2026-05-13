@@ -15,6 +15,7 @@ import type {
   WorkbenchSendMessageResponse,
   WorkbenchSubUserDto,
   WorkbenchTakeOverSeatResponse,
+  WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import {
   ForbiddenError,
@@ -22,7 +23,10 @@ import {
   UnauthorizedError,
 } from "../../shared/errors.js";
 import type { WorkbenchJavaClient } from "./workbench-java-client.js";
-import type { WorkbenchRepository } from "./workbench-repository.js";
+import {
+  parseMySqlId,
+  type WorkbenchRepository,
+} from "./workbench-repository.js";
 
 export type WorkbenchService = {
   deleteConversation(
@@ -43,6 +47,10 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchGroupMembersResponse> | WorkbenchGroupMembersResponse;
+  getUploadCredential(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchUploadCredentialResponse> | WorkbenchUploadCredentialResponse;
   getSeats(subUserId: string): Promise<WorkbenchSeatDto[]> | WorkbenchSeatDto[];
   markConversationRead(
     subUserId: string,
@@ -159,6 +167,20 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return groupMembers;
   }
 
+  async getUploadCredential(subUserId: string, conversationId: string) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    return this.javaClient.getUploadCredential({
+      uid: conversation.uid,
+    });
+  }
+
   async markConversationRead(subUserId: string, conversationId: string) {
     const conversation = await this.getOperableConversation(subUserId, conversationId);
 
@@ -267,9 +289,40 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {
+    const subUserNumericId = parseMySqlId(subUserId);
+
+    if (subUserNumericId == null) {
+      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
+    }
+
     await this.assertSeatAccess(subUserId, seatId);
 
-    return this.javaClient.takeOverSeat({ seatId, subUserId });
+    const seat = await this.repository.getSeatOperateScope(seatId);
+
+    if (!seat) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    await this.javaClient.takeOverSeat({
+      platform: seat.platform,
+      subId: subUserNumericId,
+      thirdUserId: seat.thirdUserId,
+      uid: seat.uid,
+    });
+    await this.repository.updateSeatHostSubUser({
+      platform: seat.platform,
+      seatId: seat.seatId,
+      subUserId,
+      uid: seat.uid,
+    });
+
+    const nextSeat = await this.repository.getSeat(seatId);
+
+    if (!nextSeat) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    return { seat: nextSeat };
   }
 
   async unpinConversation(subUserId: string, conversationId: string) {

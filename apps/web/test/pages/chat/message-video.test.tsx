@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage, VideoMessageContent } from "@/pages/chat/chat-types";
@@ -188,6 +188,70 @@ describe("MessageContentRenderer video messages", () => {
     );
 
     expect(screen.queryByTestId("video-duration")).not.toBeInTheDocument();
+  });
+
+  it("renders a fallback frame when the video cover image URL is empty", () => {
+    render(
+      <VideoMessageCard
+        content={{
+          ...createVideoContent({
+            alt: "空封面视频",
+            durationLabel: "1:01",
+            height: 360,
+            width: 640,
+          }),
+          coverImageUrl: "   ",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "视频封面不可用：空封面视频" }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "空封面视频" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "播放视频：空封面视频" })).toBeInTheDocument();
+    expect(screen.getByText("1:01")).toBeInTheDocument();
+  });
+
+  it("renders a fallback frame when the video cover image URL is missing", () => {
+    render(
+      <VideoMessageCard
+        content={{
+          ...createVideoContent({
+            alt: "缺少封面字段视频",
+            durationLabel: "1:01",
+            height: 360,
+            width: 640,
+          }),
+          coverImageUrl: undefined,
+        } as unknown as VideoMessageContent}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "视频封面不可用：缺少封面字段视频" }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "缺少封面字段视频" })).not.toBeInTheDocument();
+  });
+
+  it("renders a fallback frame when the video cover image fails to load", () => {
+    render(
+      <VideoMessageCard
+        content={createVideoContent({
+          alt: "加载失败视频封面",
+          durationLabel: "1:01",
+          height: 360,
+          width: 640,
+        })}
+      />,
+    );
+
+    fireEvent.error(screen.getByRole("img", { name: "加载失败视频封面" }));
+
+    expect(screen.getByRole("img", { name: "视频封面不可用：加载失败视频封面" }))
+      .toBeInTheDocument();
+    expect(screen.getByTestId("video-cover-fallback")).toHaveClass("h-[120px]", "w-[120px]");
+    expect(screen.queryByRole("img", { name: "加载失败视频封面" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "播放视频：加载失败视频封面" })).toBeInTheDocument();
+    expect(screen.getByText("1:01")).toBeInTheDocument();
   });
 });
 

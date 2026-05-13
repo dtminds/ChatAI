@@ -13,6 +13,7 @@ import type {
   EmployeeProfile,
   Message,
   MessageStatus,
+  QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 
 type ChatMessageContent = ChatMessage["content"];
@@ -287,6 +288,13 @@ function adaptChatMessageContent(
         title: String(content.title ?? ""),
         type: "solitaire",
       };
+    case "quote":
+      return {
+        quoteMsgId: String(content.quoteMsgId ?? ""),
+        quotedMessage: adaptQuotedMessagePreview(content.quotedMessage),
+        text: String(content.text ?? ""),
+        type: "quote",
+      };
     case "text":
     case "system":
     default:
@@ -295,6 +303,47 @@ function adaptChatMessageContent(
         type: "text",
       };
   }
+}
+
+function adaptQuotedMessagePreview(value: unknown): QuotedMessagePreviewContent | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const contentType = String(value.contentType ?? "");
+
+  if (!isQuotedPreviewContentType(contentType)) {
+    return undefined;
+  }
+
+  return {
+    contentType,
+    fallbackText: asOptionalString(value.fallbackText),
+    imageUrl: asOptionalString(value.imageUrl),
+    senderName: String(value.senderName ?? ""),
+    text: asOptionalString(value.text),
+    title: asOptionalString(value.title),
+  };
+}
+
+function isQuotedPreviewContentType(
+  value: string,
+): value is QuotedMessagePreviewContent["contentType"] {
+  return [
+    "system",
+    "text",
+    "voice",
+    "image",
+    "video",
+    "file",
+    "h5",
+    "contact-card",
+    "location",
+    "solitaire",
+    "sphfeed",
+    "mini-program",
+    "quote",
+  ].includes(value);
 }
 
 function adaptMessageStatus(status: WorkbenchMessageDto["status"]): MessageStatus {

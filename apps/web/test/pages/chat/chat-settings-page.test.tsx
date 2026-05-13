@@ -34,11 +34,23 @@ function renderRoute(initialEntry = "/chat") {
   return router;
 }
 
+function mockAuthenticatedSession() {
+  mock.onGet("/auth/session").reply(200, {
+    data: {
+      subUser: {
+        displayName: "客服一号",
+        subUserId: "101",
+      },
+    },
+    success: true,
+  });
+}
+
 describe("Chat settings pages", () => {
   beforeEach(() => {
-    window.localStorage.setItem("chatai.refreshToken", "test-refresh-token");
     resetWorkbenchService();
     mock.reset();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sub-accounts").reply(200, {
       data: {
         seats: [
@@ -286,7 +298,7 @@ describe("Chat settings pages", () => {
     expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "在线状态" })).toBeInTheDocument();
-    expect(screen.getByText("德瑞可")).toBeInTheDocument();
+    expect(await screen.findByText("德瑞可")).toBeInTheDocument();
     expect(screen.getByText("离线")).toBeInTheDocument();
     expect(screen.getByText("念都堂")).toBeInTheDocument();
     expect(screen.getByText("在线")).toBeInTheDocument();
@@ -404,8 +416,12 @@ describe("Chat settings pages", () => {
     expect(within(sidebarTable).queryByRole("columnheader", { name: "状态" })).not.toBeInTheDocument();
     const sidebarPreview = screen.getByRole("complementary", { name: "聊天工具栏示意图" });
     expect(sidebarPreview).toBeInTheDocument();
+    expect(within(sidebarPreview).getByTestId("sidebar-preview-note-icon")).toHaveAttribute(
+      "data-icon-name",
+      "alert-circle",
+    );
     expect(within(sidebarPreview).queryByText("基础信息")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "拖动 发起收款 调整排序" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "拖动 发起收款 调整排序" })).toBeInTheDocument();
     expect(within(sidebarTable).queryByText("https://example.com/card")).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByText("启用")).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByText("停用")).not.toBeInTheDocument();
@@ -496,6 +512,7 @@ describe("Chat settings pages", () => {
 
   it("keeps sidebar preview fallback ordering aligned with numeric database ids", async () => {
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
         items: [
@@ -519,9 +536,10 @@ describe("Chat settings pages", () => {
     });
     renderRoute("/chat/settings/sidebar");
 
-    const fallbackPreviewItems = within(
+    const sidebarPreview = within(
       await screen.findByRole("complementary", { name: "聊天工具栏示意图" }),
-    ).getAllByText(/号页面/);
+    );
+    const fallbackPreviewItems = await sidebarPreview.findAllByText(/号页面/);
 
     expect(fallbackPreviewItems.map((item) => item.textContent)).toEqual([
       "二号页面",
@@ -532,6 +550,7 @@ describe("Chat settings pages", () => {
   it("limits sidebar item creation by count and name length", async () => {
     const user = userEvent.setup();
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
         items: Array.from({ length: 10 }, (_, index) => ({
@@ -546,11 +565,12 @@ describe("Chat settings pages", () => {
     });
     renderRoute("/chat/settings/sidebar");
 
-    expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "打开 页面10 操作菜单" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新增页面" })).toBeDisabled();
 
     cleanup();
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
         items: Array.from({ length: 9 }, (_, index) => ({
@@ -565,11 +585,12 @@ describe("Chat settings pages", () => {
     });
     renderRoute("/chat/settings/sidebar");
 
-    expect(await screen.findByRole("heading", { name: "侧边栏" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "打开 页面9 操作菜单" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新增页面" })).toBeEnabled();
 
     cleanup();
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
         items: [],
@@ -797,7 +818,7 @@ describe("Chat settings pages", () => {
 
     expect(await screen.findByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
     expect(
-      screen.getByText("客服一号（接管中），主账号，客服二号等5人"),
+      await screen.findByText("客服一号（接管中），主账号，客服二号等5人"),
     ).toBeInTheDocument();
     expect(screen.getByText("未关联")).toBeInTheDocument();
 
@@ -898,7 +919,7 @@ describe("Chat settings pages", () => {
     renderRoute("/chat/settings/sub-accounts");
 
     expect(await screen.findByRole("table", { name: "子账号列表" })).toBeInTheDocument();
-    expect(screen.getByLabelText("关联托管账号 德瑞可")).toBeInTheDocument();
+    expect(await screen.findByLabelText("关联托管账号 德瑞可")).toBeInTheDocument();
     expect(screen.getByLabelText("关联托管账号 念都堂")).toBeInTheDocument();
     expect(screen.getByLabelText("关联托管账号 中台号")).toBeInTheDocument();
     expect(screen.getByText("+1")).toBeInTheDocument();
@@ -932,6 +953,7 @@ describe("Chat settings pages", () => {
   it("shows a single related WeCom seat as one avatar without a total count", async () => {
     const user = userEvent.setup();
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sub-accounts").reply(200, {
       data: {
         seats: [
@@ -972,6 +994,7 @@ describe("Chat settings pages", () => {
 
   it("centers the sub-account loading state with the shared loader", async () => {
     mock.resetHandlers();
+    mockAuthenticatedSession();
     mock.onGet("/server/settings/sub-accounts").reply(
       () => new Promise(() => undefined),
     );

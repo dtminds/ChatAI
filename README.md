@@ -85,13 +85,13 @@ pnpm dev
 访问：
 
 ```text
-http://chat-dev.bork.com.cn:8086/chat
+http://chat-dev.bokr.com.cn:8086/chat
 ```
 
 如果本机没有绑定域名，先在 hosts 里加：
 
 ```text
-127.0.0.1 chat-dev.bork.com.cn
+127.0.0.1 chat-dev.bokr.com.cn
 ```
 
 ### 3. 本地前端连测试环境 API

@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, SVGProps } from "react";
 import type { SphFeedMessageContent } from "@/pages/chat/chat-types";
 import { getSafeMessageUrl } from "@/pages/chat/components/message/url";
 
@@ -79,11 +79,12 @@ const sphFeedMediaStyle = {
   width: "217px",
 } satisfies CSSProperties;
 
-function SphFeedMark({ className }: { className?: string }) {
+export function SphFeedMark({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
       aria-hidden="true"
       className={className}
+      {...props}
       viewBox="0 0 1024 1024"
     >
       <path

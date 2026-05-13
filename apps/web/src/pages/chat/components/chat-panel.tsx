@@ -32,6 +32,7 @@ type ChatPanelProps = {
   inputEnterBehavior: InputEnterBehavior;
   isConversationLoading: boolean;
   isEmojiPickerOpen: boolean;
+  isSendingDraft: boolean;
   isResizingCustomerPanel: boolean;
   mentionInsertPosition: MentionInsertPosition;
   messages: Message[];
@@ -39,6 +40,7 @@ type ChatPanelProps = {
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onComposerSegmentsChange: (segments: ComposerSegment[]) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
@@ -47,6 +49,7 @@ type ChatPanelProps = {
   onRefreshGroupMembers: () => void;
   onSelectMentionMember: (member: GroupMember, triggerStart: number, triggerEnd: number) => void;
   onLoadOlderMessages: () => void;
+  onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   onSendDraft: (segments: ComposerSegment[]) => void;
@@ -72,6 +75,7 @@ export function ChatPanel({
   inputEnterBehavior,
   isConversationLoading,
   isEmojiPickerOpen,
+  isSendingDraft,
   isResizingCustomerPanel,
   mentionInsertPosition,
   messages,
@@ -79,6 +83,7 @@ export function ChatPanel({
   hasMoreHistory,
   historyLoadLabel,
   onCustomerPanelResizeStart,
+  onComposerSegmentsChange,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
@@ -87,6 +92,7 @@ export function ChatPanel({
   onRefreshGroupMembers,
   onSelectMentionMember,
   onLoadOlderMessages,
+  onOpenQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
   onSendDraft,
@@ -113,6 +119,7 @@ export function ChatPanel({
             messages={messages}
             messageViewportRef={messageViewportRef}
             onLoadOlderMessages={onLoadOlderMessages}
+            onOpenQuotedMessage={onOpenQuotedMessage}
             onMessageViewportScroll={onMessageViewportScroll}
             onRetryMessage={onRetryMessage}
           />
@@ -150,6 +157,7 @@ export function ChatPanel({
               isGroupConversation={activeConversation?.mode === "group"}
               inputEnterBehavior={inputEnterBehavior}
               isEmojiPickerOpen={isEmojiPickerOpen}
+              isSending={isSendingDraft}
               mentionInsertPosition={mentionInsertPosition}
               onDraftChange={onDraftChange}
               onEmojiPickerOpenChange={onEmojiPickerOpenChange}
@@ -157,6 +165,7 @@ export function ChatPanel({
               onMentionInsertPositionChange={onMentionInsertPositionChange}
               onRemoveMentionMember={onRemoveMentionMember}
               onSelectMentionMember={onSelectMentionMember}
+              onSegmentsChange={onComposerSegmentsChange}
               onSendDraft={onSendDraft}
               selectedMentionMembers={selectedMentionMembers}
               placeholder={composerPlaceholder}

@@ -4,6 +4,118 @@ import type { WorkbenchJavaClient } from "../../../src/modules/chat/workbench-ja
 import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
 
 describe("MysqlWorkbenchService", () => {
+  it("takes over an accessible seat through Java and persists host sub-user locally", async () => {
+    const javaClient = createJavaClient();
+    const getSeat = vi.fn().mockResolvedValue({
+      avatar: "",
+      description: "私域客户管理",
+      hostSubUserId: "101",
+      lastMessageTime: 123,
+      loginStatus: "online",
+      name: "德瑞可",
+      operatorName: "小可",
+      phone: "13296712905",
+      seatId: "12",
+      thirdUserId: "zhangsan",
+      unreadCount: 6,
+    });
+    const updateSeatHostSubUser = vi.fn().mockResolvedValue(undefined);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeat,
+        getSeatOperateScope: vi.fn().mockResolvedValue({
+          platform: 5,
+          seatId: "12",
+          thirdUserId: "zhangsan",
+          uid: 9001,
+        }),
+        updateSeatHostSubUser,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.takeOverSeat("101", "12")).resolves.toEqual({
+      seat: expect.objectContaining({
+        hostSubUserId: "101",
+        seatId: "12",
+      }),
+    });
+    expect(javaClient.takeOverSeat).toHaveBeenCalledWith({
+      platform: 5,
+      subId: 101,
+      thirdUserId: "zhangsan",
+      uid: 9001,
+    });
+    expect(updateSeatHostSubUser).toHaveBeenCalledWith({
+      platform: 5,
+      seatId: "12",
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("rejects takeover when the sub-user cannot access the seat", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(false),
+        getSeatOperateScope: vi.fn(),
+        updateSeatHostSubUser: vi.fn(),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.takeOverSeat("101", "12")).rejects.toMatchObject({
+      code: "SEAT_NOT_FOUND",
+      statusCode: 404,
+    });
+    expect(javaClient.takeOverSeat).not.toHaveBeenCalled();
+  });
+
+  it("rejects takeover when the seat id cannot be found", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeatOperateScope: vi.fn().mockResolvedValue(undefined),
+        updateSeatHostSubUser: vi.fn(),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.takeOverSeat("101", "12")).rejects.toMatchObject({
+      code: "SEAT_NOT_FOUND",
+      statusCode: 404,
+    });
+    expect(javaClient.takeOverSeat).not.toHaveBeenCalled();
+  });
+
+  it.each(["sub-user-001", "0123", " 123"])(
+    "rejects takeover when the sub-user id is not a strict MySQL id: %s",
+    async (subUserId) => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        getSeatOperateScope: vi.fn().mockResolvedValue({
+          platform: 5,
+          seatId: "12",
+          thirdUserId: "zhangsan",
+          uid: 9001,
+        }),
+        updateSeatHostSubUser: vi.fn(),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.takeOverSeat(subUserId, "12")).rejects.toMatchObject({
+      code: "SUB_USER_NOT_FOUND",
+      statusCode: 404,
+    });
+    expect(javaClient.takeOverSeat).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects mark-read when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
@@ -296,16 +408,55 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
   });
+
+  it("gets upload credentials for an accessible conversation tenant", async () => {
+    const javaClient = createJavaClient();
+    const uploadCredential = {
+      allowPerfixs: ["chat-images/"],
+      bucket: "examplebucket-1250000000",
+      credentials: {
+        sessionToken: "session-token",
+        tmpSecretId: "tmp-secret-id",
+        tmpSecretKey: "tmp-secret-key",
+        token: "token",
+      },
+      expiration: "2026-05-13T12:00:00Z",
+      expiredTime: 1778673600,
+      region: "ap-guangzhou",
+      requestId: "request-001",
+      startTime: 1778670000,
+    };
+    vi.mocked(javaClient.getUploadCredential).mockResolvedValue(uploadCredential);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getUploadCredential("101", "88")).resolves.toEqual(uploadCredential);
+    expect(javaClient.getUploadCredential).toHaveBeenCalledWith({
+      uid: 9001,
+    });
+  });
 });
 
 function createJavaClient(): WorkbenchJavaClient {
   return {
     deleteConversation: vi.fn().mockResolvedValue(undefined),
+    getUploadCredential: vi.fn(),
     markConversationRead: vi.fn().mockResolvedValue(undefined),
     markConversationUnread: vi.fn().mockResolvedValue(undefined),
     pinConversation: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi.fn(),
-    takeOverSeat: vi.fn(),
+    takeOverSeat: vi.fn().mockResolvedValue(undefined),
     unpinConversation: vi.fn().mockResolvedValue(undefined),
   };
 }

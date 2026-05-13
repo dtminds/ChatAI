@@ -29,7 +29,7 @@ import type { RequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { AltchaField } from "./altcha-field";
 import { login } from "./auth-service";
-import { storeAuthTokens } from "./auth-tokens";
+import { notifyAuthSessionChanged } from "./auth-tokens";
 
 /** 企业微信语音示例：OSS 上常见 .amr 后缀实际为 Tencent SILK，经后端公开转码接口输出 WAV 后播放 */
 const LOGIN_WECOM_VOICE_URL =
@@ -69,9 +69,9 @@ function LoginForm({ className, ...props }: ComponentProps<"div">) {
     setIsSubmitting(true);
 
     try {
-      const response = await login({ account, altcha, password });
+      await login({ account, altcha, password });
 
-      storeAuthTokens(response.data);
+      notifyAuthSessionChanged();
       navigate("/chat", { replace: true });
     } catch (error) {
       setErrorMessage((error as RequestError).message ?? "登录失败，请重试");

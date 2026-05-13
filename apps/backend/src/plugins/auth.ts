@@ -1,8 +1,13 @@
 import fastifyJwt from "@fastify/jwt";
 import fp from "fastify-plugin";
+import type { FastifyRequest } from "fastify";
 import type { JwtUser } from "@chatai/contracts";
-import { UnauthorizedError } from "../shared/errors.js";
+import { ForbiddenError, UnauthorizedError } from "../shared/errors.js";
 import { verifyAccessSession } from "../modules/auth/auth.service.js";
+import { ACCESS_TOKEN_COOKIE_NAME, readAuthCookie } from "../modules/auth/auth-cookies.js";
+
+const mutatingMethods = new Set(["DELETE", "PATCH", "POST", "PUT"]);
+const expectedWorkbenchClient = "chat-ai-ui";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
@@ -50,8 +55,17 @@ export const authPlugin = fp(async (app) => {
   });
 
   app.decorate("authenticate", async (request) => {
+    let authenticatedWithCookie = false;
+
     try {
-      await request.jwtVerify();
+      const accessToken = readAuthCookie(request, ACCESS_TOKEN_COOKIE_NAME);
+
+      if (accessToken && !request.headers.authorization) {
+        request.user = app.jwt.verify<JwtUser>(accessToken);
+        authenticatedWithCookie = true;
+      } else {
+        await request.jwtVerify();
+      }
     } catch {
       throw new UnauthorizedError();
     }
@@ -59,5 +73,17 @@ export const authPlugin = fp(async (app) => {
     if (!app.db || !(await verifyAccessSession(app.db, request.user))) {
       throw new UnauthorizedError();
     }
+
+    if (authenticatedWithCookie && isMutatingRequest(request) && !hasWorkbenchClientHeader(request)) {
+      throw new ForbiddenError("CSRF_PROTECTION_FAILED", "请求来源校验失败");
+    }
   });
 });
+
+function isMutatingRequest(request: FastifyRequest) {
+  return mutatingMethods.has(request.method.toUpperCase());
+}
+
+function hasWorkbenchClientHeader(request: FastifyRequest) {
+  return request.headers["x-workbench-client"] === expectedWorkbenchClient;
+}

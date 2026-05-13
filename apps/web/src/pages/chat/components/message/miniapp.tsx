@@ -1,13 +1,20 @@
-import { AiBrowserIcon, AiFileIcon } from "@hugeicons/core-free-icons";
+import { AiBrowserIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 import type { MiniProgramMessageContent } from "@/pages/chat/chat-types";
+import {
+  LoadableMessageImage,
+  MessageMediaFallback,
+} from "@/pages/chat/components/message/media-fallback";
 
 type MiniAppMessageCardProps = {
   content: MiniProgramMessageContent;
 };
 
 export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
+  const coverImageUrl = content.coverImageUrl?.trim();
+
   return (
     <div className="w-[240px] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5">
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
@@ -33,17 +40,16 @@ export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
       </div>
 
       <div className="mt-2.5 aspect-[5/4] overflow-hidden rounded-[4px] bg-surface-muted">
-        {content.coverImageUrl ? (
-          <img
+        {coverImageUrl ? (
+          <LoadableMessageImage
             alt={content.title}
             className="block h-full w-full object-cover"
+            fallback={<MiniProgramCoverFallback title={content.title} />}
             loading="lazy"
-            src={content.coverImageUrl}
+            src={coverImageUrl}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-muted-foreground/45">
-            <HugeiconsIcon icon={AiFileIcon} size={36} strokeWidth={1.6} />
-          </div>
+          <MiniProgramCoverFallback title={content.title} />
         )}
       </div>
 
@@ -55,12 +61,24 @@ export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
   );
 }
 
-function MiniProgramMark({ className }: { className?: string }) {
+function MiniProgramCoverFallback({ title }: { title: string }) {
+  return (
+    <MessageMediaFallback
+      className="flex h-full w-full items-center justify-center bg-muted-foreground/5 text-muted-foreground/30"
+      iconSize={36}
+      iconTestId="mini-program-cover-fallback-icon"
+      label={`小程序封面不可用：${title}`}
+    />
+  );
+}
+
+export function MiniProgramMark({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
       aria-hidden="true"
       className={cn("h-[18px] w-[18px]", className)}
       data-testid="mini-program-mark"
+      {...props}
       viewBox="0 0 1024 1024"
     >
       <path

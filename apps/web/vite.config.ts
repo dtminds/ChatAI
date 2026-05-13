@@ -68,6 +68,7 @@ export function getViteDevServerConfig(
   const env = readEnv(input, mode, envDir);
 
   return {
+    allowedHosts: ["chat-dev.bokr.com.cn"],
     host: env.VITE_DEV_SERVER_HOST ?? "127.0.0.1",
     port: parsePort(env.VITE_DEV_SERVER_PORT, 8086),
     proxy: buildDevProxyConfig(env),

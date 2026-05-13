@@ -1,4 +1,5 @@
 name: Sync GitHub to Gitee
+
 on:
   push:
     branches: [main, master]
@@ -8,18 +9,21 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Fix Git ownership
-        run: git config --global --add safe.directory /github/workspace
-
-      - name: Sync to Gitee
-        uses: wearerequired/git-mirror-action@v1
+      - name: Mirror to Gitee
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.GITEE_RSA_PRIVATE_KEY }}
-        with:
-          source-repo: https://github.com/dtminds/ChatAI.git
-          destination-repo: git@gitee.com:dtminds/ChatAI.git
+          GITEE_KEY: ${{ secrets.GITEE_RSA_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 1. 配置 Gitee SSH 认证
+          mkdir -p ~/.ssh
+          echo "$GITEE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H gitee.com >> ~/.ssh/known_hosts
+          
+          # 2. 从 GitHub mirror clone（自动使用 GITHUB_TOKEN，支持私有仓库）
+          git clone --mirror https://x-access-token:${GITHUB_TOKEN}@github.com/dtminds/ChatAI.git repo.git
+          
+          # 3. 推送到 Gitee（全量同步分支+标签）
+          cd repo.git
+          git remote set-url origin git@gitee.com:dtminds/ChatAI.git
+          git push --mirror

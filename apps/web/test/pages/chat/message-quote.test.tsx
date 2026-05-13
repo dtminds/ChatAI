@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "@/pages/chat/chat-types";
@@ -68,6 +68,52 @@ describe("MessageContentRenderer quote messages", () => {
     expect(image).toHaveClass("aspect-square", "object-cover");
   });
 
+  it("renders a fallback thumbnail when a quoted image fails to load", () => {
+    render(
+      <MessageContentRenderer
+        isAgent={false}
+        message={createQuoteMessage({
+          quoteMsgId: "538",
+          quotedMessage: {
+            contentType: "image",
+            imageUrl: "https://cdn.example.com/broken.jpg",
+            senderName: "Alex Sender",
+          },
+          text: "这是什么活动",
+          type: "quote",
+        })}
+      />,
+    );
+
+    fireEvent.error(screen.getByRole("img", { name: "引用图片：Alex Sender" }));
+
+    expect(screen.getByRole("img", { name: "引用图片不可用" })).toBeInTheDocument();
+    expect(screen.getByTestId("quote-image-fallback")).toHaveClass("aspect-square", "size-10");
+    expect(screen.queryByRole("img", { name: "引用图片：Alex Sender" })).not.toBeInTheDocument();
+  });
+
+  it("renders a fallback thumbnail when a quoted image URL is empty", () => {
+    render(
+      <MessageContentRenderer
+        isAgent={false}
+        message={createQuoteMessage({
+          quoteMsgId: "538",
+          quotedMessage: {
+            contentType: "image",
+            imageUrl: "   ",
+            senderName: "Alex Sender",
+          },
+          text: "这是什么活动",
+          type: "quote",
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "引用图片不可用" })).toBeInTheDocument();
+    expect(screen.getByTestId("quote-image-fallback")).toHaveClass("aspect-square", "size-10");
+    expect(screen.queryByRole("img", { name: "引用图片：Alex Sender" })).not.toBeInTheDocument();
+  });
+
   it("renders a generic quoted-message preview with icon, title, and image", () => {
     render(
       <MessageContentRenderer
@@ -99,6 +145,34 @@ describe("MessageContentRenderer quote messages", () => {
       "src",
       "https://cdn.example.com/avatar.png",
     );
+  });
+
+  it("renders a fallback thumbnail when a generic quoted preview image fails to load", () => {
+    render(
+      <MessageContentRenderer
+        isAgent={true}
+        message={createQuoteMessage({
+          quoteMsgId: "538",
+          quotedMessage: {
+            contentType: "contact-card",
+            imageUrl: "https://cdn.example.com/broken-avatar.png",
+            senderName: "Casey Sender",
+            title: "binarywang",
+          },
+          text: "引用名片",
+          type: "quote",
+        })}
+      />,
+    );
+
+    fireEvent.error(screen.getByRole("img", { name: "引用预览：binarywang" }));
+
+    expect(screen.getByRole("img", { name: "引用预览图片不可用" })).toBeInTheDocument();
+    expect(screen.getByTestId("quote-generic-image-fallback")).toHaveClass(
+      "aspect-square",
+      "size-10",
+    );
+    expect(screen.queryByRole("img", { name: "引用预览：binarywang" })).not.toBeInTheDocument();
   });
 
   it("uses original component marks for mini program, sphfeed, and voice previews", () => {
@@ -240,6 +314,55 @@ describe("MessageContentRenderer quote messages", () => {
       "data-icon-name",
       "play-circle-02",
     );
+  });
+
+  it("renders a fallback thumbnail when a quoted video has no image", () => {
+    render(
+      <MessageContentRenderer
+        isAgent={true}
+        message={createQuoteMessage({
+          quoteMsgId: "video-without-cover",
+          quotedMessage: {
+            contentType: "video",
+            imageUrl: "   ",
+            senderName: "Support Agent",
+            title: "视频",
+          },
+          text: "引用视频",
+          type: "quote",
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "引用视频封面不可用：视频" }))
+      .toBeInTheDocument();
+    expect(screen.getByTestId("quote-video-fallback")).toHaveClass("aspect-square", "size-10");
+    expect(screen.queryByRole("img", { name: "引用预览：视频" })).not.toBeInTheDocument();
+  });
+
+  it("renders a quoted video cover image when it is available", () => {
+    render(
+      <MessageContentRenderer
+        isAgent={true}
+        message={createQuoteMessage({
+          quoteMsgId: "video-with-cover",
+          quotedMessage: {
+            contentType: "video",
+            imageUrl: "https://cdn.example.com/video-cover.jpg",
+            senderName: "Support Agent",
+            title: "视频",
+          },
+          text: "引用视频",
+          type: "quote",
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "引用预览：视频" })).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/video-cover.jpg",
+    );
+    expect(screen.queryByTestId("quote-video-fallback")).not.toBeInTheDocument();
   });
 
   it("opens the quoted message when the preview is clicked or activated by keyboard", async () => {

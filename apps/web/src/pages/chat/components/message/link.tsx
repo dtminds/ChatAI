@@ -1,6 +1,8 @@
-import { AnalysisTextLinkIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import type { H5CardMessageContent } from "@/pages/chat/chat-types";
+import {
+  LoadableMessageImage,
+  MessageMediaFallback,
+} from "@/pages/chat/components/message/media-fallback";
 import { getSafeMessageUrl } from "@/pages/chat/components/message/url";
 
 type LinkMessageCardProps = {
@@ -9,29 +11,35 @@ type LinkMessageCardProps = {
 
 export function LinkMessageCard({ content }: LinkMessageCardProps) {
   const safeUrl = getSafeMessageUrl(content.url);
+  const previewImageUrl = content.previewImageUrl?.trim();
   const card = (
-    <>
+    <div
+      className="flex flex-col gap-2"
+      data-testid="link-card-content"
+    >
       <p className="line-clamp-1 text-[14px] font-semibold leading-5 text-foreground">
         {content.title}
       </p>
-      <div className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-2.5">
+      <div
+        className="grid grid-cols-[minmax(0,1fr)_48px] items-start gap-2.5"
+        data-testid="link-card-body"
+      >
         <p className="line-clamp-2 text-[12px] leading-5 text-muted-foreground">
           {content.description}
         </p>
-        {content.previewImageUrl ? (
-          <img
+        {previewImageUrl ? (
+          <LoadableMessageImage
             alt={content.title}
             className="size-12 rounded-[8px] object-cover"
+            fallback={<LinkPreviewFallback title={content.title} />}
             loading="lazy"
-            src={content.previewImageUrl}
+            src={previewImageUrl}
           />
         ) : (
-          <div className="flex size-12 items-center justify-center rounded-[8px] bg-primary/10 text-primary">
-            <HugeiconsIcon icon={AnalysisTextLinkIcon} size={18} strokeWidth={1.8} />
-          </div>
+          <LinkPreviewFallback title={content.title} />
         )}
       </div>
-    </>
+    </div>
   );
 
   if (safeUrl) {
@@ -51,5 +59,16 @@ export function LinkMessageCard({ content }: LinkMessageCardProps) {
     <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3">
       {card}
     </div>
+  );
+}
+
+function LinkPreviewFallback({ title }: { title: string }) {
+  return (
+    <MessageMediaFallback
+      className="flex size-12 items-center justify-center rounded-[8px] bg-muted-foreground/5 text-muted-foreground/30"
+      iconTestId="link-preview-fallback-icon"
+      iconSize={18}
+      label={`链接封面不可用：${title}`}
+    />
   );
 }

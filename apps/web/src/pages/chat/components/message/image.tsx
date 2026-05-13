@@ -1,5 +1,3 @@
-import { ImageNotFound01Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 import {
   Dialog,
@@ -8,6 +6,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { ImageMessageContent } from "@/pages/chat/chat-types";
+import {
+  LoadableMessageImage,
+  MessageMediaFallback,
+} from "@/pages/chat/components/message/media-fallback";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 
 type ImageMessageCardProps = {
@@ -20,17 +22,7 @@ export function ImageMessageCard({ content }: ImageMessageCardProps) {
 
   if (!imageUrl) {
     return (
-      <div
-        aria-label={`图片不可用：${content.alt}`}
-        className="inline-flex h-[120px] w-[120px] items-center justify-center rounded-[8px] border border-border/40 bg-muted-foreground/5 text-muted-foreground/30"
-        role="img"
-      >
-        <HugeiconsIcon
-          aria-hidden="true"
-          icon={ImageNotFound01Icon}
-          size={24}
-        />
-      </div>
+      <ImageMessageFallback alt={content.alt} />
     );
   }
 
@@ -41,15 +33,26 @@ export function ImageMessageCard({ content }: ImageMessageCardProps) {
       triggerClassName="relative isolate inline-block overflow-hidden rounded-[8px] border border-border/40 bg-muted-foreground/10 p-0 outline-none transition-[border-color,filter] hover:brightness-[0.98] focus-visible:ring-4 focus-visible:ring-ring/25"
       triggerStyle={imageConstraintStyle}
     >
-      <img
+      <LoadableMessageImage
         alt={content.alt}
         className="block h-auto max-h-[360px] w-auto max-w-full object-cover"
+        fallback={<ImageMessageFallback alt={content.alt} />}
         height={mediaSize?.height}
         loading="lazy"
         src={getOptimizedMessageImageUrl(imageUrl)}
         width={mediaSize?.width}
       />
     </ImagePreviewDialog>
+  );
+}
+
+function ImageMessageFallback({ alt }: { alt: string }) {
+  return (
+    <MessageMediaFallback
+      className="inline-flex h-[120px] w-[120px] items-center justify-center rounded-[8px] border border-border/40 bg-muted-foreground/5 text-muted-foreground/30"
+      label={`图片不可用：${alt}`}
+      testId="image-message-fallback"
+    />
   );
 }
 

@@ -176,6 +176,14 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("keeps overflowing composer content scrollable inside the editor", async () => {
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    expect(composer).toHaveClass("max-h-80", "overflow-y-auto");
+  });
+
   it("removes a composer image from its close button", async () => {
     const clipboardImage = new File(["image-bytes"], "clipboard.png", {
       type: "image/png",

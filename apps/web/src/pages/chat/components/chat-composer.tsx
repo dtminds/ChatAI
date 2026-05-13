@@ -592,7 +592,7 @@ export function ChatComposer({
                 <ContentEditable
                   aria-label={placeholder}
                   aria-multiline="true"
-                  className="chat-composer-textarea min-h-28 rounded-none border-0 bg-transparent py-1 pl-0 pr-0.5 text-[14px] leading-6 shadow-none outline-none focus-visible:ring-0"
+                  className="chat-composer-textarea min-h-28 max-h-80 overflow-y-auto rounded-none border-0 bg-transparent py-1 pl-0 pr-0.5 text-[14px] leading-6 shadow-none outline-none focus-visible:ring-0"
                   data-testid="chat-composer-editor"
                 />
               }

@@ -3,12 +3,14 @@ import { $getRoot, createEditor } from "lexical";
 import {
   $exportComposerSegments,
   $insertComposerImage,
+  $insertComposerMention,
   $insertComposerText,
   $removeComposerTextRange,
 } from "@/pages/chat/components/composer/lexical-utils";
 import {
   ComposerEmojiNode,
   ComposerImageNode,
+  ComposerMentionNode,
 } from "@/pages/chat/components/composer/lexical-nodes";
 import {
   normalizeComposerSegments,
@@ -19,7 +21,7 @@ describe("composer lexical utils", () => {
   it("removes mention trigger text without dropping images or shifting past emoji tokens", () => {
     const editor = createEditor({
       namespace: "composer-lexical-utils-test",
-      nodes: [ComposerEmojiNode, ComposerImageNode],
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
       onError(error) {
         throw error;
       },
@@ -57,6 +59,38 @@ describe("composer lexical utils", () => {
         type: "image",
         url: "data:image/png;base64,a",
         width: undefined,
+      },
+    ]);
+  });
+
+  it("exports mention tokens with member ids", () => {
+    const editor = createEditor({
+      namespace: "composer-mention-utils-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let segments: ComposerSegment[] = [];
+
+    editor.update(
+      () => {
+        $insertComposerText("请 ");
+        $insertComposerMention({
+          displayName: "小林",
+          memberId: "member-001",
+        });
+        $insertComposerText(" 看一下");
+        segments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(normalizeComposerSegments(segments)).toEqual([
+      {
+        mentionMemberIds: ["member-001"],
+        text: "请 @小林 看一下",
+        type: "text",
       },
     ]);
   });

@@ -47,6 +47,7 @@ const SendMessageBodySchema = Type.Object({
   conversationId: Type.String(),
   mention: Type.Optional(
     Type.Object({
+      all: Type.Optional(Type.Boolean()),
       location: Type.Union([Type.Literal("start"), Type.Literal("end")]),
       memberIds: Type.Array(Type.String()),
     }),

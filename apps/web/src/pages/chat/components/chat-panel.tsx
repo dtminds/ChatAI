@@ -15,7 +15,6 @@ import type {
   Message,
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
-import type { MentionInsertPosition } from "@/pages/chat/components/chat-composer";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
 type ChatPanelProps = {
@@ -34,9 +33,7 @@ type ChatPanelProps = {
   isEmojiPickerOpen: boolean;
   isSendingDraft: boolean;
   isResizingCustomerPanel: boolean;
-  mentionInsertPosition: MentionInsertPosition;
   messages: Message[];
-  selectedMentionMembers: GroupMember[];
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -44,10 +41,7 @@ type ChatPanelProps = {
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
-  onMentionInsertPositionChange: (position: MentionInsertPosition) => void;
-  onRemoveMentionMember: (memberId: string) => void;
   onRefreshGroupMembers: () => void;
-  onSelectMentionMember: (member: GroupMember, triggerStart: number, triggerEnd: number) => void;
   onLoadOlderMessages: () => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onMessageViewportScroll: () => void;
@@ -77,9 +71,7 @@ export function ChatPanel({
   isEmojiPickerOpen,
   isSendingDraft,
   isResizingCustomerPanel,
-  mentionInsertPosition,
   messages,
-  selectedMentionMembers,
   hasMoreHistory,
   historyLoadLabel,
   onCustomerPanelResizeStart,
@@ -87,10 +79,7 @@ export function ChatPanel({
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
-  onMentionInsertPositionChange,
-  onRemoveMentionMember,
   onRefreshGroupMembers,
-  onSelectMentionMember,
   onLoadOlderMessages,
   onOpenQuotedMessage,
   onMessageViewportScroll,
@@ -158,16 +147,11 @@ export function ChatPanel({
               inputEnterBehavior={inputEnterBehavior}
               isEmojiPickerOpen={isEmojiPickerOpen}
               isSending={isSendingDraft}
-              mentionInsertPosition={mentionInsertPosition}
               onDraftChange={onDraftChange}
               onEmojiPickerOpenChange={onEmojiPickerOpenChange}
               onEnterBehaviorChange={onEnterBehaviorChange}
-              onMentionInsertPositionChange={onMentionInsertPositionChange}
-              onRemoveMentionMember={onRemoveMentionMember}
-              onSelectMentionMember={onSelectMentionMember}
               onSegmentsChange={onComposerSegmentsChange}
               onSendDraft={onSendDraft}
-              selectedMentionMembers={selectedMentionMembers}
               placeholder={composerPlaceholder}
               composerRef={composerRef}
             />

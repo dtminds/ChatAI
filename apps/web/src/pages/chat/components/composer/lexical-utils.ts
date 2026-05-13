@@ -15,8 +15,10 @@ import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import {
   $createComposerEmojiNode,
   $createComposerImageNode,
+  $createComposerMentionNode,
   $isComposerEmojiNode,
   $isComposerImageNode,
+  $isComposerMentionNode,
 } from "@/pages/chat/components/composer/lexical-nodes";
 import {
   getWechatEmojiByName,
@@ -101,6 +103,14 @@ export function $insertComposerImage(input: {
   ]);
 }
 
+export function $insertComposerMention(input: {
+  displayName: string;
+  isAll?: boolean;
+  memberId: string;
+}) {
+  $insertNodes([$createComposerMentionNode(input)]);
+}
+
 export function $clearComposer() {
   const root = $getRoot();
   root.clear();
@@ -163,6 +173,23 @@ export function $exportComposerSegments() {
 }
 
 function collectSegmentsFromNode(node: LexicalNode, segments: ComposerSegment[]) {
+  if ($isComposerMentionNode(node)) {
+    segments.push(
+      node.isAll()
+        ? {
+            mentionAll: true,
+            text: node.getTextContent(),
+            type: "text",
+          }
+        : {
+            mentionMemberIds: [node.getMemberId()],
+            text: node.getTextContent(),
+            type: "text",
+          },
+    );
+    return;
+  }
+
   if ($isTextNode(node)) {
     segments.push({
       text: node.getTextContent(),

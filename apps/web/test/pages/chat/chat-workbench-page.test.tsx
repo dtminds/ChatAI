@@ -556,7 +556,7 @@ describe("ChatWorkbenchPage", () => {
     expect(composer).toHaveTextContent("@");
   });
 
-  it("selects group members from @ input and sends mentions at the end", async () => {
+  it("selects group members from @ input and sends inline mentions", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
@@ -575,6 +575,7 @@ describe("ChatWorkbenchPage", () => {
     await pasteIntoComposer(user, composer, "@小");
 
     expect(screen.getByRole("listbox", { name: "选择群成员" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "所有人（6人）" })).toBeInTheDocument();
     const xiaolinOption = screen.getByRole("option", { name: "小林" });
     expect(xiaolinOption).toBeInTheDocument();
     expect(within(xiaolinOption).getByTestId("mention-member-avatar")).toHaveAttribute(
@@ -582,19 +583,13 @@ describe("ChatWorkbenchPage", () => {
       seedGroupMembersByConversationId["conv-004"][0].avatarUrl,
     );
 
-    await user.keyboard("{Enter}");
+    await user.keyboard("{ArrowDown}{Enter}");
 
-    expect(composer).toHaveTextContent("");
-    expect(screen.getByRole("button", { name: "查看已 @ 的 1 位群成员" })).toHaveTextContent(
-      "小林",
-    );
-    expect(screen.queryByRole("button", { name: "移除 @小林" })).not.toBeInTheDocument();
+    expect(composer).toHaveTextContent("@小林");
+    expect(screen.queryByRole("listbox", { name: "选择群成员" })).not.toBeInTheDocument();
 
+    await user.click(composer);
     await pasteIntoComposer(user, composer, "今天统一看群公告");
-    fireEvent.keyDown(screen.getByRole("combobox", { name: "选择 @ 插入位置" }), {
-      key: "ArrowDown",
-    });
-    await user.click(screen.getByRole("option", { name: "文尾" }));
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
     await waitFor(() => {
@@ -602,7 +597,7 @@ describe("ChatWorkbenchPage", () => {
         useWorkbenchStore.getState().messagesByConversationId["conv-004"].at(-1),
       ).toMatchObject({
         content: {
-          text: "今天统一看群公告",
+          text: "@小林 今天统一看群公告",
           type: "text",
         },
       });
@@ -610,15 +605,58 @@ describe("ChatWorkbenchPage", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         mention: {
-          location: "end",
+          location: "start",
           memberIds: ["member-001"],
         },
         segment: {
-          text: "今天统一看群公告",
+          text: "@小林 今天统一看群公告",
           type: "text",
         },
       }),
     );
+  });
+
+  it("selects all members from @ input and sends mention-all", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "@");
+    await user.click(screen.getByRole("option", { name: "所有人（6人）" }));
+
+    expect(composer).toHaveTextContent("@所有人");
+    expect(screen.queryByRole("listbox", { name: "选择群成员" })).not.toBeInTheDocument();
+
+    await user.click(composer);
+    await pasteIntoComposer(user, composer, "今天统一看群公告");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mention: {
+            all: true,
+            location: "start",
+            memberIds: [],
+          },
+          segment: {
+            text: "@所有人 今天统一看群公告",
+            type: "text",
+          },
+        }),
+      );
+    });
   });
 
   it("shows group members in the right sidebar grouped by member type", async () => {
@@ -866,8 +904,15 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("listbox", { name: "选择群成员" })).toBeInTheDocument();
   });
 
-  it("removes selected group member mention tags from the hover menu", async () => {
+  it("keeps inline mentions as a single send segment", async () => {
     const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
 
     render(<ChatWorkbenchPage />);
 
@@ -878,16 +923,32 @@ describe("ChatWorkbenchPage", () => {
     await pasteIntoComposer(user, composer, "@小");
     await user.click(screen.getByRole("option", { name: "小林" }));
 
-    expect(screen.queryByRole("button", { name: "移除 @小林" })).not.toBeInTheDocument();
-    await user.hover(screen.getByRole("button", { name: "查看已 @ 的 1 位群成员" }));
+    expect(composer).toHaveTextContent("@小林");
+    expect(screen.queryByRole("listbox", { name: "选择群成员" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "移除 @小林" }));
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
 
-    expect(screen.queryByRole("button", { name: "查看已 @ 的 1 位群成员" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          segment: {
+            text: "@小林",
+            type: "text",
+          },
+        }),
+      );
+    });
   });
 
-  it("keeps the selected member menu open when removing one of several members", async () => {
+  it("deduplicates mentioned member ids when sending repeated inline mentions", async () => {
     const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
 
     render(<ChatWorkbenchPage />);
 
@@ -897,19 +958,26 @@ describe("ChatWorkbenchPage", () => {
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "@小");
     await user.click(screen.getByRole("option", { name: "小林" }));
-    await pasteIntoComposer(user, composer, "@睿");
-    await user.click(screen.getByRole("option", { name: "睿白鸽" }));
+    await user.click(composer);
+    await pasteIntoComposer(user, composer, "@小");
+    await user.click(screen.getByRole("option", { name: "小林" }));
+    await user.click(composer);
+    await pasteIntoComposer(user, composer, " 收到");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
 
-    await user.hover(screen.getByRole("button", { name: "查看已 @ 的 2 位群成员" }));
-    await user.click(screen.getByRole("button", { name: "移除 @小林" }));
-
-    expect(screen.getByRole("button", { name: "移除 @睿白鸽" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看已 @ 的 1 位群成员" })).toHaveTextContent(
-      "睿白鸽",
-    );
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mention: {
+            location: "start",
+            memberIds: ["member-001"],
+          },
+        }),
+      );
+    });
   });
 
-  it("opens the selected member menu from keyboard focus", async () => {
+  it("selects active mention options with keyboard focus", async () => {
     const user = userEvent.setup();
 
     render(<ChatWorkbenchPage />);
@@ -919,11 +987,10 @@ describe("ChatWorkbenchPage", () => {
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "@小");
-    await user.click(screen.getByRole("option", { name: "小林" }));
+    await user.keyboard("{ArrowDown}{Enter}");
 
-    fireEvent.focus(screen.getByRole("button", { name: "查看已 @ 的 1 位群成员" }));
-
-    expect(screen.getByRole("button", { name: "移除 @小林" })).toBeInTheDocument();
+    expect(composer).toHaveTextContent("@小林");
+    expect(screen.queryByRole("listbox", { name: "选择群成员" })).not.toBeInTheDocument();
   });
 
   it("shows a retry icon before failed messages and retries on click", async () => {

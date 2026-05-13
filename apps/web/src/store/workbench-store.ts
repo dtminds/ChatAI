@@ -20,6 +20,7 @@ import {
   getComposerSegmentsPreview,
   normalizeComposerSegments,
   type ComposerSegment,
+  type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import type { SettingsSidebarItem } from "@chatai/contracts";
@@ -1330,7 +1331,7 @@ export function createWorkbenchStore() {
         },
       }));
 
-      let segmentsForSend = normalizedSegments;
+      let segmentsForSend = stripComposerMentionMetadata(normalizedSegments);
 
       try {
         segmentsForSend = normalizedSegments.some(
@@ -1338,9 +1339,9 @@ export function createWorkbenchStore() {
         )
           ? await resolveImageSegmentsForSend(
               activeConversationId,
-              normalizedSegments,
+              stripComposerMentionMetadata(normalizedSegments),
             )
-          : normalizedSegments;
+          : stripComposerMentionMetadata(normalizedSegments);
       } catch (error) {
         set((currentState) => ({
           sendStatusByConversationId: {
@@ -1794,6 +1795,19 @@ export function createWorkbenchStore() {
       }
     },
     };
+  });
+}
+
+function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegment[] {
+  return segments.map((segment) => {
+    if (segment.type !== "text") {
+      return segment;
+    }
+
+    return {
+      text: segment.text,
+      type: "text",
+    } satisfies ComposerTextSegment;
   });
 }
 

@@ -511,6 +511,64 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("maps a group text send with mention-all to the Java send-message payload", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-all-001",
+      messageId: "opt-all-001",
+      optNo: "opt-all-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-all-001",
+      conversationId: "88",
+      mention: {
+        all: true,
+        location: "start",
+        memberIds: [],
+      },
+      seatId: "12",
+      segment: {
+        text: "大家看一下",
+        type: "text",
+      },
+    });
+
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-all-001",
+      message: {
+        atLocation: 0,
+        isHit: 1,
+        msgContent: "大家看一下",
+        msgNum: 1,
+        msgType: 2001,
+      },
+      platform: 5,
+      sendType: 2,
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("maps a single-chat image send to the Java send-message payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({

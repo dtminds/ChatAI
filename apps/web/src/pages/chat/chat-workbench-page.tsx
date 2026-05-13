@@ -28,7 +28,6 @@ import { logout } from "@/pages/auth/auth-service";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
-import type { MentionInsertPosition } from "@/pages/chat/components/chat-composer";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import { CLEAR_COMPOSER_COMMAND } from "@/pages/chat/components/composer/lexical-commands";
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
@@ -36,8 +35,8 @@ import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-re
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
-import type { ChatMode, GroupMember } from "@/pages/chat/chat-types";
-import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import type { ChatMode } from "@/pages/chat/chat-types";
+import { extractComposerMentionState, type ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
 import {
   CONVERSATION_LIST_PANEL_WIDTH,
@@ -138,9 +137,6 @@ function ChatWorkbenchContent({
   } = useWorkbenchStore();
 
   const [draft, setDraft] = useState("");
-  const [mentionInsertPosition, setMentionInsertPosition] =
-    useState<MentionInsertPosition>("start");
-  const [selectedMentionMembers, setSelectedMentionMembers] = useState<GroupMember[]>([]);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [composerSegments, setComposerSegments] = useState<ComposerSegment[]>([]);
   const [sendFailureDialog, setSendFailureDialog] = useState<{
@@ -271,8 +267,6 @@ function ChatWorkbenchContent({
 
   useEffect(() => {
     setIsEmojiPickerOpen(false);
-    setMentionInsertPosition("start");
-    setSelectedMentionMembers([]);
   }, [activeConversation?.id]);
 
   useWorkbenchPolling({
@@ -287,22 +281,17 @@ function ChatWorkbenchContent({
     composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
     setDraft("");
     setComposerSegments([]);
-    setMentionInsertPosition("start");
-    setSelectedMentionMembers([]);
   };
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
-    const normalizedSegments =
-      segments.length > 0
-        ? segments
-        : selectedMentionMembers.length > 0
-          ? [{ text: "", type: "text" as const }]
-          : [];
+    const normalizedSegments = segments.length > 0 ? segments : [];
+    const mentionState = extractComposerMentionState(segments);
     const mention =
-      selectedMentionMembers.length > 0
+      mentionState.memberIds.length > 0 || mentionState.mentionAll
         ? {
-            location: mentionInsertPosition,
-            memberIds: selectedMentionMembers.map((member) => member.id),
+            all: mentionState.mentionAll || undefined,
+            location: "start" as const,
+            memberIds: mentionState.memberIds,
           }
         : undefined;
 
@@ -345,9 +334,7 @@ function ChatWorkbenchContent({
   };
 
   const hasUnsentComposerContent = () =>
-    draft.trim().length > 0 ||
-    selectedMentionMembers.length > 0 ||
-    composerSegments.length > 0;
+    draft.trim().length > 0 || composerSegments.length > 0;
 
   const handleSelectConversation = async (conversationId: string) => {
     if (conversationId === activeConversationId) {
@@ -406,32 +393,6 @@ function ChatWorkbenchContent({
     await setActiveMode(pendingSwitch.mode);
   };
 
-  const handleSelectMentionMember = (
-    member: GroupMember,
-    triggerStart: number,
-    triggerEnd: number,
-  ) => {
-    setSelectedMentionMembers((currentMembers) =>
-      currentMembers.some((currentMember) => currentMember.id === member.id)
-        ? currentMembers
-        : [...currentMembers, member],
-    );
-    setDraft((currentDraft) =>
-      currentDraft.slice(0, triggerStart) + currentDraft.slice(triggerEnd),
-    );
-
-    requestAnimationFrame(() => {
-      composerRef.current?.focus();
-    });
-  };
-
-  const handleRemoveMentionMember = (memberId: string) => {
-    setSelectedMentionMembers((currentMembers) =>
-      currentMembers.filter((member) => member.id !== memberId),
-    );
-    composerRef.current?.focus();
-  };
-
   const handleOpenQuotedMessage = (quoteMsgId: string) => {
     const quoteSeq = Number(quoteMsgId);
     const originalMessage = Number.isSafeInteger(quoteSeq)
@@ -463,7 +424,7 @@ function ChatWorkbenchContent({
             dotSize={3}
             size={22}
           />
-          正在加载工作台数据...
+          正在加载工作台数据
         </div>
       </div>
     );
@@ -575,7 +536,6 @@ function ChatWorkbenchContent({
                 isEmojiPickerOpen={isEmojiPickerOpen}
                 isSendingDraft={isSendingDraft}
                 isResizingCustomerPanel={isResizingCustomerPanel}
-                mentionInsertPosition={mentionInsertPosition}
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
@@ -586,9 +546,6 @@ function ChatWorkbenchContent({
                 onDraftChange={handleDraftChange}
                 onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                 onEnterBehaviorChange={setInputEnterBehavior}
-                onMentionInsertPositionChange={setMentionInsertPosition}
-                onRemoveMentionMember={handleRemoveMentionMember}
-                onSelectMentionMember={handleSelectMentionMember}
                 onRefreshGroupMembers={() => {
                   void loadActiveGroupMembers({ force: true });
                 }}
@@ -599,7 +556,6 @@ function ChatWorkbenchContent({
                 onSendDraft={handleSendDraft}
                 onDismissScopeTransitionError={dismissScopeTransitionError}
                 scopeTransitionError={scopeTransitionError}
-                selectedMentionMembers={selectedMentionMembers}
                 composerRef={composerRef}
                 workbenchBodyRef={workbenchBodyRef}
               />

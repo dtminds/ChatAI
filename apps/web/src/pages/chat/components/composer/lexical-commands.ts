@@ -9,11 +9,20 @@ export type InsertComposerImagePayload = {
   width?: number;
 };
 
+export type InsertComposerMentionPayload = {
+  displayName: string;
+  memberId: string;
+  isAll?: boolean;
+};
+
 export const INSERT_COMPOSER_EMOJI_COMMAND = createCommand<WechatEmoji>(
   "INSERT_COMPOSER_EMOJI_COMMAND",
 );
 
 export const INSERT_COMPOSER_IMAGE_COMMAND =
   createCommand<InsertComposerImagePayload>("INSERT_COMPOSER_IMAGE_COMMAND");
+
+export const INSERT_COMPOSER_MENTION_COMMAND =
+  createCommand<InsertComposerMentionPayload>("INSERT_COMPOSER_MENTION_COMMAND");
 
 export const CLEAR_COMPOSER_COMMAND = createCommand<void>("CLEAR_COMPOSER_COMMAND");

@@ -24,12 +24,14 @@ import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_EMOJI_COMMAND,
   INSERT_COMPOSER_IMAGE_COMMAND,
+  INSERT_COMPOSER_MENTION_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
 import {
   $clearComposer,
   $replaceWechatEmojiTokens,
   $exportComposerSegments,
   $insertComposerImage,
+  $insertComposerMention,
   $insertComposerText,
   $removeComposerTextRange,
 } from "@/pages/chat/components/composer/lexical-utils";
@@ -101,6 +103,19 @@ export function ComposerRuntimePlugin({
       (payload) => {
         editor.update(() => {
           $insertComposerImage(payload);
+        });
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      INSERT_COMPOSER_MENTION_COMMAND,
+      (payload) => {
+        editor.update(() => {
+          $insertComposerMention(payload);
         });
         return true;
       },

@@ -193,6 +193,7 @@ export type WorkbenchSendMessagePayload = {
   contentType?: "text";
   content?: string;
   mention?: {
+    all?: boolean;
     location: "start" | "end";
     memberIds: string[];
   };

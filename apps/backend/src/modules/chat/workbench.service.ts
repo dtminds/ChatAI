@@ -427,7 +427,10 @@ function buildJavaSendMessageData(
   };
   const mentionMemberIds = payload.mention?.memberIds.filter(Boolean) ?? [];
 
-  if (mentionMemberIds.length > 0) {
+  if (payload.mention?.all) {
+    message.atLocation = JAVA_MENTION_LOCATION.START;
+    message.isHit = 1;
+  } else if (mentionMemberIds.length > 0) {
     message.atLocation =
       payload.mention?.location === "end"
         ? JAVA_MENTION_LOCATION.END

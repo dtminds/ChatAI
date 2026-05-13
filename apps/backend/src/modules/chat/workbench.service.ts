@@ -22,7 +22,10 @@ import {
   UnauthorizedError,
 } from "../../shared/errors.js";
 import type { WorkbenchJavaClient } from "./workbench-java-client.js";
-import type { WorkbenchRepository } from "./workbench-repository.js";
+import {
+  parseMySqlId,
+  type WorkbenchRepository,
+} from "./workbench-repository.js";
 
 export type WorkbenchService = {
   deleteConversation(
@@ -267,13 +270,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {
-    const subUserNumericId = /^[1-9]\d*$/.test(subUserId)
-      ? Number(subUserId)
-      : Number.NaN;
+    const subUserNumericId = parseMySqlId(subUserId);
 
-    if (!Number.isSafeInteger(subUserNumericId)) {
+    if (subUserNumericId == null) {
       throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
     }
+
+    await this.assertSeatAccess(subUserId, seatId);
 
     const seat = await this.repository.getSeatOperateScope(seatId);
 

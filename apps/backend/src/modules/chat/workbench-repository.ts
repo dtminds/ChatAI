@@ -849,7 +849,7 @@ function uniqueNonEmpty(values: Array<string | null | undefined>) {
   );
 }
 
-function parseMySqlId(value: string) {
+export function parseMySqlId(value: string) {
   if (!/^[1-9]\d*$/.test(value)) {
     return undefined;
   }

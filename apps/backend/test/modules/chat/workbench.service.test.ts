@@ -4,7 +4,7 @@ import type { WorkbenchJavaClient } from "../../../src/modules/chat/workbench-ja
 import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
 
 describe("MysqlWorkbenchService", () => {
-  it("takes over a seat through Java without relation access validation and persists host sub-user locally", async () => {
+  it("takes over an accessible seat through Java and persists host sub-user locally", async () => {
     const javaClient = createJavaClient();
     const getSeat = vi.fn().mockResolvedValue({
       avatar: "",
@@ -22,7 +22,7 @@ describe("MysqlWorkbenchService", () => {
     const updateSeatHostSubUser = vi.fn().mockResolvedValue(undefined);
     const service = new MysqlWorkbenchService(
       {
-        canAccessSeat: vi.fn().mockResolvedValue(false),
+        canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeat,
         getSeatOperateScope: vi.fn().mockResolvedValue({
           platform: 5,
@@ -55,10 +55,29 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("rejects takeover when the sub-user cannot access the seat", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(false),
+        getSeatOperateScope: vi.fn(),
+        updateSeatHostSubUser: vi.fn(),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.takeOverSeat("101", "12")).rejects.toMatchObject({
+      code: "SEAT_NOT_FOUND",
+      statusCode: 404,
+    });
+    expect(javaClient.takeOverSeat).not.toHaveBeenCalled();
+  });
+
   it("rejects takeover when the seat id cannot be found", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
       {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatOperateScope: vi.fn().mockResolvedValue(undefined),
         updateSeatHostSubUser: vi.fn(),
       } as unknown as WorkbenchRepository,

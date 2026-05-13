@@ -85,7 +85,7 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(service.takeOverSeat("101", "12")).rejects.toMatchObject({
-      code: "ACCOUNT_NOT_FOUND",
+      code: "SEAT_NOT_FOUND",
       statusCode: 404,
     });
     expect(javaClient.takeOverSeat).not.toHaveBeenCalled();

@@ -281,7 +281,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const seat = await this.repository.getSeatOperateScope(seatId);
 
     if (!seat) {
-      throw new NotFoundError("ACCOUNT_NOT_FOUND", "账号不存在");
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
     }
 
     await this.javaClient.takeOverSeat({
@@ -300,7 +300,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const nextSeat = await this.repository.getSeat(seatId);
 
     if (!nextSeat) {
-      throw new NotFoundError("ACCOUNT_NOT_FOUND", "账号不存在");
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
     }
 
     return { seat: nextSeat };

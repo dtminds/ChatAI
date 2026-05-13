@@ -2,7 +2,7 @@ name: Sync GitHub to Gitee
 
 on:
   push:
-    branches: [main, master]
+    branches: [*]
   workflow_dispatch:
 
 jobs:

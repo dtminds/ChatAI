@@ -13,6 +13,9 @@ importers:
       '@chatai/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@fastify/cookie':
+        specifier: ^11.0.2
+        version: 11.0.2
       '@fastify/env':
         specifier: ^5.0.3
         version: 5.0.3
@@ -24,7 +27,7 @@ importers:
         version: 0.34.49
       altcha-lib:
         specifier: ^2.0.3
-        version: 2.0.3(fastify@5.8.5)
+        version: 2.0.3(@fastify/cookie@11.0.2)(fastify@5.8.5)
       argon2:
         specifier: ^0.44.0
         version: 0.44.0
@@ -608,6 +611,9 @@ packages:
 
   '@fastify/ajv-compiler@4.0.5':
     resolution: {integrity: sha512-KoWKW+MhvfTRWL4qrhUwAAZoaChluo0m0vbiJlGMt2GXvL4LVPQEjt8kSpHI3IBq5Rez8fg+XeH3cneztq+C7A==}
+
+  '@fastify/cookie@11.0.2':
+    resolution: {integrity: sha512-GWdwdGlgJxyvNv+QcKiGNevSspMQXncjMZ1J8IvuDQk0jvkzgWWZFNC2En3s+nHndZBGV8IbLwOI/sxCZw/mzA==}
 
   '@fastify/env@5.0.3':
     resolution: {integrity: sha512-VqXKcw+keaZaCry9dDtphDQy6l+B1UOodk4q57NdIK/tjZsPMYEBTXjEDiZCAiD9KaGJXbJOMgYdgejU1iD0jA==}
@@ -3291,6 +3297,11 @@ snapshots:
       ajv-formats: 3.0.1(ajv@8.20.0)
       fast-uri: 3.1.2
 
+  '@fastify/cookie@11.0.2':
+    dependencies:
+      cookie: 1.1.1
+      fastify-plugin: 5.1.0
+
   '@fastify/env@5.0.3':
     dependencies:
       env-schema: 6.1.0
@@ -4452,8 +4463,9 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  altcha-lib@2.0.3(fastify@5.8.5):
+  altcha-lib@2.0.3(@fastify/cookie@11.0.2)(fastify@5.8.5):
     optionalDependencies:
+      '@fastify/cookie': 11.0.2
       fastify: 5.8.5
 
   altcha@3.0.8:

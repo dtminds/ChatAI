@@ -144,6 +144,7 @@ NODE_ENV=production
 PORT=3001
 JWT_AUDIENCE=chatai-web
 JWT_ISSUER=chatai-server
+AUTH_COOKIE_SECURE=true
 LOG_LEVEL=info
 REDIS_ENABLED=false
 JAVA_INTERNAL_API_TIMEOUT_MS=8000
@@ -164,6 +165,8 @@ JAVA_INTERNAL_API_TOKEN=<java-internal-api-token>
 注意事项：
 
 - `NODE_ENV=production` 时必须配置 `JWT_PRIVATE_KEY` 和 `JWT_PUBLIC_KEY`，否则 backend 会拒绝启动。
+- 登录态 access/refresh token 由 backend 写入 HttpOnly Cookie，所有环境都不再把 token 暴露给浏览器 JS。`AUTH_COOKIE_SECURE=true` 会额外写入 `Secure` 属性；生产和 HTTPS 测试环境必须开启，本地 HTTP 开发环境可保持关闭。
+- 使用 Cookie 鉴权的写请求会校验前端统一请求头 `X-Workbench-Client: chat-ai-ui`，用于阻断跨站表单类请求；发布网关不要剥离该请求头。
 - 本地开发环境没有配置 `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` 也能运行，是因为 backend 会退回到 `JWT_DEV_SECRET`；如果 `JWT_DEV_SECRET` 也没有，会继续使用默认值 `dev-only-change-me`。这个兜底只适合本地开发，不要用于测试或生产环境。
 - `JWT_PRIVATE_KEY` 是 backend 签发 JWT 的私钥，必须保密；`JWT_PUBLIC_KEY` 是校验 JWT 的公钥。测试环境和生产环境建议使用不同密钥对。
 - 可以用 OpenSSL 生成 RSA 密钥对：

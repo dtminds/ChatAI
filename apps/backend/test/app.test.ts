@@ -4,6 +4,10 @@ import { deriveKey } from "altcha-lib/algorithms/scrypt";
 import argon2 from "argon2";
 import { buildApp } from "../src/app";
 import { createMemoryWorkbenchService } from "../src/modules/chat/workbench-memory.service";
+import {
+  ACCESS_TOKEN_COOKIE_NAME,
+  REFRESH_TOKEN_COOKIE_NAME,
+} from "../src/modules/auth/auth-cookies";
 
 async function createAuthenticatedApp() {
   const app = await buildApp();
@@ -35,6 +39,7 @@ describe("backend app", () => {
     delete process.env.ALTCHA_HMAC_SECRET;
     delete process.env.ALTCHA_MEMORY_COST;
     delete process.env.ALTCHA_PARALLELISM;
+    delete process.env.AUTH_COOKIE_SECURE;
     delete process.env.AUTH_DEV_BYPASS;
     delete process.env.JWT_DEV_SECRET;
     delete process.env.JWT_PRIVATE_KEY;
@@ -282,19 +287,33 @@ describe("backend app", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       data: {
-        accessToken: expect.any(String),
         expiresIn: 1200,
-        refreshToken: expect.any(String),
         subUser: {
           displayName: "客服一号",
           subUserId: "101",
         },
-        tokenType: "Bearer",
       },
       success: true,
     });
 
-    const decoded = app.jwt.verify(response.json().data.accessToken);
+    expect(response.headers["set-cookie"]).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(`${ACCESS_TOKEN_COOKIE_NAME}=`),
+        expect.stringContaining(`${REFRESH_TOKEN_COOKIE_NAME}=`),
+      ]),
+    );
+    expect(response.headers["set-cookie"]).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("HttpOnly"),
+        expect.stringContaining("SameSite=Strict"),
+      ]),
+    );
+    expect(readSetCookieHeader(response, ACCESS_TOKEN_COOKIE_NAME)).toContain("Path=/api");
+    expect(readSetCookieHeader(response, REFRESH_TOKEN_COOKIE_NAME)).toContain(
+      "Path=/api/auth/refresh",
+    );
+
+    const decoded = app.jwt.verify(readSetCookieValue(response, ACCESS_TOKEN_COOKIE_NAME));
 
     expect(decoded).toMatchObject({
       roles: ["agent"],
@@ -302,6 +321,100 @@ describe("backend app", () => {
       sessionVersion: 1,
       subUserId: "101",
     });
+
+    await app.close();
+  });
+
+  it("marks auth cookies secure when the secure cookie flag is enabled", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    process.env.AUTH_COOKIE_SECURE = "true";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    const app = await buildApp();
+    app.db = createAuthDbMock({
+      account: "agent001",
+      id: 101,
+      name: "客服一号",
+      password_hash: await argon2.hash("correct-password", {
+        hashLength: 32,
+        memoryCost: 4096,
+        parallelism: 1,
+        timeCost: 2,
+        type: argon2.argon2id,
+      }),
+      platform: 1,
+      uid: 9001,
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha: await createSolvedAltchaPayload(app),
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(getSetCookieHeaders(response)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Secure"),
+      ]),
+    );
+
+    await app.close();
+  });
+
+  it("marks cleared auth cookies secure when the secure cookie flag is enabled", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    process.env.AUTH_COOKIE_SECURE = "true";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    const app = await buildApp();
+    app.db = createAuthDbMock({
+      account: "agent001",
+      id: 101,
+      name: "客服一号",
+      password_hash: await argon2.hash("correct-password", {
+        hashLength: 32,
+        memoryCost: 4096,
+        parallelism: 1,
+        timeCost: 2,
+        type: argon2.argon2id,
+      }),
+      platform: 1,
+      uid: 9001,
+    });
+    const login = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha: await createSolvedAltchaPayload(app),
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+    const logout = await app.inject({
+      headers: {
+        cookie: buildCookieHeader(login, ACCESS_TOKEN_COOKIE_NAME),
+        "x-workbench-client": "chat-ai-ui",
+      },
+      method: "POST",
+      url: "/api/auth/logout",
+    });
+
+    expect(logout.statusCode).toBe(200);
+    expect(readSetCookieHeader(logout, ACCESS_TOKEN_COOKIE_NAME)).toContain("Secure");
+    expect(readSetCookieHeader(logout, REFRESH_TOKEN_COOKIE_NAME)).toContain("Secure");
 
     await app.close();
   });
@@ -396,26 +509,30 @@ describe("backend app", () => {
       },
       url: "/api/auth/login",
     });
-    const refreshToken = login.json().data.refreshToken;
     const refresh = await app.inject({
-      method: "POST",
-      payload: {
-        refreshToken,
+      headers: {
+        cookie: buildCookieHeader(login, REFRESH_TOKEN_COOKIE_NAME),
+        "x-workbench-client": "chat-ai-ui",
       },
+      method: "POST",
+      payload: {},
       url: "/api/auth/refresh",
     });
 
     expect(refresh.statusCode).toBe(200);
     expect(refresh.json()).toMatchObject({
       data: {
-        accessToken: expect.any(String),
         expiresIn: 1200,
-        refreshToken,
-        tokenType: "Bearer",
       },
       success: true,
     });
-    expect(app.jwt.verify(refresh.json().data.accessToken)).toMatchObject({
+    expect(refresh.headers["set-cookie"]).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(`${ACCESS_TOKEN_COOKIE_NAME}=`),
+        expect.stringContaining(`${REFRESH_TOKEN_COOKIE_NAME}=`),
+      ]),
+    );
+    expect(app.jwt.verify(readSetCookieValue(refresh, ACCESS_TOKEN_COOKIE_NAME))).toMatchObject({
       sessionId: "501",
       sessionVersion: 1,
       subUserId: "101",
@@ -469,7 +586,7 @@ describe("backend app", () => {
 
     expect(firstLogin.statusCode).toBe(200);
     expect(secondLogin.statusCode).toBe(200);
-    expect(app.jwt.verify(secondLogin.json().data.accessToken)).toMatchObject({
+    expect(app.jwt.verify(readSetCookieValue(secondLogin, ACCESS_TOKEN_COOKIE_NAME))).toMatchObject({
       sessionId: "501",
       sessionVersion: 2,
       subUserId: "101",
@@ -477,16 +594,18 @@ describe("backend app", () => {
 
     const oldAccess = await app.inject({
       headers: {
-        authorization: `Bearer ${firstLogin.json().data.accessToken}`,
+        cookie: buildCookieHeader(firstLogin, ACCESS_TOKEN_COOKIE_NAME),
       },
       method: "GET",
       url: "/api/server/me",
     });
     const oldRefresh = await app.inject({
-      method: "POST",
-      payload: {
-        refreshToken: firstLogin.json().data.refreshToken,
+      headers: {
+        cookie: buildCookieHeader(firstLogin, REFRESH_TOKEN_COOKIE_NAME),
+        "x-workbench-client": "chat-ai-ui",
       },
+      method: "POST",
+      payload: {},
       url: "/api/auth/refresh",
     });
 
@@ -499,6 +618,12 @@ describe("backend app", () => {
       success: false,
     });
     expect(oldRefresh.statusCode).toBe(401);
+    expect(getSetCookieHeaders(oldRefresh)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(`${ACCESS_TOKEN_COOKIE_NAME}=; Max-Age=0`),
+        expect.stringContaining(`${REFRESH_TOKEN_COOKIE_NAME}=; Max-Age=0`),
+      ]),
+    );
 
     await app.close();
   });
@@ -535,18 +660,19 @@ describe("backend app", () => {
       },
       url: "/api/auth/login",
     });
-    const authorization = `Bearer ${login.json().data.accessToken}`;
+    const cookie = buildCookieHeader(login, ACCESS_TOKEN_COOKIE_NAME);
 
     const logout = await app.inject({
       headers: {
-        authorization,
+        cookie,
+        "x-workbench-client": "chat-ai-ui",
       },
       method: "POST",
       url: "/api/auth/logout",
     });
     const me = await app.inject({
       headers: {
-        authorization,
+        cookie,
       },
       method: "GET",
       url: "/api/server/me",
@@ -559,7 +685,73 @@ describe("backend app", () => {
       },
       success: true,
     });
+    expect(logout.headers["set-cookie"]).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(`${ACCESS_TOKEN_COOKIE_NAME}=; Max-Age=0`),
+        expect.stringContaining(`${REFRESH_TOKEN_COOKIE_NAME}=; Max-Age=0`),
+      ]),
+    );
     expect(me.statusCode).toBe(401);
+
+    await app.close();
+  });
+
+  it("rejects mutating cookie-authenticated requests without the workbench client header", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    const app = await buildApp();
+    app.db = createAuthDbMock({
+      account: "agent001",
+      id: 101,
+      name: "客服一号",
+      password_hash: await argon2.hash("correct-password", {
+        hashLength: 32,
+        memoryCost: 4096,
+        parallelism: 1,
+        timeCost: 2,
+        type: argon2.argon2id,
+      }),
+      platform: 1,
+      uid: 9001,
+    });
+    const login = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha: await createSolvedAltchaPayload(app),
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+
+    const response = await app.inject({
+      headers: {
+        cookie: buildCookieHeader(login, ACCESS_TOKEN_COOKIE_NAME),
+      },
+      method: "POST",
+      payload: {
+        clientMessageId: "csrf-check-001",
+        content: "blocked",
+        contentType: "text",
+        conversationId: "conv-001",
+        seatId: "drc",
+      },
+      url: "/api/server/messages/send",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      error: {
+        code: "CSRF_PROTECTION_FAILED",
+        message: "请求来源校验失败",
+      },
+      success: false,
+    });
 
     await app.close();
   });
@@ -1242,6 +1434,49 @@ describe("backend app", () => {
 
 function windowlessBase64Encode(value: string) {
   return Buffer.from(value, "utf8").toString("base64");
+}
+
+function readSetCookieValue(
+  response: { headers: Record<string, unknown> },
+  cookieName: string,
+) {
+  const cookie = readSetCookieHeader(response, cookieName);
+
+  return decodeURIComponent(cookie.split(";")[0]?.split("=")[1] ?? "");
+}
+
+function readSetCookieHeader(
+  response: { headers: Record<string, unknown> },
+  cookieName: string,
+) {
+  const cookie = getSetCookieHeaders(response).find((header) =>
+    header.startsWith(`${cookieName}=`),
+  );
+
+  if (!cookie) {
+    throw new Error(`Missing ${cookieName} cookie`);
+  }
+
+  return cookie;
+}
+
+function buildCookieHeader(
+  response: { headers: Record<string, unknown> },
+  ...cookieNames: string[]
+) {
+  return cookieNames
+    .map((cookieName) => `${cookieName}=${encodeURIComponent(readSetCookieValue(response, cookieName))}`)
+    .join("; ");
+}
+
+function getSetCookieHeaders(response: { headers: Record<string, unknown> }) {
+  const setCookie = response.headers["set-cookie"];
+
+  return Array.isArray(setCookie)
+    ? setCookie.map(String)
+    : typeof setCookie === "string"
+      ? [setCookie]
+      : [];
 }
 
 async function createSolvedAltchaPayload(app: Awaited<ReturnType<typeof buildApp>>) {

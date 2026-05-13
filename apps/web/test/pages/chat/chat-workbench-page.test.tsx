@@ -58,8 +58,6 @@ describe("ChatWorkbenchPage", () => {
     vi.mocked(toast.warning).mockClear();
     resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
-    window.localStorage.setItem("chatai.accessToken", "access-token-001");
-    window.localStorage.setItem("chatai.refreshToken", "refresh-token-001");
   });
 
   it("sends a message from the composer", async () => {
@@ -1124,7 +1122,7 @@ describe("ChatWorkbenchPage", () => {
     expect(useWorkbenchStore.getState().readReceiptError).toBeUndefined();
   });
 
-  it("logs out from the account menu and clears stored auth tokens", async () => {
+  it("logs out from the account menu", async () => {
     const user = userEvent.setup();
     mock.onPost("/auth/logout").reply(200, {
       data: {
@@ -1140,8 +1138,7 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
 
     await waitFor(() => {
-      expect(window.localStorage.getItem("chatai.accessToken")).toBeNull();
-      expect(window.localStorage.getItem("chatai.refreshToken")).toBeNull();
+      expect(mock.history.post[0]?.url).toBe("/auth/logout");
     });
     expect(mock.history.post).toHaveLength(1);
     expect(mock.history.post[0]?.url).toBe("/auth/logout");

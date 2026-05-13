@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 
 export const EnvSchema = Type.Object({
+  AUTH_COOKIE_SECURE: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_BASE_URL: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_TOKEN: Type.Optional(Type.String()),
   DATABASE_URL: Type.Optional(Type.String()),

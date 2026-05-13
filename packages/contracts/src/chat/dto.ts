@@ -192,6 +192,11 @@ export type WorkbenchSendMessagePayload = {
   clientMessageId: string;
   contentType?: "text";
   content?: string;
+  mention?: {
+    location: "start" | "end";
+    memberIds: string[];
+  };
+  segment?: WorkbenchOutgoingMessageSegment;
   segments?: WorkbenchOutgoingMessageSegment[];
 };
 
@@ -204,6 +209,7 @@ export type WorkbenchSentMessageAck = {
 export type WorkbenchSendMessageResponse = {
   messageId: string;
   clientMessageId: string;
+  optNo?: string;
   status: "accepted";
   messages?: WorkbenchSentMessageAck[];
 };

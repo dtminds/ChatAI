@@ -292,14 +292,19 @@ function ChatWorkbenchContent({
   };
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
-    const mentionText = selectedMentionMembers
-      .map((member) => `@${member.displayName}`)
-      .join(" ");
-    const normalizedSegments = formatSegmentsWithMentions({
-      mentionInsertPosition,
-      mentionText,
-      segments,
-    });
+    const normalizedSegments =
+      segments.length > 0
+        ? segments
+        : selectedMentionMembers.length > 0
+          ? [{ text: "", type: "text" as const }]
+          : [];
+    const mention =
+      selectedMentionMembers.length > 0
+        ? {
+            location: mentionInsertPosition,
+            memberIds: selectedMentionMembers.map((member) => member.id),
+          }
+        : undefined;
 
     if (normalizedSegments.length === 0 || !canSendMessage) {
       return;
@@ -313,7 +318,7 @@ function ChatWorkbenchContent({
     setIsSendingDraft(true);
 
     try {
-      const result = await sendAgentMessageSegments(normalizedSegments);
+      const result = await sendAgentMessageSegments(normalizedSegments, { mention });
 
       if (!result.ok) {
         setSendFailureDialog(
@@ -686,45 +691,4 @@ function getSendFailureDialogCopy(
     title: "发送失败，请稍后重试",
     description: `ErrorCode: ${errorCode}`,
   };
-}
-
-function formatSegmentsWithMentions({
-  segments,
-  mentionInsertPosition,
-  mentionText,
-}: {
-  segments: ComposerSegment[];
-  mentionInsertPosition: MentionInsertPosition;
-  mentionText: string;
-}): ComposerSegment[] {
-  if (!mentionText) {
-    return segments;
-  }
-
-  if (segments.length === 0) {
-    return [
-      {
-        text: mentionText,
-        type: "text",
-      },
-    ];
-  }
-
-  if (mentionInsertPosition === "start") {
-    return [
-      {
-        text: `${mentionText} `,
-        type: "text",
-      },
-      ...segments,
-    ];
-  }
-
-  return [
-    ...segments,
-    {
-      text: ` ${mentionText}`,
-      type: "text",
-    },
-  ];
 }

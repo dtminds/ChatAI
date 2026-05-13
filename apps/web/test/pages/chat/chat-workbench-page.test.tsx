@@ -558,6 +558,13 @@ describe("ChatWorkbenchPage", () => {
 
   it("selects group members from @ input and sends mentions at the end", async () => {
     const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
 
     render(<ChatWorkbenchPage />);
 
@@ -595,11 +602,23 @@ describe("ChatWorkbenchPage", () => {
         useWorkbenchStore.getState().messagesByConversationId["conv-004"].at(-1),
       ).toMatchObject({
         content: {
-          text: "今天统一看群公告 @小林",
+          text: "今天统一看群公告",
           type: "text",
         },
       });
     });
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mention: {
+          location: "end",
+          memberIds: ["member-001"],
+        },
+        segment: {
+          text: "今天统一看群公告",
+          type: "text",
+        },
+      }),
+    );
   });
 
   it("shows group members in the right sidebar grouped by member type", async () => {

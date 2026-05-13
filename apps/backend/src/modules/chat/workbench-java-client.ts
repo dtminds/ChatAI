@@ -1,5 +1,4 @@
 import type {
-  WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
@@ -15,6 +14,30 @@ type JavaApiResponse<T> = {
   error?: number;
   errorMsg?: string;
   success?: boolean;
+};
+
+export type JavaSendMessageData = {
+  atLocation?: number;
+  atWxSerialNos?: string[];
+  isHit?: number;
+  msgContent: string;
+  msgNum: number;
+  msgType: 2001 | 2002;
+};
+
+export type JavaSendMessageInput = {
+  clientMessageId: string;
+  message: JavaSendMessageData;
+  platform: number;
+  sendType: 1 | 2;
+  thirdExternalUserid?: string;
+  thirdGroupId?: string;
+  thirdUserId: string;
+  uid: number;
+};
+
+type JavaSendMessageResponse = {
+  optNo?: string;
 };
 
 export type WorkbenchJavaClient = {
@@ -41,10 +64,7 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
-  sendMessage(input: {
-    payload: WorkbenchSendMessagePayload;
-    subUserId: string;
-  }): Promise<WorkbenchSendMessageResponse>;
+  sendMessage(input: JavaSendMessageInput): Promise<WorkbenchSendMessageResponse>;
   takeOverSeat(input: {
     platform: number;
     subId: number;
@@ -103,13 +123,21 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         input,
       );
     },
-    sendMessage(input) {
-      return postJava<WorkbenchSendMessageResponse>(
+    async sendMessage(input) {
+      const response = await postJavaEnvelope<JavaSendMessageResponse>(
         baseUrl,
         token,
-        "/internal/workbench/messages/send",
-        input,
+        "/third-internal/wap-embed/conversation/send-message",
+        buildJavaSendMessageBody(input),
       );
+      const optNo = response.optNo ?? input.clientMessageId;
+
+      return {
+        clientMessageId: input.clientMessageId,
+        messageId: optNo,
+        optNo,
+        status: "accepted",
+      };
     },
     takeOverSeat(input) {
       return postJavaEnvelope<boolean>(
@@ -145,6 +173,20 @@ async function postConversationOperate(
     platform: input.platform,
     uid: input.uid,
   });
+}
+
+function buildJavaSendMessageBody(input: JavaSendMessageInput) {
+  return {
+    msgDatas: [input.message],
+    platform: input.platform,
+    sendType: input.sendType,
+    ...(input.thirdExternalUserid
+      ? { thirdExternalUserid: input.thirdExternalUserid }
+      : {}),
+    ...(input.thirdGroupId ? { thirdGroupId: input.thirdGroupId } : {}),
+    thirdUserId: input.thirdUserId,
+    uid: input.uid,
+  };
 }
 
 async function postJava<T>(

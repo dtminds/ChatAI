@@ -45,7 +45,30 @@ const SendMessageBodySchema = Type.Object({
   content: Type.Optional(Type.String()),
   contentType: Type.Optional(Type.Literal("text")),
   conversationId: Type.String(),
+  mention: Type.Optional(
+    Type.Object({
+      location: Type.Union([Type.Literal("start"), Type.Literal("end")]),
+      memberIds: Type.Array(Type.String()),
+    }),
+  ),
   seatId: Type.String(),
+  segment: Type.Optional(
+    Type.Union([
+      Type.Object({
+        text: Type.String(),
+        type: Type.Literal("text"),
+      }),
+      Type.Object({
+        alt: Type.String(),
+        fileId: Type.Optional(Type.String()),
+        height: Type.Optional(Type.Number()),
+        localUrl: Type.Optional(Type.String()),
+        type: Type.Literal("image"),
+        url: Type.Optional(Type.String()),
+        width: Type.Optional(Type.Number()),
+      }),
+    ]),
+  ),
   segments: Type.Optional(
     Type.Array(
       Type.Union([

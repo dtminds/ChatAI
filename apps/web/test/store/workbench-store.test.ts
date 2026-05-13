@@ -251,7 +251,7 @@ describe("useWorkbenchStore", () => {
     ]);
     expect(state.pendingMessages).toHaveLength(3);
     expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
-      "第一段[打脸]",
+      "第二段[强]",
     );
   });
 
@@ -305,22 +305,27 @@ describe("useWorkbenchStore", () => {
         type: "image",
       },
     ]);
-    expect(sendMessage).toHaveBeenCalledWith(
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
-        segments: [
-          {
-            alt: "截图 A",
-            fileId: "chat-images/conv-001/a.png",
-            type: "image",
-            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
-          },
-          {
-            alt: "截图 B",
-            fileId: "chat-images/conv-001/b.png",
-            type: "image",
-            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/b.png",
-          },
-        ],
+        segment: {
+          alt: "截图 A",
+          fileId: "chat-images/conv-001/a.png",
+          type: "image",
+          url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        segment: {
+          alt: "截图 B",
+          fileId: "chat-images/conv-001/b.png",
+          type: "image",
+          url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/b.png",
+        },
       }),
     );
   });
@@ -373,20 +378,25 @@ describe("useWorkbenchStore", () => {
         type: "text",
       },
     ]);
-    expect(sendMessage).toHaveBeenCalledWith(
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
-        segments: [
-          {
-            alt: "location_bg.png",
-            fileId: "chat-images/conv-001/location_bg.png",
-            type: "image",
-            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/location_bg.png",
-          },
-          {
-            text: "12321",
-            type: "text",
-          },
-        ],
+        segment: {
+          alt: "location_bg.png",
+          fileId: "chat-images/conv-001/location_bg.png",
+          type: "image",
+          url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/location_bg.png",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        segment: {
+          text: "12321",
+          type: "text",
+        },
       }),
     );
   });
@@ -406,12 +416,10 @@ describe("useWorkbenchStore", () => {
     expect(resolveImageSegmentsForSend).not.toHaveBeenCalled();
     expect(sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        segments: [
-          {
-            text: "纯文本消息",
-            type: "text",
-          },
-        ],
+        segment: {
+          text: "纯文本消息",
+          type: "text",
+        },
       }),
     );
   });

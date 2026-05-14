@@ -1,6 +1,7 @@
 name: Sync GitHub to Gitee
 
 on:
+  push:
   workflow_dispatch:
 
 jobs:

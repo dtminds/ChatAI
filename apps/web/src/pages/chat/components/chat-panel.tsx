@@ -13,7 +13,9 @@ import type {
   CustomerProfile,
   FileUploadQueueItem,
   GroupMember,
+  ChatMessage,
   Message,
+  QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
@@ -35,6 +37,7 @@ type ChatPanelProps = {
   isSendingDraft: boolean;
   isResizingCustomerPanel: boolean;
   messages: Message[];
+  quotedMessage: QuotedMessagePreviewContent | null;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -46,7 +49,10 @@ type ChatPanelProps = {
   onFileSelect: (files: FileList | File[] | null) => void;
   onRefreshGroupMembers: () => void;
   onLoadOlderMessages: () => void;
+  onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
+  onQuoteMessage?: (message: ChatMessage) => void;
+  onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   onSendDraft: (segments: ComposerSegment[]) => void;
@@ -76,6 +82,7 @@ export function ChatPanel({
   isSendingDraft,
   isResizingCustomerPanel,
   messages,
+  quotedMessage,
   hasMoreHistory,
   historyLoadLabel,
   onCustomerPanelResizeStart,
@@ -87,7 +94,10 @@ export function ChatPanel({
   onFileSelect,
   onRefreshGroupMembers,
   onLoadOlderMessages,
+  onMentionMessage,
   onOpenQuotedMessage,
+  onQuoteMessage,
+  onClearQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
   onSendDraft,
@@ -125,8 +135,10 @@ export function ChatPanel({
             isConversationLoading={isConversationLoading}
             messages={messages}
             messageViewportRef={messageViewportRef}
+            onMentionMessage={onMentionMessage}
             onLoadOlderMessages={onLoadOlderMessages}
             onOpenQuotedMessage={onOpenQuotedMessage}
+            onQuoteMessage={onQuoteMessage}
             onMessageViewportScroll={onMessageViewportScroll}
             onRetryMessage={onRetryMessage}
           />
@@ -167,6 +179,7 @@ export function ChatPanel({
                 inputEnterBehavior={inputEnterBehavior}
                 isEmojiPickerOpen={isEmojiPickerOpen}
                 isSending={isSendingDraft}
+                onClearQuotedMessage={onClearQuotedMessage}
                 onDraftChange={onDraftChange}
                 onEmojiPickerOpenChange={onEmojiPickerOpenChange}
                 onEnterBehaviorChange={onEnterBehaviorChange}
@@ -174,6 +187,7 @@ export function ChatPanel({
                 onSegmentsChange={onComposerSegmentsChange}
                 onSendDraft={onSendDraft}
                 placeholder={composerPlaceholder}
+                quotedMessage={quotedMessage}
                 composerRef={composerRef}
               />
             </div>

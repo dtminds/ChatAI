@@ -145,6 +145,9 @@ export function adaptMessage(
     senderDisplayName: isGroupConversation && !isOwnMessage ? senderName : undefined,
     sender: {
       avatarUrl: senderAvatar,
+      groupMemberId: isGroupConversation && !isOwnMessage
+        ? dto.thirdFromId
+        : undefined,
       id: isOwnMessage
         ? `sender-agent-${dto.seatId}`
         : `sender-customer-${dto.thirdFromId ?? dto.customerId}`,

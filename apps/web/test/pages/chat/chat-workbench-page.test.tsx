@@ -139,6 +139,80 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("sets and clears a quoted message preview from the message action menu", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
+    const targetRow = targetMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用" }));
+
+    expect(screen.getByTestId("composer-quote-preview")).toHaveTextContent(
+      "丹阳草莓，得利市大樱桃：我先截了个竖图版本给你看。",
+    );
+
+    await user.click(screen.getByRole("button", { name: "取消引用" }));
+
+    expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
+  });
+
+  it("sends a selected quote with the composed text", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
+    const targetRow = targetMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用" }));
+    await pasteIntoComposer(user, composer, "收到，我按这个版本处理");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => {
+      expect(
+        useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+      ).toMatchObject({
+        content: {
+          quoteMsgId: "5",
+          quotedMessage: {
+            senderName: "丹阳草莓，得利市大樱桃",
+            text: "我先截了个竖图版本给你看。",
+          },
+          text: "收到，我按这个版本处理",
+          type: "quote",
+        },
+      });
+    });
+    expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
+  });
+
+  it("inserts an @ mention from a group message action menu", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+    const groupMessage = await screen.findByText("#接龙", { exact: false });
+    const targetRow = groupMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "@Ta" }));
+
+    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveTextContent(
+      "@缪勇飞 群昵称111",
+    );
+  });
+
   it("renders pasted WeChat emoji tokens as images while sending the original token", async () => {
     const user = userEvent.setup();
 
@@ -777,6 +851,26 @@ describe("ChatWorkbenchPage", () => {
     confirmSpy.mockRestore();
   });
 
+  it("shows a dialog before switching conversations when a quote is selected", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
+    const targetRow = targetMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用" }));
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+
+    expect(await screen.findByRole("alertdialog", { name: "切换会话？" }))
+      .toBeInTheDocument();
+    expect(screen.getByTestId("composer-quote-preview")).toBeInTheDocument();
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+  });
+
   it("clears composer content after confirming a conversation switch", async () => {
     const user = userEvent.setup();
     const confirmSpy = vi.spyOn(window, "confirm");
@@ -947,7 +1041,7 @@ describe("ChatWorkbenchPage", () => {
     await pasteIntoComposer(user, composer, "@小");
 
     expect(screen.getByRole("listbox", { name: "选择群成员" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "所有人（6人）" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "所有人（7人）" })).not.toBeInTheDocument();
     const xiaolinOption = screen.getByRole("option", { name: "小林" });
     expect(xiaolinOption).toBeInTheDocument();
     expect(within(xiaolinOption).getByTestId("mention-member-avatar")).toHaveAttribute(
@@ -1005,7 +1099,7 @@ describe("ChatWorkbenchPage", () => {
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "@所");
-    const allOption = screen.getByRole("option", { name: "所有人（6人）" });
+    const allOption = screen.getByRole("option", { name: "所有人（7人）" });
 
     expect(within(allOption).queryByTestId("mention-member-avatar")).not.toBeInTheDocument();
 
@@ -1084,7 +1178,7 @@ describe("ChatWorkbenchPage", () => {
       expect(within(sidePanel).queryByTestId("dot-matrix-loader")).not.toBeInTheDocument();
     });
 
-    expect(within(sidePanel).getByRole("heading", { name: "群成员 · 共 7 人" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("heading", { name: "群成员 · 共 8 人" })).toBeInTheDocument();
     expect(within(sidePanel).getByText("群主小可")).toBeInTheDocument();
     expect(within(sidePanel).getByText("群主")).toBeInTheDocument();
     expect(within(sidePanel).getByText("小林")).toBeInTheDocument();

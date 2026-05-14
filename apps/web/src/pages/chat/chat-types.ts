@@ -65,6 +65,7 @@ export type Conversation = {
 };
 
 export type MessageSender = {
+  groupMemberId?: string;
   id: string;
   name: string;
   avatarUrl?: string;
@@ -177,6 +178,7 @@ export type QuotedMessagePreviewContent = {
   contentType: WorkbenchMessageContentType;
   fallbackText?: string;
   imageUrl?: string;
+  quoteMsgId?: string;
   senderName: string;
   text?: string;
   title?: string;

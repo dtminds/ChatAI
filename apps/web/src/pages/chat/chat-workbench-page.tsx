@@ -31,6 +31,7 @@ import { ConversationListPanel } from "@/pages/chat/components/conversation-list
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import {
   CLEAR_COMPOSER_COMMAND,
+  INSERT_COMPOSER_MENTION_COMMAND,
   UPDATE_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
@@ -38,7 +39,12 @@ import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-re
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
-import type { ChatMode, FileUploadQueueItem } from "@/pages/chat/chat-types";
+import type {
+  ChatMessage,
+  ChatMode,
+  FileUploadQueueItem,
+  QuotedMessagePreviewContent,
+} from "@/pages/chat/chat-types";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import {
   isComposerFileSizeAllowed,
@@ -155,6 +161,8 @@ function ChatWorkbenchContent({
     useState<string | undefined>();
   const [fileUploadQueue, setFileUploadQueue] = useState<FileUploadQueueItem[]>([]);
   const [isSendingDraft, setIsSendingDraft] = useState(false);
+  const [quotedMessage, setQuotedMessage] =
+    useState<QuotedMessagePreviewContent | null>(null);
   const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
     useState<PendingComposerDiscardSwitch | null>(null);
   const [isAccountRailCollapsed, setIsAccountRailCollapsed] = useState(
@@ -306,6 +314,7 @@ function ChatWorkbenchContent({
     composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
     setDraft("");
     setComposerSegments([]);
+    setQuotedMessage(null);
   };
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
@@ -334,6 +343,19 @@ function ChatWorkbenchContent({
     try {
       const result = await sendAgentMessageSegments(normalizedSegments, {
         mention,
+        quote: quotedMessage?.quoteMsgId
+          ? {
+              quoteMsgId: quotedMessage.quoteMsgId,
+              quotedMessage: {
+                contentType: quotedMessage.contentType,
+                fallbackText: quotedMessage.fallbackText,
+                imageUrl: quotedMessage.imageUrl,
+                senderName: quotedMessage.senderName,
+                text: quotedMessage.text,
+                title: quotedMessage.title,
+              },
+            }
+          : undefined,
         onImageUploaded({ nextSegment, previousSegment }) {
           if (
             nextSegment.type !== "image" ||
@@ -488,7 +510,7 @@ function ChatWorkbenchContent({
   };
 
   const hasUnsentComposerContent = () =>
-    draft.trim().length > 0 || composerSegments.length > 0;
+    draft.trim().length > 0 || composerSegments.length > 0 || quotedMessage !== null;
 
   const handleSelectConversation = async (conversationId: string) => {
     if (conversationId === activeConversationId) {
@@ -576,6 +598,27 @@ function ChatWorkbenchContent({
       behavior: "smooth",
       block: "start",
     });
+  };
+
+  const handleQuoteMessage = (message: ChatMessage) => {
+    setQuotedMessage(buildQuotedMessagePreview(message));
+    composerRef.current?.focus();
+  };
+
+  const handleMentionMessage = (message: ChatMessage) => {
+    if (
+      !message.isGroupConversation ||
+      message.isOwnMessage ||
+      !message.sender.groupMemberId
+    ) {
+      return;
+    }
+
+    composerRef.current?.dispatchCommand(INSERT_COMPOSER_MENTION_COMMAND, {
+      displayName: message.senderDisplayName || message.sender.name,
+      memberId: message.sender.groupMemberId,
+    });
+    composerRef.current?.focus();
   };
 
   if (bootstrapStatus === "loading" && accounts.length === 0) {
@@ -705,10 +748,12 @@ function ChatWorkbenchContent({
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
                 messageViewportRef={messageViewportRef}
+                quotedMessage={quotedMessage}
                 sidebarItems={sidebarItems}
                 onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
                 onComposerSegmentsChange={handleComposerSegmentsChange}
                 onCancelFileUpload={handleCancelFileUpload}
+                onClearQuotedMessage={() => setQuotedMessage(null)}
                 onDraftChange={handleDraftChange}
                 onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                 onEnterBehaviorChange={setInputEnterBehavior}
@@ -717,7 +762,9 @@ function ChatWorkbenchContent({
                   void loadActiveGroupMembers({ force: true });
                 }}
                 onLoadOlderMessages={handleLoadOlderMessages}
+                onMentionMessage={handleMentionMessage}
                 onOpenQuotedMessage={handleOpenQuotedMessage}
+                onQuoteMessage={handleQuoteMessage}
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={retryFailedMessage}
                 onSendDraft={handleSendDraft}
@@ -826,6 +873,94 @@ function getSendFailureDialogCopy(
     title: "发送失败，请稍后重试",
     description: `ErrorCode: ${errorCode}`,
   };
+}
+
+function buildQuotedMessagePreview(message: ChatMessage): QuotedMessagePreviewContent {
+  const senderName = message.senderDisplayName || message.sender.name || message.author;
+  const basePreview = {
+    contentType: message.content.type,
+    quoteMsgId: String(message.seq ?? message.remoteMessageId ?? message.id),
+    senderName,
+  } satisfies Pick<QuotedMessagePreviewContent, "contentType" | "quoteMsgId" | "senderName">;
+
+  switch (message.content.type) {
+    case "text":
+      return {
+        ...basePreview,
+        text: message.content.text,
+      };
+    case "image":
+      return {
+        ...basePreview,
+        fallbackText: "[图片]",
+        imageUrl: message.content.imageUrl,
+      };
+    case "video":
+      return {
+        ...basePreview,
+        fallbackText: "[视频]",
+        imageUrl: message.content.coverImageUrl,
+        title: message.content.alt || message.content.durationLabel,
+      };
+    case "voice":
+      return {
+        ...basePreview,
+        fallbackText: "[语音]",
+        title: message.content.durationLabel,
+      };
+    case "file":
+      return {
+        ...basePreview,
+        fallbackText: "[文件]",
+        title: message.content.fileName,
+      };
+    case "h5":
+      return {
+        ...basePreview,
+        fallbackText: "[链接]",
+        imageUrl: message.content.previewImageUrl,
+        title: message.content.title,
+      };
+    case "mini-program":
+      return {
+        ...basePreview,
+        fallbackText: "[小程序]",
+        imageUrl: message.content.coverImageUrl,
+        title: message.content.title,
+      };
+    case "contact-card":
+      return {
+        ...basePreview,
+        fallbackText: "[名片]",
+        imageUrl: message.content.avatarUrl,
+        title: message.content.name,
+      };
+    case "location":
+      return {
+        ...basePreview,
+        fallbackText: "[位置]",
+        title: message.content.title || message.content.address,
+      };
+    case "sphfeed":
+      return {
+        ...basePreview,
+        fallbackText: "[视频号]",
+        imageUrl: message.content.imageUrl,
+        title: message.content.title,
+      };
+    case "solitaire":
+      return {
+        ...basePreview,
+        fallbackText: "[接龙]",
+        title: message.content.title,
+      };
+    case "quote":
+      return {
+        ...basePreview,
+        fallbackText: "[引用消息]",
+        title: message.content.text,
+      };
+  }
 }
 
 function getSendErrorCode(error: unknown) {

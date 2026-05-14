@@ -1,6 +1,7 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp02Icon,
+  Cancel01Icon,
   ChatDelayIcon,
   Folder01Icon,
   Image01Icon,
@@ -52,7 +53,7 @@ import {
 import { COMPOSER_FILE_ACCEPT } from "@/pages/chat/lib/composer-file-files";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
-import type { GroupMember } from "@/pages/chat/chat-types";
+import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
 
 type ChatComposerProps = {
   canSendMessage: boolean;
@@ -63,6 +64,7 @@ type ChatComposerProps = {
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isSending: boolean;
+  onClearQuotedMessage: () => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
@@ -70,6 +72,7 @@ type ChatComposerProps = {
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
   placeholder: string;
+  quotedMessage: QuotedMessagePreviewContent | null;
   composerRef: RefObject<LexicalEditor | null>;
 };
 
@@ -99,6 +102,7 @@ export function ChatComposer({
   isGroupConversation,
   isEmojiPickerOpen,
   isSending,
+  onClearQuotedMessage,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
@@ -106,6 +110,7 @@ export function ChatComposer({
   onSegmentsChange,
   onSendDraft,
   placeholder,
+  quotedMessage,
   composerRef,
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
@@ -499,6 +504,40 @@ export function ChatComposer({
         </div>
       </div>
 
+      {quotedMessage ? (
+        <div
+          className="flex min-h-12 items-center gap-2 border-l-2 border-primary/70 bg-surface-muted px-3 py-2 text-[12px] leading-5 text-muted-foreground"
+          data-testid="composer-quote-preview"
+        >
+          <div className="min-w-0 flex-1 truncate">
+            {formatComposerQuotePreview(quotedMessage)}
+          </div>
+          {quotedMessage.imageUrl?.trim() ? (
+            <img
+              alt=""
+              aria-hidden="true"
+              className="aspect-square size-9 shrink-0 rounded-[4px] object-cover"
+              src={quotedMessage.imageUrl.trim()}
+            />
+          ) : null}
+          <Button
+            aria-label="取消引用"
+            className="size-7 shrink-0 rounded-full p-0 text-muted-foreground shadow-none hover:bg-surface-hover hover:text-foreground"
+            onClick={onClearQuotedMessage}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={Cancel01Icon}
+              size={14}
+              strokeWidth={2}
+            />
+          </Button>
+        </div>
+      ) : null}
+
       <div className="relative">
         {isMentionPickerOpen && mentionTrigger ? (
           <div
@@ -582,6 +621,50 @@ export function ChatComposer({
       </div>
     </div>
   );
+}
+
+function formatComposerQuotePreview(quotedMessage: QuotedMessagePreviewContent) {
+  const title =
+    quotedMessage.text ||
+    quotedMessage.title ||
+    quotedMessage.fallbackText ||
+    getComposerQuoteContentTypeLabel(quotedMessage.contentType);
+
+  return `${quotedMessage.senderName ? `${quotedMessage.senderName}：` : ""}${title}`;
+}
+
+function getComposerQuoteContentTypeLabel(
+  contentType: QuotedMessagePreviewContent["contentType"],
+) {
+  switch (contentType) {
+    case "image":
+      return "[图片]";
+    case "video":
+      return "[视频]";
+    case "voice":
+      return "[语音]";
+    case "file":
+      return "[文件]";
+    case "h5":
+      return "[链接]";
+    case "mini-program":
+      return "[小程序]";
+    case "contact-card":
+      return "[名片]";
+    case "location":
+      return "[位置]";
+    case "solitaire":
+      return "[接龙]";
+    case "sphfeed":
+      return "[视频号]";
+    case "quote":
+      return "[引用消息]";
+    case "system":
+      return "[系统消息]";
+    case "text":
+    default:
+      return "引用消息不可用";
+  }
 }
 
 function MentionMemberAvatar({

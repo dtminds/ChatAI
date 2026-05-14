@@ -2,7 +2,7 @@ import { startTransition, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { ChatMessageList } from "@/pages/chat/components/message-feed";
-import type { Message } from "@/pages/chat/chat-types";
+import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 
 type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
@@ -12,8 +12,10 @@ type ChatMessagePanelProps = {
   historyLoadLabel?: string;
   isConversationLoading: boolean;
   messages: Message[];
+  onMentionMessage?: (message: ChatMessage) => void;
   onLoadOlderMessages: () => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
+  onQuoteMessage?: (message: ChatMessage) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
@@ -27,8 +29,10 @@ export function ChatMessagePanel({
   historyLoadLabel,
   isConversationLoading,
   messages,
+  onMentionMessage,
   onLoadOlderMessages,
   onOpenQuotedMessage,
+  onQuoteMessage,
   onMessageViewportScroll,
   onRetryMessage,
   messageViewportRef,
@@ -73,7 +77,9 @@ export function ChatMessagePanel({
               ) : null}
               <ChatMessageList
                 messages={messages}
+                onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
+                onQuoteMessage={onQuoteMessage}
                 onRetryMessage={(messageId) => {
                   startTransition(() => {
                     void onRetryMessage(messageId);

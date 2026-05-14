@@ -209,6 +209,10 @@ export type WorkbenchSendMessagePayload = {
     location: "start" | "end";
     memberIds: string[];
   };
+  quote?: {
+    quoteMsgId: string;
+    quotedMessage?: WorkbenchQuotedMessagePreviewDto;
+  };
   segment?: WorkbenchOutgoingMessageSegment;
   segments?: WorkbenchOutgoingMessageSegment[];
 };

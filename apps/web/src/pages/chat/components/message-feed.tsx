@@ -1,6 +1,18 @@
-import { ExclamationMarkIcon } from "@hugeicons/core-free-icons";
+import {
+  AtIcon,
+  ExclamationMarkIcon,
+  MoreHorizontalIcon,
+  QuoteUpIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
@@ -9,7 +21,9 @@ const TIMESTAMP_BREAK_MS = 30 * 60 * 1000;
 
 type ChatMessageListProps = {
   messages: Message[];
+  onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
+  onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
 };
 
@@ -26,7 +40,9 @@ type FeedItem =
 
 export function ChatMessageList({
   messages,
+  onMentionMessage,
   onOpenQuotedMessage,
+  onQuoteMessage,
   onRetryMessage,
 }: ChatMessageListProps) {
   const items = buildFeedItems(messages);
@@ -45,7 +61,9 @@ export function ChatMessageList({
           >
             <MessageRow
               message={item.message}
+              onMentionMessage={onMentionMessage}
               onOpenQuotedMessage={onOpenQuotedMessage}
+              onQuoteMessage={onQuoteMessage}
               onRetryMessage={onRetryMessage}
             />
           </div>
@@ -71,11 +89,15 @@ export function MessageTimeDivider({ label }: { label: string }) {
 
 export function MessageRow({
   message,
+  onMentionMessage,
   onOpenQuotedMessage,
+  onQuoteMessage,
   onRetryMessage,
 }: {
   message: Message;
+  onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
+  onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
 }) {
   if (message.role === "system") {
@@ -90,9 +112,19 @@ export function MessageRow({
   const isGroupConversation = Boolean(message.isGroupConversation);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
   const inlineDeliveryState = getInlineDeliveryState(message, Boolean(onRetryMessage));
+  const messageActions = (
+    <MessageActionAvatar
+      message={message}
+      onMentionMessage={onMentionMessage}
+      onQuoteMessage={onQuoteMessage}
+    />
+  );
 
   return (
-    <div className={cn("flex items-start", isAgent ? "justify-end" : "justify-start")}>
+    <div
+      className={cn("group/message flex items-start", isAgent ? "justify-end" : "justify-start")}
+      data-testid="message-row"
+    >
       <div
         className={cn(
           "flex min-w-0 max-w-[90%] items-start gap-2",
@@ -100,7 +132,7 @@ export function MessageRow({
         )}
         data-testid="message-row-group"
       >
-        {!isAgent ? <MessageAvatar message={message} /> : null}
+        {!isAgent ? messageActions : null}
 
         <div className={cn("flex min-w-0 flex-col", isAgent ? "items-end" : "items-start")}>
           <div
@@ -141,8 +173,71 @@ export function MessageRow({
           ) : null}
         </div>
 
-        {isAgent ? <MessageAvatar message={message} /> : null}
+        {isAgent ? messageActions : null}
       </div>
+    </div>
+  );
+}
+
+function MessageActionAvatar({
+  message,
+  onMentionMessage,
+  onQuoteMessage,
+}: {
+  message: ChatMessage;
+  onMentionMessage?: (message: ChatMessage) => void;
+  onQuoteMessage?: (message: ChatMessage) => void;
+}) {
+  const canMentionMessage = Boolean(
+    onMentionMessage &&
+    message.isGroupConversation &&
+    !message.isOwnMessage &&
+    message.sender.groupMemberId,
+  );
+
+  return (
+    <div className="relative shrink-0">
+      <MessageAvatar message={message} />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            aria-label="消息操作"
+            className="absolute inset-0 z-10 size-8 rounded-[6px] bg-popover/90 p-0 text-muted-foreground opacity-0 shadow-sm backdrop-blur-sm transition-opacity hover:bg-popover hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/30 group-hover/message:opacity-100 data-[state=open]:opacity-100"
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={MoreHorizontalIcon}
+              size={16}
+              strokeWidth={2}
+            />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="center" side="bottom">
+          {canMentionMessage ? (
+            <DropdownMenuItem onSelect={() => onMentionMessage?.(message)}>
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={AtIcon}
+                size={15}
+                strokeWidth={2}
+              />
+              @Ta
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem onSelect={() => onQuoteMessage?.(message)}>
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={QuoteUpIcon}
+              size={15}
+              strokeWidth={2}
+            />
+            引用
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

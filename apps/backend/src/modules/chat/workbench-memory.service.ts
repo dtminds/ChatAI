@@ -285,15 +285,19 @@ export function createMemoryWorkbenchService() {
       const now = Date.now();
       const segments = getPayloadSegments(payload);
       const outcome = resolveSendOutcome(state, payload.seatId, segments);
+      let hasAppliedQuote = false;
       const backendMessages = segments.map((segment, index) => {
         const messageId = `msg-server-${state.nextId++}`;
         const nextSeq = getNextMessageSeq(state, payload.conversationId) + index;
+        const quoteForSegment =
+          !hasAppliedQuote && segment.type === "text" ? payload.quote : undefined;
+        hasAppliedQuote = hasAppliedQuote || Boolean(quoteForSegment);
 
         return {
           seatId: payload.seatId,
           clientMessageId: buildSegmentClientMessageId(payload.clientMessageId, index),
-          content: buildPayloadSegmentContent(segment),
-          contentType: segment.type,
+          content: buildPayloadSegmentContent(segment, quoteForSegment),
+          contentType: quoteForSegment ? "quote" : segment.type,
           conversationId: payload.conversationId,
           createdAt: now + index,
           customerId: conversation.customerId,
@@ -742,7 +746,16 @@ function getPayloadSegments(payload: WorkbenchSendMessagePayload) {
 
 function buildPayloadSegmentContent(
   segment: ReturnType<typeof getPayloadSegments>[number],
+  quote?: WorkbenchSendMessagePayload["quote"],
 ) {
+  if (quote && segment.type === "text") {
+    return {
+      quoteMsgId: quote.quoteMsgId,
+      quotedMessage: quote.quotedMessage,
+      text: segment.text,
+    };
+  }
+
   if (segment.type === "image") {
     return {
       alt: segment.alt,

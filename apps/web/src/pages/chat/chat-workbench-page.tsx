@@ -594,7 +594,7 @@ function ChatWorkbenchContent({
           }
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent size="default">
           <div className="flex items-start gap-3">
             <HugeiconsIcon
               aria-hidden="true"

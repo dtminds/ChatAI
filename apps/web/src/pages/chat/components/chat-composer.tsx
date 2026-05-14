@@ -42,6 +42,10 @@ import {
   $removeComposerTextRange,
 } from "@/pages/chat/components/composer/lexical-utils";
 import { WechatEmojiPicker } from "@/pages/chat/components/wechat-emoji-picker";
+import {
+  COMPOSER_IMAGE_FILE_ACCEPT,
+  isSupportedComposerImageFile,
+} from "@/pages/chat/lib/composer-image-files";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
 import type { GroupMember } from "@/pages/chat/chat-types";
@@ -280,9 +284,7 @@ export function ChatComposer({
       return;
     }
 
-    const files = Array.from(fileList ?? []).filter((file) =>
-      file.type.startsWith("image/"),
-    );
+    const files = Array.from(fileList ?? []).filter(isSupportedComposerImageFile);
     const images = await Promise.all(
       files.map(async (file) => ({
         alt: file.name || "图片",
@@ -377,7 +379,7 @@ export function ChatComposer({
             <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={1.8} />
           </Button>
           <input
-            accept="image/*"
+            accept={COMPOSER_IMAGE_FILE_ACCEPT}
             aria-label="选择图片"
             className="sr-only"
             multiple

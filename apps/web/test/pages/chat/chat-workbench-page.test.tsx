@@ -176,6 +176,38 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("only accepts jpeg and png files from the composer image picker", async () => {
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    expect(screen.getByLabelText("选择图片")).toHaveAttribute(
+      "accept",
+      "image/jpeg,image/png,.jpg,.jpeg,.png",
+    );
+  });
+
+  it("ignores pasted clipboard images outside jpeg and png", async () => {
+    const clipboardImage = new File(["image-bytes"], "clipboard.webp", {
+      type: "image/webp",
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [clipboardImage],
+      },
+    });
+
+    expect(
+      within(composer).queryByRole("img", { name: "clipboard.webp" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+  });
+
   it("keeps overflowing composer content scrollable inside the editor", async () => {
     render(<ChatWorkbenchPage />);
 

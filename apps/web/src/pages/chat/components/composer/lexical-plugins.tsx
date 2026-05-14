@@ -21,6 +21,10 @@ import {
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
 import {
+  isSupportedComposerImageFile,
+  isSupportedComposerImageMimeType,
+} from "@/pages/chat/lib/composer-image-files";
+import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_EMOJI_COMMAND,
   INSERT_COMPOSER_IMAGE_COMMAND,
@@ -156,9 +160,15 @@ export function ComposerRuntimePlugin({
     return editor.registerCommand(
       PASTE_COMMAND,
       (event) => {
-        const imageFiles = getClipboardImageFiles(getEventClipboardData(event));
+        const clipboardData = getEventClipboardData(event);
+        const imageFiles = getClipboardImageFiles(clipboardData);
 
         if (imageFiles.length === 0) {
+          if (hasClipboardImageFile(clipboardData)) {
+            event.preventDefault();
+            return true;
+          }
+
           return false;
         }
 
@@ -303,18 +313,35 @@ function getClipboardImageFiles(clipboardData: DataTransfer | null) {
     return [];
   }
 
-  const files = Array.from(clipboardData.files).filter((file) =>
-    file.type.startsWith("image/"),
-  );
+  const files = Array.from(clipboardData.files).filter(isSupportedComposerImageFile);
 
   if (files.length > 0) {
     return files;
   }
 
-  return Array.from(clipboardData.items)
-    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+  return Array.from(clipboardData.items ?? [])
+    .filter(
+      (item) =>
+        item.kind === "file" && isSupportedComposerImageMimeType(item.type),
+    )
     .map((item) => item.getAsFile())
     .filter((file): file is File => file !== null);
+}
+
+function hasClipboardImageFile(clipboardData: DataTransfer | null) {
+  if (!clipboardData) {
+    return false;
+  }
+
+  const files = Array.from(clipboardData.files ?? []);
+
+  if (files.some((file) => file.type.startsWith("image/"))) {
+    return true;
+  }
+
+  return Array.from(clipboardData.items ?? []).some(
+    (item) => item.kind === "file" && item.type.startsWith("image/"),
+  );
 }
 
 function getEventClipboardData(event: ClipboardEvent | InputEvent | KeyboardEvent) {

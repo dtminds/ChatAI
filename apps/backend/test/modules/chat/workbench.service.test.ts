@@ -572,9 +572,6 @@ describe("MysqlWorkbenchService", () => {
   it("maps a quoted text send to the Java quote payload from audit extend data", async () => {
     const javaClient = createJavaClient();
     const getQuoteContentBase64 = vi.fn().mockResolvedValue("base64-quote-content");
-    const logger = {
-      debug: vi.fn(),
-    };
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-quote-001",
       messageId: "opt-quote-001",
@@ -598,7 +595,6 @@ describe("MysqlWorkbenchService", () => {
         getQuoteContentBase64,
       } as unknown as WorkbenchRepository,
       javaClient,
-      logger,
     );
 
     await service.sendMessage("101", {
@@ -620,18 +616,6 @@ describe("MysqlWorkbenchService", () => {
       platform: 5,
       uid: 9001,
     });
-    expect(logger.debug).toHaveBeenCalledWith(
-      {
-        clientMessageId: "local-quote-001",
-        conversationId: "88",
-        hasQuoteContentBase64: true,
-        quoteContentBase64Length: 20,
-        quoteMsgId: "538",
-        quotedMessageId: "remote-msg-538",
-        seatId: "12",
-      },
-      "workbench quoted message send debug",
-    );
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
       clientMessageId: "local-quote-001",
       message: {

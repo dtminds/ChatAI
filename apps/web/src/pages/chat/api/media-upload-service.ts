@@ -2,7 +2,7 @@ import COS from "cos-js-sdk-v5";
 import { getUploadCredential } from "@/pages/chat/api/workbench-gateway";
 import {
   formatFileSize,
-  getFileExtension,
+  getSupportedFileExtension,
 } from "@/pages/chat/lib/composer-file-files";
 import type {
   ComposerFileSegment,
@@ -88,7 +88,7 @@ export async function uploadWorkbenchFile(
 ): Promise<ComposerFileSegment> {
   const credential = await getUploadCredential(conversationId);
   const cos = createCosClient(credential);
-  const extension = getFileExtension(file.name) || DEFAULT_IMAGE_EXTENSION;
+  const extension = getSupportedFileExtension(file) || DEFAULT_IMAGE_EXTENSION;
   const key = buildObjectKey({
     credential,
     extension,

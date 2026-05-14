@@ -26,10 +26,7 @@ import { cn } from "@/lib/utils";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
 import { AccountRail } from "@/pages/chat/components/account-rail";
-import {
-  ChatPanel,
-  type FileUploadQueueItem,
-} from "@/pages/chat/components/chat-panel";
+import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import {
@@ -66,8 +63,11 @@ type PendingComposerDiscardSwitch =
       type: "mode";
     };
 
-type PendingFileUpload = FileUploadQueueItem & {
-  canceled: boolean;
+type FileUploadQueueItem = {
+  fileName: string;
+  id: string;
+  progress: number;
+  status: "uploading" | "sending";
 };
 
 function getInitialAccountRailCollapsed() {
@@ -160,7 +160,7 @@ function ChatWorkbenchContent({
   } | null>(null);
   const [fileUploadTransitionError, setFileUploadTransitionError] =
     useState<string | undefined>();
-  const [fileUploadQueue, setFileUploadQueue] = useState<PendingFileUpload[]>([]);
+  const [fileUploadQueue, setFileUploadQueue] = useState<FileUploadQueueItem[]>([]);
   const [isSendingDraft, setIsSendingDraft] = useState(false);
   const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
     useState<PendingComposerDiscardSwitch | null>(null);
@@ -173,7 +173,7 @@ function ChatWorkbenchContent({
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
   const isSendingDraftRef = useRef(false);
-  const fileUploadQueueRef = useRef<PendingFileUpload[]>([]);
+  const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
@@ -258,10 +258,10 @@ function ChatWorkbenchContent({
     : "当前会话暂不可发送消息";
 
   const hasActiveFileUploads = () =>
-    fileUploadQueueRef.current.some((item) => !item.canceled);
+    fileUploadQueueRef.current.length > 0;
 
   const setFileUploadQueueState = (
-    updater: (queue: PendingFileUpload[]) => PendingFileUpload[],
+    updater: (queue: typeof fileUploadQueue) => typeof fileUploadQueue,
   ) => {
     setFileUploadQueue((currentQueue) => {
       const nextQueue = updater(currentQueue);
@@ -383,11 +383,6 @@ function ChatWorkbenchContent({
   };
 
   const handleCancelFileUpload = (uploadId: string) => {
-    setFileUploadQueueState((currentQueue) =>
-      currentQueue.map((item) =>
-        item.id === uploadId ? { ...item, canceled: true } : item,
-      ),
-    );
     removeFileUpload(uploadId);
   };
 
@@ -417,8 +412,7 @@ function ChatWorkbenchContent({
       }
 
       const uploadId = `file-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const nextUpload: PendingFileUpload = {
-        canceled: false,
+      const nextUpload: FileUploadQueueItem = {
         fileName: file.name,
         id: uploadId,
         progress: 1,
@@ -449,7 +443,7 @@ function ChatWorkbenchContent({
 
           if (
             !fileUploadQueueRef.current.some(
-              (item) => item.id === uploadId && !item.canceled,
+              (item) => item.id === uploadId,
             )
           ) {
             return;
@@ -475,7 +469,7 @@ function ChatWorkbenchContent({
         } catch (error) {
           if (
             fileUploadQueueRef.current.some(
-              (item) => item.id === uploadId && !item.canceled,
+              (item) => item.id === uploadId,
             )
           ) {
             setSendFailureDialog(
@@ -710,7 +704,7 @@ function ChatWorkbenchContent({
                 isEmojiPickerOpen={isEmojiPickerOpen}
                 isSendingDraft={isSendingDraft}
                 isResizingCustomerPanel={isResizingCustomerPanel}
-                fileUploadQueue={fileUploadQueue.filter((item) => !item.canceled)}
+                fileUploadQueue={fileUploadQueue}
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}

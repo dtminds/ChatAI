@@ -317,6 +317,38 @@ describe("resolveImageSegmentsForSend", () => {
       }),
     );
   });
+
+  it("derives the COS object extension from MIME type when the file name has no extension", async () => {
+    const credential = createUploadCredential({
+      allowPerfixs: ["s5/upload/2026/05/13/272/"],
+    });
+    const baseService = createMockWorkbenchService();
+    const getUploadCredential = vi.fn(async () => credential);
+    const file = new File(["file-bytes"], "报价单", {
+      type: "application/pdf",
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      getUploadCredential,
+    });
+    vi.setSystemTime(new Date("2026-05-13T08:00:00Z"));
+    vi.spyOn(Math, "random").mockReturnValue(0.123456);
+    cosUploadFileMock.mockImplementation(async () => ({
+      ETag: '"mock-etag"',
+    }));
+
+    await expect(uploadWorkbenchFile("conv-001", file)).resolves.toMatchObject({
+      extension: "pdf",
+      fileId: "s5/upload/2026/05/13/272/1778659200000-4fzyo82m.pdf",
+      url: "https://b5.bokr.com.cn/s5/upload/2026/05/13/272/1778659200000-4fzyo82m.pdf",
+    });
+    expect(cosUploadFileMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Key: "s5/upload/2026/05/13/272/1778659200000-4fzyo82m.pdf",
+      }),
+    );
+  });
 });
 
 function createDeferred<T = unknown>() {

@@ -20,6 +20,17 @@ const SUPPORTED_COMPOSER_FILE_TYPES = new Set([
   "text/plain",
 ]);
 
+const COMPOSER_FILE_EXTENSION_BY_TYPE: Record<string, string> = {
+  "application/msword": "doc",
+  "application/pdf": "pdf",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.ms-powerpoint": "ppt",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "text/plain": "txt",
+};
+
 export const COMPOSER_FILE_ACCEPT = [
   ".pdf",
   ".xls",
@@ -59,6 +70,14 @@ export function getFileExtension(fileName: string) {
   const extension = fileName.split(".").pop()?.trim().toLowerCase();
 
   return extension && extension !== fileName.toLowerCase() ? extension : "";
+}
+
+export function getSupportedFileExtension(file: File) {
+  return (
+    getFileExtension(file.name) ||
+    COMPOSER_FILE_EXTENSION_BY_TYPE[file.type.trim().toLowerCase()] ||
+    ""
+  );
 }
 
 export function formatFileSize(bytes: number) {

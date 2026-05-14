@@ -13,6 +13,7 @@ import type {
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
+  WorkbenchSidebarTuseCryptoDto,
   WorkbenchSubUserDto,
   WorkbenchTakeOverSeatResponse,
   WorkbenchUploadCredentialResponse,
@@ -33,6 +34,12 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchConversationDeleteResponse> | WorkbenchConversationDeleteResponse;
+  /** 取自 `xy_wap_embed_user_relation`（与本子账号 `uid`、`platform` 匹配） */
+  getSidebarTuseCrypto(
+    subUserId: string,
+  ):
+    | Promise<WorkbenchSidebarTuseCryptoDto>
+    | WorkbenchSidebarTuseCryptoDto;
   getConversations(
     subUserId: string,
     seatId: string,
@@ -116,6 +123,20 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     return subUser;
+  }
+
+  async getSidebarTuseCrypto(subUserId: string): Promise<WorkbenchSidebarTuseCryptoDto> {
+    await this.getMe(subUserId);
+    const row = await this.repository.getEmbedUserRelationTuseSecrets(subUserId);
+
+    if (!row) {
+      throw new NotFoundError(
+        "SIDEBAR_TUSE_CRYPTO_NOT_FOUND",
+        "侧栏加密配置不存在或未启用",
+      );
+    }
+
+    return row;
   }
 
   async getSeats(subUserId: string) {

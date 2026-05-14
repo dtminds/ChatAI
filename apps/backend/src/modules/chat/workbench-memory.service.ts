@@ -97,6 +97,12 @@ export function createMemoryWorkbenchService() {
     getMe(_subUserId: string) {
       return clone(state.subUser);
     },
+    async getSidebarTuseCrypto(_subUserId: string) {
+      throw new NotFoundError(
+        "SIDEBAR_TUSE_CRYPTO_NOT_FOUND",
+        "侧栏加密配置不存在或未启用",
+      );
+    },
     getMessages(
       _subUserId: string,
       conversationId: string,

@@ -65,6 +65,12 @@ export type WorkbenchSubUserDto = {
   displayName: string;
 };
 
+/** 侧栏 iframe 涂色加密参数，对应库表 `xy_wap_embed_user_relation.secret` / `iv_parameter` */
+export type WorkbenchSidebarTuseCryptoDto = {
+  ivParameter: string;
+  secret: string;
+};
+
 export type WorkbenchSeatDto = {
   seatId: string;
   thirdUserId?: string;

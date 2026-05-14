@@ -1,4 +1,4 @@
-import { useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { CustomerBasicInfoPanel } from "@/pages/chat/components/customer-basic-info-panel";
@@ -9,7 +9,14 @@ import type {
   GroupMember,
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
+import { fetchWorkbenchSidebarTuseCrypto } from "@/pages/chat/api/sidebar-tuse-crypto";
+import { buildSidebarIframeSrc } from "@/pages/chat/lib/sidebar-iframe-url";
 import { sortSidebarItems } from "@/pages/chat/lib/sidebar-items";
+import {
+  encryptTuseFswFromThirdExternalUserId,
+  encryptTuseRdFromThirdUserId,
+  encryptTuseTsFromUnixSeconds,
+} from "@/lib/tuse-crypto";
 
 const collapsedSidebarEntryCount = 4;
 const sidebarExpandedStorageKey = "chatai.customerSidePanel.sidebarExpanded";
@@ -17,6 +24,9 @@ const sidebarExpandedStorageKey = "chatai.customerSidePanel.sidebarExpanded";
 type CustomerSidePanelProps = {
   accountName?: string;
   conversationMode?: ChatMode;
+  /** 当前会话三方用户标识，会附加到自定义侧栏 iframe 的查询串 */
+  sidebarIframeThirdExternalUserId?: string;
+  sidebarIframeThirdUserId?: string;
   customer?: CustomerProfile;
   groupMembers: GroupMember[];
   isGroupMembersLoading: boolean;
@@ -31,6 +41,8 @@ export function CustomerSidePanel({
   accountName,
   conversationMode,
   customer,
+  sidebarIframeThirdExternalUserId,
+  sidebarIframeThirdUserId,
   groupMembers,
   isGroupMembersLoading,
   isResizing,
@@ -40,6 +52,176 @@ export function CustomerSidePanel({
   onResizeStart,
 }: CustomerSidePanelProps) {
   const isGroupConversation = conversationMode === "group";
+  type TuseSecretCache =
+    | { kind: "ready"; value: { iv: string; key: string } | null }
+    | { kind: "unset" };
+  const tuseSecretCacheRef = useRef<TuseSecretCache>({ kind: "unset" });
+
+  const hasActiveCustomSidebar = useMemo(
+    () => sortSidebarItems(sidebarItems).some((item) => item.status === "active"),
+    [sidebarItems],
+  );
+
+  const hasSidebarIframeThirdIds = useMemo(
+    () =>
+      Boolean(
+        (sidebarIframeThirdUserId !== undefined && sidebarIframeThirdUserId !== "") ||
+          (sidebarIframeThirdExternalUserId !== undefined && sidebarIframeThirdExternalUserId !== ""),
+      ),
+    [sidebarIframeThirdExternalUserId, sidebarIframeThirdUserId],
+  );
+
+  const needsSidebarTuseSecrets = hasActiveCustomSidebar && hasSidebarIframeThirdIds;
+
+  const [tuseSecrets, setTuseSecrets] = useState<
+    { iv: string; key: string } | null | undefined
+  >(undefined);
+
+  useEffect(() => {
+    if (!needsSidebarTuseSecrets) {
+      tuseSecretCacheRef.current = { kind: "unset" };
+      setTuseSecrets(undefined);
+
+      return;
+    }
+
+    if (tuseSecretCacheRef.current.kind === "ready") {
+      setTuseSecrets(tuseSecretCacheRef.current.value);
+
+      return;
+    }
+
+    let cancelled = false;
+
+    setTuseSecrets(undefined);
+
+    void (async () => {
+      try {
+        const dto = await fetchWorkbenchSidebarTuseCrypto();
+
+        if (cancelled) {
+          return;
+        }
+
+        const next =
+          dto?.secret?.trim() && dto?.ivParameter?.trim()
+            ? { key: dto.secret.trim(), iv: dto.ivParameter.trim() }
+            : null;
+        tuseSecretCacheRef.current = { kind: "ready", value: next };
+        setTuseSecrets(next);
+      } catch {
+        if (!cancelled) {
+          tuseSecretCacheRef.current = { kind: "ready", value: null };
+          setTuseSecrets(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [needsSidebarTuseSecrets]);
+
+  const [sidebarIframeCrypto, setSidebarIframeCrypto] = useState<{
+    rd?: string;
+    fsw?: string;
+    ts: string;
+  } | null>(null);
+  const [isSidebarIframeCryptoReady, setIsSidebarIframeCryptoReady] = useState(true);
+
+  const tuseKey = tuseSecrets?.key;
+  const tuseIv = tuseSecrets?.iv;
+  const tuseSecretsReady = Boolean(tuseKey && tuseIv);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!needsSidebarTuseSecrets) {
+      setIsSidebarIframeCryptoReady(true);
+      setSidebarIframeCrypto(null);
+
+      return;
+    }
+
+    if (tuseSecrets === undefined) {
+      setIsSidebarIframeCryptoReady(false);
+      setSidebarIframeCrypto(null);
+
+      return;
+    }
+
+    if (!tuseSecretsReady || (!sidebarIframeThirdUserId && !sidebarIframeThirdExternalUserId)) {
+      setIsSidebarIframeCryptoReady(true);
+      setSidebarIframeCrypto(null);
+
+      return;
+    }
+
+    setIsSidebarIframeCryptoReady(false);
+
+    const tsMs = Date.now();
+
+    void (async () => {
+      try {
+        const rd =
+          sidebarIframeThirdUserId !== undefined && sidebarIframeThirdUserId !== ""
+            ? await encryptTuseRdFromThirdUserId(tuseKey!, tuseIv!, sidebarIframeThirdUserId)
+            : undefined;
+        const fsw =
+          sidebarIframeThirdExternalUserId !== undefined && sidebarIframeThirdExternalUserId !== ""
+            ? await encryptTuseFswFromThirdExternalUserId(
+                tuseKey!,
+                tuseIv!,
+                sidebarIframeThirdExternalUserId,
+              )
+            : undefined;
+
+        const ts = await encryptTuseTsFromUnixSeconds(
+          tuseKey!,
+          tuseIv!,
+          Math.floor(tsMs / 1000),
+        );
+
+        if (!cancelled) {
+          setSidebarIframeCrypto({ ...(rd !== undefined ? { rd } : {}), ...(fsw !== undefined ? { fsw } : {}), ts });
+        }
+      } catch {
+        if (!cancelled) {
+          setSidebarIframeCrypto(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSidebarIframeCryptoReady(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    needsSidebarTuseSecrets,
+    sidebarIframeThirdExternalUserId,
+    sidebarIframeThirdUserId,
+    tuseIv,
+    tuseKey,
+    tuseSecrets,
+    tuseSecretsReady,
+  ]);
+
+  const sidebarIframeSrcForUrl = useMemo(
+    () => (url: string) =>
+      buildSidebarIframeSrc(url, {
+        thirdExternalUserId: sidebarIframeThirdExternalUserId,
+        thirdUserId: sidebarIframeThirdUserId,
+        ...(sidebarIframeCrypto ?? {}),
+      }),
+    [
+      sidebarIframeCrypto,
+      sidebarIframeThirdExternalUserId,
+      sidebarIframeThirdUserId,
+    ],
+  );
   const activeSidebarItems = sortSidebarItems(sidebarItems).filter(
     (item) => item.status === "active",
   );
@@ -136,7 +318,11 @@ export function CustomerSidePanel({
                 className="h-full w-full border-0 bg-background"
                 referrerPolicy="no-referrer-when-downgrade"
                 sandbox="allow-scripts allow-same-origin allow-forms"
-                src={item.url}
+                src={
+                  isSidebarIframeCryptoReady
+                    ? sidebarIframeSrcForUrl(item.url) + '&mid=2038815948395253760'
+                    : "about:blank"
+                }
                 title={`${item.name}扩展页`}
               />
             </TabsContent>

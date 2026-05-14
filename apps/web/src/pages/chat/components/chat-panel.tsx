@@ -178,6 +178,8 @@ export function ChatPanel({
           accountName={accountName}
           conversationMode={activeConversation?.mode}
           customer={customer}
+          sidebarIframeThirdExternalUserId={activeConversation?.thirdExternalUserId}
+          sidebarIframeThirdUserId={activeConversation?.thirdUserId}
           groupMembers={groupMembers}
           isGroupMembersLoading={isGroupMembersLoading}
           isResizing={isResizingCustomerPanel}

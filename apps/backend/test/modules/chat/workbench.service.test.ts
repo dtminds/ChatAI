@@ -446,6 +446,47 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
   });
+
+  it("loads sidebar TUSE crypto from the embed user relation row", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        getEmbedUserRelationTuseSecrets: vi.fn().mockResolvedValue({
+          ivParameter: "iv-value",
+          secret: "secret-value",
+        }),
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "Tester",
+          subUserId: "101",
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getSidebarTuseCrypto("101")).resolves.toEqual({
+      ivParameter: "iv-value",
+      secret: "secret-value",
+    });
+  });
+
+  it("rejects sidebar TUSE crypto when relation secrets are unavailable", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        getEmbedUserRelationTuseSecrets: vi.fn().mockResolvedValue(undefined),
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "Tester",
+          subUserId: "101",
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getSidebarTuseCrypto("101")).rejects.toMatchObject({
+      code: "SIDEBAR_TUSE_CRYPTO_NOT_FOUND",
+      statusCode: 404,
+    });
+  });
 });
 
 function createJavaClient(): WorkbenchJavaClient {

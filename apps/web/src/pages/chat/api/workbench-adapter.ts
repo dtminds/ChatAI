@@ -61,6 +61,8 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     preview: dto.lastMessage,
     priority: dto.priority,
     quietFor: formatQuietFor(lastMessageTime),
+    thirdExternalUserId: dto.thirdExternalUserId,
+    thirdUserId: dto.thirdUserId,
     unread: dto.unreadCount,
     updatedAt: formatWorkbenchTimestamp(lastMessageTime),
     updatedAtMs: lastMessageTime,

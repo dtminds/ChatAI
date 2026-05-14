@@ -72,7 +72,7 @@ function normalizeError(error: unknown): RequestError {
   return { message: "Unknown request error" };
 }
 
-function isRequestError(error: unknown): error is RequestError {
+export function isRequestError(error: unknown): error is RequestError {
   if (!error || typeof error !== "object") {
     return false;
   }

@@ -53,6 +53,10 @@ export type Conversation = {
   unread: number;
   mode: ChatMode;
   priority: "high" | "medium" | "low";
+  /** 三方用户 ID，侧栏 iframe 会拼入 URL 查询参数 `thirdUserId` */
+  thirdUserId?: string;
+  /** 外部用户 ID，侧栏 iframe 会拼入 URL 查询参数 `thirdExternalUserId` */
+  thirdExternalUserId?: string;
   isPinned?: boolean;
   updatedAtMs?: number;
 };

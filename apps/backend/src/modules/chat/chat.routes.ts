@@ -85,6 +85,10 @@ export async function registerChatRoutes(app: FastifyInstance) {
     getWorkbenchService(app).getMe(getSubUserId(request)),
   );
 
+  app.get("/api/server/me/sidebar-tuse-crypto", { preHandler: app.authenticate }, async (request) =>
+    getWorkbenchService(app).getSidebarTuseCrypto(getSubUserId(request)),
+  );
+
   app.get("/api/server/seats", { preHandler: app.authenticate }, async (request) =>
     getWorkbenchService(app).getSeats(getSubUserId(request)),
   );

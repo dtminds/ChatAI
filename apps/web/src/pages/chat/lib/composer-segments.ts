@@ -1,11 +1,14 @@
 export type ComposerTextSegment = {
   type: "text";
   text: string;
+  mentionAll?: boolean;
+  mentionMemberIds?: string[];
 };
 
 export type ComposerImageSegment = {
   type: "image";
   alt: string;
+  clientId?: string;
   fileId?: string;
   height?: number;
   localUrl?: string;
@@ -13,30 +16,53 @@ export type ComposerImageSegment = {
   width?: number;
 };
 
-export type ComposerSegment = ComposerTextSegment | ComposerImageSegment;
+export type ComposerFileSegment = {
+  type: "file";
+  extension: string;
+  fileId?: string;
+  fileName: string;
+  fileSize: number;
+  fileSizeLabel: string;
+  url?: string;
+};
+
+export type ComposerSegment =
+  | ComposerTextSegment
+  | ComposerImageSegment
+  | ComposerFileSegment;
 
 export function normalizeComposerSegments(
   segments: ComposerSegment[],
 ): ComposerSegment[] {
   const normalizedSegments: ComposerSegment[] = [];
   let textBuffer = "";
+  let mentionAllBuffer = false;
+  let mentionMemberIdsBuffer: string[] = [];
 
   const flushTextBuffer = () => {
     const normalizedText = textBuffer.trim();
 
     if (normalizedText) {
       normalizedSegments.push({
+        ...(mentionAllBuffer ? { mentionAll: true } : {}),
+        ...(mentionMemberIdsBuffer.length > 0
+          ? { mentionMemberIds: Array.from(new Set(mentionMemberIdsBuffer)) }
+          : {}),
         text: normalizedText,
         type: "text",
       });
     }
 
     textBuffer = "";
+    mentionAllBuffer = false;
+    mentionMemberIdsBuffer = [];
   };
 
   for (const segment of segments) {
     if (segment.type === "text") {
       textBuffer += segment.text;
+      mentionAllBuffer = mentionAllBuffer || Boolean(segment.mentionAll);
+      mentionMemberIdsBuffer.push(...(segment.mentionMemberIds ?? []));
       continue;
     }
 
@@ -62,4 +88,29 @@ export function getComposerSegmentsPreview(segments: ComposerSegment[]) {
   return normalizedSegments.some((segment) => segment.type === "image")
     ? "[图片]"
     : "";
+}
+
+export function extractComposerMentionState(segments: ComposerSegment[]) {
+  const normalizedSegments = normalizeComposerSegments(segments);
+  const memberIds = new Set<string>();
+  let mentionAll = false;
+
+  for (const segment of normalizedSegments) {
+    if (segment.type !== "text") {
+      continue;
+    }
+
+    for (const memberId of segment.mentionMemberIds ?? []) {
+      if (memberId) {
+        memberIds.add(memberId);
+      }
+    }
+
+    mentionAll = mentionAll || Boolean(segment.mentionAll);
+  }
+
+  return {
+    memberIds: Array.from(memberIds),
+    mentionAll,
+  };
 }

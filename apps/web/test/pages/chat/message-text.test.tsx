@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { MessageRow } from "@/pages/chat/components/message-feed";
+import { getMessageFeedItemKey, MessageRow } from "@/pages/chat/components/message-feed";
 import { TextMessageBubble } from "@/pages/chat/components/message";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
@@ -58,6 +58,62 @@ describe("text message bubble layout", () => {
 
     expect(screen.getByText("原始文本")).toBeInTheDocument();
     expect(screen.getByText("已撤回")).toBeInTheDocument();
+  });
+
+  it("shows sending state for accepted optimistic messages", () => {
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("待确认消息"),
+          optNo: "opt-001",
+          remoteMessageId: "opt-001",
+          status: "accepted",
+        }}
+      />,
+    );
+
+    const sendingState = screen.getByRole("status", { name: "发送中" });
+
+    expect(sendingState).toBeInTheDocument();
+    expect(screen.getByTestId("message-inline-status-slot")).toContainElement(
+      sendingState,
+    );
+  });
+
+  it("does not show sending state after optimistic messages are reconciled", () => {
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("已确认消息"),
+          optNo: "opt-001",
+          remoteMessageId: "remote-001",
+          status: "read",
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("发送中...")).not.toBeInTheDocument();
+  });
+
+  it("keeps the feed item key stable after optimistic messages are reconciled", () => {
+    const optimisticMessage = {
+      ...createTextMessage("已确认消息"),
+      clientMessageId: "local-001",
+      id: "local-001",
+      optNo: "opt-001",
+      remoteMessageId: "opt-001",
+      status: "accepted",
+    } satisfies ChatMessage;
+    const reconciledMessage = {
+      ...optimisticMessage,
+      id: "remote-001",
+      remoteMessageId: "remote-001",
+      status: "read",
+    } satisfies ChatMessage;
+
+    expect(getMessageFeedItemKey(optimisticMessage)).toBe(
+      getMessageFeedItemKey(reconciledMessage),
+    );
   });
 
   it("shows revoked state under a non-text message", () => {

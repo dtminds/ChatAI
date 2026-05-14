@@ -95,6 +95,23 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("preserves message optNo for optimistic reconciliation", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          optNo: "opt-001",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      id: "message-1",
+      optNo: "opt-001",
+    });
+  });
+
   it("marks group messages from the current seat as own messages", () => {
     expect(
       adaptMessage(
@@ -395,6 +412,7 @@ const messageDto = {
   customerId: "group-1",
   failReason: undefined,
   messageId: "message-1",
+  optNo: undefined,
   seatId: "seat-1",
   senderAvatar: "",
   senderName: "",

@@ -120,6 +120,7 @@ export type WorkbenchMessageBaseDto = {
   createdAt?: number;
   seq: number;
   clientMessageId?: string;
+  optNo?: string;
   failReason?: string;
   isRevoked?: boolean;
 };
@@ -188,9 +189,20 @@ export type WorkbenchOutgoingMessageImageSegment = {
   width?: number;
 };
 
+export type WorkbenchOutgoingMessageFileSegment = {
+  type: "file";
+  extension: string;
+  fileId?: string;
+  fileName: string;
+  fileSize?: number;
+  fileSizeLabel?: string;
+  url?: string;
+};
+
 export type WorkbenchOutgoingMessageSegment =
   | WorkbenchOutgoingMessageTextSegment
-  | WorkbenchOutgoingMessageImageSegment;
+  | WorkbenchOutgoingMessageImageSegment
+  | WorkbenchOutgoingMessageFileSegment;
 
 export type WorkbenchSendMessagePayload = {
   seatId: string;
@@ -198,18 +210,26 @@ export type WorkbenchSendMessagePayload = {
   clientMessageId: string;
   contentType?: "text";
   content?: string;
+  mention?: {
+    all?: boolean;
+    location: "start" | "end";
+    memberIds: string[];
+  };
+  segment?: WorkbenchOutgoingMessageSegment;
   segments?: WorkbenchOutgoingMessageSegment[];
 };
 
 export type WorkbenchSentMessageAck = {
   messageId: string;
   clientMessageId: string;
+  optNo?: string;
   status: "accepted";
 };
 
 export type WorkbenchSendMessageResponse = {
   messageId: string;
   clientMessageId: string;
+  optNo?: string;
   status: "accepted";
   messages?: WorkbenchSentMessageAck[];
 };

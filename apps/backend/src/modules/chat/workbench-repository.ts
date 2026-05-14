@@ -36,6 +36,9 @@ export type ConversationLookup = {
   seatId: string;
   seatHostSubUserId?: string;
   seatUnreadCount: number;
+  thirdExternalUserId?: string;
+  thirdGroupId?: string;
+  thirdUserId: string;
   uid: number;
   unreadCount: number;
 };
@@ -356,6 +359,9 @@ export class WorkbenchRepository {
       .select([
         "conversation.id as id",
         "conversation.platform as platform",
+        "conversation.third_external_userid as third_external_userid",
+        "conversation.third_group_id as third_group_id",
+        "conversation.third_userid as third_userid",
         "conversation.unread_cnt as unread_cnt",
         "conversation.uid as uid",
         "seat.host_sub_id as seat_host_sub_id",
@@ -393,6 +399,9 @@ export class WorkbenchRepository {
               ? undefined
               : String(row.seat_host_sub_id),
           seatUnreadCount: Number(row.seat_unread_count ?? 0),
+          thirdExternalUserId: row.third_external_userid || undefined,
+          thirdGroupId: row.third_group_id || undefined,
+          thirdUserId: row.third_userid,
           uid: row.uid,
           unreadCount: Number(row.unread_cnt ?? 0),
         }
@@ -624,6 +633,7 @@ export class WorkbenchRepository {
         "message.content as content",
         "message.msgtype as msgtype",
         "message.msgtime as msgtime",
+        "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
       ])
       .select((expressionBuilder) => [

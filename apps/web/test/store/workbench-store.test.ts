@@ -251,8 +251,132 @@ describe("useWorkbenchStore", () => {
     ]);
     expect(state.pendingMessages).toHaveLength(3);
     expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
-      "第一段[打脸]",
+      "第二段[强]",
     );
+  });
+
+  it("reconciles polled messages by optNo while keeping unmatched optimistic messages", async () => {
+    const baseService = createMockWorkbenchService();
+    let sendIndex = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage(payload) {
+        sendIndex += 1;
+
+        return {
+          clientMessageId: payload.clientMessageId,
+          messageId: `opt-${sendIndex}`,
+          optNo: `opt-${sendIndex}`,
+          status: "accepted",
+        };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            {
+              clientMessageId: undefined,
+              content: {
+                text: "服务端文本",
+              },
+              contentType: "text",
+              conversationId: "conv-001",
+              createdAt: Date.now(),
+              customerId: "cust-001",
+              messageId: "remote-text-001",
+              optNo: "opt-2",
+              seatId: "drc",
+              senderType: "agent",
+              seq: 999,
+              status: "read",
+            },
+          ],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        alt: "截图 A",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+      {
+        text: "本地文本",
+        type: "text",
+      },
+      {
+        alt: "截图 B",
+        fileId: "chat-images/conv-001/b.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/b.png",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        alt: "截图 A",
+        localUrl: "data:image/png;base64,aaa",
+        type: "image",
+      },
+      {
+        text: "本地文本",
+        type: "text",
+      },
+      {
+        alt: "截图 B",
+        localUrl: "data:image/png;base64,bbb",
+        type: "image",
+      },
+    ]);
+
+    let latestMessages =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-3);
+
+    expect(latestMessages.map((message) => message.optNo)).toEqual([
+      "opt-1",
+      "opt-2",
+      "opt-3",
+    ]);
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    latestMessages =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-3);
+
+    expect(latestMessages).toMatchObject([
+      {
+        content: {
+          type: "image",
+        },
+        optNo: "opt-1",
+        remoteMessageId: "opt-1",
+        status: "accepted",
+      },
+      {
+        content: {
+          text: "服务端文本",
+          type: "text",
+        },
+        id: "remote-text-001",
+        optNo: "opt-2",
+        remoteMessageId: "remote-text-001",
+        status: "read",
+      },
+      {
+        content: {
+          type: "image",
+        },
+        optNo: "opt-3",
+        remoteMessageId: "opt-3",
+        status: "accepted",
+      },
+    ]);
   });
 
   it("resolves image segments before sending them to the message API", async () => {
@@ -305,22 +429,27 @@ describe("useWorkbenchStore", () => {
         type: "image",
       },
     ]);
-    expect(sendMessage).toHaveBeenCalledWith(
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
-        segments: [
-          {
-            alt: "截图 A",
-            fileId: "chat-images/conv-001/a.png",
-            type: "image",
-            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
-          },
-          {
-            alt: "截图 B",
-            fileId: "chat-images/conv-001/b.png",
-            type: "image",
-            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/b.png",
-          },
-        ],
+        segment: {
+          alt: "截图 A",
+          fileId: "chat-images/conv-001/a.png",
+          type: "image",
+          url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        segment: {
+          alt: "截图 B",
+          fileId: "chat-images/conv-001/b.png",
+          type: "image",
+          url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/b.png",
+        },
       }),
     );
   });
@@ -373,20 +502,25 @@ describe("useWorkbenchStore", () => {
         type: "text",
       },
     ]);
-    expect(sendMessage).toHaveBeenCalledWith(
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
-        segments: [
-          {
-            alt: "location_bg.png",
-            fileId: "chat-images/conv-001/location_bg.png",
-            type: "image",
-            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/location_bg.png",
-          },
-          {
-            text: "12321",
-            type: "text",
-          },
-        ],
+        segment: {
+          alt: "location_bg.png",
+          fileId: "chat-images/conv-001/location_bg.png",
+          type: "image",
+          url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/location_bg.png",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        segment: {
+          text: "12321",
+          type: "text",
+        },
       }),
     );
   });
@@ -406,12 +540,10 @@ describe("useWorkbenchStore", () => {
     expect(resolveImageSegmentsForSend).not.toHaveBeenCalled();
     expect(sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        segments: [
-          {
-            text: "纯文本消息",
-            type: "text",
-          },
-        ],
+        segment: {
+          text: "纯文本消息",
+          type: "text",
+        },
       }),
     );
   });
@@ -484,6 +616,39 @@ describe("useWorkbenchStore", () => {
       beforeMessages,
     );
     expect(useWorkbenchStore.getState().pendingMessages).toHaveLength(0);
+  });
+
+  it("uses business error codes before HTTP status codes when the send API fails", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(async () => {
+      throw {
+        code: "SEAT_NOT_TAKEN_OVER",
+        message: "当前账号尚未由你接管",
+        status: 403,
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        text: "这条消息会返回业务错误",
+        type: "text",
+      },
+    ]);
+
+    expect(result).toEqual({
+      errorCode: "SEAT_NOT_TAKEN_OVER",
+      errorMessage: "当前账号尚未由你接管",
+      reason: "send",
+      ok: false,
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
   it("switches account and falls back to the first available mode", async () => {

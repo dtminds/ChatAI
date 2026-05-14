@@ -8,6 +8,7 @@ import type {
   WorkbenchGroupMembersResponse,
   WorkbenchMessageDto,
   WorkbenchMessagePageDto,
+  WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
   WorkbenchSeatDto,
@@ -19,11 +20,21 @@ import type {
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import {
+  BadRequestError,
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
 } from "../../shared/errors.js";
-import type { WorkbenchJavaClient } from "./workbench-java-client.js";
+import type {
+  JavaSendMessageData,
+  WorkbenchJavaClient,
+} from "./workbench-java-client.js";
+import {
+  JAVA_MENTION_HIT_TYPE,
+  JAVA_MENTION_LOCATION,
+  JAVA_MSG_TYPE,
+  JAVA_SEND_TYPE,
+} from "./workbench-java-client.js";
 import {
   parseMySqlId,
   type WorkbenchRepository,
@@ -298,15 +309,24 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async sendMessage(subUserId: string, payload: WorkbenchSendMessagePayload) {
-    const conversation = await this.repository.getConversationLookup(payload.conversationId);
+    const conversation = await this.getOperableConversation(subUserId, payload.conversationId);
 
-    if (!conversation || conversation.seatId !== payload.seatId) {
+    if (conversation.seatId !== payload.seatId) {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
     }
 
-    await this.assertSeatAccess(subUserId, payload.seatId);
-
-    return this.javaClient.sendMessage({ payload, subUserId });
+    return this.javaClient.sendMessage({
+      clientMessageId: payload.clientMessageId,
+      message: buildJavaSendMessageData(payload, getSingleSendSegment(payload)),
+      platform: conversation.platform,
+      sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
+      ...(conversation.thirdExternalUserId
+        ? { thirdExternalUserid: conversation.thirdExternalUserId }
+        : {}),
+      ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {
@@ -391,4 +411,82 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     return conversation;
   }
+}
+
+function getSingleSendSegment(
+  payload: WorkbenchSendMessagePayload,
+): WorkbenchOutgoingMessageSegment {
+  if (payload.segment) {
+    return payload.segment;
+  }
+
+  if (payload.segments?.[0]) {
+    return payload.segments[0];
+  }
+
+  return {
+    text: payload.content ?? "",
+    type: "text",
+  };
+}
+
+function buildJavaSendMessageData(
+  payload: WorkbenchSendMessagePayload,
+  segment: WorkbenchOutgoingMessageSegment,
+): JavaSendMessageData {
+  if (segment.type === "image") {
+    const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
+
+    if (!imageUrl) {
+      throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片消息缺少可发送地址");
+    }
+
+    return {
+      msgContent: imageUrl,
+      msgNum: 1,
+      msgType: JAVA_MSG_TYPE.IMAGE,
+    };
+  }
+
+  if (segment.type === "file") {
+    const fileName = segment.fileName.trim();
+    const fileUrl = segment.url?.trim();
+
+    if (!fileName) {
+      throw new BadRequestError("INVALID_FILE_MESSAGE", "文件消息缺少文件名");
+    }
+
+    if (!fileUrl) {
+      throw new BadRequestError("INVALID_FILE_MESSAGE", "文件消息缺少可发送地址");
+    }
+
+    return {
+      msgContent: fileName,
+      msgNum: 1,
+      msgType: JAVA_MSG_TYPE.FILE,
+      vcHref: fileUrl,
+      vcTitle: fileName,
+    };
+  }
+
+  const message: JavaSendMessageData = {
+    msgContent: segment.text,
+    msgNum: 1,
+    msgType: JAVA_MSG_TYPE.TEXT,
+  };
+  const mentionMemberIds = payload.mention?.memberIds.filter(Boolean) ?? [];
+
+  if (payload.mention?.all) {
+    message.atLocation = JAVA_MENTION_LOCATION.START;
+    message.isHit = 1;
+  } else if (mentionMemberIds.length > 0) {
+    message.atLocation =
+      payload.mention?.location === "end"
+        ? JAVA_MENTION_LOCATION.END
+        : JAVA_MENTION_LOCATION.START;
+    message.atWxSerialNos = mentionMemberIds;
+    message.isHit = JAVA_MENTION_HIT_TYPE.MEMBER;
+  }
+
+  return message;
 }

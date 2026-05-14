@@ -96,7 +96,8 @@ export function RootLayout() {
             <DotMatrixLoader
               ariaLabel="正在验证"
               className="text-muted-foreground"
-              type="square-5"
+              dotSize={3}
+              size={22}
             />
             <span>正在验证登录状态</span>
           </div>

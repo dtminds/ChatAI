@@ -1,7 +1,6 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp02Icon,
-  Cancel01Icon,
   ChatDelayIcon,
   Image01Icon,
   Loading03Icon,
@@ -13,12 +12,8 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import type { LexicalEditor } from "lexical";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -39,17 +34,23 @@ import {
 import {
   ComposerEmojiNode,
   ComposerImageNode,
+  ComposerMentionNode,
 } from "@/pages/chat/components/composer/lexical-nodes";
+import { ComposerRuntimePlugin } from "@/pages/chat/components/composer/lexical-plugins";
 import {
-  ComposerRuntimePlugin,
-  MentionTextRemovalPlugin,
-} from "@/pages/chat/components/composer/lexical-plugins";
+  $insertComposerMention,
+  $insertComposerText,
+  $removeComposerTextRange,
+} from "@/pages/chat/components/composer/lexical-utils";
 import { WechatEmojiPicker } from "@/pages/chat/components/wechat-emoji-picker";
+import {
+  COMPOSER_IMAGE_FILE_ACCEPT,
+  isSupportedComposerImageFile,
+  MAX_COMPOSER_IMAGE_SEGMENTS,
+} from "@/pages/chat/lib/composer-image-files";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
 import type { GroupMember } from "@/pages/chat/chat-types";
-
-export type MentionInsertPosition = "start" | "end";
 
 type ChatComposerProps = {
   canSendMessage: boolean;
@@ -59,19 +60,31 @@ type ChatComposerProps = {
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isSending: boolean;
-  mentionInsertPosition: MentionInsertPosition;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
-  onMentionInsertPositionChange: (position: MentionInsertPosition) => void;
-  onRemoveMentionMember: (memberId: string) => void;
-  onSelectMentionMember: (member: GroupMember, triggerStart: number, triggerEnd: number) => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
-  selectedMentionMembers: GroupMember[];
   placeholder: string;
   composerRef: RefObject<LexicalEditor | null>;
 };
+
+type MentionDropdownItem =
+  | {
+      displayName: string;
+      isAll: true;
+      memberId: "__all__";
+    }
+  | {
+      avatarUrl?: string;
+      displayName: string;
+      isAll?: false;
+      memberId: string;
+    };
+
+function createComposerImageClientId() {
+  return `composer-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export function ChatComposer({
   canSendMessage,
@@ -81,36 +94,25 @@ export function ChatComposer({
   isGroupConversation,
   isEmojiPickerOpen,
   isSending,
-  mentionInsertPosition,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
-  onMentionInsertPositionChange,
-  onRemoveMentionMember,
-  onSelectMentionMember,
   onSegmentsChange,
   onSendDraft,
-  selectedMentionMembers,
   placeholder,
   composerRef,
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
-  const mentionDropdownCloseTimerRef = useRef<number | null>(null);
   const [draftText, setDraftText] = useState(draft);
   const [segments, setSegments] = useState<ComposerSegment[]>([]);
-  const [isMentionDropdownOpen, setIsMentionDropdownOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(draft.length);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isMentionPickerDismissed, setIsMentionPickerDismissed] = useState(false);
-  const [pendingMentionRemoval, setPendingMentionRemoval] = useState<{
-    end: number;
-    start: number;
-  } | null>(null);
   const editorConfig = useMemo(
     () => ({
       namespace: "ChatComposer",
-      nodes: [ComposerEmojiNode, ComposerImageNode],
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
       onError(error: Error) {
         throw error;
       },
@@ -121,14 +123,9 @@ export function ChatComposer({
     }),
     [],
   );
-  const mentionSummaryLabel = `查看已 @ 的 ${selectedMentionMembers.length} 位群成员`;
   const mentionTrigger = useMemo(
     () => getMentionTrigger(draftText, cursorPosition),
     [cursorPosition, draftText],
-  );
-  const selectedMentionMemberIds = useMemo(
-    () => new Set(selectedMentionMembers.map((member) => member.id)),
-    [selectedMentionMembers],
   );
   const filteredMentionMembers = useMemo(() => {
     if (!mentionTrigger || !isGroupConversation) {
@@ -138,25 +135,58 @@ export function ChatComposer({
     const normalizedQuery = mentionTrigger.query.trim().toLocaleLowerCase();
 
     return groupMembers.filter((member) => {
-      if (selectedMentionMemberIds.has(member.id)) {
-        return false;
-      }
-
       return member.displayName.toLocaleLowerCase().includes(normalizedQuery);
     });
-  }, [groupMembers, isGroupConversation, mentionTrigger, selectedMentionMemberIds]);
+  }, [groupMembers, isGroupConversation, mentionTrigger]);
+  const shouldShowMentionAll = useMemo(() => {
+    if (!mentionTrigger || groupMembers.length === 0) {
+      return false;
+    }
+
+    const normalizedQuery = mentionTrigger.query.trim().toLocaleLowerCase();
+
+    return (
+      normalizedQuery.length === 0 ||
+      "所有人".toLocaleLowerCase().includes(normalizedQuery)
+    );
+  }, [groupMembers.length, mentionTrigger]);
+  const mentionDropdownItems = useMemo<MentionDropdownItem[]>(
+    () => {
+      if (groupMembers.length === 0) {
+        return [];
+      }
+
+      const mentionAllItem: MentionDropdownItem = {
+        displayName: `所有人（${groupMembers.length}人）`,
+        isAll: true,
+        memberId: "__all__",
+      };
+
+      return [
+        ...(shouldShowMentionAll ? [mentionAllItem] : []),
+        ...filteredMentionMembers.map((member) => ({
+          avatarUrl: member.avatarUrl,
+          displayName: member.displayName,
+          memberId: member.id,
+        })),
+      ];
+    },
+    [filteredMentionMembers, groupMembers.length, shouldShowMentionAll],
+  );
   const isMentionPickerOpen =
     canSendMessage &&
     !isSending &&
     isGroupConversation &&
     !!mentionTrigger &&
     !isMentionPickerDismissed &&
-    filteredMentionMembers.length > 0;
-  const canSubmitDraft =
-    canSendMessage &&
-    !isSending &&
-    (segments.length > 0 || selectedMentionMembers.length > 0);
+    mentionDropdownItems.length > 0;
+  const canSubmitDraft = canSendMessage && !isSending && segments.length > 0;
   const canEditComposer = canSendMessage && !isSending;
+  const composerImageCount = segments.filter(
+    (segment) => segment.type === "image",
+  ).length;
+  const canAddComposerImage =
+    canEditComposer && composerImageCount < MAX_COMPOSER_IMAGE_SEGMENTS;
   const composerActionButtonClass = "size-8 p-0 shadow-none";
 
   const registerEditor = useCallback(
@@ -172,54 +202,10 @@ export function ChatComposer({
   }, [mentionTrigger?.query]);
 
   useEffect(() => {
-    return () => {
-      if (mentionDropdownCloseTimerRef.current) {
-        window.clearTimeout(mentionDropdownCloseTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (selectedMentionMembers.length === 0) {
-      setIsMentionDropdownOpen(false);
-    }
-  }, [selectedMentionMembers.length]);
-
-  useEffect(() => {
     if (draft === "" && draftText !== "") {
       composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
     }
   }, [composerRef, draft, draftText]);
-
-  const keepMentionDropdownOpen = () => {
-    if (mentionDropdownCloseTimerRef.current) {
-      window.clearTimeout(mentionDropdownCloseTimerRef.current);
-      mentionDropdownCloseTimerRef.current = null;
-    }
-
-    setIsMentionDropdownOpen(true);
-  };
-
-  const scheduleMentionDropdownClose = () => {
-    if (mentionDropdownCloseTimerRef.current) {
-      window.clearTimeout(mentionDropdownCloseTimerRef.current);
-    }
-
-    mentionDropdownCloseTimerRef.current = window.setTimeout(() => {
-      setIsMentionDropdownOpen(false);
-      mentionDropdownCloseTimerRef.current = null;
-    }, 150);
-  };
-
-  const removeMentionMember = (memberId: string) => {
-    onRemoveMentionMember(memberId);
-
-    if (selectedMentionMembers.length <= 1) {
-      setIsMentionDropdownOpen(false);
-    } else {
-      keepMentionDropdownOpen();
-    }
-  };
 
   useEffect(() => {
     if (!isEmojiPickerOpen) {
@@ -264,11 +250,11 @@ export function ChatComposer({
     (direction: "down" | "up") => {
       setActiveMentionIndex((currentIndex) =>
         direction === "down"
-          ? Math.min(currentIndex + 1, filteredMentionMembers.length - 1)
+          ? Math.min(currentIndex + 1, mentionDropdownItems.length - 1)
           : Math.max(currentIndex - 1, 0),
       );
     },
-    [filteredMentionMembers.length],
+    [mentionDropdownItems.length],
   );
 
   const handleSelectActiveMention = useCallback(() => {
@@ -276,26 +262,28 @@ export function ChatComposer({
       return;
     }
 
-    const selectedMember = filteredMentionMembers[activeMentionIndex];
+    const selectedMember = mentionDropdownItems[activeMentionIndex];
 
     if (!selectedMember) {
       return;
     }
 
-    onSelectMentionMember(
-      selectedMember,
-      mentionTrigger.start,
-      mentionTrigger.end,
-    );
-    setPendingMentionRemoval({
-      end: mentionTrigger.end,
-      start: mentionTrigger.start,
+    composerRef.current?.update(() => {
+      $removeComposerTextRange(mentionTrigger.start, mentionTrigger.end);
+      $insertComposerMention({
+        displayName: selectedMember.isAll ? "所有人" : selectedMember.displayName,
+        isAll: selectedMember.isAll,
+        memberId: selectedMember.isAll ? "__all__" : selectedMember.memberId,
+      });
+      $insertComposerText(" ");
     });
+    setIsMentionPickerDismissed(true);
+    composerRef.current?.focus();
   }, [
-    activeMentionIndex,
-    filteredMentionMembers,
+    composerRef,
+    mentionDropdownItems,
     mentionTrigger,
-    onSelectMentionMember,
+    activeMentionIndex,
   ]);
 
   const handleImageFiles = async (fileList: FileList | File[] | null) => {
@@ -303,9 +291,27 @@ export function ChatComposer({
       return;
     }
 
-    const files = Array.from(fileList ?? []).filter((file) =>
-      file.type.startsWith("image/"),
+    const currentImageCount = segments.filter(
+      (segment) => segment.type === "image",
+    ).length;
+    const remainingImageSlots = Math.max(
+      0,
+      MAX_COMPOSER_IMAGE_SEGMENTS - currentImageCount,
     );
+    const supportedFiles = Array.from(fileList ?? []).filter(
+      isSupportedComposerImageFile,
+    );
+    const files = supportedFiles.slice(0, remainingImageSlots);
+
+    if (supportedFiles.length > remainingImageSlots) {
+      toast.warning("单次发送图片限制为5张");
+    }
+
+    if (files.length === 0) {
+      composerRef.current?.focus();
+      return;
+    }
+
     const images = await Promise.all(
       files.map(async (file) => ({
         alt: file.name || "图片",
@@ -320,6 +326,7 @@ export function ChatComposer({
 
       composerRef.current?.dispatchCommand(INSERT_COMPOSER_IMAGE_COMMAND, {
         alt: image.alt,
+        clientId: createComposerImageClientId(),
         localUrl: image.src,
         src: image.src,
       });
@@ -390,7 +397,7 @@ export function ChatComposer({
           <Button
             aria-label="发送图片"
             className={composerActionButtonClass}
-            disabled={isSending}
+            disabled={!canAddComposerImage}
             onClick={() => imageInputRef.current?.click()}
             size="icon"
             type="button"
@@ -399,9 +406,10 @@ export function ChatComposer({
             <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={1.8} />
           </Button>
           <input
-            accept="image/*"
+            accept={COMPOSER_IMAGE_FILE_ACCEPT}
             aria-label="选择图片"
             className="sr-only"
+            disabled={!canAddComposerImage}
             multiple
             onChange={(event) => {
               void handleImageFiles(event.currentTarget.files);
@@ -461,124 +469,46 @@ export function ChatComposer({
       </div>
 
       <div className="relative">
-        {selectedMentionMembers.length > 0 ? (
-          <div className="mb-1 flex min-h-8 items-center gap-1 border-b border-divider/70 text-[13px]">
-            <span className="shrink-0 text-muted-foreground">在</span>
-
-            <Select
-              onValueChange={(value) =>
-                onMentionInsertPositionChange(value as MentionInsertPosition)
-              }
-              value={mentionInsertPosition}
-            >
-              <SelectTrigger
-                aria-label="选择 @ 插入位置"
-                className="h-7 min-w-0 shrink-0 border-0 shadow-none bg-transparent px-1 py-1 text-[13px] text-primary focus:ring-0"
-                disabled={isSending}
-              >
-                <span>{mentionInsertPosition === "start" ? "文首" : "文尾"}</span>
-              </SelectTrigger>
-              <SelectContent align="start">
-                <SelectItem value="start">文首</SelectItem>
-                <SelectItem value="end">文尾</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <span className="shrink-0 text-muted-foreground">
-              @ {selectedMentionMembers.length} 人：
-            </span>
-
-            <DropdownMenu
-              open={isMentionDropdownOpen}
-              onOpenChange={setIsMentionDropdownOpen}
-              modal={false}
-            >
-              <DropdownMenuTrigger asChild>
-                <button
-                  aria-label={mentionSummaryLabel}
-                  className="min-w-0 flex-1 truncate text-left text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
-                  disabled={isSending}
-                  onBlur={scheduleMentionDropdownClose}
-                  onFocus={keepMentionDropdownOpen}
-                  onMouseEnter={keepMentionDropdownOpen}
-                  onMouseLeave={scheduleMentionDropdownClose}
-                  type="button"
-                >
-                  {selectedMentionMembers.map((m) => m.displayName).join("，")}
-                </button>
-              </DropdownMenuTrigger>
-
-              <DropdownMenuContent
-                align="start"
-                side="top"
-                sideOffset={8}
-                className="max-h-64 w-56 overflow-y-auto"
-                onCloseAutoFocus={(e) => e.preventDefault()}
-                onFocusCapture={keepMentionDropdownOpen}
-                onMouseEnter={keepMentionDropdownOpen}
-                onMouseLeave={scheduleMentionDropdownClose}
-              >
-                {selectedMentionMembers.map((member) => (
-                  <div
-                    key={member.id}
-                    className="flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-sm"
-                  >
-                    <MentionMemberAvatar member={member} />
-                    <span className="min-w-0 flex-1 truncate">{member.displayName}</span>
-                    <button
-                      aria-label={`移除 @${member.displayName}`}
-                      className="inline-flex size-5 shrink-0 items-center justify-center rounded transition-colors hover:bg-surface-muted hover:text-destructive"
-                      disabled={isSending}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        removeMentionMember(member.id);
-                      }}
-                      onPointerDown={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                      }}
-                      type="button"
-                    >
-                      <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={2} />
-                    </button>
-                  </div>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        ) : null}
-
         {isMentionPickerOpen && mentionTrigger ? (
           <div
             aria-label="选择群成员"
             className="absolute bottom-full left-0 z-30 mb-2 max-h-64 w-56 overflow-y-auto rounded-[10px] border border-border bg-popover py-1 shadow-[0_10px_28px_var(--shadow-soft)]"
             role="listbox"
           >
-            {filteredMentionMembers.map((member, index) => (
+            {mentionDropdownItems.map((member, index) => (
               <button
                 aria-selected={index === activeMentionIndex}
                 className={cn(
                   "flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[13px] text-popover-foreground outline-none transition-colors hover:bg-surface-hover",
                   index === activeMentionIndex && "bg-surface-hover",
                 )}
-                key={member.id}
+                key={member.memberId}
                 onClick={() => {
-                  onSelectMentionMember(
-                    member,
-                    mentionTrigger.start,
-                    mentionTrigger.end,
-                  );
-                  setPendingMentionRemoval({
-                    end: mentionTrigger.end,
-                    start: mentionTrigger.start,
+                  composerRef.current?.update(() => {
+                    $removeComposerTextRange(mentionTrigger.start, mentionTrigger.end);
+                    $insertComposerMention({
+                      displayName: member.isAll ? "所有人" : member.displayName,
+                      isAll: member.isAll,
+                      memberId: member.memberId,
+                    });
+                    $insertComposerText(" ");
                   });
+                  setIsMentionPickerDismissed(true);
+                  composerRef.current?.focus();
                 }}
                 onMouseDown={(event) => event.preventDefault()}
                 role="option"
                 type="button"
               >
-                <MentionMemberAvatar member={member} />
+                {!member.isAll && member.avatarUrl ? (
+                  <MentionMemberAvatar
+                    member={{
+                      avatarUrl: member.avatarUrl,
+                      displayName: member.displayName,
+                      id: member.memberId,
+                    }}
+                  />
+                ) : null}
                 <span className="truncate">{member.displayName}</span>
               </button>
             ))}
@@ -616,10 +546,6 @@ export function ChatComposer({
               onSendSegments={onSendDraft}
               registerEditor={registerEditor}
             />
-            <MentionTextRemovalPlugin
-              pendingRemoval={pendingMentionRemoval}
-              onRemovalComplete={() => setPendingMentionRemoval(null)}
-            />
           </LexicalComposer>
         </div>
       </div>
@@ -627,18 +553,15 @@ export function ChatComposer({
   );
 }
 
-function MentionMemberAvatar({ member }: { member: GroupMember }) {
+function MentionMemberAvatar({
+  member,
+}: {
+  member: Pick<GroupMember, "avatarUrl" | "displayName" | "id">;
+}) {
   const [imageErrored, setImageErrored] = useState(false);
 
   if (!member.avatarUrl || imageErrored) {
-    return (
-      <span
-        aria-hidden="true"
-        className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-primary/15 font-semibold text-[10px] text-muted-foreground"
-      >
-        {member.displayName.slice(0, 1)}
-      </span>
-    );
+    return null;
   }
 
   return (

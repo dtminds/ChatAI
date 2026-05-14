@@ -7,6 +7,7 @@ import {
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
+import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 
 const cosUploadFileMock = vi.hoisted(() => vi.fn());
 const cosConstructorMock = vi.hoisted(() =>
@@ -248,6 +249,98 @@ describe("resolveImageSegmentsForSend", () => {
     ]);
     expect(getUploadCredential).not.toHaveBeenCalled();
     expect(cosUploadFileMock).not.toHaveBeenCalled();
+  });
+
+  it("does not re-upload image segments that already have remote URLs", async () => {
+    const baseService = createMockWorkbenchService();
+    const getUploadCredential = vi.fn(baseService.getUploadCredential);
+    const segments = [
+      {
+        alt: "已上传图片",
+        clientId: "composer-image-001",
+        fileId: "chat-images/uploaded.png",
+        localUrl: "data:image/png;base64,aGVsbG8=",
+        type: "image" as const,
+        url: "https://b5.bokr.com.cn/chat-images/uploaded.png",
+      },
+    ];
+
+    setWorkbenchService({
+      ...baseService,
+      getUploadCredential,
+    });
+
+    await expect(
+      resolveImageSegmentsForSend("conv-001", segments),
+    ).resolves.toEqual(segments);
+    expect(getUploadCredential).not.toHaveBeenCalled();
+    expect(cosUploadFileMock).not.toHaveBeenCalled();
+  });
+
+  it("uploads a selected file to COS and returns a sendable file segment", async () => {
+    const credential = createUploadCredential({
+      allowPerfixs: ["s5/upload/2026/05/13/272/"],
+    });
+    const baseService = createMockWorkbenchService();
+    const getUploadCredential = vi.fn(async () => credential);
+    const file = new File(["file-bytes"], "报价单.pdf", {
+      type: "application/pdf",
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      getUploadCredential,
+    });
+    vi.setSystemTime(new Date("2026-05-13T08:00:00Z"));
+    vi.spyOn(Math, "random").mockReturnValue(0.123456);
+    cosUploadFileMock.mockImplementation(async () => ({
+      ETag: '"mock-etag"',
+    }));
+
+    await expect(uploadWorkbenchFile("conv-001", file)).resolves.toMatchObject({
+      extension: "pdf",
+      fileId: "s5/upload/2026/05/13/272/1778659200000-4fzyo82m.pdf",
+      fileName: "报价单.pdf",
+      fileSize: file.size,
+      fileSizeLabel: "10 B",
+      type: "file",
+      url: "https://b5.bokr.com.cn/s5/upload/2026/05/13/272/1778659200000-4fzyo82m.pdf",
+    });
+    expect(getUploadCredential).toHaveBeenCalledWith("conv-001");
+    expect(cosUploadFileMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Body: file,
+        ContentType: "application/pdf",
+        Key: "s5/upload/2026/05/13/272/1778659200000-4fzyo82m.pdf",
+      }),
+    );
+  });
+
+  it("formats uploaded file sizes in GB", async () => {
+    const credential = createUploadCredential({
+      allowPerfixs: ["s5/upload/2026/05/13/272/"],
+    });
+    const baseService = createMockWorkbenchService();
+    const getUploadCredential = vi.fn(async () => credential);
+    const file = new File(["file-bytes"], "large-video.mov", {
+      type: "video/quicktime",
+    });
+    Object.defineProperty(file, "size", {
+      configurable: true,
+      value: 3 * 1024 * 1024 * 1024,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      getUploadCredential,
+    });
+    cosUploadFileMock.mockImplementation(async () => ({
+      ETag: '"mock-etag"',
+    }));
+
+    await expect(uploadWorkbenchFile("conv-001", file)).resolves.toMatchObject({
+      fileSizeLabel: "3.00 GB",
+    });
   });
 });
 

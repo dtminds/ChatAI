@@ -868,6 +868,10 @@ function getNextMessageSeq(state: MockState, conversationId: string) {
 }
 
 function getPayloadSegments(payload: WorkbenchSendMessagePayload) {
+  if (payload.segment) {
+    return [payload.segment];
+  }
+
   if (payload.segments?.length) {
     return payload.segments;
   }
@@ -889,6 +893,14 @@ function buildPayloadSegmentContent(
       height: segment.height,
       imageUrl: segment.url ?? segment.localUrl ?? "",
       width: segment.width,
+    };
+  }
+
+  if (segment.type === "file") {
+    return {
+      extension: segment.extension,
+      fileName: segment.fileName,
+      fileSizeLabel: segment.fileSizeLabel ?? "",
     };
   }
 

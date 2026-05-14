@@ -129,6 +129,7 @@ describe("workbench MySQL mappers", () => {
         msgid: "remote-msg-101",
         msgtime: 1778240200000,
         msgtype: "text",
+        opt_no: "opt-001",
       })),
     ).toEqual({
       content: {
@@ -139,6 +140,7 @@ describe("workbench MySQL mappers", () => {
       createdAt: 1778240200000,
       customerId: "external-1",
       messageId: "remote-msg-101",
+      optNo: "opt-001",
       seatId: "12",
       senderAvatar: "",
       senderName: undefined,
@@ -796,6 +798,7 @@ function messageRow(
     msgid: "remote-msg-101",
     msgtime: 1778240200000,
     msgtype: "text",
+    opt_no: null,
     seat_id: 12,
     sender_avatar: "",
     sender_name: undefined,

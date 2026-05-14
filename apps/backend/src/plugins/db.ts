@@ -28,6 +28,7 @@ export const dbPlugin = fp(async (app) => {
     new MysqlWorkbenchService(
       new WorkbenchRepository(db),
       createWorkbenchJavaClient(),
+      app.log,
     ),
   );
   app.addHook("onClose", async () => {

@@ -39,6 +39,10 @@ import {
   type WorkbenchRepository,
 } from "./workbench-repository.js";
 
+type WorkbenchServiceLogger = {
+  debug(input: Record<string, unknown>, message: string): void;
+};
+
 export type WorkbenchService = {
   deleteConversation(
     subUserId: string,
@@ -97,6 +101,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
   constructor(
     private readonly repository: WorkbenchRepository,
     private readonly javaClient: WorkbenchJavaClient,
+    private readonly logger?: WorkbenchServiceLogger,
   ) {}
 
   async deleteConversation(subUserId: string, conversationId: string) {
@@ -296,7 +301,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const segment = getSingleSendSegment(payload);
     const quoteContentBase64 = await this.getQuoteContentBase64(payload, segment, {
+      conversationId: conversation.id,
       platform: conversation.platform,
+      seatId: conversation.seatId,
       uid: conversation.uid,
     });
 
@@ -317,19 +324,45 @@ export class MysqlWorkbenchService implements WorkbenchService {
   private async getQuoteContentBase64(
     payload: WorkbenchSendMessagePayload,
     segment: WorkbenchOutgoingMessageSegment,
-    scope: { platform: number; uid: number },
+    scope: { conversationId: string; platform: number; seatId: string; uid: number },
   ) {
-    const messageId = payload.quote?.quotedMessageId?.trim();
-
-    if (!messageId || segment.type !== "text") {
+    if (!payload.quote) {
       return undefined;
     }
 
-    return this.repository.getQuoteContentBase64({
+    const messageId = payload.quote?.quotedMessageId?.trim();
+    const logContext = {
+      clientMessageId: payload.clientMessageId,
+      conversationId: scope.conversationId,
+      quoteMsgId: payload.quote.quoteMsgId,
+      quotedMessageId: payload.quote.quotedMessageId,
+      seatId: scope.seatId,
+    };
+
+    if (!messageId || segment.type !== "text") {
+      this.logger?.debug({
+        ...logContext,
+        hasQuoteContentBase64: false,
+        quoteContentBase64Length: 0,
+        reason: !messageId ? "missing-quoted-message-id" : "non-text-segment",
+      }, "workbench quoted message send debug");
+      return undefined;
+    }
+
+    const quoteContentBase64 = await this.repository.getQuoteContentBase64({
       messageId,
       platform: scope.platform,
       uid: scope.uid,
     });
+    const normalizedQuoteContentBase64 = quoteContentBase64?.trim();
+
+    this.logger?.debug({
+      ...logContext,
+      hasQuoteContentBase64: Boolean(normalizedQuoteContentBase64),
+      quoteContentBase64Length: normalizedQuoteContentBase64?.length ?? 0,
+    }, "workbench quoted message send debug");
+
+    return normalizedQuoteContentBase64;
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {

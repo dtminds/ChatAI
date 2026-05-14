@@ -191,9 +191,9 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
   }
 
   createDOM(_config: EditorConfig) {
-    const figure = document.createElement("figure");
-    figure.className = "my-2 block";
-    return figure;
+    const span = document.createElement("span");
+    span.className = "mx-0.5 inline-block align-bottom";
+    return span;
   }
 
   updateDOM() {
@@ -256,8 +256,8 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
     return this.__width;
   }
 
-  isInline(): false {
-    return false;
+  isInline(): true {
+    return true;
   }
 
   updateUploadResult(input: {
@@ -451,10 +451,10 @@ function ComposerImagePreview({
   };
 
   return (
-    <span className="relative inline-block max-w-full align-top">
+    <span className="relative inline-block max-w-full align-bottom">
       <img
         alt={alt}
-        className="block max-h-44 max-w-60 rounded-lg border border-border object-contain"
+        className="inline-block max-h-44 max-w-60 rounded-lg border border-border object-contain align-bottom"
         draggable={false}
         onLoad={scrollComposerToBottom}
         src={src}

@@ -107,6 +107,88 @@ describe("composer lexical utils", () => {
     expect(selectionNodeType).toBe("text");
   });
 
+  it("does not export spacer text between consecutive images", () => {
+    const editor = createEditor({
+      namespace: "composer-consecutive-images-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let segments: ComposerSegment[] = [];
+
+    editor.update(
+      () => {
+        $insertComposerImage({
+          alt: "截图 A",
+          localUrl: "data:image/png;base64,a",
+          src: "data:image/png;base64,a",
+        });
+        $insertComposerImage({
+          alt: "截图 B",
+          localUrl: "data:image/png;base64,b",
+          src: "data:image/png;base64,b",
+        });
+        segments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(normalizeComposerSegments(segments)).toEqual([
+      expect.objectContaining({
+        alt: "截图 A",
+        type: "image",
+      }),
+      expect.objectContaining({
+        alt: "截图 B",
+        type: "image",
+      }),
+    ]);
+  });
+
+  it("exports text after an inline image without forcing a line break", () => {
+    const editor = createEditor({
+      namespace: "composer-inline-image-text-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let draftText = "";
+    let segments: ComposerSegment[] = [];
+
+    editor.update(
+      () => {
+        $insertComposerText("前");
+        $insertComposerImage({
+          alt: "截图",
+          localUrl: "data:image/png;base64,a",
+          src: "data:image/png;base64,a",
+        });
+        $insertComposerText("后");
+        draftText = $getComposerPlainText();
+        segments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(draftText).toBe("前后");
+    expect(normalizeComposerSegments(segments)).toEqual([
+      {
+        text: "前",
+        type: "text",
+      },
+      expect.objectContaining({
+        alt: "截图",
+        type: "image",
+      }),
+      {
+        text: "后",
+        type: "text",
+      },
+    ]);
+  });
+
   it("exports mention tokens with member ids", () => {
     const editor = createEditor({
       namespace: "composer-mention-utils-test",

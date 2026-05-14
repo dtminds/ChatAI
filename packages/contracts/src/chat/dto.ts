@@ -183,9 +183,20 @@ export type WorkbenchOutgoingMessageImageSegment = {
   width?: number;
 };
 
+export type WorkbenchOutgoingMessageFileSegment = {
+  type: "file";
+  extension: string;
+  fileId?: string;
+  fileName: string;
+  fileSize?: number;
+  fileSizeLabel?: string;
+  url?: string;
+};
+
 export type WorkbenchOutgoingMessageSegment =
   | WorkbenchOutgoingMessageTextSegment
-  | WorkbenchOutgoingMessageImageSegment;
+  | WorkbenchOutgoingMessageImageSegment
+  | WorkbenchOutgoingMessageFileSegment;
 
 export type WorkbenchSendMessagePayload = {
   seatId: string;

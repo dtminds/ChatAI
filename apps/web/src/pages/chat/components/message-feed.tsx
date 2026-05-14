@@ -39,7 +39,10 @@ export function ChatMessageList({
             <MessageTimeDivider label={item.label} />
           </div>
         ) : (
-          <div data-scroll-anchor={item.message.id} key={item.message.id}>
+          <div
+            data-scroll-anchor={item.message.id}
+            key={getMessageFeedItemKey(item.message)}
+          >
             <MessageRow
               message={item.message}
               onOpenQuotedMessage={onOpenQuotedMessage}
@@ -50,6 +53,10 @@ export function ChatMessageList({
       )}
     </div>
   );
+}
+
+export function getMessageFeedItemKey(message: Message) {
+  return message.clientMessageId ?? message.optNo ?? message.id;
 }
 
 export function MessageTimeDivider({ label }: { label: string }) {
@@ -82,6 +89,7 @@ export function MessageRow({
   const isAgent = message.role === "agent";
   const isGroupConversation = Boolean(message.isGroupConversation);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
+  const inlineDeliveryState = getInlineDeliveryState(message, Boolean(onRetryMessage));
 
   return (
     <div className={cn("flex items-start", isAgent ? "justify-end" : "justify-start")}>
@@ -101,16 +109,12 @@ export function MessageRow({
               isAgent ? "flex-row" : "flex-row-reverse",
             )}
           >
-            {isAgent && message.status === "failed" && onRetryMessage ? (
-              <button
-                aria-label="重试发送"
-                className="mb-1 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
-                onClick={() => onRetryMessage(message.id)}
-                title="重试发送"
-                type="button"
-              >
-                <HugeiconsIcon icon={ExclamationMarkIcon} size={10} strokeWidth={2.4} />
-              </button>
+            {isAgent ? (
+              <MessageInlineStatusSlot
+                message={message}
+                onRetryMessage={onRetryMessage}
+                state={inlineDeliveryState}
+              />
             ) : null}
             <div
               className={cn(
@@ -132,13 +136,67 @@ export function MessageRow({
               {message.isRevoked ? <MessageRevokedState /> : null}
             </div>
           </div>
-          {isAgent ? <MessageDeliveryState message={message} /> : null}
+          {isAgent && !inlineDeliveryState ? (
+            <MessageDeliveryState message={message} />
+          ) : null}
         </div>
 
         {isAgent ? <MessageAvatar message={message} /> : null}
       </div>
     </div>
   );
+}
+
+function MessageInlineStatusSlot({
+  message,
+  onRetryMessage,
+  state,
+}: {
+  message: ChatMessage;
+  onRetryMessage?: (messageId: string) => void;
+  state: InlineDeliveryState | null;
+}) {
+  if (!state) {
+    return null;
+  }
+
+  if (state === "failed" && onRetryMessage) {
+    return (
+      <div
+        className="mb-1 flex h-4 shrink-0 items-center"
+        data-testid="message-inline-status-slot"
+      >
+        <button
+          aria-label="重试发送"
+          className="inline-flex size-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
+          onClick={() => onRetryMessage(message.id)}
+          title="重试发送"
+          type="button"
+        >
+          <HugeiconsIcon icon={ExclamationMarkIcon} size={10} strokeWidth={2.4} />
+        </button>
+      </div>
+    );
+  }
+
+  if (state === "accepted") {
+    return (
+      <div
+        className="mb-1 flex h-4 shrink-0 items-center"
+        data-testid="message-inline-status-slot"
+      >
+        <span
+          aria-label="发送中"
+          className="text-[11px] leading-4 text-muted-foreground"
+          role="status"
+        >
+          发送中
+        </span>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function MessageRevokedState() {
@@ -149,24 +207,30 @@ function MessageRevokedState() {
   );
 }
 
-function MessageDeliveryState({ message }: { message: ChatMessage }) {
-  const isOptimisticAccepted =
-    message.status === "accepted" &&
-    Boolean(message.optNo) &&
-    message.remoteMessageId === message.optNo;
+type InlineDeliveryState = "accepted" | "failed";
 
-  if (!isOptimisticAccepted && (
+function getInlineDeliveryState(
+  message: ChatMessage,
+  canRetryMessage: boolean,
+): InlineDeliveryState | null {
+  if (message.status === "failed" && canRetryMessage) {
+    return "failed";
+  }
+
+  return isOptimisticAcceptedMessage(message) ? "accepted" : null;
+}
+
+function MessageDeliveryState({ message }: { message: ChatMessage }) {
+  if (
     message.status === "accepted" ||
     message.status === "sent" ||
     message.status === "read"
-  )) {
+  ) {
     return null;
   }
 
   const label =
-    isOptimisticAccepted
-      ? "发送中..."
-      : message.status === "failed"
+    message.status === "failed"
       ? message.failReason ?? "发送失败"
       : message.status === "pending"
         ? "等待提交..."
@@ -181,6 +245,14 @@ function MessageDeliveryState({ message }: { message: ChatMessage }) {
     >
       {label}
     </p>
+  );
+}
+
+function isOptimisticAcceptedMessage(message: ChatMessage) {
+  return (
+    message.status === "accepted" &&
+    Boolean(message.optNo) &&
+    message.remoteMessageId === message.optNo
   );
 }
 

@@ -886,6 +886,14 @@ function buildPayloadSegmentContent(
     };
   }
 
+  if (segment.type === "file") {
+    return {
+      extension: segment.extension,
+      fileName: segment.fileName,
+      fileSizeLabel: segment.fileSizeLabel ?? "",
+    };
+  }
+
   return {
     text: segment.text,
   };

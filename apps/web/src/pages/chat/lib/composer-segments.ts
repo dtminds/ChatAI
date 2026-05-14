@@ -16,7 +16,20 @@ export type ComposerImageSegment = {
   width?: number;
 };
 
-export type ComposerSegment = ComposerTextSegment | ComposerImageSegment;
+export type ComposerFileSegment = {
+  type: "file";
+  extension: string;
+  fileId?: string;
+  fileName: string;
+  fileSize: number;
+  fileSizeLabel: string;
+  url?: string;
+};
+
+export type ComposerSegment =
+  | ComposerTextSegment
+  | ComposerImageSegment
+  | ComposerFileSegment;
 
 export function normalizeComposerSegments(
   segments: ComposerSegment[],

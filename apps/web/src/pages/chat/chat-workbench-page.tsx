@@ -346,6 +346,7 @@ function ChatWorkbenchContent({
         quote: quotedMessage?.quoteMsgId
           ? {
               quoteMsgId: quotedMessage.quoteMsgId,
+              quotedMessageId: quotedMessage.quotedMessageId,
               quotedMessage: {
                 contentType: quotedMessage.contentType,
                 fallbackText: quotedMessage.fallbackText,
@@ -880,8 +881,12 @@ function buildQuotedMessagePreview(message: ChatMessage): QuotedMessagePreviewCo
   const basePreview = {
     contentType: message.content.type,
     quoteMsgId: String(message.seq ?? message.remoteMessageId ?? message.id),
+    quotedMessageId: message.remoteMessageId ?? message.id,
     senderName,
-  } satisfies Pick<QuotedMessagePreviewContent, "contentType" | "quoteMsgId" | "senderName">;
+  } satisfies Pick<
+    QuotedMessagePreviewContent,
+    "contentType" | "quoteMsgId" | "quotedMessageId" | "senderName"
+  >;
 
   switch (message.content.type) {
     case "text":

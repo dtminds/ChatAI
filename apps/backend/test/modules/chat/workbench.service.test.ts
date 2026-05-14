@@ -569,6 +569,69 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("maps a quoted text send to the Java quote payload from audit extend data", async () => {
+    const javaClient = createJavaClient();
+    const getQuoteContentBase64 = vi.fn().mockResolvedValue("base64-quote-content");
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-quote-001",
+      messageId: "opt-quote-001",
+      optNo: "opt-quote-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+        getQuoteContentBase64,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-quote-001",
+      conversationId: "88",
+      quote: {
+        quoteMsgId: "538",
+        quotedMessageId: "remote-msg-538",
+      },
+      seatId: "12",
+      segment: {
+        text: "正式引用消息",
+        type: "text",
+      },
+    });
+
+    expect(getQuoteContentBase64).toHaveBeenCalledWith({
+      messageId: "remote-msg-538",
+      platform: 5,
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-quote-001",
+      message: {
+        msgContent: "正式引用消息",
+        msgNum: 1,
+        msgType: 2001,
+        quoteContentBase64: "base64-quote-content",
+      },
+      platform: 5,
+      sendType: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("maps a single-chat image send to the Java send-message payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({

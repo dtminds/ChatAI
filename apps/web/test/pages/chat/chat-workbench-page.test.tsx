@@ -182,6 +182,7 @@ describe("ChatWorkbenchPage", () => {
       ).toMatchObject({
         content: {
           quoteMsgId: "5",
+          quotedMessageId: "msg-006",
           quotedMessage: {
             senderName: "丹阳草莓，得利市大樱桃",
             text: "我先截了个竖图版本给你看。",

@@ -294,9 +294,15 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
     }
 
+    const segment = getSingleSendSegment(payload);
+    const quoteContentBase64 = await this.getQuoteContentBase64(payload, segment, {
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
     return this.javaClient.sendMessage({
       clientMessageId: payload.clientMessageId,
-      message: buildJavaSendMessageData(payload, getSingleSendSegment(payload)),
+      message: buildJavaSendMessageData(payload, segment, quoteContentBase64),
       platform: conversation.platform,
       sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
       ...(conversation.thirdExternalUserId
@@ -305,6 +311,24 @@ export class MysqlWorkbenchService implements WorkbenchService {
       ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
       thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,
+    });
+  }
+
+  private async getQuoteContentBase64(
+    payload: WorkbenchSendMessagePayload,
+    segment: WorkbenchOutgoingMessageSegment,
+    scope: { platform: number; uid: number },
+  ) {
+    const messageId = payload.quote?.quotedMessageId?.trim();
+
+    if (!messageId || segment.type !== "text") {
+      return undefined;
+    }
+
+    return this.repository.getQuoteContentBase64({
+      messageId,
+      platform: scope.platform,
+      uid: scope.uid,
     });
   }
 
@@ -412,6 +436,7 @@ function getSingleSendSegment(
 function buildJavaSendMessageData(
   payload: WorkbenchSendMessagePayload,
   segment: WorkbenchOutgoingMessageSegment,
+  quoteContentBase64?: string,
 ): JavaSendMessageData {
   if (segment.type === "image") {
     const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
@@ -453,6 +478,12 @@ function buildJavaSendMessageData(
     msgNum: 1,
     msgType: JAVA_MSG_TYPE.TEXT,
   };
+  const normalizedQuoteContentBase64 = quoteContentBase64?.trim();
+
+  if (normalizedQuoteContentBase64) {
+    message.quoteContentBase64 = normalizedQuoteContentBase64;
+  }
+
   const mentionMemberIds = payload.mention?.memberIds.filter(Boolean) ?? [];
 
   if (payload.mention?.all) {

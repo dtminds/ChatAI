@@ -433,6 +433,7 @@ function buildOptimisticMessageContent(
   if (quote && segment.type === "text") {
     return {
       quoteMsgId: quote.quoteMsgId,
+      quotedMessageId: quote.quotedMessageId,
       quotedMessage: quote.quotedMessage,
       text: segment.text,
       type: "quote",

@@ -43,6 +43,7 @@ export type JavaSendMessageData = {
   msgContent: string;
   msgNum: number;
   msgType: (typeof JAVA_MSG_TYPE)[keyof typeof JAVA_MSG_TYPE];
+  quoteContentBase64?: string;
   vcHref?: string;
   vcTitle?: string;
 };

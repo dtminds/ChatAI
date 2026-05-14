@@ -407,7 +407,10 @@ function ChatWorkbenchContent({
       }
 
       if (!isComposerFileSizeAllowed(file)) {
-        toast.warning("文件大小不能超过 10 MB");
+        setSendFailureDialog({
+          description: "请选择不超过 10 MB 的文件",
+          title: "文件过大，无法发送",
+        });
         continue;
       }
 

@@ -261,11 +261,23 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
-  it("rejects unsupported or oversized selected files", async () => {
+  it("rejects unsupported selected files with a toast", async () => {
     const user = userEvent.setup({ applyAccept: false });
     const unsupportedFile = new File(["file-bytes"], "archive.zip", {
       type: "application/zip",
     });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), unsupportedFile);
+
+    expect(uploadWorkbenchFile).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("仅支持 PDF、Excel、Word、TXT、PPT 文件");
+  });
+
+  it("rejects oversized selected files with a blocking dialog", async () => {
+    const user = userEvent.setup();
     const oversizedFile = new File(["file-bytes"], "大文件.pdf", {
       type: "application/pdf",
     });
@@ -277,12 +289,16 @@ describe("ChatWorkbenchPage", () => {
     render(<ChatWorkbenchPage />);
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.upload(screen.getByLabelText("选择文件"), unsupportedFile);
     await user.upload(screen.getByLabelText("选择文件"), oversizedFile);
 
     expect(uploadWorkbenchFile).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledWith("仅支持 PDF、Excel、Word、TXT、PPT 文件");
-    expect(toast.warning).toHaveBeenCalledWith("文件大小不能超过 10 MB");
+    expect(
+      await screen.findByRole("alertdialog", {
+        name: "文件过大，无法发送",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("请选择不超过 10 MB 的文件")).toBeInTheDocument();
+    expect(toast.warning).not.toHaveBeenCalledWith("文件大小不能超过 10 MB");
   });
 
   it("blocks conversation switching while a file is uploading", async () => {

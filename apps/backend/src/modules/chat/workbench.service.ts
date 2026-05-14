@@ -427,6 +427,27 @@ function buildJavaSendMessageData(
     };
   }
 
+  if (segment.type === "file") {
+    const fileName = segment.fileName.trim();
+    const fileUrl = segment.url?.trim();
+
+    if (!fileName) {
+      throw new BadRequestError("INVALID_FILE_MESSAGE", "文件消息缺少文件名");
+    }
+
+    if (!fileUrl) {
+      throw new BadRequestError("INVALID_FILE_MESSAGE", "文件消息缺少可发送地址");
+    }
+
+    return {
+      msgContent: fileName,
+      msgNum: 1,
+      msgType: JAVA_MSG_TYPE.FILE,
+      vcHref: fileUrl,
+      vcTitle: fileName,
+    };
+  }
+
   const message: JavaSendMessageData = {
     msgContent: segment.text,
     msgNum: 1,

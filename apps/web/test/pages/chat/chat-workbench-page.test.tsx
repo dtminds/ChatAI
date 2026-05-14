@@ -168,7 +168,8 @@ describe("ChatWorkbenchPage", () => {
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
     ).toMatchObject({
       content: {
-        imageUrl: expect.stringMatching(/^data:image\/png;base64,/),
+        imageUrl:
+          "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/mock-image.png",
         type: "image",
       },
       role: "agent",
@@ -255,6 +256,30 @@ describe("ChatWorkbenchPage", () => {
 
     expect(await within(composer).findAllByRole("img")).toHaveLength(5);
     expect(screen.getByRole("button", { name: "发送图片" })).toBeDisabled();
+  });
+
+  it("keeps consecutive pasted images inline without visible spacer text", async () => {
+    const clipboardImages = [
+      new File(["image-bytes"], "clipboard-1.png", {
+        type: "image/png",
+      }),
+      new File(["image-bytes"], "clipboard-2.png", {
+        type: "image/png",
+      }),
+    ];
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: clipboardImages,
+      },
+    });
+
+    expect(await within(composer).findAllByRole("img")).toHaveLength(2);
+    expect(composer.textContent?.replaceAll("\u200B", "")).toBe("");
   });
 
   it("keeps overflowing composer content scrollable inside the editor", async () => {

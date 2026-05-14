@@ -38,7 +38,7 @@ import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-re
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
-import type { ChatMode } from "@/pages/chat/chat-types";
+import type { ChatMode, FileUploadQueueItem } from "@/pages/chat/chat-types";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import {
   isComposerFileSizeAllowed,
@@ -62,13 +62,6 @@ type PendingComposerDiscardSwitch =
       mode: ChatMode;
       type: "mode";
     };
-
-type FileUploadQueueItem = {
-  fileName: string;
-  id: string;
-  progress: number;
-  status: "uploading" | "sending";
-};
 
 function getInitialAccountRailCollapsed() {
   try {

@@ -11,18 +11,12 @@ import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-beh
 import type {
   Conversation,
   CustomerProfile,
+  FileUploadQueueItem,
   GroupMember,
   Message,
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
-
-export type FileUploadQueueItem = {
-  fileName: string;
-  id: string;
-  progress: number;
-  status: "uploading" | "sending";
-};
 
 type ChatPanelProps = {
   accountName?: string;

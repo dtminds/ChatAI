@@ -620,6 +620,43 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
   });
+
+  it("rejects image send without a sendable URL before calling Java", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.sendMessage("101", {
+        clientMessageId: "local-image-missing-url",
+        conversationId: "88",
+        seatId: "12",
+        segment: {
+          alt: "截图",
+          type: "image",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_IMAGE_MESSAGE",
+      statusCode: 400,
+    });
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
 });
 
 function createJavaClient(): WorkbenchJavaClient {

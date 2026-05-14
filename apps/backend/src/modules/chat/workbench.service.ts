@@ -19,6 +19,7 @@ import type {
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import {
+  BadRequestError,
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
@@ -413,8 +414,14 @@ function buildJavaSendMessageData(
   segment: WorkbenchOutgoingMessageSegment,
 ): JavaSendMessageData {
   if (segment.type === "image") {
+    const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
+
+    if (!imageUrl) {
+      throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片消息缺少可发送地址");
+    }
+
     return {
-      msgContent: segment.url ?? segment.localUrl ?? "",
+      msgContent: imageUrl,
       msgNum: 1,
       msgType: JAVA_MSG_TYPE.IMAGE,
     };

@@ -208,6 +208,55 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
   });
 
+  it("limits composer images to five", async () => {
+    const clipboardImages = Array.from(
+      { length: 6 },
+      (_, index) =>
+        new File(["image-bytes"], `clipboard-${index + 1}.png`, {
+          type: "image/png",
+        }),
+    );
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: clipboardImages,
+      },
+    });
+
+    expect(await within(composer).findAllByRole("img")).toHaveLength(5);
+    expect(
+      within(composer).queryByRole("img", { name: "clipboard-6.png" }),
+    ).not.toBeInTheDocument();
+    expect(toast.warning).toHaveBeenCalledWith("单次发送图片限制为5张");
+  });
+
+  it("disables the composer image picker after five images", async () => {
+    const clipboardImages = Array.from(
+      { length: 5 },
+      (_, index) =>
+        new File(["image-bytes"], `clipboard-${index + 1}.png`, {
+          type: "image/png",
+        }),
+    );
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: clipboardImages,
+      },
+    });
+
+    expect(await within(composer).findAllByRole("img")).toHaveLength(5);
+    expect(screen.getByRole("button", { name: "发送图片" })).toBeDisabled();
+  });
+
   it("keeps overflowing composer content scrollable inside the editor", async () => {
     render(<ChatWorkbenchPage />);
 

@@ -1,6 +1,8 @@
 const COMPOSER_IMAGE_FILE_EXTENSIONS = [".jpg", ".jpeg", ".png"];
 const COMPOSER_IMAGE_FILE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 
+export const MAX_COMPOSER_IMAGE_SEGMENTS = 5;
+
 export const COMPOSER_IMAGE_FILE_ACCEPT = [
   "image/jpeg",
   "image/png",

@@ -12,6 +12,7 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import type { LexicalEditor } from "lexical";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -45,6 +46,7 @@ import { WechatEmojiPicker } from "@/pages/chat/components/wechat-emoji-picker";
 import {
   COMPOSER_IMAGE_FILE_ACCEPT,
   isSupportedComposerImageFile,
+  MAX_COMPOSER_IMAGE_SEGMENTS,
 } from "@/pages/chat/lib/composer-image-files";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
@@ -180,6 +182,11 @@ export function ChatComposer({
     mentionDropdownItems.length > 0;
   const canSubmitDraft = canSendMessage && !isSending && segments.length > 0;
   const canEditComposer = canSendMessage && !isSending;
+  const composerImageCount = segments.filter(
+    (segment) => segment.type === "image",
+  ).length;
+  const canAddComposerImage =
+    canEditComposer && composerImageCount < MAX_COMPOSER_IMAGE_SEGMENTS;
   const composerActionButtonClass = "size-8 p-0 shadow-none";
 
   const registerEditor = useCallback(
@@ -284,7 +291,27 @@ export function ChatComposer({
       return;
     }
 
-    const files = Array.from(fileList ?? []).filter(isSupportedComposerImageFile);
+    const currentImageCount = segments.filter(
+      (segment) => segment.type === "image",
+    ).length;
+    const remainingImageSlots = Math.max(
+      0,
+      MAX_COMPOSER_IMAGE_SEGMENTS - currentImageCount,
+    );
+    const supportedFiles = Array.from(fileList ?? []).filter(
+      isSupportedComposerImageFile,
+    );
+    const files = supportedFiles.slice(0, remainingImageSlots);
+
+    if (supportedFiles.length > remainingImageSlots) {
+      toast.warning("单次发送图片限制为5张");
+    }
+
+    if (files.length === 0) {
+      composerRef.current?.focus();
+      return;
+    }
+
     const images = await Promise.all(
       files.map(async (file) => ({
         alt: file.name || "图片",
@@ -370,7 +397,7 @@ export function ChatComposer({
           <Button
             aria-label="发送图片"
             className={composerActionButtonClass}
-            disabled={isSending}
+            disabled={!canAddComposerImage}
             onClick={() => imageInputRef.current?.click()}
             size="icon"
             type="button"
@@ -382,6 +409,7 @@ export function ChatComposer({
             accept={COMPOSER_IMAGE_FILE_ACCEPT}
             aria-label="选择图片"
             className="sr-only"
+            disabled={!canAddComposerImage}
             multiple
             onChange={(event) => {
               void handleImageFiles(event.currentTarget.files);

@@ -757,6 +757,7 @@ function buildPayloadSegmentContent(
       extension: segment.extension,
       fileName: segment.fileName,
       fileSizeLabel: segment.fileSizeLabel ?? "",
+      sourceLabel: "文件",
     };
   }
 
@@ -768,7 +769,15 @@ function buildPayloadSegmentContent(
 function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {
   const firstTextSegment = segments.find((segment) => segment.type === "text");
 
-  return firstTextSegment?.text ?? (segments.some((segment) => segment.type === "image") ? "[图片]" : "");
+  if (firstTextSegment?.text) {
+    return firstTextSegment.text;
+  }
+
+  if (segments.some((segment) => segment.type === "image")) {
+    return "[图片]";
+  }
+
+  return segments.some((segment) => segment.type === "file") ? "[文件]" : "";
 }
 
 function buildSegmentClientMessageId(clientMessageId: string, index: number) {

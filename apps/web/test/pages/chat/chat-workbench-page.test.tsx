@@ -10,7 +10,10 @@ import {
   resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
-import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
+import {
+  resolveImageSegmentsForSend,
+  uploadWorkbenchFile,
+} from "@/pages/chat/api/media-upload-service";
 import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -45,6 +48,15 @@ vi.mock("@/pages/chat/api/media-upload-service", () => ({
         : segment,
     ),
   ),
+  uploadWorkbenchFile: vi.fn(async (_conversationId, file: File) => ({
+    extension: file.name.split(".").pop() ?? "",
+    fileId: `chat-files/conv-001/${file.name}`,
+    fileName: file.name,
+    fileSize: file.size,
+    fileSizeLabel: `${file.size} B`,
+    type: "file",
+    url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
+  })),
 }));
 
 function createDeferred<T = void>() {
@@ -89,6 +101,17 @@ describe("ChatWorkbenchPage", () => {
               }
             : segment,
         ),
+    );
+    vi.mocked(uploadWorkbenchFile).mockImplementation(
+      async (_conversationId, file: File) => ({
+        extension: file.name.split(".").pop() ?? "",
+        fileId: `chat-files/conv-001/${file.name}`,
+        fileName: file.name,
+        fileSize: file.size,
+        fileSizeLabel: `${file.size} B`,
+        type: "file",
+        url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
+      }),
     );
     resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
@@ -186,6 +209,159 @@ describe("ChatWorkbenchPage", () => {
       "accept",
       "image/jpeg,image/png,.jpg,.jpeg,.png",
     );
+  });
+
+  it("uploads a selected file and sends it as a file message", async () => {
+    const user = userEvent.setup();
+    const upload = createDeferred<Awaited<ReturnType<typeof uploadWorkbenchFile>>>();
+    const file = new File(["file-bytes"], "报价单.pdf", {
+      type: "application/pdf",
+    });
+    vi.mocked(uploadWorkbenchFile).mockReturnValue(upload.promise);
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), file);
+
+    expect(screen.getByText("报价单.pdf")).toBeInTheDocument();
+    expect(screen.getByText("正在准备发送")).toBeInTheDocument();
+    await waitFor(() => {
+    expect(uploadWorkbenchFile).toHaveBeenCalledWith(
+      "conv-001",
+      file,
+      expect.objectContaining({
+        onProgress: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    });
+    upload.resolve({
+      extension: "pdf",
+      fileId: "chat-files/conv-001/报价单.pdf",
+      fileName: "报价单.pdf",
+      fileSize: file.size,
+      fileSizeLabel: `${file.size} B`,
+      type: "file",
+      url: "https://b5.bokr.com.cn/chat-files/conv-001/%E6%8A%A5%E4%BB%B7%E5%8D%95.pdf",
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("正在准备发送")).not.toBeInTheDocument();
+    });
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+    ).toMatchObject({
+      content: {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        fileSizeLabel: expect.any(String),
+        type: "file",
+      },
+      role: "agent",
+      status: "accepted",
+    });
+  });
+
+  it("rejects unsupported selected files with a toast", async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    const unsupportedFile = new File(["file-bytes"], "archive.zip", {
+      type: "application/zip",
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), unsupportedFile);
+
+    expect(uploadWorkbenchFile).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("仅支持 PDF、Excel、Word、TXT、PPT 文件");
+  });
+
+  it("rejects oversized selected files with a blocking dialog", async () => {
+    const user = userEvent.setup();
+    const oversizedFile = new File(["file-bytes"], "大文件.pdf", {
+      type: "application/pdf",
+    });
+    Object.defineProperty(oversizedFile, "size", {
+      configurable: true,
+      value: 10 * 1024 * 1024 + 1,
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), oversizedFile);
+
+    expect(uploadWorkbenchFile).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("alertdialog", {
+        name: "文件过大，无法发送",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("请选择不超过 10 MB 的文件")).toBeInTheDocument();
+    expect(toast.warning).not.toHaveBeenCalledWith("文件大小不能超过 10 MB");
+  });
+
+  it("blocks conversation switching while a file is uploading", async () => {
+    const user = userEvent.setup();
+    const upload = createDeferred<Awaited<ReturnType<typeof uploadWorkbenchFile>>>();
+    const file = new File(["file-bytes"], "报价单.pdf", {
+      type: "application/pdf",
+    });
+    vi.mocked(uploadWorkbenchFile).mockReturnValue(upload.promise);
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), file);
+    await waitFor(() => {
+      expect(screen.getByText("正在准备发送")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+
+    expect(screen.getByTestId("scope-transition-error")).toHaveTextContent(
+      "文件上传中，暂不能切换会话",
+    );
+    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toBeInTheDocument();
+    upload.resolve({
+      extension: "pdf",
+      fileId: "chat-files/conv-001/报价单.pdf",
+      fileName: "报价单.pdf",
+      fileSize: file.size,
+      fileSizeLabel: `${file.size} B`,
+      type: "file",
+      url: "https://b5.bokr.com.cn/chat-files/conv-001/%E6%8A%A5%E4%BB%B7%E5%8D%95.pdf",
+    });
+  });
+
+  it("aborts the active file upload when the queued file is canceled", async () => {
+    const user = userEvent.setup();
+    const upload = createDeferred<Awaited<ReturnType<typeof uploadWorkbenchFile>>>();
+    const file = new File(["file-bytes"], "报价单.pdf", {
+      type: "application/pdf",
+    });
+    vi.mocked(uploadWorkbenchFile).mockReturnValue(upload.promise);
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), file);
+    await waitFor(() => {
+      expect(uploadWorkbenchFile).toHaveBeenCalledWith(
+        "conv-001",
+        file,
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    });
+
+    const uploadOptions = vi.mocked(uploadWorkbenchFile).mock.calls.at(-1)?.[2];
+
+    expect(uploadOptions?.signal?.aborted).toBe(false);
+    await user.click(screen.getByRole("button", { name: "取消上传 报价单.pdf" }));
+    expect(uploadOptions?.signal?.aborted).toBe(true);
+    expect(screen.queryByText("报价单.pdf")).not.toBeInTheDocument();
   });
 
   it("ignores pasted clipboard images outside jpeg and png", async () => {

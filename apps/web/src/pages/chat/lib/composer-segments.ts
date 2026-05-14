@@ -85,8 +85,12 @@ export function getComposerSegmentsPreview(segments: ComposerSegment[]) {
     return firstTextSegment.text;
   }
 
-  return normalizedSegments.some((segment) => segment.type === "image")
-    ? "[图片]"
+  if (normalizedSegments.some((segment) => segment.type === "image")) {
+    return "[图片]";
+  }
+
+  return normalizedSegments.some((segment) => segment.type === "file")
+    ? "[文件]"
     : "";
 }
 

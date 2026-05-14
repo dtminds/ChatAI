@@ -9,6 +9,13 @@ export type MessageRole = "customer" | "agent" | "system";
 
 export type MessageStatus = "pending" | "sending" | "accepted" | "sent" | "failed" | "read";
 
+export type FileUploadQueueItem = {
+  fileName: string;
+  id: string;
+  progress: number;
+  status: "uploading" | "sending";
+};
+
 export type EmployeeProfile = {
   id: string;
   displayName: string;

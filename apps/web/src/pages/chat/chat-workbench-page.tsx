@@ -38,7 +38,12 @@ import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-re
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
-import type { ChatMode } from "@/pages/chat/chat-types";
+import type { ChatMode, FileUploadQueueItem } from "@/pages/chat/chat-types";
+import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
+import {
+  isComposerFileSizeAllowed,
+  isSupportedComposerFile,
+} from "@/pages/chat/lib/composer-file-files";
 import { extractComposerMentionState, type ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
 import {
@@ -146,6 +151,9 @@ function ChatWorkbenchContent({
     description: string;
     title: string;
   } | null>(null);
+  const [fileUploadTransitionError, setFileUploadTransitionError] =
+    useState<string | undefined>();
+  const [fileUploadQueue, setFileUploadQueue] = useState<FileUploadQueueItem[]>([]);
   const [isSendingDraft, setIsSendingDraft] = useState(false);
   const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
     useState<PendingComposerDiscardSwitch | null>(null);
@@ -158,6 +166,11 @@ function ChatWorkbenchContent({
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
   const isSendingDraftRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
+  const fileUploadAbortControllersRef = useRef(
+    new Map<string, AbortController>(),
+  );
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
@@ -239,7 +252,24 @@ function ChatWorkbenchContent({
       ? "当前账号未接管，暂时无法发送消息"
     : !activeConversation
       ? "当前列表暂无可发送会话"
-      : "当前会话暂不可发送消息";
+    : "当前会话暂不可发送消息";
+
+  const hasActiveFileUploads = () =>
+    fileUploadQueueRef.current.length > 0;
+
+  const setFileUploadQueueState = (
+    updater: (queue: typeof fileUploadQueue) => typeof fileUploadQueue,
+  ) => {
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    setFileUploadQueue((currentQueue) => {
+      const nextQueue = updater(currentQueue);
+      fileUploadQueueRef.current = nextQueue;
+      return nextQueue;
+    });
+  };
 
   const {
     handleLoadOlderMessages,
@@ -258,6 +288,15 @@ function ChatWorkbenchContent({
   useEffect(() => {
     void initializeWorkbench();
   }, [initializeWorkbench]);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    fileUploadAbortControllersRef.current.forEach((controller) => {
+      controller.abort();
+    });
+    fileUploadAbortControllersRef.current.clear();
+    fileUploadQueueRef.current = [];
+  }, []);
 
   useEffect(() => {
     if (!readReceiptError) {
@@ -347,6 +386,130 @@ function ChatWorkbenchContent({
     }
   };
 
+  const removeFileUpload = (uploadId: string) => {
+    fileUploadAbortControllersRef.current.delete(uploadId);
+    setFileUploadQueueState((currentQueue) =>
+      currentQueue.filter((item) => item.id !== uploadId),
+    );
+  };
+
+  const handleCancelFileUpload = (uploadId: string) => {
+    fileUploadAbortControllersRef.current.get(uploadId)?.abort();
+    removeFileUpload(uploadId);
+  };
+
+  const handleFileSelect = (fileList: FileList | File[] | null) => {
+    const files = Array.from(fileList ?? []);
+
+    if (files.length === 0) {
+      return;
+    }
+
+    if (!activeConversation || !canSendMessage) {
+      setSendFailureDialog(
+        getSendFailureDialogCopy("unavailable", "UNAVAILABLE"),
+      );
+      return;
+    }
+
+    for (const file of files) {
+      if (!isSupportedComposerFile(file)) {
+        toast.warning("仅支持 PDF、Excel、Word、TXT、PPT 文件");
+        continue;
+      }
+
+      if (!isComposerFileSizeAllowed(file)) {
+        setSendFailureDialog({
+          description: "请选择不超过 10 MB 的文件",
+          title: "文件过大，无法发送",
+        });
+        continue;
+      }
+
+      const uploadId = `file-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const nextUpload: FileUploadQueueItem = {
+        fileName: file.name,
+        id: uploadId,
+        progress: 1,
+        status: "uploading",
+      };
+      const abortController = new AbortController();
+      fileUploadAbortControllersRef.current.set(uploadId, abortController);
+
+      setFileUploadQueueState((currentQueue) => [...currentQueue, nextUpload]);
+
+      void (async () => {
+        try {
+          const fileSegment = await uploadWorkbenchFile(activeConversation.id, file, {
+            onProgress(progress) {
+              setFileUploadQueueState((currentQueue) =>
+                currentQueue.map((item) =>
+                  item.id === uploadId
+                    ? {
+                        ...item,
+                        progress: Math.max(
+                          item.progress,
+                          Math.min(100, progress),
+                        ),
+                      }
+                    : item,
+                ),
+              );
+            },
+            signal: abortController.signal,
+          });
+
+          if (
+            !fileUploadQueueRef.current.some(
+              (item) => item.id === uploadId,
+            )
+          ) {
+            return;
+          }
+
+          setFileUploadQueueState((currentQueue) =>
+            currentQueue.map((item) =>
+              item.id === uploadId
+                ? { ...item, progress: 100, status: "sending" }
+                : item,
+            ),
+          );
+
+          const result = await sendAgentMessageSegments([fileSegment]);
+
+          if (!isMountedRef.current) {
+            return;
+          }
+
+          if (!result.ok) {
+            setSendFailureDialog(
+              getSendFailureDialogCopy(result.reason, result.errorCode),
+            );
+            composerRef.current?.focus();
+            return;
+          }
+        } catch (error) {
+          if (!isMountedRef.current) {
+            return;
+          }
+
+          if (
+            fileUploadQueueRef.current.some(
+              (item) => item.id === uploadId,
+            )
+          ) {
+            setSendFailureDialog(
+              getSendFailureDialogCopy("file-upload", getSendErrorCode(error)),
+            );
+            composerRef.current?.focus();
+          }
+        } finally {
+          removeFileUpload(uploadId);
+        }
+      })();
+    }
+  };
+
   const handleDraftChange = (nextDraft: string) => {
     setDraft(nextDraft);
   };
@@ -360,6 +523,11 @@ function ChatWorkbenchContent({
 
   const handleSelectConversation = async (conversationId: string) => {
     if (conversationId === activeConversationId) {
+      return;
+    }
+
+    if (hasActiveFileUploads()) {
+      setFileUploadTransitionError("文件上传中，暂不能切换会话");
       return;
     }
 
@@ -377,6 +545,11 @@ function ChatWorkbenchContent({
 
   const handleSelectMode = async (mode: ChatMode) => {
     if (mode === activeMode) {
+      return;
+    }
+
+    if (hasActiveFileUploads()) {
+      setFileUploadTransitionError("文件上传中，暂不能切换会话");
       return;
     }
 
@@ -558,6 +731,7 @@ function ChatWorkbenchContent({
                 isEmojiPickerOpen={isEmojiPickerOpen}
                 isSendingDraft={isSendingDraft}
                 isResizingCustomerPanel={isResizingCustomerPanel}
+                fileUploadQueue={fileUploadQueue}
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
@@ -565,9 +739,11 @@ function ChatWorkbenchContent({
                 sidebarItems={sidebarItems}
                 onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
                 onComposerSegmentsChange={handleComposerSegmentsChange}
+                onCancelFileUpload={handleCancelFileUpload}
                 onDraftChange={handleDraftChange}
                 onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                 onEnterBehaviorChange={setInputEnterBehavior}
+                onFileSelect={handleFileSelect}
                 onRefreshGroupMembers={() => {
                   void loadActiveGroupMembers({ force: true });
                 }}
@@ -576,8 +752,13 @@ function ChatWorkbenchContent({
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={retryFailedMessage}
                 onSendDraft={handleSendDraft}
-                onDismissScopeTransitionError={dismissScopeTransitionError}
-                scopeTransitionError={scopeTransitionError}
+                onDismissScopeTransitionError={() => {
+                  setFileUploadTransitionError(undefined);
+                  dismissScopeTransitionError();
+                }}
+                scopeTransitionError={
+                  fileUploadTransitionError ?? scopeTransitionError
+                }
                 composerRef={composerRef}
                 workbenchBodyRef={workbenchBodyRef}
               />
@@ -648,9 +829,16 @@ function ChatWorkbenchContent({
 }
 
 function getSendFailureDialogCopy(
-  reason: "image-upload" | "send" | "unavailable",
+  reason: "file-upload" | "image-upload" | "send" | "unavailable",
   errorCode: string,
 ) {
+  if (reason === "file-upload") {
+    return {
+      title: "文件上传失败，请稍后重试",
+      description: `ErrorCode: ${errorCode}`,
+    };
+  }
+
   if (reason === "image-upload") {
     return {
       title: "图片上传失败，请稍后重试",
@@ -669,4 +857,42 @@ function getSendFailureDialogCopy(
     title: "发送失败，请稍后重试",
     description: `ErrorCode: ${errorCode}`,
   };
+}
+
+function getSendErrorCode(error: unknown) {
+  if (isErrorWithCode(error) && !isTransportErrorCode(error.code)) {
+    return error.code;
+  }
+
+  if (isErrorWithStatus(error)) {
+    return String(error.status);
+  }
+
+  if (isErrorWithCode(error)) {
+    return error.code;
+  }
+
+  return "UNKNOWN";
+}
+
+function isErrorWithCode(error: unknown): error is { code: string } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code: unknown }).code === "string"
+  );
+}
+
+function isErrorWithStatus(error: unknown): error is { status: number } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof (error as { status: unknown }).status === "number"
+  );
+}
+
+function isTransportErrorCode(code: string) {
+  return code === "ERR_NETWORK" || code === "ECONNABORTED";
 }

@@ -166,6 +166,7 @@ function ChatWorkbenchContent({
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
   const isSendingDraftRef = useRef(false);
+  const isMountedRef = useRef(true);
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
@@ -259,6 +260,10 @@ function ChatWorkbenchContent({
   const setFileUploadQueueState = (
     updater: (queue: typeof fileUploadQueue) => typeof fileUploadQueue,
   ) => {
+    if (!isMountedRef.current) {
+      return;
+    }
+
     setFileUploadQueue((currentQueue) => {
       const nextQueue = updater(currentQueue);
       fileUploadQueueRef.current = nextQueue;
@@ -283,6 +288,15 @@ function ChatWorkbenchContent({
   useEffect(() => {
     void initializeWorkbench();
   }, [initializeWorkbench]);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    fileUploadAbortControllersRef.current.forEach((controller) => {
+      controller.abort();
+    });
+    fileUploadAbortControllersRef.current.clear();
+    fileUploadQueueRef.current = [];
+  }, []);
 
   useEffect(() => {
     if (!readReceiptError) {
@@ -463,6 +477,10 @@ function ChatWorkbenchContent({
 
           const result = await sendAgentMessageSegments([fileSegment]);
 
+          if (!isMountedRef.current) {
+            return;
+          }
+
           if (!result.ok) {
             setSendFailureDialog(
               getSendFailureDialogCopy(result.reason, result.errorCode),
@@ -471,6 +489,10 @@ function ChatWorkbenchContent({
             return;
           }
         } catch (error) {
+          if (!isMountedRef.current) {
+            return;
+          }
+
           if (
             fileUploadQueueRef.current.some(
               (item) => item.id === uploadId,

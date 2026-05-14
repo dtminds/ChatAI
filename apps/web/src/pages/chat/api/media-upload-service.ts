@@ -12,7 +12,7 @@ import type { WorkbenchUploadCredentialResponse } from "@chatai/contracts";
 
 const DEFAULT_IMAGE_UPLOAD_PREFIX = "chat-images/";
 const DEFAULT_FILE_UPLOAD_PREFIX = "chat-files/";
-const DEFAULT_IMAGE_EXTENSION = "bin";
+const DEFAULT_FALLBACK_EXTENSION = "bin";
 const MEDIA_ASSET_BASE_URL = "https://b5.bokr.com.cn";
 const UPLOAD_SLICE_SIZE = 1024 * 1024;
 
@@ -45,7 +45,6 @@ export async function resolveImageSegmentsForSend(
     const key = buildObjectKey({
       credential,
       extension: getImageExtension(blob.type),
-      fallbackPrefix: DEFAULT_IMAGE_UPLOAD_PREFIX,
     });
     await cos.uploadFile({
       Body: blob,
@@ -88,11 +87,10 @@ export async function uploadWorkbenchFile(
 ): Promise<ComposerFileSegment> {
   const credential = await getUploadCredential(conversationId);
   const cos = createCosClient(credential);
-  const extension = getSupportedFileExtension(file) || DEFAULT_IMAGE_EXTENSION;
-  const key = buildObjectKey({
+  const extension = getSupportedFileExtension(file) || DEFAULT_FALLBACK_EXTENSION;
+  const key = buildFileObjectKey({
     credential,
     extension,
-    fallbackPrefix: DEFAULT_FILE_UPLOAD_PREFIX,
   });
 
   await cos.uploadFile({
@@ -156,22 +154,38 @@ async function dataUrlToBlob(dataUrl: string) {
 function buildObjectKey({
   credential,
   extension,
-  fallbackPrefix,
 }: {
   credential: WorkbenchUploadCredentialResponse;
   extension: string;
-  fallbackPrefix: string;
 }) {
   const prefix = normalizeUploadPrefix(
-    credential.allowPerfixs[0] ?? fallbackPrefix,
-    fallbackPrefix,
+    getAllowedUploadPrefixes(credential)[0] ?? DEFAULT_IMAGE_UPLOAD_PREFIX,
   );
   const randomPart = Math.random().toString(36).slice(2, 10);
 
   return `${prefix}${Date.now()}-${randomPart}.${extension}`;
 }
 
-function normalizeUploadPrefix(prefix: string, fallbackPrefix: string) {
+function buildFileObjectKey({
+  credential,
+  extension,
+}: {
+  credential: WorkbenchUploadCredentialResponse;
+  extension: string;
+}) {
+  const prefix = normalizeUploadPrefix(
+    getAllowedUploadPrefixes(credential)[0] ?? DEFAULT_FILE_UPLOAD_PREFIX,
+    DEFAULT_FILE_UPLOAD_PREFIX,
+  );
+  const randomPart = Math.random().toString(36).slice(2, 10);
+
+  return `${prefix}${Date.now()}-${randomPart}.${extension}`;
+}
+
+function normalizeUploadPrefix(
+  prefix: string,
+  fallbackPrefix = DEFAULT_IMAGE_UPLOAD_PREFIX,
+) {
   const normalizedPrefix = prefix
     .trim()
     .replace(/^\/+/, "")
@@ -191,7 +205,7 @@ function getImageExtension(contentType: string) {
   const subtype = rawSubtype?.split(";")[0]?.trim().toLowerCase();
 
   if (!subtype) {
-    return DEFAULT_IMAGE_EXTENSION;
+    return DEFAULT_FALLBACK_EXTENSION;
   }
 
   if (subtype === "jpeg") {
@@ -199,10 +213,10 @@ function getImageExtension(contentType: string) {
   }
 
   if (subtype.includes("+")) {
-    return subtype.split("+")[0] || DEFAULT_IMAGE_EXTENSION;
+    return subtype.split("+")[0] || DEFAULT_FALLBACK_EXTENSION;
   }
 
-  return subtype.replace(/[^a-z0-9]/g, "") || DEFAULT_IMAGE_EXTENSION;
+  return subtype.replace(/[^a-z0-9]/g, "") || DEFAULT_FALLBACK_EXTENSION;
 }
 
 function buildObjectUrl(key: string) {
@@ -211,4 +225,8 @@ function buildObjectUrl(key: string) {
 
 function encodeCosKey(key: string) {
   return key.split("/").map(encodeURIComponent).join("/");
+}
+
+function getAllowedUploadPrefixes(credential: WorkbenchUploadCredentialResponse) {
+  return credential.allowPerfixs;
 }

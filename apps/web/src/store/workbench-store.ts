@@ -1408,7 +1408,7 @@ export function createWorkbenchStore() {
             isGroupConversation: activeConversation.mode === "group",
             isOwnMessage: true,
             clientMessageId: segmentClientMessageId,
-            content: buildOptimisticMessageContent(originalSegment),
+            content: buildOptimisticMessageContent(segmentForSend),
             conversationId: activeConversationId,
             id: segmentClientMessageId,
             optNo: response.optNo ?? response.messageId,

@@ -349,6 +349,33 @@ describe("resolveImageSegmentsForSend", () => {
       }),
     );
   });
+
+  it("formats uploaded file sizes in GB", async () => {
+    const credential = createUploadCredential({
+      allowPerfixs: ["s5/upload/2026/05/13/272/"],
+    });
+    const baseService = createMockWorkbenchService();
+    const getUploadCredential = vi.fn(async () => credential);
+    const file = new File(["file-bytes"], "large-video.mov", {
+      type: "video/quicktime",
+    });
+    Object.defineProperty(file, "size", {
+      configurable: true,
+      value: 3 * 1024 * 1024 * 1024,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      getUploadCredential,
+    });
+    cosUploadFileMock.mockImplementation(async () => ({
+      ETag: '"mock-etag"',
+    }));
+
+    await expect(uploadWorkbenchFile("conv-001", file)).resolves.toMatchObject({
+      fileSizeLabel: "3.00 GB",
+    });
+  });
 });
 
 function createDeferred<T = unknown>() {

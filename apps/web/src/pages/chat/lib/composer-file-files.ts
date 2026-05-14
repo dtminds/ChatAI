@@ -89,7 +89,11 @@ export function formatFileSize(bytes: number) {
     return `${formatFileSizeUnit(bytes / 1024)} KB`;
   }
 
-  return `${formatFileSizeUnit(bytes / (1024 * 1024))} MB`;
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${formatFileSizeUnit(bytes / (1024 * 1024))} MB`;
+  }
+
+  return `${formatFileSizeUnit(bytes / (1024 * 1024 * 1024))} GB`;
 }
 
 function formatFileSizeUnit(value: number) {

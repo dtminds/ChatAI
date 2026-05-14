@@ -225,7 +225,7 @@ describe("ChatWorkbenchPage", () => {
     await user.upload(screen.getByLabelText("选择文件"), file);
 
     expect(screen.getByText("报价单.pdf")).toBeInTheDocument();
-    expect(screen.getByText("正在上传")).toBeInTheDocument();
+    expect(screen.getByText("正在准备发送")).toBeInTheDocument();
     await waitFor(() => {
       expect(uploadWorkbenchFile).toHaveBeenCalledWith(
         "conv-001",
@@ -245,7 +245,7 @@ describe("ChatWorkbenchPage", () => {
       url: "https://b5.bokr.com.cn/chat-files/conv-001/%E6%8A%A5%E4%BB%B7%E5%8D%95.pdf",
     });
     await waitFor(() => {
-      expect(screen.queryByText("正在上传")).not.toBeInTheDocument();
+      expect(screen.queryByText("正在准备发送")).not.toBeInTheDocument();
     });
     expect(
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
@@ -314,7 +314,7 @@ describe("ChatWorkbenchPage", () => {
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.upload(screen.getByLabelText("选择文件"), file);
     await waitFor(() => {
-      expect(screen.getByText("正在上传")).toBeInTheDocument();
+      expect(screen.getByText("正在准备发送")).toBeInTheDocument();
     });
     await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
 

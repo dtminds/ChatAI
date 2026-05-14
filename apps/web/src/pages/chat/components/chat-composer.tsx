@@ -57,6 +57,7 @@ import type { GroupMember } from "@/pages/chat/chat-types";
 type ChatComposerProps = {
   canSendMessage: boolean;
   draft: string;
+  hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
   inputEnterBehavior: InputEnterBehavior;
   isGroupConversation: boolean;
@@ -92,6 +93,7 @@ function createComposerImageClientId() {
 export function ChatComposer({
   canSendMessage,
   draft,
+  hasActiveFileUpload,
   groupMembers,
   inputEnterBehavior,
   isGroupConversation,
@@ -187,6 +189,7 @@ export function ChatComposer({
     mentionDropdownItems.length > 0;
   const canSubmitDraft = canSendMessage && !isSending && segments.length > 0;
   const canEditComposer = canSendMessage && !isSending;
+  const canSelectFile = canEditComposer && !hasActiveFileUpload;
   const composerImageCount = segments.filter(
     (segment) => segment.type === "image",
   ).length;
@@ -374,7 +377,7 @@ export function ChatComposer({
   );
 
   return (
-    <div className="space-y-1.5 bg-surface px-4 py-2">
+    <div className="space-y-1.5 bg-surface">
       <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
         <div className="ml-[-6px] flex items-center gap-1.5">
           <div className="relative" ref={emojiPickerRef}>
@@ -426,7 +429,7 @@ export function ChatComposer({
           <Button
             aria-label="发送文件"
             className={composerActionButtonClass}
-            disabled={!canEditComposer}
+            disabled={!canSelectFile}
             onClick={() => fileInputRef.current?.click()}
             size="icon"
             type="button"
@@ -438,7 +441,7 @@ export function ChatComposer({
             accept={COMPOSER_FILE_ACCEPT}
             aria-label="选择文件"
             className="sr-only"
-            disabled={!canEditComposer}
+            disabled={!canSelectFile}
             onChange={(event) => {
               onFileSelect(event.currentTarget.files);
               event.currentTarget.value = "";

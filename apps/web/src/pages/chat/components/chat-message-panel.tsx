@@ -1,10 +1,13 @@
-import { startTransition, type RefObject } from "react";
+import { startTransition, type ReactNode, type RefObject } from "react";
+import { cn } from "@/lib/utils";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { ChatMessageList } from "@/pages/chat/components/message-feed";
 import type { Message } from "@/pages/chat/chat-types";
 
 type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
+  bottomOverlay?: ReactNode;
+  hasBottomOverlay?: boolean;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
   isConversationLoading: boolean;
@@ -18,6 +21,8 @@ type ChatMessagePanelProps = {
 
 export function ChatMessagePanel({
   activeHistoryStatus,
+  bottomOverlay,
+  hasBottomOverlay = false,
   hasMoreHistory,
   historyLoadLabel,
   isConversationLoading,
@@ -42,7 +47,7 @@ export function ChatMessagePanel({
           ref={messageViewportRef}
           style={{ overflowAnchor: "none" }}
         >
-          <div className="px-5 py-5">
+          <div className={cn("px-5 py-5", hasBottomOverlay && "pb-12")}>
             <div
               aria-hidden={isConversationLoading ? "true" : undefined}
               className={
@@ -93,6 +98,11 @@ export function ChatMessagePanel({
             />
             <span>正在加载会话</span>
           </div>
+        </div>
+      ) : null}
+      {bottomOverlay ? (
+        <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-10 bg-surface">
+          {bottomOverlay}
         </div>
       ) : null}
     </section>

@@ -10,6 +10,7 @@ import {
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 
 export const JAVA_MSG_TYPE = {
+  FILE: 2010,
   IMAGE: 2002,
   TEXT: 2001,
 } as const;
@@ -42,6 +43,8 @@ export type JavaSendMessageData = {
   msgContent: string;
   msgNum: number;
   msgType: (typeof JAVA_MSG_TYPE)[keyof typeof JAVA_MSG_TYPE];
+  vcHref?: string;
+  vcTitle?: string;
 };
 
 export type JavaSendMessageInput = {

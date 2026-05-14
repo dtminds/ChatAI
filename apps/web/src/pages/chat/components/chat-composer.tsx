@@ -2,6 +2,7 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   ArrowUp02Icon,
   ChatDelayIcon,
+  Folder01Icon,
   Image01Icon,
   Loading03Icon,
   SmileIcon,
@@ -48,6 +49,7 @@ import {
   isSupportedComposerImageFile,
   MAX_COMPOSER_IMAGE_SEGMENTS,
 } from "@/pages/chat/lib/composer-image-files";
+import { COMPOSER_FILE_ACCEPT } from "@/pages/chat/lib/composer-file-files";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
 import type { GroupMember } from "@/pages/chat/chat-types";
@@ -63,6 +65,7 @@ type ChatComposerProps = {
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
+  onFileSelect: (files: FileList | File[] | null) => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
   placeholder: string;
@@ -97,6 +100,7 @@ export function ChatComposer({
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
+  onFileSelect,
   onSegmentsChange,
   onSendDraft,
   placeholder,
@@ -104,6 +108,7 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [draftText, setDraftText] = useState(draft);
   const [segments, setSegments] = useState<ComposerSegment[]>([]);
   const [cursorPosition, setCursorPosition] = useState(draft.length);
@@ -416,6 +421,29 @@ export function ChatComposer({
               event.currentTarget.value = "";
             }}
             ref={imageInputRef}
+            type="file"
+          />
+          <Button
+            aria-label="发送文件"
+            className={composerActionButtonClass}
+            disabled={!canEditComposer}
+            onClick={() => fileInputRef.current?.click()}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={Folder01Icon} size={18} strokeWidth={1.8} />
+          </Button>
+          <input
+            accept={COMPOSER_FILE_ACCEPT}
+            aria-label="选择文件"
+            className="sr-only"
+            disabled={!canEditComposer}
+            onChange={(event) => {
+              onFileSelect(event.currentTarget.files);
+              event.currentTarget.value = "";
+            }}
+            ref={fileInputRef}
             type="file"
           />
           <Button

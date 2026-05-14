@@ -621,6 +621,64 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("maps a file send to the Java send-message payload", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-file-001",
+      messageId: "opt-file-001",
+      optNo: "opt-file-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-file-001",
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        extension: "pdf",
+        fileId: "chat-files/quote.pdf",
+        fileName: "报价单.pdf",
+        fileSize: 6389760,
+        fileSizeLabel: "6.09 MB",
+        type: "file",
+        url: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+      },
+    });
+
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-file-001",
+      message: {
+        msgContent: "报价单.pdf",
+        msgNum: 1,
+        msgType: 2010,
+        vcHref: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+        vcTitle: "报价单.pdf",
+      },
+      platform: 5,
+      sendType: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("rejects image send without a sendable URL before calling Java", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(

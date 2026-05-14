@@ -26,7 +26,10 @@ import { cn } from "@/lib/utils";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
 import { AccountRail } from "@/pages/chat/components/account-rail";
-import { ChatPanel } from "@/pages/chat/components/chat-panel";
+import {
+  ChatPanel,
+  type FileUploadQueueItem,
+} from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import {
@@ -39,6 +42,11 @@ import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scro
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type { ChatMode } from "@/pages/chat/chat-types";
+import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
+import {
+  isComposerFileSizeAllowed,
+  isSupportedComposerFile,
+} from "@/pages/chat/lib/composer-file-files";
 import { extractComposerMentionState, type ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
 import {
@@ -57,6 +65,10 @@ type PendingComposerDiscardSwitch =
       mode: ChatMode;
       type: "mode";
     };
+
+type PendingFileUpload = FileUploadQueueItem & {
+  canceled: boolean;
+};
 
 function getInitialAccountRailCollapsed() {
   try {
@@ -146,6 +158,9 @@ function ChatWorkbenchContent({
     description: string;
     title: string;
   } | null>(null);
+  const [fileUploadTransitionError, setFileUploadTransitionError] =
+    useState<string | undefined>();
+  const [fileUploadQueue, setFileUploadQueue] = useState<PendingFileUpload[]>([]);
   const [isSendingDraft, setIsSendingDraft] = useState(false);
   const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
     useState<PendingComposerDiscardSwitch | null>(null);
@@ -158,6 +173,7 @@ function ChatWorkbenchContent({
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
   const isSendingDraftRef = useRef(false);
+  const fileUploadQueueRef = useRef<PendingFileUpload[]>([]);
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
@@ -239,7 +255,20 @@ function ChatWorkbenchContent({
       ? "当前账号未接管，暂时无法发送消息"
     : !activeConversation
       ? "当前列表暂无可发送会话"
-      : "当前会话暂不可发送消息";
+    : "当前会话暂不可发送消息";
+
+  const hasActiveFileUploads = () =>
+    fileUploadQueueRef.current.some((item) => !item.canceled);
+
+  const setFileUploadQueueState = (
+    updater: (queue: PendingFileUpload[]) => PendingFileUpload[],
+  ) => {
+    setFileUploadQueue((currentQueue) => {
+      const nextQueue = updater(currentQueue);
+      fileUploadQueueRef.current = nextQueue;
+      return nextQueue;
+    });
+  };
 
   const {
     handleLoadOlderMessages,
@@ -347,6 +376,119 @@ function ChatWorkbenchContent({
     }
   };
 
+  const removeFileUpload = (uploadId: string) => {
+    setFileUploadQueueState((currentQueue) =>
+      currentQueue.filter((item) => item.id !== uploadId),
+    );
+  };
+
+  const handleCancelFileUpload = (uploadId: string) => {
+    setFileUploadQueueState((currentQueue) =>
+      currentQueue.map((item) =>
+        item.id === uploadId ? { ...item, canceled: true } : item,
+      ),
+    );
+    removeFileUpload(uploadId);
+  };
+
+  const handleFileSelect = (fileList: FileList | File[] | null) => {
+    const files = Array.from(fileList ?? []);
+
+    if (files.length === 0) {
+      return;
+    }
+
+    if (!activeConversation || !canSendMessage) {
+      setSendFailureDialog(
+        getSendFailureDialogCopy("unavailable", "UNAVAILABLE"),
+      );
+      return;
+    }
+
+    for (const file of files) {
+      if (!isSupportedComposerFile(file)) {
+        toast.warning("仅支持 PDF、Excel、Word、TXT、PPT 文件");
+        continue;
+      }
+
+      if (!isComposerFileSizeAllowed(file)) {
+        toast.warning("文件大小不能超过 10 MB");
+        continue;
+      }
+
+      const uploadId = `file-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const nextUpload: PendingFileUpload = {
+        canceled: false,
+        fileName: file.name,
+        id: uploadId,
+        progress: 1,
+        status: "uploading",
+      };
+
+      setFileUploadQueueState((currentQueue) => [...currentQueue, nextUpload]);
+
+      void (async () => {
+        try {
+          const fileSegment = await uploadWorkbenchFile(activeConversation.id, file, {
+            onProgress(progress) {
+              setFileUploadQueueState((currentQueue) =>
+                currentQueue.map((item) =>
+                  item.id === uploadId
+                    ? {
+                        ...item,
+                        progress: Math.max(
+                          item.progress,
+                          Math.min(100, progress),
+                        ),
+                      }
+                    : item,
+                ),
+              );
+            },
+          });
+
+          if (
+            !fileUploadQueueRef.current.some(
+              (item) => item.id === uploadId && !item.canceled,
+            )
+          ) {
+            return;
+          }
+
+          setFileUploadQueueState((currentQueue) =>
+            currentQueue.map((item) =>
+              item.id === uploadId
+                ? { ...item, progress: 100, status: "sending" }
+                : item,
+            ),
+          );
+
+          const result = await sendAgentMessageSegments([fileSegment]);
+
+          if (!result.ok) {
+            setSendFailureDialog(
+              getSendFailureDialogCopy(result.reason, result.errorCode),
+            );
+            composerRef.current?.focus();
+            return;
+          }
+        } catch (error) {
+          if (
+            fileUploadQueueRef.current.some(
+              (item) => item.id === uploadId && !item.canceled,
+            )
+          ) {
+            setSendFailureDialog(
+              getSendFailureDialogCopy("file-upload", getSendErrorCode(error)),
+            );
+          }
+        } finally {
+          removeFileUpload(uploadId);
+        }
+      })();
+    }
+  };
+
   const handleDraftChange = (nextDraft: string) => {
     setDraft(nextDraft);
   };
@@ -360,6 +502,11 @@ function ChatWorkbenchContent({
 
   const handleSelectConversation = async (conversationId: string) => {
     if (conversationId === activeConversationId) {
+      return;
+    }
+
+    if (hasActiveFileUploads()) {
+      setFileUploadTransitionError("文件上传中，暂不能切换会话");
       return;
     }
 
@@ -377,6 +524,11 @@ function ChatWorkbenchContent({
 
   const handleSelectMode = async (mode: ChatMode) => {
     if (mode === activeMode) {
+      return;
+    }
+
+    if (hasActiveFileUploads()) {
+      setFileUploadTransitionError("文件上传中，暂不能切换会话");
       return;
     }
 
@@ -558,6 +710,7 @@ function ChatWorkbenchContent({
                 isEmojiPickerOpen={isEmojiPickerOpen}
                 isSendingDraft={isSendingDraft}
                 isResizingCustomerPanel={isResizingCustomerPanel}
+                fileUploadQueue={fileUploadQueue.filter((item) => !item.canceled)}
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
@@ -565,9 +718,11 @@ function ChatWorkbenchContent({
                 sidebarItems={sidebarItems}
                 onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
                 onComposerSegmentsChange={handleComposerSegmentsChange}
+                onCancelFileUpload={handleCancelFileUpload}
                 onDraftChange={handleDraftChange}
                 onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                 onEnterBehaviorChange={setInputEnterBehavior}
+                onFileSelect={handleFileSelect}
                 onRefreshGroupMembers={() => {
                   void loadActiveGroupMembers({ force: true });
                 }}
@@ -576,8 +731,13 @@ function ChatWorkbenchContent({
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={retryFailedMessage}
                 onSendDraft={handleSendDraft}
-                onDismissScopeTransitionError={dismissScopeTransitionError}
-                scopeTransitionError={scopeTransitionError}
+                onDismissScopeTransitionError={() => {
+                  setFileUploadTransitionError(undefined);
+                  dismissScopeTransitionError();
+                }}
+                scopeTransitionError={
+                  fileUploadTransitionError ?? scopeTransitionError
+                }
                 composerRef={composerRef}
                 workbenchBodyRef={workbenchBodyRef}
               />
@@ -648,9 +808,16 @@ function ChatWorkbenchContent({
 }
 
 function getSendFailureDialogCopy(
-  reason: "image-upload" | "send" | "unavailable",
+  reason: "file-upload" | "image-upload" | "send" | "unavailable",
   errorCode: string,
 ) {
+  if (reason === "file-upload") {
+    return {
+      title: "文件上传失败，请稍后重试",
+      description: `ErrorCode: ${errorCode}`,
+    };
+  }
+
   if (reason === "image-upload") {
     return {
       title: "图片上传失败，请稍后重试",
@@ -669,4 +836,42 @@ function getSendFailureDialogCopy(
     title: "发送失败，请稍后重试",
     description: `ErrorCode: ${errorCode}`,
   };
+}
+
+function getSendErrorCode(error: unknown) {
+  if (isErrorWithCode(error) && !isTransportErrorCode(error.code)) {
+    return error.code;
+  }
+
+  if (isErrorWithStatus(error)) {
+    return String(error.status);
+  }
+
+  if (isErrorWithCode(error)) {
+    return error.code;
+  }
+
+  return "UNKNOWN";
+}
+
+function isErrorWithCode(error: unknown): error is { code: string } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code: unknown }).code === "string"
+  );
+}
+
+function isErrorWithStatus(error: unknown): error is { status: number } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof (error as { status: unknown }).status === "number"
+  );
+}
+
+function isTransportErrorCode(code: string) {
+  return code === "ERR_NETWORK" || code === "ECONNABORTED";
 }

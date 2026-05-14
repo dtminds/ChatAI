@@ -17,6 +17,13 @@ import type {
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
+export type FileUploadQueueItem = {
+  fileName: string;
+  id: string;
+  progress: number;
+  status: "uploading" | "sending";
+};
+
 type ChatPanelProps = {
   accountName?: string;
   activeConversation?: Conversation;
@@ -41,6 +48,8 @@ type ChatPanelProps = {
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
+  onCancelFileUpload: (uploadId: string) => void;
+  onFileSelect: (files: FileList | File[] | null) => void;
   onRefreshGroupMembers: () => void;
   onLoadOlderMessages: () => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
@@ -50,6 +59,7 @@ type ChatPanelProps = {
   onDismissScopeTransitionError: () => void;
   scopeTransitionError?: string;
   sidebarItems: SettingsSidebarItem[];
+  fileUploadQueue: FileUploadQueueItem[];
   messageViewportRef: RefObject<HTMLDivElement | null>;
   composerRef: RefObject<LexicalEditor | null>;
   workbenchBodyRef: RefObject<HTMLDivElement | null>;
@@ -79,6 +89,8 @@ export function ChatPanel({
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
+  onCancelFileUpload,
+  onFileSelect,
   onRefreshGroupMembers,
   onLoadOlderMessages,
   onOpenQuotedMessage,
@@ -88,6 +100,7 @@ export function ChatPanel({
   onDismissScopeTransitionError,
   scopeTransitionError,
   sidebarItems,
+  fileUploadQueue,
   messageViewportRef,
   composerRef,
   workbenchBodyRef,
@@ -139,6 +152,49 @@ export function ChatPanel({
               </div>
             ) : null}
 
+            {fileUploadQueue.length > 0 ? (
+              <div className="border-t border-divider bg-surface px-4 py-2">
+                <div className="space-y-1.5">
+                  {fileUploadQueue.map((item) => (
+                    <div
+                      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[8px] bg-muted/55 px-3 py-2"
+                      key={item.id}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
+                            {item.fileName}
+                          </span>
+                          <span className="shrink-0 text-[12px] text-muted-foreground">
+                            {item.status === "sending" ? "正在发送" : "正在上传"}
+                          </span>
+                        </div>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-background">
+                          <div
+                            className="h-full rounded-full bg-primary transition-[width] duration-200"
+                            style={{ width: `${item.progress}%` }}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        aria-label={`取消上传 ${item.fileName}`}
+                        className="inline-flex size-7 shrink-0 items-center justify-center rounded-[7px] text-muted-foreground outline-none transition-colors hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+                        onClick={() => onCancelFileUpload(item.id)}
+                        type="button"
+                      >
+                        <HugeiconsIcon
+                          aria-hidden="true"
+                          icon={Cancel01Icon}
+                          size={15}
+                          strokeWidth={2}
+                        />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <ChatComposer
               canSendMessage={canSendMessage}
               draft={draft}
@@ -150,6 +206,7 @@ export function ChatPanel({
               onDraftChange={onDraftChange}
               onEmojiPickerOpenChange={onEmojiPickerOpenChange}
               onEnterBehaviorChange={onEnterBehaviorChange}
+              onFileSelect={onFileSelect}
               onSegmentsChange={onComposerSegmentsChange}
               onSendDraft={onSendDraft}
               placeholder={composerPlaceholder}

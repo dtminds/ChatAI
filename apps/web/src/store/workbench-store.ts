@@ -49,7 +49,7 @@ type SendMessageResult =
   | {
       errorCode: string;
       errorMessage: string;
-      reason: "image-upload" | "send" | "unavailable";
+      reason: "file-upload" | "image-upload" | "send" | "unavailable";
       ok: false;
     };
 
@@ -432,6 +432,16 @@ function buildOptimisticMessageContent(segment: ComposerSegment): ChatMessage["c
       imageUrl: segment.url ?? segment.localUrl ?? "",
       type: "image",
       width: segment.width,
+    };
+  }
+
+  if (segment.type === "file") {
+    return {
+      extension: segment.extension,
+      fileName: segment.fileName,
+      fileSizeLabel: segment.fileSizeLabel,
+      sourceLabel: "文件",
+      type: "file",
     };
   }
 

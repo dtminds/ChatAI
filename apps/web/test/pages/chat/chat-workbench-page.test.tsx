@@ -227,13 +227,14 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByText("报价单.pdf")).toBeInTheDocument();
     expect(screen.getByText("正在准备发送")).toBeInTheDocument();
     await waitFor(() => {
-      expect(uploadWorkbenchFile).toHaveBeenCalledWith(
-        "conv-001",
-        file,
-        expect.objectContaining({
-          onProgress: expect.any(Function),
-        }),
-      );
+    expect(uploadWorkbenchFile).toHaveBeenCalledWith(
+      "conv-001",
+      file,
+      expect.objectContaining({
+        onProgress: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      }),
+    );
     });
     upload.resolve({
       extension: "pdf",
@@ -331,6 +332,36 @@ describe("ChatWorkbenchPage", () => {
       type: "file",
       url: "https://b5.bokr.com.cn/chat-files/conv-001/%E6%8A%A5%E4%BB%B7%E5%8D%95.pdf",
     });
+  });
+
+  it("aborts the active file upload when the queued file is canceled", async () => {
+    const user = userEvent.setup();
+    const upload = createDeferred<Awaited<ReturnType<typeof uploadWorkbenchFile>>>();
+    const file = new File(["file-bytes"], "报价单.pdf", {
+      type: "application/pdf",
+    });
+    vi.mocked(uploadWorkbenchFile).mockReturnValue(upload.promise);
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), file);
+    await waitFor(() => {
+      expect(uploadWorkbenchFile).toHaveBeenCalledWith(
+        "conv-001",
+        file,
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    });
+
+    const uploadOptions = vi.mocked(uploadWorkbenchFile).mock.calls.at(-1)?.[2];
+
+    expect(uploadOptions?.signal?.aborted).toBe(false);
+    await user.click(screen.getByRole("button", { name: "取消上传 报价单.pdf" }));
+    expect(uploadOptions?.signal?.aborted).toBe(true);
+    expect(screen.queryByText("报价单.pdf")).not.toBeInTheDocument();
   });
 
   it("ignores pasted clipboard images outside jpeg and png", async () => {

@@ -83,6 +83,7 @@ export async function uploadWorkbenchFile(
   file: File,
   options: {
     onProgress?: (progress: number) => void;
+    signal?: AbortSignal;
   } = {},
 ): Promise<ComposerFileSegment> {
   const credential = await getUploadCredential(conversationId);
@@ -92,18 +93,44 @@ export async function uploadWorkbenchFile(
     credential,
     extension,
   });
+  let taskId: string | undefined;
+  const abortUploadTask = () => {
+    if (taskId) {
+      cos.cancelTask(taskId);
+    }
+  };
 
-  await cos.uploadFile({
-    Body: file,
-    Bucket: credential.bucket,
-    ContentType: file.type || undefined,
-    Key: key,
-    Region: credential.region,
-    SliceSize: UPLOAD_SLICE_SIZE,
-    onProgress(progressData) {
-      options.onProgress?.(Math.round((progressData.percent ?? 0) * 100));
-    },
-  });
+  if (options.signal?.aborted) {
+    throw createUploadAbortError();
+  }
+
+  options.signal?.addEventListener("abort", abortUploadTask, { once: true });
+
+  try {
+    await cos.uploadFile({
+      Body: file,
+      Bucket: credential.bucket,
+      ContentType: file.type || undefined,
+      Key: key,
+      Region: credential.region,
+      SliceSize: UPLOAD_SLICE_SIZE,
+      onProgress(progressData) {
+        options.onProgress?.(Math.round((progressData.percent ?? 0) * 100));
+      },
+      onTaskReady(nextTaskId) {
+        taskId = nextTaskId;
+        if (options.signal?.aborted) {
+          cos.cancelTask(nextTaskId);
+        }
+      },
+    });
+  } finally {
+    options.signal?.removeEventListener("abort", abortUploadTask);
+  }
+
+  if (options.signal?.aborted) {
+    throw createUploadAbortError();
+  }
 
   options.onProgress?.(100);
 
@@ -116,6 +143,10 @@ export async function uploadWorkbenchFile(
     type: "file",
     url: buildObjectUrl(key),
   };
+}
+
+function createUploadAbortError() {
+  return new DOMException("文件上传已取消", "AbortError");
 }
 
 function isLocalImageSegment(segment: ComposerSegment) {

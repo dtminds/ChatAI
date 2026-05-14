@@ -167,6 +167,9 @@ function ChatWorkbenchContent({
   const composerRef = useRef<LexicalEditor | null>(null);
   const isSendingDraftRef = useRef(false);
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
+  const fileUploadAbortControllersRef = useRef(
+    new Map<string, AbortController>(),
+  );
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
@@ -370,12 +373,14 @@ function ChatWorkbenchContent({
   };
 
   const removeFileUpload = (uploadId: string) => {
+    fileUploadAbortControllersRef.current.delete(uploadId);
     setFileUploadQueueState((currentQueue) =>
       currentQueue.filter((item) => item.id !== uploadId),
     );
   };
 
   const handleCancelFileUpload = (uploadId: string) => {
+    fileUploadAbortControllersRef.current.get(uploadId)?.abort();
     removeFileUpload(uploadId);
   };
 
@@ -414,6 +419,8 @@ function ChatWorkbenchContent({
         progress: 1,
         status: "uploading",
       };
+      const abortController = new AbortController();
+      fileUploadAbortControllersRef.current.set(uploadId, abortController);
 
       setFileUploadQueueState((currentQueue) => [...currentQueue, nextUpload]);
 
@@ -435,6 +442,7 @@ function ChatWorkbenchContent({
                 ),
               );
             },
+            signal: abortController.signal,
           });
 
           if (
@@ -471,6 +479,7 @@ function ChatWorkbenchContent({
             setSendFailureDialog(
               getSendFailureDialogCopy("file-upload", getSendErrorCode(error)),
             );
+            composerRef.current?.focus();
           }
         } finally {
           removeFileUpload(uploadId);

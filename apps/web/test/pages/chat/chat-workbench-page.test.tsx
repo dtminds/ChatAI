@@ -299,6 +299,33 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByText("ErrorCode: 401")).toBeInTheDocument();
   });
 
+  it("shows the business error code when the send API rejects with one", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        throw {
+          code: "SEAT_NOT_TAKEN_OVER",
+          message: "当前账号尚未由你接管",
+          status: 403,
+        };
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    await pasteIntoComposer(user, composer, "这条消息会业务失败");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    expect(await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("ErrorCode: SEAT_NOT_TAKEN_OVER")).toBeInTheDocument();
+  });
+
   it("keeps composer images and shows a dialog when image upload fails", async () => {
     const clipboardImage = new File(["image-bytes"], "clipboard.png", {
       type: "image/png",
@@ -331,6 +358,100 @@ describe("ChatWorkbenchPage", () => {
       .toBeInTheDocument();
     expect(useWorkbenchStore.getState().messagesByConversationId["conv-001"]).toHaveLength(
       beforeMessageCount,
+    );
+  });
+
+  it("keeps uploaded composer image URLs when the send API rejects", async () => {
+    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
+      type: "image/png",
+    });
+    const remoteImageUrl =
+      "https://b5.bokr.com.cn/chat-images/conv-001/uploaded-image.png";
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        throw new Error("发送接口失败");
+      },
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockImplementation(
+      async (
+        _conversationId: string,
+        segments: ComposerSegment[],
+        options?: {
+          onImageUploaded?: (payload: {
+            nextSegment: ComposerSegment;
+            previousSegment: ComposerSegment;
+          }) => void;
+        },
+      ) => {
+        const resolvedSegments = segments.map((segment: ComposerSegment) => {
+          if (segment.type !== "image") {
+            return segment;
+          }
+
+          const resolvedSegment: ComposerSegment = {
+            alt: segment.alt,
+            fileId: "chat-images/conv-001/uploaded-image.png",
+            localUrl: segment.localUrl,
+            type: "image",
+            url: remoteImageUrl,
+          };
+
+          options?.onImageUploaded?.({
+            nextSegment: resolvedSegment,
+            previousSegment: segment,
+          });
+
+          return resolvedSegment;
+        });
+
+        return resolvedSegments;
+      },
+    );
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    await userEvent.click(composer);
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [clipboardImage],
+      },
+    });
+
+    const pastedImage = await screen.findByRole("img", { name: "clipboard.png" });
+
+    expect(pastedImage).toHaveAttribute("src", expect.stringMatching(/^data:/));
+
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    expect(await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" }))
+      .toBeInTheDocument();
+    expect(within(composer).getByRole("img", { hidden: true, name: "clipboard.png" }))
+      .toHaveAttribute("src", remoteImageUrl);
+
+    await userEvent.click(screen.getByRole("button", { name: "知道了" }));
+    vi.mocked(resolveImageSegmentsForSend).mockClear();
+
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    expect(resolveImageSegmentsForSend).toHaveBeenCalledTimes(1);
+    expect(resolveImageSegmentsForSend).toHaveBeenCalledWith(
+      "conv-001",
+      [
+        expect.objectContaining({
+          alt: "clipboard.png",
+          clientId: expect.stringMatching(/^composer-image-/),
+          fileId: "chat-images/conv-001/uploaded-image.png",
+          localUrl: expect.stringMatching(/^data:/),
+          type: "image",
+          url: remoteImageUrl,
+        }),
+      ],
+      expect.any(Object),
     );
   });
 

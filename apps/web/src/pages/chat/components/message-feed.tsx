@@ -150,16 +150,23 @@ function MessageRevokedState() {
 }
 
 function MessageDeliveryState({ message }: { message: ChatMessage }) {
-  if (
+  const isOptimisticAccepted =
+    message.status === "accepted" &&
+    Boolean(message.optNo) &&
+    message.remoteMessageId === message.optNo;
+
+  if (!isOptimisticAccepted && (
     message.status === "accepted" ||
     message.status === "sent" ||
     message.status === "read"
-  ) {
+  )) {
     return null;
   }
 
   const label =
-    message.status === "failed"
+    isOptimisticAccepted
+      ? "发送中..."
+      : message.status === "failed"
       ? message.failReason ?? "发送失败"
       : message.status === "pending"
         ? "等待提交..."

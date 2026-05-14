@@ -76,6 +76,10 @@ type MentionDropdownItem =
       memberId: string;
     };
 
+function createComposerImageClientId() {
+  return `composer-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function ChatComposer({
   canSendMessage,
   draft,
@@ -293,6 +297,7 @@ export function ChatComposer({
 
       composerRef.current?.dispatchCommand(INSERT_COMPOSER_IMAGE_COMMAND, {
         alt: image.alt,
+        clientId: createComposerImageClientId(),
         localUrl: image.src,
         src: image.src,
       });

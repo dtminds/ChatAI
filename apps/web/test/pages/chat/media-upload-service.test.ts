@@ -249,6 +249,32 @@ describe("resolveImageSegmentsForSend", () => {
     expect(getUploadCredential).not.toHaveBeenCalled();
     expect(cosUploadFileMock).not.toHaveBeenCalled();
   });
+
+  it("does not re-upload image segments that already have remote URLs", async () => {
+    const baseService = createMockWorkbenchService();
+    const getUploadCredential = vi.fn(baseService.getUploadCredential);
+    const segments = [
+      {
+        alt: "已上传图片",
+        clientId: "composer-image-001",
+        fileId: "chat-images/uploaded.png",
+        localUrl: "data:image/png;base64,aGVsbG8=",
+        type: "image" as const,
+        url: "https://b5.bokr.com.cn/chat-images/uploaded.png",
+      },
+    ];
+
+    setWorkbenchService({
+      ...baseService,
+      getUploadCredential,
+    });
+
+    await expect(
+      resolveImageSegmentsForSend("conv-001", segments),
+    ).resolves.toEqual(segments);
+    expect(getUploadCredential).not.toHaveBeenCalled();
+    expect(cosUploadFileMock).not.toHaveBeenCalled();
+  });
 });
 
 function createDeferred<T = unknown>() {

@@ -158,6 +158,44 @@ describe("AccountRail", () => {
     expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");
   });
 
+  it("keeps the takeover popover open with a loading button while takeover is pending", async () => {
+    const user = userEvent.setup();
+    const handleTakeOverAccount = vi.fn();
+    const { rerender } = render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+        onTakeOverAccount={handleTakeOverAccount}
+      />,
+    );
+
+    await user.hover(screen.getByRole("button", { name: "选择 support" }));
+    await user.click(screen.getByRole("button", { name: "接管账号" }));
+
+    rerender(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+        onTakeOverAccount={handleTakeOverAccount}
+        takeoverStatusByAccountId={{ "account-2": "taking-over" }}
+      />,
+    );
+
+    const takeoverButton = screen.getByRole("button", { name: "接管中" });
+
+    expect(screen.getByText("当前账号未被你接管，你将无法")).toBeInTheDocument();
+    expect(takeoverButton).toBeDisabled();
+    expect(takeoverButton).toHaveAttribute("aria-busy", "true");
+
+    await user.click(takeoverButton);
+
+    expect(handleTakeOverAccount).toHaveBeenCalledTimes(1);
+  });
+
   it("selects a seat from the whole card surface", async () => {
     const user = userEvent.setup();
     const handleSelectAccount = vi.fn();

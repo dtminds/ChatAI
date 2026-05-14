@@ -339,6 +339,10 @@ export interface XyWapEmbedMsgAuditInfo {
    */
   msgid: string;
   /**
+   * 消息id2，消息的唯一标识(支持两种类型的唯一id，可选)
+   */
+  msgid2: string | null;
+  /**
    * 消息发送时间戳，utc时间，ms单位
    */
   msgtime: Generated<number>;
@@ -346,6 +350,10 @@ export interface XyWapEmbedMsgAuditInfo {
    * 消息类型：文本：text； 图片：image；撤回：revoke；同意：agree；不同意：disagree；语音：voice；视频：video；名片：card；位置：location；表情：emotion；文件：file；链接：link；小程序：weapp；会话记录：chatrecord；待办：todo；投票：vote；填表：collect；红包：redpacket；会议邀请：meeting；在线文档：docmsg；MarkDown：markdown；图文：news；日程：calendar；混合：mixed
    */
   msgtype: Generated<string>;
+  /**
+   * 关联发送消息的操作编号
+   */
+  opt_no: string | null;
   /**
    * 第三方消息类型
    */

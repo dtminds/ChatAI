@@ -3,7 +3,6 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import {
   $getSelection,
-  $getRoot,
   $isRangeSelection,
   $isTextNode,
   COMMAND_PRIORITY_HIGH,
@@ -26,15 +25,18 @@ import {
   INSERT_COMPOSER_EMOJI_COMMAND,
   INSERT_COMPOSER_IMAGE_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
+  UPDATE_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
 import {
   $clearComposer,
   $replaceWechatEmojiTokens,
   $exportComposerSegments,
+  $getComposerPlainText,
   $insertComposerImage,
   $insertComposerMention,
   $insertComposerText,
   $removeComposerTextRange,
+  $updateComposerImage,
 } from "@/pages/chat/components/composer/lexical-utils";
 import { toWechatEmojiToken } from "@/pages/chat/wechat-emoji";
 
@@ -104,6 +106,19 @@ export function ComposerRuntimePlugin({
       (payload) => {
         editor.update(() => {
           $insertComposerImage(payload);
+        });
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      UPDATE_COMPOSER_IMAGE_COMMAND,
+      (payload) => {
+        editor.update(() => {
+          $updateComposerImage(payload);
         });
         return true;
       },
@@ -252,7 +267,7 @@ export function ComposerRuntimePlugin({
     <OnChangePlugin
       onChange={(editorState) => {
         editorState.read(() => {
-          onDraftTextChange($getRoot().getTextContent());
+          onDraftTextChange($getComposerPlainText());
           onSegmentsChange(normalizeComposerSegments($exportComposerSegments()));
         });
       }}

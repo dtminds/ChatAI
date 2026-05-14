@@ -1,5 +1,5 @@
 import { startTransition, useEffect, useRef, useState } from "react";
-import { UserCheck01Icon } from "@hugeicons/core-free-icons";
+import { Loading03Icon, UserCheck01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Avatar,
@@ -44,11 +44,13 @@ export function AccountSidebarItem({
   const isOffline = account.loginStatus === "offline";
   const isTakenOverByCurrentUser =
     !!account.takenOverEmployeeId && account.takenOverEmployeeId === currentEmployeeId;
+  const isTakingOver = takeoverStatus === "taking-over";
   const statusLabel = isOffline ? "离线" : isTakenOverByCurrentUser ? "接管中" : "未接管";
-  const canTakeOver = !isOffline && !isTakenOverByCurrentUser && takeoverStatus !== "taking-over";
+  const canShowTakeoverPopover = !isOffline && !isTakenOverByCurrentUser;
+  const canTakeOver = canShowTakeoverPopover && !isTakingOver;
   const shouldShowUnreadBadge = isTakenOverByCurrentUser && !!account.unreadCount;
   const compactStatusLabel =
-    takeoverStatus === "taking-over"
+    isTakingOver
       ? "接管中"
       : isOffline
         ? "离线"
@@ -73,7 +75,7 @@ export function AccountSidebarItem({
           !isOffline && !isTakenOverByCurrentUser && "bg-warning"
         )}
       />
-      <span>{takeoverStatus === "taking-over" ? "接管中" : statusLabel}</span>
+      <span>{isTakingOver ? "接管中" : statusLabel}</span>
     </span>
   );
   const compactStatusBadge = (
@@ -128,10 +130,10 @@ export function AccountSidebarItem({
         data-testid={`account-sidebar-item-${account.id}`}
         onBlur={closeTakeoverPopover}
         onClick={onClick}
-        onFocus={canTakeOver ? openTakeoverPopover : undefined}
+        onFocus={canShowTakeoverPopover ? openTakeoverPopover : undefined}
         onKeyDown={handleCardKeyDown}
-        onMouseEnter={canTakeOver ? openTakeoverPopover : undefined}
-        onMouseLeave={canTakeOver ? closeTakeoverPopover : undefined}
+        onMouseEnter={canShowTakeoverPopover ? openTakeoverPopover : undefined}
+        onMouseLeave={canShowTakeoverPopover ? closeTakeoverPopover : undefined}
         type="button"
       >
         <Avatar className="size-8 rounded-[8px]">
@@ -152,7 +154,7 @@ export function AccountSidebarItem({
       </button>
     );
 
-    if (!canTakeOver) {
+    if (!canShowTakeoverPopover) {
       return (
         <TooltipProvider>
           <Tooltip>
@@ -172,7 +174,7 @@ export function AccountSidebarItem({
         open={isTakeoverPopoverOpen}
       >
         <PopoverAnchor asChild>{compactButton}</PopoverAnchor>
-        {canTakeOver ? (
+        {canShowTakeoverPopover ? (
           <PopoverContent
             align="start"
             className="w-[240px]"
@@ -203,9 +205,15 @@ export function AccountSidebarItem({
               <li>标记消息已读状态</li>
             </ul>
             <Button
+              aria-busy={isTakingOver}
               className="mt-3 h-8 w-full rounded-[10px] text-xs"
+              disabled={!canTakeOver}
               onClick={(event) => {
                 event.stopPropagation();
+                if (!canTakeOver) {
+                  return;
+                }
+
                 startTransition(() => {
                   void onTakeOverAccount?.(account.id);
                 });
@@ -214,12 +222,13 @@ export function AccountSidebarItem({
               type="button"
             >
               <HugeiconsIcon
+                className={cn(isTakingOver && "animate-spin")}
                 color="currentColor"
-                icon={UserCheck01Icon}
+                icon={isTakingOver ? Loading03Icon : UserCheck01Icon}
                 size={14}
                 strokeWidth={1.8}
               />
-              <span>接管账号</span>
+              <span>{isTakingOver ? "接管中" : "接管账号"}</span>
             </Button>
           </PopoverContent>
         ) : null}
@@ -244,10 +253,10 @@ export function AccountSidebarItem({
           data-testid={`account-sidebar-item-${account.id}`}
           onBlur={closeTakeoverPopover}
           onClick={onClick}
-          onFocus={canTakeOver ? openTakeoverPopover : undefined}
+          onFocus={canShowTakeoverPopover ? openTakeoverPopover : undefined}
           onKeyDown={handleCardKeyDown}
-          onMouseEnter={canTakeOver ? openTakeoverPopover : undefined}
-          onMouseLeave={canTakeOver ? closeTakeoverPopover : undefined}
+          onMouseEnter={canShowTakeoverPopover ? openTakeoverPopover : undefined}
+          onMouseLeave={canShowTakeoverPopover ? closeTakeoverPopover : undefined}
           title={account.name}
           type="button"
         >
@@ -288,7 +297,7 @@ export function AccountSidebarItem({
           </div>
         </button>
       </PopoverAnchor>
-      {canTakeOver ? (
+      {canShowTakeoverPopover ? (
         <PopoverContent
           align="start"
           className="w-[240px]"
@@ -314,9 +323,15 @@ export function AccountSidebarItem({
             <li>标记消息已读状态</li>
           </ul>
           <Button
+            aria-busy={isTakingOver}
             className="mt-3 h-8 w-full rounded-[10px] text-xs"
+            disabled={!canTakeOver}
             onClick={(event) => {
               event.stopPropagation();
+              if (!canTakeOver) {
+                return;
+              }
+
               startTransition(() => {
                 void onTakeOverAccount?.(account.id);
               });
@@ -325,12 +340,13 @@ export function AccountSidebarItem({
             type="button"
           >
             <HugeiconsIcon
+              className={cn(isTakingOver && "animate-spin")}
               color="currentColor"
-              icon={UserCheck01Icon}
+              icon={isTakingOver ? Loading03Icon : UserCheck01Icon}
               size={14}
               strokeWidth={1.8}
             />
-            <span>接管账号</span>
+            <span>{isTakingOver ? "接管中" : "接管账号"}</span>
           </Button>
         </PopoverContent>
       ) : null}

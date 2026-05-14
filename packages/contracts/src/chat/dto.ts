@@ -114,6 +114,7 @@ export type WorkbenchMessageBaseDto = {
   createdAt?: number;
   seq: number;
   clientMessageId?: string;
+  optNo?: string;
   failReason?: string;
   isRevoked?: boolean;
 };
@@ -204,6 +205,7 @@ export type WorkbenchSendMessagePayload = {
 export type WorkbenchSentMessageAck = {
   messageId: string;
   clientMessageId: string;
+  optNo?: string;
   status: "accepted";
 };
 

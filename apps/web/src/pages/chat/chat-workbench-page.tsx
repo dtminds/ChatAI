@@ -29,7 +29,10 @@ import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
-import { CLEAR_COMPOSER_COMMAND } from "@/pages/chat/components/composer/lexical-commands";
+import {
+  CLEAR_COMPOSER_COMMAND,
+  UPDATE_COMPOSER_IMAGE_COMMAND,
+} from "@/pages/chat/components/composer/lexical-commands";
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
@@ -307,7 +310,26 @@ function ChatWorkbenchContent({
     setIsSendingDraft(true);
 
     try {
-      const result = await sendAgentMessageSegments(normalizedSegments, { mention });
+      const result = await sendAgentMessageSegments(normalizedSegments, {
+        mention,
+        onImageUploaded({ nextSegment, previousSegment }) {
+          if (
+            nextSegment.type !== "image" ||
+            previousSegment.type !== "image" ||
+            !nextSegment.url
+          ) {
+            return;
+          }
+
+          composerRef.current?.dispatchCommand(UPDATE_COMPOSER_IMAGE_COMMAND, {
+            clientId: previousSegment.clientId,
+            fileId: nextSegment.fileId,
+            localUrl: nextSegment.localUrl ?? previousSegment.localUrl,
+            previousSrc: previousSegment.url ?? previousSegment.localUrl ?? "",
+            src: nextSegment.url,
+          });
+        },
+      });
 
       if (!result.ok) {
         setSendFailureDialog(

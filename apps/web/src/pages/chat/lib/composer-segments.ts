@@ -8,6 +8,7 @@ export type ComposerTextSegment = {
 export type ComposerImageSegment = {
   type: "image";
   alt: string;
+  clientId?: string;
   fileId?: string;
   height?: number;
   localUrl?: string;

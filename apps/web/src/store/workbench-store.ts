@@ -106,7 +106,13 @@ type WorkbenchState = {
   markConversationUnread: (conversationId: string) => Promise<void>;
   sendAgentMessageSegments: (
     segments: ComposerSegment[],
-    options?: { mention?: SendMentionPayload },
+    options?: {
+      mention?: SendMentionPayload;
+      onImageUploaded?: (payload: {
+        nextSegment: ComposerSegment;
+        previousSegment: ComposerSegment;
+      }) => void;
+    },
   ) => Promise<SendMessageResult>;
   sendAgentTextMessage: (text: string) => Promise<SendMessageResult>;
   takeOverAccount: (accountId: string) => Promise<void>;
@@ -265,6 +271,7 @@ function getConversationMode(
 
 function upsertMessageList(currentMessages: Message[], nextMessages: Message[]) {
   const merged = [...currentMessages];
+  const appendedMessages: Message[] = [];
 
   for (const nextMessage of nextMessages) {
     const existingIndex = merged.findIndex((message) =>
@@ -279,14 +286,18 @@ function upsertMessageList(currentMessages: Message[], nextMessages: Message[]) 
       continue;
     }
 
-    merged.push(nextMessage);
+    appendedMessages.push(nextMessage);
   }
 
-  return merged.sort((left, right) => {
-    const leftSeq = left.seq ?? 0;
-    const rightSeq = right.seq ?? 0;
+  return [...merged, ...sortMessagesForAppend(appendedMessages)];
+}
 
-    if (leftSeq !== rightSeq) {
+function sortMessagesForAppend(messages: Message[]) {
+  return [...messages].sort((left, right) => {
+    const leftSeq = left.seq;
+    const rightSeq = right.seq;
+
+    if (leftSeq != null && rightSeq != null && leftSeq !== rightSeq) {
       return leftSeq - rightSeq;
     }
 
@@ -296,6 +307,7 @@ function upsertMessageList(currentMessages: Message[], nextMessages: Message[]) 
 
 function isSameMessage(left: Message, right: Message) {
   return (
+    (left.optNo && right.optNo && left.optNo === right.optNo) ||
     (left.remoteMessageId && right.remoteMessageId && left.remoteMessageId === right.remoteMessageId) ||
     (left.clientMessageId &&
       right.clientMessageId &&
@@ -1331,17 +1343,22 @@ export function createWorkbenchStore() {
         },
       }));
 
-      let segmentsForSend = stripComposerMentionMetadata(normalizedSegments);
+      const sendableSegments = stripComposerMentionMetadata(normalizedSegments);
+      let segmentsForSend = sendableSegments;
 
       try {
-        segmentsForSend = normalizedSegments.some(
-          (segment) => segment.type === "image",
-        )
-          ? await resolveImageSegmentsForSend(
-              activeConversationId,
-              stripComposerMentionMetadata(normalizedSegments),
-            )
-          : stripComposerMentionMetadata(normalizedSegments);
+        if (normalizedSegments.some((segment) => segment.type === "image")) {
+          segmentsForSend = options?.onImageUploaded
+            ? await resolveImageSegmentsForSend(
+                activeConversationId,
+                sendableSegments,
+                { onImageUploaded: options.onImageUploaded },
+              )
+            : await resolveImageSegmentsForSend(
+                activeConversationId,
+                sendableSegments,
+              );
+        }
       } catch (error) {
         set((currentState) => ({
           sendStatusByConversationId: {
@@ -1352,7 +1369,7 @@ export function createWorkbenchStore() {
 
         return {
           errorCode: getRequestErrorCode(error),
-          errorMessage: error instanceof Error ? error.message : "图片上传失败",
+          errorMessage: getRequestErrorMessage(error, "图片上传失败"),
           reason: "image-upload",
           ok: false,
         };
@@ -1384,6 +1401,7 @@ export function createWorkbenchStore() {
             content: buildOptimisticMessageContent(originalSegment),
             conversationId: activeConversationId,
             id: segmentClientMessageId,
+            optNo: response.optNo ?? response.messageId,
             role: "agent" as const,
             remoteMessageId: response.messageId,
             sender: {
@@ -1448,7 +1466,7 @@ export function createWorkbenchStore() {
 
         return {
           errorCode: getRequestErrorCode(error),
-          errorMessage: error instanceof Error ? error.message : "消息发送失败",
+          errorMessage: getRequestErrorMessage(error, "消息发送失败"),
           reason: "send",
           ok: false,
         };
@@ -1812,6 +1830,10 @@ function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegm
 }
 
 function getRequestErrorCode(error: unknown) {
+  if (isErrorWithCode(error) && !isTransportErrorCode(error.code)) {
+    return error.code;
+  }
+
   if (isErrorWithStatus(error)) {
     return String(error.status);
   }
@@ -1827,6 +1849,18 @@ function getRequestErrorCode(error: unknown) {
   }
 
   return "UNKNOWN";
+}
+
+function getRequestErrorMessage(error: unknown, fallback: string) {
+  if (isErrorWithMessage(error)) {
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return fallback;
 }
 
 function isErrorWithStatus(error: unknown): error is { status: number | string } {
@@ -1845,6 +1879,18 @@ function isErrorWithCode(error: unknown): error is { code: string } {
   }
 
   return typeof (error as { code?: unknown }).code === "string";
+}
+
+function isErrorWithMessage(error: unknown): error is { message: string } {
+  if (!error || typeof error !== "object" || !("message" in error)) {
+    return false;
+  }
+
+  return typeof (error as { message?: unknown }).message === "string";
+}
+
+function isTransportErrorCode(code: string) {
+  return code.startsWith("ERR_") || code === "ECONNABORTED";
 }
 
 export const useWorkbenchStore = createWorkbenchStore();

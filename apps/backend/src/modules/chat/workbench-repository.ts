@@ -601,6 +601,7 @@ export class WorkbenchRepository {
         "message.content as content",
         "message.msgtype as msgtype",
         "message.msgtime as msgtime",
+        "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
       ])
       .select((expressionBuilder) => [

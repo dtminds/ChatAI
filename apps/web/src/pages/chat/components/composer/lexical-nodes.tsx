@@ -28,6 +28,8 @@ export type SerializedComposerEmojiNode = Spread<
 export type SerializedComposerImageNode = Spread<
   {
     alt: string;
+    clientId?: string;
+    fileId?: string;
     height?: number;
     localUrl?: string;
     src: string;
@@ -128,6 +130,8 @@ export class ComposerEmojiNode extends DecoratorNode<ReactNode> {
 
 export class ComposerImageNode extends DecoratorNode<ReactNode> {
   __alt: string;
+  __clientId?: string;
+  __fileId?: string;
   __height?: number;
   __localUrl?: string;
   __src: string;
@@ -141,6 +145,8 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
     return new ComposerImageNode(
       {
         alt: node.__alt,
+        clientId: node.__clientId,
+        fileId: node.__fileId,
         height: node.__height,
         localUrl: node.__localUrl,
         src: node.__src,
@@ -153,6 +159,8 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
   static importJSON(serializedNode: SerializedComposerImageNode) {
     return $createComposerImageNode({
       alt: serializedNode.alt,
+      clientId: serializedNode.clientId,
+      fileId: serializedNode.fileId,
       height: serializedNode.height,
       localUrl: serializedNode.localUrl,
       src: serializedNode.src,
@@ -163,6 +171,8 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
   constructor(
     input: {
       alt: string;
+      clientId?: string;
+      fileId?: string;
       height?: number;
       localUrl?: string;
       src: string;
@@ -172,6 +182,8 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
   ) {
     super(key);
     this.__alt = input.alt;
+    this.__clientId = input.clientId;
+    this.__fileId = input.fileId;
     this.__height = input.height;
     this.__localUrl = input.localUrl;
     this.__src = input.src;
@@ -201,6 +213,8 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
   exportJSON(): SerializedComposerImageNode {
     return {
       alt: this.__alt,
+      clientId: this.__clientId,
+      fileId: this.__fileId,
       height: this.__height,
       localUrl: this.__localUrl,
       src: this.__src,
@@ -212,6 +226,14 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
 
   getAlt() {
     return this.__alt;
+  }
+
+  getClientId() {
+    return this.__clientId;
+  }
+
+  getFileId() {
+    return this.__fileId;
   }
 
   getHeight() {
@@ -232,6 +254,21 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
 
   getWidth() {
     return this.__width;
+  }
+
+  isInline(): false {
+    return false;
+  }
+
+  updateUploadResult(input: {
+    fileId?: string;
+    localUrl?: string;
+    src: string;
+  }) {
+    const writable = this.getWritable();
+    writable.__fileId = input.fileId;
+    writable.__localUrl = input.localUrl ?? writable.__localUrl;
+    writable.__src = input.src;
   }
 }
 
@@ -344,6 +381,8 @@ export function $isComposerEmojiNode(
 
 export function $createComposerImageNode(input: {
   alt: string;
+  clientId?: string;
+  fileId?: string;
   height?: number;
   localUrl?: string;
   src: string;

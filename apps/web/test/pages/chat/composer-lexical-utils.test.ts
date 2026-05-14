@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { $createLineBreakNode, $getRoot, $insertNodes, createEditor } from "lexical";
+import {
+  $createLineBreakNode,
+  $getSelection,
+  $insertNodes,
+  $isRangeSelection,
+  $isTextNode,
+  createEditor,
+} from "lexical";
 import {
   $exportComposerSegments,
+  $getComposerPlainText,
   $insertComposerImage,
   $insertComposerMention,
   $insertComposerText,
@@ -37,7 +45,7 @@ describe("composer lexical utils", () => {
           src: "data:image/png;base64,a",
         });
         $insertComposerText(" @小");
-        const draftText = $getRoot().getTextContent();
+        const draftText = $getComposerPlainText();
         const mentionStart = draftText.indexOf("@小");
 
         expect(mentionStart).toBeGreaterThanOrEqual(0);
@@ -61,6 +69,42 @@ describe("composer lexical utils", () => {
         width: undefined,
       },
     ]);
+  });
+
+  it("keeps the caret in a real text position after inserting an image", () => {
+    const editor = createEditor({
+      namespace: "composer-image-caret-utils-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let anchorOffset = -1;
+    let selectionNodeText = "";
+    let selectionNodeType = "";
+
+    editor.update(
+      () => {
+        $insertComposerImage({
+          alt: "截图",
+          localUrl: "data:image/png;base64,a",
+          src: "data:image/png;base64,a",
+        });
+        const selection = $getSelection();
+
+        if ($isRangeSelection(selection)) {
+          const anchorNode = selection.anchor.getNode();
+          anchorOffset = selection.anchor.offset;
+          selectionNodeText = anchorNode.getTextContent();
+          selectionNodeType = $isTextNode(anchorNode) ? "text" : anchorNode.getType();
+        }
+      },
+      { discrete: true },
+    );
+
+    expect(selectionNodeText.length).toBeGreaterThan(0);
+    expect(anchorOffset).toBe(selectionNodeText.length);
+    expect(selectionNodeType).toBe("text");
   });
 
   it("exports mention tokens with member ids", () => {

@@ -27,6 +27,7 @@ import {
 } from "@/pages/chat/wechat-emoji";
 
 const WECHAT_EMOJI_TOKEN_PATTERN = /\[([^[\]]+)\]/g;
+const COMPOSER_TEXT_ANCHOR = "\u200B";
 
 export function $insertComposerText(text: string) {
   const nodes = parseWechatEmojiText(text).map((segment) => {
@@ -93,14 +94,33 @@ export function $insertComposerEmojiByName(name: string) {
 
 export function $insertComposerImage(input: {
   alt: string;
+  clientId?: string;
+  fileId?: string;
   height?: number;
   localUrl?: string;
   src: string;
   width?: number;
 }) {
-  $insertNodes([
-    $createComposerImageNode(input),
-  ]);
+  const insertionPoint = $createTextNode(COMPOSER_TEXT_ANCHOR);
+
+  $insertNodes([$createComposerImageNode(input), insertionPoint]);
+  insertionPoint.select(COMPOSER_TEXT_ANCHOR.length, COMPOSER_TEXT_ANCHOR.length);
+}
+
+export function $updateComposerImage(input: {
+  clientId?: string;
+  fileId?: string;
+  localUrl?: string;
+  previousSrc: string;
+  src: string;
+}) {
+  for (const child of $getRoot().getChildren()) {
+    if (updateComposerImageInNode(child, input)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function $insertComposerMention(input: {
@@ -148,8 +168,11 @@ export function $removeComposerTextRange(start: number, end: number) {
       continue;
     }
 
-    const rangeStart = Math.max(0, safeStart - nodeStart);
-    const rangeEnd = Math.min(text.length, safeEnd - nodeStart);
+    const rangeStart = toRawTextOffset(text, Math.max(0, safeStart - nodeStart));
+    const rangeEnd = toRawTextOffset(
+      text,
+      Math.min(stripComposerTextAnchors(text).length, safeEnd - nodeStart),
+    );
     const nextText = text.slice(0, rangeStart) + text.slice(rangeEnd);
 
     if (nextText) {
@@ -172,6 +195,10 @@ export function $exportComposerSegments() {
   return segments;
 }
 
+export function $getComposerPlainText() {
+  return stripComposerTextAnchors($getRoot().getTextContent());
+}
+
 function collectSegmentsFromNode(node: LexicalNode, segments: ComposerSegment[]) {
   if ($isComposerMentionNode(node)) {
     segments.push(
@@ -191,10 +218,14 @@ function collectSegmentsFromNode(node: LexicalNode, segments: ComposerSegment[])
   }
 
   if ($isTextNode(node)) {
-    segments.push({
-      text: node.getTextContent(),
-      type: "text",
-    });
+    const text = stripComposerTextAnchors(node.getTextContent());
+
+    if (text) {
+      segments.push({
+        text,
+        type: "text",
+      });
+    }
     return;
   }
 
@@ -217,6 +248,8 @@ function collectSegmentsFromNode(node: LexicalNode, segments: ComposerSegment[])
   if ($isComposerImageNode(node)) {
     segments.push({
       alt: node.getAlt(),
+      clientId: node.getClientId(),
+      fileId: node.getFileId(),
       height: node.getHeight(),
       localUrl: node.getLocalUrl(),
       type: "image",
@@ -266,6 +299,72 @@ function findFirstWechatEmojiToken(text: string) {
   return null;
 }
 
+function stripComposerTextAnchors(text: string) {
+  return text.replaceAll(COMPOSER_TEXT_ANCHOR, "");
+}
+
+function toRawTextOffset(text: string, normalizedOffset: number) {
+  if (normalizedOffset <= 0) {
+    const firstVisibleIndex = Array.from(text).findIndex(
+      (character) => character !== COMPOSER_TEXT_ANCHOR,
+    );
+
+    return firstVisibleIndex === -1 ? text.length : firstVisibleIndex;
+  }
+
+  let visibleOffset = 0;
+
+  for (let rawOffset = 0; rawOffset < text.length; rawOffset += 1) {
+    if (text[rawOffset] === COMPOSER_TEXT_ANCHOR) {
+      continue;
+    }
+
+    visibleOffset += 1;
+
+    if (visibleOffset === normalizedOffset) {
+      return rawOffset + 1;
+    }
+  }
+
+  return text.length;
+}
+
+function updateComposerImageInNode(
+  node: LexicalNode,
+  input: {
+    clientId?: string;
+    fileId?: string;
+    localUrl?: string;
+    previousSrc: string;
+    src: string;
+  },
+): boolean {
+  if ($isComposerImageNode(node)) {
+    const isTarget = input.clientId
+      ? node.getClientId() === input.clientId
+      : node.getSrc() === input.previousSrc;
+
+    if (!isTarget) {
+      return false;
+    }
+
+    node.updateUploadResult({
+      fileId: input.fileId,
+      localUrl: input.localUrl,
+      src: input.src,
+    });
+    return true;
+  }
+
+  if (!$isElementNode(node) && !$isRootNode(node)) {
+    return false;
+  }
+
+  return (node as ElementNode).getChildren().some((child) =>
+    updateComposerImageInNode(child, input),
+  );
+}
+
 type TextContentPart = {
   length: number;
   textNode?: TextNode;
@@ -275,7 +374,7 @@ function collectTextContentParts(node: LexicalNode): TextContentPart[] {
   if ($isTextNode(node)) {
     return [
       {
-        length: node.getTextContent().length,
+        length: stripComposerTextAnchors(node.getTextContent()).length,
         textNode: node,
       },
     ];

@@ -321,7 +321,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
   ) {
     const messageId = payload.quote?.quotedMessageId?.trim();
 
-    if (!messageId || segment.type !== "text") {
+    if (!messageId) {
       return undefined;
     }
 
@@ -438,6 +438,12 @@ function buildJavaSendMessageData(
   segment: WorkbenchOutgoingMessageSegment,
   quoteContentBase64?: string,
 ): JavaSendMessageData {
+  const normalizedQuoteContentBase64 = quoteContentBase64?.trim();
+  const withQuoteContentBase64 = (message: JavaSendMessageData): JavaSendMessageData =>
+    normalizedQuoteContentBase64
+      ? { ...message, quoteContentBase64: normalizedQuoteContentBase64 }
+      : message;
+
   if (segment.type === "image") {
     const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
 
@@ -445,11 +451,11 @@ function buildJavaSendMessageData(
       throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片消息缺少可发送地址");
     }
 
-    return {
+    return withQuoteContentBase64({
       msgContent: imageUrl,
       msgNum: 1,
       msgType: JAVA_MSG_TYPE.IMAGE,
-    };
+    });
   }
 
   if (segment.type === "file") {
@@ -464,13 +470,13 @@ function buildJavaSendMessageData(
       throw new BadRequestError("INVALID_FILE_MESSAGE", "文件消息缺少可发送地址");
     }
 
-    return {
+    return withQuoteContentBase64({
       msgContent: fileName,
       msgNum: 1,
       msgType: JAVA_MSG_TYPE.FILE,
       vcHref: fileUrl,
       vcTitle: fileName,
-    };
+    });
   }
 
   const message: JavaSendMessageData = {
@@ -478,8 +484,6 @@ function buildJavaSendMessageData(
     msgNum: 1,
     msgType: JAVA_MSG_TYPE.TEXT,
   };
-  const normalizedQuoteContentBase64 = quoteContentBase64?.trim();
-
   if (normalizedQuoteContentBase64) {
     message.quoteContentBase64 = normalizedQuoteContentBase64;
   }

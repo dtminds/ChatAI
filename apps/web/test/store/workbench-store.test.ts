@@ -454,6 +454,56 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("applies quote payload to the first outgoing image segment", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        alt: "截图",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          alt: "截图",
+          localUrl: "data:image/png;base64,aaa",
+          type: "image",
+        },
+      ],
+      {
+        quote: {
+          quoteMsgId: "538",
+          quotedMessageId: "remote-msg-538",
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        quote: {
+          quoteMsgId: "538",
+          quotedMessageId: "remote-msg-538",
+        },
+        segment: {
+          alt: "截图",
+          fileId: "chat-images/conv-001/a.png",
+          type: "image",
+          url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+        },
+      }),
+    );
+  });
+
   it("resolves composer image segments even when url is the local data URL", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);

@@ -1412,9 +1412,7 @@ export function createWorkbenchStore() {
               ? options?.mention
               : undefined;
           const quoteForSegment: SendQuotePayload =
-            !hasSentQuote && segmentForSend.type === "text"
-              ? options?.quote
-              : undefined;
+            !hasSentQuote ? options?.quote : undefined;
           hasSentMention = hasSentMention || Boolean(mentionForSegment);
           hasSentQuote = hasSentQuote || Boolean(quoteForSegment);
           const response = await sendTextMessage({

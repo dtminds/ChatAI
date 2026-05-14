@@ -575,7 +575,7 @@ describe("ChatWorkbenchPage", () => {
     await pasteIntoComposer(user, composer, "@小");
 
     expect(screen.getByRole("listbox", { name: "选择群成员" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "所有人（6人）" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "所有人（6人）" })).not.toBeInTheDocument();
     const xiaolinOption = screen.getByRole("option", { name: "小林" });
     expect(xiaolinOption).toBeInTheDocument();
     expect(within(xiaolinOption).getByTestId("mention-member-avatar")).toHaveAttribute(
@@ -583,7 +583,7 @@ describe("ChatWorkbenchPage", () => {
       seedGroupMembersByConversationId["conv-004"][0].avatarUrl,
     );
 
-    await user.keyboard("{ArrowDown}{Enter}");
+    await user.keyboard("{Enter}");
 
     expect(composer).toHaveTextContent("@小林");
     expect(screen.queryByRole("listbox", { name: "选择群成员" })).not.toBeInTheDocument();
@@ -632,8 +632,12 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("tab", { name: "群聊" }));
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await pasteIntoComposer(user, composer, "@");
-    await user.click(screen.getByRole("option", { name: "所有人（6人）" }));
+    await pasteIntoComposer(user, composer, "@所");
+    const allOption = screen.getByRole("option", { name: "所有人（6人）" });
+
+    expect(within(allOption).queryByTestId("mention-member-avatar")).not.toBeInTheDocument();
+
+    await user.click(allOption);
 
     expect(composer).toHaveTextContent("@所有人");
     expect(screen.queryByRole("listbox", { name: "选择群成员" })).not.toBeInTheDocument();
@@ -882,6 +886,45 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("option", { name: "小林" })).toBeInTheDocument();
   });
 
+  it("does not render fallback avatars in the mention picker", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        const response = await baseService.getGroupMembers(conversationId);
+
+        return {
+          ...response,
+          items: [
+            {
+              avatarUrl: "",
+              displayName: "无头像成员",
+              nickname: undefined,
+              thirdUserId: "member-no-avatar",
+              type: GROUP_MEMBER_TYPE.NORMAL,
+            },
+            ...response.items,
+          ],
+        };
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "@无");
+
+    const option = screen.getByRole("option", { name: "无头像成员" });
+
+    expect(within(option).queryByTestId("mention-member-avatar")).not.toBeInTheDocument();
+    expect(within(option).queryByText("无")).not.toBeInTheDocument();
+  });
+
   it("dismisses group member mentions with Escape until the query changes", async () => {
     const user = userEvent.setup();
 
@@ -987,7 +1030,7 @@ describe("ChatWorkbenchPage", () => {
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "@小");
-    await user.keyboard("{ArrowDown}{Enter}");
+    await user.keyboard("{Enter}");
 
     expect(composer).toHaveTextContent("@小林");
     expect(screen.queryByRole("listbox", { name: "选择群成员" })).not.toBeInTheDocument();
@@ -1201,6 +1244,29 @@ describe("ChatWorkbenchPage", () => {
 
     expect(screen.getByText("Enter 发送，Shift + Enter 换行")).toBeInTheDocument();
     expect(screen.getByText("Enter 换行，Shift + Enter 发送")).toBeInTheDocument();
+  });
+
+  it("does not send when using the newline shortcut", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "第一行");
+    const wasPrevented = !fireEvent.keyDown(composer, {
+      key: "Enter",
+      shiftKey: true,
+    });
+
+    expect(wasPrevented).toBe(true);
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("shows conversation row actions without high-priority labels", async () => {

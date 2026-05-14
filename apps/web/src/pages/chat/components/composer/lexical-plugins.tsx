@@ -2,11 +2,12 @@ import { useEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import {
+  $getSelection,
   $getRoot,
+  $isRangeSelection,
   $isTextNode,
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
-  INSERT_LINE_BREAK_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_ENTER_COMMAND,
@@ -216,7 +217,13 @@ export function ComposerRuntimePlugin({
           inputEnterBehavior === "newline" ? event?.shiftKey : !event?.shiftKey;
 
         if (!shouldSend) {
-          editor.dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+          event?.preventDefault();
+          const selection = $getSelection();
+
+          if ($isRangeSelection(selection)) {
+            selection.insertLineBreak(false);
+          }
+
           return true;
         }
 

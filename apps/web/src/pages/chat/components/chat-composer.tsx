@@ -128,23 +128,40 @@ export function ChatComposer({
       return member.displayName.toLocaleLowerCase().includes(normalizedQuery);
     });
   }, [groupMembers, isGroupConversation, mentionTrigger]);
+  const shouldShowMentionAll = useMemo(() => {
+    if (!mentionTrigger || groupMembers.length === 0) {
+      return false;
+    }
+
+    const normalizedQuery = mentionTrigger.query.trim().toLocaleLowerCase();
+
+    return (
+      normalizedQuery.length === 0 ||
+      "所有人".toLocaleLowerCase().includes(normalizedQuery)
+    );
+  }, [groupMembers.length, mentionTrigger]);
   const mentionDropdownItems = useMemo<MentionDropdownItem[]>(
-    () =>
-      groupMembers.length === 0
-        ? []
-        : [
-            {
-              displayName: `所有人（${groupMembers.length}人）`,
-              isAll: true as const,
-              memberId: "__all__",
-            },
-            ...filteredMentionMembers.map((member) => ({
-              avatarUrl: member.avatarUrl,
-              displayName: member.displayName,
-              memberId: member.id,
-            })),
-          ],
-    [filteredMentionMembers, groupMembers.length],
+    () => {
+      if (groupMembers.length === 0) {
+        return [];
+      }
+
+      const mentionAllItem: MentionDropdownItem = {
+        displayName: `所有人（${groupMembers.length}人）`,
+        isAll: true,
+        memberId: "__all__",
+      };
+
+      return [
+        ...(shouldShowMentionAll ? [mentionAllItem] : []),
+        ...filteredMentionMembers.map((member) => ({
+          avatarUrl: member.avatarUrl,
+          displayName: member.displayName,
+          memberId: member.id,
+        })),
+      ];
+    },
+    [filteredMentionMembers, groupMembers.length, shouldShowMentionAll],
   );
   const isMentionPickerOpen =
     canSendMessage &&
@@ -448,9 +465,7 @@ export function ChatComposer({
                 role="option"
                 type="button"
               >
-                {member.isAll ? (
-                  <MentionAllAvatar />
-                ) : (
+                {!member.isAll && member.avatarUrl ? (
                   <MentionMemberAvatar
                     member={{
                       avatarUrl: member.avatarUrl,
@@ -458,7 +473,7 @@ export function ChatComposer({
                       id: member.memberId,
                     }}
                   />
-                )}
+                ) : null}
                 <span className="truncate">{member.displayName}</span>
               </button>
             ))}
@@ -511,14 +526,7 @@ function MentionMemberAvatar({
   const [imageErrored, setImageErrored] = useState(false);
 
   if (!member.avatarUrl || imageErrored) {
-    return (
-      <span
-        aria-hidden="true"
-        className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-primary/15 font-semibold text-[10px] text-muted-foreground"
-      >
-        {member.displayName.slice(0, 1)}
-      </span>
-    );
+    return null;
   }
 
   return (
@@ -531,17 +539,6 @@ function MentionMemberAvatar({
         onError={() => setImageErrored(true)}
         src={member.avatarUrl}
       />
-    </span>
-  );
-}
-
-function MentionAllAvatar() {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-primary/15 text-[10px] font-semibold text-primary"
-    >
-      全
     </span>
   );
 }

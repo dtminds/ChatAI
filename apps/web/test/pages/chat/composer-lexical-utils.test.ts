@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { $getRoot, createEditor } from "lexical";
+import { $createLineBreakNode, $getRoot, $insertNodes, createEditor } from "lexical";
 import {
   $exportComposerSegments,
   $insertComposerImage,
@@ -90,6 +90,34 @@ describe("composer lexical utils", () => {
       {
         mentionMemberIds: ["member-001"],
         text: "请 @小林 看一下",
+        type: "text",
+      },
+    ]);
+  });
+
+  it("exports a single line break as one newline character", () => {
+    const editor = createEditor({
+      namespace: "composer-line-break-utils-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let segments: ComposerSegment[] = [];
+
+    editor.update(
+      () => {
+        $insertComposerText("第一行");
+        $insertNodes([$createLineBreakNode()]);
+        $insertComposerText("第二行");
+        segments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(normalizeComposerSegments(segments)).toEqual([
+      {
+        text: "第一行\n第二行",
         type: "text",
       },
     ]);

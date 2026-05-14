@@ -7,10 +7,12 @@ import {
   $applyNodeReplacement,
   $getNodeByKey,
   DecoratorNode,
+  TextNode,
   type EditorConfig,
   type LexicalNode,
   type NodeKey,
   type SerializedLexicalNode,
+  type SerializedTextNode,
   type Spread,
 } from "lexical";
 
@@ -26,12 +28,23 @@ export type SerializedComposerEmojiNode = Spread<
 export type SerializedComposerImageNode = Spread<
   {
     alt: string;
+    clientId?: string;
+    fileId?: string;
     height?: number;
     localUrl?: string;
     src: string;
     width?: number;
   },
   SerializedLexicalNode
+>;
+
+export type SerializedComposerMentionNode = Spread<
+  {
+    displayName: string;
+    isAll?: boolean;
+    memberId: string;
+  },
+  SerializedTextNode
 >;
 
 export class ComposerEmojiNode extends DecoratorNode<ReactNode> {
@@ -110,13 +123,15 @@ export class ComposerEmojiNode extends DecoratorNode<ReactNode> {
     return this.__token;
   }
 
-  isInline() {
+  isInline(): true {
     return true;
   }
 }
 
 export class ComposerImageNode extends DecoratorNode<ReactNode> {
   __alt: string;
+  __clientId?: string;
+  __fileId?: string;
   __height?: number;
   __localUrl?: string;
   __src: string;
@@ -130,6 +145,8 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
     return new ComposerImageNode(
       {
         alt: node.__alt,
+        clientId: node.__clientId,
+        fileId: node.__fileId,
         height: node.__height,
         localUrl: node.__localUrl,
         src: node.__src,
@@ -142,6 +159,8 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
   static importJSON(serializedNode: SerializedComposerImageNode) {
     return $createComposerImageNode({
       alt: serializedNode.alt,
+      clientId: serializedNode.clientId,
+      fileId: serializedNode.fileId,
       height: serializedNode.height,
       localUrl: serializedNode.localUrl,
       src: serializedNode.src,
@@ -152,6 +171,8 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
   constructor(
     input: {
       alt: string;
+      clientId?: string;
+      fileId?: string;
       height?: number;
       localUrl?: string;
       src: string;
@@ -161,6 +182,8 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
   ) {
     super(key);
     this.__alt = input.alt;
+    this.__clientId = input.clientId;
+    this.__fileId = input.fileId;
     this.__height = input.height;
     this.__localUrl = input.localUrl;
     this.__src = input.src;
@@ -190,6 +213,8 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
   exportJSON(): SerializedComposerImageNode {
     return {
       alt: this.__alt,
+      clientId: this.__clientId,
+      fileId: this.__fileId,
       height: this.__height,
       localUrl: this.__localUrl,
       src: this.__src,
@@ -201,6 +226,14 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
 
   getAlt() {
     return this.__alt;
+  }
+
+  getClientId() {
+    return this.__clientId;
+  }
+
+  getFileId() {
+    return this.__fileId;
   }
 
   getHeight() {
@@ -222,6 +255,114 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
   getWidth() {
     return this.__width;
   }
+
+  isInline(): false {
+    return false;
+  }
+
+  updateUploadResult(input: {
+    fileId?: string;
+    localUrl?: string;
+    src: string;
+  }) {
+    const writable = this.getWritable();
+    writable.__fileId = input.fileId;
+    writable.__localUrl = input.localUrl ?? writable.__localUrl;
+    writable.__src = input.src;
+  }
+}
+
+export class ComposerMentionNode extends TextNode {
+  __displayName: string;
+  __isAll: boolean;
+  __memberId: string;
+
+  static getType() {
+    return "composer-mention";
+  }
+
+  static clone(node: ComposerMentionNode) {
+    return new ComposerMentionNode(
+      {
+        displayName: node.__displayName,
+        isAll: node.__isAll,
+        memberId: node.__memberId,
+      },
+      node.__key,
+    );
+  }
+
+  static importJSON(serializedNode: SerializedComposerMentionNode) {
+    return $createComposerMentionNode({
+      displayName: serializedNode.displayName,
+      isAll: serializedNode.isAll,
+      memberId: serializedNode.memberId,
+    });
+  }
+
+  constructor(
+    input: {
+      displayName: string;
+      isAll?: boolean;
+      memberId: string;
+    },
+    key?: NodeKey,
+  ) {
+    super(`@${input.displayName}`, key);
+    this.__displayName = input.displayName;
+    this.__isAll = input.isAll ?? false;
+    this.__memberId = input.memberId;
+    this.__mode = 1;
+  }
+
+  createDOM(config: EditorConfig) {
+    const dom = super.createDOM(config);
+    dom.classList.add("text-primary");
+    return dom;
+  }
+
+  updateDOM() {
+    return false;
+  }
+
+  exportJSON(): SerializedComposerMentionNode {
+    return {
+      displayName: this.__displayName,
+      isAll: this.__isAll || undefined,
+      memberId: this.__memberId,
+      ...super.exportJSON(),
+      type: ComposerMentionNode.getType(),
+      version: 1,
+    };
+  }
+
+  getDisplayName() {
+    return this.__displayName;
+  }
+
+  getMemberId() {
+    return this.__memberId;
+  }
+
+  isAll() {
+    return this.__isAll;
+  }
+
+  isInline(): true {
+    return true;
+  }
+
+  canInsertTextBefore() {
+    return false;
+  }
+
+  canInsertTextAfter() {
+    return false;
+  }
+
+  isTextEntity() {
+    return true;
+  }
 }
 
 export function $createComposerEmojiNode(
@@ -240,6 +381,8 @@ export function $isComposerEmojiNode(
 
 export function $createComposerImageNode(input: {
   alt: string;
+  clientId?: string;
+  fileId?: string;
   height?: number;
   localUrl?: string;
   src: string;
@@ -252,6 +395,20 @@ export function $isComposerImageNode(
   node: LexicalNode | null | undefined,
 ): node is ComposerImageNode {
   return node instanceof ComposerImageNode;
+}
+
+export function $createComposerMentionNode(input: {
+  displayName: string;
+  isAll?: boolean;
+  memberId: string;
+}) {
+  return $applyNodeReplacement(new ComposerMentionNode(input));
+}
+
+export function $isComposerMentionNode(
+  node: LexicalNode | null | undefined,
+): node is ComposerMentionNode {
+  return node instanceof ComposerMentionNode;
 }
 
 function ComposerImagePreview({

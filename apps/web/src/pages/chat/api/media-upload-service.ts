@@ -11,6 +11,12 @@ const UPLOAD_SLICE_SIZE = 1024 * 1024;
 export async function resolveImageSegmentsForSend(
   conversationId: string,
   segments: ComposerSegment[],
+  options: {
+    onImageUploaded?: (payload: {
+      nextSegment: ComposerSegment;
+      previousSegment: ComposerSegment;
+    }) => void;
+  } = {},
 ): Promise<ComposerSegment[]> {
   const localImageSegments = segments.filter(isLocalImageSegment);
 
@@ -41,13 +47,23 @@ export async function resolveImageSegmentsForSend(
       SliceSize: UPLOAD_SLICE_SIZE,
     });
 
-    uploads.set(segment, {
+    const nextSegment: ComposerSegment = {
       alt: segment.alt,
       fileId: key,
       height: segment.height,
       type: "image",
       url: buildObjectUrl(key),
       width: segment.width,
+    };
+
+    uploads.set(segment, nextSegment);
+    options.onImageUploaded?.({
+      nextSegment: {
+        ...nextSegment,
+        clientId: segment.clientId,
+        localUrl: segment.localUrl,
+      },
+      previousSegment: segment,
     });
   }));
 

@@ -46,6 +46,7 @@ export type MessageRow = {
   msgid: string;
   msgtime: Date | number | string;
   msgtype: string;
+  opt_no: string | null;
   revoke_status?: number | string | null;
   seat_id: number | string;
   sender_avatar?: string;
@@ -155,6 +156,7 @@ export function mapMessageRow(
     customerId,
     isRevoked: toNumber(row.revoke_status ?? null) === 1 ? true : undefined,
     messageId: row.msgid,
+    optNo: row.opt_no || undefined,
     seatId: String(row.seat_id),
     senderAvatar: row.sender_avatar ?? "",
     senderName: row.sender_name,

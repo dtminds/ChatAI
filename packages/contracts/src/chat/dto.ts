@@ -114,6 +114,7 @@ export type WorkbenchMessageBaseDto = {
   createdAt?: number;
   seq: number;
   clientMessageId?: string;
+  optNo?: string;
   failReason?: string;
   isRevoked?: boolean;
 };
@@ -192,18 +193,26 @@ export type WorkbenchSendMessagePayload = {
   clientMessageId: string;
   contentType?: "text";
   content?: string;
+  mention?: {
+    all?: boolean;
+    location: "start" | "end";
+    memberIds: string[];
+  };
+  segment?: WorkbenchOutgoingMessageSegment;
   segments?: WorkbenchOutgoingMessageSegment[];
 };
 
 export type WorkbenchSentMessageAck = {
   messageId: string;
   clientMessageId: string;
+  optNo?: string;
   status: "accepted";
 };
 
 export type WorkbenchSendMessageResponse = {
   messageId: string;
   clientMessageId: string;
+  optNo?: string;
   status: "accepted";
   messages?: WorkbenchSentMessageAck[];
 };

@@ -205,6 +205,7 @@ type BaseMessage = {
   sentAt: string;
   status: MessageStatus;
   clientMessageId?: string;
+  optNo?: string;
   remoteMessageId?: string;
   seq?: number;
   failReason?: string;

@@ -446,6 +446,217 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
   });
+
+  it("maps a group text send with mentions to the Java send-message payload", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-001",
+      messageId: "opt-001",
+      optNo: "opt-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.sendMessage("101", {
+        clientMessageId: "local-001",
+        conversationId: "88",
+        mention: {
+          location: "end",
+          memberIds: ["member-user", "member-rui"],
+        },
+        seatId: "12",
+        segment: {
+          text: "今天统一看群公告",
+          type: "text",
+        },
+      }),
+    ).resolves.toEqual({
+      clientMessageId: "local-001",
+      messageId: "opt-001",
+      optNo: "opt-001",
+      status: "accepted",
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-001",
+      message: {
+        atLocation: 1,
+        atWxSerialNos: ["member-user", "member-rui"],
+        isHit: 2,
+        msgContent: "今天统一看群公告",
+        msgNum: 1,
+        msgType: 2001,
+      },
+      platform: 5,
+      sendType: 2,
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("maps a group text send with mention-all to the Java send-message payload", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-all-001",
+      messageId: "opt-all-001",
+      optNo: "opt-all-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-all-001",
+      conversationId: "88",
+      mention: {
+        all: true,
+        location: "start",
+        memberIds: [],
+      },
+      seatId: "12",
+      segment: {
+        text: "大家看一下",
+        type: "text",
+      },
+    });
+
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-all-001",
+      message: {
+        atLocation: 0,
+        isHit: 1,
+        msgContent: "大家看一下",
+        msgNum: 1,
+        msgType: 2001,
+      },
+      platform: 5,
+      sendType: 2,
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("maps a single-chat image send to the Java send-message payload", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-image-001",
+      messageId: "opt-image-001",
+      optNo: "opt-image-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-image-001",
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        alt: "截图",
+        type: "image",
+        url: "https://b5.bokr.com.cn/s5/upload/a.png",
+      },
+    });
+
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-image-001",
+      message: {
+        msgContent: "https://b5.bokr.com.cn/s5/upload/a.png",
+        msgNum: 1,
+        msgType: 2002,
+      },
+      platform: 5,
+      sendType: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("rejects image send without a sendable URL before calling Java", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.sendMessage("101", {
+        clientMessageId: "local-image-missing-url",
+        conversationId: "88",
+        seatId: "12",
+        segment: {
+          alt: "截图",
+          type: "image",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_IMAGE_MESSAGE",
+      statusCode: 400,
+    });
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
 });
 
 function createJavaClient(): WorkbenchJavaClient {

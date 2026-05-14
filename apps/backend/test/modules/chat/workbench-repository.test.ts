@@ -207,6 +207,9 @@ describe("WorkbenchRepository", () => {
             seat_host_sub_id: 101,
             seat_id: 12,
             seat_unread_count: 6,
+            third_external_userid: "external-001",
+            third_group_id: null,
+            third_userid: "seat-user-001",
             uid: 9001,
             unread_cnt: 2,
           });
@@ -220,6 +223,9 @@ describe("WorkbenchRepository", () => {
       seatHostSubUserId: "101",
       seatId: "12",
       seatUnreadCount: 6,
+      thirdExternalUserId: "external-001",
+      thirdGroupId: undefined,
+      thirdUserId: "seat-user-001",
       uid: 9001,
       unreadCount: 2,
     });

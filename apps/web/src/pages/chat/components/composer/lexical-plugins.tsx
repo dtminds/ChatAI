@@ -2,11 +2,11 @@ import { useEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import {
-  $getRoot,
+  $getSelection,
+  $isRangeSelection,
   $isTextNode,
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
-  INSERT_LINE_BREAK_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_ENTER_COMMAND,
@@ -21,17 +21,26 @@ import {
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
 import {
+  isSupportedComposerImageFile,
+  isSupportedComposerImageMimeType,
+} from "@/pages/chat/lib/composer-image-files";
+import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_EMOJI_COMMAND,
   INSERT_COMPOSER_IMAGE_COMMAND,
+  INSERT_COMPOSER_MENTION_COMMAND,
+  UPDATE_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
 import {
   $clearComposer,
   $replaceWechatEmojiTokens,
   $exportComposerSegments,
+  $getComposerPlainText,
   $insertComposerImage,
+  $insertComposerMention,
   $insertComposerText,
   $removeComposerTextRange,
+  $updateComposerImage,
 } from "@/pages/chat/components/composer/lexical-utils";
 import { toWechatEmojiToken } from "@/pages/chat/wechat-emoji";
 
@@ -110,6 +119,32 @@ export function ComposerRuntimePlugin({
 
   useEffect(() => {
     return editor.registerCommand(
+      UPDATE_COMPOSER_IMAGE_COMMAND,
+      (payload) => {
+        editor.update(() => {
+          $updateComposerImage(payload);
+        });
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      INSERT_COMPOSER_MENTION_COMMAND,
+      (payload) => {
+        editor.update(() => {
+          $insertComposerMention(payload);
+        });
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor]);
+
+  useEffect(() => {
+    return editor.registerCommand(
       CLEAR_COMPOSER_COMMAND,
       () => {
         editor.update(() => {
@@ -125,9 +160,15 @@ export function ComposerRuntimePlugin({
     return editor.registerCommand(
       PASTE_COMMAND,
       (event) => {
-        const imageFiles = getClipboardImageFiles(getEventClipboardData(event));
+        const clipboardData = getEventClipboardData(event);
+        const imageFiles = getClipboardImageFiles(clipboardData);
 
         if (imageFiles.length === 0) {
+          if (hasClipboardImageFile(clipboardData)) {
+            event.preventDefault();
+            return true;
+          }
+
           return false;
         }
 
@@ -201,7 +242,13 @@ export function ComposerRuntimePlugin({
           inputEnterBehavior === "newline" ? event?.shiftKey : !event?.shiftKey;
 
         if (!shouldSend) {
-          editor.dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+          event?.preventDefault();
+          const selection = $getSelection();
+
+          if ($isRangeSelection(selection)) {
+            selection.insertLineBreak(false);
+          }
+
           return true;
         }
 
@@ -230,7 +277,7 @@ export function ComposerRuntimePlugin({
     <OnChangePlugin
       onChange={(editorState) => {
         editorState.read(() => {
-          onDraftTextChange($getRoot().getTextContent());
+          onDraftTextChange($getComposerPlainText());
           onSegmentsChange(normalizeComposerSegments($exportComposerSegments()));
         });
       }}
@@ -266,18 +313,35 @@ function getClipboardImageFiles(clipboardData: DataTransfer | null) {
     return [];
   }
 
-  const files = Array.from(clipboardData.files).filter((file) =>
-    file.type.startsWith("image/"),
-  );
+  const files = Array.from(clipboardData.files).filter(isSupportedComposerImageFile);
 
   if (files.length > 0) {
     return files;
   }
 
-  return Array.from(clipboardData.items)
-    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+  return Array.from(clipboardData.items ?? [])
+    .filter(
+      (item) =>
+        item.kind === "file" && isSupportedComposerImageMimeType(item.type),
+    )
     .map((item) => item.getAsFile())
     .filter((file): file is File => file !== null);
+}
+
+function hasClipboardImageFile(clipboardData: DataTransfer | null) {
+  if (!clipboardData) {
+    return false;
+  }
+
+  const files = Array.from(clipboardData.files ?? []);
+
+  if (files.some((file) => file.type.startsWith("image/"))) {
+    return true;
+  }
+
+  return Array.from(clipboardData.items ?? []).some(
+    (item) => item.kind === "file" && item.type.startsWith("image/"),
+  );
 }
 
 function getEventClipboardData(event: ClipboardEvent | InputEvent | KeyboardEvent) {

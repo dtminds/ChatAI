@@ -858,6 +858,10 @@ function getNextMessageSeq(state: MockState, conversationId: string) {
 }
 
 function getPayloadSegments(payload: WorkbenchSendMessagePayload) {
+  if (payload.segment) {
+    return [payload.segment];
+  }
+
   if (payload.segments?.length) {
     return payload.segments;
   }

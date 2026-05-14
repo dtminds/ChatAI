@@ -1,5 +1,4 @@
 import type {
-  WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
@@ -10,11 +9,54 @@ import {
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 
+export const JAVA_MSG_TYPE = {
+  IMAGE: 2002,
+  TEXT: 2001,
+} as const;
+
+export const JAVA_SEND_TYPE = {
+  GROUP: 2,
+  SINGLE: 1,
+} as const;
+
+export const JAVA_MENTION_LOCATION = {
+  END: 1,
+  START: 0,
+} as const;
+
+export const JAVA_MENTION_HIT_TYPE = {
+  MEMBER: 2,
+} as const;
+
 type JavaApiResponse<T> = {
   data?: T;
   error?: number;
   errorMsg?: string;
   success?: boolean;
+};
+
+export type JavaSendMessageData = {
+  atLocation?: number;
+  atWxSerialNos?: string[];
+  isHit?: number;
+  msgContent: string;
+  msgNum: number;
+  msgType: (typeof JAVA_MSG_TYPE)[keyof typeof JAVA_MSG_TYPE];
+};
+
+export type JavaSendMessageInput = {
+  clientMessageId: string;
+  message: JavaSendMessageData;
+  platform: number;
+  sendType: (typeof JAVA_SEND_TYPE)[keyof typeof JAVA_SEND_TYPE];
+  thirdExternalUserid?: string;
+  thirdGroupId?: string;
+  thirdUserId: string;
+  uid: number;
+};
+
+type JavaSendMessageResponse = {
+  optNo?: string;
 };
 
 export type WorkbenchJavaClient = {
@@ -41,10 +83,7 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
-  sendMessage(input: {
-    payload: WorkbenchSendMessagePayload;
-    subUserId: string;
-  }): Promise<WorkbenchSendMessageResponse>;
+  sendMessage(input: JavaSendMessageInput): Promise<WorkbenchSendMessageResponse>;
   takeOverSeat(input: {
     platform: number;
     subId: number;
@@ -103,13 +142,21 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         input,
       );
     },
-    sendMessage(input) {
-      return postJava<WorkbenchSendMessageResponse>(
+    async sendMessage(input) {
+      const response = await postJavaEnvelope<JavaSendMessageResponse>(
         baseUrl,
         token,
-        "/internal/workbench/messages/send",
-        input,
+        "/third-internal/wap-embed/conversation/send-message",
+        buildJavaSendMessageBody(input),
       );
+      const optNo = response.optNo ?? input.clientMessageId;
+
+      return {
+        clientMessageId: input.clientMessageId,
+        messageId: optNo,
+        optNo,
+        status: "accepted",
+      };
     },
     takeOverSeat(input) {
       return postJavaEnvelope<boolean>(
@@ -145,6 +192,20 @@ async function postConversationOperate(
     platform: input.platform,
     uid: input.uid,
   });
+}
+
+function buildJavaSendMessageBody(input: JavaSendMessageInput) {
+  return {
+    msgDatas: [input.message],
+    platform: input.platform,
+    sendType: input.sendType,
+    ...(input.thirdExternalUserid
+      ? { thirdExternalUserid: input.thirdExternalUserid }
+      : {}),
+    ...(input.thirdGroupId ? { thirdGroupId: input.thirdGroupId } : {}),
+    thirdUserId: input.thirdUserId,
+    uid: input.uid,
+  };
 }
 
 async function postJava<T>(

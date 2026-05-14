@@ -299,6 +299,7 @@ export function createMemoryWorkbenchService() {
           customerId: conversation.customerId,
           failReason: outcome.reason,
           messageId,
+          optNo: messageId,
           senderType: "agent" as const,
           seq: nextSeq,
           status: outcome.status,
@@ -337,6 +338,7 @@ export function createMemoryWorkbenchService() {
         messages: backendMessages.map((message) => ({
           clientMessageId: message.clientMessageId ?? payload.clientMessageId,
           messageId: message.messageId,
+          optNo: message.optNo,
           status: "accepted" as const,
         })),
         status: "accepted",
@@ -722,6 +724,10 @@ function getNextMessageSeq(state: MemoryWorkbenchState, conversationId: string) 
 }
 
 function getPayloadSegments(payload: WorkbenchSendMessagePayload) {
+  if (payload.segment) {
+    return [payload.segment];
+  }
+
   if (payload.segments?.length) {
     return payload.segments;
   }

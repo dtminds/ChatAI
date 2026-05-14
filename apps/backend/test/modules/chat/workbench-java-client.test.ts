@@ -248,4 +248,63 @@ describe("createWorkbenchJavaClient", () => {
       }),
     );
   });
+
+  it("posts a single text message to the Java send-message API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { optNo: "opt-001" },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().sendMessage({
+        clientMessageId: "local-001",
+        message: {
+          msgContent: "今天统一看群公告",
+          msgNum: 1,
+          msgType: 2001,
+        },
+        platform: 5,
+        sendType: 2,
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      clientMessageId: "local-001",
+      messageId: "opt-001",
+      optNo: "opt-001",
+      status: "accepted",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/send-message",
+      expect.objectContaining({
+        body: JSON.stringify({
+          msgDatas: [
+            {
+              msgContent: "今天统一看群公告",
+              msgNum: 1,
+              msgType: 2001,
+            },
+          ],
+          platform: 5,
+          sendType: 2,
+          thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
 });

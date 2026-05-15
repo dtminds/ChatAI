@@ -5,7 +5,6 @@ import {
   QuoteUpIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -189,43 +188,17 @@ function MessageActionAvatar({
   onMentionMessage?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
 }) {
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const canMentionMessage = Boolean(
     onMentionMessage &&
     message.isGroupConversation &&
     !message.isOwnMessage &&
     message.sender.groupMemberId,
   );
-  const clearCloseTimer = () => {
-    if (!closeTimerRef.current) {
-      return;
-    }
-
-    clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = null;
-  };
-  const openMenu = () => {
-    clearCloseTimer();
-    setIsMenuOpen(true);
-  };
-  const closeMenuSoon = () => {
-    clearCloseTimer();
-    closeTimerRef.current = setTimeout(() => {
-      setIsMenuOpen(false);
-    }, 120);
-  };
-
-  useEffect(() => clearCloseTimer, []);
 
   return (
-    <div
-      className="relative shrink-0"
-      onMouseEnter={openMenu}
-      onMouseLeave={closeMenuSoon}
-    >
+    <div className="relative shrink-0">
       <MessageAvatar message={message} />
-      <DropdownMenu onOpenChange={setIsMenuOpen} open={isMenuOpen}>
+      <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             aria-label="消息操作"
@@ -242,12 +215,7 @@ function MessageActionAvatar({
             />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="center"
-          onMouseEnter={openMenu}
-          onMouseLeave={closeMenuSoon}
-          side="bottom"
-        >
+        <DropdownMenuContent align="center" side="bottom">
           {canMentionMessage ? (
             <DropdownMenuItem onSelect={() => onMentionMessage?.(message)}>
               <HugeiconsIcon

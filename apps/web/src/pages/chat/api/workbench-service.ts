@@ -769,6 +769,13 @@ function buildContent(message: Message) {
         tail: message.content.tail,
         title: message.content.title,
       };
+    case "redpacket":
+      return {
+        description: message.content.description,
+        title: message.content.title,
+        totalAmount: message.content.totalAmount,
+        totalCnt: message.content.totalCnt,
+      };
     case "quote":
       return {
         quoteMsgId: message.content.quoteMsgId,

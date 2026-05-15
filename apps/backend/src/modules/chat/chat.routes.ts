@@ -53,6 +53,7 @@ const WorkbenchMessageContentTypeSchema = Type.Union([
   Type.Literal("contact-card"),
   Type.Literal("location"),
   Type.Literal("solitaire"),
+  Type.Literal("redpacket"),
   Type.Literal("sphfeed"),
   Type.Literal("mini-program"),
   Type.Literal("quote"),

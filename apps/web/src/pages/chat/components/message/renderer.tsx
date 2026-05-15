@@ -6,6 +6,7 @@ import { LinkMessageCard } from "@/pages/chat/components/message/link";
 import { LocationMessageCard } from "@/pages/chat/components/message/location";
 import { MiniAppMessageCard } from "@/pages/chat/components/message/miniapp";
 import { QuoteMessageCard } from "@/pages/chat/components/message/quote";
+import { RedPacketMessageCard } from "@/pages/chat/components/message/redpacket";
 import { SolitaireMessageCard } from "@/pages/chat/components/message/solitaire";
 import { SphFeedMessageCard } from "@/pages/chat/components/message/sphfeed";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
@@ -74,6 +75,8 @@ export function MessageContentRenderer({
           isOwnMessage={message.isOwnMessage}
         />
       );
+    case "redpacket":
+      return <RedPacketMessageCard content={message.content} />;
     case "quote":
       return (
         <QuoteMessageCard

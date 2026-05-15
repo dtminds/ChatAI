@@ -341,6 +341,8 @@ function getContentTypeLabel(contentType: QuotedMessagePreviewContent["contentTy
       return "[位置]";
     case "solitaire":
       return "[群接龙]";
+    case "redpacket":
+      return "[红包]";
     case "sphfeed":
       return "[视频号]";
     case "quote":

@@ -822,6 +822,27 @@ describe("workbench MySQL mappers", () => {
       },
       contentType: "solitaire",
     });
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          description: "来自哼╭(╯^╰)╮的红包，请进入手机版企业微信领取",
+          title: "恭喜发财，大吉大利",
+          totalAmount: 1,
+          totalCnt: 1,
+          type: 1,
+        }),
+        msgtype: "redpacket",
+      })),
+    ).toMatchObject({
+      content: {
+        description: "来自哼╭(╯^╰)╮的红包，请进入手机版企业微信领取",
+        title: "恭喜发财，大吉大利",
+        totalAmount: 1,
+        totalCnt: 1,
+      },
+      contentType: "redpacket",
+    });
   });
 
   it("maps media and file payload fields with complete URLs or object paths", () => {

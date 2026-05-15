@@ -1,0 +1,51 @@
+name: 产品需求 Feature
+description: 提交新能力、流程优化或产品需求
+title: "[Feature] "
+labels: ["type: feature", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        内部已评审过的需求，可以直接贴结论、PRD 链接或关键上下文。
+  - type: textarea
+    id: description
+    attributes:
+      label: 需求说明
+      description: 简要说明要做什么、为什么做、核心范围是什么
+      placeholder: |
+        背景：
+        目标：
+        范围：
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 写清楚什么情况下可以认为完成
+      placeholder: |
+        - 完成核心流程
+        - 覆盖异常或空状态
+        - 相关资料已同步
+    validations:
+      required: true
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: 紧急程度建议
+      description: 最终优先级会由 triage 统一确认
+      options:
+        - 阻塞当前发布
+        - 当前阶段需要完成
+        - 重要但可以后移
+        - 有价值但不紧急
+        - 不确定
+    validations:
+      required: false
+  - type: textarea
+    id: links
+    attributes:
+      label: 相关资料
+      description: PRD、设计稿、评审结论、用户反馈、竞品截图等
+    validations:
+      required: false

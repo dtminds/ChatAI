@@ -1,0 +1,46 @@
+name: 设计/UI 调整 Design
+description: 提交页面视觉、交互、文案或体验调整
+title: "[Design] "
+labels: ["type: feature", "area: web", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        适合提交设计稿落地、UI 问题、交互调整和体验优化。
+  - type: input
+    id: page
+    attributes:
+      label: 页面或模块
+      description: 涉及哪个页面、弹窗、组件或流程
+      placeholder: 例如：/chat 会话列表、消息输入区、接管弹窗
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 调整说明
+      description: 说明当前表现、期望调整和需要注意的交互状态
+      placeholder: |
+        当前表现：
+        期望调整：
+        交互/适配注意点：
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 写清楚什么情况下可以认为设计或体验调整完成
+      placeholder: |
+        - 页面表现符合设计稿
+        - 关键交互状态完整
+        - 长文本和空状态表现正常
+    validations:
+      required: true
+  - type: textarea
+    id: links
+    attributes:
+      label: 设计稿、截图或录屏
+      description: Figma、蓝湖、截图、录屏或其它参考资料
+    validations:
+      required: false

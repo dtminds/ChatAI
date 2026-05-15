@@ -33,6 +33,22 @@ const MediaUploadCredentialBodySchema = Type.Object({
   conversationId: Type.String(),
 });
 
+const WorkbenchMessageContentTypeSchema = Type.Union([
+  Type.Literal("system"),
+  Type.Literal("text"),
+  Type.Literal("voice"),
+  Type.Literal("image"),
+  Type.Literal("video"),
+  Type.Literal("file"),
+  Type.Literal("h5"),
+  Type.Literal("contact-card"),
+  Type.Literal("location"),
+  Type.Literal("solitaire"),
+  Type.Literal("sphfeed"),
+  Type.Literal("mini-program"),
+  Type.Literal("quote"),
+]);
+
 const PollQuerySchema = Type.Object({
   active_conversation_id: Type.Optional(Type.String()),
   active_message_seq: Type.Optional(NumericStringSchema),
@@ -52,6 +68,22 @@ const SendMessageBodySchema = Type.Object({
       memberIds: Type.Array(Type.String()),
     }),
   ),
+  quote: Type.Optional(
+    Type.Object({
+      quoteMsgId: Type.String(),
+      quotedMessageId: Type.Optional(Type.String()),
+      quotedMessage: Type.Optional(
+        Type.Object({
+          contentType: WorkbenchMessageContentTypeSchema,
+          fallbackText: Type.Optional(Type.String()),
+          imageUrl: Type.Optional(Type.String()),
+          senderName: Type.String(),
+          text: Type.Optional(Type.String()),
+          title: Type.Optional(Type.String()),
+        }),
+      ),
+    }),
+  ),
   seatId: Type.String(),
   segment: Type.Optional(
     Type.Union([
@@ -67,6 +99,15 @@ const SendMessageBodySchema = Type.Object({
         type: Type.Literal("image"),
         url: Type.Optional(Type.String()),
         width: Type.Optional(Type.Number()),
+      }),
+      Type.Object({
+        extension: Type.String(),
+        fileId: Type.Optional(Type.String()),
+        fileName: Type.String(),
+        fileSize: Type.Optional(Type.Number()),
+        fileSizeLabel: Type.Optional(Type.String()),
+        type: Type.Literal("file"),
+        url: Type.Optional(Type.String()),
       }),
     ]),
   ),
@@ -85,6 +126,15 @@ const SendMessageBodySchema = Type.Object({
           type: Type.Literal("image"),
           url: Type.Optional(Type.String()),
           width: Type.Optional(Type.Number()),
+        }),
+        Type.Object({
+          extension: Type.String(),
+          fileId: Type.Optional(Type.String()),
+          fileName: Type.String(),
+          fileSize: Type.Optional(Type.Number()),
+          fileSizeLabel: Type.Optional(Type.String()),
+          type: Type.Literal("file"),
+          url: Type.Optional(Type.String()),
         }),
       ]),
     ),

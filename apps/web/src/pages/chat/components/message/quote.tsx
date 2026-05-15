@@ -51,7 +51,7 @@ export function QuoteMessageCard({
   );
 }
 
-function QuoteMessagePreview({
+export function QuoteMessagePreview({
   onOpenQuotedMessage,
   quoteMsgId,
   quotedMessage,

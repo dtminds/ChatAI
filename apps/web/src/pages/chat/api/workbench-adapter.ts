@@ -89,11 +89,11 @@ export function adaptMessage(
   const status = adaptMessageStatus(dto.status);
   const isGroupConversation = Boolean(dto.thirdGroupId);
 
-  if (dto.senderType === "system") {
+  if (dto.contentType === "system" || dto.senderType === "system") {
     return {
       clientMessageId: dto.clientMessageId,
       content: {
-        text: String(dto.content.text ?? ""),
+        text: readSystemMessageText(dto.content),
         type: "system",
       },
       conversationId: dto.conversationId,
@@ -148,6 +148,9 @@ export function adaptMessage(
     senderDisplayName: isGroupConversation && !isOwnMessage ? senderName : undefined,
     sender: {
       avatarUrl: senderAvatar,
+      groupMemberId: isGroupConversation && !isOwnMessage
+        ? dto.thirdFromId
+        : undefined,
       id: isOwnMessage
         ? `sender-agent-${dto.seatId}`
         : `sender-customer-${dto.thirdFromId ?? dto.customerId}`,
@@ -157,6 +160,12 @@ export function adaptMessage(
     seq: dto.seq,
     status,
   };
+}
+
+function readSystemMessageText(content: Record<string, unknown>) {
+  const text = content.text ?? content.content;
+
+  return typeof text === "string" ? text : "";
 }
 
 export function formatWorkbenchTimestamp(value: number | Date | undefined) {

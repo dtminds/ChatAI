@@ -9,6 +9,13 @@ export type MessageRole = "customer" | "agent" | "system";
 
 export type MessageStatus = "pending" | "sending" | "accepted" | "sent" | "failed" | "read";
 
+export type FileUploadQueueItem = {
+  fileName: string;
+  id: string;
+  progress: number;
+  status: "uploading" | "sending";
+};
+
 export type EmployeeProfile = {
   id: string;
   displayName: string;
@@ -64,6 +71,7 @@ export type Conversation = {
 };
 
 export type MessageSender = {
+  groupMemberId?: string;
   id: string;
   name: string;
   avatarUrl?: string;
@@ -176,6 +184,8 @@ export type QuotedMessagePreviewContent = {
   contentType: WorkbenchMessageContentType;
   fallbackText?: string;
   imageUrl?: string;
+  quoteMsgId?: string;
+  quotedMessageId?: string;
   senderName: string;
   text?: string;
   title?: string;
@@ -185,6 +195,7 @@ export type QuoteMessageContent = {
   type: "quote";
   text: string;
   quoteMsgId: string;
+  quotedMessageId?: string;
   quotedMessage?: QuotedMessagePreviewContent;
 };
 

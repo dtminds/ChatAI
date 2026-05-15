@@ -291,15 +291,19 @@ export function createMemoryWorkbenchService() {
       const now = Date.now();
       const segments = getPayloadSegments(payload);
       const outcome = resolveSendOutcome(state, payload.seatId, segments);
+      let hasAppliedQuote = false;
       const backendMessages = segments.map((segment, index) => {
         const messageId = `msg-server-${state.nextId++}`;
         const nextSeq = getNextMessageSeq(state, payload.conversationId) + index;
+        const quoteForSegment =
+          !hasAppliedQuote && segment.type === "text" ? payload.quote : undefined;
+        hasAppliedQuote = hasAppliedQuote || Boolean(quoteForSegment);
 
         return {
           seatId: payload.seatId,
           clientMessageId: buildSegmentClientMessageId(payload.clientMessageId, index),
-          content: buildPayloadSegmentContent(segment),
-          contentType: segment.type,
+          content: buildPayloadSegmentContent(segment, quoteForSegment),
+          contentType: quoteForSegment ? "quote" : segment.type,
           conversationId: payload.conversationId,
           createdAt: now + index,
           customerId: conversation.customerId,
@@ -748,7 +752,17 @@ function getPayloadSegments(payload: WorkbenchSendMessagePayload) {
 
 function buildPayloadSegmentContent(
   segment: ReturnType<typeof getPayloadSegments>[number],
+  quote?: WorkbenchSendMessagePayload["quote"],
 ) {
+  if (quote && segment.type === "text") {
+    return {
+      quoteMsgId: quote.quoteMsgId,
+      quotedMessageId: quote.quotedMessageId,
+      quotedMessage: quote.quotedMessage,
+      text: segment.text,
+    };
+  }
+
   if (segment.type === "image") {
     return {
       alt: segment.alt,
@@ -763,6 +777,7 @@ function buildPayloadSegmentContent(
       extension: segment.extension,
       fileName: segment.fileName,
       fileSizeLabel: segment.fileSizeLabel ?? "",
+      sourceLabel: "文件",
     };
   }
 
@@ -774,7 +789,15 @@ function buildPayloadSegmentContent(
 function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {
   const firstTextSegment = segments.find((segment) => segment.type === "text");
 
-  return firstTextSegment?.text ?? (segments.some((segment) => segment.type === "image") ? "[图片]" : "");
+  if (firstTextSegment?.text) {
+    return firstTextSegment.text;
+  }
+
+  if (segments.some((segment) => segment.type === "image")) {
+    return "[图片]";
+  }
+
+  return segments.some((segment) => segment.type === "file") ? "[文件]" : "";
 }
 
 function buildSegmentClientMessageId(clientMessageId: string, index: number) {

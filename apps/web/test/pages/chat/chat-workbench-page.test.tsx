@@ -10,7 +10,10 @@ import {
   resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
-import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
+import {
+  resolveImageSegmentsForSend,
+  uploadWorkbenchFile,
+} from "@/pages/chat/api/media-upload-service";
 import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -45,6 +48,15 @@ vi.mock("@/pages/chat/api/media-upload-service", () => ({
         : segment,
     ),
   ),
+  uploadWorkbenchFile: vi.fn(async (_conversationId, file: File) => ({
+    extension: file.name.split(".").pop() ?? "",
+    fileId: `chat-files/conv-001/${file.name}`,
+    fileName: file.name,
+    fileSize: file.size,
+    fileSizeLabel: `${file.size} B`,
+    type: "file",
+    url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
+  })),
 }));
 
 function createDeferred<T = void>() {
@@ -90,6 +102,17 @@ describe("ChatWorkbenchPage", () => {
             : segment,
         ),
     );
+    vi.mocked(uploadWorkbenchFile).mockImplementation(
+      async (_conversationId, file: File) => ({
+        extension: file.name.split(".").pop() ?? "",
+        fileId: `chat-files/conv-001/${file.name}`,
+        fileName: file.name,
+        fileSize: file.size,
+        fileSizeLabel: `${file.size} B`,
+        type: "file",
+        url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
+      }),
+    );
     resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
@@ -114,6 +137,124 @@ describe("ChatWorkbenchPage", () => {
       role: "agent",
       status: "accepted",
     });
+  });
+
+  it("sets and clears a quoted message preview from the message action menu", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
+    const targetRow = targetMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+
+    expect(screen.getByTestId("composer-quote-preview")).toHaveTextContent(
+      "丹阳草莓，得利市大樱桃：我先截了个竖图版本给你看。",
+    );
+
+    await user.click(screen.getByRole("button", { name: "取消引用" }));
+
+    expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
+  });
+
+  it("sends a selected quote with the composed text", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
+    const targetRow = targetMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+    await pasteIntoComposer(user, composer, "收到，我按这个版本处理");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => {
+      expect(
+        useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+      ).toMatchObject({
+        content: {
+          quoteMsgId: "5",
+          quotedMessageId: "msg-006",
+          quotedMessage: {
+            senderName: "丹阳草莓，得利市大樱桃",
+            text: "我先截了个竖图版本给你看。",
+          },
+          text: "收到，我按这个版本处理",
+          type: "quote",
+        },
+      });
+    });
+    expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
+  });
+
+  it("keeps a selected quote after sending image-only content", async () => {
+    const user = userEvent.setup();
+    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
+      type: "image/png",
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
+    const targetRow = targetMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [clipboardImage],
+      },
+    });
+    expect(await screen.findByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => {
+      expect(
+        within(composer).queryByRole("img", { name: "clipboard.png" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("composer-quote-preview")).toHaveTextContent(
+      "丹阳草莓，得利市大樱桃：我先截了个竖图版本给你看。",
+    );
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+    ).toMatchObject({
+      content: {
+        type: "image",
+      },
+    });
+  });
+
+  it("inserts an @ mention from a group message action menu", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("tab", { name: "群聊" }));
+    const groupMessage = await screen.findByText("#接龙", { exact: false });
+    const targetRow = groupMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "@Ta" }));
+
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+
+    expect(composer.textContent).toBe("@缪勇飞 群昵称111 ");
+    expect(screen.queryByRole("listbox", { name: "选择群成员" })).not.toBeInTheDocument();
   });
 
   it("renders pasted WeChat emoji tokens as images while sending the original token", async () => {
@@ -186,6 +327,159 @@ describe("ChatWorkbenchPage", () => {
       "accept",
       "image/jpeg,image/png,.jpg,.jpeg,.png",
     );
+  });
+
+  it("uploads a selected file and sends it as a file message", async () => {
+    const user = userEvent.setup();
+    const upload = createDeferred<Awaited<ReturnType<typeof uploadWorkbenchFile>>>();
+    const file = new File(["file-bytes"], "报价单.pdf", {
+      type: "application/pdf",
+    });
+    vi.mocked(uploadWorkbenchFile).mockReturnValue(upload.promise);
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), file);
+
+    expect(screen.getByText("报价单.pdf")).toBeInTheDocument();
+    expect(screen.getByText("正在准备发送")).toBeInTheDocument();
+    await waitFor(() => {
+    expect(uploadWorkbenchFile).toHaveBeenCalledWith(
+      "conv-001",
+      file,
+      expect.objectContaining({
+        onProgress: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    });
+    upload.resolve({
+      extension: "pdf",
+      fileId: "chat-files/conv-001/报价单.pdf",
+      fileName: "报价单.pdf",
+      fileSize: file.size,
+      fileSizeLabel: `${file.size} B`,
+      type: "file",
+      url: "https://b5.bokr.com.cn/chat-files/conv-001/%E6%8A%A5%E4%BB%B7%E5%8D%95.pdf",
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("正在准备发送")).not.toBeInTheDocument();
+    });
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+    ).toMatchObject({
+      content: {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        fileSizeLabel: expect.any(String),
+        type: "file",
+      },
+      role: "agent",
+      status: "accepted",
+    });
+  });
+
+  it("rejects unsupported selected files with a toast", async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    const unsupportedFile = new File(["file-bytes"], "archive.zip", {
+      type: "application/zip",
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), unsupportedFile);
+
+    expect(uploadWorkbenchFile).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("仅支持 PDF、Excel、Word、TXT、PPT 文件");
+  });
+
+  it("rejects oversized selected files with a blocking dialog", async () => {
+    const user = userEvent.setup();
+    const oversizedFile = new File(["file-bytes"], "大文件.pdf", {
+      type: "application/pdf",
+    });
+    Object.defineProperty(oversizedFile, "size", {
+      configurable: true,
+      value: 10 * 1024 * 1024 + 1,
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), oversizedFile);
+
+    expect(uploadWorkbenchFile).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("alertdialog", {
+        name: "文件过大，无法发送",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("请选择不超过 10 MB 的文件")).toBeInTheDocument();
+    expect(toast.warning).not.toHaveBeenCalledWith("文件大小不能超过 10 MB");
+  });
+
+  it("blocks conversation switching while a file is uploading", async () => {
+    const user = userEvent.setup();
+    const upload = createDeferred<Awaited<ReturnType<typeof uploadWorkbenchFile>>>();
+    const file = new File(["file-bytes"], "报价单.pdf", {
+      type: "application/pdf",
+    });
+    vi.mocked(uploadWorkbenchFile).mockReturnValue(upload.promise);
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), file);
+    await waitFor(() => {
+      expect(screen.getByText("正在准备发送")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+
+    expect(screen.getByTestId("scope-transition-error")).toHaveTextContent(
+      "文件上传中，暂不能切换会话",
+    );
+    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toBeInTheDocument();
+    upload.resolve({
+      extension: "pdf",
+      fileId: "chat-files/conv-001/报价单.pdf",
+      fileName: "报价单.pdf",
+      fileSize: file.size,
+      fileSizeLabel: `${file.size} B`,
+      type: "file",
+      url: "https://b5.bokr.com.cn/chat-files/conv-001/%E6%8A%A5%E4%BB%B7%E5%8D%95.pdf",
+    });
+  });
+
+  it("aborts the active file upload when the queued file is canceled", async () => {
+    const user = userEvent.setup();
+    const upload = createDeferred<Awaited<ReturnType<typeof uploadWorkbenchFile>>>();
+    const file = new File(["file-bytes"], "报价单.pdf", {
+      type: "application/pdf",
+    });
+    vi.mocked(uploadWorkbenchFile).mockReturnValue(upload.promise);
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.upload(screen.getByLabelText("选择文件"), file);
+    await waitFor(() => {
+      expect(uploadWorkbenchFile).toHaveBeenCalledWith(
+        "conv-001",
+        file,
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    });
+
+    const uploadOptions = vi.mocked(uploadWorkbenchFile).mock.calls.at(-1)?.[2];
+
+    expect(uploadOptions?.signal?.aborted).toBe(false);
+    await user.click(screen.getByRole("button", { name: "取消上传 报价单.pdf" }));
+    expect(uploadOptions?.signal?.aborted).toBe(true);
+    expect(screen.queryByText("报价单.pdf")).not.toBeInTheDocument();
   });
 
   it("ignores pasted clipboard images outside jpeg and png", async () => {
@@ -632,6 +926,26 @@ describe("ChatWorkbenchPage", () => {
     confirmSpy.mockRestore();
   });
 
+  it("shows a dialog before switching conversations when a quote is selected", async () => {
+    const user = userEvent.setup();
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
+    const targetRow = targetMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+
+    expect(await screen.findByRole("alertdialog", { name: "切换会话？" }))
+      .toBeInTheDocument();
+    expect(screen.getByTestId("composer-quote-preview")).toBeInTheDocument();
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+  });
+
   it("clears composer content after confirming a conversation switch", async () => {
     const user = userEvent.setup();
     const confirmSpy = vi.spyOn(window, "confirm");
@@ -802,7 +1116,7 @@ describe("ChatWorkbenchPage", () => {
     await pasteIntoComposer(user, composer, "@小");
 
     expect(screen.getByRole("listbox", { name: "选择群成员" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "所有人（6人）" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "所有人（7人）" })).not.toBeInTheDocument();
     const xiaolinOption = screen.getByRole("option", { name: "小林" });
     expect(xiaolinOption).toBeInTheDocument();
     expect(within(xiaolinOption).getByTestId("mention-member-avatar")).toHaveAttribute(
@@ -860,7 +1174,7 @@ describe("ChatWorkbenchPage", () => {
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "@所");
-    const allOption = screen.getByRole("option", { name: "所有人（6人）" });
+    const allOption = screen.getByRole("option", { name: "所有人（7人）" });
 
     expect(within(allOption).queryByTestId("mention-member-avatar")).not.toBeInTheDocument();
 
@@ -939,7 +1253,7 @@ describe("ChatWorkbenchPage", () => {
       expect(within(sidePanel).queryByTestId("dot-matrix-loader")).not.toBeInTheDocument();
     });
 
-    expect(within(sidePanel).getByRole("heading", { name: "群成员 · 共 7 人" })).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("heading", { name: "群成员 · 共 8 人" })).toBeInTheDocument();
     expect(within(sidePanel).getByText("群主小可")).toBeInTheDocument();
     expect(within(sidePanel).getByText("群主")).toBeInTheDocument();
     expect(within(sidePanel).getByText("小林")).toBeInTheDocument();

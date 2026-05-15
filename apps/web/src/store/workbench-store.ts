@@ -41,15 +41,17 @@ type HistoryStatus = "idle" | "loading";
 type SendStatus = "idle" | "sending";
 type TakeoverStatus = "idle" | "taking-over";
 type SendMentionPayload = WorkbenchSendMessagePayload["mention"];
+type SendQuotePayload = WorkbenchSendMessagePayload["quote"];
 
 type SendMessageResult =
   | {
+      didConsumeQuote?: boolean;
       ok: true;
     }
   | {
       errorCode: string;
       errorMessage: string;
-      reason: "image-upload" | "send" | "unavailable";
+      reason: "file-upload" | "image-upload" | "send" | "unavailable";
       ok: false;
     };
 
@@ -112,6 +114,7 @@ type WorkbenchState = {
         nextSegment: ComposerSegment;
         previousSegment: ComposerSegment;
       }) => void;
+      quote?: SendQuotePayload;
     },
   ) => Promise<SendMessageResult>;
   sendAgentTextMessage: (text: string) => Promise<SendMessageResult>;
@@ -424,7 +427,20 @@ function buildSegmentClientMessageId(clientMessageId: string, index: number) {
   return index === 0 ? clientMessageId : `${clientMessageId}_${index + 1}`;
 }
 
-function buildOptimisticMessageContent(segment: ComposerSegment): ChatMessage["content"] {
+function buildOptimisticMessageContent(
+  segment: ComposerSegment,
+  quote?: SendQuotePayload,
+): ChatMessage["content"] {
+  if (quote && segment.type === "text") {
+    return {
+      quoteMsgId: quote.quoteMsgId,
+      quotedMessageId: quote.quotedMessageId,
+      quotedMessage: quote.quotedMessage,
+      text: segment.text,
+      type: "quote",
+    };
+  }
+
   if (segment.type === "image") {
     return {
       alt: segment.alt,
@@ -440,6 +456,7 @@ function buildOptimisticMessageContent(segment: ComposerSegment): ChatMessage["c
       extension: segment.extension,
       fileName: segment.fileName,
       fileSizeLabel: segment.fileSizeLabel,
+      sourceLabel: "文件",
       type: "file",
     };
   }
@@ -1310,7 +1327,7 @@ export function createWorkbenchStore() {
       const normalizedSegments = normalizeComposerSegments(segments);
 
       if (normalizedSegments.length === 0) {
-        return { ok: true };
+        return { didConsumeQuote: false, ok: true };
       }
 
       const state = get();
@@ -1386,6 +1403,7 @@ export function createWorkbenchStore() {
 
       try {
         let hasSentMention = false;
+        let hasSentQuote = false;
         for (let index = 0; index < segmentsForSend.length; index += 1) {
           const segmentForSend = segmentsForSend[index];
           const originalSegment = normalizedSegments[index] ?? segmentForSend;
@@ -1394,11 +1412,15 @@ export function createWorkbenchStore() {
             !hasSentMention && segmentForSend.type === "text"
               ? options?.mention
               : undefined;
+          const quoteForSegment: SendQuotePayload =
+            !hasSentQuote && segmentForSend.type === "text" ? options?.quote : undefined;
           hasSentMention = hasSentMention || Boolean(mentionForSegment);
+          hasSentQuote = hasSentQuote || Boolean(quoteForSegment);
           const response = await sendTextMessage({
             clientMessageId: segmentClientMessageId,
             conversationId: activeConversationId,
             mention: mentionForSegment,
+            quote: quoteForSegment,
             seatId: activeAccountId,
             segment: segmentForSend,
           });
@@ -1407,7 +1429,7 @@ export function createWorkbenchStore() {
             isGroupConversation: activeConversation.mode === "group",
             isOwnMessage: true,
             clientMessageId: segmentClientMessageId,
-            content: buildOptimisticMessageContent(segmentForSend),
+            content: buildOptimisticMessageContent(segmentForSend, quoteForSegment),
             conversationId: activeConversationId,
             id: segmentClientMessageId,
             optNo: response.optNo ?? response.messageId,
@@ -1464,7 +1486,7 @@ export function createWorkbenchStore() {
           },
         }));
 
-        return { ok: true };
+        return { didConsumeQuote: hasSentQuote, ok: true };
       } catch (error) {
         set((currentState) => ({
           sendStatusByConversationId: {

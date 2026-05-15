@@ -1,7 +1,9 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp02Icon,
+  Cancel01Icon,
   ChatDelayIcon,
+  Folder01Icon,
   Image01Icon,
   Loading03Icon,
   SmileIcon,
@@ -37,6 +39,7 @@ import {
   ComposerMentionNode,
 } from "@/pages/chat/components/composer/lexical-nodes";
 import { ComposerRuntimePlugin } from "@/pages/chat/components/composer/lexical-plugins";
+import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import {
   $insertComposerMention,
   $insertComposerText,
@@ -48,24 +51,29 @@ import {
   isSupportedComposerImageFile,
   MAX_COMPOSER_IMAGE_SEGMENTS,
 } from "@/pages/chat/lib/composer-image-files";
+import { COMPOSER_FILE_ACCEPT } from "@/pages/chat/lib/composer-file-files";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
-import type { GroupMember } from "@/pages/chat/chat-types";
+import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
 
 type ChatComposerProps = {
   canSendMessage: boolean;
   draft: string;
+  hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
   inputEnterBehavior: InputEnterBehavior;
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isSending: boolean;
+  onClearQuotedMessage: () => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
+  onFileSelect: (files: FileList | File[] | null) => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
   placeholder: string;
+  quotedMessage: QuotedMessagePreviewContent | null;
   composerRef: RefObject<LexicalEditor | null>;
 };
 
@@ -89,21 +97,26 @@ function createComposerImageClientId() {
 export function ChatComposer({
   canSendMessage,
   draft,
+  hasActiveFileUpload,
   groupMembers,
   inputEnterBehavior,
   isGroupConversation,
   isEmojiPickerOpen,
   isSending,
+  onClearQuotedMessage,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
+  onFileSelect,
   onSegmentsChange,
   onSendDraft,
   placeholder,
+  quotedMessage,
   composerRef,
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [draftText, setDraftText] = useState(draft);
   const [segments, setSegments] = useState<ComposerSegment[]>([]);
   const [cursorPosition, setCursorPosition] = useState(draft.length);
@@ -182,6 +195,7 @@ export function ChatComposer({
     mentionDropdownItems.length > 0;
   const canSubmitDraft = canSendMessage && !isSending && segments.length > 0;
   const canEditComposer = canSendMessage && !isSending;
+  const canSelectFile = canEditComposer && !hasActiveFileUpload;
   const composerImageCount = segments.filter(
     (segment) => segment.type === "image",
   ).length;
@@ -369,7 +383,7 @@ export function ChatComposer({
   );
 
   return (
-    <div className="space-y-1.5 bg-surface px-4 py-2">
+    <div className="space-y-1.5 bg-surface">
       <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
         <div className="ml-[-6px] flex items-center gap-1.5">
           <div className="relative" ref={emojiPickerRef}>
@@ -416,6 +430,29 @@ export function ChatComposer({
               event.currentTarget.value = "";
             }}
             ref={imageInputRef}
+            type="file"
+          />
+          <Button
+            aria-label="发送文件"
+            className={composerActionButtonClass}
+            disabled={!canSelectFile}
+            onClick={() => fileInputRef.current?.click()}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={Folder01Icon} size={18} strokeWidth={1.8} />
+          </Button>
+          <input
+            accept={COMPOSER_FILE_ACCEPT}
+            aria-label="选择文件"
+            className="sr-only"
+            disabled={!canSelectFile}
+            onChange={(event) => {
+              onFileSelect(event.currentTarget.files);
+              event.currentTarget.value = "";
+            }}
+            ref={fileInputRef}
             type="file"
           />
           <Button
@@ -467,6 +504,33 @@ export function ChatComposer({
           </Button>
         </div>
       </div>
+
+      {quotedMessage ? (
+        <div
+          className="flex items-start gap-2"
+          data-testid="composer-quote-preview"
+        >
+          <QuoteMessagePreview
+            quoteMsgId={quotedMessage.quoteMsgId ?? ""}
+            quotedMessage={quotedMessage}
+          />
+          <Button
+            aria-label="取消引用"
+            className="size-7 shrink-0 rounded-full p-0 text-muted-foreground shadow-none hover:bg-surface-hover hover:text-foreground"
+            onClick={onClearQuotedMessage}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={Cancel01Icon}
+              size={14}
+              strokeWidth={2}
+            />
+          </Button>
+        </div>
+      ) : null}
 
       <div className="relative">
         {isMentionPickerOpen && mentionTrigger ? (

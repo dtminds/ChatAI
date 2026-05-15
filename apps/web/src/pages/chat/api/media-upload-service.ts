@@ -1,5 +1,9 @@
 import COS from "cos-js-sdk-v5";
 import { getUploadCredential } from "@/pages/chat/api/workbench-gateway";
+import {
+  formatFileSize,
+  getSupportedFileExtension,
+} from "@/pages/chat/lib/composer-file-files";
 import type {
   ComposerFileSegment,
   ComposerSegment,
@@ -38,9 +42,9 @@ export async function resolveImageSegmentsForSend(
     }
 
     const blob = await dataUrlToBlob(segment.localUrl);
-    const key = buildImageObjectKey({
+    const key = buildObjectKey({
       credential,
-      contentType: blob.type,
+      extension: getImageExtension(blob.type),
     });
     await cos.uploadFile({
       Body: blob,
@@ -79,27 +83,54 @@ export async function uploadWorkbenchFile(
   file: File,
   options: {
     onProgress?: (progress: number) => void;
+    signal?: AbortSignal;
   } = {},
 ): Promise<ComposerFileSegment> {
   const credential = await getUploadCredential(conversationId);
   const cos = createCosClient(credential);
-  const extension = getFileExtension(file.name) || DEFAULT_FALLBACK_EXTENSION;
+  const extension = getSupportedFileExtension(file) || DEFAULT_FALLBACK_EXTENSION;
   const key = buildFileObjectKey({
     credential,
     extension,
   });
+  let taskId: string | undefined;
+  const abortUploadTask = () => {
+    if (taskId) {
+      cos.cancelTask(taskId);
+    }
+  };
 
-  await cos.uploadFile({
-    Body: file,
-    Bucket: credential.bucket,
-    ContentType: file.type || undefined,
-    Key: key,
-    Region: credential.region,
-    SliceSize: UPLOAD_SLICE_SIZE,
-    onProgress(progressData) {
-      options.onProgress?.(Math.round((progressData.percent ?? 0) * 100));
-    },
-  });
+  if (options.signal?.aborted) {
+    throw createUploadAbortError();
+  }
+
+  options.signal?.addEventListener("abort", abortUploadTask, { once: true });
+
+  try {
+    await cos.uploadFile({
+      Body: file,
+      Bucket: credential.bucket,
+      ContentType: file.type || undefined,
+      Key: key,
+      Region: credential.region,
+      SliceSize: UPLOAD_SLICE_SIZE,
+      onProgress(progressData) {
+        options.onProgress?.(Math.round((progressData.percent ?? 0) * 100));
+      },
+      onTaskReady(nextTaskId) {
+        taskId = nextTaskId;
+        if (options.signal?.aborted) {
+          cos.cancelTask(nextTaskId);
+        }
+      },
+    });
+  } finally {
+    options.signal?.removeEventListener("abort", abortUploadTask);
+  }
+
+  if (options.signal?.aborted) {
+    throw createUploadAbortError();
+  }
 
   options.onProgress?.(100);
 
@@ -112,6 +143,10 @@ export async function uploadWorkbenchFile(
     type: "file",
     url: buildObjectUrl(key),
   };
+}
+
+function createUploadAbortError() {
+  return new DOMException("文件上传已取消", "AbortError");
 }
 
 function isLocalImageSegment(segment: ComposerSegment) {
@@ -147,17 +182,16 @@ async function dataUrlToBlob(dataUrl: string) {
   return response.blob();
 }
 
-function buildImageObjectKey({
-  contentType,
+function buildObjectKey({
   credential,
+  extension,
 }: {
-  contentType: string;
   credential: WorkbenchUploadCredentialResponse;
+  extension: string;
 }) {
   const prefix = normalizeUploadPrefix(
     getAllowedUploadPrefixes(credential)[0] ?? DEFAULT_IMAGE_UPLOAD_PREFIX,
   );
-  const extension = getImageExtension(contentType);
   const randomPart = Math.random().toString(36).slice(2, 10);
 
   return `${prefix}${Date.now()}-${randomPart}.${extension}`;
@@ -222,32 +256,6 @@ function buildObjectUrl(key: string) {
 
 function encodeCosKey(key: string) {
   return key.split("/").map(encodeURIComponent).join("/");
-}
-
-function getFileExtension(fileName: string) {
-  const extension = fileName.split(".").pop()?.trim().toLowerCase();
-
-  return extension && extension !== fileName.toLowerCase() ? extension : "";
-}
-
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${formatFileSizeUnit(bytes / 1024)} KB`;
-  }
-
-  if (bytes < 1024 * 1024 * 1024) {
-    return `${formatFileSizeUnit(bytes / (1024 * 1024))} MB`;
-  }
-
-  return `${formatFileSizeUnit(bytes / (1024 * 1024 * 1024))} GB`;
-}
-
-function formatFileSizeUnit(value: number) {
-  return value >= 10 ? value.toFixed(1) : value.toFixed(2);
 }
 
 function getAllowedUploadPrefixes(credential: WorkbenchUploadCredentialResponse) {

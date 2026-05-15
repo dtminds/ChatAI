@@ -1,0 +1,47 @@
+name: 技术任务 Tech Task
+description: 提交重构、工程化、测试、契约或后端技术任务
+title: "[Tech] "
+labels: ["type: chore", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        适合研发同学提交技术任务；非研发同学通常优先选择其它模板。
+  - type: textarea
+    id: description
+    attributes:
+      label: 任务说明
+      description: 说明背景、目标、实现范围和不包含范围
+      placeholder: |
+        背景：
+        目标：
+        范围：
+        不包含：
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 写清楚如何判断任务完成
+      placeholder: |
+        - 目标改动已完成
+        - 相关测试或构建通过
+        - 风险点已说明或处理
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: 风险和约束
+      description: 接口兼容、数据迁移、权限、安全、发布风险或必须遵守的技术约束
+      placeholder: 例如：公开业务接口继续使用 /api/server/*，可能影响 /chat 消息列表渲染
+    validations:
+      required: false
+  - type: textarea
+    id: links
+    attributes:
+      label: 相关资料
+      description: 设计文档、接口文档、历史 issue、PR、日志等
+    validations:
+      required: false

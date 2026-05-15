@@ -454,6 +454,149 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("keeps quote payload off image-only sends", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        alt: "截图",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          alt: "截图",
+          localUrl: "data:image/png;base64,aaa",
+          type: "image",
+        },
+      ],
+      {
+        quote: {
+          quoteMsgId: "538",
+          quotedMessageId: "remote-msg-538",
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        quote: undefined,
+        segment: {
+          alt: "截图",
+          fileId: "chat-images/conv-001/a.png",
+          type: "image",
+          url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+        },
+      }),
+    );
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+    ).toMatchObject({
+      content: {
+        type: "image",
+      },
+    });
+  });
+
+  it("applies quote payload to the first outgoing text segment", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        alt: "截图",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+      {
+        text: "补充文字",
+        type: "text",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          alt: "截图",
+          localUrl: "data:image/png;base64,aaa",
+          type: "image",
+        },
+        {
+          text: "补充文字",
+          type: "text",
+        },
+      ],
+      {
+        quote: {
+          quoteMsgId: "538",
+          quotedMessageId: "remote-msg-538",
+          quotedMessage: {
+            contentType: "text",
+            senderName: "客户",
+            text: "原消息",
+          },
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      didConsumeQuote: true,
+      ok: true,
+    });
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        quote: undefined,
+        segment: expect.objectContaining({
+          type: "image",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        quote: {
+          quoteMsgId: "538",
+          quotedMessageId: "remote-msg-538",
+          quotedMessage: {
+            contentType: "text",
+            senderName: "客户",
+            text: "原消息",
+          },
+        },
+        segment: {
+          text: "补充文字",
+          type: "text",
+        },
+      }),
+    );
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+    ).toMatchObject({
+      content: {
+        quoteMsgId: "538",
+        text: "补充文字",
+        type: "quote",
+      },
+    });
+  });
+
   it("resolves composer image segments even when url is the local data URL", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);

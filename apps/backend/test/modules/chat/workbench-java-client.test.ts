@@ -307,4 +307,59 @@ describe("createWorkbenchJavaClient", () => {
       }),
     );
   });
+
+  it("posts quoteContentBase64 in Java send-message msg data", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { optNo: "opt-quote-001" },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createWorkbenchJavaClient().sendMessage({
+      clientMessageId: "local-quote-001",
+      message: {
+        msgContent: "正式引用消息",
+        msgNum: 1,
+        msgType: 2033,
+        quoteContentBase64: "base64-quote-content",
+      },
+      platform: 5,
+      sendType: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/send-message",
+      expect.objectContaining({
+        body: JSON.stringify({
+          msgDatas: [
+            {
+              msgContent: "正式引用消息",
+              msgNum: 1,
+              msgType: 2033,
+              quoteContentBase64: "base64-quote-content",
+            },
+          ],
+          platform: 5,
+          sendType: 1,
+          thirdExternalUserid: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
 });

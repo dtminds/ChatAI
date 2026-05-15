@@ -217,6 +217,11 @@ export type WorkbenchSendMessagePayload = {
     location: "start" | "end";
     memberIds: string[];
   };
+  quote?: {
+    quoteMsgId: string;
+    quotedMessageId?: string;
+    quotedMessage?: WorkbenchQuotedMessagePreviewDto;
+  };
   segment?: WorkbenchOutgoingMessageSegment;
   segments?: WorkbenchOutgoingMessageSegment[];
 };

@@ -247,6 +247,12 @@ export const seedGroupMembersByConversationId: Record<string, GroupMember[]> = {
       type: 0,
     },
     {
+      id: "member-006",
+      displayName: "缪勇飞 群昵称111",
+      avatarUrl: customerAvatarGroupUrl,
+      type: 0,
+    },
+    {
       id: "member-005",
       displayName: "睡觉",
       avatarUrl: customerAvatarSleepUrl,
@@ -527,6 +533,7 @@ export const seedMessages: Record<string, Message[]> = {
       role: "customer",
       author: "缪勇飞 群昵称111",
       sender: {
+        groupMemberId: "member-006",
         id: "member-006",
         name: "缪勇飞 群昵称111",
         avatarUrl: customerAvatarGroupUrl,

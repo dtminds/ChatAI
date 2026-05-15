@@ -110,6 +110,28 @@ export class WorkbenchRepository {
     };
   }
 
+  async getQuoteContentBase64(input: {
+    messageId: string;
+    platform: number;
+    uid: number;
+  }) {
+    const messageId = input.messageId.trim();
+
+    if (!messageId) {
+      return undefined;
+    }
+
+    const extend = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_info_extend")
+      .select(["origin_data"])
+      .where("msgid", "=", messageId)
+      .where("platform", "=", input.platform)
+      .where("uid", "=", input.uid)
+      .executeTakeFirst();
+
+    return readQuoteContentBase64(extend?.origin_data);
+  }
+
   async listSeats(subUserId: string) {
     const subUserNumericId = parseMySqlId(subUserId);
 
@@ -969,6 +991,26 @@ function parseSystemMessageEventType(rawContent: string | null) {
   try {
     const parsed: unknown = JSON.parse(rawContent);
     return isRecord(parsed) && typeof parsed.type === "string" ? parsed.type : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readQuoteContentBase64(rawOriginData: string | null | undefined) {
+  if (!rawOriginData) {
+    return undefined;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(rawOriginData);
+
+    if (!isRecord(parsed)) {
+      return undefined;
+    }
+
+    const value = parsed.quote_content_base64;
+
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
   } catch {
     return undefined;
   }

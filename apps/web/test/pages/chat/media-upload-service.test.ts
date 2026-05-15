@@ -6,14 +6,18 @@ import {
   resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
-import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
-import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
+import {
+  resolveImageSegmentsForSend,
+  uploadWorkbenchFile,
+} from "@/pages/chat/api/media-upload-service";
 
 const cosUploadFileMock = vi.hoisted(() => vi.fn());
+const cosCancelTaskMock = vi.hoisted(() => vi.fn());
 const cosConstructorMock = vi.hoisted(() =>
   vi.fn(function CosMock() {
     return {
-    uploadFile: cosUploadFileMock,
+      cancelTask: cosCancelTaskMock,
+      uploadFile: cosUploadFileMock,
     };
   }),
 );
@@ -45,6 +49,7 @@ function createUploadCredential(
 describe("resolveImageSegmentsForSend", () => {
   beforeEach(() => {
     resetWorkbenchService();
+    cosCancelTaskMock.mockReset();
     cosUploadFileMock.mockReset();
     cosConstructorMock.mockClear();
     vi.useRealTimers();
@@ -311,6 +316,76 @@ describe("resolveImageSegmentsForSend", () => {
       expect.objectContaining({
         Body: file,
         ContentType: "application/pdf",
+        Key: "s5/upload/2026/05/13/272/1778659200000-4fzyo82m.pdf",
+      }),
+    );
+  });
+
+  it("cancels the COS upload task when the file upload signal aborts", async () => {
+    const credential = createUploadCredential({
+      allowPerfixs: ["s5/upload/2026/05/13/272/"],
+    });
+    const baseService = createMockWorkbenchService();
+    const getUploadCredential = vi.fn(async () => credential);
+    const file = new File(["file-bytes"], "报价单.pdf", {
+      type: "application/pdf",
+    });
+    const upload = createDeferred();
+    const abortController = new AbortController();
+
+    setWorkbenchService({
+      ...baseService,
+      getUploadCredential,
+    });
+    cosUploadFileMock.mockImplementation((params) => {
+      params.onTaskReady?.("cos-task-001");
+      return upload.promise;
+    });
+
+    const uploadPromise = uploadWorkbenchFile("conv-001", file, {
+      signal: abortController.signal,
+    });
+
+    await waitFor(() => {
+      expect(cosUploadFileMock).toHaveBeenCalledTimes(1);
+    });
+
+    abortController.abort();
+
+    expect(cosCancelTaskMock).toHaveBeenCalledWith("cos-task-001");
+    upload.reject(new DOMException("文件上传已取消", "AbortError"));
+    await expect(uploadPromise).rejects.toMatchObject({
+      name: "AbortError",
+    });
+  });
+
+  it("derives the COS object extension from MIME type when the file name has no extension", async () => {
+    const credential = createUploadCredential({
+      allowPerfixs: ["s5/upload/2026/05/13/272/"],
+    });
+    const baseService = createMockWorkbenchService();
+    const getUploadCredential = vi.fn(async () => credential);
+    const file = new File(["file-bytes"], "报价单", {
+      type: "application/pdf",
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      getUploadCredential,
+    });
+    vi.setSystemTime(new Date("2026-05-13T08:00:00Z"));
+    vi.spyOn(Math, "random").mockReturnValue(0.123456);
+    cosUploadFileMock.mockImplementation(async () => ({
+      ETag: '"mock-etag"',
+    }));
+
+    await expect(uploadWorkbenchFile("conv-001", file)).resolves.toMatchObject({
+      extension: "pdf",
+      fileId: "s5/upload/2026/05/13/272/1778659200000-4fzyo82m.pdf",
+      url: "https://b5.bokr.com.cn/s5/upload/2026/05/13/272/1778659200000-4fzyo82m.pdf",
+    });
+    expect(cosUploadFileMock).toHaveBeenCalledWith(
+      expect.objectContaining({
         Key: "s5/upload/2026/05/13/272/1778659200000-4fzyo82m.pdf",
       }),
     );

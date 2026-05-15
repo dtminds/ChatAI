@@ -1,0 +1,39 @@
+name: 缺陷反馈 Bug
+description: 反馈影响使用的问题
+title: "[Bug] "
+labels: ["type: bug", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请描述你看到的事实。模块、优先级、负责人会在后续 triage 时补充。
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题说明
+      description: 说明问题、影响范围、实际结果和期望结果
+      placeholder: |
+        发生了什么：
+        影响范围：
+        实际结果：
+        期望结果：
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现信息
+      description: 如果可以复现，请写步骤；如果暂时不能稳定复现，请写出现时间、账号、环境等线索。不要填写密码、token 或敏感数据。
+      placeholder: |
+        复现步骤：
+        发生频率：
+        环境信息：
+    validations:
+      required: false
+  - type: textarea
+    id: attachments
+    attributes:
+      label: 截图、录屏或日志
+      description: 可以拖拽上传截图、录屏或日志片段。请先遮盖敏感信息。
+    validations:
+      required: false

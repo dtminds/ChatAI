@@ -189,6 +189,14 @@ pnpm backend:db:codegen -- xy_wap_embed_user_relation
 
 不要在前端页面里直接裸写 `fetch`，也不要把 backend 内部实现名暴露到公开 URL。
 
+### 侧栏嵌入页（自定义 iframe）查询参数
+
+打开设置里配置的自定义侧栏 iframe 时，前端会在 `src` 上追加查询参数（实现见 [`apps/web/src/pages/chat/lib/sidebar-iframe-url.ts`](apps/web/src/pages/chat/lib/sidebar-iframe-url.ts)）：
+
+- **`tos`**：`0` 表示当前子账号尚未接管该企微席位，`1` 表示已由当前登录子账号接管。
+- **`qd`**：仅在当前会话为**群聊**且后端返回了三方群 ID（`thirdGroupId`）时追加，供嵌入页识别群会话。
+- **`rd` / `fsw` / `ts` / `mid`**：在配置了涂色密钥时，对用户标识与时间戳等进行加密拼接（与后端 `/server/me/sidebar-tuse-crypto` 约定一致）。
+
 ## 关键文件
 
 - 腾讯云容器部署指南：[docs/deployment/tencent-cloud-containers.md](docs/deployment/tencent-cloud-containers.md)

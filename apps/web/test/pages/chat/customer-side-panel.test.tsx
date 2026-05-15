@@ -156,6 +156,7 @@ describe("CustomerSidePanel", () => {
           {...defaultProps}
           sidebarIframeThirdExternalUserId="ext-42"
           sidebarIframeThirdUserId="third-42"
+          sidebarIframeTos="1"
           sidebarItems={[
             {
               id: "1",
@@ -174,12 +175,11 @@ describe("CustomerSidePanel", () => {
         const iframe = screen.getByTitle("素材中心扩展页");
         const parsed = new URL(iframe.getAttribute("src") ?? "");
 
-        expect(parsed.searchParams.get("thirdUserId")).toBe("third-42");
-        expect(parsed.searchParams.get("thirdExternalUserId")).toBe("ext-42");
         expect(parsed.searchParams.get("mid")).toBe("embed-app-001");
         expect(parsed.searchParams.get("rd")).toBe(rd);
         expect(parsed.searchParams.get("fsw")).toBe(fsw);
         expect(parsed.searchParams.get("ts")).toBe(ts);
+        expect(parsed.searchParams.get("tos")).toBe("1");
       });
     } finally {
       nowSpy.mockRestore();

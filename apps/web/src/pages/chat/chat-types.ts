@@ -57,6 +57,8 @@ export type Conversation = {
   thirdUserId?: string;
   /** 外部用户 ID，侧栏 iframe 会拼入 URL 查询参数 `thirdExternalUserId` */
   thirdExternalUserId?: string;
+  /** 群会话三方群 ID，侧栏 iframe 在群聊时拼入查询参数 `qd` */
+  thirdGroupId?: string;
   isPinned?: boolean;
   updatedAtMs?: number;
 };

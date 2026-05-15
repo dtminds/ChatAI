@@ -27,6 +27,10 @@ type CustomerSidePanelProps = {
   /** 当前会话三方用户标识，会附加到自定义侧栏 iframe 的查询串 */
   sidebarIframeThirdExternalUserId?: string;
   sidebarIframeThirdUserId?: string;
+  /** `tos`：`0` 未接管，`1` 已由当前坐席接管当前账号 */
+  sidebarIframeTos?: "0" | "1";
+  /** `qd`：群聊时为三方群 ID */
+  sidebarIframeQd?: string;
   customer?: CustomerProfile;
   groupMembers: GroupMember[];
   isGroupMembersLoading: boolean;
@@ -43,6 +47,8 @@ export function CustomerSidePanel({
   customer,
   sidebarIframeThirdExternalUserId,
   sidebarIframeThirdUserId,
+  sidebarIframeTos,
+  sidebarIframeQd,
   groupMembers,
   isGroupMembersLoading,
   isResizing,
@@ -218,16 +224,16 @@ export function CustomerSidePanel({
   const sidebarIframeSrcForUrl = useMemo(
     () => (url: string) =>
       buildSidebarIframeSrc(url, {
-        thirdExternalUserId: sidebarIframeThirdExternalUserId,
-        thirdUserId: sidebarIframeThirdUserId,
         ...(sidebarIframeCrypto ?? {}),
         ...(sidebarIframeMid ? { mid: sidebarIframeMid } : {}),
+        ...(sidebarIframeTos ? { tos: sidebarIframeTos } : {}),
+        ...(sidebarIframeQd ? { qd: sidebarIframeQd } : {}),
       }),
     [
       sidebarIframeCrypto,
       sidebarIframeMid,
-      sidebarIframeThirdExternalUserId,
-      sidebarIframeThirdUserId,
+      sidebarIframeQd,
+      sidebarIframeTos,
     ],
   );
   const activeSidebarItems = sortSidebarItems(sidebarItems).filter(

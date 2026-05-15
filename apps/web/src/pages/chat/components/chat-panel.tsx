@@ -24,6 +24,8 @@ type ChatPanelProps = {
   canSendMessage: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
+  /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
+  sidebarIframeTos?: "0" | "1";
   customerPanelWidth: number;
   draft: string;
   groupMembers: GroupMember[];
@@ -62,6 +64,7 @@ export function ChatPanel({
   canSendMessage,
   composerPlaceholder,
   customer,
+  sidebarIframeTos,
   customerPanelWidth,
   draft,
   groupMembers,
@@ -162,8 +165,16 @@ export function ChatPanel({
           accountName={accountName}
           conversationMode={activeConversation?.mode}
           customer={customer}
+          sidebarIframeQd={
+            activeConversation?.mode === "group" &&
+            activeConversation.thirdGroupId !== undefined &&
+            activeConversation.thirdGroupId !== ""
+              ? activeConversation.thirdGroupId
+              : undefined
+          }
           sidebarIframeThirdExternalUserId={activeConversation?.thirdExternalUserId}
           sidebarIframeThirdUserId={activeConversation?.thirdUserId}
+          sidebarIframeTos={sidebarIframeTos}
           groupMembers={groupMembers}
           isGroupMembersLoading={isGroupMembersLoading}
           isResizing={isResizingCustomerPanel}

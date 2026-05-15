@@ -230,7 +230,10 @@ function adaptChatMessageContent(
       return {
         alt: String(content.alt ?? ""),
         coverImageUrl: String(content.coverImageUrl ?? ""),
+        downloadStatus: asDownloadStatus(content.downloadStatus),
         durationLabel: String(content.durationLabel ?? ""),
+        fileSerialNo: asOptionalString(content.fileSerialNo),
+        fileUrlExpireTime: asOptionalNumber(content.fileUrlExpireTime),
         height: asOptionalNumber(content.height),
         type: "video",
         videoUrl: String(content.videoUrl ?? ""),
@@ -238,9 +241,12 @@ function adaptChatMessageContent(
       };
     case "file":
       return {
+        downloadStatus: asDownloadStatus(content.downloadStatus),
         extension: String(content.extension ?? ""),
         fileName: String(content.fileName ?? ""),
+        fileSerialNo: asOptionalString(content.fileSerialNo),
         fileSizeLabel: String(content.fileSizeLabel ?? ""),
+        fileUrl: asOptionalString(content.fileUrl),
         sourceLabel: asOptionalString(content.sourceLabel),
         type: "file",
       };
@@ -396,6 +402,12 @@ function buildAccountTone(accountId: string) {
 
 function asOptionalString(value: unknown) {
   return typeof value === "string" ? value : undefined;
+}
+
+function asDownloadStatus(value: unknown) {
+  return value === "ing" || value === "finished" || value === "failed"
+    ? value
+    : undefined;
 }
 
 function asOptionalNumber(value: unknown) {

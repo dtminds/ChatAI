@@ -123,6 +123,15 @@ type WorkbenchState = {
   retryFailedMessage: (messageId: string) => Promise<void>;
   loadOlderMessages: () => Promise<void>;
   pollWorkbench: () => Promise<void>;
+  updateMessageDownloadContent: (
+    conversationId: string,
+    messageId: string,
+    contentPatch: {
+      downloadStatus?: "ing" | "finished" | "failed";
+      fileUrlExpireTime?: number;
+      fileUrl?: string;
+    },
+  ) => void;
 };
 
 type WorkbenchStore = WorkbenchState;
@@ -148,6 +157,7 @@ function createInitialState(): Omit<
   | "retryFailedMessage"
   | "loadOlderMessages"
   | "pollWorkbench"
+  | "updateMessageDownloadContent"
   | "dismissScopeTransitionError"
   | "dismissReadReceiptError"
 > {
@@ -1843,6 +1853,44 @@ export function createWorkbenchStore() {
         });
       }
     },
+      updateMessageDownloadContent(conversationId, messageId, contentPatch) {
+        set((currentState) => {
+          const messages = currentState.messagesByConversationId[conversationId] ?? [];
+
+          return {
+            messagesByConversationId: {
+              ...currentState.messagesByConversationId,
+              [conversationId]: messages.map((message) => {
+                if (message.id !== messageId || !isDownloadableMessage(message)) {
+                  return message;
+                }
+
+                if (message.content.type === "video") {
+                  return {
+                    ...message,
+                    content: {
+                      ...message.content,
+                      downloadStatus: contentPatch.downloadStatus,
+                      ...(contentPatch.fileUrlExpireTime === undefined
+                        ? {}
+                        : { fileUrlExpireTime: contentPatch.fileUrlExpireTime }),
+                      videoUrl: contentPatch.fileUrl ?? message.content.videoUrl,
+                    },
+                  };
+                }
+
+                return {
+                  ...message,
+                  content: {
+                    ...message.content,
+                    ...contentPatch,
+                  },
+                };
+              }),
+            },
+          };
+        });
+      },
     };
   });
 }
@@ -1858,6 +1906,13 @@ function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegm
       type: "text",
     } satisfies ComposerTextSegment;
   });
+}
+
+function isDownloadableMessage(message: Message): message is ChatMessage {
+  return (
+    message.role !== "system" &&
+    (message.content.type === "file" || message.content.type === "video")
+  );
 }
 
 function getRequestErrorCode(error: unknown) {

@@ -95,12 +95,17 @@ export type ImageMessageContent = {
   height?: number;
 };
 
+export type MessageFileDownloadStatus = "ing" | "finished" | "failed";
+
 export type VideoMessageContent = {
   type: "video";
   videoUrl: string;
   coverImageUrl: string;
   alt: string;
   durationLabel: string;
+  downloadStatus?: MessageFileDownloadStatus;
+  fileSerialNo?: string;
+  fileUrlExpireTime?: number;
   width?: number;
   height?: number;
 };
@@ -110,6 +115,9 @@ export type FileMessageContent = {
   fileName: string;
   fileSizeLabel: string;
   extension: string;
+  downloadStatus?: MessageFileDownloadStatus;
+  fileSerialNo?: string;
+  fileUrl?: string;
   sourceLabel?: string;
 };
 

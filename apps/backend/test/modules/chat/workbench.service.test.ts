@@ -447,6 +447,96 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("starts message file transfer with the audit msgid in an accessible conversation", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.downloadMessageFile("101", "88", "remote-msg-file-001"),
+    ).resolves.toEqual({
+      messageId: "remote-msg-file-001",
+      status: "accepted",
+    });
+    expect(javaClient.downloadMsgFile).toHaveBeenCalledWith({
+      msgid: "remote-msg-file-001",
+      platform: 5,
+      uid: 9001,
+    });
+  });
+
+  it("rejects message file transfer when msgid is empty", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.downloadMessageFile("101", "88", "  "),
+    ).rejects.toMatchObject({
+      code: "INVALID_MESSAGE_ID",
+      statusCode: 400,
+    });
+    expect(javaClient.downloadMsgFile).not.toHaveBeenCalled();
+  });
+
+  it("reads message file transfer status after seat access is verified", async () => {
+    const javaClient = createJavaClient();
+    const getMessageFileDownloadStatus = vi.fn().mockResolvedValue({
+      downloadStatus: "finished",
+      fileSerialNo: "serial-file-001",
+      fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+        getMessageFileDownloadStatus,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getMessageFileDownloadStatus("101", "88", 321),
+    ).resolves.toEqual({
+      downloadStatus: "finished",
+      fileSerialNo: "serial-file-001",
+      fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+    });
+    expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
+      auditId: 321,
+      platform: 5,
+      uid: 9001,
+    });
+  });
+
   it("maps a group text send with mentions to the Java send-message payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
@@ -897,6 +987,7 @@ describe("MysqlWorkbenchService", () => {
 function createJavaClient(): WorkbenchJavaClient {
   return {
     deleteConversation: vi.fn().mockResolvedValue(undefined),
+    downloadMsgFile: vi.fn().mockResolvedValue(undefined),
     getUploadCredential: vi.fn(),
     markConversationRead: vi.fn().mockResolvedValue(undefined),
     markConversationUnread: vi.fn().mockResolvedValue(undefined),

@@ -36,9 +36,9 @@ describe("workbench MySQL mappers", () => {
   });
 
   it("maps a single conversation row with customer metadata", () => {
-    expect(
-      mapConversationRow({
+    const conversation = mapConversationRow({
         chat_type: 1,
+        create_time: new Date("2026-05-15T08:00:00.000Z"),
         customer_avatar: "https://example.com/customer.png",
         customer_name: "客户备注",
         group_avatar: "",
@@ -53,8 +53,10 @@ describe("workbench MySQL mappers", () => {
         third_group_id: "",
         third_userid: "third-user-1",
         unread_cnt: 2,
-      }),
-    ).toMatchObject({
+        verified: 0,
+      });
+
+    expect(conversation).toMatchObject({
       conversationId: "88",
       customerAvatar: "https://example.com/customer.png",
       customerId: "external-1",
@@ -66,12 +68,15 @@ describe("workbench MySQL mappers", () => {
       thirdUserId: "third-user-1",
       unreadCount: 2,
     });
+    expect(conversation.createdAt).toBe(1778832000000);
+    expect(conversation.verified).toBe(false);
   });
 
   it("does not coerce conversations without a last message time to epoch", () => {
     expect(
       mapConversationRow({
         chat_type: 2,
+        create_time: null,
         customer_avatar: "",
         customer_name: null,
         group_avatar: "https://example.com/group.png",
@@ -86,6 +91,7 @@ describe("workbench MySQL mappers", () => {
         third_group_id: "group-2",
         third_userid: "third-user-1",
         unread_cnt: 0,
+        verified: 1,
       }),
     ).toMatchObject({
       conversationId: "89",
@@ -98,6 +104,7 @@ describe("workbench MySQL mappers", () => {
     expect(
       mapConversationRow({
         chat_type: 2,
+        create_time: null,
         customer_avatar: "",
         customer_name: null,
         group_avatar: "https://example.com/group.png",
@@ -112,6 +119,7 @@ describe("workbench MySQL mappers", () => {
         third_group_id: "group-3",
         third_userid: "third-user-1",
         unread_cnt: 0,
+        verified: 1,
       }),
     ).toMatchObject({
       conversationId: "90",

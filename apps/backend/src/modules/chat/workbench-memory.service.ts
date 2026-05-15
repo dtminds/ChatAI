@@ -91,8 +91,16 @@ export function createMemoryWorkbenchService() {
     getSeats(_subUserId: string) {
       return clone(state.seats);
     },
-    getConversations(_subUserId: string, seatId: string) {
-      return clone(sortConversations(state.conversationsBySeat[seatId] ?? []));
+    getConversations(
+      _subUserId: string,
+      seatId: string,
+      options?: { limit?: number; mode?: "single" | "group" },
+    ) {
+      return clone(
+        sortConversations(state.conversationsBySeat[seatId] ?? [])
+          .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
+          .slice(0, options?.limit),
+      );
     },
     getMe(_subUserId: string) {
       return clone(state.subUser);

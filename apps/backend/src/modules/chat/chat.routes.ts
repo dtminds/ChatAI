@@ -11,9 +11,9 @@ import { ServiceUnavailableError } from "../../shared/errors.js";
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
 const ConversationListQuerySchema = Type.Object({
+  limit: Type.Optional(NumericStringSchema),
+  mode: Type.Optional(Type.Union([Type.Literal("single"), Type.Literal("group")])),
   seatId: Type.Optional(Type.String()),
-  page: Type.Optional(NumericStringSchema),
-  pageSize: Type.Optional(NumericStringSchema),
 });
 
 const ConversationParamsSchema = Type.Object({
@@ -223,6 +223,10 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app).getConversations(
         getSubUserId(request),
         request.query.seatId ?? "",
+        {
+          limit: parseOptionalInteger(request.query.limit),
+          mode: request.query.mode,
+        },
       );
     },
   );

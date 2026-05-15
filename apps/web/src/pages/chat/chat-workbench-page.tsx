@@ -37,6 +37,7 @@ import {
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
+import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
@@ -46,6 +47,7 @@ import type {
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
+import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import {
   downloadMessageFile,
   getMessageFileDownloadStatus,
@@ -221,7 +223,8 @@ function ChatWorkbenchContent({
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
   const allConversations = conversationListsByScope[activeAccountId] ?? [];
-  const visibleConversations = allConversations.filter(
+  const visibleSearchableConversations = getVisibleConversations(allConversations);
+  const visibleConversations = visibleSearchableConversations.filter(
     (conversation) => conversation.mode === activeMode,
   );
   const activeConversation =
@@ -255,6 +258,8 @@ function ChatWorkbenchContent({
     (activeConversation &&
       customerProfilesById[activeConversation.customerId]) ??
     undefined;
+
+  useConversationRevealTimer(allConversations);
   const isActiveAccountOffline = activeAccount?.loginStatus === "offline";
   const isActiveAccountTakenOver =
     !!activeAccount?.takenOverEmployeeId &&
@@ -936,7 +941,7 @@ function ChatWorkbenchContent({
               <ConversationListPanel
                 activeConversation={activeConversation}
                 activeMode={activeMode}
-                conversations={visibleConversations}
+                conversations={visibleSearchableConversations}
                 isConversationActionDisabled={isConversationActionDisabled}
                 onDeleteConversation={deleteConversation}
                 onMarkConversationRead={markConversationRead}
@@ -945,7 +950,7 @@ function ChatWorkbenchContent({
                 onSelectConversation={handleSelectConversation}
                 onSelectMode={handleSelectMode}
                 onUnpinConversation={unpinConversation}
-                searchableConversations={allConversations}
+                searchableConversations={visibleSearchableConversations}
               />
 
               <ChatPanel

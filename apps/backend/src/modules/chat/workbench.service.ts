@@ -49,6 +49,7 @@ export type WorkbenchService = {
   getConversations(
     subUserId: string,
     seatId: string,
+    options?: { limit?: number; mode?: "single" | "group" },
   ): Promise<WorkbenchConversationSummaryDto[]> | WorkbenchConversationSummaryDto[];
   getMe(subUserId: string): Promise<WorkbenchSubUserDto> | WorkbenchSubUserDto;
   getMessages(
@@ -150,10 +151,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return this.repository.listSeats(subUserId);
   }
 
-  async getConversations(subUserId: string, seatId: string) {
+  async getConversations(
+    subUserId: string,
+    seatId: string,
+    options?: { limit?: number; mode?: "single" | "group" },
+  ) {
     await this.assertSeatAccess(subUserId, seatId);
 
-    return this.repository.listConversations(seatId);
+    return this.repository.listConversations(seatId, options);
   }
 
   async getMessages(

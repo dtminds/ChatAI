@@ -54,6 +54,7 @@ export type Conversation = {
   customerId: string;
   customerName: string;
   customerAvatarUrl: string;
+  createdAtMs?: number;
   preview: string;
   updatedAt: string;
   quietFor: string;
@@ -61,6 +62,7 @@ export type Conversation = {
   mode: ChatMode;
   priority: "high" | "medium" | "low";
   isPinned?: boolean;
+  isVerified?: boolean;
   updatedAtMs?: number;
 };
 

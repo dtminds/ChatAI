@@ -1401,8 +1401,8 @@ describe("ChatWorkbenchPage", () => {
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(seatId) {
-        const conversations = await baseService.getConversations(seatId);
+      async getConversations(seatId, options) {
+        const conversations = await baseService.getConversations(seatId, options);
 
         return conversations.map((conversation) =>
           conversation.conversationId === "conv-004"

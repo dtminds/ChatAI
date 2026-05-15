@@ -30,6 +30,7 @@ import type {
   Message,
   MessageStatus,
 } from "@/pages/chat/chat-types";
+import { sortConversations } from "@/pages/chat/lib/conversation-order";
 
 type GatewayContext = {
   accounts: Account[];
@@ -101,11 +102,18 @@ export type WorkbenchPollResult = {
 };
 
 const DEFAULT_MESSAGE_PAGE_SIZE = 50;
+export const UNVERIFIED_CONVERSATION_HIDE_DELAY_MS = 3 * 60 * 1000;
+export const CONVERSATION_MODE_CACHE_TTL_MS = 60 * 1000;
+export const CONVERSATION_MODE_LIMITS = {
+  group: 100,
+  single: 1000,
+} as const satisfies Record<ChatMode, number>;
 
 export async function bootstrapWorkbench(
   preferredMode: ChatMode,
   customerProfilesById: Record<string, CustomerProfile>,
   pageSize = DEFAULT_MESSAGE_PAGE_SIZE,
+  now = Date.now(),
 ): Promise<WorkbenchBootstrapResult> {
   const service = getWorkbenchService();
   const [meDto, accountDtos, sidebarItemsResponse] = await Promise.all([
@@ -117,11 +125,13 @@ export async function bootstrapWorkbench(
   const me = adaptEmployee(meDto);
   const accounts = accountDtos.map((account) => adaptAccount(account, account.unreadCount));
   const activeAccountId = accounts[0]?.id ?? "";
-  const conversationDtos = activeAccountId
-    ? await service.getConversations(activeAccountId)
+  const conversations = activeAccountId
+    ? await loadAccountConversations(activeAccountId)
     : [];
-  const conversations = conversationDtos.map(adaptConversation);
-  const nextConversation = getFirstConversation(conversations, preferredMode);
+  const nextConversation = getFirstConversation(
+    getVisibleConversations(conversations, now),
+    preferredMode,
+  );
   const activeConversationId = nextConversation?.id ?? "";
   const activeMode = nextConversation?.mode ?? preferredMode;
   const conversationPage = activeConversationId
@@ -148,6 +158,18 @@ export async function bootstrapWorkbench(
     me,
     sidebarItems: getSidebarItemsFromResponse(sidebarItemsResponse),
   };
+}
+
+function mergeConversations(conversationLists: Conversation[][]) {
+  const conversationsById = new Map<string, Conversation>();
+
+  for (const conversations of conversationLists) {
+    for (const conversation of conversations) {
+      conversationsById.set(conversation.id, conversation);
+    }
+  }
+
+  return sortConversations([...conversationsById.values()]);
 }
 
 function getSidebarItemsFromResponse(response: unknown): SettingsSidebarItem[] {
@@ -191,13 +213,13 @@ export async function loadAccountScope(
   context: GatewayContext,
   pageSize = DEFAULT_MESSAGE_PAGE_SIZE,
   preferredConversationId?: string,
+  now = Date.now(),
 ): Promise<WorkbenchAccountScopeResult> {
-  const service = getWorkbenchService();
-  const conversationDtos = await service.getConversations(accountId);
-  const conversations = conversationDtos.map(adaptConversation);
+  const conversations = await loadAccountConversations(accountId);
+  const visibleConversations = getVisibleConversations(conversations, now);
   const nextConversation =
-    conversations.find((conversation) => conversation.id === preferredConversationId) ??
-    getFirstConversation(conversations, preferredMode);
+    visibleConversations.find((conversation) => conversation.id === preferredConversationId) ??
+    getFirstConversation(visibleConversations, preferredMode);
   const nextConversationId = nextConversation?.id ?? "";
   const nextMode = nextConversation?.mode ?? preferredMode;
   const conversationPage = nextConversationId
@@ -216,7 +238,22 @@ export async function loadAccountScope(
 }
 
 export async function loadAccountConversations(accountId: string): Promise<Conversation[]> {
-  const conversationDtos = await getWorkbenchService().getConversations(accountId);
+  const [singleConversations, groupConversations] = await Promise.all([
+    loadAccountConversationsByMode(accountId, "single"),
+    loadAccountConversationsByMode(accountId, "group"),
+  ]);
+
+  return mergeConversations([singleConversations, groupConversations]);
+}
+
+export async function loadAccountConversationsByMode(
+  accountId: string,
+  mode: ChatMode,
+): Promise<Conversation[]> {
+  const conversationDtos = await getWorkbenchService().getConversations(accountId, {
+    limit: CONVERSATION_MODE_LIMITS[mode],
+    mode,
+  });
 
   return conversationDtos.map(adaptConversation);
 }
@@ -387,4 +424,27 @@ function getFirstConversation(
   mode: ChatMode,
 ) {
   return conversations.find((conversation) => conversation.mode === mode) ?? conversations[0];
+}
+
+export function getVisibleConversations(
+  conversations: Conversation[],
+  now = Date.now(),
+) {
+  return conversations.filter((conversation) =>
+    isConversationVisible(conversation, now),
+  );
+}
+
+export function isConversationVisible(conversation: Conversation, now = Date.now()) {
+  if (conversation.isVerified !== false) {
+    return true;
+  }
+
+  const createdAt = conversation.createdAtMs;
+
+  if (!createdAt || createdAt <= 0) {
+    return true;
+  }
+
+  return now - createdAt >= UNVERIFIED_CONVERSATION_HIDE_DELAY_MS;
 }

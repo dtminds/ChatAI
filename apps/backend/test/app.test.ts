@@ -838,7 +838,7 @@ describe("backend app", () => {
     const conversations = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/conversations?seatId=drc&page=1&pageSize=30",
+      url: "/api/server/conversations?seatId=drc&mode=single&limit=1000",
     });
     const messages = await app.inject({
       headers: { authorization },

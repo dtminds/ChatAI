@@ -49,14 +49,17 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
 
 export function adaptConversation(dto: WorkbenchConversationSummaryDto): Conversation {
   const lastMessageTime = normalizeOptionalTimestamp(dto.lastMessageTime);
+  const createdAt = normalizeOptionalTimestamp(dto.createdAt);
 
   return {
     accountId: dto.seatId,
+    createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,
     customerId: dto.customerId,
     customerName: dto.customerName,
     id: dto.conversationId,
     isPinned: dto.isPinned,
+    isVerified: dto.verified,
     mode: dto.mode,
     preview: dto.lastMessage,
     priority: dto.priority,

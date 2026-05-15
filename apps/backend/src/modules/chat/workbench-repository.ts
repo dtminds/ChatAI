@@ -31,7 +31,10 @@ import {
 } from "./workbench-mappers.js";
 const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
+const CHAT_TYPE_SINGLE = 1;
 const CHAT_TYPE_GROUP = 2;
+const DEFAULT_CONVERSATION_LIST_LIMIT = 500;
+const MAX_CONVERSATION_LIST_LIMIT = 1000;
 const GROUP_MEMBER_SORT_RANK = {
   [GROUP_MEMBER_TYPE.OWNER]: 0,
   [GROUP_MEMBER_TYPE.ADMIN]: 1,
@@ -283,7 +286,13 @@ export class WorkbenchRepository {
     return Boolean(relation);
   }
 
-  async listConversations(seatId: string) {
+  async listConversations(
+    seatId: string,
+    options?: {
+      limit?: number;
+      mode?: "single" | "group";
+    },
+  ) {
     const seatNumericId = parseMySqlId(seatId);
 
     if (seatNumericId == null) {
@@ -296,7 +305,7 @@ export class WorkbenchRepository {
       return [];
     }
 
-    const rows = await this.db
+    let query = this.db
       .selectFrom("xy_wap_embed_conversation as conversation")
       .leftJoin("xy_wap_embed_msg_audit_info as last_message", (join) =>
         join
@@ -320,12 +329,14 @@ export class WorkbenchRepository {
       .select([
         "conversation.id as id",
         "conversation.chat_type as chat_type",
+        "conversation.create_time as create_time",
         "conversation.third_userid as third_userid",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
         "conversation.unread_cnt as unread_cnt",
         "conversation.last_msgtime as last_msgtime",
         "conversation.pinned_time as pinned_time",
+        "conversation.verified as verified",
         "last_message.content as last_message_content",
         "last_message.msgtype as last_message_type",
         "contact.avatar as customer_avatar",
@@ -343,7 +354,18 @@ export class WorkbenchRepository {
       .where("conversation.third_userid", "=", seat.third_userid)
       .where("conversation.biz_status", "=", 1)
       .orderBy("conversation.pinned_time", "desc")
-      .orderBy("conversation.last_msgtime", "desc")
+      .orderBy("conversation.last_msgtime", "desc");
+
+    if (options?.mode) {
+      query = query.where(
+        "conversation.chat_type",
+        "=",
+        options.mode === "group" ? CHAT_TYPE_GROUP : CHAT_TYPE_SINGLE,
+      );
+    }
+
+    const rows = await query
+      .limit(normalizeConversationListLimit(options?.limit))
       .execute();
 
     const conversationRows = rows.map((row) => row as ConversationRow);
@@ -1073,6 +1095,14 @@ export function parseMySqlId(value: string) {
   }
 
   return numeric;
+}
+
+function normalizeConversationListLimit(value: number | undefined) {
+  if (value == null || !Number.isSafeInteger(value) || value <= 0) {
+    return DEFAULT_CONVERSATION_LIST_LIMIT;
+  }
+
+  return Math.min(value, MAX_CONVERSATION_LIST_LIMIT);
 }
 
 type GroupMemberRow = {

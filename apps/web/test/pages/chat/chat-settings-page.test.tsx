@@ -233,6 +233,7 @@ describe("Chat settings pages", () => {
       data: {
         items: [
           {
+            bindTypes: ["1", "2"],
             id: "201",
             name: "企业名片",
             sort: 1,
@@ -240,6 +241,7 @@ describe("Chat settings pages", () => {
             url: "https://example.com/card",
           },
           {
+            bindTypes: ["1", "2"],
             id: "202",
             name: "发起收款",
             sort: 2,
@@ -247,6 +249,7 @@ describe("Chat settings pages", () => {
             url: "https://example.com/pay",
           },
           {
+            bindTypes: ["1", "2"],
             id: "203",
             name: "客户详情",
             sort: 3,
@@ -254,6 +257,7 @@ describe("Chat settings pages", () => {
             url: "https://example.com/customer",
           },
           {
+            bindTypes: ["1", "2"],
             id: "204",
             name: "快捷回复",
             sort: 4,
@@ -356,6 +360,7 @@ describe("Chat settings pages", () => {
     ]);
     mock.onPatch("/server/settings/sidebar-items/201/status").reply(200, {
       data: {
+        bindTypes: ["1", "2"],
         id: "201",
         name: "名片新版",
         sort: 1,
@@ -368,6 +373,7 @@ describe("Chat settings pages", () => {
       data: {
         items: [
           {
+            bindTypes: ["1", "2"],
             id: "202",
             name: "发起收款",
             sort: 1,
@@ -375,6 +381,7 @@ describe("Chat settings pages", () => {
             url: "https://example.com/pay",
           },
           {
+            bindTypes: ["1", "2"],
             id: "201",
             name: "企业名片",
             sort: 2,
@@ -382,6 +389,7 @@ describe("Chat settings pages", () => {
             url: "https://example.com/card",
           },
           {
+            bindTypes: ["1", "2"],
             id: "203",
             name: "客户详情",
             sort: 3,
@@ -389,6 +397,7 @@ describe("Chat settings pages", () => {
             url: "https://example.com/customer",
           },
           {
+            bindTypes: ["1", "2"],
             id: "204",
             name: "快捷回复",
             sort: 4,
@@ -441,6 +450,7 @@ describe("Chat settings pages", () => {
       expect(mock.history.post).toHaveLength(1);
     });
     expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
+      bindTypes: ["1", "2"],
       name: "素材中心",
       url: "https://example.com/assets",
     });
@@ -517,6 +527,7 @@ describe("Chat settings pages", () => {
       data: {
         items: [
           {
+            bindTypes: ["1", "2"],
             id: "10",
             name: "十号页面",
             sort: 9,
@@ -524,6 +535,7 @@ describe("Chat settings pages", () => {
             url: "https://example.com/ten",
           },
           {
+            bindTypes: ["1", "2"],
             id: "2",
             name: "二号页面",
             sort: 9,
@@ -554,6 +566,7 @@ describe("Chat settings pages", () => {
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
         items: Array.from({ length: 10 }, (_, index) => ({
+          bindTypes: ["1", "2"],
           id: String(index + 1),
           name: `页面${index + 1}`,
           sort: index + 1,
@@ -574,6 +587,7 @@ describe("Chat settings pages", () => {
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
         items: Array.from({ length: 9 }, (_, index) => ({
+          bindTypes: ["1", "2"],
           id: String(index + 1),
           name: `页面${index + 1}`,
           sort: index + 1,
@@ -599,6 +613,7 @@ describe("Chat settings pages", () => {
     });
     mock.onPost("/server/settings/sidebar-items").reply(200, {
       data: {
+        bindTypes: ["1", "2"],
         id: "1",
         name: "TooLongName",
         sort: 1,

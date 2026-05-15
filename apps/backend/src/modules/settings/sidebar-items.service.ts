@@ -1,4 +1,5 @@
 import type {
+  SettingsSidebarBindType,
   SettingsSidebarItem,
   SettingsSidebarItemCreateRequest,
   SettingsSidebarItemsResponse,
@@ -20,12 +21,16 @@ type TenantScope = {
 };
 
 type SidebarItemRow = {
+  bind_types?: string | null;
   id: number;
   name: string;
   show: number | null;
   sort: number;
   url: string;
 };
+
+const BIND_DIRECT: SettingsSidebarBindType = "1";
+const BIND_GROUP: SettingsSidebarBindType = "2";
 
 const dbActiveStatus = 1;
 const dbDeletedStatus = 0;
@@ -51,6 +56,7 @@ export class SidebarItemsSettingsService {
   ): Promise<SettingsSidebarItem> {
     const scope = await this.getTenantScope(currentSubUserId);
     const normalized = normalizeSidebarPayload(payload);
+    const bindTypes = normalizeSidebarBindTypesRequest(payload.bindTypes);
     const currentItems = await this.listRows(scope);
 
     if (currentItems.length >= maxSidebarItems) {
@@ -66,6 +72,7 @@ export class SidebarItemsSettingsService {
       .insertInto("xy_wap_embed_sider_bar_config")
       .values({
         biz_status: dbActiveStatus,
+        bind_types: encodeBindTypesToDb(bindTypes),
         name: normalized.name,
         platform: scope.platform,
         show: dbShown,
@@ -94,6 +101,7 @@ export class SidebarItemsSettingsService {
     const scope = await this.getTenantScope(currentSubUserId);
     const numericSidebarItemId = parseMySqlId(sidebarItemId);
     const normalized = normalizeSidebarPayload(payload);
+    const bindTypes = normalizeSidebarBindTypesRequest(payload.bindTypes);
 
     if (numericSidebarItemId == null) {
       throw new BadRequestError("INVALID_SIDEBAR_ITEM", "侧边栏页面不存在");
@@ -103,6 +111,7 @@ export class SidebarItemsSettingsService {
     await this.db
       .updateTable("xy_wap_embed_sider_bar_config")
       .set({
+        bind_types: encodeBindTypesToDb(bindTypes),
         name: normalized.name,
         update_time: new Date(),
         url: normalized.url,
@@ -236,17 +245,13 @@ export class SidebarItemsSettingsService {
   private listRows(scope: TenantScope) {
     return this.db
       .selectFrom("xy_wap_embed_sider_bar_config")
-      .select(["id", "name", "show", "sort", "url"])
+      .select(["id", "bind_types", "name", "show", "sort", "url"])
       .where("uid", "=", scope.uid)
       .where("platform", "=", scope.platform)
       .where("biz_status", "=", dbActiveStatus)
       .orderBy("sort", "asc")
       .orderBy("id", "asc")
       .execute() as Promise<SidebarItemRow[]>;
-  }
-
-  private async getNextSort(scope: TenantScope) {
-    return getNextSortFromRows(await this.listRows(scope));
   }
 
   private async assertItemInScope(scope: TenantScope, sidebarItemId: number) {
@@ -267,7 +272,7 @@ export class SidebarItemsSettingsService {
   private async getItemOrThrow(scope: TenantScope, sidebarItemId: number) {
     const sidebarItem = await this.db
       .selectFrom("xy_wap_embed_sider_bar_config")
-      .select(["id", "name", "show", "sort", "url"])
+      .select(["id", "bind_types", "name", "show", "sort", "url"])
       .where("id", "=", sidebarItemId)
       .where("uid", "=", scope.uid)
       .where("platform", "=", scope.platform)
@@ -292,12 +297,62 @@ export function createSidebarItemsSettingsService(db: Kysely<Database> | undefin
 
 function mapSidebarItem(row: SidebarItemRow): SettingsSidebarItem {
   return {
+    bindTypes: decodeBindTypesFromDb(row.bind_types),
     id: String(row.id),
     name: row.name,
     sort: row.sort,
     status: row.show === dbHidden ? "disabled" : "active",
     url: row.url,
   };
+}
+
+function decodeBindTypesFromDb(raw: string | null | undefined): SettingsSidebarBindType[] {
+  const trimmed = String(raw ?? "").trim();
+
+  if (!trimmed) {
+    return [BIND_DIRECT, BIND_GROUP];
+  }
+
+  const uniq = new Set<SettingsSidebarBindType>();
+
+  for (const segment of trimmed.split(",")) {
+    const part = segment.trim();
+
+    if (part === BIND_DIRECT || part === BIND_GROUP) {
+      uniq.add(part);
+    }
+  }
+
+  if (uniq.size === 0) {
+    return [BIND_DIRECT, BIND_GROUP];
+  }
+
+  return [...uniq].sort((left, right) => Number(left) - Number(right));
+}
+
+function normalizeSidebarBindTypesRequest(
+  bindTypes: readonly SettingsSidebarBindType[],
+): SettingsSidebarBindType[] {
+  const uniq = new Set<SettingsSidebarBindType>();
+
+  for (const value of bindTypes) {
+    if (value === BIND_DIRECT || value === BIND_GROUP) {
+      uniq.add(value);
+    }
+  }
+
+  if (uniq.size === 0) {
+    throw new BadRequestError(
+      "INVALID_SIDEBAR_BIND_TYPES",
+      "请选择至少一种会话类型",
+    );
+  }
+
+  return [...uniq].sort((left, right) => Number(left) - Number(right));
+}
+
+function encodeBindTypesToDb(bindTypes: SettingsSidebarBindType[]) {
+  return bindTypes.join(",");
 }
 
 function normalizeSidebarPayload(payload: {

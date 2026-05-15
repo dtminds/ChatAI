@@ -37,6 +37,7 @@ describe("workbench gateway message paging", () => {
           data: {
             items: [
               {
+                bindTypes: ["1", "2"],
                 id: "1",
                 name: "快捷回复",
                 sort: 1,

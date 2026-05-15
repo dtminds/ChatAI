@@ -16,6 +16,7 @@ describe("settings sidebar item routes", () => {
       data: {
         items: [
           {
+            bindTypes: ["1", "2"],
             id: "201",
             name: "企业名片",
             sort: 1,
@@ -23,6 +24,7 @@ describe("settings sidebar item routes", () => {
             url: "https://example.com/card",
           },
           {
+            bindTypes: ["1", "2"],
             id: "202",
             name: "客户详情",
             sort: 2,
@@ -39,6 +41,7 @@ describe("settings sidebar item routes", () => {
       headers: { authorization },
       method: "POST",
       payload: {
+        bindTypes: ["1", "2"],
         name: "素材中心",
         url: "https://example.com/assets",
       },
@@ -48,6 +51,7 @@ describe("settings sidebar item routes", () => {
     expect(create.statusCode).toBe(200);
     expect(create.json()).toMatchObject({
       data: {
+        bindTypes: ["1", "2"],
         id: "203",
         name: "素材中心",
         sort: 3,
@@ -58,6 +62,7 @@ describe("settings sidebar item routes", () => {
     });
     expect(db.insertedSidebarItem).toMatchObject({
       biz_status: 1,
+      bind_types: "1,2",
       name: "素材中心",
       platform: 5,
       show: 1,
@@ -70,6 +75,7 @@ describe("settings sidebar item routes", () => {
       headers: { authorization },
       method: "PUT",
       payload: {
+        bindTypes: ["2"],
         name: "客户详情",
         url: "https://example.com/customer-updated",
       },
@@ -106,6 +112,7 @@ describe("settings sidebar item routes", () => {
       {
         id: 202,
         values: {
+          bind_types: "2",
           name: "客户详情",
           update_time: expect.any(Date),
           url: "https://example.com/customer-updated",
@@ -171,6 +178,7 @@ describe("settings sidebar item routes", () => {
       headers: { authorization },
       method: "POST",
       payload: {
+        bindTypes: ["1"],
         name: "页面11",
         url: "https://example.com/page-11",
       },
@@ -192,6 +200,7 @@ describe("settings sidebar item routes", () => {
       headers: { authorization },
       method: "POST",
       payload: {
+        bindTypes: ["1", "2"],
         name: "超过四字了",
         url: "https://example.com/too-long",
       },
@@ -217,6 +226,7 @@ describe("settings sidebar item routes", () => {
       headers: { authorization },
       method: "POST",
       payload: {
+        bindTypes: ["1"],
         name: "素材中心",
         url: "not-a-url",
       },
@@ -236,6 +246,7 @@ describe("settings sidebar item routes", () => {
       headers: { authorization },
       method: "POST",
       payload: {
+        bindTypes: ["1"],
         name: "素材中心",
         url: "http://example.com/assets",
       },
@@ -263,6 +274,7 @@ describe("settings sidebar item routes", () => {
       headers: { authorization },
       method: "POST",
       payload: {
+        bindTypes: ["1", "2"],
         name: "素材中心",
         url: "https://example.com/assets",
       },
@@ -272,6 +284,7 @@ describe("settings sidebar item routes", () => {
     expect(create.statusCode).toBe(200);
     expect(create.json()).toMatchObject({
       data: {
+        bindTypes: ["1", "2"],
         id: "203",
         name: "素材中心",
       },
@@ -403,6 +416,7 @@ function createSettingsDbMock() {
         values: (values: Record<string, unknown>) => {
           state.insertedSidebarItem = values;
           sidebarItems.push({
+            bind_types: String(values.bind_types ?? ""),
             biz_status: Number(values.biz_status),
             id: 203,
             name: String(values.name),

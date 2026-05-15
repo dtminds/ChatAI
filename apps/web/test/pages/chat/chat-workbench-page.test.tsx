@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import MockAdapter from "axios-mock-adapter";
-import { GROUP_MEMBER_TYPE } from "@chatai/contracts";
+import { GROUP_MEMBER_TYPE, type SettingsSidebarBindType } from "@chatai/contracts";
 import { requestInstance } from "@/lib/request";
 import {
   createMockWorkbenchService,
@@ -954,6 +954,7 @@ describe("ChatWorkbenchPage", () => {
     const getSidebarItems = vi.fn(async () => ({
       items: [
         {
+          bindTypes: ["1", "2"] as SettingsSidebarBindType[],
           id: "sidebar-2",
           name: "客户详情",
           sort: 2,
@@ -961,6 +962,7 @@ describe("ChatWorkbenchPage", () => {
           url: "https://example.com/customer",
         },
         {
+          bindTypes: ["1", "2"] as SettingsSidebarBindType[],
           id: "sidebar-1",
           name: "快捷回复",
           sort: 1,
@@ -968,6 +970,7 @@ describe("ChatWorkbenchPage", () => {
           url: "https://example.com/replies",
         },
         {
+          bindTypes: ["1", "2"] as SettingsSidebarBindType[],
           id: "sidebar-3",
           name: "隐藏页面",
           sort: 3,

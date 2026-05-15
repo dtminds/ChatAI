@@ -11,7 +11,10 @@ import type {
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import { fetchWorkbenchSidebarTuseCrypto } from "@/pages/chat/api/sidebar-tuse-crypto";
 import { buildSidebarIframeSrc } from "@/pages/chat/lib/sidebar-iframe-url";
-import { sortSidebarItems } from "@/pages/chat/lib/sidebar-items";
+import {
+  filterSidebarItemsForConversationMode,
+  sortSidebarItems,
+} from "@/pages/chat/lib/sidebar-items";
 import {
   encryptTuseFswFromThirdExternalUserId,
   encryptTuseRdFromThirdUserId,
@@ -63,9 +66,15 @@ export function CustomerSidePanel({
     | { kind: "unset" };
   const tuseSecretCacheRef = useRef<TuseSecretCache>({ kind: "unset" });
 
+  const scopedSidebarItems = useMemo(
+    () => filterSidebarItemsForConversationMode(sidebarItems, conversationMode),
+    [conversationMode, sidebarItems],
+  );
+
   const hasActiveCustomSidebar = useMemo(
-    () => sortSidebarItems(sidebarItems).some((item) => item.status === "active"),
-    [sidebarItems],
+    () =>
+      sortSidebarItems(scopedSidebarItems).some((item) => item.status === "active"),
+    [scopedSidebarItems],
   );
 
   const hasSidebarIframeThirdIds = useMemo(
@@ -236,7 +245,7 @@ export function CustomerSidePanel({
       sidebarIframeTos,
     ],
   );
-  const activeSidebarItems = sortSidebarItems(sidebarItems).filter(
+  const activeSidebarItems = sortSidebarItems(scopedSidebarItems).filter(
     (item) => item.status === "active",
   );
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(readSidebarExpandedPreference);

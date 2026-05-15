@@ -443,6 +443,22 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("maps system msgtype rows to system message DTOs", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({ content: "客户已加入群聊" }),
+        from_type: 1,
+        msgtype: "system",
+      })),
+    ).toMatchObject({
+      content: {
+        text: "客户已加入群聊",
+      },
+      contentType: "system",
+      senderType: "system",
+    });
+  });
+
   it("maps timestamp fields from Date objects and date strings", () => {
     expect(
       mapSeatRow({

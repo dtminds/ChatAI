@@ -136,6 +136,7 @@ export function ComposerRuntimePlugin({
       (payload) => {
         editor.update(() => {
           $insertComposerMention(payload);
+          $insertComposerText(" ");
         });
         return true;
       },

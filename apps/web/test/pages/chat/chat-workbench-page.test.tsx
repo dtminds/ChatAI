@@ -209,9 +209,10 @@ describe("ChatWorkbenchPage", () => {
     await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
     await user.click(screen.getByRole("menuitem", { name: "@Ta" }));
 
-    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveTextContent(
-      "@缪勇飞 群昵称111",
-    );
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+
+    expect(composer.textContent).toBe("@缪勇飞 群昵称111 ");
+    expect(screen.queryByRole("listbox", { name: "选择群成员" })).not.toBeInTheDocument();
   });
 
   it("renders pasted WeChat emoji tokens as images while sending the original token", async () => {

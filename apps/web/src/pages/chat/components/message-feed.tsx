@@ -202,7 +202,7 @@ function MessageActionAvatar({
         <DropdownMenuTrigger asChild>
           <Button
             aria-label="消息操作"
-            className="absolute inset-0 z-10 size-8 rounded-[6px] bg-popover/90 p-0 text-muted-foreground opacity-0 shadow-sm backdrop-blur-sm transition-opacity hover:bg-popover hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/30 group-hover/message:opacity-100 data-[state=open]:opacity-100"
+            className="absolute inset-0 z-10 size-8 rounded-[6px] bg-neutral-950/70 p-0 text-white opacity-0 shadow-sm backdrop-blur-[2px] transition-opacity hover:bg-neutral-950/80 hover:text-white focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-white/45 group-hover/message:opacity-100 data-[state=open]:opacity-100"
             size="icon"
             type="button"
             variant="ghost"

@@ -1,6 +1,7 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp02Icon,
+  Cancel01Icon,
   ChatDelayIcon,
   Folder01Icon,
   Image01Icon,
@@ -38,6 +39,7 @@ import {
   ComposerMentionNode,
 } from "@/pages/chat/components/composer/lexical-nodes";
 import { ComposerRuntimePlugin } from "@/pages/chat/components/composer/lexical-plugins";
+import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import {
   $insertComposerMention,
   $insertComposerText,
@@ -52,7 +54,7 @@ import {
 import { COMPOSER_FILE_ACCEPT } from "@/pages/chat/lib/composer-file-files";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
-import type { GroupMember } from "@/pages/chat/chat-types";
+import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
 
 type ChatComposerProps = {
   canSendMessage: boolean;
@@ -63,6 +65,7 @@ type ChatComposerProps = {
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isSending: boolean;
+  onClearQuotedMessage: () => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
@@ -70,6 +73,7 @@ type ChatComposerProps = {
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
   placeholder: string;
+  quotedMessage: QuotedMessagePreviewContent | null;
   composerRef: RefObject<LexicalEditor | null>;
 };
 
@@ -99,6 +103,7 @@ export function ChatComposer({
   isGroupConversation,
   isEmojiPickerOpen,
   isSending,
+  onClearQuotedMessage,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
@@ -106,6 +111,7 @@ export function ChatComposer({
   onSegmentsChange,
   onSendDraft,
   placeholder,
+  quotedMessage,
   composerRef,
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
@@ -498,6 +504,33 @@ export function ChatComposer({
           </Button>
         </div>
       </div>
+
+      {quotedMessage ? (
+        <div
+          className="flex items-start gap-2"
+          data-testid="composer-quote-preview"
+        >
+          <QuoteMessagePreview
+            quoteMsgId={quotedMessage.quoteMsgId ?? ""}
+            quotedMessage={quotedMessage}
+          />
+          <Button
+            aria-label="取消引用"
+            className="size-7 shrink-0 rounded-full p-0 text-muted-foreground shadow-none hover:bg-surface-hover hover:text-foreground"
+            onClick={onClearQuotedMessage}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={Cancel01Icon}
+              size={14}
+              strokeWidth={2}
+            />
+          </Button>
+        </div>
+      ) : null}
 
       <div className="relative">
         {isMentionPickerOpen && mentionTrigger ? (

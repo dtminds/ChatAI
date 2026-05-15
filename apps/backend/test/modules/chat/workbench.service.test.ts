@@ -569,6 +569,69 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("maps a quoted text send to the Java quote payload from audit extend data", async () => {
+    const javaClient = createJavaClient();
+    const getQuoteContentBase64 = vi.fn().mockResolvedValue("base64-quote-content");
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-quote-001",
+      messageId: "opt-quote-001",
+      optNo: "opt-quote-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+        getQuoteContentBase64,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-quote-001",
+      conversationId: "88",
+      quote: {
+        quoteMsgId: "538",
+        quotedMessageId: "remote-msg-538",
+      },
+      seatId: "12",
+      segment: {
+        text: "正式引用消息",
+        type: "text",
+      },
+    });
+
+    expect(getQuoteContentBase64).toHaveBeenCalledWith({
+      messageId: "remote-msg-538",
+      platform: 5,
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-quote-001",
+      message: {
+        msgContent: "正式引用消息",
+        msgNum: 1,
+        msgType: 2033,
+        quoteContentBase64: "base64-quote-content",
+      },
+      platform: 5,
+      sendType: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("maps a single-chat image send to the Java send-message payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
@@ -619,6 +682,61 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
+  });
+
+  it("ignores quote payload for image sends", async () => {
+    const javaClient = createJavaClient();
+    const getQuoteContentBase64 = vi.fn().mockResolvedValue("base64-quote-content");
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-image-quote-001",
+      messageId: "opt-image-quote-001",
+      optNo: "opt-image-quote-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+        getQuoteContentBase64,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-image-quote-001",
+      conversationId: "88",
+      quote: {
+        quoteMsgId: "538",
+        quotedMessageId: "remote-msg-538",
+      },
+      seatId: "12",
+      segment: {
+        alt: "截图",
+        type: "image",
+        url: "https://b5.bokr.com.cn/s5/upload/a.png",
+      },
+    });
+
+    expect(getQuoteContentBase64).not.toHaveBeenCalled();
+    expect(javaClient.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: {
+          msgContent: "https://b5.bokr.com.cn/s5/upload/a.png",
+          msgNum: 1,
+          msgType: 2002,
+        },
+      }),
+    );
   });
 
   it("maps a file send to the Java send-message payload", async () => {
@@ -677,6 +795,65 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
+  });
+
+  it("ignores quote payload for file sends", async () => {
+    const javaClient = createJavaClient();
+    const getQuoteContentBase64 = vi.fn().mockResolvedValue("base64-quote-content");
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-file-quote-001",
+      messageId: "opt-file-quote-001",
+      optNo: "opt-file-quote-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+        getQuoteContentBase64,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-file-quote-001",
+      conversationId: "88",
+      quote: {
+        quoteMsgId: "538",
+        quotedMessageId: "remote-msg-538",
+      },
+      seatId: "12",
+      segment: {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        fileSizeLabel: "6.09 MB",
+        type: "file",
+        url: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+      },
+    });
+
+    expect(getQuoteContentBase64).not.toHaveBeenCalled();
+    expect(javaClient.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: {
+          msgContent: "报价单.pdf",
+          msgNum: 1,
+          msgType: 2010,
+          vcHref: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+          vcTitle: "报价单.pdf",
+        },
+      }),
+    );
   });
 
   it("rejects image send without a sendable URL before calling Java", async () => {

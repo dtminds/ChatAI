@@ -231,6 +231,44 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("reads quote content base64 from audit extend origin data", async () => {
+    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info_extend");
+          const result = {
+            origin_data: JSON.stringify({
+              quote_content_base64: " base64-quote-content ",
+            }),
+          };
+          const query = createQueryBuilder(result);
+          queries.push({ table, wheres: query.wheres });
+
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getQuoteContentBase64({
+        messageId: "remote-msg-538",
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toBe("base64-quote-content");
+
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toMatchObject({
+      table: "xy_wap_embed_msg_audit_info_extend",
+      wheres: [
+        ["msgid", "=", "remote-msg-538"],
+        ["platform", "=", 5],
+        ["uid", "=", 9001],
+      ],
+    });
+  });
+
   it("calculates seat unread after mark-read with a lightweight aggregate query", async () => {
     const repository = new WorkbenchRepository(
       {

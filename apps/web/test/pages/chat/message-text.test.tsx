@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { getMessageFeedItemKey, MessageRow } from "@/pages/chat/components/message-feed";
 import { TextMessageBubble } from "@/pages/chat/components/message";
 import type { ChatMessage } from "@/pages/chat/chat-types";
@@ -161,6 +162,59 @@ describe("text message bubble layout", () => {
     render(<MessageRow message={createTextMessage("单聊消息")} />);
 
     expect(screen.queryByText("成员甲")).not.toBeInTheDocument();
+  });
+
+  it("opens an avatar anchored action menu with quote and mention actions for group messages", async () => {
+    const user = userEvent.setup();
+    const onMentionMessage = vi.fn();
+    const onQuoteMessage = vi.fn();
+    const message = {
+      ...createTextMessage("群消息"),
+      isGroupConversation: true,
+      isOwnMessage: false,
+      role: "customer" as const,
+      sender: {
+        groupMemberId: "member-001",
+        id: "member-001",
+        name: "成员甲",
+      },
+      senderDisplayName: "成员甲",
+    };
+
+    render(
+      <MessageRow
+        message={message}
+        onMentionMessage={onMentionMessage}
+        onQuoteMessage={onQuoteMessage}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "@Ta" }));
+
+    expect(onMentionMessage).toHaveBeenCalledWith(message);
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+
+    expect(onQuoteMessage).toHaveBeenCalledWith(message);
+  });
+
+  it("does not expose the mention action for single chat messages", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        message={createTextMessage("单聊消息")}
+        onMentionMessage={vi.fn()}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "引用消息" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();
   });
 });
 

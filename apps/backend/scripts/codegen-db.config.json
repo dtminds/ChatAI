@@ -6,6 +6,7 @@
     "xy_wap_embed_group_member",
     "xy_wap_embed_group_seat",
     "xy_wap_embed_msg_audit_info",
+    "xy_wap_embed_msg_audit_info_extend",
     "xy_wap_embed_sider_bar_config",
     "xy_wap_embed_sub_user",
     "xy_wap_embed_sub_user_session",

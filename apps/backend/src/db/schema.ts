@@ -113,6 +113,10 @@ export interface XyWapEmbedConversation {
    * 更新时间
    */
   update_time: Generated<Date>;
+  /**
+   * 是否已识别
+   */
+  verified: Generated<number>;
 }
 
 export interface XyWapEmbedCustomerBindRelation {
@@ -404,6 +408,34 @@ export interface XyWapEmbedMsgAuditInfo {
   user_id: Generated<number>;
 }
 
+export interface XyWapEmbedMsgAuditInfoExtend {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  id: Generated<number>;
+  /**
+   * 消息id，消息的唯一标识
+   */
+  msgid: string;
+  /**
+   * 原始消息内容
+   */
+  origin_data: string | null;
+  /**
+   * 接入平台 5、比邻
+   */
+  platform: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedSiderBarConfig {
   /**
    * 会话状态：1、正常，0、删除
@@ -680,6 +712,7 @@ export interface DB {
   xy_wap_embed_group_member: XyWapEmbedGroupMember;
   xy_wap_embed_group_seat: XyWapEmbedGroupSeat;
   xy_wap_embed_msg_audit_info: XyWapEmbedMsgAuditInfo;
+  xy_wap_embed_msg_audit_info_extend: XyWapEmbedMsgAuditInfoExtend;
   xy_wap_embed_sider_bar_config: XyWapEmbedSiderBarConfig;
   xy_wap_embed_sub_user: XyWapEmbedSubUser;
   xy_wap_embed_sub_user_session: XyWapEmbedSubUserSession;

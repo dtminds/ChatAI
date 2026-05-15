@@ -294,9 +294,15 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
     }
 
+    const segment = getSingleSendSegment(payload);
+    const quoteContentBase64 = await this.getQuoteContentBase64(payload, segment, {
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
     return this.javaClient.sendMessage({
       clientMessageId: payload.clientMessageId,
-      message: buildJavaSendMessageData(payload, getSingleSendSegment(payload)),
+      message: buildJavaSendMessageData(payload, segment, quoteContentBase64),
       platform: conversation.platform,
       sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
       ...(conversation.thirdExternalUserId
@@ -305,6 +311,28 @@ export class MysqlWorkbenchService implements WorkbenchService {
       ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
       thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,
+    });
+  }
+
+  private async getQuoteContentBase64(
+    payload: WorkbenchSendMessagePayload,
+    segment: WorkbenchOutgoingMessageSegment,
+    scope: { platform: number; uid: number },
+  ) {
+    if (segment.type !== "text") {
+      return undefined;
+    }
+
+    const messageId = payload.quote?.quotedMessageId?.trim();
+
+    if (!messageId) {
+      return undefined;
+    }
+
+    return this.repository.getQuoteContentBase64({
+      messageId,
+      platform: scope.platform,
+      uid: scope.uid,
     });
   }
 
@@ -412,7 +440,14 @@ function getSingleSendSegment(
 function buildJavaSendMessageData(
   payload: WorkbenchSendMessagePayload,
   segment: WorkbenchOutgoingMessageSegment,
+  quoteContentBase64?: string,
 ): JavaSendMessageData {
+  const normalizedQuoteContentBase64 = quoteContentBase64?.trim();
+  const withQuoteContentBase64 = (message: JavaSendMessageData): JavaSendMessageData =>
+    normalizedQuoteContentBase64
+      ? { ...message, quoteContentBase64: normalizedQuoteContentBase64 }
+      : message;
+
   if (segment.type === "image") {
     const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
 
@@ -420,11 +455,11 @@ function buildJavaSendMessageData(
       throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片消息缺少可发送地址");
     }
 
-    return {
+    return withQuoteContentBase64({
       msgContent: imageUrl,
       msgNum: 1,
       msgType: JAVA_MSG_TYPE.IMAGE,
-    };
+    });
   }
 
   if (segment.type === "file") {
@@ -439,20 +474,26 @@ function buildJavaSendMessageData(
       throw new BadRequestError("INVALID_FILE_MESSAGE", "文件消息缺少可发送地址");
     }
 
-    return {
+    return withQuoteContentBase64({
       msgContent: fileName,
       msgNum: 1,
       msgType: JAVA_MSG_TYPE.FILE,
       vcHref: fileUrl,
       vcTitle: fileName,
-    };
+    });
   }
 
   const message: JavaSendMessageData = {
     msgContent: segment.text,
     msgNum: 1,
-    msgType: JAVA_MSG_TYPE.TEXT,
+    msgType: normalizedQuoteContentBase64
+      ? JAVA_MSG_TYPE.QUOTE_TEXT
+      : JAVA_MSG_TYPE.TEXT,
   };
+  if (normalizedQuoteContentBase64) {
+    message.quoteContentBase64 = normalizedQuoteContentBase64;
+  }
+
   const mentionMemberIds = payload.mention?.memberIds.filter(Boolean) ?? [];
 
   if (payload.mention?.all) {

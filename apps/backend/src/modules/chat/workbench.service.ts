@@ -319,6 +319,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     segment: WorkbenchOutgoingMessageSegment,
     scope: { platform: number; uid: number },
   ) {
+    if (segment.type !== "text") {
+      return undefined;
+    }
+
     const messageId = payload.quote?.quotedMessageId?.trim();
 
     if (!messageId) {
@@ -482,7 +486,9 @@ function buildJavaSendMessageData(
   const message: JavaSendMessageData = {
     msgContent: segment.text,
     msgNum: 1,
-    msgType: JAVA_MSG_TYPE.TEXT,
+    msgType: normalizedQuoteContentBase64
+      ? JAVA_MSG_TYPE.QUOTE_TEXT
+      : JAVA_MSG_TYPE.TEXT,
   };
   if (normalizedQuoteContentBase64) {
     message.quoteContentBase64 = normalizedQuoteContentBase64;

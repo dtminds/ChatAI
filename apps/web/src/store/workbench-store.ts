@@ -45,6 +45,7 @@ type SendQuotePayload = WorkbenchSendMessagePayload["quote"];
 
 type SendMessageResult =
   | {
+      didConsumeQuote?: boolean;
       ok: true;
     }
   | {
@@ -1326,7 +1327,7 @@ export function createWorkbenchStore() {
       const normalizedSegments = normalizeComposerSegments(segments);
 
       if (normalizedSegments.length === 0) {
-        return { ok: true };
+        return { didConsumeQuote: false, ok: true };
       }
 
       const state = get();
@@ -1412,7 +1413,7 @@ export function createWorkbenchStore() {
               ? options?.mention
               : undefined;
           const quoteForSegment: SendQuotePayload =
-            !hasSentQuote ? options?.quote : undefined;
+            !hasSentQuote && segmentForSend.type === "text" ? options?.quote : undefined;
           hasSentMention = hasSentMention || Boolean(mentionForSegment);
           hasSentQuote = hasSentQuote || Boolean(quoteForSegment);
           const response = await sendTextMessage({
@@ -1485,7 +1486,7 @@ export function createWorkbenchStore() {
           },
         }));
 
-        return { ok: true };
+        return { didConsumeQuote: hasSentQuote, ok: true };
       } catch (error) {
         set((currentState) => ({
           sendStatusByConversationId: {

@@ -310,11 +310,13 @@ function ChatWorkbenchContent({
     pollWorkbench,
   });
 
-  const clearComposer = () => {
+  const clearComposer = (options?: { keepQuote?: boolean }) => {
     composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
     setDraft("");
     setComposerSegments([]);
-    setQuotedMessage(null);
+    if (!options?.keepQuote) {
+      setQuotedMessage(null);
+    }
   };
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
@@ -384,7 +386,7 @@ function ChatWorkbenchContent({
         return;
       }
 
-      clearComposer();
+      clearComposer({ keepQuote: quotedMessage !== null && !result.didConsumeQuote });
       composerRef.current?.focus();
     } finally {
       isSendingDraftRef.current = false;

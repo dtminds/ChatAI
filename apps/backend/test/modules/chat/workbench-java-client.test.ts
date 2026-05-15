@@ -330,7 +330,7 @@ describe("createWorkbenchJavaClient", () => {
       message: {
         msgContent: "正式引用消息",
         msgNum: 1,
-        msgType: 2001,
+        msgType: 2033,
         quoteContentBase64: "base64-quote-content",
       },
       platform: 5,
@@ -348,7 +348,7 @@ describe("createWorkbenchJavaClient", () => {
             {
               msgContent: "正式引用消息",
               msgNum: 1,
-              msgType: 2001,
+              msgType: 2033,
               quoteContentBase64: "base64-quote-content",
             },
           ],

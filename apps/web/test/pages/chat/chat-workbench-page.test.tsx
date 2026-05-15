@@ -195,6 +195,48 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
   });
 
+  it("keeps a selected quote after sending image-only content", async () => {
+    const user = userEvent.setup();
+    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
+      type: "image/png",
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
+    const targetRow = targetMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [clipboardImage],
+      },
+    });
+    expect(await screen.findByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => {
+      expect(
+        within(composer).queryByRole("img", { name: "clipboard.png" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("composer-quote-preview")).toHaveTextContent(
+      "丹阳草莓，得利市大樱桃：我先截了个竖图版本给你看。",
+    );
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+    ).toMatchObject({
+      content: {
+        type: "image",
+      },
+    });
+  });
+
   it("inserts an @ mention from a group message action menu", async () => {
     const user = userEvent.setup();
 

@@ -56,6 +56,7 @@ import {
 } from "@/pages/chat/lib/composer-file-files";
 import { extractComposerMentionState, type ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
+import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
 import {
   CONVERSATION_LIST_PANEL_WIDTH,
@@ -591,7 +592,7 @@ function ChatWorkbenchContent({
 
     const url = getMessageDownloadUrl(message);
 
-    if (message.content.downloadStatus === "finished" && url) {
+    if (isMessageDownloadUrlReady(message, url)) {
       openMessageDownloadUrl(message, url);
       return;
     }
@@ -666,6 +667,7 @@ function ChatWorkbenchContent({
             updateDownloadTransferState(message.id, "idle");
             updateMessageDownloadContent(message.conversationId, message.id, {
               downloadStatus: "finished",
+              fileUrlExpireTime: status.fileUrlExpireTime,
               fileUrl: status.fileUrl,
             });
 
@@ -1084,6 +1086,15 @@ function getMessageDownloadUrl(message: ChatMessage) {
   }
 
   return "";
+}
+
+function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
+  if (message.content.type === "video") {
+    return message.content.downloadStatus === "finished" &&
+      canUseExpiringUrl(url, message.content.fileUrlExpireTime);
+  }
+
+  return message.content.type === "file" && message.content.downloadStatus === "finished" && url;
 }
 
 function buildQuotedMessagePreview(message: ChatMessage): QuotedMessagePreviewContent {

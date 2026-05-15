@@ -213,6 +213,7 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       return {
         downloadStatus: content.downloadStatus,
+        fileUrlExpireTime: content.type === "video" ? content.fileUrlExpireTime : undefined,
         fileSerialNo: content.fileSerialNo,
         fileUrl: content.type === "file" ? content.fileUrl : content.videoUrl,
       };
@@ -687,6 +688,7 @@ function buildContent(message: Message) {
         downloadStatus: message.content.downloadStatus,
         durationLabel: message.content.durationLabel,
         fileSerialNo: message.content.fileSerialNo,
+        fileUrlExpireTime: message.content.fileUrlExpireTime,
         height: message.content.height,
         videoUrl: message.content.videoUrl,
         width: message.content.width,
@@ -1030,7 +1032,11 @@ function updateMessageDownloadContent(
   state: MockState,
   conversationId: string,
   messageId: string,
-  patch: { downloadStatus: "ing" | "finished" | "failed" },
+  patch: {
+    downloadStatus: "ing" | "finished" | "failed";
+    fileUrl?: string;
+    fileUrlExpireTime?: number;
+  },
 ) {
   const messages = state.messagesByConversationId[conversationId] ?? [];
 
@@ -1043,10 +1049,16 @@ function updateMessageDownloadContent(
       ...message,
       content: {
         ...message.content,
-        ...patch,
+        ...stripUndefinedFields(patch),
       },
     };
   });
+}
+
+function stripUndefinedFields<T extends Record<string, unknown>>(value: T) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, fieldValue]) => fieldValue !== undefined),
+  ) as Partial<T>;
 }
 
 function isFileDownloadContent(

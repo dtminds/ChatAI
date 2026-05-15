@@ -233,6 +233,7 @@ function adaptChatMessageContent(
         downloadStatus: asDownloadStatus(content.downloadStatus),
         durationLabel: String(content.durationLabel ?? ""),
         fileSerialNo: asOptionalString(content.fileSerialNo),
+        fileUrlExpireTime: asOptionalNumber(content.fileUrlExpireTime),
         height: asOptionalNumber(content.height),
         type: "video",
         videoUrl: String(content.videoUrl ?? ""),

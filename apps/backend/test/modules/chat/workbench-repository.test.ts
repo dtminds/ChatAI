@@ -279,6 +279,7 @@ describe("WorkbenchRepository", () => {
             content: JSON.stringify({
               downloadStatus: "finished",
               fileSerialNo: "serial-file-001",
+              fileUrlExpireTime: 1778919538036,
               fileUrl: "chat-files/quote.pdf",
             }),
           });
@@ -298,6 +299,7 @@ describe("WorkbenchRepository", () => {
     ).resolves.toEqual({
       downloadStatus: "finished",
       fileSerialNo: "serial-file-001",
+      fileUrlExpireTime: 1778919538036,
       fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
     });
     expect(queries).toHaveLength(1);

@@ -18,11 +18,6 @@ export function FileMessageCard({
   onDownloadClick,
   transferState = "idle",
 }: FileMessageCardProps) {
-  const effectiveTransferState =
-    transferState === "transferring" || content.downloadStatus === "ing"
-      ? "transferring"
-      : "idle";
-
   return (
     <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 pb-2">
       <div className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-2.5">
@@ -51,7 +46,7 @@ export function FileMessageCard({
           <span>{content.sourceLabel ?? "文件"}</span>
         </span>
 
-        {effectiveTransferState === "transferring" ? (
+        {transferState === "transferring" ? (
           <span
             aria-label="文件下载中"
             className="inline-flex items-center gap-1 font-medium text-muted-foreground"

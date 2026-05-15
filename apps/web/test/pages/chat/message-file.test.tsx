@@ -45,6 +45,29 @@ describe("FileMessageCard", () => {
       .not.toBeInTheDocument();
   });
 
+  it("keeps an initial server-side in-progress file downloadable until local polling starts", async () => {
+    const user = userEvent.setup();
+    const handleDownloadClick = vi.fn();
+
+    render(
+      <FileMessageCard
+        content={{
+          ...createFileContent(),
+          downloadStatus: "ing",
+          fileSerialNo: "serial-file-001",
+          fileUrl: "",
+        }}
+        transferState="idle"
+        onDownloadClick={handleDownloadClick}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "下载文件：报价单.pdf" }));
+
+    expect(handleDownloadClick).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("status", { name: "文件下载中" })).not.toBeInTheDocument();
+  });
+
   it("uses the direct file download handler when the file is already stored in COS", async () => {
     const user = userEvent.setup();
     const handleDownloadClick = vi.fn();

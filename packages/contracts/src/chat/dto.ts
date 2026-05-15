@@ -69,6 +69,7 @@ export type WorkbenchMessageFileDownloadResponse = {
 export type WorkbenchMessageFileDownloadStatusResponse = {
   downloadStatus?: WorkbenchMessageFileDownloadStatus;
   fileSerialNo?: string;
+  fileUrlExpireTime?: number;
   fileUrl?: string;
 };
 

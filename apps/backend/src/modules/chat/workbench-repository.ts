@@ -1018,6 +1018,7 @@ function readMessageFileDownloadStatus(content: string | null) {
   return {
     downloadStatus: readDownloadStatus(parsed),
     fileSerialNo: readRecordString(parsed, "fileSerialNo") || undefined,
+    fileUrlExpireTime: readRecordNumber(parsed, "fileUrlExpireTime"),
     fileUrl: normalizeMediaAssetUrl(readRecordString(parsed, "fileUrl")),
   };
 }
@@ -1040,6 +1041,13 @@ function readRecordString(value: Record<string, unknown>, key: string) {
   const field = value[key];
 
   return typeof field === "string" ? field : "";
+}
+
+function readRecordNumber(value: Record<string, unknown>, key: string) {
+  const field = value[key];
+  const numeric = typeof field === "number" ? field : Number(field);
+
+  return Number.isFinite(numeric) ? numeric : undefined;
 }
 
 const mediaAssetBaseUrl = "https://b5.bokr.com.cn";

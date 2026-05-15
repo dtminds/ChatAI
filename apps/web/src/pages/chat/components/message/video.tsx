@@ -7,6 +7,7 @@ import {
   MessageMediaFallback,
 } from "@/pages/chat/components/message/media-fallback";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
+import { canUseExpiringUrl, isExpiringUrlExpired } from "@/pages/chat/lib/message-url-expiry";
 
 const DEFAULT_VIDEO_WIDTH = 320;
 const DEFAULT_VIDEO_HEIGHT = 240;
@@ -28,20 +29,17 @@ export function VideoMessageCard({
   const coverImageUrl = content.coverImageUrl?.trim() ?? "";
   const needsTransfer = Boolean(
     content.fileSerialNo &&
-      content.downloadStatus !== "finished" &&
-      !isSafeVideoUrl(content.videoUrl),
+      (isExpiringUrlExpired(content.fileUrlExpireTime) ||
+        (content.downloadStatus !== "finished" &&
+          !canUseExpiringUrl(content.videoUrl, content.fileUrlExpireTime))),
   );
-  const effectiveTransferState =
-    transferState === "transferring" || content.downloadStatus === "ing"
-      ? "transferring"
-      : "idle";
   const handlePlayClick = () => {
     if (onPlayClick) {
       onPlayClick();
       return;
     }
 
-    if (isSafeVideoUrl(content.videoUrl)) {
+    if (canUseExpiringUrl(content.videoUrl, content.fileUrlExpireTime)) {
       window.open(content.videoUrl, "_blank", "noopener,noreferrer");
     }
   };
@@ -66,7 +64,7 @@ export function VideoMessageCard({
       )}
       <div className="absolute inset-0 bg-black/5" />
 
-      {effectiveTransferState === "transferring" ? (
+      {transferState === "transferring" ? (
         <span
           aria-label="视频下载中"
           className="absolute left-1/2 top-1/2 z-1 inline-flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/90 bg-black/15 text-white shadow-[0_2px_12px_var(--shadow-medium)] backdrop-blur-[1px]"
@@ -145,17 +143,4 @@ function getValidVideoSize(content: VideoMessageContent) {
 
 function isPositiveFiniteNumber(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
-}
-
-function isSafeVideoUrl(url: string) {
-  if (url.startsWith("/")) {
-    return true;
-  }
-
-  try {
-    const parsedUrl = new URL(url);
-    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:";
-  } catch {
-    return false;
-  }
 }

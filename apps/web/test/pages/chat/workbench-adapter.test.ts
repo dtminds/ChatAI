@@ -302,6 +302,7 @@ describe("adaptMessage", () => {
             downloadStatus: "finished",
             durationLabel: "",
             fileSerialNo: "serial-video-001",
+            fileUrlExpireTime: 1778919538036,
             videoUrl: "https://b5.bokr.com.cn/videos/demo.mp4",
           },
           contentType: "video",
@@ -314,6 +315,7 @@ describe("adaptMessage", () => {
       content: {
         downloadStatus: "finished",
         fileSerialNo: "serial-video-001",
+        fileUrlExpireTime: 1778919538036,
         type: "video",
         videoUrl: "https://b5.bokr.com.cn/videos/demo.mp4",
       },

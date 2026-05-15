@@ -128,6 +128,7 @@ type WorkbenchState = {
     messageId: string,
     contentPatch: {
       downloadStatus?: "ing" | "finished" | "failed";
+      fileUrlExpireTime?: number;
       fileUrl?: string;
     },
   ) => void;
@@ -1870,6 +1871,9 @@ export function createWorkbenchStore() {
                     content: {
                       ...message.content,
                       downloadStatus: contentPatch.downloadStatus,
+                      ...(contentPatch.fileUrlExpireTime === undefined
+                        ? {}
+                        : { fileUrlExpireTime: contentPatch.fileUrlExpireTime }),
                       videoUrl: contentPatch.fileUrl ?? message.content.videoUrl,
                     },
                   };

@@ -105,6 +105,7 @@ export type VideoMessageContent = {
   durationLabel: string;
   downloadStatus?: MessageFileDownloadStatus;
   fileSerialNo?: string;
+  fileUrlExpireTime?: number;
   width?: number;
   height?: number;
 };

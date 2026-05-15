@@ -338,6 +338,7 @@ function parseMessageContent(
         downloadStatus: readDownloadStatus(parsed),
         durationLabel: "",
         fileSerialNo: readStringField(parsed, "fileSerialNo"),
+        fileUrlExpireTime: readNumberField(parsed, "fileUrlExpireTime"),
         videoUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
       };
     case "file": {

@@ -2159,6 +2159,63 @@ describe("ChatWorkbenchPage", () => {
     expect(toast.warning).toHaveBeenCalledWith("当前未加载原始消息");
   });
 
+  it("restarts video transfer instead of opening an expired finished video URL", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const downloadMessageFile = vi.fn(baseService.downloadMessageFile);
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    setWorkbenchService({
+      ...baseService,
+      downloadMessageFile,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              {
+                content: {
+                  alt: "已过期视频",
+                  coverImageUrl: "/covers/stage.jpg",
+                  downloadStatus: "finished",
+                  durationLabel: "1:01",
+                  fileSerialNo: "serial-video-001",
+                  fileUrlExpireTime: Date.now() - 1000,
+                  videoUrl: "https://b5.bokr.com.cn/chat-videos/expired.mp4",
+                },
+                contentType: "video",
+                conversationId: "conv-001",
+                createdAt: 1778240300000,
+                customerId: "cust-001",
+                messageId: "remote-expired-video",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 539,
+                status: "read",
+              },
+            ],
+            scannedCount: 1,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "下载视频：已过期视频" }));
+
+    expect(downloadMessageFile).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageId: "remote-expired-video",
+      messageSeq: 539,
+    });
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
   it("shows scope transition errors in the workbench", async () => {
     const baseService = createMockWorkbenchService();
 

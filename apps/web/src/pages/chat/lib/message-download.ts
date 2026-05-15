@@ -1,4 +1,5 @@
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import { isSafeHttpOrRelativeUrl } from "@/pages/chat/lib/message-url-expiry";
 
 export function openMessageDownloadUrl(message: ChatMessage, url: string) {
   if (!isSafeHttpOrRelativeUrl(url)) {
@@ -18,17 +19,4 @@ export function openMessageDownloadUrl(message: ChatMessage, url: string) {
   document.body.append(link);
   link.click();
   link.remove();
-}
-
-function isSafeHttpOrRelativeUrl(url: string) {
-  if (url.startsWith("/")) {
-    return true;
-  }
-
-  try {
-    const parsedUrl = new URL(url);
-    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:";
-  } catch {
-    return false;
-  }
 }

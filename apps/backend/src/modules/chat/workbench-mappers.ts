@@ -232,6 +232,10 @@ function buildMissingCustomerId(row: MessageRow) {
 }
 
 function mapSenderType(row: MessageRow): WorkbenchMessageDto["senderType"] {
+  if (row.msgtype === "system") {
+    return "system";
+  }
+
   if (row.from_type === 3) {
     return "system";
   }
@@ -278,6 +282,8 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
       return "mini-program";
     case "quote":
       return "quote";
+    case "system":
+      return "system";
     case "text":
       return "text";
     default:
@@ -306,6 +312,10 @@ function parseMessageContent(
     }
 
     return { text: String(parsed ?? "") };
+  }
+
+  if (msgtype === "system") {
+    return { text: readSystemMessageText(parsed, rawContent) };
   }
 
   switch (msgtype) {
@@ -457,6 +467,28 @@ function formatMessagePreview(msgtype: string | null, rawContent: string | null)
     default:
       return rawContent ?? "";
   }
+}
+
+function readSystemMessageText(parsed: unknown, rawContent: string | null) {
+  if (isRecord(parsed)) {
+    const text =
+      readStringField(parsed, "text") ||
+      readStringField(parsed, "content") ||
+      readStringField(parsed, "unsupportedDisplayText") ||
+      readStringField(parsed, "title");
+
+    if (text) {
+      return text;
+    }
+
+    return "";
+  }
+
+  if (typeof parsed === "string") {
+    return parsed;
+  }
+
+  return rawContent ?? "";
 }
 
 export function getQuoteMessageAuditId(row: MessageRow) {

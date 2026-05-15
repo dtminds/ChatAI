@@ -158,6 +158,35 @@ describe("text message bubble layout", () => {
     expect(screen.queryByText("已撤回")).not.toBeInTheDocument();
   });
 
+  it("renders system messages like a centered divider without avatar actions", () => {
+    render(
+      <MessageRow
+        message={{
+          author: "系统",
+          content: {
+            text: "客户已加入群聊",
+            type: "system",
+          },
+          conversationId: "conv-layout",
+          id: "sys-layout",
+          role: "system",
+          sentAt: "2026-05-08 09:54:00",
+          status: "read",
+        }}
+      />,
+    );
+
+    const systemMessage = screen.getByText("客户已加入群聊");
+    const systemNotice = systemMessage.closest('[data-testid="system-message-notice"]');
+
+    expect(systemMessage).toHaveClass("text-muted-foreground");
+    expect(systemNotice).toBeInTheDocument();
+    expect(systemNotice).toHaveClass("my-5", "px-6");
+    expect(systemMessage).toHaveClass("max-w-[min(640px,calc(100%-48px))]");
+    expect(screen.queryByTestId("message-row")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "消息操作" })).not.toBeInTheDocument();
+  });
+
   it("does not show a sender name for single chat messages", () => {
     render(<MessageRow message={createTextMessage("单聊消息")} />);
 

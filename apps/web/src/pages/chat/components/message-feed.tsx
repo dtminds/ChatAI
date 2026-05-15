@@ -87,6 +87,19 @@ export function MessageTimeDivider({ label }: { label: string }) {
   );
 }
 
+function SystemMessageNotice({ text }: { text: string }) {
+  return (
+    <div
+      className="my-5 flex items-center justify-center px-6 py-0.5"
+      data-testid="system-message-notice"
+    >
+      <span className="max-w-[min(640px,calc(100%-48px))] text-center text-[12px] leading-5 text-muted-foreground">
+        {text}
+      </span>
+    </div>
+  );
+}
+
 export function MessageRow({
   message,
   onMentionMessage,
@@ -101,11 +114,7 @@ export function MessageRow({
   onRetryMessage?: (messageId: string) => void;
 }) {
   if (message.role === "system") {
-    return (
-      <div className="mx-auto max-w-2xl rounded-full bg-surface-muted px-4 py-2 text-center text-[12px] leading-5 text-muted-foreground">
-        {message.content.text}
-      </div>
-    );
+    return <SystemMessageNotice text={message.content.text} />;
   }
 
   const isAgent = message.role === "agent";

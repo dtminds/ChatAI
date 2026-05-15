@@ -112,6 +112,55 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("treats system content as a system message even when sender type is agent", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            text: "客户已加入群聊",
+          },
+          contentType: "system",
+          senderType: "agent",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      author: "系统",
+      content: {
+        text: "客户已加入群聊",
+        type: "system",
+      },
+      role: "system",
+    });
+  });
+
+  it("reads system message text from the content field without rendering raw JSON", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            content: "开启了联系人验证，请先发送联系人验证请求",
+          },
+          contentType: "system",
+          senderType: "agent",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        text: "开启了联系人验证，请先发送联系人验证请求",
+        type: "system",
+      },
+      role: "system",
+    });
+  });
+
   it("marks group messages from the current seat as own messages", () => {
     expect(
       adaptMessage(

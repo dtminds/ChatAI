@@ -6,68 +6,36 @@ body:
   - type: markdown
     attributes:
       value: |
-        这个模板适合研发同学提交技术任务。产品、测试、设计同学通常优先选择其它模板。
+        适合研发同学提交技术任务；非研发同学通常优先选择其它模板。
   - type: textarea
-    id: background
+    id: description
     attributes:
-      label: 任务背景
-      description: 为什么需要做这个技术任务
-      placeholder: 例如：工作台 API DTO 在 web/backend 两侧存在重复定义，需要收敛到 contracts
-    validations:
-      required: true
-  - type: textarea
-    id: goal
-    attributes:
-      label: 目标
-      description: 这次完成后应该达到什么状态
-      placeholder: 例如：前后端统一从 @chatai/contracts 消费会话消息 DTO
-    validations:
-      required: true
-  - type: textarea
-    id: scope
-    attributes:
-      label: 实现范围
-      description: 涉及哪些模块、接口、文件或行为
+      label: 任务说明
+      description: 说明背景、目标、实现范围和不包含范围
       placeholder: |
-        - packages/contracts/src
-        - apps/backend/src/modules/chat
-        - apps/web/src/pages/chat/api
+        背景：
+        目标：
+        范围：
+        不包含：
     validations:
       required: true
-  - type: textarea
-    id: out-of-scope
-    attributes:
-      label: 不包含范围
-      description: 明确这次不处理的内容
-      placeholder: 例如：这次不接入 MySQL 查询
-    validations:
-      required: false
-  - type: textarea
-    id: constraints
-    attributes:
-      label: 技术约束
-      description: 需要遵守的架构、兼容性、安全或验证要求
-      placeholder: 例如：公开业务接口继续使用 /api/server/*，不要暴露内部实现命名
-    validations:
-      required: false
   - type: textarea
     id: acceptance
     attributes:
       label: 验收标准
-      description: 如何判断任务完成
+      description: 写清楚如何判断任务完成
       placeholder: |
-        - DTO 只在 contracts 中定义一次
-        - backend build 通过
-        - web build 通过
-        - 相关适配层测试通过
+        - 目标改动已完成
+        - 相关测试或构建通过
+        - 风险点已说明或处理
     validations:
       required: true
   - type: textarea
     id: risk
     attributes:
-      label: 风险
-      description: 接口兼容、数据迁移、权限、安全、发布风险等
-      placeholder: 例如：可能影响现有 /chat 消息列表渲染
+      label: 风险和约束
+      description: 接口兼容、数据迁移、权限、安全、发布风险或必须遵守的技术约束
+      placeholder: 例如：公开业务接口继续使用 /api/server/*，可能影响 /chat 消息列表渲染
     validations:
       required: false
   - type: textarea

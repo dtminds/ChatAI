@@ -1,11 +1,14 @@
 /**
  * 将当前会话的三方用户标识合并进侧栏自定义页 iframe 地址，便于嵌入页用查询参数读取。
  * third* 为明文；配置密钥后由侧栏异步生成 rd、fsw、ts（均为 AES 密文；ts 明文为当前 Unix 秒十进制字符串，与 .env.example 密钥约定一致）。
+ * `mid` 来自 `/server/me/sidebar-tuse-crypto` 的 `appId`，与密钥同源。
  */
 
 export type SidebarIframeUrlContext = {
   thirdExternalUserId?: string;
   thirdUserId?: string;
+  /** 对应 `/me/sidebar-tuse-crypto` 返回的 `appId`，写入查询参数名 `mid` */
+  mid?: string;
   /** rd：AES 密文（明文为 `thirdUserId` UTF-8 字符串本身，见 tuse-crypto） */
   rd?: string;
   /** fsw：AES 密文（明文为 `thirdExternalUserId` UTF-8 字符串本身） */
@@ -18,10 +21,12 @@ export function buildSidebarIframeSrc(
   baseUrl: string,
   context: SidebarIframeUrlContext,
 ): string {
-  const { thirdExternalUserId, thirdUserId, rd, fsw, ts } = context;
+  const { thirdExternalUserId, thirdUserId, mid, rd, fsw, ts } = context;
+  const hasMid = mid !== undefined && mid !== "";
   if (
     !thirdUserId &&
     !thirdExternalUserId &&
+    !hasMid &&
     rd === undefined &&
     fsw === undefined &&
     ts === undefined
@@ -50,6 +55,9 @@ export function buildSidebarIframeSrc(
     }
     if (ts !== undefined && ts !== "") {
       url.searchParams.set("ts", ts);
+    }
+    if (hasMid) {
+      url.searchParams.set("mid", mid);
     }
 
     return url.toString();

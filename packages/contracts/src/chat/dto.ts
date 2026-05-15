@@ -65,8 +65,10 @@ export type WorkbenchSubUserDto = {
   displayName: string;
 };
 
-/** 侧栏 iframe 涂色加密参数，对应库表 `xy_wap_embed_user_relation.secret` / `iv_parameter` */
+/** 侧栏 iframe 涂色加密参数，对应库表 `xy_wap_embed_user_relation.secret` / `iv_parameter` / `appid` */
 export type WorkbenchSidebarTuseCryptoDto = {
+  /** 对应库表 `appid`，拼到 iframe 上时查询参数名为 `mid` */
+  appId: string;
   ivParameter: string;
   secret: string;
 };

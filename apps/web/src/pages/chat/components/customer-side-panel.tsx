@@ -53,7 +53,7 @@ export function CustomerSidePanel({
 }: CustomerSidePanelProps) {
   const isGroupConversation = conversationMode === "group";
   type TuseSecretCache =
-    | { kind: "ready"; value: { iv: string; key: string } | null }
+    | { kind: "ready"; value: { iv: string; key: string; mid?: string } | null }
     | { kind: "unset" };
   const tuseSecretCacheRef = useRef<TuseSecretCache>({ kind: "unset" });
 
@@ -74,7 +74,7 @@ export function CustomerSidePanel({
   const needsSidebarTuseSecrets = hasActiveCustomSidebar && hasSidebarIframeThirdIds;
 
   const [tuseSecrets, setTuseSecrets] = useState<
-    { iv: string; key: string } | null | undefined
+    { iv: string; key: string; mid?: string } | null | undefined
   >(undefined);
 
   useEffect(() => {
@@ -105,7 +105,11 @@ export function CustomerSidePanel({
 
         const next =
           dto?.secret?.trim() && dto?.ivParameter?.trim()
-            ? { key: dto.secret.trim(), iv: dto.ivParameter.trim() }
+            ? {
+                key: dto.secret.trim(),
+                iv: dto.ivParameter.trim(),
+                ...(dto.appId?.trim() ? { mid: dto.appId.trim() } : {}),
+              }
             : null;
         tuseSecretCacheRef.current = { kind: "ready", value: next };
         setTuseSecrets(next);
@@ -209,15 +213,19 @@ export function CustomerSidePanel({
     tuseSecretsReady,
   ]);
 
+  const sidebarIframeMid = tuseSecrets?.mid;
+
   const sidebarIframeSrcForUrl = useMemo(
     () => (url: string) =>
       buildSidebarIframeSrc(url, {
         thirdExternalUserId: sidebarIframeThirdExternalUserId,
         thirdUserId: sidebarIframeThirdUserId,
         ...(sidebarIframeCrypto ?? {}),
+        ...(sidebarIframeMid ? { mid: sidebarIframeMid } : {}),
       }),
     [
       sidebarIframeCrypto,
+      sidebarIframeMid,
       sidebarIframeThirdExternalUserId,
       sidebarIframeThirdUserId,
     ],
@@ -320,7 +328,7 @@ export function CustomerSidePanel({
                 sandbox="allow-scripts allow-same-origin allow-forms"
                 src={
                   isSidebarIframeCryptoReady
-                    ? sidebarIframeSrcForUrl(item.url) + '&mid=2038815948395253760'
+                    ? sidebarIframeSrcForUrl(item.url)
                     : "about:blank"
                 }
                 title={`${item.name}扩展页`}

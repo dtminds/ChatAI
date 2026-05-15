@@ -452,6 +452,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         getEmbedUserRelationTuseSecrets: vi.fn().mockResolvedValue({
+          appId: "app-for-mid",
           ivParameter: "iv-value",
           secret: "secret-value",
         }),
@@ -464,6 +465,7 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(service.getSidebarTuseCrypto("101")).resolves.toEqual({
+      appId: "app-for-mid",
       ivParameter: "iv-value",
       secret: "secret-value",
     });

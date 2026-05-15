@@ -9,11 +9,12 @@ import {
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
 
 vi.mock("@/pages/chat/api/sidebar-tuse-crypto", () => {
+  const appId = "embed-app-001";
   const secret = "03A2056448BF1-BD0B89DE-10E2-4732-96E0-1D85B30731BF";
   const ivParameter = "03A2056448BF2-06C002FB-1688-4A2F-B25A-F20AD4C89CB2";
 
   return {
-    fetchWorkbenchSidebarTuseCrypto: vi.fn(async () => ({ ivParameter, secret })),
+    fetchWorkbenchSidebarTuseCrypto: vi.fn(async () => ({ appId, ivParameter, secret })),
   };
 });
 
@@ -175,6 +176,7 @@ describe("CustomerSidePanel", () => {
 
         expect(parsed.searchParams.get("thirdUserId")).toBe("third-42");
         expect(parsed.searchParams.get("thirdExternalUserId")).toBe("ext-42");
+        expect(parsed.searchParams.get("mid")).toBe("embed-app-001");
         expect(parsed.searchParams.get("rd")).toBe(rd);
         expect(parsed.searchParams.get("fsw")).toBe(fsw);
         expect(parsed.searchParams.get("ts")).toBe(ts);

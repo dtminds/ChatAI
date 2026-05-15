@@ -47,4 +47,15 @@ describe("buildSidebarIframeSrc", () => {
       "https://example.com/embed?thirdUserId=u1&thirdExternalUserId=e1&rd=cipher%2Brd%2Fx%3D%3D&fsw=cipher+fsw&ts=cipher%2Bts%2Fx%3D%3D",
     );
   });
+
+  it("appends mid from app id when provided", () => {
+    vi.stubGlobal("window", { location: { origin: "http://localhost:5173" } });
+
+    expect(
+      buildSidebarIframeSrc("https://example.com/embed", {
+        thirdUserId: "u1",
+        mid: "app-xyz",
+      }),
+    ).toBe("https://example.com/embed?thirdUserId=u1&mid=app-xyz");
+  });
 });

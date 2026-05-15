@@ -68,7 +68,7 @@ export class WorkbenchRepository {
       .innerJoin("xy_wap_embed_user_relation as rel", (join) =>
         join.onRef("rel.uid", "=", "sub.uid").onRef("rel.platform", "=", "sub.platform"),
       )
-      .select(["rel.secret as secret", "rel.iv_parameter as iv_parameter"])
+      .select(["rel.appid as appid", "rel.secret as secret", "rel.iv_parameter as iv_parameter"])
       .where("sub.id", "=", subUserNumericId)
       .where("sub.status", "=", 1)
       .where("rel.biz_status", "=", 1)
@@ -77,12 +77,13 @@ export class WorkbenchRepository {
 
     const secret = row?.secret?.trim();
     const ivParameter = row?.iv_parameter?.trim();
+    const appId = row?.appid?.trim() ?? "";
 
     if (!secret || !ivParameter) {
       return undefined;
     }
 
-    return { ivParameter, secret };
+    return { appId, ivParameter, secret };
   }
 
   async getSubUser(subUserId: string) {

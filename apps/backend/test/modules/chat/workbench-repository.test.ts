@@ -373,6 +373,50 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("reads message file transfer status by audit id in tenant scope", async () => {
+    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info");
+          const query = createQueryBuilder({
+            content: JSON.stringify({
+              downloadStatus: "finished",
+              fileSerialNo: "serial-file-001",
+              fileUrlExpireTime: 1778919538036,
+              fileUrl: "chat-files/quote.pdf",
+            }),
+          });
+          queries.push({ table, wheres: query.wheres });
+
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getMessageFileDownloadStatus({
+        auditId: 321,
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      downloadStatus: "finished",
+      fileSerialNo: "serial-file-001",
+      fileUrlExpireTime: 1778919538036,
+      fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+    });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toMatchObject({
+      table: "xy_wap_embed_msg_audit_info",
+      wheres: [
+        ["id", "=", 321],
+        ["uid", "=", 9001],
+        ["platform", "=", 5],
+      ],
+    });
+  });
+
   it("calculates seat unread after mark-read with a lightweight aggregate query", async () => {
     const repository = new WorkbenchRepository(
       {

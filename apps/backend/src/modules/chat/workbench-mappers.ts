@@ -2,9 +2,16 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchMessageContentType,
   WorkbenchMessageDto,
+  WorkbenchMessageFileDownloadStatus,
   WorkbenchQuotedMessagePreviewDto,
   WorkbenchSeatDto,
 } from "@chatai/contracts";
+import {
+  isRecord,
+  normalizeMediaAssetUrl,
+  readRecordNumber,
+  readRecordString,
+} from "./workbench-content-utils.js";
 
 export type SeatRow = {
   avatar: string | null;
@@ -338,7 +345,10 @@ function parseMessageContent(
       return {
         alt: "视频",
         coverImageUrl: normalizeMediaAssetUrl(readStringField(parsed, "coverUrl")),
+        downloadStatus: readDownloadStatus(parsed),
         durationLabel: "",
+        fileSerialNo: readStringField(parsed, "fileSerialNo"),
+        fileUrlExpireTime: readNumberField(parsed, "fileUrlExpireTime"),
         videoUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
       };
     case "file": {
@@ -346,8 +356,10 @@ function parseMessageContent(
       const extension = readStringField(parsed, "fileExt") || getFileExtension(fileName);
 
       return {
+        downloadStatus: readDownloadStatus(parsed),
         extension,
         fileName,
+        fileSerialNo: readStringField(parsed, "fileSerialNo"),
         fileSizeLabel: formatFileSize(readNumberField(parsed, "fileSize")),
         fileUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
         sourceLabel: "文件",
@@ -613,12 +625,6 @@ function reverseMapContentType(contentType: WorkbenchMessageContentType) {
   }
 }
 
-function readRecordString(value: Record<string, unknown>, key: string) {
-  const field = value[key];
-
-  return typeof field === "string" ? field : "";
-}
-
 function parseContent(rawContent: string | null): unknown {
   const content = rawContent?.trim();
 
@@ -643,15 +649,18 @@ function readStringField(value: unknown, key: string) {
   return typeof field === "string" ? field : "";
 }
 
+export function readDownloadStatus(
+  value: unknown,
+): WorkbenchMessageFileDownloadStatus | undefined {
+  const status = readStringField(value, "downloadStatus");
+
+  return status === "ing" || status === "finished" || status === "failed"
+    ? status
+    : undefined;
+}
+
 function readNumberField(value: unknown, key: string) {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const field = value[key];
-  const numeric = typeof field === "number" ? field : Number(field);
-
-  return Number.isFinite(numeric) ? numeric : undefined;
+  return isRecord(value) ? readRecordNumber(value, key) : undefined;
 }
 
 function readSolitaireItems(value: unknown) {
@@ -668,28 +677,6 @@ function readSolitaireItems(value: unknown) {
       timestamp: readNumberField(itemRecord, "timestamp"),
     };
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-const mediaAssetBaseUrl = "https://b5.bokr.com.cn";
-
-function normalizeMediaAssetUrl(value: string) {
-  const url = value.trim();
-
-  if (!url) {
-    return "";
-  }
-
-  try {
-    const parsedUrl = new URL(url);
-
-    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:" ? url : "";
-  } catch {
-    return `${mediaAssetBaseUrl}/${url.replace(/^\/+/, "")}`;
-  }
 }
 
 function getFileExtension(fileName: string) {

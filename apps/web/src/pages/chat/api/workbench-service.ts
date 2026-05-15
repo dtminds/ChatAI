@@ -19,6 +19,8 @@ import {
   type WorkbenchGroupMembersResponse,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
+  type WorkbenchMessageFileDownloadResponse,
+  type WorkbenchMessageFileDownloadStatusResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchMessageStatus,
   type WorkbenchMessageStatusChangeDto,
@@ -30,7 +32,12 @@ import {
   type WorkbenchTakeOverSeatResponse,
   type WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
-import type { ChatMode, Message } from "@/pages/chat/chat-types";
+import type {
+  ChatMode,
+  FileMessageContent,
+  Message,
+  VideoMessageContent,
+} from "@/pages/chat/chat-types";
 
 export type WorkbenchConversationListOptions = {
   limit?: number;
@@ -47,6 +54,15 @@ export type WorkbenchService = {
   getMe: () => Promise<WorkbenchSubUserDto>;
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
+  downloadMessageFile: (input: {
+    conversationId: string;
+    messageId: string;
+    messageSeq: number;
+  }) => Promise<WorkbenchMessageFileDownloadResponse>;
+  getMessageFileDownloadStatus: (input: {
+    conversationId: string;
+    messageSeq: number;
+  }) => Promise<WorkbenchMessageFileDownloadStatusResponse | undefined>;
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
   getUploadCredential: (conversationId: string) => Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
@@ -171,6 +187,52 @@ export function createMockWorkbenchService(): WorkbenchService {
         messages: clone(visibleMessages),
         nextBeforeSeq: scannedMessages[0]?.seq,
         scannedCount: scannedMessages.length,
+      };
+    },
+    async downloadMessageFile(input) {
+      const message = findMessageByIdOrSeq(
+        state,
+        input.conversationId,
+        input.messageId,
+        input.messageSeq,
+      );
+
+      if (!message) {
+        throw new Error("Message not found");
+      }
+
+      updateMessageDownloadContent(state, input.conversationId, input.messageId, {
+        downloadStatus: "ing",
+      });
+
+      return {
+        messageId: input.messageId,
+        status: "accepted",
+      };
+    },
+    async getMessageFileDownloadStatus(input) {
+      const message = findMessageByIdOrSeq(
+        state,
+        input.conversationId,
+        undefined,
+        input.messageSeq,
+      );
+
+      if (!message) {
+        return undefined;
+      }
+
+      const content = message.content;
+
+      if (!isFileDownloadContent(content)) {
+        return undefined;
+      }
+
+      return {
+        downloadStatus: content.downloadStatus,
+        fileUrlExpireTime: content.type === "video" ? content.fileUrlExpireTime : undefined,
+        fileSerialNo: content.fileSerialNo,
+        fileUrl: content.type === "file" ? content.fileUrl : content.videoUrl,
       };
     },
     async getGroupMembers(conversationId) {
@@ -432,6 +494,24 @@ export function createHttpWorkbenchService(): WorkbenchService {
         },
       );
     },
+    downloadMessageFile(input) {
+      return http.post<
+        WorkbenchMessageFileDownloadResponse,
+        { conversationId: string; messageSeq: number }
+      >(`/server/messages/${input.messageId}/download`, {
+        conversationId: input.conversationId,
+        messageSeq: input.messageSeq,
+      });
+    },
+    getMessageFileDownloadStatus(input) {
+      return http.post<
+        WorkbenchMessageFileDownloadStatusResponse | undefined,
+        { conversationId: string; messageSeq: number }
+      >("/server/messages/download-status", {
+        conversationId: input.conversationId,
+        messageSeq: input.messageSeq,
+      });
+    },
     getGroupMembers(conversationId) {
       return http.get<WorkbenchGroupMembersResponse>(
         `/server/conversations/${conversationId}/group-members`,
@@ -622,16 +702,22 @@ function buildContent(message: Message) {
       return {
         alt: message.content.alt,
         coverImageUrl: message.content.coverImageUrl,
+        downloadStatus: message.content.downloadStatus,
         durationLabel: message.content.durationLabel,
+        fileSerialNo: message.content.fileSerialNo,
+        fileUrlExpireTime: message.content.fileUrlExpireTime,
         height: message.content.height,
         videoUrl: message.content.videoUrl,
         width: message.content.width,
       };
     case "file":
       return {
+        downloadStatus: message.content.downloadStatus,
         extension: message.content.extension,
         fileName: message.content.fileName,
+        fileSerialNo: message.content.fileSerialNo,
         fileSizeLabel: message.content.fileSizeLabel,
+        fileUrl: message.content.fileUrl,
         sourceLabel: message.content.sourceLabel,
       };
     case "h5":
@@ -935,6 +1021,7 @@ function buildPayloadSegmentContent(
       extension: segment.extension,
       fileName: segment.fileName,
       fileSizeLabel: segment.fileSizeLabel ?? "",
+      fileUrl: segment.url,
       sourceLabel: "文件",
     };
   }
@@ -942,6 +1029,59 @@ function buildPayloadSegmentContent(
   return {
     text: segment.text,
   };
+}
+
+function findMessageByIdOrSeq(
+  state: MockState,
+  conversationId: string,
+  messageId: string | undefined,
+  messageSeq: number,
+) {
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+
+  return messages.find(
+    (message) =>
+      (messageId && message.messageId === messageId) || message.seq === messageSeq,
+  );
+}
+
+function updateMessageDownloadContent(
+  state: MockState,
+  conversationId: string,
+  messageId: string,
+  patch: {
+    downloadStatus: "ing" | "finished" | "failed";
+    fileUrl?: string;
+    fileUrlExpireTime?: number;
+  },
+) {
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+
+  state.messagesByConversationId[conversationId] = messages.map((message) => {
+    if (message.messageId !== messageId || !isFileDownloadContent(message.content)) {
+      return message;
+    }
+
+    return {
+      ...message,
+      content: {
+        ...message.content,
+        ...stripUndefinedFields(patch),
+      },
+    };
+  });
+}
+
+function stripUndefinedFields<T extends Record<string, unknown>>(value: T) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, fieldValue]) => fieldValue !== undefined),
+  ) as Partial<T>;
+}
+
+function isFileDownloadContent(
+  content: WorkbenchMessageDto["content"],
+): content is (FileMessageContent | VideoMessageContent) & Record<string, unknown> {
+  return content.type === "file" || content.type === "video";
 }
 
 function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {

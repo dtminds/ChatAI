@@ -7,6 +7,13 @@ import {
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
+  isRecord,
+  normalizeMediaAssetUrl,
+  parseJsonRecord,
+  readRecordNumber,
+  readRecordString,
+} from "./workbench-content-utils.js";
+import {
   buildMissingQuotedMessagePreview,
   buildQuotedMessagePreview,
   getQuoteMessageAuditId,
@@ -15,6 +22,7 @@ import {
   mapConversationRow,
   mapMessageRow,
   mapSeatRow,
+  readDownloadStatus,
   type ConversationRow,
   type MessageHydrationSources,
   type MessageRow,
@@ -100,6 +108,30 @@ export class WorkbenchRepository {
       .executeTakeFirst();
 
     return readQuoteContentBase64(extend?.origin_data);
+  }
+
+  async getMessageFileDownloadStatus(input: {
+    auditId: number;
+    platform: number;
+    uid: number;
+  }) {
+    if (!Number.isInteger(input.auditId) || input.auditId <= 0) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_info")
+      .select(["content"])
+      .where("id", "=", input.auditId)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    return readMessageFileDownloadStatus(row.content);
   }
 
   async listSeats(subUserId: string) {
@@ -1005,6 +1037,21 @@ function readQuoteContentBase64(rawOriginData: string | null | undefined) {
   }
 }
 
+function readMessageFileDownloadStatus(content: string | null) {
+  const parsed = parseJsonRecord(content);
+
+  if (!parsed) {
+    return {};
+  }
+
+  return {
+    downloadStatus: readDownloadStatus(parsed),
+    fileSerialNo: readRecordString(parsed, "fileSerialNo") || undefined,
+    fileUrlExpireTime: readRecordNumber(parsed, "fileUrlExpireTime"),
+    fileUrl: normalizeMediaAssetUrl(readRecordString(parsed, "fileUrl")),
+  };
+}
+
 function toNumber(value: number | string | null | undefined) {
   if (value == null) {
     return undefined;
@@ -1013,10 +1060,6 @@ function toNumber(value: number | string | null | undefined) {
   const numberValue = typeof value === "number" ? value : Number(value);
 
   return Number.isFinite(numberValue) ? numberValue : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function uniqueNonEmpty(values: Array<string | null | undefined>) {

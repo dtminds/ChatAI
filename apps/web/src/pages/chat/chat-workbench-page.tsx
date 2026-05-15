@@ -49,10 +49,16 @@ import type {
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import {
+  downloadMessageFile,
+  getMessageFileDownloadStatus,
+} from "@/pages/chat/api/workbench-gateway";
+import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
 } from "@/pages/chat/lib/composer-file-files";
 import { extractComposerMentionState, type ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
+import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
 import {
   CONVERSATION_LIST_PANEL_WIDTH,
@@ -60,6 +66,9 @@ import {
 } from "@/pages/chat/lib/panel-width";
 
 const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
+const MAX_ACTIVE_DOWNLOAD_TRANSFERS = 3;
+const DOWNLOAD_STATUS_POLL_INTERVAL_MS = 3000;
+const MAX_DOWNLOAD_STATUS_POLL_COUNT = 40;
 
 type PendingComposerDiscardSwitch =
   | {
@@ -150,6 +159,7 @@ function ChatWorkbenchContent({
     takeOverAccount,
     takeoverStatusByAccountId,
     unpinConversation,
+    updateMessageDownloadContent,
   } = useWorkbenchStore();
 
   const [draft, setDraft] = useState("");
@@ -181,6 +191,11 @@ function ChatWorkbenchContent({
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
   );
+  const [downloadTransferStates, setDownloadTransferStates] = useState<
+    Record<string, "idle" | "transferring">
+  >({});
+  const downloadPollingTimeoutsRef = useRef(new Map<string, number>());
+  const downloadPollingConversationRef = useRef<string | undefined>(undefined);
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
@@ -284,6 +299,34 @@ function ChatWorkbenchContent({
     });
   };
 
+  const clearDownloadPollingTimers = () => {
+    downloadPollingTimeoutsRef.current.forEach((timeoutId) => {
+      window.clearTimeout(timeoutId);
+    });
+    downloadPollingTimeoutsRef.current.clear();
+  };
+
+  const updateDownloadTransferState = (
+    messageId: string,
+    state: "idle" | "transferring",
+  ) => {
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    setDownloadTransferStates((currentStates) => {
+      if (state === "idle") {
+        const { [messageId]: _ignored, ...nextStates } = currentStates;
+        return nextStates;
+      }
+
+      return {
+        ...currentStates,
+        [messageId]: state,
+      };
+    });
+  };
+
   const {
     handleLoadOlderMessages,
     handleMessageViewportScroll,
@@ -309,7 +352,18 @@ function ChatWorkbenchContent({
     });
     fileUploadAbortControllersRef.current.clear();
     fileUploadQueueRef.current = [];
+    clearDownloadPollingTimers();
   }, []);
+
+  useEffect(() => {
+    if (downloadPollingConversationRef.current === activeConversation?.id) {
+      return;
+    }
+
+    clearDownloadPollingTimers();
+    downloadPollingConversationRef.current = activeConversation?.id;
+    setDownloadTransferStates({});
+  }, [activeConversation?.id]);
 
   useEffect(() => {
     if (!readReceiptError) {
@@ -538,6 +592,139 @@ function ChatWorkbenchContent({
         }
       })();
     }
+  };
+
+  const handleDownloadMessageFile = (message: ChatMessage) => {
+    if (message.content.type !== "file" && message.content.type !== "video") {
+      return;
+    }
+
+    const url = getMessageDownloadUrl(message);
+
+    if (isMessageDownloadUrlReady(message, url)) {
+      openMessageDownloadUrl(message, url);
+      return;
+    }
+
+    if (!message.content.fileSerialNo || !message.seq || !activeConversation) {
+      return;
+    }
+
+    if (Object.keys(downloadTransferStates).length >= MAX_ACTIVE_DOWNLOAD_TRANSFERS) {
+      toast.warning("下载队列已满，请稍后");
+      return;
+    }
+
+    if (message.conversationId !== activeConversation.id) {
+      return;
+    }
+
+    updateDownloadTransferState(message.id, "transferring");
+    updateMessageDownloadContent(message.conversationId, message.id, {
+      downloadStatus: "ing",
+    });
+
+    void downloadMessageFile({
+      conversationId: message.conversationId,
+      messageId: message.remoteMessageId ?? message.id,
+      messageSeq: message.seq,
+    })
+      .then(() => {
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        pollMessageDownloadStatus(message, 0);
+      })
+      .catch(() => {
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        updateDownloadTransferState(message.id, "idle");
+        updateMessageDownloadContent(message.conversationId, message.id, {
+          downloadStatus: "failed",
+        });
+        toast.warning("下载失败，请稍后重试");
+      });
+  };
+
+  const pollMessageDownloadStatus = (message: ChatMessage, attempt: number) => {
+    if (!isMountedRef.current || !message.seq) {
+      updateDownloadTransferState(message.id, "idle");
+      return;
+    }
+
+    if (attempt >= MAX_DOWNLOAD_STATUS_POLL_COUNT) {
+      updateDownloadTransferState(message.id, "idle");
+      updateMessageDownloadContent(message.conversationId, message.id, {
+        downloadStatus: "failed",
+      });
+      toast.warning("文件下载超时，请稍后重试");
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      downloadPollingTimeoutsRef.current.delete(message.id);
+
+      if (
+        !isMountedRef.current ||
+        downloadPollingConversationRef.current !== message.conversationId
+      ) {
+        return;
+      }
+
+      void getMessageFileDownloadStatus({
+        conversationId: message.conversationId,
+        messageSeq: message.seq ?? 0,
+      })
+        .then((status) => {
+          if (
+            !isMountedRef.current ||
+            downloadPollingConversationRef.current !== message.conversationId
+          ) {
+            return;
+          }
+
+          if (status?.downloadStatus === "finished") {
+            updateDownloadTransferState(message.id, "idle");
+            updateMessageDownloadContent(message.conversationId, message.id, {
+              downloadStatus: "finished",
+              fileUrlExpireTime: status.fileUrlExpireTime,
+              fileUrl: status.fileUrl,
+            });
+
+            if (message.content.type === "file" && status.fileUrl) {
+              openMessageDownloadUrl(message, status.fileUrl);
+            }
+            return;
+          }
+
+          if (status?.downloadStatus === "failed") {
+            updateDownloadTransferState(message.id, "idle");
+            updateMessageDownloadContent(message.conversationId, message.id, {
+              downloadStatus: "failed",
+            });
+            toast.warning("下载失败，请稍后重试");
+            return;
+          }
+
+          pollMessageDownloadStatus(message, attempt + 1);
+        })
+        .catch(() => {
+          if (!isMountedRef.current) {
+            return;
+          }
+
+          updateDownloadTransferState(message.id, "idle");
+          updateMessageDownloadContent(message.conversationId, message.id, {
+            downloadStatus: "failed",
+          });
+          toast.warning("下载失败，请稍后重试");
+        });
+    }, DOWNLOAD_STATUS_POLL_INTERVAL_MS);
+
+    downloadPollingTimeoutsRef.current.set(message.id, timeoutId);
   };
 
   const handleDraftChange = (nextDraft: string) => {
@@ -783,6 +970,7 @@ function ChatWorkbenchContent({
                 isSendingDraft={isSendingDraft}
                 isResizingCustomerPanel={isResizingCustomerPanel}
                 fileUploadQueue={fileUploadQueue}
+                downloadTransferStates={downloadTransferStates}
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
@@ -793,6 +981,7 @@ function ChatWorkbenchContent({
                 onComposerSegmentsChange={handleComposerSegmentsChange}
                 onCancelFileUpload={handleCancelFileUpload}
                 onClearQuotedMessage={() => setQuotedMessage(null)}
+                onDownloadMessageFile={handleDownloadMessageFile}
                 onDraftChange={handleDraftChange}
                 onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                 onEnterBehaviorChange={setInputEnterBehavior}
@@ -912,6 +1101,27 @@ function getSendFailureDialogCopy(
     title: "发送失败，请稍后重试",
     description: `ErrorCode: ${errorCode}`,
   };
+}
+
+function getMessageDownloadUrl(message: ChatMessage) {
+  if (message.content.type === "file") {
+    return message.content.fileUrl?.trim() ?? "";
+  }
+
+  if (message.content.type === "video") {
+    return message.content.videoUrl?.trim() ?? "";
+  }
+
+  return "";
+}
+
+function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
+  if (message.content.type === "video") {
+    return message.content.downloadStatus === "finished" &&
+      canUseExpiringUrl(url, message.content.fileUrlExpireTime);
+  }
+
+  return message.content.type === "file" && message.content.downloadStatus === "finished" && url;
 }
 
 function buildQuotedMessagePreview(message: ChatMessage): QuotedMessagePreviewContent {

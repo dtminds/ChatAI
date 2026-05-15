@@ -20,7 +20,9 @@ import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 const TIMESTAMP_BREAK_MS = 30 * 60 * 1000;
 
 type ChatMessageListProps = {
+  downloadTransferStates?: Record<string, "idle" | "transferring">;
   messages: Message[];
+  onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
@@ -39,7 +41,9 @@ type FeedItem =
     };
 
 export function ChatMessageList({
+  downloadTransferStates = {},
   messages,
+  onDownloadMessageFile,
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
@@ -61,6 +65,8 @@ export function ChatMessageList({
           >
             <MessageRow
               message={item.message}
+              downloadTransferState={downloadTransferStates[item.message.id]}
+              onDownloadMessageFile={onDownloadMessageFile}
               onMentionMessage={onMentionMessage}
               onOpenQuotedMessage={onOpenQuotedMessage}
               onQuoteMessage={onQuoteMessage}
@@ -102,12 +108,16 @@ function SystemMessageNotice({ text }: { text: string }) {
 
 export function MessageRow({
   message,
+  downloadTransferState,
+  onDownloadMessageFile,
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
 }: {
   message: Message;
+  downloadTransferState?: "idle" | "transferring";
+  onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
@@ -170,8 +180,10 @@ export function MessageRow({
                 </p>
               ) : null}
               <MessageContentRenderer
+                downloadTransferState={downloadTransferState}
                 isAgent={isAgent}
                 message={message}
+                onDownloadMessageFile={onDownloadMessageFile}
                 onOpenQuotedMessage={onOpenQuotedMessage}
               />
               {message.isRevoked ? <MessageRevokedState /> : null}

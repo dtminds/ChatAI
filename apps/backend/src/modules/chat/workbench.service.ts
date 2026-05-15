@@ -7,6 +7,8 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchGroupMembersResponse,
   WorkbenchMessageDto,
+  WorkbenchMessageFileDownloadResponse,
+  WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchMessagePageDto,
   WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
@@ -55,6 +57,19 @@ export type WorkbenchService = {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ): Promise<WorkbenchMessagePageDto> | WorkbenchMessagePageDto;
+  downloadMessageFile(
+    subUserId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<WorkbenchMessageFileDownloadResponse> | WorkbenchMessageFileDownloadResponse;
+  getMessageFileDownloadStatus(
+    subUserId: string,
+    conversationId: string,
+    messageSeq: number,
+  ):
+    | Promise<WorkbenchMessageFileDownloadStatusResponse | undefined>
+    | WorkbenchMessageFileDownloadStatusResponse
+    | undefined;
   getGroupMembers(
     subUserId: string,
     conversationId: string,
@@ -193,6 +208,54 @@ export class MysqlWorkbenchService implements WorkbenchService {
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
     return this.javaClient.getUploadCredential({
+      uid: conversation.uid,
+    });
+  }
+
+  async downloadMessageFile(
+    subUserId: string,
+    conversationId: string,
+    messageId: string,
+  ) {
+    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const normalizedMessageId = messageId.trim();
+
+    if (!normalizedMessageId) {
+      throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
+    }
+
+    await this.javaClient.downloadMsgFile({
+      msgid: normalizedMessageId,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
+    return {
+      messageId: normalizedMessageId,
+      status: "accepted" as const,
+    };
+  }
+
+  async getMessageFileDownloadStatus(
+    subUserId: string,
+    conversationId: string,
+    messageSeq: number,
+  ) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (!Number.isSafeInteger(messageSeq) || messageSeq <= 0) {
+      throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
+    }
+
+    return this.repository.getMessageFileDownloadStatus({
+      auditId: messageSeq,
+      platform: conversation.platform,
       uid: conversation.uid,
     });
   }

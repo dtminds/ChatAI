@@ -8,11 +8,11 @@
 export type SidebarIframeUrlContext = {
   /** 对应服务端签发的 `mid`（库表 `appid`） */
   mid?: string;
-  /** rd：AES 密文（明文为 `thirdUserId` UTF-8 字符串本身，见 tuse-crypto） */
+  /** rd：服务端签发的 AES 密文（明文为 `thirdUserId` UTF-8 字符串本身） */
   rd?: string;
-  /** fsw：AES 密文（明文为 `thirdExternalUserId` UTF-8 字符串本身） */
+  /** fsw：服务端签发的 AES 密文（明文为 `thirdExternalUserId` UTF-8 字符串本身） */
   fsw?: string;
-  /** ts：AES 密文（明文为 Unix 秒十进制字符串，见 tuse-crypto） */
+  /** ts：服务端签发的 AES 密文（明文为 Unix 秒十进制字符串） */
   ts?: string;
   /** 当前坐席是否已接管该账号：`0` 未接管，`1` 已接管 */
   tos?: "0" | "1";

@@ -36,11 +36,7 @@ import {
   JAVA_MSG_TYPE,
   JAVA_SEND_TYPE,
 } from "./workbench-java-client.js";
-import {
-  encryptTuseFswFromThirdExternalUserId,
-  encryptTuseRdFromThirdUserId,
-  encryptTuseTsFromUnixSeconds,
-} from "../../lib/tuse-crypto.js";
+import { buildSidebarIframeTuseCipherTexts } from "../../lib/tuse-crypto.js";
 import {
   parseMySqlId,
   type WorkbenchRepository,
@@ -169,27 +165,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
       );
     }
 
-    const thirdUserId = conversation.thirdUserId?.trim() ?? "";
-    const thirdExternalUserId = conversation.thirdExternalUserId?.trim() ?? "";
-    const unixSeconds = Math.floor(Date.now() / 1000);
+    const cipherTexts = buildSidebarIframeTuseCipherTexts({
+      aesIvUtf8Secret: secrets.ivParameter,
+      aesKeyUtf8Secret: secrets.secret,
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdUserId: conversation.thirdUserId,
+      unixSeconds: Math.floor(Date.now() / 1000),
+    });
 
     return {
       mid: secrets.appId,
-      ...(thirdUserId
-        ? {
-            rd: encryptTuseRdFromThirdUserId(secrets.secret, secrets.ivParameter, thirdUserId),
-          }
-        : {}),
-      ...(thirdExternalUserId
-        ? {
-            fsw: encryptTuseFswFromThirdExternalUserId(
-              secrets.secret,
-              secrets.ivParameter,
-              thirdExternalUserId,
-            ),
-          }
-        : {}),
-      ts: encryptTuseTsFromUnixSeconds(secrets.secret, secrets.ivParameter, unixSeconds),
+      ...cipherTexts,
     };
   }
 

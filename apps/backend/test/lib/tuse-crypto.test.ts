@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSidebarIframeTuseCipherTexts,
   encryptTuseAesCbcPkcs7Base64,
   encryptTuseFswFromThirdExternalUserId,
   encryptTuseRdFromThirdUserId,
@@ -44,5 +45,23 @@ describe("tuse-crypto AES-256-CBC", () => {
     expect(encryptTuseTsFromUnixSeconds(tuseKey, tuseIv, unixSeconds)).toBe(
       encryptTuseAesCbcPkcs7Base64(tuseKey, tuseIv, String(unixSeconds)),
     );
+  });
+
+  it("builds sidebar iframe cipher texts with a single key/iv derivation", () => {
+    const unixSeconds = 1735689600;
+
+    expect(
+      buildSidebarIframeTuseCipherTexts({
+        aesIvUtf8Secret: tuseIv,
+        aesKeyUtf8Secret: tuseKey,
+        thirdExternalUserId,
+        thirdUserId,
+        unixSeconds,
+      }),
+    ).toEqual({
+      fsw: encryptTuseFswFromThirdExternalUserId(tuseKey, tuseIv, thirdExternalUserId),
+      rd: encryptTuseRdFromThirdUserId(tuseKey, tuseIv, thirdUserId),
+      ts: encryptTuseTsFromUnixSeconds(tuseKey, tuseIv, unixSeconds),
+    });
   });
 });

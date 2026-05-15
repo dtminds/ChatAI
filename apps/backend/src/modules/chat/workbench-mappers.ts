@@ -471,14 +471,24 @@ function formatMessagePreview(msgtype: string | null, rawContent: string | null)
 
 function readSystemMessageText(parsed: unknown, rawContent: string | null) {
   if (isRecord(parsed)) {
-    const text = readStringField(parsed, "text") || readStringField(parsed, "content");
+    const text =
+      readStringField(parsed, "text") ||
+      readStringField(parsed, "content") ||
+      readStringField(parsed, "unsupportedDisplayText") ||
+      readStringField(parsed, "title");
 
     if (text) {
       return text;
     }
+
+    return "";
   }
 
-  return formatMessagePreview("system", rawContent);
+  if (typeof parsed === "string") {
+    return parsed;
+  }
+
+  return rawContent ?? "";
 }
 
 export function getQuoteMessageAuditId(row: MessageRow) {

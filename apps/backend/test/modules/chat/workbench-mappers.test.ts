@@ -459,6 +459,45 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("uses system fallback text fields without rendering raw JSON", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          type: "unknown",
+          unsupportedDisplayText: "暂不支持的系统消息",
+        }),
+        from_type: 1,
+        msgtype: "system",
+      })),
+    ).toMatchObject({
+      content: {
+        text: "暂不支持的系统消息",
+      },
+      contentType: "system",
+      senderType: "system",
+    });
+  });
+
+  it("does not expose raw JSON for system payloads without display text", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          revokeMsgId: "21",
+          revokeOriginMsgId: "1019745",
+          type: "revoke",
+        }),
+        from_type: 1,
+        msgtype: "system",
+      })),
+    ).toMatchObject({
+      content: {
+        text: "",
+      },
+      contentType: "system",
+      senderType: "system",
+    });
+  });
+
   it("maps timestamp fields from Date objects and date strings", () => {
     expect(
       mapSeatRow({

@@ -31,7 +31,7 @@ body:
       placeholder: 例如：空状态需要明确说明当前没有会话，并提供刷新入口
     validations:
       required: true
-  - type: input
+  - type: textarea
     id: design-link
     attributes:
       label: 设计稿链接

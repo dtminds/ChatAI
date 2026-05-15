@@ -63,7 +63,7 @@ body:
         - 不确定
     validations:
       required: true
-  - type: input
+  - type: textarea
     id: environment
     attributes:
       label: 发生环境

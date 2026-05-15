@@ -2,6 +2,8 @@ import {
   GROUP_MEMBER_TYPE,
   type WorkbenchGroupMemberDto,
   type WorkbenchGroupMembersResponse,
+  type WorkbenchConversationCursorDto,
+  type WorkbenchConversationListResponse,
   type WorkbenchMessagePageDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
@@ -59,6 +61,30 @@ export type SeatOperateScope = {
   seatId: string;
   thirdUserId: string;
   uid: number;
+};
+
+export type ConversationListCursor = WorkbenchConversationCursorDto;
+
+type ConversationPageRow = Omit<
+  ConversationRow,
+  | "customer_avatar"
+  | "customer_name"
+  | "group_avatar"
+  | "group_name"
+  | "last_message_content"
+  | "last_message_type"
+> & {
+  last_audit_info_id: number | string | null;
+};
+
+type ConversationHydrationSources = {
+  bindsByThirdExternalId: Map<string, { remark: string | null }>;
+  contactsByThirdExternalId: Map<
+    string,
+    { avatar: string | null; name: string | null; realName: string | null }
+  >;
+  groupsByThirdGroupId: Map<string, { avatar: string | null; name: string | null }>;
+  lastMessagesById: Map<string, { content: string | null; msgtype: string | null }>;
 };
 
 export class WorkbenchRepository {
@@ -289,47 +315,34 @@ export class WorkbenchRepository {
   async listConversations(
     seatId: string,
     options?: {
+      cursor?: ConversationListCursor;
       limit?: number;
       mode?: "single" | "group";
     },
-  ) {
+  ): Promise<WorkbenchConversationListResponse> {
     const seatNumericId = parseMySqlId(seatId);
 
     if (seatNumericId == null) {
-      return [];
+      return emptyConversationListPage(Date.now());
     }
 
     const seat = await this.getSeatRecord(seatNumericId);
 
     if (!seat) {
-      return [];
+      return emptyConversationListPage(Date.now());
     }
+
+    const limit = normalizeConversationListLimit(options?.limit);
+    const snapshotAt = options?.cursor?.snapshotAt ?? Date.now();
+    const cursor = options?.cursor;
 
     let query = this.db
       .selectFrom("xy_wap_embed_conversation as conversation")
-      .leftJoin("xy_wap_embed_msg_audit_info as last_message", (join) =>
-        join
-          .onRef("last_message.id", "=", "conversation.last_audit_info_id")
-          .onRef("last_message.uid", "=", "conversation.uid")
-          .onRef("last_message.platform", "=", "conversation.platform"),
-      )
-      .leftJoin("xy_wap_embed_contact as contact", (join) =>
-        join
-          .onRef("contact.third_external_userid", "=", "conversation.third_external_userid")
-          .onRef("contact.uid", "=", "conversation.uid")
-          .onRef("contact.platform", "=", "conversation.platform"),
-      )
-      .leftJoin("xy_wap_embed_customer_bind_relation as bind", (join) =>
-        join
-          .onRef("bind.third_external_userid", "=", "conversation.third_external_userid")
-          .onRef("bind.third_userid", "=", "conversation.third_userid")
-          .onRef("bind.uid", "=", "conversation.uid")
-          .onRef("bind.platform", "=", "conversation.platform"),
-      )
       .select([
         "conversation.id as id",
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
+        "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
@@ -337,24 +350,15 @@ export class WorkbenchRepository {
         "conversation.last_msgtime as last_msgtime",
         "conversation.pinned_time as pinned_time",
         "conversation.verified as verified",
-        "last_message.content as last_message_content",
-        "last_message.msgtype as last_message_type",
-        "contact.avatar as customer_avatar",
       ])
       .select((expressionBuilder) => [
         expressionBuilder.val(seatNumericId).as("seat_id"),
-        expressionBuilder.val(null).as("group_avatar"),
-        expressionBuilder.val(null).as("group_name"),
-        expressionBuilder.fn
-          .coalesce("bind.remark", "contact.real_name", "contact.name")
-          .as("customer_name"),
       ])
       .where("conversation.uid", "=", seat.uid)
       .where("conversation.platform", "=", seat.platform)
       .where("conversation.third_userid", "=", seat.third_userid)
       .where("conversation.biz_status", "=", 1)
-      .orderBy("conversation.pinned_time", "desc")
-      .orderBy("conversation.last_msgtime", "desc");
+      .where("conversation.last_msgtime", "<=", snapshotAt);
 
     if (options?.mode) {
       query = query.where(
@@ -364,25 +368,72 @@ export class WorkbenchRepository {
       );
     }
 
-    const rows = await query
-      .limit(normalizeConversationListLimit(options?.limit))
-      .execute();
+    if (cursor) {
+      query = query.where((expressionBuilder) =>
+        expressionBuilder.or([
+          expressionBuilder("conversation.last_msgtime", "<", cursor.lastMsgTime),
+          expressionBuilder.and([
+            expressionBuilder("conversation.last_msgtime", "=", cursor.lastMsgTime),
+            expressionBuilder("conversation.id", "<", asSchemaBigIntId(cursor.id)),
+          ]),
+        ]),
+      )
+        .orderBy("conversation.last_msgtime", "desc")
+        .orderBy("conversation.id", "desc");
+    } else {
+      query = query
+        .orderBy("conversation.pinned_time", "desc")
+        .orderBy("conversation.last_msgtime", "desc")
+        .orderBy("conversation.id", "desc")
+        .limit(limit + 1);
+    }
 
-    const conversationRows = rows.map((row) => row as ConversationRow);
-    const groupsByThirdGroupId = await this.getConversationGroups(
+    if (cursor) {
+      query = query.limit(limit + 1);
+    }
+
+    const rows = await query.execute();
+
+    const pageRows = rows.slice(0, limit);
+    const conversationRows = pageRows.map((row) => row as ConversationPageRow);
+    const hydrationSources = await this.getConversationHydrationSources(
       conversationRows,
       seat.uid,
       seat.platform,
+      seat.third_userid,
     );
 
-    return conversationRows.map((row) =>
-      mapConversationRow({
+    const items = conversationRows.map((row) => {
+      const lastMessage = hydrationSources.lastMessagesById.get(String(row.last_audit_info_id));
+      const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
+      const bind = hydrationSources.bindsByThirdExternalId.get(row.third_external_userid);
+      const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
+
+      return mapConversationRow({
         ...row,
-        group_avatar:
-          groupsByThirdGroupId.get(row.third_group_id)?.avatar ?? row.group_avatar,
-        group_name: groupsByThirdGroupId.get(row.third_group_id)?.name ?? row.group_name,
-      }),
-    );
+        customer_avatar: contact?.avatar ?? null,
+        customer_name: bind?.remark ?? contact?.realName ?? contact?.name ?? null,
+        group_avatar: group?.avatar ?? null,
+        group_name: group?.name ?? null,
+        last_message_content: lastMessage?.content ?? null,
+        last_message_type: lastMessage?.msgtype ?? null,
+      });
+    });
+    const lastRow = conversationRows.at(-1);
+
+    return {
+      hasMore: rows.length > limit,
+      items,
+      nextCursor:
+        rows.length > limit && lastRow
+          ? encodeConversationListCursor({
+              id: String(lastRow.id),
+              lastMsgTime: Number(lastRow.last_msgtime),
+              snapshotAt,
+            })
+          : undefined,
+      snapshotAt,
+    };
   }
 
   async getConversationLookup(conversationId: string): Promise<ConversationLookup | undefined> {
@@ -876,6 +927,110 @@ export class WorkbenchRepository {
     );
   }
 
+  private async getConversationHydrationSources(
+    rows: ConversationPageRow[],
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+  ): Promise<ConversationHydrationSources> {
+    const lastMessageIds = uniqueIds(
+      rows.map((row) => row.last_audit_info_id),
+    );
+    const contactThirdExternalIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type !== CHAT_TYPE_GROUP)
+        .map((row) => row.third_external_userid),
+    );
+    const groupIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type === CHAT_TYPE_GROUP)
+        .map((row) => row.third_group_id),
+    );
+
+    const [lastMessages, contacts, binds, groups] = await Promise.all([
+      lastMessageIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_msg_audit_info")
+            .select(["id", "content", "msgtype"])
+            .where("id", "in", asSchemaBigIntIds(lastMessageIds))
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .execute()
+        : [],
+      contactThirdExternalIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_contact")
+            .select(["third_external_userid", "avatar", "name", "real_name"])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_external_userid", "in", contactThirdExternalIds)
+            .where("biz_status", "=", 1)
+            .execute()
+        : [],
+      contactThirdExternalIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_customer_bind_relation")
+            .select(["third_external_userid", "remark"])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_userid", "=", seatThirdUserId)
+            .where("third_external_userid", "in", contactThirdExternalIds)
+            .where("biz_status", "=", 1)
+            .execute()
+        : [],
+      groupIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_group_seat")
+            .select(["third_group_id", "avatar", "name"])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_userid", "=", seatThirdUserId)
+            .where("third_group_id", "in", groupIds)
+            .where("biz_status", "=", 1)
+            .execute()
+        : [],
+    ]);
+
+    return {
+      bindsByThirdExternalId: new Map(
+        binds.map((bind) => [
+          bind.third_external_userid,
+          {
+            remark: bind.remark,
+          },
+        ]),
+      ),
+      contactsByThirdExternalId: new Map(
+        contacts.map((contact) => [
+          contact.third_external_userid,
+          {
+            avatar: contact.avatar,
+            name: contact.name,
+            realName: contact.real_name,
+          },
+        ]),
+      ),
+      groupsByThirdGroupId: new Map(
+        groups.map((group) => [
+          group.third_group_id,
+          {
+            avatar: group.avatar,
+            name: group.name,
+          },
+        ]),
+      ),
+      lastMessagesById: new Map(
+        lastMessages.map((message) => [
+          String(message.id),
+          {
+            content: message.content,
+            msgtype: message.msgtype,
+          },
+        ]),
+      ),
+    };
+  }
+
   private async getMessageHydrationSources(
     rows: MessageRow[],
     uid: number,
@@ -1073,6 +1228,24 @@ function uniqueNonEmpty(values: Array<string | null | undefined>) {
   );
 }
 
+function uniqueIds(values: Array<number | string | null | undefined>) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => /^[1-9]\d*$/.test(value)),
+    ),
+  );
+}
+
+function asSchemaBigIntId(value: string) {
+  return value as unknown as number;
+}
+
+function asSchemaBigIntIds(values: string[]) {
+  return values as unknown as number[];
+}
+
 function uniqueNumbers(values: Array<number | undefined>) {
   return Array.from(
     new Set(
@@ -1103,6 +1276,52 @@ function normalizeConversationListLimit(value: number | undefined) {
   }
 
   return Math.min(value, MAX_CONVERSATION_LIST_LIMIT);
+}
+
+function emptyConversationListPage(snapshotAt: number): WorkbenchConversationListResponse {
+  return {
+    hasMore: false,
+    items: [],
+    snapshotAt,
+  };
+}
+
+export function encodeConversationListCursor(cursor: ConversationListCursor) {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+export function decodeConversationListCursor(value: string): ConversationListCursor | undefined {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as unknown;
+
+    if (!isConversationListCursor(parsed)) {
+      return undefined;
+    }
+
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function isConversationListCursor(value: unknown): value is ConversationListCursor {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<ConversationListCursor>;
+  const { id, lastMsgTime, snapshotAt } = candidate;
+
+  return (
+    typeof id === "string" &&
+    /^[1-9]\d*$/.test(id) &&
+    Number.isSafeInteger(lastMsgTime) &&
+    typeof lastMsgTime === "number" &&
+    lastMsgTime >= 0 &&
+    Number.isSafeInteger(snapshotAt) &&
+    typeof snapshotAt === "number" &&
+    snapshotAt >= 0
+  );
 }
 
 type GroupMemberRow = {

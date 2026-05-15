@@ -8,6 +8,7 @@ import { http } from "@/lib/request";
 import {
   type ApiSuccessEnvelope,
   type WorkbenchConversationDeleteResponse,
+  type WorkbenchConversationListResponse,
   type WorkbenchSeatChangeDto,
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
@@ -40,6 +41,7 @@ import type {
 } from "@/pages/chat/chat-types";
 
 export type WorkbenchConversationListOptions = {
+  cursor?: string;
   limit?: number;
   mode?: ChatMode;
 };
@@ -50,7 +52,7 @@ export type WorkbenchService = {
   getConversations: (
     seatId: string,
     options?: WorkbenchConversationListOptions,
-  ) => Promise<WorkbenchConversationSummaryDto[]>;
+  ) => Promise<WorkbenchConversationListResponse>;
   getMe: () => Promise<WorkbenchSubUserDto>;
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
@@ -142,12 +144,17 @@ export function createMockWorkbenchService(): WorkbenchService {
     },
     async getConversations(seatId, options) {
       const conversations = state.conversationsByAccount[seatId] ?? [];
+      const snapshotAt = Date.now();
 
-      return clone(
-        sortConversations(conversations)
-          .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
-          .slice(0, options?.limit),
-      );
+      return {
+        hasMore: false,
+        items: clone(
+          sortConversations(conversations)
+            .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
+            .slice(0, options?.limit),
+        ),
+        snapshotAt,
+      };
     },
     async getMe() {
       return clone(state.subUser);
@@ -465,8 +472,9 @@ export function createHttpWorkbenchService(): WorkbenchService {
       );
     },
     getConversations(seatId, options) {
-      return http.get<WorkbenchConversationSummaryDto[]>("/server/conversations", {
+      return http.get<WorkbenchConversationListResponse>("/server/conversations", {
         params: {
+          cursor: options?.cursor,
           limit: options?.limit,
           mode: options?.mode,
           seatId,

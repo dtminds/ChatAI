@@ -1,5 +1,6 @@
 import type {
   WorkbenchConversationDeleteResponse,
+  WorkbenchConversationListResponse,
   WorkbenchSeatChangeDto,
   WorkbenchSeatDto,
   WorkbenchConversationChangeDto,
@@ -94,13 +95,19 @@ export function createMemoryWorkbenchService() {
     getConversations(
       _subUserId: string,
       seatId: string,
-      options?: { limit?: number; mode?: "single" | "group" },
-    ) {
-      return clone(
-        sortConversations(state.conversationsBySeat[seatId] ?? [])
-          .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
-          .slice(0, options?.limit),
-      );
+      options?: { cursor?: string; limit?: number; mode?: "single" | "group" },
+    ): WorkbenchConversationListResponse {
+      const snapshotAt = Date.now();
+      const limit = options?.limit ?? 500;
+      const conversations = sortConversations(state.conversationsBySeat[seatId] ?? [])
+        .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
+        .slice(0, limit);
+
+      return {
+        hasMore: false,
+        items: clone(conversations),
+        snapshotAt,
+      };
     },
     getMe(_subUserId: string) {
       return clone(state.subUser);

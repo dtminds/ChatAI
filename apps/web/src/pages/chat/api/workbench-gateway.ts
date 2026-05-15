@@ -255,7 +255,7 @@ export async function loadAccountConversationsByMode(
     mode,
   });
 
-  return conversationDtos.map(adaptConversation);
+  return conversationDtos.items.map(adaptConversation);
 }
 
 export async function loadConversationMessagesPage(

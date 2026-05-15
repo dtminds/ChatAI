@@ -117,6 +117,19 @@ export type WorkbenchConversationSummaryDto = {
   verified?: boolean;
 };
 
+export type WorkbenchConversationCursorDto = {
+  id: string;
+  lastMsgTime: number;
+  snapshotAt: number;
+};
+
+export type WorkbenchConversationListResponse = {
+  hasMore: boolean;
+  items: WorkbenchConversationSummaryDto[];
+  nextCursor?: string;
+  snapshotAt: number;
+};
+
 export type WorkbenchMessageBaseDto = {
   messageId: string;
   conversationId: string;

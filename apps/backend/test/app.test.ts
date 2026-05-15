@@ -858,7 +858,12 @@ describe("backend app", () => {
       hostSubUserId: "sub-user-001",
     });
     expect(conversations.statusCode).toBe(200);
-    expect(conversations.json()[0]).toMatchObject({
+    expect(conversations.json()).toMatchObject({
+      hasMore: false,
+      items: expect.any(Array),
+      snapshotAt: expect.any(Number),
+    });
+    expect(conversations.json().items[0]).toMatchObject({
       conversationId: "conv-001",
       seatId: "drc",
       unreadCount: 2,
@@ -1080,6 +1085,7 @@ describe("backend app", () => {
     expect(conversations.statusCode).toBe(200);
     const conversationIds = conversations
       .json()
+      .items
       .map((conversation: { conversationId: string }) => conversation.conversationId);
 
     expect(conversationIds.slice(0, 2)).toEqual(["conv-001", "conv-002"]);
@@ -1249,7 +1255,7 @@ describe("backend app", () => {
       conversationId: "conv-002",
       seatId: "drc",
     });
-    expect(conversations.json()).not.toEqual(
+    expect(conversations.json().items).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ conversationId: "conv-002" }),
       ]),

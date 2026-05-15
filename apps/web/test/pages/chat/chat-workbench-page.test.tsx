@@ -2216,6 +2216,62 @@ describe("ChatWorkbenchPage", () => {
     expect(openSpy).not.toHaveBeenCalled();
   });
 
+  it("does not update download UI after unmounting during a transfer request", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const transferGate = createDeferred<Awaited<ReturnType<typeof baseService.downloadMessageFile>>>();
+
+    setWorkbenchService({
+      ...baseService,
+      async downloadMessageFile() {
+        return transferGate.promise;
+      },
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              {
+                content: {
+                  alt: "待转存视频",
+                  coverImageUrl: "/covers/stage.jpg",
+                  downloadStatus: "failed",
+                  durationLabel: "1:01",
+                  fileSerialNo: "serial-video-001",
+                  videoUrl: "",
+                },
+                contentType: "video",
+                conversationId: "conv-001",
+                createdAt: 1778240300000,
+                customerId: "cust-001",
+                messageId: "remote-pending-video",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 539,
+                status: "read",
+              },
+            ],
+            scannedCount: 1,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    const { unmount } = render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "下载视频：待转存视频" }));
+
+    unmount();
+    transferGate.reject(new Error("transfer failed after unmount"));
+    await expect(transferGate.promise).rejects.toThrow("transfer failed after unmount");
+
+    expect(toast.warning).not.toHaveBeenCalledWith("下载失败，请稍后重试");
+  });
+
   it("shows scope transition errors in the workbench", async () => {
     const baseService = createMockWorkbenchService();
 

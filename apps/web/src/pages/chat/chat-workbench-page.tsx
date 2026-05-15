@@ -305,6 +305,10 @@ function ChatWorkbenchContent({
     messageId: string,
     state: "idle" | "transferring",
   ) => {
+    if (!isMountedRef.current) {
+      return;
+    }
+
     setDownloadTransferStates((currentStates) => {
       if (state === "idle") {
         const { [messageId]: _ignored, ...nextStates } = currentStates;
@@ -621,9 +625,17 @@ function ChatWorkbenchContent({
       messageSeq: message.seq,
     })
       .then(() => {
+        if (!isMountedRef.current) {
+          return;
+        }
+
         pollMessageDownloadStatus(message, 0);
       })
       .catch(() => {
+        if (!isMountedRef.current) {
+          return;
+        }
+
         updateDownloadTransferState(message.id, "idle");
         updateMessageDownloadContent(message.conversationId, message.id, {
           downloadStatus: "failed",
@@ -633,7 +645,7 @@ function ChatWorkbenchContent({
   };
 
   const pollMessageDownloadStatus = (message: ChatMessage, attempt: number) => {
-    if (!message.seq) {
+    if (!isMountedRef.current || !message.seq) {
       updateDownloadTransferState(message.id, "idle");
       return;
     }
@@ -650,7 +662,10 @@ function ChatWorkbenchContent({
     const timeoutId = window.setTimeout(() => {
       downloadPollingTimeoutsRef.current.delete(message.id);
 
-      if (downloadPollingConversationRef.current !== message.conversationId) {
+      if (
+        !isMountedRef.current ||
+        downloadPollingConversationRef.current !== message.conversationId
+      ) {
         return;
       }
 
@@ -659,7 +674,10 @@ function ChatWorkbenchContent({
         messageSeq: message.seq ?? 0,
       })
         .then((status) => {
-          if (downloadPollingConversationRef.current !== message.conversationId) {
+          if (
+            !isMountedRef.current ||
+            downloadPollingConversationRef.current !== message.conversationId
+          ) {
             return;
           }
 
@@ -689,6 +707,10 @@ function ChatWorkbenchContent({
           pollMessageDownloadStatus(message, attempt + 1);
         })
         .catch(() => {
+          if (!isMountedRef.current) {
+            return;
+          }
+
           updateDownloadTransferState(message.id, "idle");
           updateMessageDownloadContent(message.conversationId, message.id, {
             downloadStatus: "failed",

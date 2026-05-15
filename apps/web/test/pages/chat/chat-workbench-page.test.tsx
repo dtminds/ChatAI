@@ -150,7 +150,7 @@ describe("ChatWorkbenchPage", () => {
     expect(targetRow).not.toBeNull();
 
     await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "引用" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
 
     expect(screen.getByTestId("composer-quote-preview")).toHaveTextContent(
       "丹阳草莓，得利市大樱桃：我先截了个竖图版本给你看。",
@@ -172,7 +172,7 @@ describe("ChatWorkbenchPage", () => {
     expect(targetRow).not.toBeNull();
 
     await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "引用" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
     await pasteIntoComposer(user, composer, "收到，我按这个版本处理");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
@@ -864,7 +864,7 @@ describe("ChatWorkbenchPage", () => {
     expect(targetRow).not.toBeNull();
 
     await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "引用" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
     await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
 
     expect(await screen.findByRole("alertdialog", { name: "切换会话？" }))

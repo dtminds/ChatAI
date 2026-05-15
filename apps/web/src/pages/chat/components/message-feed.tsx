@@ -234,7 +234,7 @@ function MessageActionAvatar({
               size={15}
               strokeWidth={2}
             />
-            引用
+            引用消息
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

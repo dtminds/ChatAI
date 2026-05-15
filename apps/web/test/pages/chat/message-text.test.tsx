@@ -195,7 +195,7 @@ describe("text message bubble layout", () => {
     expect(onMentionMessage).toHaveBeenCalledWith(message);
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "引用" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
 
     expect(onQuoteMessage).toHaveBeenCalledWith(message);
   });
@@ -213,7 +213,7 @@ describe("text message bubble layout", () => {
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
 
-    expect(screen.getByRole("menuitem", { name: "引用" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "引用消息" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();
   });
 });

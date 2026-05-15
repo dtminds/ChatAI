@@ -70,6 +70,11 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+  downloadMsgFile(input: {
+    msgid: string;
+    platform: number;
+    uid: number;
+  }): Promise<void>;
   getUploadCredential(input: {
     uid: number;
   }): Promise<WorkbenchUploadCredentialResponse>;
@@ -114,6 +119,14 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         "/third-internal/wap-embed/conversation/delete",
         input,
       );
+    },
+    downloadMsgFile(input) {
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/download-msg-file",
+        input,
+      ).then(() => undefined);
     },
     getUploadCredential(input) {
       return postJavaEnvelope<WorkbenchUploadCredentialResponse>(

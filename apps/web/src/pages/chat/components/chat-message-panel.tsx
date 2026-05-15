@@ -7,11 +7,13 @@ import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
   bottomOverlay?: ReactNode;
+  downloadTransferStates?: Record<string, "idle" | "transferring">;
   hasBottomOverlay?: boolean;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
   isConversationLoading: boolean;
   messages: Message[];
+  onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onLoadOlderMessages: () => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
@@ -24,11 +26,13 @@ type ChatMessagePanelProps = {
 export function ChatMessagePanel({
   activeHistoryStatus,
   bottomOverlay,
+  downloadTransferStates,
   hasBottomOverlay = false,
   hasMoreHistory,
   historyLoadLabel,
   isConversationLoading,
   messages,
+  onDownloadMessageFile,
   onMentionMessage,
   onLoadOlderMessages,
   onOpenQuotedMessage,
@@ -76,7 +80,9 @@ export function ChatMessagePanel({
                 </div>
               ) : null}
               <ChatMessageList
+                downloadTransferStates={downloadTransferStates}
                 messages={messages}
+                onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}

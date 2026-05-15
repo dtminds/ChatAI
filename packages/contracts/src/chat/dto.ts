@@ -59,6 +59,23 @@ export type WorkbenchQuotedMessagePreviewDto = {
 };
 
 export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed" | "read";
+export type WorkbenchMessageFileDownloadStatus = "ing" | "finished" | "failed";
+
+export type WorkbenchMessageFileDownloadResponse = {
+  messageId: string;
+  status: "accepted";
+};
+
+export type WorkbenchMessageFileDownloadStatusResponse = {
+  downloadStatus?: WorkbenchMessageFileDownloadStatus;
+  fileSerialNo?: string;
+  fileUrl?: string;
+};
+
+export type WorkbenchMessageFileDownloadStatusRequest = {
+  conversationId: string;
+  messageSeq: number;
+};
 
 export type WorkbenchSubUserDto = {
   subUserId: string;

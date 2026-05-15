@@ -33,6 +33,15 @@ const MediaUploadCredentialBodySchema = Type.Object({
   conversationId: Type.String(),
 });
 
+const MessageDownloadParamsSchema = Type.Object({
+  messageId: Type.String(),
+});
+
+const MessageDownloadStatusBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeq: Type.Number(),
+});
+
 const WorkbenchMessageContentTypeSchema = Type.Union([
   Type.Literal("system"),
   Type.Literal("text"),
@@ -150,6 +159,8 @@ type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
 type MediaProxyQuery = Static<typeof MediaProxyQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
+type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
+type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
@@ -367,6 +378,42 @@ export async function registerChatRoutes(app: FastifyInstance) {
       getWorkbenchService(app).sendMessage(
         getSubUserId(request),
         request.body satisfies WorkbenchSendMessagePayload,
+      ),
+  );
+
+  app.post<{
+    Body: MessageDownloadStatusBody;
+    Params: MessageDownloadParams;
+  }>(
+    "/api/server/messages/:messageId/download",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageDownloadStatusBodySchema,
+        params: MessageDownloadParamsSchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app).downloadMessageFile(
+        getSubUserId(request),
+        request.body.conversationId,
+        request.params.messageId,
+      ),
+  );
+
+  app.post<{ Body: MessageDownloadStatusBody }>(
+    "/api/server/messages/download-status",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageDownloadStatusBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app).getMessageFileDownloadStatus(
+        getSubUserId(request),
+        request.body.conversationId,
+        request.body.messageSeq,
       ),
   );
 

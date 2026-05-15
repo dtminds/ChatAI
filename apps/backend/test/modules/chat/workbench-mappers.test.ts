@@ -172,6 +172,54 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("maps file transfer metadata from audit message content", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          downloadStatus: "failed",
+          fileExt: "pdf",
+          fileName: "报价单.pdf",
+          fileSerialNo: "serial-file-001",
+          fileSize: 2048,
+          fileUrl: "chat-files/quote.pdf",
+        }),
+        msgtype: "file",
+      })),
+    ).toMatchObject({
+      content: {
+        downloadStatus: "failed",
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        fileSerialNo: "serial-file-001",
+        fileSizeLabel: "2.00 KB",
+        fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+      },
+      contentType: "file",
+    });
+  });
+
+  it("maps video transfer metadata from audit message content", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          coverUrl: "covers/video.jpg",
+          downloadStatus: "ing",
+          fileSerialNo: "serial-video-001",
+          fileUrl: "videos/demo.mp4",
+        }),
+        msgtype: "video",
+      })),
+    ).toMatchObject({
+      content: {
+        coverImageUrl: "https://b5.bokr.com.cn/covers/video.jpg",
+        downloadStatus: "ing",
+        fileSerialNo: "serial-video-001",
+        videoUrl: "https://b5.bokr.com.cn/videos/demo.mp4",
+      },
+      contentType: "video",
+    });
+  });
+
   it("keeps malformed quote payloads safe", () => {
     expect(
       mapMessageRow(messageRow({

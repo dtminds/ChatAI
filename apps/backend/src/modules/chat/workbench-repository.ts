@@ -15,6 +15,7 @@ import {
   mapConversationRow,
   mapMessageRow,
   mapSeatRow,
+  readDownloadStatus,
   type ConversationRow,
   type MessageHydrationSources,
   type MessageRow,
@@ -97,6 +98,30 @@ export class WorkbenchRepository {
       .executeTakeFirst();
 
     return readQuoteContentBase64(extend?.origin_data);
+  }
+
+  async getMessageFileDownloadStatus(input: {
+    auditId: number;
+    platform: number;
+    uid: number;
+  }) {
+    if (!Number.isInteger(input.auditId) || input.auditId <= 0) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_info")
+      .select(["content"])
+      .where("id", "=", input.auditId)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    return readMessageFileDownloadStatus(row.content);
   }
 
   async listSeats(subUserId: string) {
@@ -980,6 +1005,58 @@ function readQuoteContentBase64(rawOriginData: string | null | undefined) {
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
   } catch {
     return undefined;
+  }
+}
+
+function readMessageFileDownloadStatus(content: string | null) {
+  const parsed = parseJsonRecord(content);
+
+  if (!parsed) {
+    return {};
+  }
+
+  return {
+    downloadStatus: readDownloadStatus(parsed),
+    fileSerialNo: readRecordString(parsed, "fileSerialNo") || undefined,
+    fileUrl: normalizeMediaAssetUrl(readRecordString(parsed, "fileUrl")),
+  };
+}
+
+function parseJsonRecord(value: string | null) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readRecordString(value: Record<string, unknown>, key: string) {
+  const field = value[key];
+
+  return typeof field === "string" ? field : "";
+}
+
+const mediaAssetBaseUrl = "https://b5.bokr.com.cn";
+
+function normalizeMediaAssetUrl(value: string) {
+  const url = value.trim();
+
+  if (!url) {
+    return "";
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+
+    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:" ? url : "";
+  } catch {
+    return `${mediaAssetBaseUrl}/${url.replace(/^\/+/, "")}`;
   }
 }
 

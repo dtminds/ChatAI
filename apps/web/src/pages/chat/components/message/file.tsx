@@ -1,6 +1,7 @@
 import {
   ArrowDown01Icon,
   Attachment01Icon,
+  Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "@/lib/utils";
@@ -8,9 +9,20 @@ import type { FileMessageContent } from "@/pages/chat/chat-types";
 
 type FileMessageCardProps = {
   content: FileMessageContent;
+  onDownloadClick?: () => void;
+  transferState?: "idle" | "transferring";
 };
 
-export function FileMessageCard({ content }: FileMessageCardProps) {
+export function FileMessageCard({
+  content,
+  onDownloadClick,
+  transferState = "idle",
+}: FileMessageCardProps) {
+  const effectiveTransferState =
+    transferState === "transferring" || content.downloadStatus === "ing"
+      ? "transferring"
+      : "idle";
+
   return (
     <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 pb-2">
       <div className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-2.5">
@@ -39,10 +51,31 @@ export function FileMessageCard({ content }: FileMessageCardProps) {
           <span>{content.sourceLabel ?? "文件"}</span>
         </span>
 
-        <span className="inline-flex items-center gap-1 font-medium text-foreground">
-          <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
-          下载
-        </span>
+        {effectiveTransferState === "transferring" ? (
+          <span
+            aria-label="文件下载中"
+            className="inline-flex items-center gap-1 font-medium text-muted-foreground"
+            role="status"
+          >
+            <HugeiconsIcon
+              className="animate-spin"
+              icon={Loading03Icon}
+              size={14}
+              strokeWidth={1.8}
+            />
+            下载中
+          </span>
+        ) : (
+          <button
+            aria-label={`下载文件：${content.fileName}`}
+            className="inline-flex items-center gap-1 rounded-[4px] font-medium text-foreground outline-none transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/35"
+            onClick={onDownloadClick}
+            type="button"
+          >
+            <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
+            下载
+          </button>
+        )}
       </div>
     </div>
   );

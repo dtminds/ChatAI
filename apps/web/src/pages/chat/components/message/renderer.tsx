@@ -13,14 +13,18 @@ import { VideoMessageCard } from "@/pages/chat/components/message/video";
 import { VoiceMessageCard } from "@/pages/chat/components/message/voice";
 
 type MessageContentRendererProps = {
+  downloadTransferState?: "idle" | "transferring";
   isAgent: boolean;
   message: ChatMessage;
+  onDownloadMessageFile?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
 };
 
 export function MessageContentRenderer({
+  downloadTransferState,
   isAgent,
   message,
+  onDownloadMessageFile,
   onOpenQuotedMessage,
 }: MessageContentRendererProps) {
   switch (message.content.type) {
@@ -37,9 +41,21 @@ export function MessageContentRenderer({
     case "image":
       return <ImageMessageCard content={message.content} />;
     case "video":
-      return <VideoMessageCard content={message.content} />;
+      return (
+        <VideoMessageCard
+          content={message.content}
+          onDownloadClick={() => onDownloadMessageFile?.(message)}
+          transferState={downloadTransferState}
+        />
+      );
     case "file":
-      return <FileMessageCard content={message.content} />;
+      return (
+        <FileMessageCard
+          content={message.content}
+          onDownloadClick={() => onDownloadMessageFile?.(message)}
+          transferState={downloadTransferState}
+        />
+      );
     case "h5":
       return <LinkMessageCard content={message.content} />;
     case "mini-program":

@@ -2,6 +2,7 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchMessageContentType,
   WorkbenchMessageDto,
+  WorkbenchMessageFileDownloadStatus,
   WorkbenchQuotedMessagePreviewDto,
   WorkbenchSeatDto,
 } from "@chatai/contracts";
@@ -334,7 +335,9 @@ function parseMessageContent(
       return {
         alt: "视频",
         coverImageUrl: normalizeMediaAssetUrl(readStringField(parsed, "coverUrl")),
+        downloadStatus: readDownloadStatus(parsed),
         durationLabel: "",
+        fileSerialNo: readStringField(parsed, "fileSerialNo"),
         videoUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
       };
     case "file": {
@@ -342,8 +345,10 @@ function parseMessageContent(
       const extension = readStringField(parsed, "fileExt") || getFileExtension(fileName);
 
       return {
+        downloadStatus: readDownloadStatus(parsed),
         extension,
         fileName,
+        fileSerialNo: readStringField(parsed, "fileSerialNo"),
         fileSizeLabel: formatFileSize(readNumberField(parsed, "fileSize")),
         fileUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
         sourceLabel: "文件",
@@ -637,6 +642,16 @@ function readStringField(value: unknown, key: string) {
   const field = value[key];
 
   return typeof field === "string" ? field : "";
+}
+
+export function readDownloadStatus(
+  value: unknown,
+): WorkbenchMessageFileDownloadStatus | undefined {
+  const status = readStringField(value, "downloadStatus");
+
+  return status === "ing" || status === "finished" || status === "failed"
+    ? status
+    : undefined;
 }
 
 function readNumberField(value: unknown, key: string) {

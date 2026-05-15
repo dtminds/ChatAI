@@ -257,6 +257,69 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("adapts file transfer metadata", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            downloadStatus: "failed",
+            extension: "pdf",
+            fileName: "报价单.pdf",
+            fileSerialNo: "serial-file-001",
+            fileSizeLabel: "2 KB",
+            fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+            sourceLabel: "文件",
+          },
+          contentType: "file",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        downloadStatus: "failed",
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        fileSerialNo: "serial-file-001",
+        fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+        type: "file",
+      },
+      id: "message-1",
+      seq: 1,
+    });
+  });
+
+  it("adapts video transfer metadata", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            alt: "演示视频",
+            coverImageUrl: "https://b5.bokr.com.cn/covers/video.jpg",
+            downloadStatus: "finished",
+            durationLabel: "",
+            fileSerialNo: "serial-video-001",
+            videoUrl: "https://b5.bokr.com.cn/videos/demo.mp4",
+          },
+          contentType: "video",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        downloadStatus: "finished",
+        fileSerialNo: "serial-video-001",
+        type: "video",
+        videoUrl: "https://b5.bokr.com.cn/videos/demo.mp4",
+      },
+    });
+  });
+
   it("adapts contact card message content", () => {
     expect(
       adaptMessage(

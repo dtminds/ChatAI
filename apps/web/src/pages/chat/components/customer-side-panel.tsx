@@ -150,6 +150,7 @@ export function CustomerSidePanel({
           });
         }
       } catch {
+        console.error("Failed to fetch sidebar iframe params");
         if (!cancelled) {
           setSidebarIframeParams({ scopeKey, value: null });
         }

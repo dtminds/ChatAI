@@ -3,9 +3,11 @@ import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-servi
 import { formatConversationPreview, formatWorkbenchTimestamp } from "@/pages/chat/api/workbench-adapter";
 import {
   bootstrapWorkbench,
+  CONVERSATION_MODE_CACHE_TTL_MS,
   deleteConversation as deleteConversationRequest,
   getVisibleConversations,
   loadAccountConversations,
+  loadAccountConversationsByMode,
   loadGroupMembers,
   loadAccountScope,
   loadConversationMessagesPage,
@@ -74,6 +76,7 @@ type WorkbenchState = {
   me?: EmployeeProfile;
   accounts: Account[];
   conversationListsByScope: Record<string, Conversation[]>;
+  conversationModeLoadedAtByScope: Record<string, Partial<Record<ChatMode, number>>>;
   customerProfilesById: Record<string, CustomerProfile>;
   groupMembersLoadingByConversationId: Record<string, boolean>;
   messagesByConversationId: Record<string, Message[]>;
@@ -130,6 +133,7 @@ type WorkbenchStore = WorkbenchState;
 
 const defaultCustomerProfiles = seedCustomerProfiles;
 const MESSAGE_PAGE_SIZE = 50;
+const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 
 function createInitialState(): Omit<
   WorkbenchState,
@@ -161,6 +165,7 @@ function createInitialState(): Omit<
     bootstrapError: undefined,
     bootstrapStatus: "idle",
     conversationListsByScope: {},
+    conversationModeLoadedAtByScope: {},
     customerProfilesById: defaultCustomerProfiles,
     groupMembersLoadingByConversationId: {},
     groupMembersByConversationId: {},
@@ -223,6 +228,65 @@ function sortConversations(conversations: Conversation[]) {
   return [...conversations].sort(
     (left, right) => (right.updatedAtMs ?? 0) - (left.updatedAtMs ?? 0),
   );
+}
+
+function replaceConversationsByMode(
+  currentList: Conversation[],
+  mode: ChatMode,
+  nextModeConversations: Conversation[],
+) {
+  return sortConversations([
+    ...currentList.filter((conversation) => conversation.mode !== mode),
+    ...nextModeConversations,
+  ]);
+}
+
+function markConversationModesLoaded(
+  loadedAtByScope: WorkbenchState["conversationModeLoadedAtByScope"],
+  accountId: string,
+  modes: readonly ChatMode[],
+  loadedAt: number,
+) {
+  if (!accountId) {
+    return loadedAtByScope;
+  }
+
+  const nextLoadedAtByMode = {
+    ...(loadedAtByScope[accountId] ?? {}),
+  };
+
+  for (const mode of modes) {
+    nextLoadedAtByMode[mode] = loadedAt;
+  }
+
+  return {
+    ...loadedAtByScope,
+    [accountId]: nextLoadedAtByMode,
+  };
+}
+
+function markAllConversationModesLoaded(
+  loadedAtByScope: WorkbenchState["conversationModeLoadedAtByScope"],
+  accountId: string,
+  loadedAt: number,
+) {
+  return markConversationModesLoaded(
+    loadedAtByScope,
+    accountId,
+    CONVERSATION_MODES,
+    loadedAt,
+  );
+}
+
+function isConversationModeCacheFresh(
+  state: WorkbenchState,
+  accountId: string,
+  mode: ChatMode,
+  now = Date.now(),
+) {
+  const loadedAt = state.conversationModeLoadedAtByScope[accountId]?.[mode];
+
+  return loadedAt != null && now - loadedAt <= CONVERSATION_MODE_CACHE_TTL_MS;
 }
 
 function mergeConversationList(
@@ -645,8 +709,14 @@ export function createWorkbenchStore() {
 
     async function reloadAccountConversations(accountId: string) {
       const conversations = await loadAccountConversations(accountId);
+      const loadedAt = Date.now();
 
       set((currentState) => ({
+        conversationModeLoadedAtByScope: markAllConversationModesLoaded(
+          currentState.conversationModeLoadedAtByScope,
+          accountId,
+          loadedAt,
+        ),
         conversationListsByScope: {
           ...currentState.conversationListsByScope,
           [accountId]: conversations,
@@ -1015,6 +1085,8 @@ export function createWorkbenchStore() {
           return;
         }
 
+        const loadedAt = Date.now();
+
         set({
           accounts: bootstrapResult.accounts,
           activeAccountId: bootstrapResult.activeAccountId,
@@ -1030,6 +1102,11 @@ export function createWorkbenchStore() {
           activeMode: bootstrapResult.activeMode,
           bootstrapStatus: "ready",
           conversationListsByScope: bootstrapResult.conversationListsByScope,
+          conversationModeLoadedAtByScope: markAllConversationModesLoaded(
+            get().conversationModeLoadedAtByScope,
+            bootstrapResult.activeAccountId,
+            loadedAt,
+          ),
           hasMoreHistoryByConversationId: conversationPage
             ? {
                 [conversationPage.conversationId]: conversationPage.hasMoreHistory,
@@ -1250,6 +1327,7 @@ export function createWorkbenchStore() {
               latestState.activeConversationId,
             );
             const conversationPage = scopeResult.conversationPage;
+            const loadedAt = Date.now();
 
             set((currentState) => {
               const nextMessagesByConversationId = conversationPage
@@ -1275,6 +1353,11 @@ export function createWorkbenchStore() {
                   ...currentState.conversationListsByScope,
                   [accountId]: scopeResult.conversations,
                 },
+                conversationModeLoadedAtByScope: markAllConversationModesLoaded(
+                  currentState.conversationModeLoadedAtByScope,
+                  accountId,
+                  loadedAt,
+                ),
                 hasMoreHistoryByConversationId: nextHistoryByConversationId,
                 messagePaginationByConversationId: nextPaginationByConversationId,
                 messagesByConversationId: nextMessagesByConversationId,
@@ -1653,6 +1736,7 @@ export function createWorkbenchStore() {
         const nextConversation = scopeResult.conversations.find(
           (conversation) => conversation.id === scopeResult.nextConversationId,
         );
+        const loadedAt = Date.now();
 
         set((currentState) => ({
           activeAccountId: accountId,
@@ -1671,6 +1755,11 @@ export function createWorkbenchStore() {
             ...currentState.conversationListsByScope,
             [accountId]: scopeResult.conversations,
           },
+          conversationModeLoadedAtByScope: markAllConversationModesLoaded(
+            currentState.conversationModeLoadedAtByScope,
+            accountId,
+            loadedAt,
+          ),
           hasMoreHistoryByConversationId: conversationPage
             ? {
                 ...currentState.hasMoreHistoryByConversationId,
@@ -1825,6 +1914,70 @@ export function createWorkbenchStore() {
       const state = get();
 
       if (state.activeMode === mode) {
+        return;
+      }
+
+      if (state.activeAccountId && !isConversationModeCacheFresh(state, state.activeAccountId, mode)) {
+        const accountId = state.activeAccountId;
+        const requestId = issueScopeRequestId();
+
+        set({
+          activeMode: mode,
+          isConversationLoading: true,
+          scopeTransitionError: undefined,
+        });
+
+        try {
+          const conversations = await loadAccountConversationsByMode(accountId, mode);
+          const loadedAt = Date.now();
+
+          if (!isCurrentScopeRequest(requestId)) {
+            return;
+          }
+
+          set((currentState) => ({
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [accountId]: replaceConversationsByMode(
+                currentState.conversationListsByScope[accountId] ?? [],
+                mode,
+                conversations,
+              ),
+            },
+            conversationModeLoadedAtByScope: markConversationModesLoaded(
+              currentState.conversationModeLoadedAtByScope,
+              accountId,
+              [mode],
+              loadedAt,
+            ),
+            isConversationLoading: false,
+          }));
+
+          const nextConversationId = getFirstConversationId(
+            get().conversationListsByScope,
+            accountId,
+            mode,
+          );
+
+          if (nextConversationId) {
+            await get().setActiveConversation(nextConversationId);
+          } else {
+            set({
+              activeConversationId: "",
+              activeMessageSeq: 0,
+              isConversationLoading: false,
+            });
+          }
+        } catch (error) {
+          if (isCurrentScopeRequest(requestId)) {
+            set({
+              isConversationLoading: false,
+              scopeTransitionError:
+                error instanceof Error ? error.message : "切换会话类型失败",
+            });
+          }
+        }
+
         return;
       }
 

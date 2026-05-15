@@ -30,12 +30,20 @@ import {
   type WorkbenchTakeOverSeatResponse,
   type WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
-import type { Message } from "@/pages/chat/chat-types";
+import type { ChatMode, Message } from "@/pages/chat/chat-types";
+
+export type WorkbenchConversationListOptions = {
+  limit?: number;
+  mode?: ChatMode;
+};
 
 export type WorkbenchService = {
   deleteConversation: (conversationId: string) => Promise<WorkbenchConversationDeleteResponse>;
   getSeats: () => Promise<WorkbenchSeatDto[]>;
-  getConversations: (seatId: string) => Promise<WorkbenchConversationSummaryDto[]>;
+  getConversations: (
+    seatId: string,
+    options?: WorkbenchConversationListOptions,
+  ) => Promise<WorkbenchConversationSummaryDto[]>;
   getMe: () => Promise<WorkbenchSubUserDto>;
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
@@ -116,10 +124,14 @@ export function createMockWorkbenchService(): WorkbenchService {
     async deleteConversation(conversationId) {
       return removeConversation(state, conversationId);
     },
-    async getConversations(seatId) {
+    async getConversations(seatId, options) {
       const conversations = state.conversationsByAccount[seatId] ?? [];
 
-      return clone(sortConversations(conversations));
+      return clone(
+        sortConversations(conversations)
+          .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
+          .slice(0, options?.limit),
+      );
     },
     async getMe() {
       return clone(state.subUser);
@@ -390,12 +402,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
         `/server/conversations/${conversationId}/delete`,
       );
     },
-    getConversations(seatId) {
+    getConversations(seatId, options) {
       return http.get<WorkbenchConversationSummaryDto[]>("/server/conversations", {
         params: {
+          limit: options?.limit,
+          mode: options?.mode,
           seatId,
-          page: 1,
-          pageSize: 30,
         },
       });
     },

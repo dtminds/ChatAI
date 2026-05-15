@@ -928,12 +928,12 @@ describe("useWorkbenchStore", () => {
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(accountId) {
+      async getConversations(accountId, options) {
         if (accountId === "drc" && !shouldInvalidateCursor) {
           await recoveryGate.promise;
         }
 
-        return baseService.getConversations(accountId);
+        return baseService.getConversations(accountId, options);
       },
       async poll(request) {
         if (shouldInvalidateCursor) {
@@ -1454,14 +1454,14 @@ describe("useWorkbenchStore", () => {
   it("pins a conversation and reloads the active account conversations", async () => {
     const baseService = createMockWorkbenchService();
     const observedPinnedConversationIds: string[] = [];
-    const observedConversationScopes: string[] = [];
+    const observedConversationRequests: Array<{ accountId: string; mode?: string }> = [];
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(accountId) {
-        observedConversationScopes.push(accountId);
+      async getConversations(accountId, options) {
+        observedConversationRequests.push({ accountId, mode: options?.mode });
 
-        return baseService.getConversations(accountId);
+        return baseService.getConversations(accountId, options);
       },
       async pinConversation(conversationId) {
         observedPinnedConversationIds.push(conversationId);
@@ -1471,14 +1471,17 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    observedConversationScopes.length = 0;
+    observedConversationRequests.length = 0;
 
     await useWorkbenchStore.getState().pinConversation("conv-002");
 
     const state = useWorkbenchStore.getState();
 
     expect(observedPinnedConversationIds).toEqual(["conv-002"]);
-    expect(observedConversationScopes).toEqual(["drc"]);
+    expect(observedConversationRequests).toEqual([
+      { accountId: "drc", mode: "single" },
+      { accountId: "drc", mode: "group" },
+    ]);
     expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
       isPinned: true,
     });
@@ -1493,14 +1496,14 @@ describe("useWorkbenchStore", () => {
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(accountId) {
+      async getConversations(accountId, options) {
         if (deferDrcReload && accountId === "drc") {
           reloadRequested.resolve();
 
           return deferredReload.promise;
         }
 
-        return baseService.getConversations(accountId);
+        return baseService.getConversations(accountId, options);
       },
     });
 
@@ -1544,14 +1547,14 @@ describe("useWorkbenchStore", () => {
   it("unpins a conversation and reloads the active account conversations", async () => {
     const baseService = createMockWorkbenchService();
     const observedUnpinnedConversationIds: string[] = [];
-    const observedConversationScopes: string[] = [];
+    const observedConversationRequests: Array<{ accountId: string; mode?: string }> = [];
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(accountId) {
-        observedConversationScopes.push(accountId);
+      async getConversations(accountId, options) {
+        observedConversationRequests.push({ accountId, mode: options?.mode });
 
-        return baseService.getConversations(accountId);
+        return baseService.getConversations(accountId, options);
       },
       async unpinConversation(conversationId) {
         observedUnpinnedConversationIds.push(conversationId);
@@ -1561,14 +1564,17 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    observedConversationScopes.length = 0;
+    observedConversationRequests.length = 0;
 
     await useWorkbenchStore.getState().unpinConversation("conv-001");
 
     const state = useWorkbenchStore.getState();
 
     expect(observedUnpinnedConversationIds).toEqual(["conv-001"]);
-    expect(observedConversationScopes).toEqual(["drc"]);
+    expect(observedConversationRequests).toEqual([
+      { accountId: "drc", mode: "single" },
+      { accountId: "drc", mode: "group" },
+    ]);
     expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")).toMatchObject({
       isPinned: undefined,
     });
@@ -1586,10 +1592,10 @@ describe("useWorkbenchStore", () => {
 
         return baseService.deleteConversation(conversationId);
       },
-      async getConversations(accountId) {
+      async getConversations(accountId, options) {
         observedConversationScopes.push(accountId);
 
-        return baseService.getConversations(accountId);
+        return baseService.getConversations(accountId, options);
       },
     });
 

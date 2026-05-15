@@ -754,7 +754,7 @@ function ChatWorkbenchContent({
               <ConversationListPanel
                 activeConversation={activeConversation}
                 activeMode={activeMode}
-                conversations={visibleConversations}
+                conversations={visibleSearchableConversations}
                 isConversationActionDisabled={isConversationActionDisabled}
                 onDeleteConversation={deleteConversation}
                 onMarkConversationRead={markConversationRead}

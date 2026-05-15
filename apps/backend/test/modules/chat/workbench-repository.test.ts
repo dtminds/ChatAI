@@ -52,13 +52,67 @@ function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
 function createQueryBuilder(result: unknown) {
   let currentResult = result;
   const wheres: Array<[string, string, unknown]> = [];
+  const limits: number[] = [];
+  const expressionBuilder = {
+    fn: {
+      coalesce() {
+        return {
+          as() {
+            return undefined;
+          },
+        };
+      },
+      max() {
+        return {
+          as() {
+            return undefined;
+          },
+        };
+      },
+      sum() {
+        return undefined;
+      },
+    },
+    val() {
+      return {
+        as() {
+          return undefined;
+        },
+      };
+    },
+    selectFrom() {
+      return {
+        as() {
+          return undefined;
+        },
+        select(selection?: unknown) {
+          if (typeof selection === "function") {
+            selection(expressionBuilder);
+          }
+
+          return this;
+        },
+        where() {
+          return this;
+        },
+        whereRef() {
+          return this;
+        },
+      };
+    },
+  };
 
   return {
+    limits,
     wheres,
     innerJoin() {
       return this;
     },
-    limit() {
+    leftJoin() {
+      return this;
+    },
+    limit(limit: number) {
+      limits.push(limit);
       return this;
     },
     orderBy() {
@@ -66,6 +120,7 @@ function createQueryBuilder(result: unknown) {
     },
     select(selection?: unknown) {
       if (typeof selection === "function") {
+        selection(expressionBuilder);
         currentResult = Array.isArray(currentResult)
           ? currentResult.map((item) => ({ ...item, seat_unread_count: 6 }))
           : { ...(currentResult as object), seat_unread_count: 6 };
@@ -116,6 +171,55 @@ describe("WorkbenchRepository", () => {
     });
     await expect(repository.listGroupMembers("not-a-conversation")).resolves.toBeUndefined();
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
+  });
+
+  it("filters and limits conversation lists by requested chat mode", async () => {
+    const conversationQueryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([]);
+            conversationQueryBuilders.push(query);
+
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await repository.listConversations("12", {
+      limit: 1000,
+      mode: "single",
+    });
+    await repository.listConversations("12", {
+      limit: 100,
+      mode: "group",
+    });
+
+    expect(conversationQueryBuilders[0].wheres).toContainEqual([
+      "conversation.chat_type",
+      "=",
+      1,
+    ]);
+    expect(conversationQueryBuilders[0].limits).toEqual([1000]);
+    expect(conversationQueryBuilders[1].wheres).toContainEqual([
+      "conversation.chat_type",
+      "=",
+      2,
+    ]);
+    expect(conversationQueryBuilders[1].limits).toEqual([100]);
   });
 
   it("does not update pinned state when the conversation id is invalid", async () => {

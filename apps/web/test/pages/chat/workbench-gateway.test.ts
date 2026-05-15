@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { WorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
+  CONVERSATION_MODE_LIMITS,
   getVisibleConversations,
   loadGroupMembers,
   loadAccountScope,
@@ -26,6 +27,43 @@ describe("workbench gateway message paging", () => {
     await bootstrapWorkbench("single", {});
 
     expect(observedLimits).toEqual([50]);
+  });
+
+  it("loads single and group conversations separately during bootstrap", async () => {
+    const observedConversationRequests: Array<{
+      limit?: number;
+      mode?: string;
+      seatId: string;
+    }> = [];
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(seatId, options) {
+        observedConversationRequests.push({
+          limit: options?.limit,
+          mode: options?.mode,
+          seatId,
+        });
+
+        return baseService.getConversations(seatId, options);
+      },
+    });
+
+    await bootstrapWorkbench("single", {});
+
+    expect(observedConversationRequests).toEqual([
+      {
+        limit: CONVERSATION_MODE_LIMITS.single,
+        mode: "single",
+        seatId: "drc",
+      },
+      {
+        limit: CONVERSATION_MODE_LIMITS.group,
+        mode: "group",
+        seatId: "drc",
+      },
+    ]);
   });
 
   it("unwraps sidebar items from the settings API envelope during bootstrap", async () => {

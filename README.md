@@ -195,7 +195,7 @@ pnpm backend:db:codegen -- xy_wap_embed_user_relation
 
 - **`tos`**：`0` 表示当前子账号尚未接管该企微席位，`1` 表示已由当前登录子账号接管。
 - **`qd`**：仅在当前会话为**群聊**且后端返回了三方群 ID（`thirdGroupId`）时追加，供嵌入页识别群会话。
-- **`rd` / `fsw` / `ts` / `mid`**：在配置了涂色密钥时，对用户标识与时间戳等进行加密拼接（与后端 `/server/me/sidebar-tuse-crypto` 约定一致）。
+- **`rd` / `fsw` / `ts` / `mid`**：在配置了涂色密钥时，由后端 `POST /api/server/sidebar-iframe-params` 按当前席位与会话（服务端查库）签发并拼入 URL；前端不持有 `secret` / `iv`。仅用于 URL 脱敏与既有嵌入页协议，**不是**对嵌入页的身份防伪边界。
 
 ## 关键文件
 

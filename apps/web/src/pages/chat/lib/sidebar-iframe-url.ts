@@ -1,12 +1,12 @@
 /**
  * 将当前工作台上下文合并进侧栏自定义页 iframe 地址，便于嵌入页用查询参数读取。
- * third*：配置密钥后由侧栏异步生成 rd、fsw、ts（均为 AES 密文；ts 明文为当前 Unix 秒十进制字符串，与 .env.example 密钥约定一致）。
- * `mid` 来自 `/server/me/sidebar-tuse-crypto` 的 `appId`，与密钥同源。
+ * third*：配置密钥后由后端 `/server/sidebar-iframe-params` 按当前席位与会话签发 rd、fsw、ts（均为 AES 密文；ts 明文为当前 Unix 秒十进制字符串）。
+ * `mid` 与 rd/fsw/ts 同源，由服务端签发。仅用于 URL 脱敏与既有嵌入页协议，不是对嵌入页的身份防伪边界。
  * `tos`：`0` 当前坐席未接管该账号，`1` 已接管；`qd`：群会话时的三方群 ID。
  */
 
 export type SidebarIframeUrlContext = {
-  /** 对应 `/me/sidebar-tuse-crypto` 返回的 `appId`，写入查询参数名 `mid` */
+  /** 对应服务端签发的 `mid`（库表 `appid`） */
   mid?: string;
   /** rd：AES 密文（明文为 `thirdUserId` UTF-8 字符串本身，见 tuse-crypto） */
   rd?: string;

@@ -208,8 +208,8 @@ export function ChatPanel({
               ? activeConversation.thirdGroupId
               : undefined
           }
-          sidebarIframeThirdExternalUserId={activeConversation?.thirdExternalUserId}
-          sidebarIframeThirdUserId={activeConversation?.thirdUserId}
+          sidebarIframeConversationId={activeConversation?.id}
+          sidebarIframeSeatId={activeConversation?.accountId}
           sidebarIframeTos={sidebarIframeTos}
           groupMembers={groupMembers}
           isGroupMembersLoading={isGroupMembersLoading}

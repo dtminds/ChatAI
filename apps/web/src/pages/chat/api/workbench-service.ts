@@ -4,7 +4,7 @@ import {
   seedGroupMembersByConversationId,
   seedMessages,
 } from "@/pages/chat/mock-data";
-import { fetchWorkbenchSidebarTuseCrypto } from "@/pages/chat/api/sidebar-tuse-crypto";
+import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { http } from "@/lib/request";
 import {
   type ApiSuccessEnvelope,
@@ -27,7 +27,7 @@ import {
   type WorkbenchPollResponse,
   type WorkbenchSendMessagePayload,
   type SettingsSidebarItemsResponse,
-  type WorkbenchSidebarTuseCryptoDto,
+  type WorkbenchSidebarIframeParamsDto,
   type WorkbenchSendMessageResponse,
   type WorkbenchTakeOverSeatResponse,
   type WorkbenchUploadCredentialResponse,
@@ -40,7 +40,10 @@ export type WorkbenchService = {
   getConversations: (seatId: string) => Promise<WorkbenchConversationSummaryDto[]>;
   getMe: () => Promise<WorkbenchSubUserDto>;
   /** 未配置或未接入数据库时可为 `null` */
-  getSidebarTuseCrypto: () => Promise<WorkbenchSidebarTuseCryptoDto | null>;
+  getSidebarIframeParams: (input: {
+    conversationId: string;
+    seatId: string;
+  }) => Promise<WorkbenchSidebarIframeParamsDto | null>;
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
@@ -128,7 +131,7 @@ export function createMockWorkbenchService(): WorkbenchService {
     async getMe() {
       return clone(state.subUser);
     },
-    async getSidebarTuseCrypto() {
+    async getSidebarIframeParams() {
       return null;
     },
     async getSidebarItems() {
@@ -409,8 +412,8 @@ export function createHttpWorkbenchService(): WorkbenchService {
     getMe() {
       return http.get<WorkbenchSubUserDto>("/server/me");
     },
-    getSidebarTuseCrypto() {
-      return fetchWorkbenchSidebarTuseCrypto();
+    getSidebarIframeParams(input) {
+      return fetchWorkbenchSidebarIframeParams(input);
     },
     async getSidebarItems() {
       const response = await http.get<ApiSuccessEnvelope<SettingsSidebarItemsResponse>>(

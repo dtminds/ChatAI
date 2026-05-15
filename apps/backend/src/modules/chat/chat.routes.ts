@@ -145,6 +145,11 @@ const SeatParamsSchema = Type.Object({
   seatId: Type.String(),
 });
 
+const SidebarIframeParamsBodySchema = Type.Object({
+  conversationId: Type.String(),
+  seatId: Type.String(),
+});
+
 type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
 type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
@@ -153,14 +158,23 @@ type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
+type SidebarIframeParamsBody = Static<typeof SidebarIframeParamsBodySchema>;
 
 export async function registerChatRoutes(app: FastifyInstance) {
   app.get("/api/server/me", { preHandler: app.authenticate }, async (request) =>
     getWorkbenchService(app).getMe(getSubUserId(request)),
   );
 
-  app.get("/api/server/me/sidebar-tuse-crypto", { preHandler: app.authenticate }, async (request) =>
-    getWorkbenchService(app).getSidebarTuseCrypto(getSubUserId(request)),
+  app.post<{ Body: SidebarIframeParamsBody }>(
+    "/api/server/sidebar-iframe-params",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SidebarIframeParamsBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app).getSidebarIframeParams(getSubUserId(request), request.body),
   );
 
   app.get("/api/server/seats", { preHandler: app.authenticate }, async (request) =>

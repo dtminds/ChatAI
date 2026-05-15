@@ -14,7 +14,8 @@ import type {
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
-  WorkbenchSidebarTuseCryptoDto,
+  WorkbenchSidebarIframeParamsDto,
+  WorkbenchSidebarIframeParamsRequest,
   WorkbenchSubUserDto,
   WorkbenchTakeOverSeatResponse,
   WorkbenchUploadCredentialResponse,
@@ -36,6 +37,11 @@ import {
   JAVA_SEND_TYPE,
 } from "./workbench-java-client.js";
 import {
+  encryptTuseFswFromThirdExternalUserId,
+  encryptTuseRdFromThirdUserId,
+  encryptTuseTsFromUnixSeconds,
+} from "../../lib/tuse-crypto.js";
+import {
   parseMySqlId,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
@@ -45,12 +51,13 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchConversationDeleteResponse> | WorkbenchConversationDeleteResponse;
-  /** 取自 `xy_wap_embed_user_relation`（与本子账号 `uid`、`platform` 匹配） */
-  getSidebarTuseCrypto(
+  /** 按席位与会话在服务端签发侧栏 iframe 涂色参数（不含 secret/iv） */
+  getSidebarIframeParams(
     subUserId: string,
+    input: WorkbenchSidebarIframeParamsRequest,
   ):
-    | Promise<WorkbenchSidebarTuseCryptoDto>
-    | WorkbenchSidebarTuseCryptoDto;
+    | Promise<WorkbenchSidebarIframeParamsDto>
+    | WorkbenchSidebarIframeParamsDto;
   getConversations(
     subUserId: string,
     seatId: string,
@@ -136,18 +143,54 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return subUser;
   }
 
-  async getSidebarTuseCrypto(subUserId: string): Promise<WorkbenchSidebarTuseCryptoDto> {
+  async getSidebarIframeParams(
+    subUserId: string,
+    input: WorkbenchSidebarIframeParamsRequest,
+  ): Promise<WorkbenchSidebarIframeParamsDto> {
     await this.getMe(subUserId);
-    const row = await this.repository.getEmbedUserRelationTuseSecrets(subUserId);
+    await this.assertSeatAccess(subUserId, input.seatId);
 
-    if (!row) {
+    const conversation = await this.repository.getConversationLookup(input.conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    if (conversation.seatId !== input.seatId) {
+      throw new BadRequestError("CONVERSATION_SEAT_MISMATCH", "会话与席位不匹配");
+    }
+
+    const secrets = await this.repository.getEmbedUserRelationTuseSecrets(subUserId);
+
+    if (!secrets) {
       throw new NotFoundError(
         "SIDEBAR_TUSE_CRYPTO_NOT_FOUND",
         "侧栏加密配置不存在或未启用",
       );
     }
 
-    return row;
+    const thirdUserId = conversation.thirdUserId?.trim() ?? "";
+    const thirdExternalUserId = conversation.thirdExternalUserId?.trim() ?? "";
+    const unixSeconds = Math.floor(Date.now() / 1000);
+
+    return {
+      mid: secrets.appId,
+      ...(thirdUserId
+        ? {
+            rd: encryptTuseRdFromThirdUserId(secrets.secret, secrets.ivParameter, thirdUserId),
+          }
+        : {}),
+      ...(thirdExternalUserId
+        ? {
+            fsw: encryptTuseFswFromThirdExternalUserId(
+              secrets.secret,
+              secrets.ivParameter,
+              thirdExternalUserId,
+            ),
+          }
+        : {}),
+      ts: encryptTuseTsFromUnixSeconds(secrets.secret, secrets.ivParameter, unixSeconds),
+    };
   }
 
   async getSeats(subUserId: string) {

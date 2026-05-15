@@ -65,12 +65,22 @@ export type WorkbenchSubUserDto = {
   displayName: string;
 };
 
-/** 侧栏 iframe 涂色加密参数，对应库表 `xy_wap_embed_user_relation.secret` / `iv_parameter` / `appid` */
-export type WorkbenchSidebarTuseCryptoDto = {
+/** 侧栏 iframe 涂色查询参数签发请求；三方 ID 由服务端按会话解析，不信任 body */
+export type WorkbenchSidebarIframeParamsRequest = {
+  conversationId: string;
+  seatId: string;
+};
+
+/**
+ * 侧栏 iframe 涂色查询参数（服务端签发）。
+ * 仅用于 URL 脱敏与既有嵌入页协议兼容，不是对嵌入页的身份防伪边界。
+ */
+export type WorkbenchSidebarIframeParamsDto = {
+  fsw?: string;
   /** 对应库表 `appid`，拼到 iframe 上时查询参数名为 `mid` */
-  appId: string;
-  ivParameter: string;
-  secret: string;
+  mid: string;
+  rd?: string;
+  ts: string;
 };
 
 export type WorkbenchSeatDto = {

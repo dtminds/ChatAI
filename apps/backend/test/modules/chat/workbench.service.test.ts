@@ -447,14 +447,25 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("loads sidebar TUSE crypto from the embed user relation row", async () => {
+  it("issues sidebar iframe params from server-side conversation lookup", async () => {
     const javaClient = createJavaClient();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_735_689_600_123);
     const service = new MysqlWorkbenchService(
       {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 1,
+          seatId: "12",
+          thirdExternalUserId: "ext-42",
+          thirdUserId: "third-42",
+          uid: 9001,
+          unreadCount: 0,
+        }),
         getEmbedUserRelationTuseSecrets: vi.fn().mockResolvedValue({
           appId: "app-for-mid",
-          ivParameter: "iv-value",
-          secret: "secret-value",
+          ivParameter: "03A2056448BF2-06C002FB-1688-4A2F-B25A-F20AD4C89CB2",
+          secret: "03A2056448BF1-BD0B89DE-10E2-4732-96E0-1D85B30731BF",
         }),
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "Tester",
@@ -464,17 +475,83 @@ describe("MysqlWorkbenchService", () => {
       javaClient,
     );
 
-    await expect(service.getSidebarTuseCrypto("101")).resolves.toEqual({
-      appId: "app-for-mid",
-      ivParameter: "iv-value",
-      secret: "secret-value",
-    });
+    try {
+      const { encryptTuseFswFromThirdExternalUserId, encryptTuseRdFromThirdUserId, encryptTuseTsFromUnixSeconds } =
+        await import("../../../src/lib/tuse-crypto.js");
+
+      await expect(
+        service.getSidebarIframeParams("101", {
+          conversationId: "88",
+          seatId: "12",
+        }),
+      ).resolves.toEqual({
+        fsw: encryptTuseFswFromThirdExternalUserId(
+          "03A2056448BF1-BD0B89DE-10E2-4732-96E0-1D85B30731BF",
+          "03A2056448BF2-06C002FB-1688-4A2F-B25A-F20AD4C89CB2",
+          "ext-42",
+        ),
+        mid: "app-for-mid",
+        rd: encryptTuseRdFromThirdUserId(
+          "03A2056448BF1-BD0B89DE-10E2-4732-96E0-1D85B30731BF",
+          "03A2056448BF2-06C002FB-1688-4A2F-B25A-F20AD4C89CB2",
+          "third-42",
+        ),
+        ts: encryptTuseTsFromUnixSeconds(
+          "03A2056448BF1-BD0B89DE-10E2-4732-96E0-1D85B30731BF",
+          "03A2056448BF2-06C002FB-1688-4A2F-B25A-F20AD4C89CB2",
+          1_735_689_600,
+        ),
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
-  it("rejects sidebar TUSE crypto when relation secrets are unavailable", async () => {
+  it("rejects sidebar iframe params when conversation seat does not match request", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
       {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 1,
+          seatId: "12",
+          thirdUserId: "third-42",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "Tester",
+          subUserId: "101",
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getSidebarIframeParams("101", {
+        conversationId: "88",
+        seatId: "99",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONVERSATION_SEAT_MISMATCH",
+      statusCode: 400,
+    });
+  });
+
+  it("rejects sidebar iframe params when relation secrets are unavailable", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 1,
+          seatId: "12",
+          thirdUserId: "third-42",
+          uid: 9001,
+          unreadCount: 0,
+        }),
         getEmbedUserRelationTuseSecrets: vi.fn().mockResolvedValue(undefined),
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "Tester",
@@ -484,7 +561,12 @@ describe("MysqlWorkbenchService", () => {
       javaClient,
     );
 
-    await expect(service.getSidebarTuseCrypto("101")).rejects.toMatchObject({
+    await expect(
+      service.getSidebarIframeParams("101", {
+        conversationId: "88",
+        seatId: "12",
+      }),
+    ).rejects.toMatchObject({
       code: "SIDEBAR_TUSE_CRYPTO_NOT_FOUND",
       statusCode: 404,
     });

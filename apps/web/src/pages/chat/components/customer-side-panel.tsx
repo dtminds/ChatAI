@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { CustomerBasicInfoPanel } from "@/pages/chat/components/customer-basic-info-panel";
@@ -9,52 +9,42 @@ import type {
   GroupMember,
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
-import { fetchWorkbenchSidebarTuseCrypto } from "@/pages/chat/api/sidebar-tuse-crypto";
+import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { buildSidebarIframeSrc } from "@/pages/chat/lib/sidebar-iframe-url";
 import {
   filterSidebarItemsForConversationMode,
   sortSidebarItems,
 } from "@/pages/chat/lib/sidebar-items";
-import {
-  encryptTuseFswFromThirdExternalUserId,
-  encryptTuseRdFromThirdUserId,
-  encryptTuseTsFromUnixSeconds,
-} from "@/lib/tuse-crypto";
 
 const collapsedSidebarEntryCount = 4;
 const sidebarExpandedStorageKey = "chatai.customerSidePanel.sidebarExpanded";
 
-type SidebarIframeCryptoPayload = {
-  rd?: string;
+type SidebarIframeParamsPayload = {
   fsw?: string;
-  ts: string;
+  mid?: string;
+  rd?: string;
+  ts?: string;
 };
 
-type ScopedSidebarIframeCrypto = {
+type ScopedSidebarIframeParams = {
   scopeKey: string;
-  value: SidebarIframeCryptoPayload | null;
+  value: SidebarIframeParamsPayload | null;
 };
 
-function buildSidebarIframeCryptoScopeKey(input: {
-  thirdExternalUserId?: string;
-  thirdUserId?: string;
-  tuseIv?: string;
-  tuseKey?: string;
+function buildSidebarIframeParamsScopeKey(input: {
+  conversationId?: string;
+  seatId?: string;
 }): string {
-  return [
-    input.thirdUserId ?? "",
-    input.thirdExternalUserId ?? "",
-    input.tuseKey ?? "",
-    input.tuseIv ?? "",
-  ].join("\0");
+  return [input.seatId ?? "", input.conversationId ?? ""].join("\0");
 }
 
 type CustomerSidePanelProps = {
   accountName?: string;
   conversationMode?: ChatMode;
-  /** 当前会话三方用户标识，会附加到自定义侧栏 iframe 的查询串 */
-  sidebarIframeThirdExternalUserId?: string;
-  sidebarIframeThirdUserId?: string;
+  /** 当前席位 ID，用于服务端签发侧栏 iframe 涂色参数 */
+  sidebarIframeSeatId?: string;
+  /** 当前会话 ID，用于服务端按库表解析三方 ID 并签发参数 */
+  sidebarIframeConversationId?: string;
   /** `tos`：`0` 未接管，`1` 已由当前坐席接管当前账号 */
   sidebarIframeTos?: "0" | "1";
   /** `qd`：群聊时为三方群 ID */
@@ -73,8 +63,8 @@ export function CustomerSidePanel({
   accountName,
   conversationMode,
   customer,
-  sidebarIframeThirdExternalUserId,
-  sidebarIframeThirdUserId,
+  sidebarIframeConversationId,
+  sidebarIframeSeatId,
   sidebarIframeTos,
   sidebarIframeQd,
   groupMembers,
@@ -86,10 +76,6 @@ export function CustomerSidePanel({
   onResizeStart,
 }: CustomerSidePanelProps) {
   const isGroupConversation = conversationMode === "group";
-  type TuseSecretCache =
-    | { kind: "ready"; value: { iv: string; key: string; mid?: string } | null }
-    | { kind: "unset" };
-  const tuseSecretCacheRef = useRef<TuseSecretCache>({ kind: "unset" });
 
   const scopedSidebarItems = useMemo(
     () => filterSidebarItemsForConversationMode(sidebarItems, conversationMode),
@@ -102,171 +88,74 @@ export function CustomerSidePanel({
     [scopedSidebarItems],
   );
 
-  const hasSidebarIframeThirdIds = useMemo(
-    () =>
-      Boolean(
-        (sidebarIframeThirdUserId !== undefined && sidebarIframeThirdUserId !== "") ||
-          (sidebarIframeThirdExternalUserId !== undefined && sidebarIframeThirdExternalUserId !== ""),
-      ),
-    [sidebarIframeThirdExternalUserId, sidebarIframeThirdUserId],
+  const needsSidebarIframeParams = Boolean(
+    hasActiveCustomSidebar && sidebarIframeSeatId && sidebarIframeConversationId,
   );
 
-  const needsSidebarTuseSecrets = hasActiveCustomSidebar && hasSidebarIframeThirdIds;
+  const sidebarIframeParamsScopeKey = useMemo(
+    () =>
+      buildSidebarIframeParamsScopeKey({
+        conversationId: sidebarIframeConversationId,
+        seatId: sidebarIframeSeatId,
+      }),
+    [sidebarIframeConversationId, sidebarIframeSeatId],
+  );
 
-  const [tuseSecrets, setTuseSecrets] = useState<
-    { iv: string; key: string; mid?: string } | null | undefined
-  >(undefined);
-
-  useEffect(() => {
-    if (!needsSidebarTuseSecrets) {
-      tuseSecretCacheRef.current = { kind: "unset" };
-      setTuseSecrets(undefined);
-
-      return;
-    }
-
-    if (tuseSecretCacheRef.current.kind === "ready") {
-      setTuseSecrets(tuseSecretCacheRef.current.value);
-
-      return;
-    }
-
-    let cancelled = false;
-
-    setTuseSecrets(undefined);
-
-    void (async () => {
-      try {
-        const dto = await fetchWorkbenchSidebarTuseCrypto();
-
-        if (cancelled) {
-          return;
-        }
-
-        const next =
-          dto?.secret?.trim() && dto?.ivParameter?.trim()
-            ? {
-                key: dto.secret.trim(),
-                iv: dto.ivParameter.trim(),
-                ...(dto.appId?.trim() ? { mid: dto.appId.trim() } : {}),
-              }
-            : null;
-        tuseSecretCacheRef.current = { kind: "ready", value: next };
-        setTuseSecrets(next);
-      } catch {
-        if (!cancelled) {
-          tuseSecretCacheRef.current = { kind: "ready", value: null };
-          setTuseSecrets(null);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [needsSidebarTuseSecrets]);
-
-  const [sidebarIframeCrypto, setSidebarIframeCrypto] = useState<ScopedSidebarIframeCrypto | null>(
+  const [sidebarIframeParams, setSidebarIframeParams] = useState<ScopedSidebarIframeParams | null>(
     null,
   );
-  const [isSidebarIframeCryptoReady, setIsSidebarIframeCryptoReady] = useState(true);
+  const [isSidebarIframeParamsReady, setIsSidebarIframeParamsReady] = useState(true);
 
-  const tuseKey = tuseSecrets?.key;
-  const tuseIv = tuseSecrets?.iv;
-  const tuseSecretsReady = Boolean(tuseKey && tuseIv);
-
-  const sidebarIframeCryptoScopeKey = useMemo(
-    () =>
-      buildSidebarIframeCryptoScopeKey({
-        thirdExternalUserId: sidebarIframeThirdExternalUserId,
-        thirdUserId: sidebarIframeThirdUserId,
-        tuseIv,
-        tuseKey,
-      }),
-    [
-      sidebarIframeThirdExternalUserId,
-      sidebarIframeThirdUserId,
-      tuseIv,
-      tuseKey,
-    ],
-  );
-
-  const sidebarIframeCryptoForScope = useMemo(() => {
-    if (sidebarIframeCrypto?.scopeKey !== sidebarIframeCryptoScopeKey) {
+  const sidebarIframeParamsForScope = useMemo(() => {
+    if (sidebarIframeParams?.scopeKey !== sidebarIframeParamsScopeKey) {
       return null;
     }
 
-    return sidebarIframeCrypto.value;
-  }, [sidebarIframeCrypto, sidebarIframeCryptoScopeKey]);
+    return sidebarIframeParams.value;
+  }, [sidebarIframeParams, sidebarIframeParamsScopeKey]);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!needsSidebarTuseSecrets) {
-      setIsSidebarIframeCryptoReady(true);
-      setSidebarIframeCrypto(null);
+    if (!needsSidebarIframeParams) {
+      setIsSidebarIframeParamsReady(true);
+      setSidebarIframeParams(null);
 
       return;
     }
 
-    if (tuseSecrets === undefined) {
-      setIsSidebarIframeCryptoReady(false);
-      setSidebarIframeCrypto(null);
+    const scopeKey = sidebarIframeParamsScopeKey;
 
-      return;
-    }
-
-    if (!tuseSecretsReady || (!sidebarIframeThirdUserId && !sidebarIframeThirdExternalUserId)) {
-      setIsSidebarIframeCryptoReady(true);
-      setSidebarIframeCrypto(null);
-
-      return;
-    }
-
-    const scopeKey = sidebarIframeCryptoScopeKey;
-
-    setIsSidebarIframeCryptoReady(false);
-
-    const tsMs = Date.now();
+    setIsSidebarIframeParamsReady(false);
+    setSidebarIframeParams(null);
 
     void (async () => {
       try {
-        const rd =
-          sidebarIframeThirdUserId !== undefined && sidebarIframeThirdUserId !== ""
-            ? await encryptTuseRdFromThirdUserId(tuseKey!, tuseIv!, sidebarIframeThirdUserId)
-            : undefined;
-        const fsw =
-          sidebarIframeThirdExternalUserId !== undefined && sidebarIframeThirdExternalUserId !== ""
-            ? await encryptTuseFswFromThirdExternalUserId(
-                tuseKey!,
-                tuseIv!,
-                sidebarIframeThirdExternalUserId,
-              )
-            : undefined;
-
-        const ts = await encryptTuseTsFromUnixSeconds(
-          tuseKey!,
-          tuseIv!,
-          Math.floor(tsMs / 1000),
-        );
+        const dto = await fetchWorkbenchSidebarIframeParams({
+          conversationId: sidebarIframeConversationId!,
+          seatId: sidebarIframeSeatId!,
+        });
 
         if (!cancelled) {
-          setSidebarIframeCrypto({
+          setSidebarIframeParams({
             scopeKey,
-            value: {
-              ...(rd !== undefined ? { rd } : {}),
-              ...(fsw !== undefined ? { fsw } : {}),
-              ts,
-            },
+            value: dto
+              ? {
+                  ...(dto.rd ? { rd: dto.rd } : {}),
+                  ...(dto.fsw ? { fsw: dto.fsw } : {}),
+                  ts: dto.ts,
+                  ...(dto.mid ? { mid: dto.mid } : {}),
+                }
+              : null,
           });
         }
       } catch {
         if (!cancelled) {
-          setSidebarIframeCrypto({ scopeKey, value: null });
+          setSidebarIframeParams({ scopeKey, value: null });
         }
       } finally {
         if (!cancelled) {
-          setIsSidebarIframeCryptoReady(true);
+          setIsSidebarIframeParamsReady(true);
         }
       }
     })();
@@ -275,49 +164,37 @@ export function CustomerSidePanel({
       cancelled = true;
     };
   }, [
-    needsSidebarTuseSecrets,
-    sidebarIframeCryptoScopeKey,
-    sidebarIframeThirdExternalUserId,
-    sidebarIframeThirdUserId,
-    tuseIv,
-    tuseKey,
-    tuseSecrets,
-    tuseSecretsReady,
+    needsSidebarIframeParams,
+    sidebarIframeConversationId,
+    sidebarIframeParamsScopeKey,
+    sidebarIframeSeatId,
   ]);
 
-  const sidebarIframeMid = tuseSecrets?.mid;
-
   const canRenderSidebarIframeSrc = useMemo(() => {
-    if (!needsSidebarTuseSecrets) {
+    if (!needsSidebarIframeParams) {
       return true;
     }
 
-    if (!isSidebarIframeCryptoReady) {
+    if (!isSidebarIframeParamsReady) {
       return false;
     }
 
-    return sidebarIframeCrypto?.scopeKey === sidebarIframeCryptoScopeKey;
+    return sidebarIframeParams?.scopeKey === sidebarIframeParamsScopeKey;
   }, [
-    isSidebarIframeCryptoReady,
-    needsSidebarTuseSecrets,
-    sidebarIframeCrypto,
-    sidebarIframeCryptoScopeKey,
+    isSidebarIframeParamsReady,
+    needsSidebarIframeParams,
+    sidebarIframeParams,
+    sidebarIframeParamsScopeKey,
   ]);
 
   const sidebarIframeSrcForUrl = useMemo(
     () => (url: string) =>
       buildSidebarIframeSrc(url, {
-        ...(sidebarIframeCryptoForScope ?? {}),
-        ...(sidebarIframeMid ? { mid: sidebarIframeMid } : {}),
+        ...(sidebarIframeParamsForScope ?? {}),
         ...(sidebarIframeTos ? { tos: sidebarIframeTos } : {}),
         ...(sidebarIframeQd ? { qd: sidebarIframeQd } : {}),
       }),
-    [
-      sidebarIframeCryptoForScope,
-      sidebarIframeMid,
-      sidebarIframeQd,
-      sidebarIframeTos,
-    ],
+    [sidebarIframeParamsForScope, sidebarIframeQd, sidebarIframeTos],
   );
   const activeSidebarItems = sortSidebarItems(scopedSidebarItems).filter(
     (item) => item.status === "active",
@@ -413,7 +290,7 @@ export function CustomerSidePanel({
             >
               <iframe
                 className="h-full w-full border-0 bg-background"
-                key={`${item.id}:${sidebarIframeCryptoScopeKey}`}
+                key={`${item.id}:${sidebarIframeParamsScopeKey}`}
                 referrerPolicy="no-referrer-when-downgrade"
                 sandbox="allow-scripts allow-same-origin allow-forms"
                 src={

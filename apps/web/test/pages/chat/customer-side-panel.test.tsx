@@ -1,26 +1,19 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  encryptTuseFswFromThirdExternalUserId,
-  encryptTuseRdFromThirdUserId,
-  encryptTuseTsFromUnixSeconds,
-} from "@/lib/tuse-crypto";
 import type { SettingsSidebarBindType } from "@chatai/contracts";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
 
-vi.mock("@/pages/chat/api/sidebar-tuse-crypto", () => {
-  const appId = "embed-app-001";
-  const secret = "03A2056448BF1-BD0B89DE-10E2-4732-96E0-1D85B30731BF";
-  const ivParameter = "03A2056448BF2-06C002FB-1688-4A2F-B25A-F20AD4C89CB2";
+const sidebarIframeParamsFixture = {
+  fsw: "fsw-cipher",
+  mid: "embed-app-001",
+  rd: "rd-cipher",
+  ts: "ts-cipher",
+};
 
-  return {
-    fetchWorkbenchSidebarTuseCrypto: vi.fn(async () => ({ appId, ivParameter, secret })),
-  };
-});
-
-const tuseKey = "03A2056448BF1-BD0B89DE-10E2-4732-96E0-1D85B30731BF";
-const tuseIv = "03A2056448BF2-06C002FB-1688-4A2F-B25A-F20AD4C89CB2";
+vi.mock("@/pages/chat/api/sidebar-iframe-params", () => ({
+  fetchWorkbenchSidebarIframeParams: vi.fn(async () => sidebarIframeParamsFixture),
+}));
 
 const defaultProps = {
   groupMembers: [],
@@ -34,6 +27,7 @@ const defaultProps = {
 describe("CustomerSidePanel", () => {
   afterEach(() => {
     window.localStorage.clear();
+    vi.clearAllMocks();
   });
 
   it("shows only sidebar items matching the conversation mode", () => {
@@ -153,6 +147,8 @@ describe("CustomerSidePanel", () => {
     render(
       <CustomerSidePanel
         {...defaultProps}
+        sidebarIframeConversationId="conv-1"
+        sidebarIframeSeatId="seat-1"
         sidebarItems={[
           {
             bindTypes: ["1", "2"],
@@ -178,9 +174,11 @@ describe("CustomerSidePanel", () => {
     );
   });
 
-  it("uses about:blank until iframe crypto matches the current third-party ids", async () => {
+  it("uses about:blank until iframe params match the current seat and conversation", async () => {
     const user = userEvent.setup();
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_735_689_600_123);
+    const { fetchWorkbenchSidebarIframeParams } = await import(
+      "@/pages/chat/api/sidebar-iframe-params"
+    );
     const sidebarItems = [
       {
         bindTypes: ["1", "2"] as SettingsSidebarBindType[],
@@ -192,89 +190,98 @@ describe("CustomerSidePanel", () => {
       },
     ];
 
-    try {
-      const rdForFirstUser = await encryptTuseRdFromThirdUserId(tuseKey, tuseIv, "third-42");
-      const rdForSecondUser = await encryptTuseRdFromThirdUserId(tuseKey, tuseIv, "third-99");
-
-      const { rerender } = render(
-        <CustomerSidePanel
-          {...defaultProps}
-          sidebarIframeThirdUserId="third-42"
-          sidebarItems={sidebarItems}
-        />,
-      );
-
-      await user.click(screen.getByRole("tab", { name: "素材中心" }));
-
-      await waitFor(() => {
-        expect(new URL(screen.getByTitle("素材中心扩展页").getAttribute("src") ?? "").searchParams.get("rd")).toBe(
-          rdForFirstUser,
-        );
+    vi.mocked(fetchWorkbenchSidebarIframeParams)
+      .mockResolvedValueOnce({
+        ...sidebarIframeParamsFixture,
+        rd: "rd-first",
+      })
+      .mockResolvedValueOnce({
+        ...sidebarIframeParamsFixture,
+        rd: "rd-second",
       });
 
-      rerender(
-        <CustomerSidePanel
-          {...defaultProps}
-          sidebarIframeThirdUserId="third-99"
-          sidebarItems={sidebarItems}
-        />,
+    const { rerender } = render(
+      <CustomerSidePanel
+        {...defaultProps}
+        sidebarIframeConversationId="conv-1"
+        sidebarIframeSeatId="seat-1"
+        sidebarItems={sidebarItems}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "素材中心" }));
+
+    await waitFor(() => {
+      expect(new URL(screen.getByTitle("素材中心扩展页").getAttribute("src") ?? "").searchParams.get("rd")).toBe(
+        "rd-first",
       );
+    });
 
-      expect(screen.getByTitle("素材中心扩展页")).toHaveAttribute("src", "about:blank");
+    rerender(
+      <CustomerSidePanel
+        {...defaultProps}
+        sidebarIframeConversationId="conv-2"
+        sidebarIframeSeatId="seat-1"
+        sidebarItems={sidebarItems}
+      />,
+    );
 
-      await waitFor(() => {
-        const parsed = new URL(screen.getByTitle("素材中心扩展页").getAttribute("src") ?? "");
+    expect(screen.getByTitle("素材中心扩展页")).toHaveAttribute("src", "about:blank");
 
-        expect(parsed.searchParams.get("rd")).toBe(rdForSecondUser);
-        expect(parsed.searchParams.get("rd")).not.toBe(rdForFirstUser);
-      });
-    } finally {
-      nowSpy.mockRestore();
-    }
+    await waitFor(() => {
+      const parsed = new URL(screen.getByTitle("素材中心扩展页").getAttribute("src") ?? "");
+
+      expect(parsed.searchParams.get("rd")).toBe("rd-second");
+      expect(parsed.searchParams.get("rd")).not.toBe("rd-first");
+    });
+
+    expect(fetchWorkbenchSidebarIframeParams).toHaveBeenLastCalledWith({
+      conversationId: "conv-2",
+      seatId: "seat-1",
+    });
   });
 
-  it("appends third-party user ids to custom iframe src", async () => {
+  it("appends server-issued iframe params to custom iframe src", async () => {
     const user = userEvent.setup();
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_735_689_600_123);
+    const { fetchWorkbenchSidebarIframeParams } = await import(
+      "@/pages/chat/api/sidebar-iframe-params"
+    );
 
-    try {
-      const rd = await encryptTuseRdFromThirdUserId(tuseKey, tuseIv, "third-42");
-      const fsw = await encryptTuseFswFromThirdExternalUserId(tuseKey, tuseIv, "ext-42");
-      const ts = await encryptTuseTsFromUnixSeconds(tuseKey, tuseIv, 1_735_689_600);
+    render(
+      <CustomerSidePanel
+        {...defaultProps}
+        sidebarIframeConversationId="conv-42"
+        sidebarIframeSeatId="seat-42"
+        sidebarIframeTos="1"
+        sidebarItems={[
+          {
+            bindTypes: ["1", "2"],
+            id: "1",
+            name: "素材中心",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/assets",
+          },
+        ]}
+      />,
+    );
 
-      render(
-        <CustomerSidePanel
-          {...defaultProps}
-          sidebarIframeThirdExternalUserId="ext-42"
-          sidebarIframeThirdUserId="third-42"
-          sidebarIframeTos="1"
-          sidebarItems={[
-            {
-              bindTypes: ["1", "2"],
-              id: "1",
-              name: "素材中心",
-              sort: 1,
-              status: "active",
-              url: "https://example.com/assets",
-            },
-          ]}
-        />,
-      );
+    await user.click(screen.getByRole("tab", { name: "素材中心" }));
 
-      await user.click(screen.getByRole("tab", { name: "素材中心" }));
+    await waitFor(() => {
+      const iframe = screen.getByTitle("素材中心扩展页");
+      const parsed = new URL(iframe.getAttribute("src") ?? "");
 
-      await waitFor(() => {
-        const iframe = screen.getByTitle("素材中心扩展页");
-        const parsed = new URL(iframe.getAttribute("src") ?? "");
+      expect(parsed.searchParams.get("mid")).toBe("embed-app-001");
+      expect(parsed.searchParams.get("rd")).toBe("rd-cipher");
+      expect(parsed.searchParams.get("fsw")).toBe("fsw-cipher");
+      expect(parsed.searchParams.get("ts")).toBe("ts-cipher");
+      expect(parsed.searchParams.get("tos")).toBe("1");
+    });
 
-        expect(parsed.searchParams.get("mid")).toBe("embed-app-001");
-        expect(parsed.searchParams.get("rd")).toBe(rd);
-        expect(parsed.searchParams.get("fsw")).toBe(fsw);
-        expect(parsed.searchParams.get("ts")).toBe(ts);
-        expect(parsed.searchParams.get("tos")).toBe("1");
-      });
-    } finally {
-      nowSpy.mockRestore();
-    }
+    expect(fetchWorkbenchSidebarIframeParams).toHaveBeenCalledWith({
+      conversationId: "conv-42",
+      seatId: "seat-42",
+    });
   });
 });

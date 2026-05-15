@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 团队协作规范
+    url: https://github.com/dtminds/ChatAI/issues
+    about: 如不确定该选择哪个模板，请先创建最接近的模板，后续 triage 会补充标签和归属

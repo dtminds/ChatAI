@@ -1,0 +1,75 @@
+name: 设计/UI 调整 Design
+description: 提交页面视觉、交互、文案或体验调整
+title: "[Design] "
+labels: ["type: feature", "area: web", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        这个模板用于设计稿落地、UI 问题、交互调整和体验优化。
+  - type: input
+    id: page
+    attributes:
+      label: 页面或模块
+      description: 说明涉及哪个页面、弹窗、组件或流程
+      placeholder: 例如：/chat 会话列表、消息输入区、接管弹窗
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: 当前表现
+      description: 现在看起来或用起来有什么问题
+      placeholder: 例如：空状态提示不明显，用户不知道下一步操作
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望调整
+      description: 希望调整成什么样，或希望用户感受到什么变化
+      placeholder: 例如：空状态需要明确说明当前没有会话，并提供刷新入口
+    validations:
+      required: true
+  - type: input
+    id: design-link
+    attributes:
+      label: 设计稿链接
+      description: Figma、蓝湖、截图或其它设计资料链接
+      placeholder: https://
+    validations:
+      required: false
+  - type: textarea
+    id: interaction
+    attributes:
+      label: 交互说明
+      description: 悬停、点击、加载、禁用、错误、空状态等
+      placeholder: 例如：刷新按钮点击后进入 loading，失败时展示错误提示
+    validations:
+      required: false
+  - type: textarea
+    id: responsive
+    attributes:
+      label: 适配要求
+      description: 桌面端、窄屏、长文本、空数据、多数据等需要注意的情况
+      placeholder: 例如：长会话名称需要省略，不能挤压未读数
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 如何判断设计或体验调整已经完成
+      placeholder: |
+        - 空状态文案与设计稿一致
+        - 刷新入口可点击且有 loading 状态
+        - 长文案不会遮挡其它控件
+    validations:
+      required: true
+  - type: textarea
+    id: attachments
+    attributes:
+      label: 截图或录屏
+      description: 可以拖拽上传当前问题截图、目标效果截图或录屏
+    validations:
+      required: false

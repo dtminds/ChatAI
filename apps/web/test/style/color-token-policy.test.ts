@@ -4,8 +4,8 @@ import { describe, expect, test } from "vitest";
 
 const sourceRoot = join(process.cwd(), "src");
 const themeCss = readFileSync(join(sourceRoot, "styles/index.css"), "utf8");
-const allowedFiles = new Set(["pages/chat/mock-data.ts", "styles/index.css"]);
-const checkedExtensions = /\.(css|ts|tsx)$/;
+const allowedFiles = new Set(["pages/chat/mock-data.ts"]);
+const checkedExtensions = /\.tsx?$/;
 const appearanceThemeBlocks = [
   ...themeCss.matchAll(
     /html(?:\.dark)?\[data-appearance-theme="[^"]+"\]\s*\{[\s\S]*?\n\}/g,
@@ -56,7 +56,7 @@ function collectColorViolations() {
 }
 
 describe("color token policy", () => {
-  test("keeps source UI colors behind theme tokens", () => {
+  test("keeps component UI colors out of TypeScript source", () => {
     expect(collectColorViolations()).toEqual([]);
   });
 

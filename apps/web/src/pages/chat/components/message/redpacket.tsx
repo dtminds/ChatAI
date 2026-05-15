@@ -14,7 +14,7 @@ export function RedPacketMessageCard({ content }: RedPacketMessageCardProps) {
     <div className="w-[min(19rem,calc(100vw-7rem))]">
       <div
         aria-label={`红包：${title}，${amountLabel}`}
-        className="flex items-center gap-4 rounded-[8px] bg-warning px-5 py-4 text-white shadow-[0_1px_2px_var(--shadow-soft)]"
+        className="redpacket-message-card flex items-center gap-4 rounded-[8px] px-5 py-4 text-white shadow-[0_1px_2px_var(--shadow-soft)]"
         data-testid="redpacket-message-card"
         role="img"
       >

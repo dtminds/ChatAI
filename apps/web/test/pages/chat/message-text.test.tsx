@@ -189,15 +189,30 @@ describe("text message bubble layout", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.hover(screen.getByRole("button", { name: "消息操作" }));
     await user.click(screen.getByRole("menuitem", { name: "@Ta" }));
 
     expect(onMentionMessage).toHaveBeenCalledWith(message);
 
-    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.hover(screen.getByRole("button", { name: "消息操作" }));
     await user.click(screen.getByRole("menuitem", { name: "引用" }));
 
     expect(onQuoteMessage).toHaveBeenCalledWith(message);
+  });
+
+  it("opens the avatar anchored action menu on hover", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        message={createTextMessage("悬浮消息")}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.hover(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "引用" })).toBeInTheDocument();
   });
 
   it("does not expose the mention action for single chat messages", async () => {
@@ -211,7 +226,7 @@ describe("text message bubble layout", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.hover(screen.getByRole("button", { name: "消息操作" }));
 
     expect(screen.getByRole("menuitem", { name: "引用" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();

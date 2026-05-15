@@ -149,7 +149,7 @@ describe("ChatWorkbenchPage", () => {
     const targetRow = targetMessage.closest('[data-testid="message-row"]');
     expect(targetRow).not.toBeNull();
 
-    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.hover(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
     await user.click(screen.getByRole("menuitem", { name: "引用" }));
 
     expect(screen.getByTestId("composer-quote-preview")).toHaveTextContent(
@@ -171,7 +171,7 @@ describe("ChatWorkbenchPage", () => {
     const targetRow = targetMessage.closest('[data-testid="message-row"]');
     expect(targetRow).not.toBeNull();
 
-    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.hover(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
     await user.click(screen.getByRole("menuitem", { name: "引用" }));
     await pasteIntoComposer(user, composer, "收到，我按这个版本处理");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
@@ -206,7 +206,7 @@ describe("ChatWorkbenchPage", () => {
     const targetRow = groupMessage.closest('[data-testid="message-row"]');
     expect(targetRow).not.toBeNull();
 
-    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.hover(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
     await user.click(screen.getByRole("menuitem", { name: "@Ta" }));
 
     const composer = screen.getByRole("textbox", { name: "请输入消息……" });
@@ -863,7 +863,7 @@ describe("ChatWorkbenchPage", () => {
     const targetRow = targetMessage.closest('[data-testid="message-row"]');
     expect(targetRow).not.toBeNull();
 
-    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    await user.hover(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
     await user.click(screen.getByRole("menuitem", { name: "引用" }));
     await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
 

@@ -37,6 +37,7 @@ import {
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
+import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
@@ -46,10 +47,7 @@ import type {
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
-import {
-  getVisibleConversations,
-  UNVERIFIED_CONVERSATION_HIDE_DELAY_MS,
-} from "@/pages/chat/api/workbench-gateway";
+import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -90,27 +88,6 @@ function writeAccountRailCollapsed(isCollapsed: boolean) {
   } catch {
     // Keep the UI usable when storage is unavailable.
   }
-}
-
-function getNextConversationRevealDelay(conversations: Array<{
-  createdAtMs?: number;
-  isVerified?: boolean;
-}>, now = Date.now()) {
-  const nextRevealAt = conversations.reduce<number | undefined>((next, conversation) => {
-    if (conversation.isVerified !== false || !conversation.createdAtMs) {
-      return next;
-    }
-
-    const revealAt = conversation.createdAtMs + UNVERIFIED_CONVERSATION_HIDE_DELAY_MS;
-
-    if (revealAt <= now) {
-      return next;
-    }
-
-    return next == null ? revealAt : Math.min(next, revealAt);
-  }, undefined);
-
-  return nextRevealAt == null ? undefined : Math.max(0, nextRevealAt - now);
 }
 
 export function ChatWorkbenchPage() {
@@ -195,7 +172,6 @@ function ChatWorkbenchContent({
   );
   const [inputEnterBehavior, setInputEnterBehavior] =
     useState<InputEnterBehavior>("send");
-  const [conversationVisibilityTick, setConversationVisibilityTick] = useState(0);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
@@ -268,22 +244,7 @@ function ChatWorkbenchContent({
       customerProfilesById[activeConversation.customerId]) ??
     undefined;
 
-  useEffect(() => {
-    void conversationVisibilityTick;
-    const delay = getNextConversationRevealDelay(allConversations);
-
-    if (delay == null) {
-      return;
-    }
-
-    const timerId = window.setTimeout(() => {
-      setConversationVisibilityTick((tick) => tick + 1);
-    }, delay);
-
-    return () => {
-      window.clearTimeout(timerId);
-    };
-  }, [allConversations, conversationVisibilityTick]);
+  useConversationRevealTimer(allConversations);
   const isActiveAccountOffline = activeAccount?.loginStatus === "offline";
   const isActiveAccountTakenOver =
     !!activeAccount?.takenOverEmployeeId &&

@@ -1,87 +1,39 @@
 name: 缺陷反馈 Bug
-description: 反馈可复现或影响使用的问题
+description: 反馈影响使用的问题
 title: "[Bug] "
 labels: ["type: bug", "status: needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        请尽量描述你看到的事实。模块、优先级、负责人会在后续 triage 时补充。
+        请描述你看到的事实。模块、优先级、负责人会在后续 triage 时补充。
   - type: textarea
-    id: summary
+    id: description
     attributes:
-      label: 问题描述
-      description: 简要说明发生了什么问题
-      placeholder: 例如：聊天消息加载时偶现白屏
-    validations:
-      required: true
-  - type: textarea
-    id: impact
-    attributes:
-      label: 影响范围
-      description: 说明影响哪些用户、页面、流程或数据
-      placeholder: 例如：影响客服进入 /chat 后查看会话消息
-    validations:
-      required: true
-  - type: textarea
-    id: steps
-    attributes:
-      label: 复现步骤
-      description: 按顺序写出如何触发问题
+      label: 问题说明
+      description: 说明问题、影响范围、实际结果和期望结果
       placeholder: |
-        1. 打开 /chat
-        2. 选择一个有未读消息的账号
-        3. 点击会话
-        4. 观察消息区域
+        发生了什么：
+        影响范围：
+        实际结果：
+        期望结果：
     validations:
       required: true
   - type: textarea
-    id: actual
+    id: reproduce
     attributes:
-      label: 实际结果
-      description: 实际看到的现象
-      placeholder: 例如：消息区域变成空白，刷新后恢复
-    validations:
-      required: true
-  - type: textarea
-    id: expected
-    attributes:
-      label: 期望结果
-      description: 正常情况下应该发生什么
-      placeholder: 例如：消息列表正常展示，加载失败时显示错误提示
-    validations:
-      required: true
-  - type: dropdown
-    id: frequency
-    attributes:
-      label: 发生频率
-      options:
-        - 每次必现
-        - 经常出现
-        - 偶尔出现
-        - 只出现过一次
-        - 不确定
-    validations:
-      required: true
-  - type: textarea
-    id: environment
-    attributes:
-      label: 发生环境
-      description: 浏览器、系统、环境或账号信息。不要填写密码、token 或敏感数据。
-      placeholder: 例如：Chrome 124 / macOS / 测试环境
+      label: 复现信息
+      description: 如果可以复现，请写步骤；如果暂时不能稳定复现，请写出现时间、账号、环境等线索。不要填写密码、token 或敏感数据。
+      placeholder: |
+        复现步骤：
+        发生频率：
+        环境信息：
     validations:
       required: false
   - type: textarea
     id: attachments
     attributes:
-      label: 截图或录屏
+      label: 截图、录屏或日志
       description: 可以拖拽上传截图、录屏或日志片段。请先遮盖敏感信息。
-    validations:
-      required: false
-  - type: textarea
-    id: extra
-    attributes:
-      label: 补充信息
-      description: 相关链接、时间点、用户反馈、临时绕过方式等
     validations:
       required: false

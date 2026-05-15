@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        内部已评审过的需求，可以直接贴结论、PRD 链接或关键上下文。
+        请在 Issue 中写清楚结论和关键上下文。需要登录的 PRD、设计稿或评审链接只能作为补充，请摘录核心内容，方便协作者和 AI 直接阅读。
   - type: textarea
     id: description
     attributes:
@@ -46,6 +46,6 @@ body:
     id: links
     attributes:
       label: 相关资料
-      description: PRD、设计稿、评审结论、用户反馈、竞品截图等
+      description: GitHub issue/PR、仓库文档、可访问的设计稿、评审记录或截图。若资料需要登录或权限，请在上方摘录关键内容。
     validations:
       required: false

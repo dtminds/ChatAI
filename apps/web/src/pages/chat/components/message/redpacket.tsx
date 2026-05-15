@@ -1,6 +1,6 @@
-import { GiftCardIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import type { RedPacketMessageContent } from "@/pages/chat/chat-types";
+
+const REDPACKET_ICON_URL = "https://b5.bokr.com.cn/dist/redpack_icon.png";
 
 type RedPacketMessageCardProps = {
   content: RedPacketMessageContent;
@@ -18,10 +18,12 @@ export function RedPacketMessageCard({ content }: RedPacketMessageCardProps) {
         data-testid="redpacket-message-card"
         role="img"
       >
-        <div className="relative flex h-16 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-destructive text-warning">
-          <div className="absolute inset-x-0 top-0 h-5 bg-destructive/70" />
-          <HugeiconsIcon aria-hidden="true" icon={GiftCardIcon} size={28} strokeWidth={1.9} />
-        </div>
+        <img
+          alt="红包图标"
+          className="h-16 w-12 shrink-0 object-contain"
+          loading="lazy"
+          src={REDPACKET_ICON_URL}
+        />
         <div className="min-w-0 space-y-2">
           <p className="line-clamp-1 text-[14px] font-semibold leading-5 text-white">
             {title}

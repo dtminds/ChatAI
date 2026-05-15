@@ -28,5 +28,9 @@ describe("RedPacketMessageCard", () => {
     expect(screen.getByTestId("redpacket-message-card")).toHaveAccessibleName(
       "红包：恭喜发财，大吉大利，¥0.02",
     );
+    expect(screen.getByRole("img", { name: "红包图标" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/redpack_icon.png",
+    );
   });
 });

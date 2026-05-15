@@ -75,37 +75,45 @@ describe("workbench gateway message paging", () => {
       ...baseService,
       async getConversations(_seatId, options) {
         if (options?.mode === "single") {
-          return [
+          return {
+            hasMore: false,
+            items: [
+              {
+                conversationId: "recent-unpinned",
+                customerAvatar: "",
+                customerId: "customer-recent",
+                customerName: "最近未置顶",
+                lastMessage: "recent",
+                lastMessageTime: now,
+                mode: "single",
+                priority: "medium",
+                seatId: "drc",
+                unreadCount: 0,
+              },
+            ],
+            snapshotAt: now,
+          };
+        }
+
+        return {
+          hasMore: false,
+          items: [
             {
-              conversationId: "recent-unpinned",
+              conversationId: "old-pinned",
               customerAvatar: "",
-              customerId: "customer-recent",
-              customerName: "最近未置顶",
-              lastMessage: "recent",
-              lastMessageTime: now,
-              mode: "single",
+              customerId: "customer-pinned",
+              customerName: "较早置顶",
+              isPinned: true,
+              lastMessage: "pinned",
+              lastMessageTime: now - 60_000,
+              mode: "group",
               priority: "medium",
               seatId: "drc",
               unreadCount: 0,
             },
-          ];
-        }
-
-        return [
-          {
-            conversationId: "old-pinned",
-            customerAvatar: "",
-            customerId: "customer-pinned",
-            customerName: "较早置顶",
-            isPinned: true,
-            lastMessage: "pinned",
-            lastMessageTime: now - 60_000,
-            mode: "group",
-            priority: "medium",
-            seatId: "drc",
-            unreadCount: 0,
-          },
-        ];
+          ],
+          snapshotAt: now,
+        };
       },
     });
 
@@ -193,19 +201,22 @@ describe("workbench gateway message paging", () => {
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(seatId) {
-        const conversations = await baseService.getConversations(seatId);
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
 
-        return [
-          {
-            ...conversations[0],
-            conversationId: "pending-new-customer",
-            createdAt: now,
-            customerName: "识别中的客户",
-            verified: false,
-          },
-          ...conversations,
-        ];
+        return {
+          ...response,
+          items: [
+            {
+              ...response.items[0],
+              conversationId: "pending-new-customer",
+              createdAt: now,
+              customerName: "识别中的客户",
+              verified: false,
+            },
+            ...response.items,
+          ],
+        };
       },
     });
 

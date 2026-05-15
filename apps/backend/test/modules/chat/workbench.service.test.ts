@@ -4,6 +4,30 @@ import type { WorkbenchJavaClient } from "../../../src/modules/chat/workbench-ja
 import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
 
 describe("MysqlWorkbenchService", () => {
+  it("rejects invalid conversation list cursors before querying conversations", async () => {
+    const javaClient = createJavaClient();
+    const listConversations = vi.fn();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        listConversations,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getConversations("101", "12", {
+        cursor: "not-a-valid-cursor",
+        limit: 30,
+        mode: "single",
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_CONVERSATION_CURSOR",
+      statusCode: 400,
+    });
+    expect(listConversations).not.toHaveBeenCalled();
+  });
+
   it("takes over an accessible seat through Java and persists host sub-user locally", async () => {
     const javaClient = createJavaClient();
     const getSeat = vi.fn().mockResolvedValue({

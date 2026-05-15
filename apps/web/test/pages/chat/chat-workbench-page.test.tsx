@@ -1402,16 +1402,19 @@ describe("ChatWorkbenchPage", () => {
     setWorkbenchService({
       ...baseService,
       async getConversations(seatId, options) {
-        const conversations = await baseService.getConversations(seatId, options);
+        const response = await baseService.getConversations(seatId, options);
 
-        return conversations.map((conversation) =>
-          conversation.conversationId === "conv-004"
-            ? {
-                ...conversation,
-                conversationId: "backend-group-001",
-              }
-            : conversation,
-        );
+        return {
+          ...response,
+          items: response.items.map((conversation) =>
+            conversation.conversationId === "conv-004"
+              ? {
+                  ...conversation,
+                  conversationId: "backend-group-001",
+                }
+              : conversation,
+          ),
+        };
       },
     });
 

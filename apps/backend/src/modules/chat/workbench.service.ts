@@ -1,10 +1,10 @@
 import type {
   WorkbenchConversationDeleteResponse,
+  WorkbenchConversationListResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
-  WorkbenchConversationSummaryDto,
   WorkbenchGroupMembersResponse,
   WorkbenchMessageDto,
   WorkbenchMessageFileDownloadResponse,
@@ -37,6 +37,7 @@ import {
   JAVA_SEND_TYPE,
 } from "./workbench-java-client.js";
 import {
+  decodeConversationListCursor,
   parseMySqlId,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
@@ -49,8 +50,8 @@ export type WorkbenchService = {
   getConversations(
     subUserId: string,
     seatId: string,
-    options?: { limit?: number; mode?: "single" | "group" },
-  ): Promise<WorkbenchConversationSummaryDto[]> | WorkbenchConversationSummaryDto[];
+    options?: { cursor?: string; limit?: number; mode?: "single" | "group" },
+  ): Promise<WorkbenchConversationListResponse> | WorkbenchConversationListResponse;
   getMe(subUserId: string): Promise<WorkbenchSubUserDto> | WorkbenchSubUserDto;
   getMessages(
     subUserId: string,
@@ -154,11 +155,22 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async getConversations(
     subUserId: string,
     seatId: string,
-    options?: { limit?: number; mode?: "single" | "group" },
+    options?: { cursor?: string; limit?: number; mode?: "single" | "group" },
   ) {
     await this.assertSeatAccess(subUserId, seatId);
+    const cursor = options?.cursor
+      ? decodeConversationListCursor(options.cursor)
+      : undefined;
 
-    return this.repository.listConversations(seatId, options);
+    if (options?.cursor && !cursor) {
+      throw new BadRequestError("INVALID_CONVERSATION_CURSOR", "会话分页游标无效");
+    }
+
+    return this.repository.listConversations(seatId, {
+      cursor,
+      limit: options?.limit,
+      mode: options?.mode,
+    });
   }
 
   async getMessages(

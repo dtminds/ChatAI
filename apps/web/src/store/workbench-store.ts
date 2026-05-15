@@ -4,6 +4,7 @@ import { formatConversationPreview, formatWorkbenchTimestamp } from "@/pages/cha
 import {
   bootstrapWorkbench,
   deleteConversation as deleteConversationRequest,
+  getVisibleConversations,
   loadAccountConversations,
   loadGroupMembers,
   loadAccountScope,
@@ -190,9 +191,10 @@ function getFirstConversationId(
   mode: ChatMode,
 ) {
   const conversations = conversationListsByScope[accountId] ?? [];
+  const visibleConversations = getVisibleConversations(conversations);
   const firstMatch =
-    conversations.find((conversation) => conversation.mode === mode) ??
-    conversations[0];
+    visibleConversations.find((conversation) => conversation.mode === mode) ??
+    visibleConversations[0];
 
   return firstMatch?.id ?? "";
 }

@@ -19,6 +19,17 @@ describe("workbench adapter", () => {
       updatedAtMs: undefined,
     });
   });
+
+  it("adapts conversation recognition metadata for temporary sidebar visibility", () => {
+    const conversation = adaptConversation({
+      ...conversationDto,
+      createdAt: 1778832000000,
+      verified: false,
+    });
+
+    expect(conversation.createdAtMs).toBe(1778832000000);
+    expect(conversation.isVerified).toBe(false);
+  });
 });
 
 describe("adaptMessage", () => {

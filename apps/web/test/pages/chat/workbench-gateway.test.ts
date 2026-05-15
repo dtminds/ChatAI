@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { WorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
+  getVisibleConversations,
   loadGroupMembers,
   loadAccountScope,
 } from "@/pages/chat/api/workbench-gateway";
@@ -94,6 +95,33 @@ describe("workbench gateway message paging", () => {
     expect(observedLimits).toEqual([50]);
   });
 
+  it("selects the first currently visible conversation during bootstrap", async () => {
+    const baseService = createMockWorkbenchService();
+    const now = new Date("2026-05-15T08:00:00.000Z").getTime();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(seatId) {
+        const conversations = await baseService.getConversations(seatId);
+
+        return [
+          {
+            ...conversations[0],
+            conversationId: "pending-new-customer",
+            createdAt: now,
+            customerName: "识别中的客户",
+            verified: false,
+          },
+          ...conversations,
+        ];
+      },
+    });
+
+    await expect(bootstrapWorkbench("single", {}, 50, now)).resolves.toMatchObject({
+      activeConversationId: "conv-001",
+    });
+  });
+
   it("adapts group members from the workbench service", async () => {
     const baseService = createMockWorkbenchService();
 
@@ -125,6 +153,73 @@ describe("workbench gateway message paging", () => {
         id: "owner-001",
         type: 2,
       },
+    ]);
+  });
+});
+
+describe("temporary conversation visibility", () => {
+  it("keeps recently unverified conversations hidden until the delay expires", () => {
+    const now = new Date("2026-05-15T08:00:00.000Z").getTime();
+    const conversations = [
+      {
+        accountId: "drc",
+        createdAtMs: now - 60_000,
+        customerAvatarUrl: "",
+        customerId: "customer-pending",
+        customerName: "识别中的客户",
+        id: "pending-new-customer",
+        isVerified: false,
+        mode: "single" as const,
+        preview: "刚刚发来消息",
+        priority: "medium" as const,
+        quietFor: "",
+        unread: 1,
+        updatedAt: "",
+        updatedAtMs: now - 60_000,
+      },
+      {
+        accountId: "drc",
+        createdAtMs: now - 181_000,
+        customerAvatarUrl: "",
+        customerId: "customer-expired",
+        customerName: "超过等待窗口的客户",
+        id: "expired-pending-customer",
+        isVerified: false,
+        mode: "single" as const,
+        preview: "三分钟前发来消息",
+        priority: "medium" as const,
+        quietFor: "",
+        unread: 1,
+        updatedAt: "",
+        updatedAtMs: now - 181_000,
+      },
+      {
+        accountId: "drc",
+        createdAtMs: now - 30_000,
+        customerAvatarUrl: "",
+        customerId: "customer-verified",
+        customerName: "已识别客户",
+        id: "verified-customer",
+        isVerified: true,
+        mode: "single" as const,
+        preview: "已识别消息",
+        priority: "medium" as const,
+        quietFor: "",
+        unread: 0,
+        updatedAt: "",
+        updatedAtMs: now - 30_000,
+      },
+    ];
+
+    expect(getVisibleConversations(conversations, now).map((item) => item.id)).toEqual([
+      "expired-pending-customer",
+      "verified-customer",
+    ]);
+
+    expect(getVisibleConversations(conversations, now + 120_001).map((item) => item.id)).toEqual([
+      "pending-new-customer",
+      "expired-pending-customer",
+      "verified-customer",
     ]);
   });
 });

@@ -85,6 +85,7 @@ export type WorkbenchConversationSummaryDto = {
   thirdUserId?: string;
   thirdExternalUserId?: string;
   thirdGroupId?: string;
+  createdAt?: number;
   customerId: string;
   customerName: string;
   customerAvatar: string;
@@ -94,6 +95,7 @@ export type WorkbenchConversationSummaryDto = {
   mode: "single" | "group";
   isPinned?: boolean;
   priority: "high" | "medium" | "low";
+  verified?: boolean;
 };
 
 export type WorkbenchMessageBaseDto = {

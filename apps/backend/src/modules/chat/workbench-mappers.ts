@@ -19,6 +19,7 @@ export type SeatRow = {
 
 export type ConversationRow = {
   chat_type: number;
+  create_time?: Date | number | string | null;
   customer_avatar: string | null;
   customer_name: string | null;
   group_avatar: string | null;
@@ -33,6 +34,7 @@ export type ConversationRow = {
   third_group_id: string;
   third_userid: string;
   unread_cnt: number | string;
+  verified?: number | string | null;
 };
 
 export type MessageRow = {
@@ -119,6 +121,7 @@ export function mapConversationRow(
 
   return {
     conversationId: String(row.id),
+    createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
     customerId,
     customerName,
@@ -132,6 +135,7 @@ export function mapConversationRow(
     thirdGroupId: row.third_group_id || undefined,
     thirdUserId: row.third_userid,
     unreadCount: toNumber(row.unread_cnt),
+    verified: row.verified == null ? undefined : toNumber(row.verified) === 1,
   };
 }
 
@@ -722,7 +726,7 @@ function normalizeOptionalId(value: number | string | null) {
   return id && id !== "0" ? id : undefined;
 }
 
-function toNumber(value: number | string | null) {
+function toNumber(value: number | string | null | undefined) {
   if (value == null || value === "") {
     return 0;
   }
@@ -732,13 +736,13 @@ function toNumber(value: number | string | null) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
-function toOptionalTimestamp(value: Date | number | string | null) {
+function toOptionalTimestamp(value: Date | number | string | null | undefined) {
   const timestamp = parseTimestamp(value);
 
   return timestamp && timestamp > 0 ? timestamp : undefined;
 }
 
-function parseTimestamp(value: Date | number | string | null) {
+function parseTimestamp(value: Date | number | string | null | undefined) {
   if (value == null || value === "") {
     return undefined;
   }

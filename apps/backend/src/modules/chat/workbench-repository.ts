@@ -84,7 +84,7 @@ type ConversationHydrationSources = {
     { avatar: string | null; name: string | null; realName: string | null }
   >;
   groupsByThirdGroupId: Map<string, { avatar: string | null; name: string | null }>;
-  lastMessagesById: Map<number, { content: string | null; msgtype: string | null }>;
+  lastMessagesById: Map<string, { content: string | null; msgtype: string | null }>;
 };
 
 export class WorkbenchRepository {
@@ -374,7 +374,7 @@ export class WorkbenchRepository {
           expressionBuilder("conversation.last_msgtime", "<", cursor.lastMsgTime),
           expressionBuilder.and([
             expressionBuilder("conversation.last_msgtime", "=", cursor.lastMsgTime),
-            expressionBuilder("conversation.id", "<", cursor.id),
+            expressionBuilder("conversation.id", "<", asSchemaBigIntId(cursor.id)),
           ]),
         ]),
       )
@@ -404,7 +404,7 @@ export class WorkbenchRepository {
     );
 
     const items = conversationRows.map((row) => {
-      const lastMessage = hydrationSources.lastMessagesById.get(Number(row.last_audit_info_id));
+      const lastMessage = hydrationSources.lastMessagesById.get(String(row.last_audit_info_id));
       const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
       const bind = hydrationSources.bindsByThirdExternalId.get(row.third_external_userid);
       const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
@@ -427,7 +427,7 @@ export class WorkbenchRepository {
       nextCursor:
         rows.length > limit && lastRow
           ? encodeConversationListCursor({
-              id: Number(lastRow.id),
+              id: String(lastRow.id),
               lastMsgTime: Number(lastRow.last_msgtime),
               snapshotAt,
             })
@@ -933,8 +933,8 @@ export class WorkbenchRepository {
     platform: number,
     seatThirdUserId: string,
   ): Promise<ConversationHydrationSources> {
-    const lastMessageIds = uniqueNumbers(
-      rows.map((row) => Number(row.last_audit_info_id)),
+    const lastMessageIds = uniqueIds(
+      rows.map((row) => row.last_audit_info_id),
     );
     const contactThirdExternalIds = uniqueNonEmpty(
       rows
@@ -952,7 +952,7 @@ export class WorkbenchRepository {
         ? this.db
             .selectFrom("xy_wap_embed_msg_audit_info")
             .select(["id", "content", "msgtype"])
-            .where("id", "in", lastMessageIds)
+            .where("id", "in", asSchemaBigIntIds(lastMessageIds))
             .where("uid", "=", uid)
             .where("platform", "=", platform)
             .execute()
@@ -1021,7 +1021,7 @@ export class WorkbenchRepository {
       ),
       lastMessagesById: new Map(
         lastMessages.map((message) => [
-          message.id,
+          String(message.id),
           {
             content: message.content,
             msgtype: message.msgtype,
@@ -1228,6 +1228,24 @@ function uniqueNonEmpty(values: Array<string | null | undefined>) {
   );
 }
 
+function uniqueIds(values: Array<number | string | null | undefined>) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => /^[1-9]\d*$/.test(value)),
+    ),
+  );
+}
+
+function asSchemaBigIntId(value: string) {
+  return value as unknown as number;
+}
+
+function asSchemaBigIntIds(values: string[]) {
+  return values as unknown as number[];
+}
+
 function uniqueNumbers(values: Array<number | undefined>) {
   return Array.from(
     new Set(
@@ -1295,9 +1313,8 @@ function isConversationListCursor(value: unknown): value is ConversationListCurs
   const { id, lastMsgTime, snapshotAt } = candidate;
 
   return (
-    Number.isSafeInteger(id) &&
-    typeof id === "number" &&
-    id > 0 &&
+    typeof id === "string" &&
+    /^[1-9]\d*$/.test(id) &&
     Number.isSafeInteger(lastMsgTime) &&
     typeof lastMsgTime === "number" &&
     lastMsgTime >= 0 &&

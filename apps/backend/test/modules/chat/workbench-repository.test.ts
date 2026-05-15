@@ -357,7 +357,7 @@ describe("WorkbenchRepository", () => {
 
     await repository.listConversations("12", {
       cursor: {
-        id: 88,
+        id: "88",
         lastMsgTime: 1_778_839_800_000,
         snapshotAt: 1_778_840_000_000,
       },
@@ -396,7 +396,7 @@ describe("WorkbenchRepository", () => {
               {
                 column: "conversation.id",
                 operator: "<",
-                value: 88,
+                value: "88",
               },
             ],
           },
@@ -448,7 +448,7 @@ describe("WorkbenchRepository", () => {
 
     const page = await repository.listConversations("12", {
       cursor: {
-        id: 88,
+        id: "88",
         lastMsgTime: 1_778_839_800_000,
         snapshotAt: 1_778_840_000_000,
       },
@@ -482,7 +482,7 @@ describe("WorkbenchRepository", () => {
               {
                 column: "conversation.id",
                 operator: "<",
-                value: 88,
+                value: "88",
               },
             ],
           },
@@ -563,7 +563,7 @@ describe("WorkbenchRepository", () => {
     });
     expect(page.nextCursor).toBeDefined();
     expect(decodeConversationListCursor(page.nextCursor ?? "")).toEqual({
-      id: 88,
+      id: "88",
       lastMsgTime: 1_778_839_800_000,
       snapshotAt: 1_778_840_000_000,
     });
@@ -643,6 +643,80 @@ describe("WorkbenchRepository", () => {
       customerAvatar: "https://example.com/avatar.png",
       customerName: "客户备注",
       lastMessage: "hello",
+    });
+  });
+
+  it("hydrates last messages and cursors without losing bigint id precision", async () => {
+    const observedAuditInfoQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder([
+              createConversationRow({
+                id: "9007199254740993",
+                last_audit_info_id: "9007199254740995",
+                third_external_userid: "external-001",
+              }),
+              createConversationRow({
+                id: "9007199254740992",
+                last_audit_info_id: "9007199254740996",
+                third_external_userid: "external-002",
+              }),
+            ]);
+          }
+
+          if (table === "xy_wap_embed_msg_audit_info") {
+            const query = createQueryBuilder({
+              id: "9007199254740995",
+              content: "bigint message",
+              msgtype: "text",
+            });
+            observedAuditInfoQueries.push(query);
+
+            return query;
+          }
+
+          if (
+            table === "xy_wap_embed_contact" ||
+            table === "xy_wap_embed_customer_bind_relation" ||
+            table === "xy_wap_embed_group_seat"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 1,
+      mode: "single",
+    });
+
+    expect(observedAuditInfoQueries[0].wheres).toContainEqual([
+      "id",
+      "in",
+      ["9007199254740995"],
+    ]);
+    expect(page.items[0]).toMatchObject({
+      conversationId: "9007199254740993",
+      lastMessage: "bigint message",
+    });
+    expect(decodeConversationListCursor(page.nextCursor ?? "")).toEqual({
+      id: "9007199254740993",
+      lastMsgTime: 1_778_839_800_000,
+      snapshotAt: expect.any(Number),
     });
   });
 

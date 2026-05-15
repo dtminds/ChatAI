@@ -118,7 +118,7 @@ export type WorkbenchConversationSummaryDto = {
 };
 
 export type WorkbenchConversationCursorDto = {
-  id: number;
+  id: string;
   lastMsgTime: number;
   snapshotAt: number;
 };

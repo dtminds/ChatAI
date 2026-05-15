@@ -287,6 +287,8 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
       return "location";
     case "solitaire":
       return "solitaire";
+    case "redpacket":
+      return "redpacket";
     case "sphfeed":
       return "sphfeed";
     case "weapp":
@@ -412,6 +414,13 @@ function parseMessageContent(
         items: readSolitaireItems(parsed),
         tail: readStringField(parsed, "tail"),
         title: readStringField(parsed, "title") || formatMessagePreview(msgtype, rawContent),
+      };
+    case "redpacket":
+      return {
+        description: readStringField(parsed, "description"),
+        title: readStringField(parsed, "title") || "红包",
+        totalAmount: readNumberField(parsed, "totalAmount"),
+        totalCnt: readNumberField(parsed, "totalCnt"),
       };
     case "weapp":
       return {

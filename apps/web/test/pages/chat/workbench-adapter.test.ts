@@ -477,6 +477,35 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("adapts red packet message content", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            description: "来自哼╭(╯^╰)╮的红包，请进入手机版企业微信领取",
+            title: "恭喜发财，大吉大利",
+            totalAmount: 1,
+            totalCnt: 1,
+            type: 1,
+          },
+          contentType: "redpacket",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        description: "来自哼╭(╯^╰)╮的红包，请进入手机版企业微信领取",
+        title: "恭喜发财，大吉大利",
+        totalAmount: 1,
+        totalCnt: 1,
+        type: "redpacket",
+      },
+    });
+  });
+
   it("adapts quote message content with normalized preview data", () => {
     expect(
       adaptMessage(

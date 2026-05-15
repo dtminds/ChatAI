@@ -12,6 +12,7 @@ export {
 } from "@/pages/chat/components/message/miniapp";
 export { MessageContentRenderer } from "@/pages/chat/components/message/renderer";
 export { QuoteMessageCard } from "@/pages/chat/components/message/quote";
+export { RedPacketMessageCard } from "@/pages/chat/components/message/redpacket";
 export { SolitaireMessageCard } from "@/pages/chat/components/message/solitaire";
 export {
   SphFeedMark,

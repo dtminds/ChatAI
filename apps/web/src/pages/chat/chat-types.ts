@@ -184,6 +184,14 @@ export type SolitaireMessageContent = {
   createMemberSerialNo?: string;
 };
 
+export type RedPacketMessageContent = {
+  type: "redpacket";
+  title: string;
+  description: string;
+  totalAmount?: number;
+  totalCnt?: number;
+};
+
 export type QuotedMessagePreviewContent = {
   contentType: WorkbenchMessageContentType;
   fallbackText?: string;
@@ -216,6 +224,7 @@ export type MessageContent =
   | LocationMessageContent
   | SphFeedMessageContent
   | SolitaireMessageContent
+  | RedPacketMessageContent
   | QuoteMessageContent;
 
 type BaseMessage = {
@@ -256,6 +265,7 @@ export type ChatMessage = BaseMessage & {
     | LocationMessageContent
     | SphFeedMessageContent
     | SolitaireMessageContent
+    | RedPacketMessageContent
     | QuoteMessageContent;
 };
 

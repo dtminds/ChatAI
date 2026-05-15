@@ -308,6 +308,14 @@ function adaptChatMessageContent(
         title: String(content.title ?? ""),
         type: "solitaire",
       };
+    case "redpacket":
+      return {
+        description: String(content.description ?? ""),
+        title: String(content.title ?? ""),
+        totalAmount: asOptionalNumber(content.totalAmount),
+        totalCnt: asOptionalNumber(content.totalCnt),
+        type: "redpacket",
+      };
     case "quote":
       return {
         quoteMsgId: String(content.quoteMsgId ?? ""),
@@ -360,6 +368,7 @@ function isQuotedPreviewContentType(
     "contact-card",
     "location",
     "solitaire",
+    "redpacket",
     "sphfeed",
     "mini-program",
     "quote",

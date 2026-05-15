@@ -1207,6 +1207,12 @@ function buildQuotedMessagePreview(message: ChatMessage): QuotedMessagePreviewCo
         fallbackText: "[接龙]",
         title: message.content.title,
       };
+    case "redpacket":
+      return {
+        ...basePreview,
+        fallbackText: "[红包]",
+        title: message.content.title,
+      };
     case "quote":
       return {
         ...basePreview,

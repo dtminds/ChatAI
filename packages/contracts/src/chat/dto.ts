@@ -45,6 +45,7 @@ export type WorkbenchMessageContentType =
   | "contact-card"
   | "location"
   | "solitaire"
+  | "redpacket"
   | "sphfeed"
   | "mini-program"
   | "quote";

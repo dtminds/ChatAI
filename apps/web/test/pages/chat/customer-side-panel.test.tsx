@@ -178,6 +178,61 @@ describe("CustomerSidePanel", () => {
     );
   });
 
+  it("uses about:blank until iframe crypto matches the current third-party ids", async () => {
+    const user = userEvent.setup();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_735_689_600_123);
+    const sidebarItems = [
+      {
+        bindTypes: ["1", "2"] as SettingsSidebarBindType[],
+        id: "1",
+        name: "素材中心",
+        sort: 1,
+        status: "active" as const,
+        url: "https://example.com/assets",
+      },
+    ];
+
+    try {
+      const rdForFirstUser = await encryptTuseRdFromThirdUserId(tuseKey, tuseIv, "third-42");
+      const rdForSecondUser = await encryptTuseRdFromThirdUserId(tuseKey, tuseIv, "third-99");
+
+      const { rerender } = render(
+        <CustomerSidePanel
+          {...defaultProps}
+          sidebarIframeThirdUserId="third-42"
+          sidebarItems={sidebarItems}
+        />,
+      );
+
+      await user.click(screen.getByRole("tab", { name: "素材中心" }));
+
+      await waitFor(() => {
+        expect(new URL(screen.getByTitle("素材中心扩展页").getAttribute("src") ?? "").searchParams.get("rd")).toBe(
+          rdForFirstUser,
+        );
+      });
+
+      rerender(
+        <CustomerSidePanel
+          {...defaultProps}
+          sidebarIframeThirdUserId="third-99"
+          sidebarItems={sidebarItems}
+        />,
+      );
+
+      expect(screen.getByTitle("素材中心扩展页")).toHaveAttribute("src", "about:blank");
+
+      await waitFor(() => {
+        const parsed = new URL(screen.getByTitle("素材中心扩展页").getAttribute("src") ?? "");
+
+        expect(parsed.searchParams.get("rd")).toBe(rdForSecondUser);
+        expect(parsed.searchParams.get("rd")).not.toBe(rdForFirstUser);
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it("appends third-party user ids to custom iframe src", async () => {
     const user = userEvent.setup();
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_735_689_600_123);

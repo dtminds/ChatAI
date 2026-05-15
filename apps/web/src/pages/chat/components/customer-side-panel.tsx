@@ -24,6 +24,31 @@ import {
 const collapsedSidebarEntryCount = 4;
 const sidebarExpandedStorageKey = "chatai.customerSidePanel.sidebarExpanded";
 
+type SidebarIframeCryptoPayload = {
+  rd?: string;
+  fsw?: string;
+  ts: string;
+};
+
+type ScopedSidebarIframeCrypto = {
+  scopeKey: string;
+  value: SidebarIframeCryptoPayload | null;
+};
+
+function buildSidebarIframeCryptoScopeKey(input: {
+  thirdExternalUserId?: string;
+  thirdUserId?: string;
+  tuseIv?: string;
+  tuseKey?: string;
+}): string {
+  return [
+    input.thirdUserId ?? "",
+    input.thirdExternalUserId ?? "",
+    input.tuseKey ?? "",
+    input.tuseIv ?? "",
+  ].join("\0");
+}
+
 type CustomerSidePanelProps = {
   accountName?: string;
   conversationMode?: ChatMode;
@@ -141,16 +166,38 @@ export function CustomerSidePanel({
     };
   }, [needsSidebarTuseSecrets]);
 
-  const [sidebarIframeCrypto, setSidebarIframeCrypto] = useState<{
-    rd?: string;
-    fsw?: string;
-    ts: string;
-  } | null>(null);
+  const [sidebarIframeCrypto, setSidebarIframeCrypto] = useState<ScopedSidebarIframeCrypto | null>(
+    null,
+  );
   const [isSidebarIframeCryptoReady, setIsSidebarIframeCryptoReady] = useState(true);
 
   const tuseKey = tuseSecrets?.key;
   const tuseIv = tuseSecrets?.iv;
   const tuseSecretsReady = Boolean(tuseKey && tuseIv);
+
+  const sidebarIframeCryptoScopeKey = useMemo(
+    () =>
+      buildSidebarIframeCryptoScopeKey({
+        thirdExternalUserId: sidebarIframeThirdExternalUserId,
+        thirdUserId: sidebarIframeThirdUserId,
+        tuseIv,
+        tuseKey,
+      }),
+    [
+      sidebarIframeThirdExternalUserId,
+      sidebarIframeThirdUserId,
+      tuseIv,
+      tuseKey,
+    ],
+  );
+
+  const sidebarIframeCryptoForScope = useMemo(() => {
+    if (sidebarIframeCrypto?.scopeKey !== sidebarIframeCryptoScopeKey) {
+      return null;
+    }
+
+    return sidebarIframeCrypto.value;
+  }, [sidebarIframeCrypto, sidebarIframeCryptoScopeKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,6 +222,8 @@ export function CustomerSidePanel({
 
       return;
     }
+
+    const scopeKey = sidebarIframeCryptoScopeKey;
 
     setIsSidebarIframeCryptoReady(false);
 
@@ -202,11 +251,18 @@ export function CustomerSidePanel({
         );
 
         if (!cancelled) {
-          setSidebarIframeCrypto({ ...(rd !== undefined ? { rd } : {}), ...(fsw !== undefined ? { fsw } : {}), ts });
+          setSidebarIframeCrypto({
+            scopeKey,
+            value: {
+              ...(rd !== undefined ? { rd } : {}),
+              ...(fsw !== undefined ? { fsw } : {}),
+              ts,
+            },
+          });
         }
       } catch {
         if (!cancelled) {
-          setSidebarIframeCrypto(null);
+          setSidebarIframeCrypto({ scopeKey, value: null });
         }
       } finally {
         if (!cancelled) {
@@ -220,6 +276,7 @@ export function CustomerSidePanel({
     };
   }, [
     needsSidebarTuseSecrets,
+    sidebarIframeCryptoScopeKey,
     sidebarIframeThirdExternalUserId,
     sidebarIframeThirdUserId,
     tuseIv,
@@ -230,16 +287,33 @@ export function CustomerSidePanel({
 
   const sidebarIframeMid = tuseSecrets?.mid;
 
+  const canRenderSidebarIframeSrc = useMemo(() => {
+    if (!needsSidebarTuseSecrets) {
+      return true;
+    }
+
+    if (!isSidebarIframeCryptoReady) {
+      return false;
+    }
+
+    return sidebarIframeCrypto?.scopeKey === sidebarIframeCryptoScopeKey;
+  }, [
+    isSidebarIframeCryptoReady,
+    needsSidebarTuseSecrets,
+    sidebarIframeCrypto,
+    sidebarIframeCryptoScopeKey,
+  ]);
+
   const sidebarIframeSrcForUrl = useMemo(
     () => (url: string) =>
       buildSidebarIframeSrc(url, {
-        ...(sidebarIframeCrypto ?? {}),
+        ...(sidebarIframeCryptoForScope ?? {}),
         ...(sidebarIframeMid ? { mid: sidebarIframeMid } : {}),
         ...(sidebarIframeTos ? { tos: sidebarIframeTos } : {}),
         ...(sidebarIframeQd ? { qd: sidebarIframeQd } : {}),
       }),
     [
-      sidebarIframeCrypto,
+      sidebarIframeCryptoForScope,
       sidebarIframeMid,
       sidebarIframeQd,
       sidebarIframeTos,
@@ -339,10 +413,11 @@ export function CustomerSidePanel({
             >
               <iframe
                 className="h-full w-full border-0 bg-background"
+                key={`${item.id}:${sidebarIframeCryptoScopeKey}`}
                 referrerPolicy="no-referrer-when-downgrade"
                 sandbox="allow-scripts allow-same-origin allow-forms"
                 src={
-                  isSidebarIframeCryptoReady
+                  canRenderSidebarIframeSrc
                     ? sidebarIframeSrcForUrl(item.url)
                     : "about:blank"
                 }

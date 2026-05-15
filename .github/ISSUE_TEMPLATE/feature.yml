@@ -1,0 +1,80 @@
+name: 产品需求 Feature
+description: 提交新能力、流程优化或产品需求
+title: "[Feature] "
+labels: ["type: feature", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先描述业务问题和期望结果，不需要给出技术实现方案。
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景
+      description: 为什么需要这个需求，现在遇到了什么问题
+      placeholder: 例如：客服需要更快识别高优先级会话，当前只能逐个查看
+    validations:
+      required: true
+  - type: textarea
+    id: users
+    attributes:
+      label: 目标用户
+      description: 谁会使用或受影响
+      placeholder: 例如：一线客服、客服主管、运营同学
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景
+      description: 用户在什么情况下需要这个能力
+      placeholder: 例如：客服每天开始接待前，需要先处理未读和待接管会话
+    validations:
+      required: true
+  - type: textarea
+    id: capability
+    attributes:
+      label: 期望能力
+      description: 希望系统支持什么行为或结果
+      placeholder: 例如：会话列表支持按未读优先排序
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 什么情况下可以认为这个需求完成
+      placeholder: |
+        - 用户可以在会话列表看到未读优先排序结果
+        - 排序结果刷新后保持一致
+        - 无未读会话时维持默认排序
+    validations:
+      required: true
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: 业务紧急程度建议
+      description: 最终优先级会由 triage 统一确认
+      options:
+        - 阻塞当前发布
+        - 当前阶段需要完成
+        - 重要但可以后移
+        - 有价值但不紧急
+        - 不确定
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: 不包含范围
+      description: 明确哪些内容这次先不做，有助于控制范围
+      placeholder: 例如：这次不包含客服个人排序偏好保存
+    validations:
+      required: false
+  - type: textarea
+    id: links
+    attributes:
+      label: 相关资料
+      description: PRD、设计稿、竞品截图、数据分析、用户反馈等
+    validations:
+      required: false

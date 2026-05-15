@@ -5,6 +5,7 @@ import {
   CONVERSATION_MODE_LIMITS,
   getVisibleConversations,
   loadGroupMembers,
+  loadAccountConversations,
   loadAccountScope,
 } from "@/pages/chat/api/workbench-gateway";
 import {
@@ -62,6 +63,59 @@ describe("workbench gateway message paging", () => {
         limit: CONVERSATION_MODE_LIMITS.group,
         mode: "group",
         seatId: "drc",
+      },
+    ]);
+  });
+
+  it("keeps pinned conversations first when merging mode-specific lists", async () => {
+    const baseService = createMockWorkbenchService();
+    const now = new Date("2026-05-15T08:00:00.000Z").getTime();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(_seatId, options) {
+        if (options?.mode === "single") {
+          return [
+            {
+              conversationId: "recent-unpinned",
+              customerAvatar: "",
+              customerId: "customer-recent",
+              customerName: "最近未置顶",
+              lastMessage: "recent",
+              lastMessageTime: now,
+              mode: "single",
+              priority: "medium",
+              seatId: "drc",
+              unreadCount: 0,
+            },
+          ];
+        }
+
+        return [
+          {
+            conversationId: "old-pinned",
+            customerAvatar: "",
+            customerId: "customer-pinned",
+            customerName: "较早置顶",
+            isPinned: true,
+            lastMessage: "pinned",
+            lastMessageTime: now - 60_000,
+            mode: "group",
+            priority: "medium",
+            seatId: "drc",
+            unreadCount: 0,
+          },
+        ];
+      },
+    });
+
+    await expect(loadAccountConversations("drc")).resolves.toMatchObject([
+      {
+        id: "old-pinned",
+        isPinned: true,
+      },
+      {
+        id: "recent-unpinned",
       },
     ]);
   });

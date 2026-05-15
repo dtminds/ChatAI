@@ -984,7 +984,6 @@ function createStarCloudConversation({
     customerId: `cust-starcloud-${isGroup ? "group" : "single"}-${displayIndex}`,
     customerName: name,
     id: `conv-starcloud-${isGroup ? "group" : "single"}-${displayIndex}`,
-    isPinned: index < 2,
     mode,
     preview: isGroup
       ? "包含：星云-星光、星云小助手、星云-云翎、运营客服"

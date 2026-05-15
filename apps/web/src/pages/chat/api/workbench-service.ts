@@ -1126,7 +1126,9 @@ function resolveSendOutcome(
 
 function sortConversations(conversations: WorkbenchConversationSummaryDto[]) {
   return [...conversations].sort(
-    (left, right) => (right.lastMessageTime ?? 0) - (left.lastMessageTime ?? 0),
+    (left, right) =>
+      Number(Boolean(right.isPinned)) - Number(Boolean(left.isPinned)) ||
+      (right.lastMessageTime ?? 0) - (left.lastMessageTime ?? 0),
   );
 }
 

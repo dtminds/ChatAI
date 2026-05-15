@@ -25,6 +25,7 @@ import {
   type ComposerSegment,
   type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
+import { sortConversations } from "@/pages/chat/lib/conversation-order";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import type { WorkbenchSendMessagePayload } from "@chatai/contracts";
@@ -232,12 +233,6 @@ function buildMessagePaginationState(page: {
     nextBeforeSeq: page.nextBeforeSeq,
     skippedHiddenCount: page.skippedHiddenCount,
   };
-}
-
-function sortConversations(conversations: Conversation[]) {
-  return [...conversations].sort(
-    (left, right) => (right.updatedAtMs ?? 0) - (left.updatedAtMs ?? 0),
-  );
 }
 
 function replaceConversationsByMode(

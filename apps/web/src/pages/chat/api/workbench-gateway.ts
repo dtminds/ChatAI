@@ -30,6 +30,7 @@ import type {
   Message,
   MessageStatus,
 } from "@/pages/chat/chat-types";
+import { sortConversations } from "@/pages/chat/lib/conversation-order";
 
 type GatewayContext = {
   accounts: Account[];
@@ -168,9 +169,7 @@ function mergeConversations(conversationLists: Conversation[][]) {
     }
   }
 
-  return [...conversationsById.values()].sort(
-    (left, right) => (right.updatedAtMs ?? 0) - (left.updatedAtMs ?? 0),
-  );
+  return sortConversations([...conversationsById.values()]);
 }
 
 function getSidebarItemsFromResponse(response: unknown): SettingsSidebarItem[] {

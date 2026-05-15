@@ -7,6 +7,13 @@ import {
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
+  isRecord,
+  normalizeMediaAssetUrl,
+  parseJsonRecord,
+  readRecordNumber,
+  readRecordString,
+} from "./workbench-content-utils.js";
+import {
   buildMissingQuotedMessagePreview,
   buildQuotedMessagePreview,
   getQuoteMessageAuditId,
@@ -1023,51 +1030,6 @@ function readMessageFileDownloadStatus(content: string | null) {
   };
 }
 
-function parseJsonRecord(value: string | null) {
-  if (!value) {
-    return undefined;
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(value);
-
-    return isRecord(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function readRecordString(value: Record<string, unknown>, key: string) {
-  const field = value[key];
-
-  return typeof field === "string" ? field : "";
-}
-
-function readRecordNumber(value: Record<string, unknown>, key: string) {
-  const field = value[key];
-  const numeric = typeof field === "number" ? field : Number(field);
-
-  return Number.isFinite(numeric) ? numeric : undefined;
-}
-
-const mediaAssetBaseUrl = "https://b5.bokr.com.cn";
-
-function normalizeMediaAssetUrl(value: string) {
-  const url = value.trim();
-
-  if (!url) {
-    return "";
-  }
-
-  try {
-    const parsedUrl = new URL(url);
-
-    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:" ? url : "";
-  } catch {
-    return `${mediaAssetBaseUrl}/${url.replace(/^\/+/, "")}`;
-  }
-}
-
 function toNumber(value: number | string | null | undefined) {
   if (value == null) {
     return undefined;
@@ -1076,10 +1038,6 @@ function toNumber(value: number | string | null | undefined) {
   const numberValue = typeof value === "number" ? value : Number(value);
 
   return Number.isFinite(numberValue) ? numberValue : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function uniqueNonEmpty(values: Array<string | null | undefined>) {

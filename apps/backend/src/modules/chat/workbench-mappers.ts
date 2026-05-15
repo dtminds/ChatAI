@@ -6,6 +6,12 @@ import type {
   WorkbenchQuotedMessagePreviewDto,
   WorkbenchSeatDto,
 } from "@chatai/contracts";
+import {
+  isRecord,
+  normalizeMediaAssetUrl,
+  readRecordNumber,
+  readRecordString,
+} from "./workbench-content-utils.js";
 
 export type SeatRow = {
   avatar: string | null;
@@ -615,12 +621,6 @@ function reverseMapContentType(contentType: WorkbenchMessageContentType) {
   }
 }
 
-function readRecordString(value: Record<string, unknown>, key: string) {
-  const field = value[key];
-
-  return typeof field === "string" ? field : "";
-}
-
 function parseContent(rawContent: string | null): unknown {
   const content = rawContent?.trim();
 
@@ -656,14 +656,7 @@ export function readDownloadStatus(
 }
 
 function readNumberField(value: unknown, key: string) {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const field = value[key];
-  const numeric = typeof field === "number" ? field : Number(field);
-
-  return Number.isFinite(numeric) ? numeric : undefined;
+  return isRecord(value) ? readRecordNumber(value, key) : undefined;
 }
 
 function readSolitaireItems(value: unknown) {
@@ -680,28 +673,6 @@ function readSolitaireItems(value: unknown) {
       timestamp: readNumberField(itemRecord, "timestamp"),
     };
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-const mediaAssetBaseUrl = "https://b5.bokr.com.cn";
-
-function normalizeMediaAssetUrl(value: string) {
-  const url = value.trim();
-
-  if (!url) {
-    return "";
-  }
-
-  try {
-    const parsedUrl = new URL(url);
-
-    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:" ? url : "";
-  } catch {
-    return `${mediaAssetBaseUrl}/${url.replace(/^\/+/, "")}`;
-  }
 }
 
 function getFileExtension(fileName: string) {

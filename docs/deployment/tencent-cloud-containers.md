@@ -96,7 +96,7 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag>
 
 - Web 和 backend 镜像都依赖 workspace 根目录下的 `pnpm-workspace.yaml`、`pnpm-lock.yaml`、根 `package.json`、`apps/*` 和 `packages/contracts`，不要在子目录内单独执行上述 `docker build`。
 - 当前仓库没有 `.dockerignore`。CI 或本地构建时应避免把无关大文件放进仓库目录；如后续构建上下文过大，应补充 `.dockerignore`。
-- `deploy/web.Dockerfile` 没有声明 `ARG`。`VITE_*` 构建变量应通过仓库环境文件或构建环境提供；测试和生产同源部署时至少保持 `VITE_API_BASE_URL=/api`。
+- `deploy/web.Dockerfile` 没有声明 `ARG`，也没有复制根目录 `.env.*` 文件。Docker 构建不会自动读取宿主机环境变量；如需自定义 `VITE_*` 构建变量，需要显式调整 Dockerfile，例如复制目标环境文件，或增加 `ARG` 并在构建时通过 `--build-arg` 传入。测试和生产同源部署时至少保持 `VITE_API_BASE_URL=/api`。
 
 ## Web 容器要求
 

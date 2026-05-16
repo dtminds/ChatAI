@@ -19,14 +19,15 @@ export const dbPlugin = fp(async (app) => {
   const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
-    const message = "DATABASE_URL is not configured; database plugin is disabled";
+    const nodeEnv = process.env.NODE_ENV;
 
-    if (requiresDatabaseUrl(process.env.NODE_ENV)) {
-      app.log.error(message);
-      throw new Error(`DATABASE_URL must be configured when NODE_ENV=${process.env.NODE_ENV}`);
+    if (requiresDatabaseUrl(nodeEnv)) {
+      const errorMessage = `DATABASE_URL must be configured when NODE_ENV=${nodeEnv}`;
+      app.log.error(errorMessage);
+      throw new Error(errorMessage);
     }
 
-    app.log.warn(message);
+    app.log.warn("DATABASE_URL is not configured; database plugin is disabled");
     return;
   }
 

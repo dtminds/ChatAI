@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildApp } from "../../../src/app";
+import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("settings sidebar item routes", () => {
   it("performs CRUD and sorting in the current tenant", async () => {
@@ -283,7 +283,7 @@ describe("settings sidebar item routes", () => {
 });
 
 async function createSettingsApp() {
-  const app = await buildMockedSettingsApp();
+  const app = await buildMockedApp();
   const token = app.jwt.sign({
     roles: ["agent"],
     sessionId: "501",
@@ -299,21 +299,6 @@ async function createSettingsApp() {
     authorization: `Bearer ${token}`,
     db,
   };
-}
-
-async function buildMockedSettingsApp() {
-  const previousNodeEnv = process.env.NODE_ENV;
-  process.env.NODE_ENV = "development";
-
-  try {
-    return await buildApp();
-  } finally {
-    if (previousNodeEnv === undefined) {
-      delete process.env.NODE_ENV;
-    } else {
-      process.env.NODE_ENV = previousNodeEnv;
-    }
-  }
 }
 
 function createSettingsDbMock() {

@@ -1152,7 +1152,10 @@ export function createWorkbenchStore() {
         );
         const prunedConversationListCache = pruneConversationListCache({
           activeAccountId: bootstrapResult.activeAccountId,
-          conversationListsByScope: bootstrapResult.conversationListsByScope,
+          conversationListsByScope: {
+            ...get().conversationListsByScope,
+            ...bootstrapResult.conversationListsByScope,
+          },
           conversationModeLoadedAtByScope: markAllConversationModesLoaded(
             get().conversationModeLoadedAtByScope,
             bootstrapResult.activeAccountId,

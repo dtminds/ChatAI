@@ -1346,6 +1346,37 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationModeLoadedAtByScope["seat-d"]).toBeUndefined();
   });
 
+  it("keeps recent seat conversation list caches when bootstrapping again", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    useWorkbenchStore.setState((state) => ({
+      conversationListCacheSeatOrder: ["ndt", "drc"],
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        ndt: [createCachedConversation("ndt")],
+      },
+      conversationModeLoadedAtByScope: {
+        ...state.conversationModeLoadedAtByScope,
+        ndt: { single: 1, group: 1 },
+      },
+    }));
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeAccountId).toBe("drc");
+    expect(state.conversationListsByScope.ndt).toEqual([
+      createCachedConversation("ndt"),
+    ]);
+    expect(state.conversationModeLoadedAtByScope.ndt).toEqual({
+      group: 1,
+      single: 1,
+    });
+    expect(state.conversationListCacheSeatOrder).toEqual(["drc", "ndt"]);
+  });
+
   it("does not send messages from an untaken account", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().setActiveAccount("ndt");

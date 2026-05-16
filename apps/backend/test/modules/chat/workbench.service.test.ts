@@ -604,9 +604,37 @@ describe("MysqlWorkbenchService", () => {
     });
     expect(listChangedConversations).toHaveBeenCalledWith("12", {
       limit: expect.any(Number),
-      sinceLastMsgTime: 1_778_839_999_000,
+      sinceLastMsgTime: 1_778_839_999_999,
     });
     expect(getSeat).toHaveBeenCalledWith("12");
+  });
+
+  it("does not overlap the first poll after a fresh conversation baseline", async () => {
+    const javaClient = createJavaClient();
+    const listChangedConversations = vi.fn().mockResolvedValue({
+      hasMore: false,
+      items: [],
+      nextVersion: 1_778_840_002_000,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeat: vi.fn().mockResolvedValue(undefined),
+        listChangedConversations,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.poll("101", {
+      currentSeatId: "12",
+      freshBaseline: true,
+      sinceVersion: 1_778_840_000_000,
+    });
+
+    expect(listChangedConversations).toHaveBeenCalledWith("12", {
+      limit: expect.any(Number),
+      sinceLastMsgTime: 1_778_840_000_000,
+    });
   });
 
   it("reads message file transfer status after seat access is verified", async () => {

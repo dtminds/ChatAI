@@ -64,6 +64,7 @@ const PollQuerySchema = Type.Object({
   active_conversation_id: Type.Optional(Type.String()),
   active_message_seq: Type.Optional(NumericStringSchema),
   current_seat_id: Type.Optional(Type.String()),
+  fresh_baseline: Type.Optional(Type.Union([Type.Literal("0"), Type.Literal("1")])),
   since_version: Type.Optional(NumericStringSchema),
 });
 
@@ -366,6 +367,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
         activeConversationId: request.query.active_conversation_id,
         activeMessageSeq: parseOptionalInteger(request.query.active_message_seq),
         currentSeatId: request.query.current_seat_id,
+        freshBaseline: request.query.fresh_baseline === "1",
         sinceVersion: parseOptionalInteger(request.query.since_version) ?? 0,
       } satisfies WorkbenchPollRequest;
 

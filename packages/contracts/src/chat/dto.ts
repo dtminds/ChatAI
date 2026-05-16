@@ -189,6 +189,7 @@ export type WorkbenchMessageStatusChangeDto = {
 
 export type WorkbenchPollRequest = {
   sinceVersion: number;
+  freshBaseline?: boolean;
   currentSeatId?: string;
   activeConversationId?: string;
   activeMessageSeq?: number;

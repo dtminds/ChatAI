@@ -98,6 +98,7 @@ type WorkbenchState = {
   takeoverStatusByAccountId: Record<string, TakeoverStatus>;
   pollState: PollState;
   sinceVersion: number;
+  isPollBaselineFresh: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
   sidebarItems: SettingsSidebarItem[];
@@ -199,6 +200,7 @@ function createInitialState(): Omit<
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
     sinceVersion: 0,
+    isPollBaselineFresh: false,
     sidebarItems: [],
     takeoverStatusByAccountId: {},
   };
@@ -787,6 +789,10 @@ export function createWorkbenchStore() {
           ...currentState.conversationListsByScope,
           [accountId]: result.conversations,
         },
+        isPollBaselineFresh:
+          currentState.activeAccountId === accountId
+            ? true
+            : currentState.isPollBaselineFresh,
         sinceVersion:
           currentState.activeAccountId === accountId
             ? result.pollBaseline
@@ -1210,6 +1216,7 @@ export function createWorkbenchStore() {
             ? { [conversationPage.conversationId]: conversationPage.messages }
             : {},
           sidebarItems: bootstrapResult.sidebarItems,
+          isPollBaselineFresh: true,
           sinceVersion: bootstrapResult.pollBaseline,
         });
 
@@ -1278,6 +1285,7 @@ export function createWorkbenchStore() {
           activeConversationId: state.activeConversationId,
           activeMessageSeq: state.activeMessageSeq,
           currentAccountId: state.activeAccountId,
+          freshBaseline: state.isPollBaselineFresh,
           sinceVersion: state.sinceVersion,
         };
         const response = await pollWorkbench(request, {
@@ -1384,6 +1392,7 @@ export function createWorkbenchStore() {
               response.request.activeConversationId,
             ),
             conversationListsByScope: nextConversationLists,
+            isPollBaselineFresh: false,
             messagesByConversationId: nextMessagesByConversationId,
             pendingMessages,
             pollState: {
@@ -1478,6 +1487,7 @@ export function createWorkbenchStore() {
                 pendingMessages: currentState.pendingMessages.filter(
                   (message) => message.conversationId !== state.activeConversationId,
                 ),
+                isPollBaselineFresh: true,
                 sinceVersion: scopeResult.pollBaseline,
               };
             });
@@ -1892,8 +1902,9 @@ export function createWorkbenchStore() {
                 ? {
                     ...currentState.groupMembersLoadingByConversationId,
                     [scopeResult.nextConversationId]: true,
-                  }
+                }
                 : currentState.groupMembersLoadingByConversationId,
+            isPollBaselineFresh: true,
             sinceVersion: scopeResult.pollBaseline,
           };
         });
@@ -2073,6 +2084,9 @@ export function createWorkbenchStore() {
                 prunedConversationListCache.conversationListsByScope,
               conversationModeLoadedAtByScope:
                 prunedConversationListCache.conversationModeLoadedAtByScope,
+              isPollBaselineFresh: result.pollBaseline < currentState.sinceVersion
+                ? true
+                : currentState.isPollBaselineFresh,
               isConversationLoading: false,
               sinceVersion: Math.min(currentState.sinceVersion, result.pollBaseline),
             };

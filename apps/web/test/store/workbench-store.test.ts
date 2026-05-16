@@ -149,6 +149,34 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().initializeWorkbench();
 
     expect(useWorkbenchStore.getState().sinceVersion).toBe(1_778_840_010_000);
+    expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(true);
+  });
+
+  it("sends fresh baseline only for the first poll after bootstrap", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedFreshBaselines: Array<boolean | undefined> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        observedFreshBaselines.push(request.freshBaseline);
+
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedFreshBaselines).toEqual([true, false]);
+    expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(false);
   });
 
   it("loads group members once when opening a group conversation", async () => {

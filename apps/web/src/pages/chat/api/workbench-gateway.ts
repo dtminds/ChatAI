@@ -42,6 +42,7 @@ export type WorkbenchScopeRequest = {
   activeConversationId: string;
   activeMessageSeq: number;
   currentAccountId: string;
+  freshBaseline?: boolean;
   sinceVersion: number;
 };
 
@@ -383,6 +384,7 @@ export async function pollWorkbench(
     activeConversationId: request.activeConversationId,
     activeMessageSeq: request.activeMessageSeq,
     currentSeatId: request.currentAccountId,
+    freshBaseline: request.freshBaseline,
     sinceVersion: request.sinceVersion,
   });
 

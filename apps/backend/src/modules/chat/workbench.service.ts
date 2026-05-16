@@ -44,7 +44,7 @@ import {
 } from "./workbench-repository.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 200;
-const POLL_LAST_MESSAGE_OVERLAP_MS = 1_000;
+const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -363,7 +363,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
         : [];
     const sinceLastMsgTime = Math.max(
       0,
-      request.sinceVersion - POLL_LAST_MESSAGE_OVERLAP_MS,
+      request.sinceVersion -
+        (request.freshBaseline ? 0 : POLL_LAST_MESSAGE_OVERLAP_MS),
     );
 
     const changedConversations = request.currentSeatId

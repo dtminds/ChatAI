@@ -62,7 +62,7 @@ pnpm backend:build
 
 ## 镜像构建
 
-仓库当前没有内置 Dockerfile。落地容器部署时建议新增：
+仓库已经内置容器部署文件：
 
 ```text
 deploy/web.Dockerfile
@@ -70,7 +70,7 @@ deploy/backend.Dockerfile
 deploy/nginx.conf
 ```
 
-镜像构建命令示例：
+两个 Dockerfile 都以仓库根目录作为 build context，并在构建阶段执行 `pnpm install --frozen-lockfile`。因此需要从仓库根目录执行构建命令：
 
 ```bash
 docker build -f deploy/web.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-web:<tag> .
@@ -86,17 +86,28 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag>
 
 `<tag>` 建议使用 Git commit SHA，例如 `20260512-abcdef0`，不要只使用 `latest` 发布生产。
 
+当前构建文件的职责：
+
+- `deploy/web.Dockerfile`：使用 `node:24-alpine` 构建 web，执行根脚本 `pnpm build`，再把 `apps/web/dist` 复制到 `nginx:alpine` 镜像。
+- `deploy/backend.Dockerfile`：使用 `node:24-alpine` 构建 backend，执行根脚本 `pnpm backend:build`，运行阶段只安装生产依赖并用 `node apps/backend/dist/server.js` 启动。
+- `deploy/nginx.conf`：承载 web 静态资源，非 `/api/*` 请求回退到 `index.html`，`/api/*` 返回 404 作为兜底，实际发布时应由 Ingress 路由到 backend。
+
+注意事项：
+
+- Web 和 backend 镜像都依赖 workspace 根目录下的 `pnpm-workspace.yaml`、`pnpm-lock.yaml`、根 `package.json`、`apps/*` 和 `packages/contracts`，不要在子目录内单独执行上述 `docker build`。
+- 当前仓库没有 `.dockerignore`。CI 或本地构建时应避免把无关大文件放进仓库目录；如后续构建上下文过大，应补充 `.dockerignore`。
+- `deploy/web.Dockerfile` 没有声明 `ARG`，也没有复制根目录 `.env.*` 文件。Docker 构建不会自动读取宿主机环境变量；如需自定义 `VITE_*` 构建变量，需要显式调整 Dockerfile，例如复制目标环境文件，或增加 `ARG` 并在构建时通过 `--build-arg` 传入。测试和生产同源部署时至少保持 `VITE_API_BASE_URL=/api`。
+
 ## Web 容器要求
 
 Web 构建时需要：
 
 ```text
 VITE_API_BASE_URL=/api
-VITE_WORKBENCH_SERVICE_MODE=http
 VITE_WECHAT_EMOJI_BASE_URL=
 ```
 
-`VITE_*` 是构建时变量。只要测试和生产都使用同源 `/api`，同一个 web 镜像可以在两个环境复用。
+`VITE_*` 是构建时变量。只要测试和生产都使用同源 `/api`，且其它 `VITE_*` 配置一致，同一个 web 镜像可以在两个环境复用。
 
 静态服务需要支持 React Router fallback：
 
@@ -250,8 +261,10 @@ kubectl -n chatai-prod set image deployment/chatai-web web=ccr.ccs.tencentyun.co
 ## 发布检查清单
 
 - 已执行 `pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm backend:build`。
+- 已使用 `deploy/web.Dockerfile` 和 `deploy/backend.Dockerfile` 从仓库根目录构建镜像。
 - 镜像 tag 使用不可变版本号或 commit SHA。
-- Web 构建变量为 `VITE_API_BASE_URL=/api`、`VITE_WORKBENCH_SERVICE_MODE=http`。
+- Web 构建变量为 `VITE_API_BASE_URL=/api`，如需微信表情资源则同步确认 `VITE_WECHAT_EMOJI_BASE_URL`。
+- Web 镜像内的 `deploy/nginx.conf` 支持前端路由 fallback，且不会把 `/api/*` 回退到 `index.html`。
 - Backend `NODE_ENV=production`。
 - Backend 已配置 `DATABASE_URL`、`JWT_PRIVATE_KEY`、`JWT_PUBLIC_KEY`、`ALTCHA_HMAC_SECRET`。
 - Ingress 已配置 `/api` 到 backend，`/` 到 web。

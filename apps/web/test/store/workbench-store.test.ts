@@ -9,7 +9,12 @@ import {
   seedConversations,
   seedMessages,
 } from "@/pages/chat/mock-data";
-import { createWorkbenchStore, useWorkbenchStore } from "@/store/workbench-store";
+import {
+  createWorkbenchStore,
+  MAX_CONVERSATION_LIST_CACHE_SEATS,
+  useWorkbenchStore,
+} from "@/store/workbench-store";
+import type { Conversation } from "@/pages/chat/chat-types";
 
 vi.mock("@/pages/chat/api/media-upload-service", () => ({
   resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
@@ -58,6 +63,22 @@ function getSeedUnreadAfterReadAndUnread(
 
 function getSeedMessageIdAt(conversationId: string, index: number) {
   return seedMessages[conversationId]?.[index]?.id;
+}
+
+function createCachedConversation(accountId: string): Conversation {
+  return {
+    accountId,
+    customerAvatarUrl: "",
+    customerId: `${accountId}-customer`,
+    customerName: `${accountId} 客户`,
+    id: `${accountId}-conversation`,
+    mode: "single",
+    preview: "缓存会话",
+    priority: "medium",
+    quietFor: "刚刚",
+    unread: 0,
+    updatedAt: "刚刚",
+  };
 }
 
 describe("useWorkbenchStore", () => {
@@ -1288,6 +1309,72 @@ describe("useWorkbenchStore", () => {
 
     expect(state.accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
     expect(state.conversationListsByScope.ndt[0].unread).toBe(1);
+  });
+
+  it("evicts old seat conversation list caches while keeping recent and active seats", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    useWorkbenchStore.setState((state) => ({
+      conversationListCacheSeatOrder: ["ndt", "drc", "seat-c", "seat-d"],
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        "seat-c": [createCachedConversation("seat-c")],
+        "seat-d": [createCachedConversation("seat-d")],
+      },
+      conversationModeLoadedAtByScope: {
+        ...state.conversationModeLoadedAtByScope,
+        "seat-c": { single: 1 },
+        "seat-d": { single: 1 },
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveAccount("drc");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeAccountId).toBe("drc");
+    expect(state.conversationListCacheSeatOrder).toHaveLength(
+      MAX_CONVERSATION_LIST_CACHE_SEATS,
+    );
+    expect(Object.keys(state.conversationListsByScope).sort()).toEqual([
+      "drc",
+      "ndt",
+      "seat-c",
+    ]);
+    expect(state.conversationListsByScope["seat-d"]).toBeUndefined();
+    expect(state.conversationModeLoadedAtByScope["seat-d"]).toBeUndefined();
+  });
+
+  it("keeps recent seat conversation list caches when bootstrapping again", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    useWorkbenchStore.setState((state) => ({
+      conversationListCacheSeatOrder: ["ndt", "drc"],
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        ndt: [createCachedConversation("ndt")],
+      },
+      conversationModeLoadedAtByScope: {
+        ...state.conversationModeLoadedAtByScope,
+        ndt: { single: 1, group: 1 },
+      },
+    }));
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeAccountId).toBe("drc");
+    expect(state.conversationListsByScope.ndt).toEqual([
+      createCachedConversation("ndt"),
+    ]);
+    expect(state.conversationModeLoadedAtByScope.ndt).toEqual({
+      group: 1,
+      single: 1,
+    });
+    expect(state.conversationListCacheSeatOrder).toEqual(["drc", "ndt"]);
   });
 
   it("does not send messages from an untaken account", async () => {

@@ -6,8 +6,8 @@ import {
   CONVERSATION_MODE_CACHE_TTL_MS,
   deleteConversation as deleteConversationRequest,
   getVisibleConversations,
-  loadAccountConversations,
   loadAccountConversationsByMode,
+  loadAccountConversationsWithBaseline,
   loadGroupMembers,
   loadAccountScope,
   loadConversationMessagesPage,
@@ -210,6 +210,13 @@ function getFirstConversationId(
   mode: ChatMode,
 ) {
   const conversations = conversationListsByScope[accountId] ?? [];
+  return getFirstVisibleConversationId(conversations, mode);
+}
+
+function getFirstVisibleConversationId(
+  conversations: Conversation[],
+  mode: ChatMode,
+) {
   const visibleConversations = getVisibleConversations(conversations);
   const firstMatch =
     visibleConversations.find((conversation) => conversation.mode === mode) ??
@@ -767,7 +774,7 @@ export function createWorkbenchStore() {
     }
 
     async function reloadAccountConversations(accountId: string) {
-      const conversations = await loadAccountConversations(accountId);
+      const result = await loadAccountConversationsWithBaseline(accountId);
       const loadedAt = Date.now();
 
       set((currentState) => ({
@@ -778,8 +785,12 @@ export function createWorkbenchStore() {
         ),
         conversationListsByScope: {
           ...currentState.conversationListsByScope,
-          [accountId]: conversations,
+          [accountId]: result.conversations,
         },
+        sinceVersion:
+          currentState.activeAccountId === accountId
+            ? result.pollBaseline
+            : currentState.sinceVersion,
       }));
     }
 
@@ -1199,6 +1210,7 @@ export function createWorkbenchStore() {
             ? { [conversationPage.conversationId]: conversationPage.messages }
             : {},
           sidebarItems: bootstrapResult.sidebarItems,
+          sinceVersion: bootstrapResult.pollBaseline,
         });
 
         const bootstrapActiveConversation = bootstrapResult.conversationListsByScope[
@@ -1466,7 +1478,7 @@ export function createWorkbenchStore() {
                 pendingMessages: currentState.pendingMessages.filter(
                   (message) => message.conversationId !== state.activeConversationId,
                 ),
-                sinceVersion: 0,
+                sinceVersion: scopeResult.pollBaseline,
               };
             });
 
@@ -1882,6 +1894,7 @@ export function createWorkbenchStore() {
                     [scopeResult.nextConversationId]: true,
                   }
                 : currentState.groupMembersLoadingByConversationId,
+            sinceVersion: scopeResult.pollBaseline,
           };
         });
 
@@ -2022,7 +2035,7 @@ export function createWorkbenchStore() {
         });
 
         try {
-          const conversations = await loadAccountConversationsByMode(accountId, mode);
+          const result = await loadAccountConversationsByMode(accountId, mode);
           const loadedAt = Date.now();
 
           if (!isCurrentScopeRequest(requestId)) {
@@ -2041,7 +2054,7 @@ export function createWorkbenchStore() {
                 [accountId]: replaceConversationsByMode(
                   currentState.conversationListsByScope[accountId] ?? [],
                   mode,
-                  conversations,
+                  result.conversations,
                 ),
               },
               conversationModeLoadedAtByScope: markConversationModesLoaded(
@@ -2061,6 +2074,7 @@ export function createWorkbenchStore() {
               conversationModeLoadedAtByScope:
                 prunedConversationListCache.conversationModeLoadedAtByScope,
               isConversationLoading: false,
+              sinceVersion: Math.min(currentState.sinceVersion, result.pollBaseline),
             };
           });
 

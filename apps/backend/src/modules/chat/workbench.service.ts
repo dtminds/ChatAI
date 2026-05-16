@@ -23,6 +23,7 @@ import type {
 import {
   BadRequestError,
   ForbiddenError,
+  AppError,
   NotFoundError,
   UnauthorizedError,
 } from "../../shared/errors.js";
@@ -41,6 +42,9 @@ import {
   parseMySqlId,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
+
+const POLL_CONVERSATION_CHANGE_LIMIT = 200;
+const POLL_LAST_MESSAGE_OVERLAP_MS = 1_000;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -357,13 +361,51 @@ export class MysqlWorkbenchService implements WorkbenchService {
             page.messages.filter((message) => message.seq > (request.activeMessageSeq ?? 0)),
           )
         : [];
+    const sinceLastMsgTime = Math.max(
+      0,
+      request.sinceVersion - POLL_LAST_MESSAGE_OVERLAP_MS,
+    );
+
+    const changedConversations = request.currentSeatId
+      ? await this.repository.listChangedConversations(request.currentSeatId, {
+          limit: POLL_CONVERSATION_CHANGE_LIMIT,
+          sinceLastMsgTime,
+        })
+      : {
+          hasMore: false,
+          items: [],
+          nextVersion: Date.now(),
+        };
+
+    if (changedConversations.hasMore) {
+      throw new AppError(
+        "WORKBENCH_CURSOR_INVALIDATED",
+        "会话变更过多，请重新加载会话列表",
+        409,
+      );
+    }
+
+    const seatChange = request.currentSeatId
+      ? await this.repository.getSeat(request.currentSeatId)
+      : undefined;
 
     return {
       activeConversationMessages,
-      conversationChanges: [],
+      conversationChanges: changedConversations.items.map((conversation) => ({
+        ...conversation,
+        type: "upsert" as const,
+      })),
       messageStatusChanges: [],
-      nextVersion: Date.now(),
-      seatChanges: [],
+      nextVersion: changedConversations.nextVersion,
+      seatChanges: seatChange
+        ? [
+            {
+              lastMessageTime: seatChange.lastMessageTime,
+              seatId: seatChange.seatId,
+              unreadCount: seatChange.unreadCount,
+            },
+          ]
+        : [],
     };
   }
 

@@ -112,7 +112,8 @@ type MockState = {
 };
 
 const CURRENT_SUB_USER_ID = "sub-user-001";
-const INITIAL_VERSION = 1284;
+const INITIAL_VERSION = 1_778_400_000_000;
+const MOCK_POLL_OVERLAP_MS = 1_000;
 
 let activeWorkbenchService: WorkbenchService = createWorkbenchService();
 
@@ -330,7 +331,8 @@ export function createMockWorkbenchService(): WorkbenchService {
       return setConversationPinned(state, conversationId, false);
     },
     async poll(request) {
-      const relevantEvents = state.events.filter((event) => event.version > request.sinceVersion);
+      const sinceVersion = Math.max(0, request.sinceVersion - MOCK_POLL_OVERLAP_MS);
+      const relevantEvents = state.events.filter((event) => event.version > sinceVersion);
       const seatChanges = collapseLatest(
         relevantEvents.filter((event): event is Extract<WorkbenchEvent, { type: "seat" }> => event.type === "seat"),
         (event) => event.payload.seatId,
@@ -933,7 +935,7 @@ function pushAccountEvent(state: MockState, seatId: string) {
     return;
   }
 
-  state.version += 1;
+  state.version = Date.now();
   state.events.push({
     payload: {
       seatId,
@@ -946,7 +948,7 @@ function pushAccountEvent(state: MockState, seatId: string) {
 }
 
 function pushConversationEvent(state: MockState, conversation: WorkbenchConversationSummaryDto) {
-  state.version += 1;
+  state.version = Math.max(Date.now(), conversation.lastMessageTime ?? 0);
   state.events.push({
     payload: {
       ...conversation,
@@ -962,7 +964,7 @@ function pushConversationRemoveEvent(
   seatId: string,
   conversationId: string,
 ) {
-  state.version += 1;
+  state.version = Date.now();
   state.events.push({
     payload: {
       conversationId,
@@ -978,7 +980,7 @@ function pushMessageStatusEvent(
   state: MockState,
   change: WorkbenchMessageStatusChangeDto,
 ) {
-  state.version += 1;
+  state.version = Date.now();
   state.events.push({
     payload: change,
     type: "message-status",

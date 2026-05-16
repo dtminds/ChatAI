@@ -61,6 +61,7 @@ export type WorkbenchBootstrapResult = {
   conversationListsByScope: Record<string, Conversation[]>;
   conversationPage?: WorkbenchConversationPage;
   me: EmployeeProfile;
+  pollBaseline: number;
   sidebarItems: SettingsSidebarItem[];
 };
 
@@ -70,6 +71,12 @@ export type WorkbenchAccountScopeResult = {
   conversationPage?: WorkbenchConversationPage;
   nextConversationId: string;
   nextMode: ChatMode;
+  pollBaseline: number;
+};
+
+export type WorkbenchConversationLoadResult = {
+  conversations: Conversation[];
+  pollBaseline: number;
 };
 
 export type WorkbenchConversationChange =
@@ -125,9 +132,10 @@ export async function bootstrapWorkbench(
   const me = adaptEmployee(meDto);
   const accounts = accountDtos.map((account) => adaptAccount(account, account.unreadCount));
   const activeAccountId = accounts[0]?.id ?? "";
-  const conversations = activeAccountId
-    ? await loadAccountConversations(activeAccountId)
-    : [];
+  const conversationLoadResult = activeAccountId
+    ? await loadAccountConversationsWithBaseline(activeAccountId)
+    : { conversations: [], pollBaseline: now };
+  const conversations = conversationLoadResult.conversations;
   const nextConversation = getFirstConversation(
     getVisibleConversations(conversations, now),
     preferredMode,
@@ -156,6 +164,7 @@ export async function bootstrapWorkbench(
     },
     conversationPage,
     me,
+    pollBaseline: conversationLoadResult.pollBaseline,
     sidebarItems: getSidebarItemsFromResponse(sidebarItemsResponse),
   };
 }
@@ -215,7 +224,8 @@ export async function loadAccountScope(
   preferredConversationId?: string,
   now = Date.now(),
 ): Promise<WorkbenchAccountScopeResult> {
-  const conversations = await loadAccountConversations(accountId);
+  const conversationLoadResult = await loadAccountConversationsWithBaseline(accountId);
+  const conversations = conversationLoadResult.conversations;
   const visibleConversations = getVisibleConversations(conversations, now);
   const nextConversation =
     visibleConversations.find((conversation) => conversation.id === preferredConversationId) ??
@@ -234,28 +244,44 @@ export async function loadAccountScope(
     conversationPage,
     nextConversationId,
     nextMode,
+    pollBaseline: conversationLoadResult.pollBaseline,
   };
 }
 
 export async function loadAccountConversations(accountId: string): Promise<Conversation[]> {
-  const [singleConversations, groupConversations] = await Promise.all([
+  return (await loadAccountConversationsWithBaseline(accountId)).conversations;
+}
+
+export async function loadAccountConversationsWithBaseline(
+  accountId: string,
+): Promise<WorkbenchConversationLoadResult> {
+  const [singleResult, groupResult] = await Promise.all([
     loadAccountConversationsByMode(accountId, "single"),
     loadAccountConversationsByMode(accountId, "group"),
   ]);
 
-  return mergeConversations([singleConversations, groupConversations]);
+  return {
+    conversations: mergeConversations([
+      singleResult.conversations,
+      groupResult.conversations,
+    ]),
+    pollBaseline: Math.min(singleResult.pollBaseline, groupResult.pollBaseline),
+  };
 }
 
 export async function loadAccountConversationsByMode(
   accountId: string,
   mode: ChatMode,
-): Promise<Conversation[]> {
+): Promise<WorkbenchConversationLoadResult> {
   const conversationDtos = await getWorkbenchService().getConversations(accountId, {
     limit: CONVERSATION_MODE_LIMITS[mode],
     mode,
   });
 
-  return conversationDtos.items.map(adaptConversation);
+  return {
+    conversations: conversationDtos.items.map(adaptConversation),
+    pollBaseline: conversationDtos.snapshotAt,
+  };
 }
 
 export async function loadConversationMessagesPage(
@@ -353,7 +379,12 @@ export async function pollWorkbench(
   request: WorkbenchScopeRequest,
   context: GatewayContext,
 ): Promise<WorkbenchPollResult> {
-  const response = await getWorkbenchService().poll(request);
+  const response = await getWorkbenchService().poll({
+    activeConversationId: request.activeConversationId,
+    activeMessageSeq: request.activeMessageSeq,
+    currentSeatId: request.currentAccountId,
+    sinceVersion: request.sinceVersion,
+  });
 
   return {
     accountChanges: response.seatChanges.map((change) => ({

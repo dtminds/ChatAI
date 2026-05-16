@@ -4,6 +4,7 @@ import type { Database } from "./schema.js";
 export type SchemaCheckResult = {
   configured: boolean;
   ok: boolean;
+  reason?: string;
 };
 
 export async function checkSchema(db?: Kysely<Database>): Promise<SchemaCheckResult> {
@@ -11,6 +12,7 @@ export async function checkSchema(db?: Kysely<Database>): Promise<SchemaCheckRes
     return {
       configured: false,
       ok: false,
+      reason: "DATABASE_URL is not configured",
     };
   }
 

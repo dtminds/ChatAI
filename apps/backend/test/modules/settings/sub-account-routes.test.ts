@@ -271,7 +271,7 @@ describe("settings sub-account routes", () => {
 });
 
 async function createSettingsApp() {
-  const app = await buildApp();
+  const app = await buildMockedSettingsApp();
   const token = app.jwt.sign({
     roles: ["agent"],
     sessionId: "501",
@@ -287,6 +287,21 @@ async function createSettingsApp() {
     authorization: `Bearer ${token}`,
     db,
   };
+}
+
+async function buildMockedSettingsApp() {
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "development";
+
+  try {
+    return await buildApp();
+  } finally {
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+  }
 }
 
 function createSettingsDbMock() {

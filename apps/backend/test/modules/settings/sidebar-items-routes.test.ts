@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildApp } from "../../../src/app";
+import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("settings sidebar item routes", () => {
   it("performs CRUD and sorting in the current tenant", async () => {
@@ -283,7 +283,7 @@ describe("settings sidebar item routes", () => {
 });
 
 async function createSettingsApp() {
-  const app = await buildApp();
+  const app = await buildMockedApp();
   const token = app.jwt.sign({
     roles: ["agent"],
     sessionId: "501",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildApp } from "../../../src/app";
+import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("settings managed-account routes", () => {
   it("lists managed accounts with independent online status and related sub-accounts", async () => {
@@ -129,7 +129,7 @@ describe("settings managed-account routes", () => {
 });
 
 async function createSettingsApp() {
-  const app = await buildApp();
+  const app = await buildMockedApp();
   const token = app.jwt.sign({
     roles: ["agent"],
     sessionId: "501",

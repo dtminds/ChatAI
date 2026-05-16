@@ -144,7 +144,7 @@ GET /healthz
 GET /readyz
 ```
 
-`/healthz` 只表示进程存活。`/readyz` 会检查数据库 schema，适合作为就绪检查。
+`/healthz` 只表示进程存活。`/readyz` 会检查数据库 schema，适合作为就绪检查。未配置数据库时会返回 `status=not-ready`，并在 `database.reason` 中说明原因。
 
 ## Backend 环境变量
 
@@ -188,7 +188,7 @@ openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
 ```
 
 - 在 TKE Secret 中写入 key 内容时要保留 PEM 换行，例如 `-----BEGIN PRIVATE KEY-----` 到 `-----END PRIVATE KEY-----` 的完整内容。
-- 云上真实环境必须配置 `DATABASE_URL`。未配置数据库时 backend 会退到内存服务，只适合本地开发。
+- `NODE_ENV=production` 或 `NODE_ENV=test` 时必须配置 `DATABASE_URL`，否则 backend 会拒绝启动。本地开发未配置数据库时会降级禁用数据库插件，`/readyz` 返回 `status=not-ready`，只适合本地开发。
 - `JAVA_INTERNAL_API_BASE_URL` 和 `JAVA_INTERNAL_API_TOKEN` 用于转发发送消息、会话已读、席位接管等写操作。
 - `JAVA_INTERNAL_API_BASE_URL` 只应配置在 backend 所在环境，不要放进 web 的 `VITE_*` 构建变量。
 - 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。

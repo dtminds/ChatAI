@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { solveChallenge, type Challenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/scrypt";
 import argon2 from "argon2";
@@ -31,6 +31,10 @@ async function createAuthenticatedApp() {
 }
 
 describe("backend app", () => {
+  beforeEach(() => {
+    process.env.NODE_ENV = "development";
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     delete process.env.ALTCHA_COST;
@@ -41,6 +45,7 @@ describe("backend app", () => {
     delete process.env.ALTCHA_PARALLELISM;
     delete process.env.AUTH_COOKIE_SECURE;
     delete process.env.AUTH_DEV_BYPASS;
+    delete process.env.DATABASE_URL;
     delete process.env.JWT_DEV_SECRET;
     delete process.env.JWT_PRIVATE_KEY;
     delete process.env.JWT_PUBLIC_KEY;
@@ -56,9 +61,11 @@ describe("backend app", () => {
     expect(health.statusCode).toBe(200);
     expect(health.json()).toEqual({ status: "ok" });
     expect(readiness.statusCode).toBe(200);
-    expect(readiness.json()).toMatchObject({
+    expect(readiness.json()).toEqual({
       database: {
         configured: false,
+        ok: false,
+        reason: "DATABASE_URL is not configured",
       },
       status: "not-ready",
     });
@@ -818,8 +825,23 @@ describe("backend app", () => {
 
   it("requires explicit JWT configuration in production", async () => {
     process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
 
     await expect(buildApp()).rejects.toThrow(/JWT keys.*production mode/);
+  });
+
+  it("requires DATABASE_URL in production", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.JWT_PRIVATE_KEY = "test-private-key";
+    process.env.JWT_PUBLIC_KEY = "test-public-key";
+
+    await expect(buildApp()).rejects.toThrow(/DATABASE_URL.*production/);
+  });
+
+  it("requires DATABASE_URL in test mode", async () => {
+    process.env.NODE_ENV = "test";
+
+    await expect(buildApp()).rejects.toThrow(/DATABASE_URL.*test/);
   });
 
   it("serves workbench bootstrap resources from backend state", async () => {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import argon2 from "argon2";
-import { buildApp } from "../../../src/app";
+import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("settings sub-account routes", () => {
   afterEach(() => {
@@ -271,7 +271,7 @@ describe("settings sub-account routes", () => {
 });
 
 async function createSettingsApp() {
-  const app = await buildApp();
+  const app = await buildMockedApp();
   const token = app.jwt.sign({
     roles: ["agent"],
     sessionId: "501",

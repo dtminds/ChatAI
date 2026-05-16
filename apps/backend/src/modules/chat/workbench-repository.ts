@@ -411,22 +411,7 @@ export class WorkbenchRepository {
       seat.third_userid,
     );
 
-    const items = conversationRows.map((row) => {
-      const lastMessage = hydrationSources.lastMessagesById.get(String(row.last_audit_info_id));
-      const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
-      const bind = hydrationSources.bindsByThirdExternalId.get(row.third_external_userid);
-      const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
-
-      return mapConversationRow({
-        ...row,
-        customer_avatar: contact?.avatar ?? null,
-        customer_name: bind?.remark ?? contact?.realName ?? contact?.name ?? null,
-        group_avatar: group?.avatar ?? null,
-        group_name: group?.name ?? null,
-        last_message_content: lastMessage?.content ?? null,
-        last_message_type: lastMessage?.msgtype ?? null,
-      });
-    });
+    const items = this.mapHydratedConversationRows(conversationRows, hydrationSources);
     const lastRow = conversationRows.at(-1);
 
     return {
@@ -511,22 +496,7 @@ export class WorkbenchRepository {
       seat.third_userid,
     );
 
-    const items = conversationRows.map((row) => {
-      const lastMessage = hydrationSources.lastMessagesById.get(String(row.last_audit_info_id));
-      const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
-      const bind = hydrationSources.bindsByThirdExternalId.get(row.third_external_userid);
-      const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
-
-      return mapConversationRow({
-        ...row,
-        customer_avatar: contact?.avatar ?? null,
-        customer_name: bind?.remark ?? contact?.realName ?? contact?.name ?? null,
-        group_avatar: group?.avatar ?? null,
-        group_name: group?.name ?? null,
-        last_message_content: lastMessage?.content ?? null,
-        last_message_type: lastMessage?.msgtype ?? null,
-      });
-    });
+    const items = this.mapHydratedConversationRows(conversationRows, hydrationSources);
 
     return {
       hasMore: rows.length > limit,
@@ -1128,6 +1098,36 @@ export class WorkbenchRepository {
         ]),
       ),
     };
+  }
+
+  private mapHydratedConversationRows(
+    rows: ConversationPageRow[],
+    hydrationSources: ConversationHydrationSources,
+  ): WorkbenchConversationListResponse["items"] {
+    return rows.map((row) => this.mapHydratedConversationRow(row, hydrationSources));
+  }
+
+  private mapHydratedConversationRow(
+    row: ConversationPageRow,
+    hydrationSources: ConversationHydrationSources,
+  ): WorkbenchConversationListResponse["items"][number] {
+    const lastMessage =
+      row.last_audit_info_id != null
+        ? hydrationSources.lastMessagesById.get(String(row.last_audit_info_id))
+        : undefined;
+    const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
+    const bind = hydrationSources.bindsByThirdExternalId.get(row.third_external_userid);
+    const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
+
+    return mapConversationRow({
+      ...row,
+      customer_avatar: contact?.avatar ?? null,
+      customer_name: bind?.remark ?? contact?.realName ?? contact?.name ?? null,
+      group_avatar: group?.avatar ?? null,
+      group_name: group?.name ?? null,
+      last_message_content: lastMessage?.content ?? null,
+      last_message_type: lastMessage?.msgtype ?? null,
+    });
   }
 
   private async getMessageHydrationSources(

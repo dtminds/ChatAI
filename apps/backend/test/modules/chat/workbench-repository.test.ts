@@ -783,6 +783,58 @@ describe("WorkbenchRepository", () => {
     expect(query.wheres).toContainEqual(["conversation.biz_status", "=", 1]);
   });
 
+  it("skips changed conversation hydration when the poll change limit is exceeded", async () => {
+    const observedTables: string[] = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          observedTables.push(table);
+
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder([
+              createConversationRow({
+                id: 90,
+                last_audit_info_id: 900,
+                last_msgtime: 1_778_840_100_000,
+              }),
+              createConversationRow({
+                id: 91,
+                last_audit_info_id: 901,
+                last_msgtime: 1_778_840_101_000,
+              }),
+            ]);
+          }
+
+          throw new Error(`unexpected hydration table ${table}`);
+        },
+      } as never,
+    );
+
+    const result = await repository.listChangedConversations("12", {
+      limit: 1,
+      sinceLastMsgTime: 1_778_840_000_000,
+    });
+
+    expect(result).toMatchObject({
+      hasMore: true,
+      items: [],
+      nextVersion: expect.any(Number),
+    });
+    expect(observedTables).toEqual([
+      "xy_wap_embed_user_seat",
+      "xy_wap_embed_conversation as conversation",
+    ]);
+  });
+
   it("does not update pinned state when the conversation id is invalid", async () => {
     const repository = new WorkbenchRepository(createFailingDb() as never);
 

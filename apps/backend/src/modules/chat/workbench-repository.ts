@@ -487,6 +487,14 @@ export class WorkbenchRepository {
       .limit(limit + 1)
       .execute();
 
+    if (rows.length > limit) {
+      return {
+        hasMore: true,
+        items: [],
+        nextVersion: snapshotAt,
+      };
+    }
+
     const pageRows = rows.slice(0, limit);
     const conversationRows = pageRows.map((row) => row as ConversationPageRow);
     const hydrationSources = await this.getConversationHydrationSources(

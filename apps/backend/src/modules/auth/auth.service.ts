@@ -8,7 +8,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { Kysely } from "kysely";
 import type { FastifyInstance } from "fastify";
 import type { Database } from "../../db/schema.js";
-import { AppError, ServiceUnavailableError, UnauthorizedError } from "../../shared/errors.js";
+import { AppError, UnauthorizedError } from "../../shared/errors.js";
 import { verifyAltchaPayload } from "./altcha.service.js";
 import { verifyPassword } from "./password.service.js";
 
@@ -63,10 +63,6 @@ export async function loginWithPassword(
     throw new InvalidCredentialsError();
   }
 
-  if (!app.db) {
-    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "登录服务暂不可用");
-  }
-
   const subUser = await findActiveSubUserCredential(app.db, payload.account);
 
   if (!subUser) {
@@ -101,10 +97,6 @@ export async function refreshAccessToken(
   app: FastifyInstance,
   refreshToken: string,
 ): Promise<AuthSessionTokens> {
-  if (!app.db) {
-    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "登录服务暂不可用");
-  }
-
   const session = await findActiveSessionByRefreshToken(app.db, refreshToken);
 
   if (!session) {
@@ -129,10 +121,6 @@ export async function getCurrentSession(
   app: FastifyInstance,
   user: JwtUser,
 ): Promise<AuthLoginResponse["subUser"]> {
-  if (!app.db) {
-    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "登录服务暂不可用");
-  }
-
   const subUserId = Number(user.subUserId);
 
   if (!Number.isSafeInteger(subUserId)) {
@@ -157,10 +145,6 @@ export async function getCurrentSession(
 }
 
 export async function revokeSession(app: FastifyInstance, user: JwtUser) {
-  if (!app.db) {
-    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "登录服务暂不可用");
-  }
-
   await app.db
     .updateTable("xy_wap_embed_sub_user_session")
     .set({

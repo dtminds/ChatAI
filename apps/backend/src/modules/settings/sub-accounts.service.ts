@@ -12,11 +12,7 @@ import {
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
-import {
-  BadRequestError,
-  NotFoundError,
-  ServiceUnavailableError,
-} from "../../shared/errors.js";
+import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import { hashPassword } from "../auth/password.service.js";
 
 type TenantScope = {
@@ -427,11 +423,7 @@ export class SubAccountSettingsService {
   }
 }
 
-export function createSubAccountSettingsService(db: Kysely<Database> | undefined) {
-  if (!db) {
-    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "设置服务暂不可用");
-  }
-
+export function createSubAccountSettingsService(db: Kysely<Database>) {
   return new SubAccountSettingsService(db);
 }
 

@@ -7,15 +7,7 @@ export type SchemaCheckResult = {
   reason?: string;
 };
 
-export async function checkSchema(db?: Kysely<Database>): Promise<SchemaCheckResult> {
-  if (!db) {
-    return {
-      configured: false,
-      ok: false,
-      reason: "DATABASE_URL is not configured",
-    };
-  }
-
+export async function checkSchema(db: Kysely<Database>): Promise<SchemaCheckResult> {
   await db.selectNoFrom((expressionBuilder) =>
     expressionBuilder.val(1).as("schema_check"),
   ).executeTakeFirstOrThrow();

@@ -22,7 +22,7 @@ import type {
   WorkbenchTakeOverSeatResponse,
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
-import { NotFoundError } from "../../shared/errors.js";
+import { NotFoundError } from "../../src/shared/errors.js";
 
 type WorkbenchEvent =
   | {

@@ -1053,28 +1053,6 @@ describe("WorkbenchRepository", () => {
     ).resolves.toBe(5);
   });
 
-  it("calculates current seat unread with a lightweight aggregate query", async () => {
-    const repository = new WorkbenchRepository(
-      {
-        selectFrom(table: string) {
-          expect(table).toBe("xy_wap_embed_conversation");
-
-          return createQueryBuilder({
-            unread_count: 6,
-          });
-        },
-      } as never,
-    );
-
-    await expect(
-      repository.getSeatUnreadCount({
-        platform: 5,
-        thirdUserId: "seat-third-user-1",
-        uid: 9001,
-      }),
-    ).resolves.toBe(6);
-  });
-
   it("updates conversation pinned time in tenant scope", async () => {
     const updates: Array<Record<string, unknown>> = [];
     const wheres: Array<[string, string, unknown]> = [];

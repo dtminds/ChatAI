@@ -402,7 +402,6 @@ describe("MysqlWorkbenchService", () => {
   it("deletes a taken-over conversation through Java and hides it locally", async () => {
     const javaClient = createJavaClient();
     const hideConversation = vi.fn().mockResolvedValue(undefined);
-    const getSeatUnreadCount = vi.fn().mockResolvedValue(7);
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -411,10 +410,10 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
-          thirdUserId: "seat-third-user-1",
+          seatUnreadCount: 9,
           uid: 9001,
+          unreadCount: 2,
         }),
-        getSeatUnreadCount,
         hideConversation,
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -433,11 +432,6 @@ describe("MysqlWorkbenchService", () => {
     expect(hideConversation).toHaveBeenCalledWith({
       conversationId: "88",
       platform: 5,
-      uid: 9001,
-    });
-    expect(getSeatUnreadCount).toHaveBeenCalledWith({
-      platform: 5,
-      thirdUserId: "seat-third-user-1",
       uid: 9001,
     });
   });

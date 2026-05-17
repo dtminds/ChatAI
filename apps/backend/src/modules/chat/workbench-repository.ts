@@ -37,6 +37,8 @@ const CHAT_TYPE_SINGLE = 1;
 const CHAT_TYPE_GROUP = 2;
 const DEFAULT_CONVERSATION_LIST_LIMIT = 500;
 const MAX_CONVERSATION_LIST_LIMIT = 1000;
+const DEFAULT_POLL_CONVERSATION_CHANGE_LIMIT = 200;
+const MAX_POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const GROUP_MEMBER_SORT_RANK = {
   [GROUP_MEMBER_TYPE.OWNER]: 0,
   [GROUP_MEMBER_TYPE.ADMIN]: 1,
@@ -64,6 +66,12 @@ export type SeatOperateScope = {
 };
 
 export type ConversationListCursor = WorkbenchConversationCursorDto;
+
+export type ChangedConversationListResult = {
+  hasMore: boolean;
+  items: WorkbenchConversationListResponse["items"];
+  nextVersion: number;
+};
 
 type ConversationPageRow = Omit<
   ConversationRow,
@@ -403,22 +411,7 @@ export class WorkbenchRepository {
       seat.third_userid,
     );
 
-    const items = conversationRows.map((row) => {
-      const lastMessage = hydrationSources.lastMessagesById.get(String(row.last_audit_info_id));
-      const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
-      const bind = hydrationSources.bindsByThirdExternalId.get(row.third_external_userid);
-      const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
-
-      return mapConversationRow({
-        ...row,
-        customer_avatar: contact?.avatar ?? null,
-        customer_name: bind?.remark ?? contact?.realName ?? contact?.name ?? null,
-        group_avatar: group?.avatar ?? null,
-        group_name: group?.name ?? null,
-        last_message_content: lastMessage?.content ?? null,
-        last_message_type: lastMessage?.msgtype ?? null,
-      });
-    });
+    const items = this.mapHydratedConversationRows(conversationRows, hydrationSources);
     const lastRow = conversationRows.at(-1);
 
     return {
@@ -433,6 +426,90 @@ export class WorkbenchRepository {
             })
           : undefined,
       snapshotAt,
+    };
+  }
+
+  async listChangedConversations(
+    seatId: string,
+    options: {
+      limit: number;
+      sinceLastMsgTime: number;
+    },
+  ): Promise<ChangedConversationListResult> {
+    const seatNumericId = parseMySqlId(seatId);
+    const snapshotAt = Date.now();
+
+    if (seatNumericId == null) {
+      return {
+        hasMore: false,
+        items: [],
+        nextVersion: snapshotAt,
+      };
+    }
+
+    const seat = await this.getSeatRecord(seatNumericId);
+
+    if (!seat) {
+      return {
+        hasMore: false,
+        items: [],
+        nextVersion: snapshotAt,
+      };
+    }
+
+    const limit = normalizePollConversationChangeLimit(options.limit);
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .select([
+        "conversation.id as id",
+        "conversation.chat_type as chat_type",
+        "conversation.create_time as create_time",
+        "conversation.last_audit_info_id as last_audit_info_id",
+        "conversation.third_userid as third_userid",
+        "conversation.third_external_userid as third_external_userid",
+        "conversation.third_group_id as third_group_id",
+        "conversation.unread_cnt as unread_cnt",
+        "conversation.last_msgtime as last_msgtime",
+        "conversation.pinned_time as pinned_time",
+        "conversation.verified as verified",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder.val(seatNumericId).as("seat_id"),
+      ])
+      .where("conversation.uid", "=", seat.uid)
+      .where("conversation.platform", "=", seat.platform)
+      .where("conversation.third_userid", "=", seat.third_userid)
+      .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("conversation.last_msgtime", ">", options.sinceLastMsgTime)
+      .where("conversation.last_msgtime", "<=", snapshotAt)
+      .orderBy("conversation.last_msgtime", "asc")
+      .orderBy("conversation.id", "asc")
+      .limit(limit + 1)
+      .execute();
+
+    if (rows.length > limit) {
+      return {
+        hasMore: true,
+        items: [],
+        nextVersion: snapshotAt,
+      };
+    }
+
+    const pageRows = rows.slice(0, limit);
+    const conversationRows = pageRows.map((row) => row as ConversationPageRow);
+    const hydrationSources = await this.getConversationHydrationSources(
+      conversationRows,
+      seat.uid,
+      seat.platform,
+      seat.third_userid,
+    );
+
+    const items = this.mapHydratedConversationRows(conversationRows, hydrationSources);
+
+    return {
+      hasMore: rows.length > limit,
+      items,
+      nextVersion: snapshotAt,
     };
   }
 
@@ -1031,6 +1108,36 @@ export class WorkbenchRepository {
     };
   }
 
+  private mapHydratedConversationRows(
+    rows: ConversationPageRow[],
+    hydrationSources: ConversationHydrationSources,
+  ): WorkbenchConversationListResponse["items"] {
+    return rows.map((row) => this.mapHydratedConversationRow(row, hydrationSources));
+  }
+
+  private mapHydratedConversationRow(
+    row: ConversationPageRow,
+    hydrationSources: ConversationHydrationSources,
+  ): WorkbenchConversationListResponse["items"][number] {
+    const lastMessage =
+      row.last_audit_info_id != null
+        ? hydrationSources.lastMessagesById.get(String(row.last_audit_info_id))
+        : undefined;
+    const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
+    const bind = hydrationSources.bindsByThirdExternalId.get(row.third_external_userid);
+    const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
+
+    return mapConversationRow({
+      ...row,
+      customer_avatar: contact?.avatar ?? null,
+      customer_name: bind?.remark ?? contact?.realName ?? contact?.name ?? null,
+      group_avatar: group?.avatar ?? null,
+      group_name: group?.name ?? null,
+      last_message_content: lastMessage?.content ?? null,
+      last_message_type: lastMessage?.msgtype ?? null,
+    });
+  }
+
   private async getMessageHydrationSources(
     rows: MessageRow[],
     uid: number,
@@ -1276,6 +1383,14 @@ function normalizeConversationListLimit(value: number | undefined) {
   }
 
   return Math.min(value, MAX_CONVERSATION_LIST_LIMIT);
+}
+
+function normalizePollConversationChangeLimit(value: number | undefined) {
+  if (value == null || !Number.isSafeInteger(value) || value <= 0) {
+    return DEFAULT_POLL_CONVERSATION_CHANGE_LIMIT;
+  }
+
+  return Math.min(value, MAX_POLL_CONVERSATION_CHANGE_LIMIT);
 }
 
 function emptyConversationListPage(snapshotAt: number): WorkbenchConversationListResponse {

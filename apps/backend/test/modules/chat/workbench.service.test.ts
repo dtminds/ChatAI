@@ -525,6 +525,118 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.downloadMsgFile).not.toHaveBeenCalled();
   });
 
+  it("polls new-message conversation changes for the current seat", async () => {
+    const javaClient = createJavaClient();
+    const listChangedConversations = vi.fn().mockResolvedValue({
+      hasMore: false,
+      items: [
+        {
+          conversationId: "88",
+          customerAvatar: "",
+          customerId: "customer-001",
+          customerName: "微信客户",
+          lastMessage: "新消息",
+          lastMessageTime: 1_778_840_001_000,
+          mode: "single",
+          priority: "medium",
+          seatId: "12",
+          unreadCount: 1,
+        },
+      ],
+      nextVersion: 1_778_840_002_000,
+    });
+    const getSeat = vi.fn().mockResolvedValue({
+      avatar: "",
+      description: "私域客户管理",
+      lastMessageTime: 1_778_840_001_000,
+      loginStatus: "online",
+      name: "德瑞可",
+      operatorName: "小可",
+      phone: "13296712905",
+      seatId: "12",
+      unreadCount: 7,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+        getSeat,
+        listChangedConversations,
+        listMessages: vi.fn().mockResolvedValue({
+          filteredCount: 0,
+          hasMore: false,
+          messages: [],
+          scannedCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.poll("101", {
+        activeConversationId: "88",
+        activeMessageSeq: 5,
+        currentSeatId: "12",
+        sinceVersion: 1_778_840_000_000,
+      }),
+    ).resolves.toMatchObject({
+      activeConversationMessages: [],
+      conversationChanges: [
+        {
+          conversationId: "88",
+          lastMessage: "新消息",
+          type: "upsert",
+        },
+      ],
+      nextVersion: 1_778_840_002_000,
+      seatChanges: [
+        {
+          seatId: "12",
+          unreadCount: 7,
+        },
+      ],
+    });
+    expect(listChangedConversations).toHaveBeenCalledWith("12", {
+      limit: 500,
+      sinceLastMsgTime: 1_778_839_999_999,
+    });
+    expect(getSeat).toHaveBeenCalledWith("12");
+  });
+
+  it("does not overlap the first poll after a fresh conversation baseline", async () => {
+    const javaClient = createJavaClient();
+    const listChangedConversations = vi.fn().mockResolvedValue({
+      hasMore: false,
+      items: [],
+      nextVersion: 1_778_840_002_000,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeat: vi.fn().mockResolvedValue(undefined),
+        listChangedConversations,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.poll("101", {
+      currentSeatId: "12",
+      freshBaseline: true,
+      sinceVersion: 1_778_840_000_000,
+    });
+
+    expect(listChangedConversations).toHaveBeenCalledWith("12", {
+      limit: 500,
+      sinceLastMsgTime: 1_778_840_000_000,
+    });
+  });
+
   it("reads message file transfer status after seat access is verified", async () => {
     const javaClient = createJavaClient();
     const getMessageFileDownloadStatus = vi.fn().mockResolvedValue({

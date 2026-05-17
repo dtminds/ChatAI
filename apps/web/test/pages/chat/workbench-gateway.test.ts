@@ -7,6 +7,7 @@ import {
   loadGroupMembers,
   loadAccountConversations,
   loadAccountScope,
+  pollWorkbench,
 } from "@/pages/chat/api/workbench-gateway";
 import {
   createMockWorkbenchService,
@@ -65,6 +66,68 @@ describe("workbench gateway message paging", () => {
         seatId: "drc",
       },
     ]);
+  });
+
+  it("uses the earliest conversation snapshot as the bootstrap poll baseline", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
+
+        return {
+          ...response,
+          snapshotAt: options?.mode === "single" ? 1_778_840_010_000 : 1_778_840_020_000,
+        };
+      },
+    });
+
+    await expect(bootstrapWorkbench("single", {})).resolves.toMatchObject({
+      pollBaseline: 1_778_840_010_000,
+    });
+  });
+
+  it("maps the active account id to the backend poll seat id", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedPollRequests: Parameters<WorkbenchService["poll"]>[0][] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        observedPollRequests.push(request);
+
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await pollWorkbench(
+      {
+        activeConversationId: "conv-001",
+        activeMessageSeq: 9,
+        currentAccountId: "drc",
+        freshBaseline: true,
+        sinceVersion: 1_778_840_010_000,
+      },
+      {
+        accounts: [],
+        customerProfilesById: {},
+      },
+    );
+
+    expect(observedPollRequests[0]).toMatchObject({
+      activeConversationId: "conv-001",
+      activeMessageSeq: 9,
+      currentSeatId: "drc",
+      freshBaseline: true,
+      sinceVersion: 1_778_840_010_000,
+    });
   });
 
   it("keeps pinned conversations first when merging mode-specific lists", async () => {

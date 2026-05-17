@@ -6,8 +6,8 @@ import {
   CONVERSATION_MODE_CACHE_TTL_MS,
   deleteConversation as deleteConversationRequest,
   getVisibleConversations,
-  loadAccountConversations,
   loadAccountConversationsByMode,
+  loadAccountConversationsWithBaseline,
   loadGroupMembers,
   loadAccountScope,
   loadConversationMessagesPage,
@@ -98,6 +98,7 @@ type WorkbenchState = {
   takeoverStatusByAccountId: Record<string, TakeoverStatus>;
   pollState: PollState;
   sinceVersion: number;
+  isPollBaselineFresh: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
   sidebarItems: SettingsSidebarItem[];
@@ -199,6 +200,7 @@ function createInitialState(): Omit<
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
     sinceVersion: 0,
+    isPollBaselineFresh: false,
     sidebarItems: [],
     takeoverStatusByAccountId: {},
   };
@@ -210,6 +212,13 @@ function getFirstConversationId(
   mode: ChatMode,
 ) {
   const conversations = conversationListsByScope[accountId] ?? [];
+  return getFirstVisibleConversationId(conversations, mode);
+}
+
+function getFirstVisibleConversationId(
+  conversations: Conversation[],
+  mode: ChatMode,
+) {
   const visibleConversations = getVisibleConversations(conversations);
   const firstMatch =
     visibleConversations.find((conversation) => conversation.mode === mode) ??
@@ -767,7 +776,7 @@ export function createWorkbenchStore() {
     }
 
     async function reloadAccountConversations(accountId: string) {
-      const conversations = await loadAccountConversations(accountId);
+      const result = await loadAccountConversationsWithBaseline(accountId);
       const loadedAt = Date.now();
 
       set((currentState) => ({
@@ -778,8 +787,16 @@ export function createWorkbenchStore() {
         ),
         conversationListsByScope: {
           ...currentState.conversationListsByScope,
-          [accountId]: conversations,
+          [accountId]: result.conversations,
         },
+        isPollBaselineFresh:
+          currentState.activeAccountId === accountId
+            ? true
+            : currentState.isPollBaselineFresh,
+        sinceVersion:
+          currentState.activeAccountId === accountId
+            ? result.pollBaseline
+            : currentState.sinceVersion,
       }));
     }
 
@@ -1199,6 +1216,8 @@ export function createWorkbenchStore() {
             ? { [conversationPage.conversationId]: conversationPage.messages }
             : {},
           sidebarItems: bootstrapResult.sidebarItems,
+          isPollBaselineFresh: true,
+          sinceVersion: bootstrapResult.pollBaseline,
         });
 
         const bootstrapActiveConversation = bootstrapResult.conversationListsByScope[
@@ -1266,6 +1285,7 @@ export function createWorkbenchStore() {
           activeConversationId: state.activeConversationId,
           activeMessageSeq: state.activeMessageSeq,
           currentAccountId: state.activeAccountId,
+          freshBaseline: state.isPollBaselineFresh,
           sinceVersion: state.sinceVersion,
         };
         const response = await pollWorkbench(request, {
@@ -1372,6 +1392,7 @@ export function createWorkbenchStore() {
               response.request.activeConversationId,
             ),
             conversationListsByScope: nextConversationLists,
+            isPollBaselineFresh: false,
             messagesByConversationId: nextMessagesByConversationId,
             pendingMessages,
             pollState: {
@@ -1466,7 +1487,8 @@ export function createWorkbenchStore() {
                 pendingMessages: currentState.pendingMessages.filter(
                   (message) => message.conversationId !== state.activeConversationId,
                 ),
-                sinceVersion: 0,
+                isPollBaselineFresh: true,
+                sinceVersion: scopeResult.pollBaseline,
               };
             });
 
@@ -1880,8 +1902,10 @@ export function createWorkbenchStore() {
                 ? {
                     ...currentState.groupMembersLoadingByConversationId,
                     [scopeResult.nextConversationId]: true,
-                  }
+                }
                 : currentState.groupMembersLoadingByConversationId,
+            isPollBaselineFresh: true,
+            sinceVersion: scopeResult.pollBaseline,
           };
         });
 
@@ -2022,7 +2046,7 @@ export function createWorkbenchStore() {
         });
 
         try {
-          const conversations = await loadAccountConversationsByMode(accountId, mode);
+          const result = await loadAccountConversationsByMode(accountId, mode);
           const loadedAt = Date.now();
 
           if (!isCurrentScopeRequest(requestId)) {
@@ -2041,7 +2065,7 @@ export function createWorkbenchStore() {
                 [accountId]: replaceConversationsByMode(
                   currentState.conversationListsByScope[accountId] ?? [],
                   mode,
-                  conversations,
+                  result.conversations,
                 ),
               },
               conversationModeLoadedAtByScope: markConversationModesLoaded(
@@ -2060,7 +2084,11 @@ export function createWorkbenchStore() {
                 prunedConversationListCache.conversationListsByScope,
               conversationModeLoadedAtByScope:
                 prunedConversationListCache.conversationModeLoadedAtByScope,
+              isPollBaselineFresh: result.pollBaseline < currentState.sinceVersion
+                ? true
+                : currentState.isPollBaselineFresh,
               isConversationLoading: false,
+              sinceVersion: Math.min(currentState.sinceVersion, result.pollBaseline),
             };
           });
 

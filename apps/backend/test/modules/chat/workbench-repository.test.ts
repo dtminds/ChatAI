@@ -720,6 +720,121 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("lists changed conversations by last message time without hydration joins", async () => {
+    const conversationQueryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([
+              createConversationRow({
+                id: 90,
+                last_audit_info_id: 900,
+                last_message_content: undefined,
+                last_msgtime: 1_778_840_100_000,
+              }),
+            ]);
+            conversationQueryBuilders.push(query);
+
+            return query;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_contact" ||
+            table === "xy_wap_embed_customer_bind_relation" ||
+            table === "xy_wap_embed_group_seat"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await repository.listChangedConversations("12", {
+      limit: 30,
+      sinceLastMsgTime: 1_778_840_000_000,
+    });
+
+    const query = conversationQueryBuilders[0];
+
+    expect(query.joins).toEqual([]);
+    expect(query.orderBys).toEqual([
+      ["conversation.last_msgtime", "asc"],
+      ["conversation.id", "asc"],
+    ]);
+    expect(query.limits).toEqual([31]);
+    expect(query.wheres).toContainEqual([
+      "conversation.last_msgtime",
+      ">",
+      1_778_840_000_000,
+    ]);
+    expect(query.wheres).toContainEqual(["conversation.biz_status", "=", 1]);
+  });
+
+  it("skips changed conversation hydration when the poll change limit is exceeded", async () => {
+    const observedTables: string[] = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          observedTables.push(table);
+
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder([
+              createConversationRow({
+                id: 90,
+                last_audit_info_id: 900,
+                last_msgtime: 1_778_840_100_000,
+              }),
+              createConversationRow({
+                id: 91,
+                last_audit_info_id: 901,
+                last_msgtime: 1_778_840_101_000,
+              }),
+            ]);
+          }
+
+          throw new Error(`unexpected hydration table ${table}`);
+        },
+      } as never,
+    );
+
+    const result = await repository.listChangedConversations("12", {
+      limit: 1,
+      sinceLastMsgTime: 1_778_840_000_000,
+    });
+
+    expect(result).toMatchObject({
+      hasMore: true,
+      items: [],
+      nextVersion: expect.any(Number),
+    });
+    expect(observedTables).toEqual([
+      "xy_wap_embed_user_seat",
+      "xy_wap_embed_conversation as conversation",
+    ]);
+  });
+
   it("does not update pinned state when the conversation id is invalid", async () => {
     const repository = new WorkbenchRepository(createFailingDb() as never);
 

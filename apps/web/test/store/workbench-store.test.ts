@@ -131,6 +131,54 @@ describe("useWorkbenchStore", () => {
     expect(observedLimits).toEqual([50, 50]);
   });
 
+  it("starts polling from the conversation snapshot baseline after bootstrap", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
+
+        return {
+          ...response,
+          snapshotAt: options?.mode === "single" ? 1_778_840_010_000 : 1_778_840_020_000,
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(useWorkbenchStore.getState().sinceVersion).toBe(1_778_840_010_000);
+    expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(true);
+  });
+
+  it("sends fresh baseline only for the first poll after bootstrap", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedFreshBaselines: Array<boolean | undefined> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        observedFreshBaselines.push(request.freshBaseline);
+
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedFreshBaselines).toEqual([true, false]);
+    expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(false);
+  });
+
   it("loads group members once when opening a group conversation", async () => {
     const baseService = createMockWorkbenchService();
     const observedConversationIds: string[] = [];
@@ -904,7 +952,7 @@ describe("useWorkbenchStore", () => {
     expect(state.pollState.status).toBe("idle");
     expect(state.activeConversationId).toBe("conv-001");
     expect(state.messagesByConversationId["conv-001"].length).toBeGreaterThan(0);
-    expect(state.sinceVersion).toBe(0);
+    expect(state.sinceVersion).toBeGreaterThan(0);
   });
 
   it("preserves the current conversation and unrelated pending messages during cursor recovery", async () => {
@@ -939,7 +987,7 @@ describe("useWorkbenchStore", () => {
 
     expect(state.activeConversationId).toBe("conv-002");
     expect(state.pendingMessages).toEqual(pendingBeforeRecovery);
-    expect(state.sinceVersion).toBe(0);
+    expect(state.sinceVersion).toBeGreaterThan(0);
   });
 
   it("drops stale cursor recovery results after the active account changes", async () => {

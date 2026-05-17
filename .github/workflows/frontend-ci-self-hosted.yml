@@ -1,0 +1,74 @@
+name: Frontend CI (Self-hosted)
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-ci-self-hosted-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    name: Detect Frontend Changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed areas
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - ".env*"
+              - ".github/workflows/ci.yml"
+              - ".github/workflows/frontend-ci-self-hosted.yml"
+              - "apps/web/**"
+              - "package.json"
+              - "packages/contracts/**"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig*.json"
+              - "tsconfig.base.json"
+
+  frontend:
+    name: Frontend
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true'
+    runs-on: [self-hosted, mac-mini]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build in Docker
+        run: |
+          mkdir -p /var/cache/pnpm-store
+          docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -v "${{ github.workspace }}:/workspace" \
+            -v "/var/cache/pnpm-store:/pnpm-store" \
+            -w /workspace \
+            -e CI=true \
+            node:24-bookworm-slim sh -lc '
+              set -eu
+              corepack enable
+              pnpm install --frozen-lockfile --store-dir /pnpm-store
+              pnpm --filter @chatai/web typecheck
+              pnpm --filter @chatai/web test
+              pnpm --filter @chatai/web build
+            '

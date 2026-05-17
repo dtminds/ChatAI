@@ -332,20 +332,30 @@ describe("AccountRail", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows taken-over account unread badges on the avatar", () => {
+  it("shows unread badges only for non-active taken-over accounts", () => {
+    const takenOverAccounts = [
+      accounts[0],
+      {
+        ...accounts[1],
+        takenOverEmployeeId: "emp-001",
+      },
+    ];
+
     render(
       <AccountRail
-        accounts={accounts}
+        accounts={takenOverAccounts}
         activeAccountId="account-1"
         currentEmployeeId="emp-001"
         onSelectAccount={vi.fn()}
       />,
     );
 
-    const badge = screen.getByLabelText("lsave 未读消息 7");
+    expect(screen.queryByLabelText("lsave 未读消息 7")).not.toBeInTheDocument();
 
-    expect(badge).toHaveTextContent("7");
-    expect(badge.parentElement).toHaveAttribute("data-testid", "account-avatar-wrap-account-1");
+    const badge = screen.getByLabelText("support 未读消息 2");
+
+    expect(badge).toHaveTextContent("2");
+    expect(badge.parentElement).toHaveAttribute("data-testid", "account-avatar-wrap-account-2");
   });
 
   it("hides unread badges for accounts that are not taken over", () => {

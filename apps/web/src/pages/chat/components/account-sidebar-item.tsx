@@ -48,7 +48,8 @@ export function AccountSidebarItem({
   const statusLabel = isOffline ? "离线" : isTakenOverByCurrentUser ? "接管中" : "未接管";
   const canShowTakeoverPopover = !isOffline && !isTakenOverByCurrentUser;
   const canTakeOver = canShowTakeoverPopover && !isTakingOver;
-  const shouldShowUnreadBadge = isTakenOverByCurrentUser && !!account.unreadCount;
+  const shouldShowUnreadBadge =
+    !isActive && isTakenOverByCurrentUser && !!account.unreadCount;
   const compactStatusLabel =
     isTakingOver
       ? "接管中"

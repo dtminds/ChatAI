@@ -58,7 +58,10 @@ import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
 } from "@/pages/chat/lib/composer-file-files";
-import { extractComposerMentionState, type ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import {
+  extractComposerMentionState,
+  type ComposerSegment,
+} from "@/pages/chat/lib/composer-segments";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
@@ -84,7 +87,9 @@ type PendingComposerDiscardSwitch =
 
 function getInitialAccountRailCollapsed() {
   try {
-    return window.localStorage.getItem(ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY) === "true";
+    return (
+      window.localStorage.getItem(ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY) === "true"
+    );
   } catch {
     return false;
   }
@@ -167,7 +172,9 @@ function ChatWorkbenchContent({
 
   const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-  const [composerSegments, setComposerSegments] = useState<ComposerSegment[]>([]);
+  const [composerSegments, setComposerSegments] = useState<ComposerSegment[]>(
+    [],
+  );
   const [sendFailureDialog, setSendFailureDialog] = useState<{
     description: string;
     title: string;
@@ -177,9 +184,12 @@ function ChatWorkbenchContent({
   const handlePollingPaused = useCallback((reason: PollingPauseReason) => {
     setPollingPauseReason(reason);
   }, []);
-  const [fileUploadTransitionError, setFileUploadTransitionError] =
-    useState<string | undefined>();
-  const [fileUploadQueue, setFileUploadQueue] = useState<FileUploadQueueItem[]>([]);
+  const [fileUploadTransitionError, setFileUploadTransitionError] = useState<
+    string | undefined
+  >();
+  const [fileUploadQueue, setFileUploadQueue] = useState<FileUploadQueueItem[]>(
+    [],
+  );
   const [isSendingDraft, setIsSendingDraft] = useState(false);
   const [quotedMessage, setQuotedMessage] =
     useState<QuotedMessagePreviewContent | null>(null);
@@ -231,7 +241,8 @@ function ChatWorkbenchContent({
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
   const allConversations = conversationListsByScope[activeAccountId] ?? [];
-  const visibleSearchableConversations = getVisibleConversations(allConversations);
+  const visibleSearchableConversations =
+    getVisibleConversations(allConversations);
   const visibleConversations = visibleSearchableConversations.filter(
     (conversation) => conversation.mode === activeMode,
   );
@@ -240,23 +251,25 @@ function ChatWorkbenchContent({
       (conversation) => conversation.id === activeConversationId,
     ) ?? visibleConversations[0];
   const activeMessages =
-    (activeConversation && messagesByConversationId[activeConversation.id]) ?? [];
+    (activeConversation && messagesByConversationId[activeConversation.id]) ??
+    [];
   const activeGroupMembers =
     activeConversation?.mode === "group"
-      ? groupMembersByConversationId[activeConversation.id] ?? []
+      ? (groupMembersByConversationId[activeConversation.id] ?? [])
       : [];
   const isActiveGroupMembersLoading =
     activeConversation?.mode === "group"
       ? groupMembersLoadingByConversationId[activeConversation.id] === true
       : false;
   const activeHistoryStatus = activeConversation
-    ? historyStatusByConversationId[activeConversation.id] ?? "idle"
+    ? (historyStatusByConversationId[activeConversation.id] ?? "idle")
     : "idle";
   const hasMoreHistory = activeConversation
     ? hasMoreHistoryByConversationId[activeConversation.id] === true
     : false;
   const skippedHiddenCount = activeConversation
-    ? messagePaginationByConversationId[activeConversation.id]?.skippedHiddenCount ?? 0
+    ? (messagePaginationByConversationId[activeConversation.id]
+        ?.skippedHiddenCount ?? 0)
     : 0;
   const historyLoadLabel =
     skippedHiddenCount > 0
@@ -273,25 +286,22 @@ function ChatWorkbenchContent({
     !!activeAccount?.takenOverEmployeeId &&
     activeAccount.takenOverEmployeeId === me?.id;
   const canSendMessage =
-    !!activeConversation &&
-    !isActiveAccountOffline &&
-    isActiveAccountTakenOver;
+    !!activeConversation && !isActiveAccountOffline && isActiveAccountTakenOver;
   const isConversationActionDisabled =
     isActiveAccountOffline || !isActiveAccountTakenOver;
   const composerPlaceholder = canSendMessage
     ? "请输入消息……"
     : bootstrapStatus === "loading" && !activeConversation
       ? "正在加载会话数据..."
-    : isActiveAccountOffline
-      ? "当前账号离线，暂时无法发送消息"
-    : !isActiveAccountTakenOver
-      ? "当前账号未接管，暂时无法发送消息"
-    : !activeConversation
-      ? "当前列表暂无可发送会话"
-    : "当前会话暂不可发送消息";
+      : isActiveAccountOffline
+        ? "当前账号离线，暂时无法发送消息"
+        : !isActiveAccountTakenOver
+          ? "当前账号未接管，暂时无法发送消息"
+          : !activeConversation
+            ? "当前列表暂无可发送会话"
+            : "当前会话暂不可发送消息";
 
-  const hasActiveFileUploads = () =>
-    fileUploadQueueRef.current.length > 0;
+  const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
 
   const setFileUploadQueueState = (
     updater: (queue: typeof fileUploadQueue) => typeof fileUploadQueue,
@@ -335,33 +345,33 @@ function ChatWorkbenchContent({
     });
   };
 
-  const {
-    handleLoadOlderMessages,
-    handleMessageViewportScroll,
-  } =
+  const { handleLoadOlderMessages, handleMessageViewportScroll } =
     useMessageScrollRestoration({
-    activeConversationId: activeConversation?.id,
-    activeHistoryStatus,
-    hasMoreHistory,
-    isHistoryLoading: activeHistoryStatus === "loading",
-    loadOlderMessages,
-    messageCount: activeMessages.length,
-    messageViewportRef,
+      activeConversationId: activeConversation?.id,
+      activeHistoryStatus,
+      hasMoreHistory,
+      isHistoryLoading: activeHistoryStatus === "loading",
+      loadOlderMessages,
+      messageCount: activeMessages.length,
+      messageViewportRef,
     });
 
   useEffect(() => {
     void initializeWorkbench();
   }, [initializeWorkbench]);
 
-  useEffect(() => () => {
-    isMountedRef.current = false;
-    fileUploadAbortControllersRef.current.forEach((controller) => {
-      controller.abort();
-    });
-    fileUploadAbortControllersRef.current.clear();
-    fileUploadQueueRef.current = [];
-    clearDownloadPollingTimers();
-  }, []);
+  useEffect(
+    () => () => {
+      isMountedRef.current = false;
+      fileUploadAbortControllersRef.current.forEach((controller) => {
+        controller.abort();
+      });
+      fileUploadAbortControllersRef.current.clear();
+      fileUploadQueueRef.current = [];
+      clearDownloadPollingTimers();
+    },
+    [],
+  );
 
   useEffect(() => {
     if (downloadPollingConversationRef.current === activeConversation?.id) {
@@ -473,7 +483,9 @@ function ChatWorkbenchContent({
         return;
       }
 
-      clearComposer({ keepQuote: quotedMessage !== null && !result.didConsumeQuote });
+      clearComposer({
+        keepQuote: quotedMessage !== null && !result.didConsumeQuote,
+      });
       composerRef.current?.focus();
     } finally {
       isSendingDraftRef.current = false;
@@ -535,29 +547,31 @@ function ChatWorkbenchContent({
 
       void (async () => {
         try {
-          const fileSegment = await uploadWorkbenchFile(activeConversation.id, file, {
-            onProgress(progress) {
-              setFileUploadQueueState((currentQueue) =>
-                currentQueue.map((item) =>
-                  item.id === uploadId
-                    ? {
-                        ...item,
-                        progress: Math.max(
-                          item.progress,
-                          Math.min(100, progress),
-                        ),
-                      }
-                    : item,
-                ),
-              );
+          const fileSegment = await uploadWorkbenchFile(
+            activeConversation.id,
+            file,
+            {
+              onProgress(progress) {
+                setFileUploadQueueState((currentQueue) =>
+                  currentQueue.map((item) =>
+                    item.id === uploadId
+                      ? {
+                          ...item,
+                          progress: Math.max(
+                            item.progress,
+                            Math.min(100, progress),
+                          ),
+                        }
+                      : item,
+                  ),
+                );
+              },
+              signal: abortController.signal,
             },
-            signal: abortController.signal,
-          });
+          );
 
           if (
-            !fileUploadQueueRef.current.some(
-              (item) => item.id === uploadId,
-            )
+            !fileUploadQueueRef.current.some((item) => item.id === uploadId)
           ) {
             return;
           }
@@ -588,11 +602,7 @@ function ChatWorkbenchContent({
             return;
           }
 
-          if (
-            fileUploadQueueRef.current.some(
-              (item) => item.id === uploadId,
-            )
-          ) {
+          if (fileUploadQueueRef.current.some((item) => item.id === uploadId)) {
             setSendFailureDialog(
               getSendFailureDialogCopy("file-upload", getSendErrorCode(error)),
             );
@@ -621,7 +631,10 @@ function ChatWorkbenchContent({
       return;
     }
 
-    if (Object.keys(downloadTransferStates).length >= MAX_ACTIVE_DOWNLOAD_TRANSFERS) {
+    if (
+      Object.keys(downloadTransferStates).length >=
+      MAX_ACTIVE_DOWNLOAD_TRANSFERS
+    ) {
       toast.warning("下载队列已满，请稍后");
       return;
     }
@@ -747,7 +760,9 @@ function ChatWorkbenchContent({
   };
 
   const hasUnsentComposerContent = () =>
-    draft.trim().length > 0 || composerSegments.length > 0 || quotedMessage !== null;
+    draft.trim().length > 0 ||
+    composerSegments.length > 0 ||
+    quotedMessage !== null;
 
   const handleSelectConversation = async (conversationId: string) => {
     if (conversationId === activeConversationId) {
@@ -822,9 +837,10 @@ function ChatWorkbenchContent({
       ? activeMessages.find((message) => message.seq === quoteSeq)
       : undefined;
     const viewport = messageViewportRef.current;
-    const anchor = viewport && originalMessage
-      ? findViewportAnchor(viewport, originalMessage.id)
-      : null;
+    const anchor =
+      viewport && originalMessage
+        ? findViewportAnchor(viewport, originalMessage.id)
+        : null;
 
     if (!anchor) {
       toast.warning("当前未加载原始消息");
@@ -878,7 +894,9 @@ function ChatWorkbenchContent({
     return (
       <div className="flex h-svh items-center justify-center bg-background px-6">
         <div className="max-w-md rounded-2xl border border-destructive/25 bg-surface px-6 py-5 shadow-sm">
-          <p className="text-sm font-semibold text-foreground">工作台初始化失败</p>
+          <p className="text-sm font-semibold text-foreground">
+            工作台初始化失败
+          </p>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {bootstrapError ?? "暂时无法获取会话数据。"}
           </p>
@@ -937,7 +955,8 @@ function ChatWorkbenchContent({
           <div
             className={cn(
               "h-full min-h-0",
-              (isResizingAccountRail || isResizingCustomerPanel) && "select-none",
+              (isResizingAccountRail || isResizingCustomerPanel) &&
+                "select-none",
             )}
             data-testid="chat-workbench-content"
             style={{ minWidth: `${MIN_WORKBENCH_CONTENT_WIDTH}px` }}
@@ -1021,9 +1040,7 @@ function ChatWorkbenchContent({
           </div>
         </div>
       </div>
-      <AlertDialog
-        open={pollingPauseReason !== null}
-      >
+      <AlertDialog open={pollingPauseReason !== null}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -1144,13 +1161,14 @@ function getSendFailureDialogCopy(
 function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {
   if (reason === "idle") {
     return {
-      description: "检测到页面已离开一段时间，当前页面已暂停消息同步。刷新页面后可重新接管。",
+      description: "检测到你已离开页面一段时间，已暂停消息同步。",
       title: "已暂停新消息同步",
     };
   }
 
   return {
-    description: "当前页面已暂停消息同步。若要在此页面继续，请刷新页面重新接管。",
+    description:
+      "当前页面已暂停消息同步。若要在此页面继续，请刷新页面重新接管。",
     title: "实时同步已被其他工作台页面占用",
   };
 }
@@ -1169,15 +1187,24 @@ function getMessageDownloadUrl(message: ChatMessage) {
 
 function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
   if (message.content.type === "video") {
-    return message.content.downloadStatus === "finished" &&
-      canUseExpiringUrl(url, message.content.fileUrlExpireTime);
+    return (
+      message.content.downloadStatus === "finished" &&
+      canUseExpiringUrl(url, message.content.fileUrlExpireTime)
+    );
   }
 
-  return message.content.type === "file" && message.content.downloadStatus === "finished" && url;
+  return (
+    message.content.type === "file" &&
+    message.content.downloadStatus === "finished" &&
+    url
+  );
 }
 
-function buildQuotedMessagePreview(message: ChatMessage): QuotedMessagePreviewContent {
-  const senderName = message.senderDisplayName || message.sender.name || message.author;
+function buildQuotedMessagePreview(
+  message: ChatMessage,
+): QuotedMessagePreviewContent {
+  const senderName =
+    message.senderDisplayName || message.sender.name || message.author;
   const basePreview = {
     contentType: message.content.type,
     quoteMsgId: String(message.seq ?? message.remoteMessageId ?? message.id),

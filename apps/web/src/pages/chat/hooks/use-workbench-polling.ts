@@ -32,7 +32,6 @@ export function useWorkbenchPolling({
   const isPollingRef = useRef(false);
   const isRefreshingSeatSummariesRef = useRef(false);
   const pauseReasonRef = useRef<PollingPauseReason | undefined>(undefined);
-  const lastActivityAtRef = useRef(0);
   const hiddenSinceRef = useRef<number | undefined>(
     typeof document !== "undefined" && document.visibilityState === "hidden"
       ? Date.now()
@@ -110,24 +109,28 @@ export function useWorkbenchPolling({
       timeoutId = undefined;
     };
 
-    const clearIdleTimer = () => {
-      if (idleTimeoutId == null) {
-        return;
-      }
-
-      window.clearTimeout(idleTimeoutId);
-      idleTimeoutId = undefined;
-    };
-
     const pauseForReason = (reason: PollingPauseReason) => {
       if (pauseReasonRef.current != null) {
         return;
       }
 
       pauseReasonRef.current = reason;
+      hiddenSinceRef.current = undefined;
       clearScheduledPoll();
-      clearIdleTimer();
+      if (idleTimeoutId != null) {
+        window.clearTimeout(idleTimeoutId);
+        idleTimeoutId = undefined;
+      }
       notifyPollingPaused(reason);
+    };
+
+    const pauseIfAnotherTabOwnsLease = () => {
+      if (pollingLease.isOwnedByAnotherTab()) {
+        pauseForReason("other-tab");
+        return true;
+      }
+
+      return false;
     };
 
     const getHiddenElapsedMs = () => {
@@ -140,7 +143,7 @@ export function useWorkbenchPolling({
       return Date.now() - hiddenSinceRef.current;
     };
 
-    const pauseIfIdleTimedOut = () => {
+    const pauseIfHiddenTimedOut = () => {
       if (
         document.visibilityState === "hidden" &&
         getHiddenElapsedMs() >= WORKBENCH_POLL_IDLE_TIMEOUT_MS
@@ -152,38 +155,13 @@ export function useWorkbenchPolling({
       return false;
     };
 
-    const pauseIfAnotherTabOwnsLease = () => {
-      if (pollingLease.isOwnedByAnotherTab()) {
-        pauseForReason("other-tab");
-        return true;
-      }
-
-      return false;
-    };
-
-    const scheduleIdleTimer = () => {
-      if (pauseReasonRef.current != null) {
+    const clearIdleTimer = () => {
+      if (idleTimeoutId == null) {
         return;
       }
 
-      clearIdleTimer();
-      idleTimeoutId = window.setTimeout(() => {
-        pauseForReason("idle");
-      }, WORKBENCH_POLL_IDLE_TIMEOUT_MS);
-    };
-
-    const handleUserActivity = () => {
-      if (pauseReasonRef.current != null || document.visibilityState !== "visible") {
-        return;
-      }
-
-      const now = Date.now();
-      if (now - lastActivityAtRef.current < 1000) {
-        return;
-      }
-
-      lastActivityAtRef.current = now;
-      scheduleIdleTimer();
+      window.clearTimeout(idleTimeoutId);
+      idleTimeoutId = undefined;
     };
 
     const scheduleNextPoll = () => {
@@ -201,7 +179,8 @@ export function useWorkbenchPolling({
 
       timeoutId = window.setTimeout(async () => {
         timeoutId = undefined;
-        if (pauseIfIdleTimedOut()) {
+
+        if (pauseIfHiddenTimedOut()) {
           return;
         }
 
@@ -217,16 +196,26 @@ export function useWorkbenchPolling({
       }, baseInterval + jitter);
     };
 
+    const scheduleIdleTimer = () => {
+      if (pauseReasonRef.current != null) {
+        return;
+      }
+
+      clearIdleTimer();
+      idleTimeoutId = window.setTimeout(() => {
+        pauseForReason("idle");
+      }, WORKBENCH_POLL_IDLE_TIMEOUT_MS);
+    };
+
     const pollNowAndReschedule = async () => {
       if (pauseReasonRef.current != null) {
         return;
       }
 
       clearScheduledPoll();
-      if (pauseIfIdleTimedOut()) {
+      if (pauseIfHiddenTimedOut()) {
         return;
       }
-
       if (pauseIfAnotherTabOwnsLease()) {
         return;
       }
@@ -244,37 +233,33 @@ export function useWorkbenchPolling({
       }
 
       if (document.visibilityState === "visible") {
+        if (getHiddenElapsedMs() >= WORKBENCH_POLL_IDLE_TIMEOUT_MS) {
+          pauseForReason("idle");
+          return;
+        }
+
         hiddenSinceRef.current = undefined;
-        scheduleIdleTimer();
+        clearIdleTimer();
         void pollNowAndReschedule();
         return;
       }
 
       hiddenSinceRef.current = Date.now();
+      scheduleIdleTimer();
       scheduleNextPoll();
     };
 
-    scheduleIdleTimer();
+    if (document.visibilityState === "hidden") {
+      scheduleIdleTimer();
+    }
     scheduleNextPoll();
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", handleUserActivity);
-    window.addEventListener("mousemove", handleUserActivity);
-    window.addEventListener("keydown", handleUserActivity);
-    window.addEventListener("pointerdown", handleUserActivity);
-    window.addEventListener("touchstart", handleUserActivity);
-    window.addEventListener("scroll", handleUserActivity);
 
     return () => {
       cancelled = true;
       clearScheduledPoll();
       clearIdleTimer();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleUserActivity);
-      window.removeEventListener("mousemove", handleUserActivity);
-      window.removeEventListener("keydown", handleUserActivity);
-      window.removeEventListener("pointerdown", handleUserActivity);
-      window.removeEventListener("touchstart", handleUserActivity);
-      window.removeEventListener("scroll", handleUserActivity);
     };
   }, [
     activeAccountId,

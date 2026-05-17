@@ -621,6 +621,30 @@ export class WorkbenchRepository {
     return Number(row?.unread_count ?? 0);
   }
 
+  async getSeatUnreadCount(input: {
+    platform: number;
+    thirdUserId: string;
+    uid: number;
+  }) {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select((expressionBuilder) =>
+        expressionBuilder.fn
+          .coalesce(
+            expressionBuilder.fn.sum<number>("unread_cnt"),
+            expressionBuilder.val(0),
+          )
+          .as("unread_count"),
+      )
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("third_userid", "=", input.thirdUserId)
+      .executeTakeFirst();
+
+    return Number(row?.unread_count ?? 0);
+  }
+
   async updateConversationPinned(input: {
     conversationId: string;
     isPinned: boolean;

@@ -114,6 +114,10 @@ type MockState = {
 const CURRENT_SUB_USER_ID = "sub-user-001";
 const INITIAL_VERSION = 1_778_400_000_000;
 const MOCK_POLL_OVERLAP_MS = 1;
+const MOCK_SEAT_UNREAD_COUNTS: Record<string, number> = {
+  drc: 13,
+  ndt: 1,
+};
 
 let activeWorkbenchService: WorkbenchService = createWorkbenchService();
 
@@ -290,13 +294,18 @@ export function createMockWorkbenchService(): WorkbenchService {
       };
 
       upsertConversation(state, nextConversation);
-      syncAccountUnread(state, nextConversation.seatId);
+      setAccountUnreadCount(
+        state,
+        nextConversation.seatId,
+        Math.max(0, getAccountUnreadCountValue(state, nextConversation.seatId) - conversation.unreadCount),
+      );
+      syncAccountLastMessageTime(state, nextConversation.seatId);
       pushConversationEvent(state, nextConversation);
       pushAccountEvent(state, nextConversation.seatId);
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: findAccount(state, nextConversation.seatId)?.unreadCount ?? 0,
+        seatUnreadCount: getAccountUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 0,
       };
@@ -314,13 +323,18 @@ export function createMockWorkbenchService(): WorkbenchService {
       };
 
       upsertConversation(state, nextConversation);
-      syncAccountUnread(state, nextConversation.seatId);
+      setAccountUnreadCount(
+        state,
+        nextConversation.seatId,
+        Math.max(0, getAccountUnreadCountValue(state, nextConversation.seatId) + 1 - conversation.unreadCount),
+      );
+      syncAccountLastMessageTime(state, nextConversation.seatId);
       pushConversationEvent(state, nextConversation);
       pushAccountEvent(state, nextConversation.seatId);
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: findAccount(state, nextConversation.seatId)?.unreadCount ?? 0,
+        seatUnreadCount: getAccountUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 1,
       };
@@ -421,7 +435,7 @@ export function createMockWorkbenchService(): WorkbenchService {
       };
 
       upsertConversation(state, nextConversation);
-      syncAccountUnread(state, payload.seatId);
+      syncAccountLastMessageTime(state, payload.seatId);
       pushConversationEvent(state, nextConversation);
       pushAccountEvent(state, payload.seatId);
       backendMessages.forEach((message) => {
@@ -616,7 +630,7 @@ function buildInitialState(): MockState {
     operatorName: seat.operator,
     phone: seat.phone,
     hostSubUserId: seat.id === "drc" ? CURRENT_SUB_USER_ID : undefined,
-    unreadCount: getAccountUnreadCount(conversationsByAccount[seat.id] ?? []),
+    unreadCount: seat.unreadCount ?? MOCK_SEAT_UNREAD_COUNTS[seat.id] ?? 0,
   }));
 
   const messagesByConversationId = Object.fromEntries(
@@ -838,10 +852,6 @@ function isGroupConversationId(conversationId: string) {
     .some((item) => item.id === conversationId && item.mode === "group");
 }
 
-function getAccountUnreadCount(conversations: WorkbenchConversationSummaryDto[]) {
-  return conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0);
-}
-
 function getAccountLastMessageTime(conversations: WorkbenchConversationSummaryDto[]) {
   return conversations.reduce(
     (latest, conversation) => Math.max(latest, conversation.lastMessageTime ?? 0),
@@ -911,17 +921,41 @@ function removeConversation(
   state.conversationsByAccount[conversation.seatId] = (
     state.conversationsByAccount[conversation.seatId] ?? []
   ).filter((item) => item.conversationId !== conversationId);
-  syncAccountUnread(state, conversation.seatId);
+  setAccountUnreadCount(
+    state,
+    conversation.seatId,
+    Math.max(0, getAccountUnreadCountValue(state, conversation.seatId) - conversation.unreadCount),
+  );
+  syncAccountLastMessageTime(state, conversation.seatId);
   pushConversationRemoveEvent(state, conversation.seatId, conversationId);
   pushAccountEvent(state, conversation.seatId);
 
   return {
     conversationId,
     seatId: conversation.seatId,
+    seatUnreadCount: getAccountUnreadCountValue(state, conversation.seatId),
   };
 }
 
-function syncAccountUnread(state: MockState, seatId: string) {
+function getAccountUnreadCountValue(state: MockState, seatId: string) {
+  return findAccount(state, seatId)?.unreadCount ?? 0;
+}
+
+function setAccountUnreadCount(
+  state: MockState,
+  seatId: string,
+  unreadCount: number,
+) {
+  const seat = findAccount(state, seatId);
+
+  if (!seat) {
+    return;
+  }
+
+  seat.unreadCount = unreadCount;
+}
+
+function syncAccountLastMessageTime(state: MockState, seatId: string) {
   const seat = findAccount(state, seatId);
 
   if (!seat) {
@@ -929,7 +963,6 @@ function syncAccountUnread(state: MockState, seatId: string) {
   }
 
   const conversations = state.conversationsByAccount[seatId] ?? [];
-  seat.unreadCount = getAccountUnreadCount(conversations);
   seat.lastMessageTime = getAccountLastMessageTime(conversations);
 }
 

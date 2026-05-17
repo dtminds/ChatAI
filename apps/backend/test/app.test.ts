@@ -1264,6 +1264,7 @@ describe("backend app", () => {
     expect(response.json()).toEqual({
       conversationId: "conv-002",
       seatId: "drc",
+      seatUnreadCount: 13,
     });
     expect(conversations.json().items).not.toEqual(
       expect.arrayContaining([

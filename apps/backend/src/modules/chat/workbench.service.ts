@@ -133,10 +133,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
       platform: conversation.platform,
       uid: conversation.uid,
     });
+    const seatUnreadCount = await this.repository.getSeatUnreadCount({
+      platform: conversation.platform,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
 
     return {
       conversationId: conversation.id,
       seatId: conversation.seatId,
+      seatUnreadCount,
     };
   }
 

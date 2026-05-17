@@ -1,3 +1,4 @@
+import type {} from "@fastify/cookie";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 export const ACCESS_TOKEN_COOKIE_NAME = "chatai_access_token";

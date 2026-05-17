@@ -8,6 +8,7 @@ import {
   ACCESS_TOKEN_COOKIE_NAME,
   REFRESH_TOKEN_COOKIE_NAME,
 } from "../src/modules/auth/auth-cookies";
+import { shouldDisableRequestLogging } from "../src/app";
 
 async function createAuthenticatedApp() {
   const app = await buildApp();
@@ -99,6 +100,11 @@ describe("backend app", () => {
     delete process.env.DATABASE_URL;
 
     await expect(buildApp()).rejects.toThrow(/DATABASE_URL must be configured/);
+  });
+
+  it("disables request logging for the media proxy route", async () => {
+    expect(shouldDisableRequestLogging({ url: "/api/server/media/proxy?url=https%3A%2F%2Fb5.bokr.com.cn%2Ffoo" })).toBe(true);
+    expect(shouldDisableRequestLogging({ url: "/api/server/conversations" })).toBe(false);
   });
 
   it("serves and verifies ALTCHA challenges once", async () => {

@@ -347,7 +347,6 @@ async function postJavaEnvelope<T>(
       {
         ...buildJavaLogContext(body),
         error: response.error,
-        errorMsg: response.errorMsg,
         operation,
         path,
       },
@@ -355,7 +354,6 @@ async function postJavaEnvelope<T>(
     );
     throw new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败", {
       error: response.error,
-      errorMsg: response.errorMsg,
       path,
     });
   }

@@ -232,21 +232,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    const credential = await this.withFailureLog(
-      () =>
-        this.javaClient.getUploadCredential({
-          uid: conversation.uid,
-        }),
-      {
-        conversationId: conversation.id,
-        operation: "get-upload-credential",
-        platform: conversation.platform,
-        seatId: conversation.seatId,
-        subUserId,
-        uid: conversation.uid,
-      },
-      "工作台上传凭证获取失败",
-    );
+    const credential = await this.javaClient.getUploadCredential({
+      uid: conversation.uid,
+    });
 
     this.logger.info(
       {
@@ -277,24 +265,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
     }
 
-    await this.withFailureLog(
-      () =>
-        this.javaClient.downloadMsgFile({
-          msgid: normalizedMessageId,
-          platform: conversation.platform,
-          uid: conversation.uid,
-        }),
-      {
-        conversationId: conversation.id,
-        messageId: normalizedMessageId,
-        operation: "download-message-file",
-        platform: conversation.platform,
-        seatId: conversation.seatId,
-        subUserId,
-        uid: conversation.uid,
-      },
-      "工作台消息文件下载触发失败",
-    );
+    await this.javaClient.downloadMsgFile({
+      msgid: normalizedMessageId,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
 
     this.logger.info(
       {
@@ -514,31 +489,18 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: conversation.uid,
     });
 
-    const response = await this.withFailureLog(
-      () =>
-        this.javaClient.sendMessage({
-          clientMessageId: payload.clientMessageId,
-          message: buildJavaSendMessageData(payload, segment, quoteContentBase64),
-          platform: conversation.platform,
-          sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
-          ...(conversation.thirdExternalUserId
-            ? { thirdExternalUserid: conversation.thirdExternalUserId }
-            : {}),
-          ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
-          thirdUserId: conversation.thirdUserId,
-          uid: conversation.uid,
-        }),
-      {
-        clientMessageId: payload.clientMessageId,
-        conversationId: conversation.id,
-        operation: "send-message",
-        platform: conversation.platform,
-        seatId: conversation.seatId,
-        subUserId,
-        uid: conversation.uid,
-      },
-      "工作台消息发送失败",
-    );
+    const response = await this.javaClient.sendMessage({
+      clientMessageId: payload.clientMessageId,
+      message: buildJavaSendMessageData(payload, segment, quoteContentBase64),
+      platform: conversation.platform,
+      sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
+      ...(conversation.thirdExternalUserId
+        ? { thirdExternalUserid: conversation.thirdExternalUserId }
+        : {}),
+      ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
 
     this.logger.info(
       {
@@ -580,25 +542,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
       platform: scope.platform,
       uid: scope.uid,
     });
-  }
-
-  private async withFailureLog<T>(
-    action: () => Promise<T>,
-    context: Record<string, unknown>,
-    message: string,
-  ) {
-    try {
-      return await action();
-    } catch (error) {
-      this.logger.error(
-        {
-          ...context,
-          ...readErrorLogContext(error),
-        },
-        message,
-      );
-      throw error;
-    }
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {
@@ -699,19 +642,6 @@ function getSingleSendSegment(
   return {
     text: payload.content ?? "",
     type: "text",
-  };
-}
-
-function readErrorLogContext(error: unknown) {
-  if (error instanceof AppError) {
-    return {
-      errorCode: error.code,
-      statusCode: error.statusCode,
-    };
-  }
-
-  return {
-    errorName: error instanceof Error ? error.name : "unknown",
   };
 }
 

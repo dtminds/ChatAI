@@ -10,6 +10,7 @@ import { registerErrorHandler } from "./plugins/error-handler.js";
 
 export async function buildApp() {
   const app = Fastify({
+    disableRequestLogging: shouldDisableRequestLogging,
     logger: {
       level: process.env.LOG_LEVEL ?? "info",
     },
@@ -35,4 +36,8 @@ export async function buildApp() {
   await registerSettingsRoutes(app);
 
   return app;
+}
+
+export function shouldDisableRequestLogging(request: { url: string }) {
+  return request.url.startsWith("/api/server/media/proxy");
 }

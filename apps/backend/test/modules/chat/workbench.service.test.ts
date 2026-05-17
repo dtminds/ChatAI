@@ -529,6 +529,35 @@ describe("MysqlWorkbenchService", () => {
     expect(loggedPayload).not.toContain("token-secret");
   });
 
+  it("does not leak Java errorMsg when upload credential request fails", async () => {
+    const javaClient = createJavaClient();
+    const logger = createLoggerMock();
+    vi.mocked(javaClient.getUploadCredential).mockRejectedValue(
+      new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败"),
+    );
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      logger,
+    );
+
+    await expect(service.getUploadCredential("101", "88")).rejects.toMatchObject({
+      code: "JAVA_INTERNAL_API_FAILED",
+      statusCode: 502,
+    });
+
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
   it("starts message file transfer with the audit msgid in an accessible conversation", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
@@ -832,63 +861,6 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
-  });
-
-  it("logs workbench context when Java send-message rejects", async () => {
-    const javaClient = createJavaClient();
-    const logger = createLoggerMock();
-    vi.mocked(javaClient.sendMessage).mockRejectedValue(
-      new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败"),
-    );
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          seatUnreadCount: 0,
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-          unreadCount: 0,
-        }),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-      logger,
-    );
-
-    await expect(
-      service.sendMessage("101", {
-        clientMessageId: "local-fail-001",
-        conversationId: "88",
-        seatId: "12",
-        segment: {
-          text: "不要记录正文",
-          type: "text",
-        },
-      }),
-    ).rejects.toMatchObject({
-      code: "JAVA_INTERNAL_API_FAILED",
-      statusCode: 502,
-    });
-
-    expect(logger.error).toHaveBeenCalledWith(
-      {
-        clientMessageId: "local-fail-001",
-        conversationId: "88",
-        errorCode: "JAVA_INTERNAL_API_FAILED",
-        operation: "send-message",
-        platform: 5,
-        seatId: "12",
-        statusCode: 502,
-        subUserId: "101",
-        uid: 9001,
-      },
-      "工作台消息发送失败",
-    );
-    expect(JSON.stringify(logger.error.mock.calls)).not.toContain("不要记录正文");
   });
 
   it("maps a group text send with mention-all to the Java send-message payload", async () => {

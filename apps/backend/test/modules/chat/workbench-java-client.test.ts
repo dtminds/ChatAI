@@ -37,6 +37,35 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("does not leak Java response errorMsg into the client error", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 123,
+          errorMsg: "secret-url=https://example.com?a=b",
+          success: false,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().getUploadCredential({ uid: 9001 }),
+    ).rejects.toMatchObject({
+      code: "JAVA_INTERNAL_API_FAILED",
+      details: {
+        error: 123,
+        path: "/third-internal/file/get-upload-credential",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("passes an abort signal to Java internal API requests", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";

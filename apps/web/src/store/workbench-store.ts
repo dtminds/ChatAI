@@ -11,6 +11,7 @@ import {
   loadGroupMembers,
   loadAccountScope,
   loadConversationMessagesPage,
+  loadSeats,
   markConversationRead,
   markConversationUnread,
   pinConversation,
@@ -129,6 +130,7 @@ type WorkbenchState = {
   unpinConversation: (conversationId: string) => Promise<void>;
   retryFailedMessage: (messageId: string) => Promise<void>;
   loadOlderMessages: () => Promise<void>;
+  refreshSeatSummaries: () => Promise<void>;
   pollWorkbench: () => Promise<void>;
   updateMessageDownloadContent: (
     conversationId: string,
@@ -165,6 +167,7 @@ function createInitialState(): Omit<
   | "unpinConversation"
   | "retryFailedMessage"
   | "loadOlderMessages"
+  | "refreshSeatSummaries"
   | "pollWorkbench"
   | "updateMessageDownloadContent"
   | "dismissScopeTransitionError"
@@ -1798,6 +1801,30 @@ export function createWorkbenchStore() {
             [conversationId]: "idle",
           },
         }));
+      }
+    },
+    async refreshSeatSummaries() {
+      const state = get();
+
+      if (state.bootstrapStatus !== "ready") {
+        return;
+      }
+
+      try {
+        const nextAccounts = await loadSeats();
+
+        set((currentState) => ({
+          accounts: currentState.accounts.map((account) => {
+            if (account.id === currentState.activeAccountId) {
+              return account;
+            }
+
+            const nextAccount = nextAccounts.find((item) => item.id === account.id);
+            return nextAccount ?? account;
+          }),
+        }));
+      } catch {
+        // Keep current seat summaries if the refresh fails.
       }
     },
     async setActiveAccount(accountId) {

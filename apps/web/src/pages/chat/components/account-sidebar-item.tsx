@@ -48,7 +48,7 @@ export function AccountSidebarItem({
   const statusLabel = isOffline ? "离线" : isTakenOverByCurrentUser ? "接管中" : "未接管";
   const canShowTakeoverPopover = !isOffline && !isTakenOverByCurrentUser;
   const canTakeOver = canShowTakeoverPopover && !isTakingOver;
-  const shouldShowUnreadBadge =
+  const shouldShowUnreadDot =
     !isActive && isTakenOverByCurrentUser && !!account.unreadCount;
   const compactStatusLabel =
     isTakingOver
@@ -144,12 +144,12 @@ export function AccountSidebarItem({
           </AvatarFallback>
           {compactStatusBadge}
         </Avatar>
-        {shouldShowUnreadBadge ? (
+        {shouldShowUnreadDot ? (
           <span
-            aria-label={`${account.name} 未读消息 ${account.unreadCount}`}
-            className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground"
+            aria-label={`${account.name} 有未读消息`}
+            className="absolute -right-1 -top-1 size-2 rounded-full border border-background bg-destructive"
+            data-testid={`account-unread-dot-${account.id}`}
           >
-            {account.unreadCount}
           </span>
         ) : null}
       </button>
@@ -271,12 +271,12 @@ export function AccountSidebarItem({
                 {account.name.slice(0, 1)}
               </AvatarFallback>
             </Avatar>
-            {shouldShowUnreadBadge ? (
+            {shouldShowUnreadDot ? (
               <span
-                aria-label={`${account.name} 未读消息 ${account.unreadCount}`}
-                className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground"
+                aria-label={`${account.name} 有未读消息`}
+                className="absolute -right-1 -top-1 size-2 rounded-full border border-background bg-destructive"
+                data-testid={`account-unread-dot-${account.id}`}
               >
-                {account.unreadCount}
               </span>
             ) : null}
           </div>

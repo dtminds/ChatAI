@@ -332,7 +332,7 @@ describe("AccountRail", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows unread badges only for non-active taken-over accounts", () => {
+  it("shows unread dots only for non-active taken-over accounts", () => {
     const takenOverAccounts = [
       accounts[0],
       {
@@ -352,9 +352,9 @@ describe("AccountRail", () => {
 
     expect(screen.queryByLabelText("lsave 未读消息 7")).not.toBeInTheDocument();
 
-    const badge = screen.getByLabelText("support 未读消息 2");
+    const badge = screen.getByLabelText("support 有未读消息");
 
-    expect(badge).toHaveTextContent("2");
+    expect(badge).toHaveAttribute("data-testid", "account-unread-dot-account-2");
     expect(badge.parentElement).toHaveAttribute("data-testid", "account-avatar-wrap-account-2");
   });
 

@@ -1026,9 +1026,15 @@ function ChatWorkbenchContent({
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>{getPollingPausedDialogCopy(pollingPauseReason).title}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pollingPauseReason
+                ? getPollingPausedDialogCopy(pollingPauseReason).title
+                : ""}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {getPollingPausedDialogCopy(pollingPauseReason).description}
+              {pollingPauseReason
+                ? getPollingPausedDialogCopy(pollingPauseReason).description
+                : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

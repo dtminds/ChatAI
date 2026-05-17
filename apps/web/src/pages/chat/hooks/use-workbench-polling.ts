@@ -316,14 +316,6 @@ export function useWorkbenchPolling({
 
       clearScheduledRefresh();
 
-      const baseInterval =
-        document.visibilityState === "hidden"
-          ? Math.max(
-              WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS,
-              WORKBENCH_POLL_HIDDEN_INTERVAL_MS,
-            )
-          : WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS;
-
       timeoutId = window.setTimeout(async () => {
         timeoutId = undefined;
 
@@ -336,7 +328,7 @@ export function useWorkbenchPolling({
         if (!cancelled) {
           scheduleNextSeatSummaryRefresh();
         }
-      }, baseInterval);
+      }, WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS);
     };
 
     const refreshNowAndReschedule = async () => {

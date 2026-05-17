@@ -55,20 +55,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Restore pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pnpm-store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
       - name: Build in Docker
         run: |
-          mkdir -p /var/cache/pnpm-store
+          mkdir -p "${RUNNER_TEMP}/pnpm-store"
           docker run --rm \
             -u "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace" \
-            -v "/var/cache/pnpm-store:/pnpm-store" \
+            -v "${RUNNER_TEMP}/pnpm-store:/pnpm-store" \
             -w /workspace \
             -e CI=true \
             node:24-bookworm-slim sh -lc '
               set -eu
-              corepack enable
-              pnpm install --frozen-lockfile --store-dir /pnpm-store
-              pnpm --filter @chatai/web typecheck
-              pnpm --filter @chatai/web test
-              pnpm --filter @chatai/web build
+              corepack pnpm install --frozen-lockfile --store-dir /pnpm-store
+              corepack pnpm --filter @chatai/web typecheck
+              corepack pnpm --filter @chatai/web test
+              corepack pnpm --filter @chatai/web build
             '

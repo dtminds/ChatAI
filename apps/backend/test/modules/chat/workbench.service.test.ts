@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MysqlWorkbenchService } from "../../../src/modules/chat/workbench.service.js";
 import type { WorkbenchJavaClient } from "../../../src/modules/chat/workbench-java-client.js";
 import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
+import { BadGatewayError } from "../../../src/shared/errors.js";
 
 describe("MysqlWorkbenchService", () => {
   it("rejects invalid conversation list cursors before querying conversations", async () => {
@@ -474,6 +475,89 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("logs upload credential request context without credential secrets", async () => {
+    const javaClient = createJavaClient();
+    const logger = createLoggerMock();
+    vi.mocked(javaClient.getUploadCredential).mockResolvedValue({
+      allowPerfixs: ["chat-images/"],
+      bucket: "examplebucket-1250000000",
+      credentials: {
+        sessionToken: "session-token-secret",
+        tmpSecretId: "tmp-secret-id-secret",
+        tmpSecretKey: "tmp-secret-key-secret",
+        token: "token-secret",
+      },
+      expiration: "2026-05-13T12:00:00Z",
+      expiredTime: 1778673600,
+      region: "ap-guangzhou",
+      requestId: "request-001",
+      startTime: 1778670000,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      logger,
+    );
+
+    await service.getUploadCredential("101", "88");
+
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        bucket: "examplebucket-1250000000",
+        conversationId: "88",
+        javaRequestId: "request-001",
+        operation: "get-upload-credential",
+        region: "ap-guangzhou",
+        seatId: "12",
+        subUserId: "101",
+        uid: 9001,
+      },
+      "工作台上传凭证获取成功",
+    );
+    const loggedPayload = JSON.stringify(logger.info.mock.calls);
+    expect(loggedPayload).not.toContain("session-token-secret");
+    expect(loggedPayload).not.toContain("tmp-secret-key-secret");
+    expect(loggedPayload).not.toContain("token-secret");
+  });
+
+  it("does not leak Java errorMsg when upload credential request fails", async () => {
+    const javaClient = createJavaClient();
+    const logger = createLoggerMock();
+    vi.mocked(javaClient.getUploadCredential).mockRejectedValue(
+      new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败"),
+    );
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      logger,
+    );
+
+    await expect(service.getUploadCredential("101", "88")).rejects.toMatchObject({
+      code: "JAVA_INTERNAL_API_FAILED",
+      statusCode: 502,
+    });
+
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
   it("starts message file transfer with the audit msgid in an accessible conversation", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
@@ -638,6 +722,45 @@ describe("MysqlWorkbenchService", () => {
       limit: 500,
       sinceLastMsgTime: 1_778_840_000_000,
     });
+  });
+
+  it("logs poll cursor invalidation context before rejecting", async () => {
+    const javaClient = createJavaClient();
+    const logger = createLoggerMock();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeat: vi.fn(),
+        listChangedConversations: vi.fn().mockResolvedValue({
+          hasMore: true,
+          items: [],
+          nextVersion: 1_778_840_002_000,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      logger,
+    );
+
+    await expect(
+      service.poll("101", {
+        currentSeatId: "12",
+        sinceVersion: 1_778_840_000_000,
+      }),
+    ).rejects.toMatchObject({
+      code: "WORKBENCH_CURSOR_INVALIDATED",
+      statusCode: 409,
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        currentSeatId: "12",
+        operation: "workbench-poll",
+        sinceLastMsgTime: 1_778_839_999_999,
+        sinceVersion: 1_778_840_000_000,
+        subUserId: "101",
+      },
+      "工作台 poll cursor 失效",
+    );
   });
 
   it("reads message file transfer status after seat access is verified", async () => {
@@ -1134,5 +1257,14 @@ function createJavaClient(): WorkbenchJavaClient {
     sendMessage: vi.fn(),
     takeOverSeat: vi.fn().mockResolvedValue(undefined),
     unpinConversation: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createLoggerMock() {
+  return {
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
   };
 }

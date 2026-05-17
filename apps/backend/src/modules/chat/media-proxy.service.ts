@@ -3,6 +3,7 @@ import {
   BadGatewayError,
   BadRequestError,
 } from "../../shared/errors.js";
+import { noopLogger, type AppLogger } from "../../shared/logger.js";
 
 const ALLOWED_MEDIA_HOST = "b5.bokr.com.cn";
 const DEFAULT_MEDIA_PROXY_TIMEOUT_MS = 8000;
@@ -13,7 +14,10 @@ export type ProxiedMediaAsset = {
   contentType: string;
 };
 
-export async function fetchProxiedMediaAsset(rawUrl: string) {
+export async function fetchProxiedMediaAsset(
+  rawUrl: string,
+  logger: AppLogger = noopLogger,
+) {
   const url = parseAllowedMediaUrl(rawUrl);
   const controller = new AbortController();
   const timeoutId = setTimeout(
@@ -27,6 +31,15 @@ export async function fetchProxiedMediaAsset(rawUrl: string) {
       signal: controller.signal,
     });
   } catch (error) {
+    logger.error(
+      {
+        host: url.hostname,
+        operation: "media-proxy",
+        path: url.pathname,
+        reason: error instanceof Error ? error.name : "unknown",
+      },
+      "媒体资源代理获取失败",
+    );
     throw new BadGatewayError("MEDIA_PROXY_FETCH_FAILED", "媒体资源获取失败", {
       reason: error instanceof Error ? error.name : "unknown",
     });
@@ -35,12 +48,29 @@ export async function fetchProxiedMediaAsset(rawUrl: string) {
   }
 
   if (!response.ok) {
+    logger.error(
+      {
+        host: url.hostname,
+        operation: "media-proxy",
+        path: url.pathname,
+        status: response.status,
+      },
+      "媒体资源代理返回异常状态",
+    );
     throw new BadGatewayError("MEDIA_PROXY_FETCH_FAILED", "媒体资源获取失败", {
       status: response.status,
     });
   }
 
   if (!response.body) {
+    logger.error(
+      {
+        host: url.hostname,
+        operation: "media-proxy",
+        path: url.pathname,
+      },
+      "媒体资源代理响应体为空",
+    );
     throw new BadGatewayError("MEDIA_PROXY_FETCH_FAILED", "媒体资源获取失败");
   }
 

@@ -43,7 +43,7 @@ import {
   type WorkbenchRepository,
 } from "./workbench-repository.js";
 
-const POLL_CONVERSATION_CHANGE_LIMIT = 200;
+const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 
 export type WorkbenchService = {

@@ -603,7 +603,7 @@ describe("MysqlWorkbenchService", () => {
       ],
     });
     expect(listChangedConversations).toHaveBeenCalledWith("12", {
-      limit: expect.any(Number),
+      limit: 500,
       sinceLastMsgTime: 1_778_839_999_999,
     });
     expect(getSeat).toHaveBeenCalledWith("12");
@@ -632,7 +632,7 @@ describe("MysqlWorkbenchService", () => {
     });
 
     expect(listChangedConversations).toHaveBeenCalledWith("12", {
-      limit: expect.any(Number),
+      limit: 500,
       sinceLastMsgTime: 1_778_840_000_000,
     });
   });

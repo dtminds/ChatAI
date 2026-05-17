@@ -6,11 +6,7 @@ import type {
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
-import {
-  BadRequestError,
-  NotFoundError,
-  ServiceUnavailableError,
-} from "../../shared/errors.js";
+import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 
 type TenantScope = {
   platform: number;
@@ -280,11 +276,7 @@ export class ManagedAccountSettingsService {
   }
 }
 
-export function createManagedAccountSettingsService(db: Kysely<Database> | undefined) {
-  if (!db) {
-    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "设置服务暂不可用");
-  }
-
+export function createManagedAccountSettingsService(db: Kysely<Database>) {
   return new ManagedAccountSettingsService(db);
 }
 

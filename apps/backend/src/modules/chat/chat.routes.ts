@@ -6,7 +6,6 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import type { WorkbenchService } from "./workbench.service.js";
 import { fetchProxiedMediaAsset } from "./media-proxy.service.js";
-import { ServiceUnavailableError } from "../../shared/errors.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
@@ -458,12 +457,5 @@ function parseOptionalInteger(value: string | undefined) {
 }
 
 function getWorkbenchService(app: FastifyInstance): WorkbenchService {
-  if (app.workbenchService) {
-    return app.workbenchService;
-  }
-
-  throw new ServiceUnavailableError(
-    "DATABASE_NOT_CONFIGURED",
-    "工作台服务暂不可用",
-  );
+  return app.workbenchService;
 }

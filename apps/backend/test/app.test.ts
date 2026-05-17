@@ -3,7 +3,7 @@ import { solveChallenge, type Challenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/scrypt";
 import argon2 from "argon2";
 import { buildApp } from "../src/app";
-import { createMemoryWorkbenchService } from "../src/modules/chat/workbench-memory.service";
+import { createMemoryWorkbenchService } from "./fixtures/workbench-memory.service";
 import {
   ACCESS_TOKEN_COOKIE_NAME,
   REFRESH_TOKEN_COOKIE_NAME,
@@ -32,6 +32,7 @@ async function createAuthenticatedApp() {
 
 describe("backend app", () => {
   beforeEach(() => {
+    process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
     process.env.NODE_ENV = "development";
   });
 
@@ -54,6 +55,7 @@ describe("backend app", () => {
 
   it("serves health and readiness endpoints", async () => {
     const app = await buildApp();
+    app.db = createReadyDbMock();
 
     const health = await app.inject({ method: "GET", url: "/healthz" });
     const readiness = await app.inject({ method: "GET", url: "/readyz" });
@@ -63,11 +65,10 @@ describe("backend app", () => {
     expect(readiness.statusCode).toBe(200);
     expect(readiness.json()).toEqual({
       database: {
-        configured: false,
-        ok: false,
-        reason: "DATABASE_URL is not configured",
+        configured: true,
+        ok: true,
       },
-      status: "not-ready",
+      status: "ready",
     });
 
     await app.close();
@@ -93,25 +94,10 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("returns service unavailable for workbench routes when the database is missing", async () => {
-    const { app, authorization } = await createAuthenticatedApp();
-    delete app.workbenchService;
+  it("requires DATABASE_URL before backend startup", async () => {
+    delete process.env.DATABASE_URL;
 
-    const response = await app.inject({
-      headers: { authorization },
-      method: "GET",
-      url: "/api/server/seats",
-    });
-
-    expect(response.statusCode).toBe(503);
-    expect(response.json()).toMatchObject({
-      error: {
-        code: "DATABASE_NOT_CONFIGURED",
-      },
-      success: false,
-    });
-
-    await app.close();
+    await expect(buildApp()).rejects.toThrow(/DATABASE_URL must be configured/);
   });
 
   it("serves and verifies ALTCHA challenges once", async () => {
@@ -834,14 +820,16 @@ describe("backend app", () => {
     process.env.NODE_ENV = "production";
     process.env.JWT_PRIVATE_KEY = "test-private-key";
     process.env.JWT_PUBLIC_KEY = "test-public-key";
+    delete process.env.DATABASE_URL;
 
-    await expect(buildApp()).rejects.toThrow(/DATABASE_URL.*production/);
+    await expect(buildApp()).rejects.toThrow(/DATABASE_URL must be configured/);
   });
 
   it("requires DATABASE_URL in test mode", async () => {
     process.env.NODE_ENV = "test";
+    delete process.env.DATABASE_URL;
 
-    await expect(buildApp()).rejects.toThrow(/DATABASE_URL.*test/);
+    await expect(buildApp()).rejects.toThrow(/DATABASE_URL must be configured/);
   });
 
   it("serves workbench bootstrap resources from backend state", async () => {
@@ -1694,6 +1682,28 @@ function createSessionDbMock(session: {
       };
 
       return builder;
+    },
+  } as never;
+}
+
+function createReadyDbMock() {
+  return {
+    selectNoFrom(callback: (expressionBuilder: {
+      val: (value: number) => { as: (alias: string) => { alias: string; value: number } };
+    }) => unknown) {
+      callback({
+        val(value: number) {
+          return {
+            as(alias: string) {
+              return { alias, value };
+            },
+          };
+        },
+      });
+
+      return {
+        executeTakeFirstOrThrow: async () => ({ schema_check: 1 }),
+      };
     },
   } as never;
 }

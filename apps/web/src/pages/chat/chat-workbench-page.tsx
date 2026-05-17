@@ -1,5 +1,6 @@
 import {
   startTransition,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -169,6 +170,10 @@ function ChatWorkbenchContent({
     description: string;
     title: string;
   } | null>(null);
+  const [isPollingPausedByOtherTab, setIsPollingPausedByOtherTab] = useState(false);
+  const handlePollingPausedByOtherTab = useCallback(() => {
+    setIsPollingPausedByOtherTab(true);
+  }, []);
   const [fileUploadTransitionError, setFileUploadTransitionError] =
     useState<string | undefined>();
   const [fileUploadQueue, setFileUploadQueue] = useState<FileUploadQueueItem[]>([]);
@@ -381,8 +386,10 @@ function ChatWorkbenchContent({
   useWorkbenchPolling({
     activeAccountId,
     bootstrapStatus,
+    currentUserId: me?.id,
     intervalMs: pollState.intervalMs,
     jitterMs: pollState.jitterMs,
+    onPollingPausedByOtherTab: handlePollingPausedByOtherTab,
     pollWorkbench,
   });
 
@@ -1010,6 +1017,27 @@ function ChatWorkbenchContent({
           </div>
         </div>
       </div>
+      <AlertDialog
+        open={isPollingPausedByOtherTab}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>实时同步已被其他工作台页面占用</AlertDialogTitle>
+            <AlertDialogDescription>
+              当前页面已暂停消息同步。若要在此页面继续，请刷新页面重新接管。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => {
+                window.location.reload();
+              }}
+            >
+              刷新页面
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={sendFailureDialog !== null}
         onOpenChange={(open) => {

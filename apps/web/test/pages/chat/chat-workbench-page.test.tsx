@@ -2360,4 +2360,30 @@ describe("ChatWorkbenchPage", () => {
     expect(mock.history.post).toHaveLength(1);
     expect(mock.history.post[0]?.url).toBe("/auth/logout");
   });
+
+  it("shows a paused sync dialog when another workbench tab takes polling ownership", async () => {
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    fireEvent(
+      window,
+      new StorageEvent("storage", {
+        key: "chatai.workbench.pollOwner",
+        newValue: JSON.stringify({
+          ownerTabId: "newer-tab",
+          ownerUserId: "sub-user-001",
+          expiresAt: Date.now() + 15000,
+          updatedAt: Date.now(),
+        }),
+      }),
+    );
+
+    expect(
+      await screen.findByRole("alertdialog", {
+        name: "实时同步已被其他工作台页面占用",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新页面" })).toBeInTheDocument();
+  });
 });

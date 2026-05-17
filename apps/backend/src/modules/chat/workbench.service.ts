@@ -27,6 +27,7 @@ import {
   NotFoundError,
   UnauthorizedError,
 } from "../../shared/errors.js";
+import { noopLogger, type AppLogger } from "../../shared/logger.js";
 import type {
   JavaSendMessageData,
   WorkbenchJavaClient,
@@ -118,6 +119,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
   constructor(
     private readonly repository: WorkbenchRepository,
     private readonly javaClient: WorkbenchJavaClient,
+    private readonly logger: AppLogger = noopLogger,
   ) {}
 
   async deleteConversation(subUserId: string, conversationId: string) {
@@ -230,9 +232,37 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    return this.javaClient.getUploadCredential({
-      uid: conversation.uid,
-    });
+    const credential = await this.withFailureLog(
+      () =>
+        this.javaClient.getUploadCredential({
+          uid: conversation.uid,
+        }),
+      {
+        conversationId: conversation.id,
+        operation: "get-upload-credential",
+        platform: conversation.platform,
+        seatId: conversation.seatId,
+        subUserId,
+        uid: conversation.uid,
+      },
+      "工作台上传凭证获取失败",
+    );
+
+    this.logger.info(
+      {
+        bucket: credential.bucket,
+        conversationId: conversation.id,
+        javaRequestId: credential.requestId,
+        operation: "get-upload-credential",
+        region: credential.region,
+        seatId: conversation.seatId,
+        subUserId,
+        uid: conversation.uid,
+      },
+      "工作台上传凭证获取成功",
+    );
+
+    return credential;
   }
 
   async downloadMessageFile(
@@ -247,11 +277,37 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
     }
 
-    await this.javaClient.downloadMsgFile({
-      msgid: normalizedMessageId,
-      platform: conversation.platform,
-      uid: conversation.uid,
-    });
+    await this.withFailureLog(
+      () =>
+        this.javaClient.downloadMsgFile({
+          msgid: normalizedMessageId,
+          platform: conversation.platform,
+          uid: conversation.uid,
+        }),
+      {
+        conversationId: conversation.id,
+        messageId: normalizedMessageId,
+        operation: "download-message-file",
+        platform: conversation.platform,
+        seatId: conversation.seatId,
+        subUserId,
+        uid: conversation.uid,
+      },
+      "工作台消息文件下载触发失败",
+    );
+
+    this.logger.info(
+      {
+        conversationId: conversation.id,
+        messageId: normalizedMessageId,
+        operation: "download-message-file",
+        platform: conversation.platform,
+        seatId: conversation.seatId,
+        subUserId,
+        uid: conversation.uid,
+      },
+      "工作台消息文件下载已触发",
+    );
 
     return {
       messageId: normalizedMessageId,
@@ -276,11 +332,28 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
     }
 
-    return this.repository.getMessageFileDownloadStatus({
+    const status = await this.repository.getMessageFileDownloadStatus({
       auditId: messageSeq,
       platform: conversation.platform,
       uid: conversation.uid,
     });
+
+    this.logger.info(
+      {
+        conversationId: conversation.id,
+        downloadStatus: status?.downloadStatus,
+        hasFileUrl: Boolean(status?.fileUrl),
+        messageSeq,
+        operation: "get-message-file-download-status",
+        platform: conversation.platform,
+        seatId: conversation.seatId,
+        subUserId,
+        uid: conversation.uid,
+      },
+      "工作台消息文件下载状态已查询",
+    );
+
+    return status;
   }
 
   async markConversationRead(subUserId: string, conversationId: string) {
@@ -386,6 +459,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
         };
 
     if (changedConversations.hasMore) {
+      this.logger.warn(
+        {
+          activeConversationId: request.activeConversationId,
+          currentSeatId: request.currentSeatId,
+          operation: "workbench-poll",
+          sinceLastMsgTime,
+          sinceVersion: request.sinceVersion,
+          subUserId,
+        },
+        "工作台 poll cursor 失效",
+      );
       throw new AppError(
         "WORKBENCH_CURSOR_INVALIDATED",
         "会话变更过多，请重新加载会话列表",
@@ -430,18 +514,50 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: conversation.uid,
     });
 
-    return this.javaClient.sendMessage({
-      clientMessageId: payload.clientMessageId,
-      message: buildJavaSendMessageData(payload, segment, quoteContentBase64),
-      platform: conversation.platform,
-      sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
-      ...(conversation.thirdExternalUserId
-        ? { thirdExternalUserid: conversation.thirdExternalUserId }
-        : {}),
-      ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
-      thirdUserId: conversation.thirdUserId,
-      uid: conversation.uid,
-    });
+    const response = await this.withFailureLog(
+      () =>
+        this.javaClient.sendMessage({
+          clientMessageId: payload.clientMessageId,
+          message: buildJavaSendMessageData(payload, segment, quoteContentBase64),
+          platform: conversation.platform,
+          sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
+          ...(conversation.thirdExternalUserId
+            ? { thirdExternalUserid: conversation.thirdExternalUserId }
+            : {}),
+          ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
+          thirdUserId: conversation.thirdUserId,
+          uid: conversation.uid,
+        }),
+      {
+        clientMessageId: payload.clientMessageId,
+        conversationId: conversation.id,
+        operation: "send-message",
+        platform: conversation.platform,
+        seatId: conversation.seatId,
+        subUserId,
+        uid: conversation.uid,
+      },
+      "工作台消息发送失败",
+    );
+
+    this.logger.info(
+      {
+        clientMessageId: payload.clientMessageId,
+        conversationId: conversation.id,
+        messageId: response.messageId,
+        messageType: segment.type,
+        operation: "send-message",
+        platform: conversation.platform,
+        seatId: conversation.seatId,
+        sendType: conversation.thirdGroupId ? "group" : "single",
+        status: response.status,
+        subUserId,
+        uid: conversation.uid,
+      },
+      "工作台消息发送已受理",
+    );
+
+    return response;
   }
 
   private async getQuoteContentBase64(
@@ -464,6 +580,25 @@ export class MysqlWorkbenchService implements WorkbenchService {
       platform: scope.platform,
       uid: scope.uid,
     });
+  }
+
+  private async withFailureLog<T>(
+    action: () => Promise<T>,
+    context: Record<string, unknown>,
+    message: string,
+  ) {
+    try {
+      return await action();
+    } catch (error) {
+      this.logger.error(
+        {
+          ...context,
+          ...readErrorLogContext(error),
+        },
+        message,
+      );
+      throw error;
+    }
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {
@@ -564,6 +699,19 @@ function getSingleSendSegment(
   return {
     text: payload.content ?? "",
     type: "text",
+  };
+}
+
+function readErrorLogContext(error: unknown) {
+  if (error instanceof AppError) {
+    return {
+      errorCode: error.code,
+      statusCode: error.statusCode,
+    };
+  }
+
+  return {
+    errorName: error instanceof Error ? error.name : "unknown",
   };
 }
 

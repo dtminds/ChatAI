@@ -8,6 +8,35 @@ describe("createWorkbenchJavaClient", () => {
     delete process.env.JAVA_INTERNAL_API_TOKEN;
   });
 
+  it("logs structured context when download message file request fails", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const logger = createLoggerMock();
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
+
+    await expect(
+      createWorkbenchJavaClient(logger).downloadMsgFile({
+        msgid: "msg-001",
+        platform: 5,
+        uid: 9001,
+      }),
+    ).rejects.toMatchObject({
+      code: "JAVA_INTERNAL_API_FAILED",
+      statusCode: 502,
+    });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msgid: "msg-001",
+        operation: "download-message-file",
+        path: "/third-internal/wap-embed/conversation/download-msg-file",
+        platform: 5,
+        reason: "TypeError",
+        uid: 9001,
+      }),
+      "Java 内部工作台接口调用失败",
+    );
+  });
+
   it("passes an abort signal to Java internal API requests", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";
@@ -391,3 +420,12 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 });
+
+function createLoggerMock() {
+  return {
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  };
+}

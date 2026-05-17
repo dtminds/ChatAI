@@ -23,6 +23,7 @@ async function createAuthenticatedApp() {
     sub_user_id: "101",
   });
   app.workbenchService = createMemoryWorkbenchService();
+  app.createWorkbenchService = () => app.workbenchService;
 
   return {
     app,

@@ -194,6 +194,34 @@ openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
 - 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。
 - `REDIS_ENABLED=false` 是当前阶段可接受配置，Redis 不是必需依赖。
 
+## Backend 日志和 CLS 接入
+
+Backend 使用 Fastify / pino 结构化日志，容器内日志统一输出到 stdout。应用代码不直接接入腾讯云 CLS SDK，也不在业务链路里维护 CLS Secret，避免日志上报故障影响工作台接口。
+
+推荐接入方式：
+
+```text
+chatai-backend stdout(JSON)
+  -> TKE tke-log-agent
+  -> CLS 日志主题
+```
+
+TKE / CLS 侧配置建议：
+
+- 为测试和生产 namespace 分别创建 CLS 日志集和日志主题，例如 `chatai-test/backend`、`chatai-prod/backend`。
+- 采集源选择容器标准输出，解析模式选择 JSON。
+- 采集范围限定 `chatai-backend` 工作负载或对应 Pod label，避免 web / nginx 日志混入 backend 业务日志主题。
+- 保留 TKE 自动附带的 `namespace`、`pod_name`、`container_name`、`pod_label_*` 等元数据。
+- 为常用排障字段开启索引：`reqId`、`operation`、`subUserId`、`seatId`、`conversationId`、`messageId`、`clientMessageId`、`uid`、`platform`、`path`、`status`、`error`、`errorMsg`。
+
+应用侧日志字段约定：
+
+- 所有业务日志必须是结构化对象，不拼接自由文本承载排障字段。
+- Java 内部接口失败记录 `operation`、`path`、`uid`、`platform`、业务 id、Java 错误码或 HTTP 状态。
+- 上传凭证成功只记录 `bucket`、`region`、`requestId` 等非敏感字段；不得记录 `tmpSecretKey`、`sessionToken`、`token`。
+- 媒体代理只记录 `host` 和 `path`，不得记录完整带签名或查询参数的 URL。
+- poll cursor 失效记录 `sinceVersion`、`sinceLastMsgTime`、`currentSeatId`、`activeConversationId`，用于判断是否需要前端重新加载基线。
+
 ## Ingress 路由
 
 推荐路径规则：

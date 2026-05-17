@@ -6,6 +6,7 @@ import {
   BadGatewayError,
   ServiceUnavailableError,
 } from "../../shared/errors.js";
+import { noopLogger, type AppLogger } from "../../shared/logger.js";
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 
@@ -107,7 +108,7 @@ export type WorkbenchJavaClient = {
   }): Promise<void>;
 };
 
-export function createWorkbenchJavaClient(): WorkbenchJavaClient {
+export function createWorkbenchJavaClient(logger: AppLogger = noopLogger): WorkbenchJavaClient {
   const baseUrl = process.env.JAVA_INTERNAL_API_BASE_URL?.replace(/\/+$/, "");
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
@@ -118,6 +119,8 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         token,
         "/third-internal/wap-embed/conversation/delete",
         input,
+        logger,
+        "delete-conversation",
       );
     },
     downloadMsgFile(input) {
@@ -126,6 +129,8 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         token,
         "/third-internal/wap-embed/conversation/download-msg-file",
         input,
+        logger,
+        "download-message-file",
       ).then(() => undefined);
     },
     getUploadCredential(input) {
@@ -134,6 +139,8 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         token,
         "/third-internal/file/get-upload-credential",
         input,
+        logger,
+        "get-upload-credential",
       );
     },
     markConversationRead(input) {
@@ -142,6 +149,8 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         token,
         "/third-internal/wap-embed/conversation/mark-read",
         input,
+        logger,
+        "mark-conversation-read",
       );
     },
     markConversationUnread(input) {
@@ -150,6 +159,8 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         token,
         "/third-internal/wap-embed/conversation/mark-unread",
         input,
+        logger,
+        "mark-conversation-unread",
       );
     },
     pinConversation(input) {
@@ -158,6 +169,8 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         token,
         "/third-internal/wap-embed/conversation/pin",
         input,
+        logger,
+        "pin-conversation",
       );
     },
     async sendMessage(input) {
@@ -166,6 +179,8 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         token,
         "/third-internal/wap-embed/conversation/send-message",
         buildJavaSendMessageBody(input),
+        logger,
+        "send-message",
       );
       const optNo = response.optNo ?? input.clientMessageId;
 
@@ -182,6 +197,8 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         token,
         "/third-internal/wap-embed/user-seat/host",
         input,
+        logger,
+        "take-over-seat",
       ).then(() => undefined);
     },
     unpinConversation(input) {
@@ -190,6 +207,8 @@ export function createWorkbenchJavaClient(): WorkbenchJavaClient {
         token,
         "/third-internal/wap-embed/conversation/unpin",
         input,
+        logger,
+        "unpin-conversation",
       );
     },
   };
@@ -204,12 +223,14 @@ async function postConversationOperate(
     platform: number;
     uid: number;
   },
+  logger: AppLogger,
+  operation: string,
 ) {
   await postJavaEnvelope<boolean>(baseUrl, token, path, {
     conversationId: Number(input.conversationId),
     platform: input.platform,
     uid: input.uid,
-  });
+  }, logger, operation);
 }
 
 function buildJavaSendMessageBody(input: JavaSendMessageInput) {
@@ -231,8 +252,17 @@ async function postJava<T>(
   token: string | undefined,
   path: string,
   body: unknown,
+  logger: AppLogger,
+  operation: string,
 ): Promise<T> {
   if (!baseUrl) {
+    logger.error(
+      {
+        operation,
+        path,
+      },
+      "Java 内部工作台接口未配置",
+    );
     throw new ServiceUnavailableError(
       "JAVA_INTERNAL_API_NOT_CONFIGURED",
       "Java 内部工作台接口尚未配置",
@@ -255,6 +285,15 @@ async function postJava<T>(
       signal: controller.signal,
     });
   } catch (error) {
+    logger.error(
+      {
+        ...buildJavaLogContext(body),
+        operation,
+        path,
+        reason: error instanceof Error ? error.name : "unknown",
+      },
+      "Java 内部工作台接口调用失败",
+    );
     throw new BadGatewayError(
       "JAVA_INTERNAL_API_FAILED",
       "Java 内部工作台接口调用失败",
@@ -268,6 +307,15 @@ async function postJava<T>(
   }
 
   if (!response.ok) {
+    logger.error(
+      {
+        ...buildJavaLogContext(body),
+        operation,
+        path,
+        status: response.status,
+      },
+      "Java 内部工作台接口返回异常状态",
+    );
     throw new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败", {
       path,
       status: response.status,
@@ -282,10 +330,29 @@ async function postJavaEnvelope<T>(
   token: string | undefined,
   path: string,
   body: unknown,
+  logger: AppLogger,
+  operation: string,
 ): Promise<T> {
-  const response = await postJava<JavaApiResponse<T>>(baseUrl, token, path, body);
+  const response = await postJava<JavaApiResponse<T>>(
+    baseUrl,
+    token,
+    path,
+    body,
+    logger,
+    operation,
+  );
 
   if (!response.success) {
+    logger.error(
+      {
+        ...buildJavaLogContext(body),
+        error: response.error,
+        errorMsg: response.errorMsg,
+        operation,
+        path,
+      },
+      "Java 内部工作台接口业务失败",
+    );
     throw new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败", {
       error: response.error,
       errorMsg: response.errorMsg,
@@ -294,6 +361,44 @@ async function postJavaEnvelope<T>(
   }
 
   return response.data as T;
+}
+
+function buildJavaLogContext(body: unknown) {
+  if (!isRecord(body)) {
+    return {};
+  }
+
+  const context: Record<string, unknown> = {};
+
+  for (const key of [
+    "conversationId",
+    "msgid",
+    "platform",
+    "sendType",
+    "subId",
+    "thirdExternalUserid",
+    "thirdGroupId",
+    "thirdUserId",
+    "uid",
+  ]) {
+    if (body[key] != null) {
+      context[key] = body[key];
+    }
+  }
+
+  const msgDatas = body.msgDatas;
+  if (Array.isArray(msgDatas)) {
+    context.messageCount = msgDatas.length;
+    context.messageTypes = msgDatas
+      .map((item) => (isRecord(item) ? item.msgType : undefined))
+      .filter((value) => value != null);
+  }
+
+  return context;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
 function readJavaApiTimeoutMs() {

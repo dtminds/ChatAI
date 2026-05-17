@@ -2,20 +2,20 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a new frontend CI workflow that runs the web checks inside a Linux container on the mac-mini self-hosted runner while preserving cacheable pnpm installs and the existing change-detection behavior. Keep the current `frontend-ci.yml` untouched for easy rollback.
+**Goal:** Add a new frontend CI workflow that runs the web checks directly on the mac-mini self-hosted runner while preserving cacheable pnpm installs and the existing change-detection behavior. Keep the current `frontend-ci.yml` untouched for easy rollback.
 
-**Architecture:** Keep GitHub Actions as the orchestrator, but move the actual frontend verification into a containerized job step so the runtime matches a Linux CI image instead of macOS host tooling. Use a dedicated pnpm store mount on the runner host to reuse dependencies across runs without polluting the workspace or relying on `$HOME`. Keep the existing path filter job intact so the workflow only runs on frontend-relevant changes unless manually dispatched.
+**Architecture:** Keep GitHub Actions as the orchestrator, but let the frontend job run natively on the self-hosted mac-mini runner. Use the runner's normal Node 24 + pnpm toolchain and rely on GitHub Actions' pnpm cache so installs stay fast without extra container layers. Keep the existing path filter job intact so the workflow only runs on frontend-relevant changes unless manually dispatched.
 
-**Tech Stack:** GitHub Actions, self-hosted macOS runner, Docker, `node:24-bookworm-slim`, Corepack, pnpm 10, Vite, Vitest, TypeScript.
+**Tech Stack:** GitHub Actions, self-hosted macOS runner, Node 24, Corepack, pnpm 10, Vite, Vitest, TypeScript.
 
 ---
 
-### Task 1: Add a new containerized frontend CI workflow
+### Task 1: Add a new native frontend CI workflow
 
 **Files:**
 - Create: `.github/workflows/frontend-ci-self-hosted.yml`
 
-- [ ] **Step 1: Replace the hosted runner execution path with a containerized frontend job**
+- [ ] **Step 1: Replace the hosted runner execution path with a native self-hosted frontend job**
 
 ```yaml
 name: Frontend CI (Self-hosted)
@@ -75,32 +75,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build in Docker
-        run: |
-          mkdir -p /var/cache/pnpm-store
-          docker run --rm \
-            -u "$(id -u):$(id -g)" \
-            -v "${{ github.workspace }}:/workspace" \
-            -v "/var/cache/pnpm-store:/pnpm-store" \
-            -w /workspace \
-            -e CI=true \
-            node:24-bookworm-slim sh -lc '
-              set -eu
-              corepack enable
-              pnpm install --frozen-lockfile --store-dir /pnpm-store
-              pnpm --filter @chatai/web typecheck
-              pnpm --filter @chatai/web test
-              pnpm --filter @chatai/web build
-            '
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Enable pnpm
+        run: corepack enable pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck frontend
+        run: pnpm --filter @chatai/web typecheck
+
+      - name: Test frontend
+        run: pnpm --filter @chatai/web test
+
+      - name: Build frontend
+        run: pnpm --filter @chatai/web build
 ```
 
 - [ ] **Step 2: Confirm the workflow still keeps the change filter and trigger semantics unchanged**
 
 Check that `changes` still runs on `ubuntu-latest`, the frontend job still skips when unrelated files change, and manual dispatch still bypasses the filter.
 
-- [ ] **Step 3: Verify the new job uses a Linux container image and a dedicated cache path**
+- [ ] **Step 3: Verify the new job uses the self-hosted Node toolchain and pnpm cache**
 
-Confirm the Docker image is `node:24-bookworm-slim`, the pnpm store is mounted at `/var/cache/pnpm-store`, and the job no longer depends on host-node or host-pnpm setup.
+Confirm the job uses `actions/setup-node@v4`, enables pnpm through Corepack, and relies on the hosted pnpm cache path rather than an extra container layer.
 
 ### Task 2: Validate the new workflow syntax and cache behavior
 
@@ -112,10 +115,10 @@ Confirm the Docker image is `node:24-bookworm-slim`, the pnpm store is mounted a
 Run: `git diff --check -- .github/workflows/frontend-ci-self-hosted.yml`
 Expected: no output
 
-- [ ] **Step 2: Inspect the final workflow for shell quoting and volume mount correctness**
+- [ ] **Step 2: Inspect the final workflow for Node and pnpm setup correctness**
 
 Run: `sed -n '1,240p' .github/workflows/frontend-ci-self-hosted.yml`
-Expected: the Docker command is syntactically valid, the host cache path is writable by the runner user, and the mounted workspace path matches `github.workspace`.
+Expected: the Node version is pinned to 24, pnpm is enabled through Corepack, and the job runs its checks directly on the self-hosted runner.
 
 - [ ] **Step 3: Commit the workflow change**
 

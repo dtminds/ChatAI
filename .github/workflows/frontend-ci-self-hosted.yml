@@ -55,18 +55,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build in Docker
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            -v "/var/cache/pnpm-store:/pnpm-store" \
-            -w /workspace \
-            -e CI=true \
-            node:24-bookworm-slim sh -c '
-              set -eu
-              npm install -g pnpm --quiet
-              pnpm install --frozen-lockfile --store-dir /pnpm-store
-              pnpm --filter @chatai/web typecheck
-              pnpm --filter @chatai/web test
-              pnpm --filter @chatai/web build
-            '
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Enable pnpm
+        run: corepack enable pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck frontend
+        run: pnpm --filter @chatai/web typecheck
+
+      - name: Test frontend
+        run: pnpm --filter @chatai/web test
+
+      - name: Build frontend
+        run: pnpm --filter @chatai/web build

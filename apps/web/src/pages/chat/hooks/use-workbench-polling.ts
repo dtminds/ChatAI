@@ -1,18 +1,9 @@
 import { useEffect, useEffectEvent, useRef } from "react";
 
-export const WORKBENCH_POLL_OWNER_STORAGE_KEY = "chatai.workbench.pollOwner";
+import { useWorkbenchPollingLease } from "@/pages/chat/hooks/use-workbench-polling-lease";
+
 export const WORKBENCH_POLL_HIDDEN_INTERVAL_MS = 5000;
 export const WORKBENCH_POLL_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
-
-const POLL_OWNER_LEASE_MS = 15000;
-const POLL_OWNER_RENEW_INTERVAL_MS = 5000;
-
-type PollOwnerLease = {
-  ownerTabId: string;
-  ownerUserId: string;
-  expiresAt: number;
-  updatedAt: number;
-};
 
 export type PollingPauseReason = "idle" | "other-tab";
 
@@ -42,7 +33,25 @@ export function useWorkbenchPolling({
       ? Date.now()
       : undefined,
   );
-  const tabIdRef = useRef(createPollOwnerTabId());
+  const notifyPollingPaused = useEffectEvent((reason: PollingPauseReason) => {
+    onPollingPaused?.(reason);
+  });
+  const handleLostLease = useEffectEvent(() => {
+    if (pauseReasonRef.current != null) {
+      return;
+    }
+
+    pauseReasonRef.current = "other-tab";
+    notifyPollingPaused("other-tab");
+  });
+  const pollingLease = useWorkbenchPollingLease({
+    currentUserId,
+    enabled:
+      bootstrapStatus === "ready" &&
+      Boolean(activeAccountId) &&
+      Boolean(currentUserId),
+    onLostLease: handleLostLease,
+  });
 
   const runPollCycle = useEffectEvent(async () => {
     if (isPollingRef.current) {
@@ -63,13 +72,18 @@ export function useWorkbenchPolling({
       bootstrapStatus !== "ready" ||
       !activeAccountId ||
       !currentUserId ||
+      pollingLease.isPausedByOtherTab ||
       pauseReasonRef.current != null
     ) {
+      if (pollingLease.isPausedByOtherTab && pauseReasonRef.current == null) {
+        pauseReasonRef.current = "other-tab";
+        notifyPollingPaused("other-tab");
+      }
+
       return;
     }
 
     let timeoutId: number | undefined;
-    let renewIntervalId: number | undefined;
     let idleTimeoutId: number | undefined;
     let cancelled = false;
 
@@ -80,15 +94,6 @@ export function useWorkbenchPolling({
 
       window.clearTimeout(timeoutId);
       timeoutId = undefined;
-    };
-
-    const clearLeaseRenewal = () => {
-      if (renewIntervalId == null) {
-        return;
-      }
-
-      window.clearInterval(renewIntervalId);
-      renewIntervalId = undefined;
     };
 
     const clearIdleTimer = () => {
@@ -107,9 +112,8 @@ export function useWorkbenchPolling({
 
       pauseReasonRef.current = reason;
       clearScheduledPoll();
-      clearLeaseRenewal();
       clearIdleTimer();
-      onPollingPaused?.(reason);
+      notifyPollingPaused(reason);
     };
 
     const getHiddenElapsedMs = () => {
@@ -135,39 +139,12 @@ export function useWorkbenchPolling({
     };
 
     const pauseIfAnotherTabOwnsLease = () => {
-      const currentLease = readPollOwnerLease();
-
-      if (
-        currentLease &&
-        currentLease.ownerUserId === currentUserId &&
-        currentLease.ownerTabId !== tabIdRef.current &&
-        currentLease.expiresAt > Date.now()
-      ) {
+      if (pollingLease.isOwnedByAnotherTab()) {
         pauseForReason("other-tab");
         return true;
       }
 
       return false;
-    };
-
-    const claimLease = () => {
-      if (cancelled || pauseReasonRef.current != null) {
-        return;
-      }
-
-      writePollOwnerLease(tabIdRef.current, currentUserId);
-    };
-
-    const renewLease = () => {
-      if (cancelled || pauseReasonRef.current != null) {
-        return;
-      }
-
-      if (pauseIfAnotherTabOwnsLease()) {
-        return;
-      }
-
-      writePollOwnerLease(tabIdRef.current, currentUserId);
     };
 
     const scheduleIdleTimer = () => {
@@ -257,32 +234,9 @@ export function useWorkbenchPolling({
       scheduleNextPoll();
     };
 
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key !== WORKBENCH_POLL_OWNER_STORAGE_KEY) {
-        return;
-      }
-
-      const lease = parsePollOwnerLease(event.newValue);
-
-      if (
-        lease &&
-        lease.ownerUserId === currentUserId &&
-        lease.ownerTabId !== tabIdRef.current &&
-        lease.expiresAt > Date.now()
-      ) {
-        pauseForReason("other-tab");
-      }
-    };
-
-    claimLease();
-    renewIntervalId = window.setInterval(
-      renewLease,
-      POLL_OWNER_RENEW_INTERVAL_MS,
-    );
     scheduleIdleTimer();
     scheduleNextPoll();
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("storage", handleStorage);
     window.addEventListener("focus", handleUserActivity);
     window.addEventListener("mousemove", handleUserActivity);
     window.addEventListener("keydown", handleUserActivity);
@@ -293,10 +247,8 @@ export function useWorkbenchPolling({
     return () => {
       cancelled = true;
       clearScheduledPoll();
-      clearLeaseRenewal();
       clearIdleTimer();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("storage", handleStorage);
       window.removeEventListener("focus", handleUserActivity);
       window.removeEventListener("mousemove", handleUserActivity);
       window.removeEventListener("keydown", handleUserActivity);
@@ -310,63 +262,9 @@ export function useWorkbenchPolling({
     currentUserId,
     intervalMs,
     jitterMs,
-    onPollingPaused,
+    notifyPollingPaused,
+    pollingLease.isOwnedByAnotherTab,
+    pollingLease.isPausedByOtherTab,
     runPollCycle,
   ]);
-}
-
-function createPollOwnerTabId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
-function writePollOwnerLease(ownerTabId: string, ownerUserId: string) {
-  const now = Date.now();
-  const lease: PollOwnerLease = {
-    ownerTabId,
-    ownerUserId,
-    expiresAt: now + POLL_OWNER_LEASE_MS,
-    updatedAt: now,
-  };
-
-  try {
-    window.localStorage.setItem(
-      WORKBENCH_POLL_OWNER_STORAGE_KEY,
-      JSON.stringify(lease),
-    );
-  } catch {
-    // Polling should keep working if browser storage is unavailable.
-  }
-}
-
-function readPollOwnerLease() {
-  try {
-    return parsePollOwnerLease(
-      window.localStorage.getItem(WORKBENCH_POLL_OWNER_STORAGE_KEY),
-    );
-  } catch {
-    return undefined;
-  }
-}
-
-function parsePollOwnerLease(value: string | null) {
-  if (!value) {
-    return undefined;
-  }
-
-  try {
-    const parsed = JSON.parse(value) as Partial<PollOwnerLease>;
-
-    if (
-      typeof parsed.ownerTabId !== "string" ||
-      typeof parsed.ownerUserId !== "string" ||
-      typeof parsed.expiresAt !== "number" ||
-      typeof parsed.updatedAt !== "number"
-    ) {
-      return undefined;
-    }
-
-    return parsed as PollOwnerLease;
-  } catch {
-    return undefined;
-  }
 }

@@ -133,10 +133,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
       platform: conversation.platform,
       uid: conversation.uid,
     });
+    // Avoid an aggregate query on delete. The response may be briefly stale if
+    // concurrent messages arrive, and the next poll will reconcile that value.
+    const seatUnreadCount = Math.max(
+      0,
+      conversation.seatUnreadCount - conversation.unreadCount,
+    );
 
     return {
       conversationId: conversation.id,
       seatId: conversation.seatId,
+      seatUnreadCount,
     };
   }
 

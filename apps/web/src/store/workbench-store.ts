@@ -938,8 +938,9 @@ export function createWorkbenchStore() {
           return;
         }
 
+        let deleteResult: Awaited<ReturnType<typeof deleteConversationRequest>>;
         try {
-          await deleteConversationRequest(conversationId);
+          deleteResult = await deleteConversationRequest(conversationId);
         } catch (error) {
           set({
             readReceiptError:
@@ -979,10 +980,7 @@ export function createWorkbenchStore() {
             item.id === account.id
               ? {
                   ...item,
-                  unreadCount: Math.max(
-                    0,
-                    (item.unreadCount ?? 0) - conversation.unread,
-                  ),
+                  unreadCount: deleteResult.seatUnreadCount,
                 }
               : item,
           ),

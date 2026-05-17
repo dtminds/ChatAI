@@ -5,10 +5,7 @@ import {
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
-import {
-  seedConversations,
-  seedMessages,
-} from "@/pages/chat/mock-data";
+import { seedMessages } from "@/pages/chat/mock-data";
 import {
   createWorkbenchStore,
   MAX_CONVERSATION_LIST_CACHE_SEATS,
@@ -33,32 +30,6 @@ function createDeferred<T = void>() {
     reject,
     resolve,
   };
-}
-
-function getSeedUnreadAfterRead(accountId: string, readConversationId: string) {
-  return (seedConversations[accountId] ?? []).reduce(
-    (total, conversation) =>
-      total + (conversation.id === readConversationId ? 0 : conversation.unread),
-    0,
-  );
-}
-
-function getSeedUnreadAfterReadAndUnread(
-  accountId: string,
-  readConversationId: string,
-  unreadConversationId: string,
-) {
-  return (seedConversations[accountId] ?? []).reduce((total, conversation) => {
-    if (conversation.id === readConversationId) {
-      return total;
-    }
-
-    if (conversation.id === unreadConversationId) {
-      return total + 1;
-    }
-
-    return total + conversation.unread;
-  }, 0);
 }
 
 function getSeedMessageIdAt(conversationId: string, index: number) {
@@ -107,9 +78,7 @@ describe("useWorkbenchStore", () => {
       id: "conv-001",
       unread: 0,
     });
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      getSeedUnreadAfterRead("drc", "conv-001"),
-    );
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(11);
   });
 
   it("requests 50 messages for initial and switched conversation pages", async () => {
@@ -1561,9 +1530,7 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
       unread: 1,
     });
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      getSeedUnreadAfterReadAndUnread("drc", "conv-001", "conv-002"),
-    );
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(12);
   });
 
   it("skips mark-unread when the active account is not taken over by the current user", async () => {
@@ -1719,13 +1686,19 @@ describe("useWorkbenchStore", () => {
     const baseService = createMockWorkbenchService();
     const observedDeletedConversationIds: string[] = [];
     const observedConversationScopes: string[] = [];
+    const authoritativeSeatUnreadCount = 42;
 
     setWorkbenchService({
       ...baseService,
       async deleteConversation(conversationId) {
         observedDeletedConversationIds.push(conversationId);
 
-        return baseService.deleteConversation(conversationId);
+        const result = await baseService.deleteConversation(conversationId);
+
+        return {
+          ...result,
+          seatUnreadCount: authoritativeSeatUnreadCount,
+        };
       },
       async getConversations(accountId, options) {
         observedConversationScopes.push(accountId);
@@ -1744,7 +1717,7 @@ describe("useWorkbenchStore", () => {
     expect(observedConversationScopes).toEqual([]);
     expect(state.conversationListsByScope.drc.map((conversation) => conversation.id)).not.toContain("conv-003");
     expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      getSeedUnreadAfterRead("drc", "conv-001") - 4,
+      authoritativeSeatUnreadCount,
     );
   });
 

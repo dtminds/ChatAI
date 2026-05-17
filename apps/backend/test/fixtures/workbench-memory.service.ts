@@ -203,13 +203,18 @@ export function createMemoryWorkbenchService() {
       };
 
       upsertConversation(state, nextConversation);
-      syncSeatUnread(state, nextConversation.seatId);
+      setSeatUnreadCount(
+        state,
+        nextConversation.seatId,
+        Math.max(0, getSeatUnreadCountValue(state, nextConversation.seatId) - conversation.unreadCount),
+      );
+      syncSeatLastMessageTime(state, nextConversation.seatId);
       pushConversationEvent(state, nextConversation);
       pushSeatEvent(state, nextConversation.seatId);
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: findSeat(state, nextConversation.seatId)?.unreadCount ?? 0,
+        seatUnreadCount: getSeatUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 0,
       };
@@ -230,13 +235,18 @@ export function createMemoryWorkbenchService() {
       };
 
       upsertConversation(state, nextConversation);
-      syncSeatUnread(state, nextConversation.seatId);
+      setSeatUnreadCount(
+        state,
+        nextConversation.seatId,
+        Math.max(0, getSeatUnreadCountValue(state, nextConversation.seatId) + 1 - conversation.unreadCount),
+      );
+      syncSeatLastMessageTime(state, nextConversation.seatId);
       pushConversationEvent(state, nextConversation);
       pushSeatEvent(state, nextConversation.seatId);
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: findSeat(state, nextConversation.seatId)?.unreadCount ?? 0,
+        seatUnreadCount: getSeatUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 1,
       };
@@ -338,7 +348,7 @@ export function createMemoryWorkbenchService() {
       };
 
       upsertConversation(state, nextConversation);
-      syncSeatUnread(state, payload.seatId);
+      syncSeatLastMessageTime(state, payload.seatId);
       pushConversationEvent(state, nextConversation);
       pushSeatEvent(state, payload.seatId);
       backendMessages.forEach((message) => {
@@ -406,8 +416,8 @@ function buildInitialState(): MemoryWorkbenchState {
     ]),
   } satisfies Record<string, WorkbenchConversationSummaryDto[]>;
   const seats = [
-    seat("drc", "德瑞可", seatAvatarDrcUrl, "小可", "私域客户管理", "13296712905", "online", conversationsBySeat.drc, CURRENT_SUB_USER_ID),
-    seat("ndt", "念都堂", seatAvatarNdtUrl, "尚青", "门店社群维护", "18104084782", "online", conversationsBySeat.ndt),
+    seat("drc", "德瑞可", seatAvatarDrcUrl, "小可", "私域客户管理", "13296712905", "online", conversationsBySeat.drc, 13, CURRENT_SUB_USER_ID),
+    seat("ndt", "念都堂", seatAvatarNdtUrl, "尚青", "门店社群维护", "18104084782", "online", conversationsBySeat.ndt, 1),
   ];
 
   return {
@@ -506,6 +516,7 @@ function seat(
   phone: string,
   loginStatus: WorkbenchSeatDto["loginStatus"],
   conversations: WorkbenchConversationSummaryDto[],
+  unreadCount: number,
   hostSubUserId?: string,
 ): WorkbenchSeatDto {
   return {
@@ -518,7 +529,7 @@ function seat(
     operatorName,
     phone,
     hostSubUserId,
-    unreadCount: getSeatUnreadCount(conversations),
+    unreadCount,
   };
 }
 
@@ -651,17 +662,41 @@ function removeConversation(
   state.conversationsBySeat[conversation.seatId] = (
     state.conversationsBySeat[conversation.seatId] ?? []
   ).filter((item) => item.conversationId !== conversationId);
-  syncSeatUnread(state, conversation.seatId);
+  setSeatUnreadCount(
+    state,
+    conversation.seatId,
+    Math.max(0, getSeatUnreadCountValue(state, conversation.seatId) - conversation.unreadCount),
+  );
+  syncSeatLastMessageTime(state, conversation.seatId);
   pushConversationRemoveEvent(state, conversation.seatId, conversationId);
   pushSeatEvent(state, conversation.seatId);
 
   return {
     conversationId,
     seatId: conversation.seatId,
+    seatUnreadCount: getSeatUnreadCountValue(state, conversation.seatId),
   };
 }
 
-function syncSeatUnread(state: MemoryWorkbenchState, seatId: string) {
+function getSeatUnreadCountValue(state: MemoryWorkbenchState, seatId: string) {
+  return findSeat(state, seatId)?.unreadCount ?? 0;
+}
+
+function setSeatUnreadCount(
+  state: MemoryWorkbenchState,
+  seatId: string,
+  unreadCount: number,
+) {
+  const seat = findSeat(state, seatId);
+
+  if (!seat) {
+    return;
+  }
+
+  seat.unreadCount = unreadCount;
+}
+
+function syncSeatLastMessageTime(state: MemoryWorkbenchState, seatId: string) {
   const seat = findSeat(state, seatId);
 
   if (!seat) {
@@ -669,7 +704,6 @@ function syncSeatUnread(state: MemoryWorkbenchState, seatId: string) {
   }
 
   const conversations = state.conversationsBySeat[seatId] ?? [];
-  seat.unreadCount = getSeatUnreadCount(conversations);
   seat.lastMessageTime = getSeatLastMessageTime(conversations);
 }
 
@@ -833,10 +867,6 @@ function resolveSendOutcome(
   return {
     status: "sent" as const,
   };
-}
-
-function getSeatUnreadCount(conversations: WorkbenchConversationSummaryDto[]) {
-  return conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0);
 }
 
 function getSeatLastMessageTime(conversations: WorkbenchConversationSummaryDto[]) {

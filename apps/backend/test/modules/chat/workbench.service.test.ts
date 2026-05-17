@@ -410,7 +410,9 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
+          seatUnreadCount: 9,
           uid: 9001,
+          unreadCount: 2,
         }),
         hideConversation,
       } as unknown as WorkbenchRepository,
@@ -420,6 +422,7 @@ describe("MysqlWorkbenchService", () => {
     await expect(service.deleteConversation("101", "88")).resolves.toEqual({
       conversationId: "88",
       seatId: "12",
+      seatUnreadCount: 7,
     });
     expect(javaClient.deleteConversation).toHaveBeenCalledWith({
       conversationId: "88",

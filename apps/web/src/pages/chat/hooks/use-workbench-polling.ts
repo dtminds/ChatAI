@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useRef } from "react";
 
 import { useWorkbenchPollingLease } from "@/pages/chat/hooks/use-workbench-polling-lease";
 
-export const WORKBENCH_POLL_HIDDEN_INTERVAL_MS = 5000;
+export const WORKBENCH_POLL_HIDDEN_INTERVAL_MS = 10000;
 export const WORKBENCH_POLL_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 export const WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS = 30 * 1000;
 
@@ -32,6 +32,7 @@ export function useWorkbenchPolling({
   const isPollingRef = useRef(false);
   const isRefreshingSeatSummariesRef = useRef(false);
   const pauseReasonRef = useRef<PollingPauseReason | undefined>(undefined);
+  const lastActivityAtRef = useRef(0);
   const hiddenSinceRef = useRef<number | undefined>(
     typeof document !== "undefined" && document.visibilityState === "hidden"
       ? Date.now()
@@ -93,11 +94,6 @@ export function useWorkbenchPolling({
       pollingLease.isPausedByOtherTab ||
       pauseReasonRef.current != null
     ) {
-      if (pollingLease.isPausedByOtherTab && pauseReasonRef.current == null) {
-        pauseReasonRef.current = "other-tab";
-        notifyPollingPaused("other-tab");
-      }
-
       return;
     }
 
@@ -181,6 +177,12 @@ export function useWorkbenchPolling({
         return;
       }
 
+      const now = Date.now();
+      if (now - lastActivityAtRef.current < 1000) {
+        return;
+      }
+
+      lastActivityAtRef.current = now;
       scheduleIdleTimer();
     };
 
@@ -280,10 +282,7 @@ export function useWorkbenchPolling({
     currentUserId,
     intervalMs,
     jitterMs,
-    notifyPollingPaused,
-    pollingLease.isOwnedByAnotherTab,
     pollingLease.isPausedByOtherTab,
-    runPollCycle,
   ]);
 
   useEffect(() => {
@@ -378,9 +377,7 @@ export function useWorkbenchPolling({
     activeAccountId,
     bootstrapStatus,
     currentUserId,
-    pollingLease.isOwnedByAnotherTab,
     pollingLease.isPausedByOtherTab,
     refreshSeatSummaries,
-    runSeatSummaryRefreshCycle,
   ]);
 }

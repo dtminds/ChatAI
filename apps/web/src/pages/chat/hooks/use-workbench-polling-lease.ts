@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 export const WORKBENCH_POLL_OWNER_STORAGE_KEY = "chatai.workbench.pollOwner";
 
@@ -35,16 +35,8 @@ export function useWorkbenchPollingLease({
     onLostLease();
   });
 
-  const isLeaseOwnedByAnotherTab = (lease: PollOwnerLease | undefined) =>
-    Boolean(
-      lease &&
-        lease.ownerUserId === currentUserId &&
-        lease.ownerTabId !== tabIdRef.current &&
-        lease.expiresAt > Date.now(),
-    );
-
   const isOwnedByAnotherTab = useEffectEvent(() =>
-    isLeaseOwnedByAnotherTab(readPollOwnerLease()),
+    isLeaseOwnedByAnotherTab(readPollOwnerLease(), currentUserId, tabIdRef.current),
   );
 
   useEffect(() => {
@@ -91,7 +83,9 @@ export function useWorkbenchPollingLease({
         return;
       }
 
-      if (isLeaseOwnedByAnotherTab(parsePollOwnerLease(event.newValue))) {
+      if (
+        isLeaseOwnedByAnotherTab(parsePollOwnerLease(event.newValue), currentUserId, tabIdRef.current)
+      ) {
         clearLeaseRenewal();
         handleLostLease();
       }
@@ -112,15 +106,16 @@ export function useWorkbenchPollingLease({
   }, [
     currentUserId,
     enabled,
-    handleLostLease,
-    isOwnedByAnotherTab,
     isPausedByOtherTab,
   ]);
 
-  return {
-    isOwnedByAnotherTab,
-    isPausedByOtherTab,
-  };
+  return useMemo(
+    () => ({
+      isOwnedByAnotherTab,
+      isPausedByOtherTab,
+    }),
+    [isOwnedByAnotherTab, isPausedByOtherTab],
+  );
 }
 
 function createPollOwnerTabId() {
@@ -177,4 +172,17 @@ function parsePollOwnerLease(value: string | null) {
   } catch {
     return undefined;
   }
+}
+
+function isLeaseOwnedByAnotherTab(
+  lease: PollOwnerLease | undefined,
+  currentUserId: string | undefined,
+  tabId: string,
+) {
+  return Boolean(
+    lease &&
+      lease.ownerUserId === currentUserId &&
+      lease.ownerTabId !== tabId &&
+      lease.expiresAt > Date.now(),
+  );
 }

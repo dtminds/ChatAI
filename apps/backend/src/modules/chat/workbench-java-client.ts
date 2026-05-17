@@ -384,11 +384,11 @@ function buildJavaLogContext(body: unknown) {
     }
   }
 
-  const msgDatas = body.msgDatas;
+  const msgDatas = body["msgDatas"];
   if (Array.isArray(msgDatas)) {
     context.messageCount = msgDatas.length;
     context.messageTypes = msgDatas
-      .map((item) => (isRecord(item) ? item.msgType : undefined))
+      .map((item) => (isRecord(item) ? item["msgType"] : undefined))
       .filter((value) => value != null);
   }
 

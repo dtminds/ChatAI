@@ -212,7 +212,7 @@ TKE / CLS 侧配置建议：
 - 采集源选择容器标准输出，解析模式选择 JSON。
 - 采集范围限定 `chatai-backend` 工作负载或对应 Pod label，避免 web / nginx 日志混入 backend 业务日志主题。
 - 保留 TKE 自动附带的 `namespace`、`pod_name`、`container_name`、`pod_label_*` 等元数据。
-- 为常用排障字段开启索引：`reqId`、`operation`、`subUserId`、`seatId`、`conversationId`、`messageId`、`clientMessageId`、`uid`、`platform`、`path`、`status`、`error`、`errorMsg`。
+- 为常用排障字段开启索引：`reqId`、`operation`、`subUserId`、`seatId`、`conversationId`、`messageId`、`clientMessageId`、`uid`、`platform`、`path`、`status`、`error`。
 
 应用侧日志字段约定：
 

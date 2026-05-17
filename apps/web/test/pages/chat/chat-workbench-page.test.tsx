@@ -83,6 +83,17 @@ async function pasteIntoComposer(
   await user.paste(text);
 }
 
+async function expectLatestConversationMessage(
+  conversationId: string,
+  expectedMessage: object,
+) {
+  await waitFor(() => {
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId[conversationId].at(-1),
+    ).toMatchObject(expectedMessage);
+  });
+}
+
 describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -132,9 +143,7 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
     expect(composer).toHaveTextContent("");
-    expect(
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
-    ).toMatchObject({
+    await expectLatestConversationMessage("conv-001", {
       content: {
         text: "收到，我来帮你确认",
         type: "text",
@@ -233,9 +242,7 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByTestId("composer-quote-preview")).toHaveTextContent(
       "丹阳草莓，得利市大樱桃：我先截了个竖图版本给你看。",
     );
-    expect(
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
-    ).toMatchObject({
+    await expectLatestConversationMessage("conv-001", {
       content: {
         type: "image",
       },
@@ -274,9 +281,7 @@ describe("ChatWorkbenchPage", () => {
 
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
-    expect(
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
-    ).toMatchObject({
+    await expectLatestConversationMessage("conv-001", {
       content: {
         text: "好的[打脸]",
         type: "text",
@@ -310,9 +315,7 @@ describe("ChatWorkbenchPage", () => {
         within(composer).queryByRole("img", { name: "clipboard.png" }),
       ).not.toBeInTheDocument();
     });
-    expect(
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
-    ).toMatchObject({
+    await expectLatestConversationMessage("conv-001", {
       content: {
         imageUrl:
           "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/mock-image.png",
@@ -371,9 +374,7 @@ describe("ChatWorkbenchPage", () => {
     await waitFor(() => {
       expect(screen.queryByText("正在准备发送")).not.toBeInTheDocument();
     });
-    expect(
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
-    ).toMatchObject({
+    await expectLatestConversationMessage("conv-001", {
       content: {
         extension: "pdf",
         fileName: "报价单.pdf",

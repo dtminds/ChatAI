@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   WORKBENCH_POLL_HIDDEN_INTERVAL_MS,
   WORKBENCH_POLL_IDLE_TIMEOUT_MS,
+  WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS,
   useWorkbenchPolling,
 } from "@/pages/chat/hooks/use-workbench-polling";
 
@@ -25,6 +26,7 @@ function PollingHarness({
   intervalMs = 3000,
   jitterMs = 0,
   onPollingPaused,
+  refreshSeatSummaries,
   pollWorkbench,
 }: {
   activeAccountId?: string;
@@ -32,6 +34,7 @@ function PollingHarness({
   intervalMs?: number;
   jitterMs?: number;
   onPollingPaused?: (reason: "idle" | "other-tab") => void;
+  refreshSeatSummaries?: () => Promise<void>;
   pollWorkbench: () => Promise<void>;
 }) {
   useWorkbenchPolling({
@@ -41,6 +44,7 @@ function PollingHarness({
     intervalMs,
     jitterMs,
     onPollingPaused,
+    refreshSeatSummaries,
     pollWorkbench,
   });
 
@@ -324,5 +328,32 @@ describe("useWorkbenchPolling", () => {
     });
 
     expect(pollWorkbench).toHaveBeenCalledTimes(callCountAfterPause);
+  });
+
+  it("runs seat summary refresh on a slower cadence than active polling", async () => {
+    vi.useFakeTimers();
+    setVisibilityState("visible");
+    const pollWorkbench = vi.fn().mockResolvedValue(undefined);
+    const refreshSeatSummaries = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <PollingHarness
+        pollWorkbench={pollWorkbench}
+        refreshSeatSummaries={refreshSeatSummaries}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS - 1);
+    });
+
+    expect(pollWorkbench).toHaveBeenCalled();
+    expect(refreshSeatSummaries).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(refreshSeatSummaries).toHaveBeenCalledTimes(1);
   });
 });

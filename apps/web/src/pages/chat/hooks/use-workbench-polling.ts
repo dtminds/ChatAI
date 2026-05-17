@@ -4,6 +4,7 @@ import { useWorkbenchPollingLease } from "@/pages/chat/hooks/use-workbench-polli
 
 export const WORKBENCH_POLL_HIDDEN_INTERVAL_MS = 5000;
 export const WORKBENCH_POLL_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+export const WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS = 30 * 1000;
 
 export type PollingPauseReason = "idle" | "other-tab";
 
@@ -14,6 +15,7 @@ type UseWorkbenchPollingOptions = {
   intervalMs: number;
   jitterMs: number;
   onPollingPaused?: (reason: PollingPauseReason) => void;
+  refreshSeatSummaries?: () => Promise<void>;
   pollWorkbench: () => Promise<void>;
 };
 
@@ -24,9 +26,11 @@ export function useWorkbenchPolling({
   intervalMs,
   jitterMs,
   onPollingPaused,
+  refreshSeatSummaries,
   pollWorkbench,
 }: UseWorkbenchPollingOptions) {
   const isPollingRef = useRef(false);
+  const isRefreshingSeatSummariesRef = useRef(false);
   const pauseReasonRef = useRef<PollingPauseReason | undefined>(undefined);
   const hiddenSinceRef = useRef<number | undefined>(
     typeof document !== "undefined" && document.visibilityState === "hidden"
@@ -64,6 +68,20 @@ export function useWorkbenchPolling({
       await pollWorkbench();
     } finally {
       isPollingRef.current = false;
+    }
+  });
+
+  const runSeatSummaryRefreshCycle = useEffectEvent(async () => {
+    if (!refreshSeatSummaries || isRefreshingSeatSummariesRef.current) {
+      return;
+    }
+
+    isRefreshingSeatSummariesRef.current = true;
+
+    try {
+      await refreshSeatSummaries();
+    } finally {
+      isRefreshingSeatSummariesRef.current = false;
     }
   });
 
@@ -266,5 +284,103 @@ export function useWorkbenchPolling({
     pollingLease.isOwnedByAnotherTab,
     pollingLease.isPausedByOtherTab,
     runPollCycle,
+  ]);
+
+  useEffect(() => {
+    if (
+      bootstrapStatus !== "ready" ||
+      !activeAccountId ||
+      !currentUserId ||
+      !refreshSeatSummaries ||
+      pollingLease.isPausedByOtherTab ||
+      pauseReasonRef.current != null
+    ) {
+      return;
+    }
+
+    let timeoutId: number | undefined;
+    let cancelled = false;
+
+    const clearScheduledRefresh = () => {
+      if (timeoutId == null) {
+        return;
+      }
+
+      window.clearTimeout(timeoutId);
+      timeoutId = undefined;
+    };
+
+    const scheduleNextSeatSummaryRefresh = () => {
+      if (pauseReasonRef.current != null) {
+        return;
+      }
+
+      clearScheduledRefresh();
+
+      const baseInterval =
+        document.visibilityState === "hidden"
+          ? Math.max(
+              WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS,
+              WORKBENCH_POLL_HIDDEN_INTERVAL_MS,
+            )
+          : WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS;
+
+      timeoutId = window.setTimeout(async () => {
+        timeoutId = undefined;
+
+        if (pauseReasonRef.current != null || pollingLease.isOwnedByAnotherTab()) {
+          return;
+        }
+
+        await runSeatSummaryRefreshCycle();
+
+        if (!cancelled) {
+          scheduleNextSeatSummaryRefresh();
+        }
+      }, baseInterval);
+    };
+
+    const refreshNowAndReschedule = async () => {
+      if (pauseReasonRef.current != null || pollingLease.isOwnedByAnotherTab()) {
+        return;
+      }
+
+      clearScheduledRefresh();
+      await runSeatSummaryRefreshCycle();
+
+      if (!cancelled) {
+        scheduleNextSeatSummaryRefresh();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (pauseReasonRef.current != null) {
+        return;
+      }
+
+      if (document.visibilityState === "visible") {
+        void refreshNowAndReschedule();
+        return;
+      }
+
+      scheduleNextSeatSummaryRefresh();
+    };
+
+    scheduleNextSeatSummaryRefresh();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      clearScheduledRefresh();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [
+    activeAccountId,
+    bootstrapStatus,
+    currentUserId,
+    pollingLease.isOwnedByAnotherTab,
+    pollingLease.isPausedByOtherTab,
+    refreshSeatSummaries,
+    runSeatSummaryRefreshCycle,
   ]);
 }

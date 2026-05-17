@@ -285,6 +285,11 @@ export async function loadAccountConversationsByMode(
   };
 }
 
+export async function loadSeats(): Promise<Account[]> {
+  const seatDtos = await getWorkbenchService().getSeats();
+  return seatDtos.map((seatDto) => adaptAccount(seatDto, seatDto.unreadCount));
+}
+
 export async function loadConversationMessagesPage(
   context: GatewayContext,
   conversationId: string,

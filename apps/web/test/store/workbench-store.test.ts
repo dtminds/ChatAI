@@ -1328,6 +1328,37 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationListsByScope.ndt[0].unread).toBe(1);
   });
 
+  it("refreshes non-active seat summaries without changing the selected seat", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        return baseService.getSeats().then((seats) =>
+          seats.map((seat) =>
+            seat.seatId === "drc"
+              ? {
+                  ...seat,
+                  unreadCount: 15,
+                }
+              : seat,
+          ),
+        );
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    await useWorkbenchStore.getState().refreshSeatSummaries();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(15);
+    expect(state.conversationListsByScope.ndt[0].unread).toBe(1);
+  });
+
   it("evicts old seat conversation list caches while keeping recent and active seats", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().setActiveAccount("ndt");

@@ -142,6 +142,7 @@ function ChatWorkbenchContent({
     isConversationLoading,
     loadActiveGroupMembers,
     loadOlderMessages,
+    refreshSeatSummaries,
     markConversationRead,
     markConversationUnread,
     me,
@@ -392,6 +393,7 @@ function ChatWorkbenchContent({
     intervalMs: pollState.intervalMs,
     jitterMs: pollState.jitterMs,
     onPollingPaused: handlePollingPaused,
+    refreshSeatSummaries,
     pollWorkbench,
   });
 

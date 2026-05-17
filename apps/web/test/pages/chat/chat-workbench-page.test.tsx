@@ -85,6 +85,7 @@ async function pasteIntoComposer(
 
 describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     mock.reset();
     vi.mocked(toast.warning).mockClear();
     vi.mocked(resolveImageSegmentsForSend).mockImplementation(
@@ -115,6 +116,10 @@ describe("ChatWorkbenchPage", () => {
     );
     resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
   });
 
   it("sends a message from the composer", async () => {
@@ -2386,4 +2391,5 @@ describe("ChatWorkbenchPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新页面" })).toBeInTheDocument();
   });
+
 });

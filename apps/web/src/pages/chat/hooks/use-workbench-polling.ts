@@ -1,6 +1,8 @@
 import { useEffect, useEffectEvent, useRef } from "react";
 
 export const WORKBENCH_POLL_OWNER_STORAGE_KEY = "chatai.workbench.pollOwner";
+export const WORKBENCH_POLL_HIDDEN_INTERVAL_MS = 5000;
+export const WORKBENCH_POLL_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
 const POLL_OWNER_LEASE_MS = 15000;
 const POLL_OWNER_RENEW_INTERVAL_MS = 5000;
@@ -12,13 +14,15 @@ type PollOwnerLease = {
   updatedAt: number;
 };
 
+export type PollingPauseReason = "idle" | "other-tab";
+
 type UseWorkbenchPollingOptions = {
   activeAccountId?: string;
   bootstrapStatus: "idle" | "loading" | "ready" | "error";
   currentUserId?: string;
   intervalMs: number;
   jitterMs: number;
-  onPollingPausedByOtherTab?: () => void;
+  onPollingPaused?: (reason: PollingPauseReason) => void;
   pollWorkbench: () => Promise<void>;
 };
 
@@ -28,11 +32,16 @@ export function useWorkbenchPolling({
   currentUserId,
   intervalMs,
   jitterMs,
-  onPollingPausedByOtherTab,
+  onPollingPaused,
   pollWorkbench,
 }: UseWorkbenchPollingOptions) {
   const isPollingRef = useRef(false);
-  const isPausedByOtherTabRef = useRef(false);
+  const pauseReasonRef = useRef<PollingPauseReason | undefined>(undefined);
+  const hiddenSinceRef = useRef<number | undefined>(
+    typeof document !== "undefined" && document.visibilityState === "hidden"
+      ? Date.now()
+      : undefined,
+  );
   const tabIdRef = useRef(createPollOwnerTabId());
 
   const runPollCycle = useEffectEvent(async () => {
@@ -54,15 +63,15 @@ export function useWorkbenchPolling({
       bootstrapStatus !== "ready" ||
       !activeAccountId ||
       !currentUserId ||
-      isPausedByOtherTabRef.current
+      pauseReasonRef.current != null
     ) {
       return;
     }
 
     let timeoutId: number | undefined;
     let renewIntervalId: number | undefined;
+    let idleTimeoutId: number | undefined;
     let cancelled = false;
-    let pausedByOtherTab = false;
 
     const clearScheduledPoll = () => {
       if (timeoutId == null) {
@@ -82,16 +91,47 @@ export function useWorkbenchPolling({
       renewIntervalId = undefined;
     };
 
-    const pauseForOtherTab = () => {
-      if (pausedByOtherTab) {
+    const clearIdleTimer = () => {
+      if (idleTimeoutId == null) {
         return;
       }
 
-      isPausedByOtherTabRef.current = true;
-      pausedByOtherTab = true;
+      window.clearTimeout(idleTimeoutId);
+      idleTimeoutId = undefined;
+    };
+
+    const pauseForReason = (reason: PollingPauseReason) => {
+      if (pauseReasonRef.current != null) {
+        return;
+      }
+
+      pauseReasonRef.current = reason;
       clearScheduledPoll();
       clearLeaseRenewal();
-      onPollingPausedByOtherTab?.();
+      clearIdleTimer();
+      onPollingPaused?.(reason);
+    };
+
+    const getHiddenElapsedMs = () => {
+      if (document.visibilityState !== "hidden") {
+        return 0;
+      }
+
+      hiddenSinceRef.current ??= Date.now();
+
+      return Date.now() - hiddenSinceRef.current;
+    };
+
+    const pauseIfIdleTimedOut = () => {
+      if (
+        document.visibilityState === "hidden" &&
+        getHiddenElapsedMs() >= WORKBENCH_POLL_IDLE_TIMEOUT_MS
+      ) {
+        pauseForReason("idle");
+        return true;
+      }
+
+      return false;
     };
 
     const pauseIfAnotherTabOwnsLease = () => {
@@ -103,7 +143,7 @@ export function useWorkbenchPolling({
         currentLease.ownerTabId !== tabIdRef.current &&
         currentLease.expiresAt > Date.now()
       ) {
-        pauseForOtherTab();
+        pauseForReason("other-tab");
         return true;
       }
 
@@ -111,7 +151,7 @@ export function useWorkbenchPolling({
     };
 
     const claimLease = () => {
-      if (cancelled || pausedByOtherTab) {
+      if (cancelled || pauseReasonRef.current != null) {
         return;
       }
 
@@ -119,7 +159,7 @@ export function useWorkbenchPolling({
     };
 
     const renewLease = () => {
-      if (cancelled || pausedByOtherTab) {
+      if (cancelled || pauseReasonRef.current != null) {
         return;
       }
 
@@ -130,8 +170,27 @@ export function useWorkbenchPolling({
       writePollOwnerLease(tabIdRef.current, currentUserId);
     };
 
+    const scheduleIdleTimer = () => {
+      if (pauseReasonRef.current != null) {
+        return;
+      }
+
+      clearIdleTimer();
+      idleTimeoutId = window.setTimeout(() => {
+        pauseForReason("idle");
+      }, WORKBENCH_POLL_IDLE_TIMEOUT_MS);
+    };
+
+    const handleUserActivity = () => {
+      if (pauseReasonRef.current != null || document.visibilityState !== "visible") {
+        return;
+      }
+
+      scheduleIdleTimer();
+    };
+
     const scheduleNextPoll = () => {
-      if (pausedByOtherTab) {
+      if (pauseReasonRef.current != null) {
         return;
       }
 
@@ -139,12 +198,16 @@ export function useWorkbenchPolling({
 
       const baseInterval =
         document.visibilityState === "hidden"
-          ? Math.max(10000, intervalMs)
+          ? Math.max(WORKBENCH_POLL_HIDDEN_INTERVAL_MS, intervalMs)
           : intervalMs;
       const jitter = Math.floor(Math.random() * jitterMs);
 
       timeoutId = window.setTimeout(async () => {
         timeoutId = undefined;
+        if (pauseIfIdleTimedOut()) {
+          return;
+        }
+
         if (pauseIfAnotherTabOwnsLease()) {
           return;
         }
@@ -158,11 +221,15 @@ export function useWorkbenchPolling({
     };
 
     const pollNowAndReschedule = async () => {
-      if (pausedByOtherTab) {
+      if (pauseReasonRef.current != null) {
         return;
       }
 
       clearScheduledPoll();
+      if (pauseIfIdleTimedOut()) {
+        return;
+      }
+
       if (pauseIfAnotherTabOwnsLease()) {
         return;
       }
@@ -175,15 +242,18 @@ export function useWorkbenchPolling({
     };
 
     const handleVisibilityChange = () => {
-      if (pausedByOtherTab) {
+      if (pauseReasonRef.current != null) {
         return;
       }
 
       if (document.visibilityState === "visible") {
+        hiddenSinceRef.current = undefined;
+        scheduleIdleTimer();
         void pollNowAndReschedule();
         return;
       }
 
+      hiddenSinceRef.current = Date.now();
       scheduleNextPoll();
     };
 
@@ -200,7 +270,7 @@ export function useWorkbenchPolling({
         lease.ownerTabId !== tabIdRef.current &&
         lease.expiresAt > Date.now()
       ) {
-        pauseForOtherTab();
+        pauseForReason("other-tab");
       }
     };
 
@@ -209,16 +279,30 @@ export function useWorkbenchPolling({
       renewLease,
       POLL_OWNER_RENEW_INTERVAL_MS,
     );
+    scheduleIdleTimer();
     scheduleNextPoll();
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("storage", handleStorage);
+    window.addEventListener("focus", handleUserActivity);
+    window.addEventListener("mousemove", handleUserActivity);
+    window.addEventListener("keydown", handleUserActivity);
+    window.addEventListener("pointerdown", handleUserActivity);
+    window.addEventListener("touchstart", handleUserActivity);
+    window.addEventListener("scroll", handleUserActivity);
 
     return () => {
       cancelled = true;
       clearScheduledPoll();
       clearLeaseRenewal();
+      clearIdleTimer();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("focus", handleUserActivity);
+      window.removeEventListener("mousemove", handleUserActivity);
+      window.removeEventListener("keydown", handleUserActivity);
+      window.removeEventListener("pointerdown", handleUserActivity);
+      window.removeEventListener("touchstart", handleUserActivity);
+      window.removeEventListener("scroll", handleUserActivity);
     };
   }, [
     activeAccountId,
@@ -226,7 +310,7 @@ export function useWorkbenchPolling({
     currentUserId,
     intervalMs,
     jitterMs,
-    onPollingPausedByOtherTab,
+    onPollingPaused,
     runPollCycle,
   ]);
 }

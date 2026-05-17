@@ -40,6 +40,7 @@ import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-re
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
+import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
   ChatMessage,
@@ -170,9 +171,10 @@ function ChatWorkbenchContent({
     description: string;
     title: string;
   } | null>(null);
-  const [isPollingPausedByOtherTab, setIsPollingPausedByOtherTab] = useState(false);
-  const handlePollingPausedByOtherTab = useCallback(() => {
-    setIsPollingPausedByOtherTab(true);
+  const [pollingPauseReason, setPollingPauseReason] =
+    useState<PollingPauseReason | null>(null);
+  const handlePollingPaused = useCallback((reason: PollingPauseReason) => {
+    setPollingPauseReason(reason);
   }, []);
   const [fileUploadTransitionError, setFileUploadTransitionError] =
     useState<string | undefined>();
@@ -389,7 +391,7 @@ function ChatWorkbenchContent({
     currentUserId: me?.id,
     intervalMs: pollState.intervalMs,
     jitterMs: pollState.jitterMs,
-    onPollingPausedByOtherTab: handlePollingPausedByOtherTab,
+    onPollingPaused: handlePollingPaused,
     pollWorkbench,
   });
 
@@ -1018,13 +1020,13 @@ function ChatWorkbenchContent({
         </div>
       </div>
       <AlertDialog
-        open={isPollingPausedByOtherTab}
+        open={pollingPauseReason !== null}
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>实时同步已被其他工作台页面占用</AlertDialogTitle>
+            <AlertDialogTitle>{getPollingPausedDialogCopy(pollingPauseReason).title}</AlertDialogTitle>
             <AlertDialogDescription>
-              当前页面已暂停消息同步。若要在此页面继续，请刷新页面重新接管。
+              {getPollingPausedDialogCopy(pollingPauseReason).description}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1128,6 +1130,20 @@ function getSendFailureDialogCopy(
   return {
     title: "发送失败，请稍后重试",
     description: `ErrorCode: ${errorCode}`,
+  };
+}
+
+function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {
+  if (reason === "idle") {
+    return {
+      description: "检测到页面已离开一段时间，当前页面已暂停消息同步。刷新页面后可重新接管。",
+      title: "已暂停新消息同步",
+    };
+  }
+
+  return {
+    description: "当前页面已暂停消息同步。若要在此页面继续，请刷新页面重新接管。",
+    title: "实时同步已被其他工作台页面占用",
   };
 }
 

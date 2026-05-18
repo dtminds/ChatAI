@@ -248,8 +248,14 @@ export function CustomerSidePanel({
     useState(defaultSidebarValue);
 
   useEffect(() => {
-    setActiveSidebarValue(defaultSidebarValue);
-  }, [defaultSidebarValue]);
+    setActiveSidebarValue((current) => {
+      if (current && sidebarEntries.some((entry) => entry.value === current)) {
+        return current;
+      }
+
+      return defaultSidebarValue;
+    });
+  }, [defaultSidebarValue, sidebarEntries]);
 
   return (
     <>

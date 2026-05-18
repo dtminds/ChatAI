@@ -198,6 +198,57 @@ describe("CustomerSidePanel", () => {
     );
   });
 
+  it("resets the selected sidebar tab when switching to a conversation that does not have it", async () => {
+    const user = userEvent.setup();
+
+    const { rerender } = render(
+      <CustomerSidePanel
+        {...defaultProps}
+        conversationMode="single"
+        sidebarItems={[
+          {
+            bindTypes: ["1", "2"],
+            id: "1",
+            name: "页面A",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/a",
+          },
+          {
+            bindTypes: ["1", "2"],
+            id: "2",
+            name: "页面B",
+            sort: 2,
+            status: "active",
+            url: "https://example.com/b",
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "页面B" }));
+    expect(screen.getByRole("tab", { name: "页面B", selected: true })).toBeInTheDocument();
+
+    rerender(
+      <CustomerSidePanel
+        {...defaultProps}
+        conversationMode="single"
+        sidebarItems={[
+          {
+            bindTypes: ["1", "2"],
+            id: "1",
+            name: "页面A",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/a",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "页面A", selected: true })).toBeInTheDocument();
+  });
+
   it("shows a loading indicator until the custom sidebar iframe finishes loading", async () => {
     const user = userEvent.setup();
 

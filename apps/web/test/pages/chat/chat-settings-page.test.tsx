@@ -338,9 +338,11 @@ describe("Chat settings pages", () => {
 
     expect(screen.getByRole("heading", { name: "子账号管理" })).toBeInTheDocument();
     expect(await screen.findByRole("table", { name: "子账号列表" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "账号类型" })).toBeInTheDocument();
-    expect(screen.getByLabelText("账号类型：主账号")).toBeInTheDocument();
-    expect(screen.getAllByLabelText("账号类型：子账号")).toHaveLength(2);
+    expect(screen.queryByRole("columnheader", { name: "账号类型" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "角色" })).toBeInTheDocument();
+    expect(screen.getByLabelText("角色：主账号")).toBeInTheDocument();
+    expect(screen.getByLabelText("角色：管理员")).toBeInTheDocument();
+    expect(screen.getByLabelText("角色：客服")).toBeInTheDocument();
     expect(screen.getByText("客服一号")).toBeInTheDocument();
     expect(screen.getByText("agent001")).toBeInTheDocument();
     expect(screen.getByLabelText("关联托管账号 德瑞可")).toBeInTheDocument();
@@ -780,7 +782,22 @@ describe("Chat settings pages", () => {
     renderRoute("/chat/settings/sub-accounts");
 
     await user.click(await screen.findByRole("button", { name: "新增子账号" }));
-    expect(screen.getByRole("dialog", { name: "添加子账号" })).toBeInTheDocument();
+    const createDialog = screen.getByRole("dialog", { name: "添加子账号" });
+    expect(createDialog).toBeInTheDocument();
+    expect(within(createDialog).queryByRole("heading", { name: "登录信息" })).not.toBeInTheDocument();
+    expect(within(createDialog).queryByRole("heading", { name: "权限范围" })).not.toBeInTheDocument();
+    expect(
+      within(within(createDialog).getByRole("group", { name: "账号信息" })).getByRole(
+        "combobox",
+        { name: "角色" },
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(within(createDialog).getByRole("group", { name: "分配托管账号" })).getByRole(
+        "textbox",
+        { name: "搜索并选择托管账号" },
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("已选择 0 个")).toBeInTheDocument();
     expect(screen.getByText("暂无已分配账号")).toBeInTheDocument();
     await user.click(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
@@ -999,8 +1016,9 @@ describe("Chat settings pages", () => {
     const user = userEvent.setup();
     renderRoute("/chat/settings/sub-accounts");
 
-    expect(await screen.findByLabelText("账号类型：主账号")).toBeInTheDocument();
-    expect(screen.getAllByLabelText("账号类型：子账号")).toHaveLength(2);
+    expect(await screen.findByLabelText("角色：主账号")).toBeInTheDocument();
+    expect(screen.getByLabelText("角色：管理员")).toBeInTheDocument();
+    expect(screen.getByLabelText("角色：客服")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "打开 主账号 操作菜单" }));
 

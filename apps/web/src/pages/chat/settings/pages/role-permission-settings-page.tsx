@@ -23,7 +23,7 @@ export function RolePermissionSettingsPage() {
   return (
     <>
       <PageHeader
-        description="固定预设角色：主账号、管理员、客服、客服（只读）。角色不可自定义，主账号仅由主账号身份推导。"
+        description="查看各类账号可使用的功能范围，分配子账号时可选择管理员、客服或客服（只读）"
         eyebrow="SETTINGS / ROLES"
         title="权限角色"
       />

@@ -121,6 +121,42 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("forwards request id to Java internal API headers and logs failures with it", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const logger = createLoggerMock();
+    logger.requestId = "req-001";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
+
+    await expect(
+      createWorkbenchJavaClient(logger).downloadMsgFile({
+        msgid: "msg-002",
+        platform: 5,
+        uid: 9001,
+      }),
+    ).rejects.toMatchObject({
+      code: "JAVA_INTERNAL_API_FAILED",
+    });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msgid: "msg-002",
+        operation: "download-message-file",
+        path: "/third-internal/wap-embed/conversation/download-msg-file",
+        requestId: "req-001",
+        reason: "TypeError",
+      }),
+      "Java 内部工作台接口调用失败",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/download-msg-file",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-request-id": "req-001",
+        }),
+      }),
+    );
+  });
+
   it("posts conversation mark-read payload to the Java internal API", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -456,5 +492,6 @@ function createLoggerMock() {
     error: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
-  };
+    requestId: undefined,
+  } as ReturnType<typeof createLoggerMock> & { requestId?: string };
 }

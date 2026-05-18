@@ -350,6 +350,7 @@ function pruneConversationListCache(input: {
     conversationListCacheSeatOrder: input.seatOrder.filter((seatId) =>
       retainedSeatIds.has(seatId),
     ),
+    evictedSeatIds: input.seatOrder.filter((seatId) => !retainedSeatIds.has(seatId)),
     conversationListsByScope: Object.fromEntries(
       Object.entries(input.conversationListsByScope).filter(([seatId]) =>
         retainedSeatIds.has(seatId),
@@ -612,11 +613,13 @@ function isAccountTakenOverByCurrentUser(account: Account | undefined, me: Emplo
 }
 
 function omitByKeys<T>(record: Record<string, T>, keys: Iterable<string>) {
-  const omittedKeys = new Set(keys);
+  const next = { ...record };
 
-  return Object.fromEntries(
-    Object.entries(record).filter(([key]) => !omittedKeys.has(key)),
-  );
+  for (const key of keys) {
+    delete next[key];
+  }
+
+  return next;
 }
 
 function clearConversationMessageState(
@@ -2013,16 +2016,12 @@ export function createWorkbenchStore() {
             ),
             seatOrder: conversationListCacheSeatOrder,
           });
-
-          const previousSeatConversationIds = Object.values(
-            currentState.conversationListsByScope,
-          )
-            .flat()
-            .filter((conversation) => conversation.accountId !== accountId)
-            .map((conversation) => conversation.id);
           const clearedResourceState = clearConversationResourceState(
             currentState,
-            previousSeatConversationIds,
+            prunedConversationListCache.evictedSeatIds.flatMap(
+              (seatId) =>
+                currentState.conversationListsByScope[seatId]?.map((conversation) => conversation.id) ?? [],
+            ),
             { preservePending: true },
           );
 

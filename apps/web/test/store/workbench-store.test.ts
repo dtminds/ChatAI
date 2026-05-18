@@ -1679,7 +1679,7 @@ describe("useWorkbenchStore", () => {
     expect(state.groupMembersLoadingByConversationId[seatDConversation.id]).toBeUndefined();
   });
 
-  it("clears previous seat message and group member state when switching accounts", async () => {
+  it("keeps cached seat resources when switching accounts within the seat cache", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().setActiveMode("group");
 
@@ -1694,12 +1694,12 @@ describe("useWorkbenchStore", () => {
     state = useWorkbenchStore.getState();
     expect(state.activeAccountId).toBe("ndt");
     expect(state.activeConversationId).toBe("conv-005");
-    expect(state.messagesByConversationId["conv-004"]).toBeUndefined();
-    expect(state.messagePaginationByConversationId["conv-004"]).toBeUndefined();
-    expect(state.hasMoreHistoryByConversationId["conv-004"]).toBeUndefined();
+    expect(state.messagesByConversationId["conv-004"]).toBeDefined();
+    expect(state.messagePaginationByConversationId["conv-004"]).toBeDefined();
+    expect(state.hasMoreHistoryByConversationId["conv-004"]).toBeDefined();
     expect(state.historyStatusByConversationId["conv-004"]).toBeUndefined();
-    expect(state.groupMembersByConversationId["conv-004"]).toBeUndefined();
-    expect(state.groupMembersLoadingByConversationId["conv-004"]).toBeUndefined();
+    expect(state.groupMembersByConversationId["conv-004"]).toBeDefined();
+    expect(state.groupMembersLoadingByConversationId["conv-004"]).toBe(false);
     expect(state.messagesByConversationId["conv-005"]).toBeDefined();
   });
 

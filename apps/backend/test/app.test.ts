@@ -1259,7 +1259,7 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("returns cursor progress when a message page only contains hidden revoke events", async () => {
+  it("returns revoke events in message pages for frontend-side signal handling", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
     const response = await app.inject({
@@ -1269,10 +1269,17 @@ describe("backend app", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      filteredCount: 2,
+    expect(response.json()).toMatchObject({
+      filteredCount: 0,
       hasMore: true,
-      messages: [],
+      messages: [
+        {
+          contentType: "revoke",
+        },
+        {
+          contentType: "revoke",
+        },
+      ],
       nextBeforeSeq: 9,
       scannedCount: 2,
     });

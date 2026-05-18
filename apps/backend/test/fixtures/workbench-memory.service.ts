@@ -144,14 +144,10 @@ export function createMemoryWorkbenchService() {
           : messages.filter((message) => message.seq < beforeSeq);
       const scannedMessages =
         sliceLatest(candidateMessages, limit + 1).slice(-limit);
-      const visibleMessages = scannedMessages.filter(
-        (message) => message.contentType !== "system" || message.content.type !== "revoke",
-      );
-
       return {
-        filteredCount: scannedMessages.length - visibleMessages.length,
+        filteredCount: 0,
         hasMore: candidateMessages.length > limit,
-        messages: clone(visibleMessages),
+        messages: clone(scannedMessages),
         nextBeforeSeq: scannedMessages[0]?.seq,
         scannedCount: scannedMessages.length,
       } satisfies WorkbenchMessagePageDto;
@@ -498,8 +494,8 @@ function buildInitialState(): MemoryWorkbenchState {
         message("msg-013", "conv-004", "drc", "cust-004", "system", "system", { text: "群聊占位数据，后续可在轮询模型稳定后单独扩展。" }, "2026-04-11 09:44:38", 1, "read"),
       ],
       "conv-revoke-only": [
-        message("msg-revoke-009", "conv-revoke-only", "drc", "cust-revoke-only", "system", "system", { revokeMsgId: "516", revokeOriginMsgId: "1022531", type: "revoke" }, "2026-04-10 10:00:00", 9, "read"),
-        message("msg-revoke-010", "conv-revoke-only", "drc", "cust-revoke-only", "system", "system", { revokeMsgId: "517", revokeOriginMsgId: "1022532", type: "revoke" }, "2026-04-10 10:01:00", 10, "read"),
+        message("msg-revoke-009", "conv-revoke-only", "drc", "cust-revoke-only", "system", "revoke", { revokeMsgId: "516", revokeOriginMsgId: "1022531", type: "revoke" }, "2026-04-10 10:00:00", 9, "read"),
+        message("msg-revoke-010", "conv-revoke-only", "drc", "cust-revoke-only", "system", "revoke", { revokeMsgId: "517", revokeOriginMsgId: "1022532", type: "revoke" }, "2026-04-10 10:01:00", 10, "read"),
         message("msg-revoke-older", "conv-revoke-only", "drc", "cust-revoke-only", "customer", "text", { text: "更早的可展示消息" }, "2026-04-10 09:59:00", 8, "read"),
       ],
       "conv-005": [

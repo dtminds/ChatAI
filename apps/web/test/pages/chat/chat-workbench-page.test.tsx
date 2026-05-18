@@ -2068,7 +2068,7 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.queryByRole("button", { name: "加载更早的对话" })).not.toBeInTheDocument();
   });
 
-  it("does not auto-loop when older history only contains hidden revoke events", async () => {
+  it("does not auto-loop when older history only contains revoke signals", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const calls: Array<{ beforeSeq?: number; conversationId: string }> = [];
@@ -2079,11 +2079,28 @@ describe("ChatWorkbenchPage", () => {
         calls.push({ beforeSeq: options?.beforeSeq, conversationId });
 
         if (conversationId === "conv-001" && options?.beforeSeq != null) {
+          const beforeSeq = options.beforeSeq;
+
           return {
-            filteredCount: 50,
+            filteredCount: 0,
             hasMore: true,
-            messages: [],
-            nextBeforeSeq: Math.max(options.beforeSeq - 50, 1),
+            messages: Array.from({ length: 50 }, (_, index) => ({
+              content: {
+                revokeMsgId: `older-message-${index}`,
+                revokeOriginMsgId: `older-message-${index}`,
+                type: "revoke",
+              },
+              contentType: "revoke",
+              conversationId,
+              createdAt: Date.now() - index,
+              customerId: "cust-001",
+              messageId: `revoke-older-message-${index}`,
+              seatId: "drc",
+              senderType: "system",
+              seq: beforeSeq - index - 1,
+              status: "read",
+            })) satisfies WorkbenchMessageDto[],
+            nextBeforeSeq: Math.max(beforeSeq - 50, 1),
             scannedCount: 50,
           };
         }
@@ -2109,7 +2126,7 @@ describe("ChatWorkbenchPage", () => {
 
     expect(
       await screen.findByRole("button", {
-        name: "已跳过 50 条不可展示记录，继续加载更早消息",
+        name: "加载更早的对话",
       }),
     ).toBeInTheDocument();
     expect(calls.filter((call) => call.beforeSeq != null)).toHaveLength(1);

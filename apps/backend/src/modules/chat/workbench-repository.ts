@@ -873,8 +873,7 @@ export class WorkbenchRepository {
       .execute();
 
     const rawRows = rows.slice(0, options.limit) as MessageRow[];
-    const visibleRows = rawRows.filter((row) => !isHiddenMessageRow(row));
-    const messageRows = visibleRows.reverse();
+    const messageRows = rawRows.reverse();
     const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
     const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
     const hydrationSources = await this.getMessageHydrationSources(
@@ -900,7 +899,7 @@ export class WorkbenchRepository {
     );
 
     return {
-      filteredCount: rawRows.length - visibleRows.length,
+      filteredCount: 0,
       hasMore: rows.length > options.limit,
       messages: hydratedMessageRows.map((row) =>
         mapMessageRow(row, quotePreviewsByRowId.get(toNumber(row.id))),
@@ -1287,30 +1286,6 @@ function emptyMessagePage(): WorkbenchMessagePageDto {
   };
 }
 
-function isHiddenMessageRow(row: MessageRow) {
-  if (row.msgtype === "revoke") {
-    return true;
-  }
-
-  if (row.msgtype !== "system") {
-    return false;
-  }
-
-  return parseSystemMessageEventType(row.content) === "revoke";
-}
-
-function parseSystemMessageEventType(rawContent: string | null) {
-  if (!rawContent) {
-    return undefined;
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(rawContent);
-    return isRecord(parsed) && typeof parsed.type === "string" ? parsed.type : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 function readQuoteContentBase64(rawOriginData: string | null | undefined) {
   if (!rawOriginData) {

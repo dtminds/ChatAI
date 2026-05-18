@@ -902,7 +902,7 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
-  it("falls back unsupported payloads to readable text", () => {
+  it("maps revoke event rows as revoke signals", () => {
     expect(
       mapMessageRow(messageRow({
         content: "{\"revokeMsgId\":\"21\",\"revokeOriginMsgId\":\"1019745\"}",
@@ -910,11 +910,13 @@ describe("workbench MySQL mappers", () => {
       })),
     ).toMatchObject({
       content: {
-        text: "[撤回消息]",
+        revokeMsgId: "21",
+        revokeOriginMsgId: "1019745",
+        text: "",
       },
-      contentType: "text",
+      contentType: "revoke",
+      senderType: "system",
     });
-
   });
 });
 

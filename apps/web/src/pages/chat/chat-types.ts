@@ -84,6 +84,13 @@ export type SystemMessageContent = {
   text: string;
 };
 
+export type RevokeMessageContent = {
+  revokeMsgId?: string;
+  revokeOriginMsgId?: string;
+  type: "revoke";
+  text: string;
+};
+
 export type TextMessageContent = {
   type: "text";
   text: string;
@@ -219,6 +226,7 @@ export type QuoteMessageContent = {
 
 export type MessageContent =
   | SystemMessageContent
+  | RevokeMessageContent
   | TextMessageContent
   | VoiceMessageContent
   | ImageMessageContent
@@ -250,7 +258,7 @@ type BaseMessage = {
 
 export type SystemMessage = BaseMessage & {
   role: "system";
-  content: SystemMessageContent;
+  content: SystemMessageContent | RevokeMessageContent;
 };
 
 export type ChatMessage = BaseMessage & {

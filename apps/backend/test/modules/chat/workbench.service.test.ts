@@ -614,6 +614,12 @@ describe("MysqlWorkbenchService", () => {
 
   it("polls new-message conversation changes for the current seat", async () => {
     const javaClient = createJavaClient();
+    const listMessages = vi.fn().mockResolvedValue({
+      filteredCount: 0,
+      hasMore: false,
+      messages: [],
+      scannedCount: 0,
+    });
     const listChangedConversations = vi.fn().mockResolvedValue({
       hasMore: false,
       items: [
@@ -654,13 +660,8 @@ describe("MysqlWorkbenchService", () => {
           uid: 9001,
         }),
         getSeat,
+        listMessages,
         listChangedConversations,
-        listMessages: vi.fn().mockResolvedValue({
-          filteredCount: 0,
-          hasMore: false,
-          messages: [],
-          scannedCount: 0,
-        }),
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -693,7 +694,93 @@ describe("MysqlWorkbenchService", () => {
       limit: 500,
       sinceLastMsgTime: 1_778_839_999_999,
     });
+    expect(listMessages).toHaveBeenCalledWith("88", {
+      beforeSeq: undefined,
+      limit: 50,
+    });
     expect(getSeat).toHaveBeenCalledWith("12");
+  });
+
+  it("polls active conversation messages through the shared message page query", async () => {
+    const javaClient = createJavaClient();
+    const listMessages = vi.fn().mockResolvedValue({
+      filteredCount: 0,
+      hasMore: false,
+      messages: [
+        {
+          content: {
+            text: "already loaded",
+          },
+          contentType: "text",
+          conversationId: "88",
+          customerId: "customer-001",
+          messageId: "remote-msg-101",
+          seatId: "12",
+          senderType: "customer",
+          seq: 101,
+          status: "read",
+        },
+        {
+          content: {
+            revokeMsgId: "101",
+            revokeOriginMsgId: "101",
+          },
+          contentType: "revoke",
+          conversationId: "88",
+          customerId: "customer-001",
+          messageId: "remote-msg-103",
+          seatId: "12",
+          senderType: "system",
+          seq: 103,
+          status: "read",
+        },
+      ],
+      scannedCount: 2,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+        getSeat: vi.fn().mockResolvedValue(undefined),
+        listMessages,
+        listChangedConversations: vi.fn().mockResolvedValue({
+          hasMore: false,
+          items: [],
+          nextVersion: 1_778_840_002_000,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.poll("101", {
+        activeConversationId: "88",
+        activeMessageSeq: 101,
+        currentSeatId: "12",
+        sinceVersion: 1_778_840_000_000,
+      }),
+    ).resolves.toMatchObject({
+      activeConversationMessages: [
+        {
+          content: {
+            revokeMsgId: "101",
+            revokeOriginMsgId: "101",
+          },
+          contentType: "revoke",
+          messageId: "remote-msg-103",
+        },
+      ],
+    });
+    expect(listMessages).toHaveBeenCalledWith("88", {
+      beforeSeq: undefined,
+      limit: 50,
+    });
   });
 
   it("does not overlap the first poll after a fresh conversation baseline", async () => {

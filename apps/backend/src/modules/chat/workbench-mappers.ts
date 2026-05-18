@@ -243,7 +243,7 @@ function buildMissingCustomerId(row: MessageRow) {
 }
 
 function mapSenderType(row: MessageRow): WorkbenchMessageDto["senderType"] {
-  if (row.msgtype === "system") {
+  if (row.msgtype === "system" || row.msgtype === "revoke") {
     return "system";
   }
 
@@ -295,6 +295,8 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
       return "mini-program";
     case "quote":
       return "quote";
+    case "revoke":
+      return "revoke";
     case "system":
       return "system";
     case "text":
@@ -329,6 +331,10 @@ function parseMessageContent(
 
   if (msgtype === "system") {
     return { text: readSystemMessageText(parsed, rawContent) };
+  }
+
+  if (msgtype === "revoke") {
+    return readRevokeMessageContent(parsed, rawContent);
   }
 
   switch (msgtype) {
@@ -516,6 +522,20 @@ function readSystemMessageText(parsed: unknown, rawContent: string | null) {
   return rawContent ?? "";
 }
 
+function readRevokeMessageContent(parsed: unknown, rawContent: string | null) {
+  if (!isRecord(parsed)) {
+    return {
+      text: formatMessagePreview("revoke", rawContent),
+    };
+  }
+
+  return {
+    revokeMsgId: readOptionalIdField(parsed, "revokeMsgId"),
+    revokeOriginMsgId: readOptionalIdField(parsed, "revokeOriginMsgId"),
+    text: readSystemMessageText(parsed, rawContent),
+  };
+}
+
 export function getQuoteMessageAuditId(row: MessageRow) {
   if (row.msgtype !== "quote") {
     return undefined;
@@ -532,6 +552,12 @@ export function buildQuotedMessagePreview(row: MessageRow): MessageRowQuotePrevi
   const senderName = row.sender_name || getSenderFallbackName(row);
 
   switch (mapped.contentType) {
+    case "revoke":
+      return {
+        contentType: "revoke",
+        fallbackText: "[撤回消息]",
+        senderName,
+      };
     case "text":
       return {
         contentType: "text",
@@ -654,6 +680,20 @@ function readStringField(value: unknown, key: string) {
   }
 
   const field = value[key];
+
+  return typeof field === "string" ? field : "";
+}
+
+function readOptionalIdField(value: unknown, key: string) {
+  if (!isRecord(value)) {
+    return "";
+  }
+
+  const field = value[key];
+
+  if (typeof field === "number" && Number.isSafeInteger(field) && field > 0) {
+    return String(field);
+  }
 
   return typeof field === "string" ? field : "";
 }

@@ -415,11 +415,27 @@ function getConversationMode(
   return conversations.find((conversation) => conversation.id === conversationId)?.mode ?? fallbackMode;
 }
 
-function upsertMessageList(currentMessages: Message[], nextMessages: Message[]) {
+function upsertMessageList(
+  currentMessages: Message[],
+  nextMessages: Message[],
+) {
   const merged = [...currentMessages];
   const appendedMessages: Message[] = [];
 
   for (const nextMessage of nextMessages) {
+    if (isRevokeSignalMessage(nextMessage)) {
+      const targetIndex = findRevokedMessageIndex(merged, nextMessage);
+
+      if (targetIndex >= 0) {
+        merged[targetIndex] = {
+          ...merged[targetIndex],
+          isRevoked: true,
+        };
+      }
+
+      continue;
+    }
+
     const existingIndex = merged.findIndex((message) =>
       isSameMessage(message, nextMessage),
     );
@@ -436,6 +452,45 @@ function upsertMessageList(currentMessages: Message[], nextMessages: Message[]) 
   }
 
   return [...merged, ...sortMessagesForAppend(appendedMessages)];
+}
+
+function isRevokeSignalMessage(message: Message) {
+  return (
+    message.role === "system" &&
+    message.content.type === "revoke" &&
+    (message.content.revokeMsgId != null || message.content.revokeOriginMsgId != null)
+  );
+}
+
+function findRevokedMessageIndex(messages: Message[], revokeMessage: Message) {
+  if (revokeMessage.role !== "system" || revokeMessage.content.type !== "revoke") {
+    return -1;
+  }
+
+  const revokeKeys = uniqueMessageKeys([
+    revokeMessage.content.revokeOriginMsgId,
+    revokeMessage.content.revokeMsgId,
+  ]);
+
+  if (!revokeKeys.length) {
+    return -1;
+  }
+
+  return messages.findIndex((message) =>
+    revokeKeys.some((key) => matchesMessageKey(message, key)),
+  );
+}
+
+function uniqueMessageKeys(keys: Array<string | undefined>) {
+  return [...new Set(keys.filter((key): key is string => Boolean(key)))];
+}
+
+function matchesMessageKey(message: Message, key: string) {
+  return (
+    message.id === key ||
+    message.remoteMessageId === key ||
+    String(message.seq ?? "") === key
+  );
 }
 
 function sortMessagesForAppend(messages: Message[]) {
@@ -1325,7 +1380,12 @@ export function createWorkbenchStore() {
             : {},
           me: bootstrapResult.me,
           messagesByConversationId: conversationPage
-            ? { [conversationPage.conversationId]: conversationPage.messages }
+            ? {
+                [conversationPage.conversationId]: upsertMessageList(
+                  [],
+                  conversationPage.messages,
+                ),
+              }
             : {},
           sidebarItems: bootstrapResult.sidebarItems,
           isPollBaselineFresh: true,
@@ -1566,7 +1626,10 @@ export function createWorkbenchStore() {
               const nextMessagesByConversationId = conversationPage
                 ? {
                     ...currentState.messagesByConversationId,
-                    [conversationPage.conversationId]: conversationPage.messages,
+                    [conversationPage.conversationId]: upsertMessageList(
+                      [],
+                      conversationPage.messages,
+                    ),
                   }
                 : currentState.messagesByConversationId;
               const nextHistoryByConversationId = conversationPage
@@ -2086,7 +2149,10 @@ export function createWorkbenchStore() {
             messagesByConversationId: conversationPage
               ? {
                   ...clearedMessageState.messagesByConversationId,
-                  [conversationPage.conversationId]: conversationPage.messages,
+                  [conversationPage.conversationId]: upsertMessageList(
+                    [],
+                    conversationPage.messages,
+                  ),
                 }
               : clearedMessageState.messagesByConversationId,
             scopeTransitionError: undefined,
@@ -2197,7 +2263,7 @@ export function createWorkbenchStore() {
           );
           const nextMessagesByConversationId = {
             ...clearedMessageState.messagesByConversationId,
-            [conversationId]: page.messages,
+            [conversationId]: upsertMessageList([], page.messages),
           };
 
           return {

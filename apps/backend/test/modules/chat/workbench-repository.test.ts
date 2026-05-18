@@ -14,7 +14,12 @@ function createFailingDb() {
 }
 
 function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
-  const messageQueries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
+  const messageQueries: Array<{
+    limits: number[];
+    orderBys: Array<[string, string | undefined]>;
+    table: string;
+    wheres: Array<[string, string, unknown]>;
+  }> = [];
 
   return {
     messageQueries,
@@ -35,7 +40,12 @@ function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
       if (table === "xy_wap_embed_msg_audit_info as message") {
         const queryIndex = messageQueries.filter((query) => query.table === table).length;
         const query = createQueryBuilder(queryIndex === 0 ? rows : quoteRows);
-        messageQueries.push({ table, wheres: query.wheres });
+        messageQueries.push({
+          limits: query.limits,
+          orderBys: query.orderBys,
+          table,
+          wheres: query.wheres,
+        });
         return query;
       }
 
@@ -1227,7 +1237,7 @@ describe("WorkbenchRepository", () => {
     expect(sources.seatsByThirdUserId.size).toBe(0);
   });
 
-  it("hides revoke event rows before mapping database messages", async () => {
+  it("keeps revoke event rows visible in historical message pages", async () => {
     const repository = new WorkbenchRepository(createMessagesDb([
       messageRow({
         content: JSON.stringify({ type: "revoke", revokeMsgId: "516" }),
@@ -1250,14 +1260,30 @@ describe("WorkbenchRepository", () => {
     ]) as never);
 
     await expect(repository.listMessages("88", { limit: 3 })).resolves.toMatchObject({
-      filteredCount: 2,
+      filteredCount: 0,
       messages: [
         {
-          content: { text: "visible" },
+          content: {
+            text: "visible",
+          },
+          contentType: "text",
           messageId: "remote-msg-101",
         },
+        {
+          content: {
+            revokeMsgId: "515",
+            text: "",
+          },
+          contentType: "revoke",
+          messageId: "remote-msg-102",
+        },
+        {
+          content: { text: "" },
+          contentType: "system",
+          messageId: "remote-msg-103",
+        },
       ],
-      nextBeforeSeq: 101,
+      nextBeforeSeq: 103,
       scannedCount: 3,
     });
   });

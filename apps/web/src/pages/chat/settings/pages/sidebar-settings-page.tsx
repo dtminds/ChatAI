@@ -75,6 +75,7 @@ import { cn } from "@/lib/utils";
 import { sortSidebarItems } from "@/pages/chat/lib/sidebar-items";
 import { Field, PageHeader } from "@/pages/chat/settings/shared";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
+import { useWorkbenchStore } from "@/store/workbench-store";
 
 type DragOverlaySize = {
   height: number;
@@ -103,6 +104,7 @@ const maxSidebarItemNameWeight = 8;
 
 export function SidebarSettingsPage() {
   const { canManageSidebar } = useSettingsPermissions();
+  const setWorkbenchSidebarItems = useWorkbenchStore((state) => state.setSidebarItems);
   const [items, setItems] = useState<SettingsSidebarItem[]>(emptyItems);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SettingsSidebarItem | null>(null);
@@ -123,7 +125,10 @@ export function SidebarSettingsPage() {
         const response = await listSidebarItems();
 
         if (!ignore) {
-          setItems(sortSidebarItems(response.items));
+          const nextItems = sortSidebarItems(response.items);
+
+          setItems(nextItems);
+          setWorkbenchSidebarItems(nextItems);
         }
       } catch (error) {
         if (!ignore) {
@@ -141,7 +146,7 @@ export function SidebarSettingsPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [setWorkbenchSidebarItems]);
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -173,13 +178,16 @@ export function SidebarSettingsPage() {
           ? await createSidebarItem(payload)
           : await updateSidebarItem(state.item.id, payload);
 
-      setItems((current) =>
-        sortSidebarItems(
+      setItems((current) => {
+        const nextItems = sortSidebarItems(
           state.mode === "create"
             ? [...current, nextItem]
             : current.map((item) => (item.id === nextItem.id ? nextItem : item)),
-        ),
-      );
+        );
+
+        setWorkbenchSidebarItems(nextItems);
+        return nextItems;
+      });
       setDialogState(null);
       toast.success(state.mode === "create" ? "侧边栏页面已新增" : "侧边栏页面已更新");
     } catch (error) {
@@ -198,11 +206,14 @@ export function SidebarSettingsPage() {
         item.status === "active" ? "disabled" : "active",
       );
 
-      setItems((current) =>
-        sortSidebarItems(current.map((currentItem) =>
+      setItems((current) => {
+        const nextItems = sortSidebarItems(current.map((currentItem) =>
           currentItem.id === nextItem.id ? nextItem : currentItem,
-        )),
-      );
+        ));
+
+        setWorkbenchSidebarItems(nextItems);
+        return nextItems;
+      });
       toast.success(nextItem.status === "active" ? "侧边栏页面已启用" : "侧边栏页面已停用");
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -226,14 +237,18 @@ export function SidebarSettingsPage() {
 
     setPendingAction("sort");
     setItems(optimisticItems);
+    setWorkbenchSidebarItems(sortSidebarItems(optimisticItems));
 
     try {
       const response = await updateSidebarItemsSort(optimisticItems.map((nextItem) => nextItem.id));
+      const nextItems = sortSidebarItems(response.items);
 
-      setItems(sortSidebarItems(response.items));
+      setItems(nextItems);
+      setWorkbenchSidebarItems(nextItems);
       toast.success("侧边栏排序已更新");
     } catch (error) {
       setItems(items);
+      setWorkbenchSidebarItems(items);
       toast.error(getErrorMessage(error));
     } finally {
       setPendingAction(null);
@@ -249,9 +264,12 @@ export function SidebarSettingsPage() {
 
     try {
       await deleteSidebarItem(deleteTarget.id);
-      setItems((current) =>
-        sortSidebarItems(current.filter((item) => item.id !== deleteTarget.id)),
-      );
+      setItems((current) => {
+        const nextItems = sortSidebarItems(current.filter((item) => item.id !== deleteTarget.id));
+
+        setWorkbenchSidebarItems(nextItems);
+        return nextItems;
+      });
       setDeleteTarget(null);
       toast.success("侧边栏页面已删除");
     } catch (error) {
@@ -462,7 +480,7 @@ function SidebarItemsTable({
   const body = showLoading ? (
     <TableBody>
       <TableRow>
-        <TableCell className="px-5 py-10" colSpan={3}>
+        <TableCell className="px-5 py-10" colSpan={4}>
           <div
             aria-label="正在加载侧边栏页面"
             className="flex items-center justify-center gap-3 text-sm text-muted-foreground"
@@ -489,7 +507,7 @@ function SidebarItemsTable({
         items.map(renderRow)
       ) : (
         <TableRow>
-          <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={3}>
+          <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={4}>
             暂无侧边栏页面
           </TableCell>
         </TableRow>
@@ -502,8 +520,9 @@ function SidebarItemsTable({
       <Table aria-label="侧边栏菜单列表">
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[70%] px-5 py-4">页面</TableHead>
-            <TableHead className="w-[15%] px-5 py-4">显示</TableHead>
+            <TableHead className="w-[55%] px-5 py-4">页面</TableHead>
+            <TableHead className="w-[14%] px-5 py-4">显示</TableHead>
+            <TableHead className="w-[18%] px-5 py-4">会话类型</TableHead>
             <TableHead className="px-5 py-4">操作</TableHead>
           </TableRow>
         </TableHeader>
@@ -553,9 +572,6 @@ function SidebarItemRow({
           )}
           <div className="min-w-0">
             <p className="truncate font-medium text-foreground">{item.name}</p>
-            <p className="mt-1 truncate text-xs text-muted-foreground">
-              {formatSidebarBindTypesLabel(item.bindTypes)}
-            </p>
           </div>
         </div>
       </TableCell>
@@ -568,6 +584,9 @@ function SidebarItemRow({
             onCheckedChange={onToggleStatus}
           />
         </div>
+      </TableCell>
+      <TableCell className="px-5 py-5 text-sm text-muted-foreground">
+        {formatSidebarBindTypesLabel(item.bindTypes)}
       </TableCell>
       <TableCell className="px-5 py-5">
         <DropdownMenu>
@@ -624,7 +643,7 @@ function SidebarItemDragOverlay({
 }) {
   return (
     <div
-      className="grid grid-cols-[70%_15%_15%] items-center rounded-[8px] border border-border/80 bg-popover/85 text-sm text-popover-foreground shadow-lg"
+      className="grid grid-cols-[55%_14%_18%_13%] items-center rounded-[8px] border border-border/80 bg-popover/85 text-sm text-popover-foreground shadow-lg"
       style={{
         height: size?.height,
         minHeight: 72,
@@ -637,12 +656,12 @@ function SidebarItemDragOverlay({
         </span>
         <div className="min-w-0">
           <div className="truncate font-medium">{item.name}</div>
-          <div className="truncate text-[11px] text-muted-foreground">
-            {formatSidebarBindTypesLabel(item.bindTypes)}
-          </div>
         </div>
       </div>
       <div aria-hidden="true" />
+      <div className="truncate px-5 text-sm text-muted-foreground">
+        {formatSidebarBindTypesLabel(item.bindTypes)}
+      </div>
       <div aria-hidden="true" />
     </div>
   );
@@ -662,15 +681,12 @@ function SidebarPreview({ items }: { items: SettingsSidebarItem[] }) {
             {activeItems.map((item, index) => (
               <div
                 className={cn(
-                  "flex h-auto min-h-10 min-w-0 flex-col items-center justify-center gap-0.5 px-0 py-1.5 text-muted-foreground",
+                  "flex h-auto min-h-10 min-w-0 items-center justify-center px-0 py-1.5 text-muted-foreground",
                   index === 0 && "font-semibold text-foreground",
                 )}
                 key={item.id}
               >
                 <span className="w-full truncate text-center">{item.name}</span>
-                <span className="w-full truncate text-center text-[10px] font-normal leading-4">
-                  {formatSidebarBindTypesLabel(item.bindTypes)}
-                </span>
               </div>
             ))}
             {activeItems.length === 0 ? (

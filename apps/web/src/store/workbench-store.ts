@@ -81,6 +81,7 @@ type WorkbenchState = {
   conversationListsByScope: Record<string, Conversation[]>;
   conversationModeLoadedAtByScope: Record<string, Partial<Record<ChatMode, number>>>;
   customerProfilesById: Record<string, CustomerProfile>;
+  groupMembersLoadedAtByConversationId: Record<string, number>;
   groupMembersLoadingByConversationId: Record<string, boolean>;
   messagesByConversationId: Record<string, Message[]>;
   activeAccountId: string;
@@ -148,6 +149,7 @@ type WorkbenchStore = WorkbenchState;
 const defaultCustomerProfiles = seedCustomerProfiles;
 const MESSAGE_PAGE_SIZE = 50;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
+const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 export const MAX_CONVERSATION_LIST_CACHE_SEATS = 3;
 
 function createInitialState(): Omit<
@@ -185,6 +187,7 @@ function createInitialState(): Omit<
     conversationListsByScope: {},
     conversationModeLoadedAtByScope: {},
     customerProfilesById: defaultCustomerProfiles,
+    groupMembersLoadedAtByConversationId: {},
     groupMembersLoadingByConversationId: {},
     groupMembersByConversationId: {},
     hasMoreHistoryByConversationId: {},
@@ -655,6 +658,10 @@ function clearConversationResourceState(
 ) {
   return {
     ...clearConversationMessageState(state, conversationIds, options),
+    groupMembersLoadedAtByConversationId: omitByKeys(
+      state.groupMembersLoadedAtByConversationId,
+      conversationIds,
+    ),
     groupMembersByConversationId: omitByKeys(
       state.groupMembersByConversationId,
       conversationIds,
@@ -673,6 +680,16 @@ function getMessageStateConversationIds(state: WorkbenchStore) {
     ...Object.keys(state.hasMoreHistoryByConversationId),
     ...Object.keys(state.historyStatusByConversationId),
   ]);
+}
+
+function isGroupMembersCacheFresh(
+  loadedAtByConversationId: Record<string, number>,
+  conversationId: string,
+  now = Date.now(),
+) {
+  const loadedAt = loadedAtByConversationId[conversationId];
+
+  return loadedAt != null && now - loadedAt <= GROUP_MEMBERS_CACHE_TTL_MS;
 }
 
 export function createWorkbenchStore() {
@@ -750,7 +767,12 @@ export function createWorkbenchStore() {
 
       if (
         conversation?.mode !== "group" ||
-        (!options.force && state.groupMembersByConversationId[conversationId])
+        (!options.force &&
+          state.groupMembersByConversationId[conversationId] &&
+          isGroupMembersCacheFresh(
+            state.groupMembersLoadedAtByConversationId,
+            conversationId,
+          ))
       ) {
         return;
       }
@@ -775,6 +797,10 @@ export function createWorkbenchStore() {
         }
 
         set((currentState) => ({
+          groupMembersLoadedAtByConversationId: {
+            ...currentState.groupMembersLoadedAtByConversationId,
+            [conversationId]: Date.now(),
+          },
           groupMembersByConversationId: {
             ...currentState.groupMembersByConversationId,
             [conversationId]: members,
@@ -1270,6 +1296,7 @@ export function createWorkbenchStore() {
             prunedConversationListCache.conversationListsByScope,
           conversationModeLoadedAtByScope:
             prunedConversationListCache.conversationModeLoadedAtByScope,
+          groupMembersLoadedAtByConversationId: {},
           groupMembersByConversationId: {},
           groupMembersLoadingByConversationId: {},
           hasMoreHistoryByConversationId: conversationPage
@@ -1479,6 +1506,8 @@ export function createWorkbenchStore() {
               clearedResourceState.hasMoreHistoryByConversationId,
             historyStatusByConversationId:
               clearedResourceState.historyStatusByConversationId,
+            groupMembersLoadedAtByConversationId:
+              clearedResourceState.groupMembersLoadedAtByConversationId,
             groupMembersByConversationId:
               clearedResourceState.groupMembersByConversationId,
             groupMembersLoadingByConversationId:
@@ -2039,8 +2068,13 @@ export function createWorkbenchStore() {
             scopeTransitionError: undefined,
             groupMembersLoadingByConversationId:
               nextConversation?.mode === "group" &&
-              clearedResourceState.groupMembersByConversationId[scopeResult.nextConversationId] ===
-                undefined
+              (clearedResourceState.groupMembersByConversationId[
+                scopeResult.nextConversationId
+              ] === undefined ||
+                !isGroupMembersCacheFresh(
+                  clearedResourceState.groupMembersLoadedAtByConversationId,
+                  scopeResult.nextConversationId,
+                ))
                 ? {
                     ...clearedResourceState.groupMembersLoadingByConversationId,
                     [scopeResult.nextConversationId]: true,
@@ -2098,7 +2132,11 @@ export function createWorkbenchStore() {
       if (currentConversation?.mode === "group") {
         set((currentState) => ({
           groupMembersLoadingByConversationId:
-            currentState.groupMembersByConversationId[conversationId] === undefined
+            currentState.groupMembersByConversationId[conversationId] === undefined ||
+            !isGroupMembersCacheFresh(
+              currentState.groupMembersLoadedAtByConversationId,
+              conversationId,
+            )
               ? {
                   ...currentState.groupMembersLoadingByConversationId,
                   [conversationId]: true,

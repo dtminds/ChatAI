@@ -249,6 +249,58 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("reuses fresh group member cache within five minutes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T10:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    let requestCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        requestCount += 1;
+
+        return baseService.getGroupMembers(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+    await useWorkbenchStore.getState().setActiveMode("single");
+    vi.setSystemTime(Date.now() + 5 * 60 * 1000 - 1);
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    expect(requestCount).toBe(1);
+
+    vi.useRealTimers();
+  });
+
+  it("reloads expired group member cache after five minutes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T10:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    let requestCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        requestCount += 1;
+
+        return baseService.getGroupMembers(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+    await useWorkbenchStore.getState().setActiveMode("single");
+    vi.setSystemTime(Date.now() + 5 * 60 * 1000 + 1);
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    expect(requestCount).toBe(2);
+
+    vi.useRealTimers();
+  });
+
   it("clears group member cache when bootstrapping a fresh workbench snapshot", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().setActiveMode("group");

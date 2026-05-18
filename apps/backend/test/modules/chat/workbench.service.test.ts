@@ -630,7 +630,7 @@ describe("MysqlWorkbenchService", () => {
           unreadCount: 1,
         },
       ],
-      nextVersion: 1_778_840_002_000,
+      nextVersion: 1_778_840_001_000,
     });
     const getSeat = vi.fn().mockResolvedValue({
       avatar: "",
@@ -681,7 +681,7 @@ describe("MysqlWorkbenchService", () => {
           type: "upsert",
         },
       ],
-      nextVersion: 1_778_840_002_000,
+      nextVersion: 1_778_840_001_000,
       seatChanges: [
         {
           seatId: "12",
@@ -724,6 +724,77 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("keeps the poll cursor unchanged when no conversations changed", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeat: vi.fn().mockResolvedValue(undefined),
+        listChangedConversations: vi.fn().mockResolvedValue({
+          hasMore: false,
+          items: [],
+          nextVersion: 1_778_840_030_000,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.poll("101", {
+        currentSeatId: "12",
+        sinceVersion: 1_778_840_000_000,
+      }),
+    ).resolves.toMatchObject({
+      conversationChanges: [],
+      nextVersion: 1_778_840_000_000,
+    });
+  });
+
+  it("advances the poll cursor by 1ms when changes stay on the same timestamp boundary", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeat: vi.fn().mockResolvedValue(undefined),
+        listChangedConversations: vi.fn().mockResolvedValue({
+          hasMore: false,
+          items: [
+            {
+              conversationId: "88",
+              customerAvatar: "",
+              customerId: "customer-001",
+              customerName: "微信客户",
+              lastMessage: "新消息",
+              lastMessageTime: 1_778_840_000_000,
+              mode: "single",
+              priority: "medium",
+              seatId: "12",
+              unreadCount: 1,
+            },
+          ],
+          nextVersion: 1_778_840_030_000,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.poll("101", {
+        currentSeatId: "12",
+        sinceVersion: 1_778_840_000_000,
+      }),
+    ).resolves.toMatchObject({
+      conversationChanges: [
+        {
+          conversationId: "88",
+          lastMessage: "新消息",
+          type: "upsert",
+        },
+      ],
+      nextVersion: 1_778_840_000_001,
+    });
+  });
+
   it("logs poll cursor invalidation context before rejecting", async () => {
     const javaClient = createJavaClient();
     const logger = createLoggerMock();
@@ -753,6 +824,7 @@ describe("MysqlWorkbenchService", () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       {
+        activeConversationId: undefined,
         currentSeatId: "12",
         operation: "workbench-poll",
         sinceLastMsgTime: 1_778_839_999_999,

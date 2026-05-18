@@ -391,22 +391,15 @@ function CustomSidebarIframe({
   }, [loadKey, shouldShowLoading, src]);
 
   return (
-    <div className="relative h-full min-h-0 w-full bg-background">
+    <div className="flex h-full min-h-0 w-full flex-col bg-background">
       {isLoading ? (
-        <div
-          aria-label={`正在加载${itemName}`}
-          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background text-sm text-muted-foreground"
-          role="status"
-        >
-          <span className="flex size-9 items-center justify-center">
-            <DotMatrixLoader ariaLabel="正在加载" className="text-foreground" />
-          </span>
-          <span>正在加载{itemName}</span>
+        <div className="flex min-h-[120px] items-center justify-center py-4">
+          <DotMatrixLoader className="text-muted-foreground" type="square-5" />
         </div>
       ) : null}
       <iframe
         className={cn(
-          "h-full w-full border-0 bg-background transition-opacity duration-150",
+          "min-h-0 flex-1 border-0 bg-background transition-opacity duration-150",
           isLoading ? "opacity-0" : "opacity-100",
         )}
         key={loadKey}

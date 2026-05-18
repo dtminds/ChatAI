@@ -221,13 +221,13 @@ describe("CustomerSidePanel", () => {
 
     await user.click(screen.getByRole("tab", { name: "素材中心" }));
 
-    expect(screen.getByRole("status", { name: "正在加载素材中心" })).toBeInTheDocument();
+    expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
 
     const iframe = screen.getByTitle("素材中心扩展页");
 
     fireEvent.load(iframe);
 
-    expect(screen.queryByRole("status", { name: "正在加载素材中心" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dot-matrix-loader")).not.toBeInTheDocument();
   });
 
   it("uses about:blank until iframe params match the current seat and conversation", async () => {

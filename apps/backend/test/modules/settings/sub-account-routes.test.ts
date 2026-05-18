@@ -36,6 +36,7 @@ describe("settings sub-account routes", () => {
             account: "owner",
             id: "1",
             name: "主账号",
+            role: "owner",
             seats: [],
             status: "active",
             type: 1,
@@ -44,6 +45,7 @@ describe("settings sub-account routes", () => {
             account: "agent001",
             id: "11",
             name: "客服一号",
+            role: "operator",
             seats: [
               {
                 avatarUrl: "https://example.com/drc.png",
@@ -58,6 +60,7 @@ describe("settings sub-account routes", () => {
             account: "agent002",
             id: "12",
             name: "客服二号",
+            role: "operator",
             seats: [],
             status: "disabled",
             type: 0,
@@ -82,6 +85,7 @@ describe("settings sub-account routes", () => {
         account: "agent003",
         name: "客服三号",
         password: "Strong1!",
+        role: "operator",
         seatIds: ["101", "102"],
       },
       url: "/api/server/settings/sub-accounts",
@@ -93,6 +97,7 @@ describe("settings sub-account routes", () => {
         account: "agent003",
         id: "13",
         name: "客服三号",
+        role: "operator",
         seats: [
           {
             avatarUrl: "https://example.com/drc.png",
@@ -115,6 +120,7 @@ describe("settings sub-account routes", () => {
       name: "客服三号",
       password_hash: "hashed-password",
       platform: 5,
+      role: "operator",
       status: 1,
       type: 0,
       uid: 9001,
@@ -182,6 +188,7 @@ describe("settings sub-account routes", () => {
         account: "agent003",
         name: "客服三号",
         password: "weak",
+        role: "operator",
         seatIds: ["101"],
       },
       url: "/api/server/settings/sub-accounts",
@@ -273,7 +280,7 @@ describe("settings sub-account routes", () => {
 async function createSettingsApp() {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
-    roles: ["agent"],
+    roles: ["admin"],
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "1",
@@ -296,6 +303,7 @@ function createSettingsDbMock() {
       id: 1,
       name: "主账号",
       platform: 5,
+      role: "operator",
       status: 1,
       type: 1,
       uid: 9001,
@@ -314,6 +322,7 @@ function createSettingsDbMock() {
       id: 12,
       name: "客服二号",
       platform: 5,
+      role: "operator",
       status: 2,
       type: 0,
       uid: 9001,
@@ -399,6 +408,7 @@ function createSettingsDbMock() {
                 account: subUser.account,
                 id: subUser.id,
                 name: subUser.name,
+                role: subUser.role,
                 status: subUser.status,
                 type: subUser.type,
               }));
@@ -445,6 +455,7 @@ function createSettingsDbMock() {
                     account: subUser.account,
                     id: subUser.id,
                     name: subUser.name,
+                    role: subUser.role,
                     status: subUser.status,
                     type: subUser.type,
                   }
@@ -481,6 +492,7 @@ function createSettingsDbMock() {
               id: 13,
               name: String(state.insertedSubAccount.name),
               platform: Number(state.insertedSubAccount.platform),
+              role: String(state.insertedSubAccount.role),
               status: Number(state.insertedSubAccount.status),
               type: Number(state.insertedSubAccount.type),
               uid: Number(state.insertedSubAccount.uid),

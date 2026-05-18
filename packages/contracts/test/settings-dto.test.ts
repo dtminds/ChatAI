@@ -1,5 +1,6 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
+import { AuthSessionResponseSchema } from "../src/auth/dto";
 import {
   SettingsSidebarItemCreateRequestSchema,
   SettingsSidebarItemsResponseSchema,
@@ -37,6 +38,7 @@ describe("settings sub-account DTOs", () => {
               },
             ],
             status: "active",
+            role: "admin",
             type: 0,
           },
         ],
@@ -50,6 +52,7 @@ describe("settings sub-account DTOs", () => {
         account: "agent001",
         name: "客服一号",
         password: "Strong1!",
+        role: "admin",
         seatIds: ["101"],
       }),
     ).toBe(true);
@@ -59,6 +62,36 @@ describe("settings sub-account DTOs", () => {
         account: "agent002",
         name: "客服二号",
         password: "",
+        role: "operator",
+        seatIds: ["101"],
+      }),
+    ).toBe(false);
+
+    expect(
+      Value.Check(SettingsSubAccountUpdateRequestSchema, {
+        name: "客服二号",
+        password: "",
+        role: "owner",
+        seatIds: ["101"],
+      }),
+    ).toBe(false);
+
+    expect(
+      Value.Check(SettingsSubAccountCreateRequestSchema, {
+        account: "agent003",
+        name: "客服三号",
+        password: "Strong1!",
+        role: "viewer",
+        seatIds: ["101"],
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(SettingsSubAccountCreateRequestSchema, {
+        account: "agent004",
+        name: "客服四号",
+        password: "Strong1!",
+        role: "agent",
         seatIds: ["101"],
       }),
     ).toBe(false);
@@ -110,5 +143,43 @@ describe("settings sub-account DTOs", () => {
         itemIds: ["202", "201"],
       }),
     ).toBe(true);
+  });
+
+  it("accepts auth session role and permissions", () => {
+    expect(
+      Value.Check(AuthSessionResponseSchema, {
+        subUser: {
+          accountType: "sub",
+          displayName: "客服一号",
+          permissions: ["chat.access", "chat.send", "chat.takeover"],
+          role: "operator",
+          subUserId: "101",
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(AuthSessionResponseSchema, {
+        subUser: {
+          accountType: "sub",
+          displayName: "客服二号",
+          permissions: ["chat.access"],
+          role: "viewer",
+          subUserId: "102",
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(AuthSessionResponseSchema, {
+        subUser: {
+          accountType: "sub",
+          displayName: "客服二号",
+          permissions: ["settings.unknown"],
+          role: "operator",
+          subUserId: "102",
+        },
+      }),
+    ).toBe(false);
   });
 });

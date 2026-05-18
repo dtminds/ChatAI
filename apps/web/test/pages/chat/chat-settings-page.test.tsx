@@ -80,6 +80,7 @@ describe("Chat settings pages", () => {
             account: "owner",
             id: "1",
             name: "主账号",
+            role: "owner",
             seats: [],
             status: "active",
             type: 1,
@@ -88,6 +89,7 @@ describe("Chat settings pages", () => {
             account: "agent001",
             id: "11",
             name: "客服一号",
+            role: "admin",
             seats: [
               {
                 avatarUrl: "https://example.com/drc.png",
@@ -117,6 +119,7 @@ describe("Chat settings pages", () => {
             account: "agent002",
             id: "12",
             name: "客服二号",
+            role: "operator",
             seats: [],
             status: "disabled",
             type: 0,
@@ -134,46 +137,51 @@ describe("Chat settings pages", () => {
             name: "德瑞可",
             onlineStatus: "offline",
             subAccounts: [
-              {
-                account: "owner",
-                id: "1",
-                isTakingOver: false,
-                name: "主账号",
-                status: "active",
-                type: 1,
-              },
-              {
-                account: "agent001",
-                id: "11",
-                isTakingOver: true,
-                name: "客服一号",
-                status: "active",
-                type: 0,
-              },
-              {
-                account: "agent002",
-                id: "12",
-                isTakingOver: false,
-                name: "客服二号",
-                status: "active",
-                type: 0,
-              },
-              {
-                account: "agent003",
-                id: "13",
-                isTakingOver: false,
-                name: "客服三号",
-                status: "active",
-                type: 0,
-              },
-              {
-                account: "agent004",
-                id: "14",
-                isTakingOver: false,
-                name: "客服四号",
-                status: "disabled",
-                type: 0,
-              },
+            {
+              account: "owner",
+              id: "1",
+              isTakingOver: false,
+              name: "主账号",
+              role: "owner",
+              status: "active",
+              type: 1,
+            },
+            {
+              account: "agent001",
+              id: "11",
+              isTakingOver: true,
+              name: "客服一号",
+              role: "admin",
+              status: "active",
+              type: 0,
+            },
+            {
+              account: "agent002",
+              id: "12",
+              isTakingOver: false,
+              name: "客服二号",
+              role: "operator",
+              status: "active",
+              type: 0,
+            },
+            {
+              account: "agent003",
+              id: "13",
+              isTakingOver: false,
+              name: "客服三号",
+              role: "operator",
+              status: "active",
+              type: 0,
+            },
+            {
+              account: "agent004",
+              id: "14",
+              isTakingOver: false,
+              name: "客服四号",
+              role: "operator",
+              status: "disabled",
+              type: 0,
+            },
             ],
           },
           {
@@ -190,6 +198,7 @@ describe("Chat settings pages", () => {
             id: "1",
             isTakingOver: false,
             name: "主账号",
+            role: "owner",
             status: "active",
             type: 1,
           },
@@ -198,6 +207,7 @@ describe("Chat settings pages", () => {
             id: "11",
             isTakingOver: false,
             name: "客服一号",
+            role: "admin",
             status: "active",
             type: 0,
           },
@@ -206,6 +216,7 @@ describe("Chat settings pages", () => {
             id: "12",
             isTakingOver: false,
             name: "客服二号",
+            role: "operator",
             status: "active",
             type: 0,
           },
@@ -214,6 +225,7 @@ describe("Chat settings pages", () => {
             id: "13",
             isTakingOver: false,
             name: "客服三号",
+            role: "operator",
             status: "active",
             type: 0,
           },
@@ -222,6 +234,7 @@ describe("Chat settings pages", () => {
             id: "14",
             isTakingOver: false,
             name: "客服四号",
+            role: "operator",
             status: "disabled",
             type: 0,
           },
@@ -326,6 +339,12 @@ describe("Chat settings pages", () => {
 
     expect(screen.getByRole("heading", { name: "权限角色" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "角色权限矩阵" })).toBeInTheDocument();
+    expect(screen.getByText("owner")).toBeInTheDocument();
+    expect(screen.getByText("admin")).toBeInTheDocument();
+    expect(screen.getByText("operator")).toBeInTheDocument();
+    expect(screen.getByText("viewer")).toBeInTheDocument();
+    expect(screen.getAllByText("主账号，拥有所有 settings 和聊天权限").length).toBeGreaterThan(0);
+    expect(screen.queryByText("组长")).not.toBeInTheDocument();
   });
 
   it("manages sidebar items and previews active item ordering", async () => {
@@ -658,6 +677,7 @@ describe("Chat settings pages", () => {
         account: "agent001",
         id: "11",
         name: "客服一号",
+        role: "admin",
         seats: [],
         status: "disabled",
         type: 0,
@@ -682,6 +702,9 @@ describe("Chat settings pages", () => {
     await user.type(screen.getByLabelText("登录用户名"), "agent003");
     await user.type(screen.getByLabelText("密码"), "Strong1!");
     await user.type(screen.getByLabelText("姓名"), "客服三号");
+    await user.click(screen.getByRole("combobox", { name: "角色" }));
+    expect(screen.getByRole("option", { name: "客服（只读）" })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "客服" }));
     await user.click(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
     await user.click(screen.getByRole("checkbox", { name: "德瑞可" }));
     expect(screen.getByText("已选择 1 个")).toBeInTheDocument();
@@ -694,6 +717,7 @@ describe("Chat settings pages", () => {
       account: "agent003",
       name: "客服三号",
       password: "Strong1!",
+      role: "operator",
       seatIds: ["101"],
     });
 
@@ -701,8 +725,11 @@ describe("Chat settings pages", () => {
     await user.click(screen.getByRole("menuitem", { name: "编辑" }));
     expect(screen.getByRole("dialog", { name: "编辑子账号" })).toBeInTheDocument();
     expect(screen.getByLabelText("登录用户名")).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "角色" })).toHaveTextContent("管理员");
     await user.clear(screen.getByLabelText("姓名"));
     await user.type(screen.getByLabelText("姓名"), "客服一号改");
+    await user.click(screen.getByRole("combobox", { name: "角色" }));
+    await user.keyboard("{ArrowDown}{Enter}");
     await user.click(screen.getByRole("button", { name: "确认提交" }));
 
     await waitFor(() => {
@@ -711,6 +738,7 @@ describe("Chat settings pages", () => {
     expect(JSON.parse(mock.history.put[0]?.data ?? "{}")).toMatchObject({
       name: "客服一号改",
       password: "",
+      role: "operator",
     });
 
     await user.click(screen.getByRole("button", { name: "打开 客服一号改 操作菜单" }));
@@ -968,6 +996,7 @@ describe("Chat settings pages", () => {
             account: "agent001",
             id: "11",
             name: "客服一号",
+            role: "operator",
             seats: [
               {
                 avatarUrl: "https://example.com/drc.png",

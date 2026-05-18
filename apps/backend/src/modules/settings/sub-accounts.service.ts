@@ -13,6 +13,7 @@ import {
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
+import { deriveAccountRole, normalizeAccountRole } from "../auth/permissions.js";
 import { hashPassword } from "../auth/password.service.js";
 
 type TenantScope = {
@@ -24,6 +25,7 @@ type SubAccountRow = {
   account: string;
   id: number;
   name: string;
+  role: string | null;
   status: number;
   type: number;
 };
@@ -102,6 +104,7 @@ export class SubAccountSettingsService {
         name: normalizedName,
         password_hash: await hashPassword(normalizedPassword),
         platform: scope.platform,
+        role: payload.role,
         status: dbSubAccountStatus.active,
         type: dbSubAccountType.sub,
         uid: scope.uid,
@@ -130,9 +133,16 @@ export class SubAccountSettingsService {
     }
 
     await this.assertSubAccountInScope(scope, numericSubAccountId);
+    const currentSubAccount = await this.getSubAccountRow(scope, numericSubAccountId);
+
+    if (currentSubAccount?.type === dbSubAccountType.main && payload.role) {
+      throw new BadRequestError("OWNER_ROLE_IMMUTABLE", "主账号角色不允许修改");
+    }
+
     const updateValues: {
       name: string;
       password_hash?: string;
+      role?: string;
       update_time: Date;
     } = {
       name: normalizedName,
@@ -147,6 +157,16 @@ export class SubAccountSettingsService {
       }
 
       updateValues.password_hash = await hashPassword(normalizedPassword);
+    }
+
+    if (payload.role) {
+      const nextRole = normalizeAccountRole(payload.role);
+
+      if (!nextRole || nextRole === "owner") {
+        throw new BadRequestError("ROLE_NOT_ALLOWED", "角色不合法");
+      }
+
+      updateValues.role = nextRole;
     }
 
     await this.db
@@ -247,6 +267,7 @@ export class SubAccountSettingsService {
         "sub_user.account",
         "sub_user.id",
         "sub_user.name",
+        "sub_user.role",
         "sub_user.status",
         "sub_user.type",
       ])
@@ -310,7 +331,7 @@ export class SubAccountSettingsService {
   private async assertSubAccountInScope(scope: TenantScope, subAccountId: number) {
     const subAccount = await this.db
       .selectFrom("xy_wap_embed_sub_user")
-      .select(["id", "type"])
+      .select(["id", "role", "type"])
       .where("id", "=", subAccountId)
       .where("uid", "=", scope.uid)
       .where("platform", "=", scope.platform)
@@ -325,7 +346,7 @@ export class SubAccountSettingsService {
   private async assertSubAccountCanBeManaged(scope: TenantScope, subAccountId: number) {
     const subAccount = await this.db
       .selectFrom("xy_wap_embed_sub_user")
-      .select(["id", "type"])
+      .select(["id", "role", "type"])
       .where("id", "=", subAccountId)
       .where("uid", "=", scope.uid)
       .where("platform", "=", scope.platform)
@@ -395,20 +416,7 @@ export class SubAccountSettingsService {
 
   private async getSubAccountOrThrow(scope: TenantScope, subAccountId: number) {
     const [subAccount, relations] = await Promise.all([
-      this.db
-        .selectFrom("xy_wap_embed_sub_user as sub_user")
-        .select([
-          "sub_user.account",
-          "sub_user.id",
-          "sub_user.name",
-          "sub_user.status",
-          "sub_user.type",
-        ])
-        .where("sub_user.id", "=", subAccountId)
-        .where("sub_user.uid", "=", scope.uid)
-        .where("sub_user.platform", "=", scope.platform)
-        .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
-        .executeTakeFirst() as Promise<SubAccountRow | undefined>,
+      this.getSubAccountRow(scope, subAccountId),
       this.listRelationRows(scope, subAccountId),
     ]);
 
@@ -421,6 +429,24 @@ export class SubAccountSettingsService {
       relations.map(mapRelationSeat),
     );
   }
+
+  private async getSubAccountRow(scope: TenantScope, subAccountId: number) {
+    return this.db
+      .selectFrom("xy_wap_embed_sub_user as sub_user")
+      .select([
+        "sub_user.account",
+        "sub_user.id",
+        "sub_user.name",
+        "sub_user.role",
+        "sub_user.status",
+        "sub_user.type",
+      ])
+      .where("sub_user.id", "=", subAccountId)
+      .where("sub_user.uid", "=", scope.uid)
+      .where("sub_user.platform", "=", scope.platform)
+      .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
+      .executeTakeFirst() as Promise<SubAccountRow | undefined>;
+  }
 }
 
 export function createSubAccountSettingsService(db: Kysely<Database>) {
@@ -431,10 +457,19 @@ function mapSubAccount(
   row: SubAccountRow,
   seats: SettingsWeComSeat[],
 ): SettingsSubAccount {
+  const role =
+    row.type === dbSubAccountType.main
+      ? "owner"
+      : normalizeAccountRole(row.role) ?? deriveAccountRole({
+          role: row.role,
+          type: row.type,
+        });
+
   return {
     account: row.account,
     id: String(row.id),
     name: row.name,
+    role,
     seats,
     status: row.status === dbSubAccountStatus.active ? "active" : "disabled",
     type: row.type === dbSubAccountType.main ? dbSubAccountType.main : dbSubAccountType.sub,

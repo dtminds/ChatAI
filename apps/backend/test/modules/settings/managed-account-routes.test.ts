@@ -131,7 +131,7 @@ describe("settings managed-account routes", () => {
 async function createSettingsApp() {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
-    roles: ["agent"],
+    roles: ["admin"],
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "1",

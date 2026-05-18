@@ -8,6 +8,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
+  AccountRole,
   SettingsSubAccount,
   SettingsSubAccountCreateRequest,
   SettingsSubAccountsResponse,
@@ -61,6 +62,13 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -79,6 +87,12 @@ import {
 import { Field, PageHeader, StatusText } from "@/pages/chat/settings/shared";
 import { cn } from "@/lib/utils";
 
+const presetRoles: Array<{ label: string; value: AccountRole }> = [
+  { label: "管理员", value: "admin" },
+  { label: "客服", value: "operator" },
+  { label: "客服（只读）", value: "viewer" },
+];
+
 type FormMode = "create" | "edit";
 
 type DialogState =
@@ -95,6 +109,7 @@ type FormValues = {
   account: string;
   name: string;
   password: string;
+  role: AccountRole;
   seatIds: string[];
 };
 
@@ -102,6 +117,14 @@ const emptyData: SettingsSubAccountsResponse = {
   seats: [],
   subAccounts: [],
 };
+
+function toSelectableRole(role: AccountRole): "admin" | "operator" | "viewer" {
+  if (role === "admin" || role === "viewer") {
+    return role;
+  }
+
+  return "operator";
+}
 
 export function SubAccountsSettingsPage() {
   const [data, setData] = useState<SettingsSubAccountsResponse>(emptyData);
@@ -163,10 +186,12 @@ export function SubAccountsSettingsPage() {
 
     try {
       if (mode === "create") {
+        const createRole = toSelectableRole(values.role);
         const nextSubAccount = await createSubAccount({
           account: values.account.trim(),
           name: values.name.trim(),
           password: values.password,
+          role: createRole,
           seatIds: values.seatIds,
         } satisfies SettingsSubAccountCreateRequest);
 
@@ -176,9 +201,14 @@ export function SubAccountsSettingsPage() {
         }));
         toast.success("子账号已新增");
       } else if (dialogState?.mode === "edit") {
+        const updateRole =
+          dialogState.subAccount.type === 1
+            ? undefined
+            : toSelectableRole(values.role);
         const nextSubAccount = await updateSubAccount(dialogState.subAccount.id, {
           name: values.name.trim(),
           password: values.password,
+          role: updateRole,
           seatIds: values.seatIds,
         } satisfies SettingsSubAccountUpdateRequest);
 
@@ -795,6 +825,7 @@ function SubAccountDialog({
     account: "",
     name: "",
     password: "",
+    role: "operator",
     seatIds: [],
   });
   const [formError, setFormError] = useState("");
@@ -821,6 +852,7 @@ function SubAccountDialog({
       account: state.subAccount?.account ?? "",
       name: state.subAccount?.name ?? "",
       password: "",
+      role: state.subAccount?.type === 1 ? "owner" : state.subAccount?.role ?? "operator",
       seatIds: state.subAccount?.seats.map((seat) => seat.seatId) ?? [],
     });
     setFormError("");
@@ -968,6 +1000,31 @@ function SubAccountDialog({
               placeholder="请输入"
               value={formValues.name}
             />
+          </Field>
+
+          <Field label="角色">
+            {mode === "edit" && state?.subAccount?.type === 1 ? (
+              <>
+                <Input aria-label="角色" disabled value="owner" />
+                <p className="text-xs text-muted-foreground">主账号角色固定为 owner</p>
+              </>
+            ) : (
+              <Select
+                onValueChange={(value) => updateField("role", value as AccountRole)}
+                value={formValues.role}
+              >
+                <SelectTrigger aria-label="角色" className="w-full">
+                  <SelectValue placeholder="选择角色" />
+                </SelectTrigger>
+                <SelectContent>
+                  {presetRoles.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </Field>
 
           <SeatSelectionList

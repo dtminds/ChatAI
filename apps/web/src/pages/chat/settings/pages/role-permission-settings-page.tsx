@@ -1,12 +1,6 @@
-import {
-  Delete02Icon,
-  SecurityCheckIcon,
-} from "@hugeicons/core-free-icons";
+import { SecurityCheckIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -15,15 +9,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { roles } from "@/pages/chat/settings/demo-data";
+import { presetRoles } from "@/pages/chat/settings/demo-data";
 import { PageHeader } from "@/pages/chat/settings/shared";
 
 export function RolePermissionSettingsPage() {
   return (
     <>
       <PageHeader
-        description="典型权限矩阵：角色列、能力列、开关和危险操作入口，适合后续对接 RBAC 或团队权限模型。"
-        eyebrow="DEMO / RBAC"
+        description="固定预设角色：owner、admin、operator、viewer。角色不可自定义，owner 仅由主账号推导。"
+        eyebrow="SETTINGS / ROLES"
         title="权限角色"
       />
 
@@ -32,14 +26,18 @@ export function RolePermissionSettingsPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="px-5 py-4">角色</TableHead>
-              <TableHead className="px-5 py-4">会话接待</TableHead>
-              <TableHead className="px-5 py-4">账号管理</TableHead>
-              <TableHead className="px-5 py-4">数据导出</TableHead>
-              <TableHead className="px-5 py-4">操作</TableHead>
+              <TableHead className="px-5 py-4">说明</TableHead>
+              <TableHead className="px-5 py-4">chat.access</TableHead>
+              <TableHead className="px-5 py-4">chat.send</TableHead>
+              <TableHead className="px-5 py-4">chat.takeover</TableHead>
+              <TableHead className="px-5 py-4">settings.access</TableHead>
+              <TableHead className="px-5 py-4">settings.subAccounts.manage</TableHead>
+              <TableHead className="px-5 py-4">settings.managedAccounts.manage</TableHead>
+              <TableHead className="px-5 py-4">settings.sidebar.manage</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {roles.map((role) => (
+            {presetRoles.map((role) => (
               <TableRow key={role.name}>
                 <TableCell className="px-5 py-5">
                   <div className="flex items-center gap-3">
@@ -58,30 +56,16 @@ export function RolePermissionSettingsPage() {
                     </div>
                   </div>
                 </TableCell>
+                <TableCell className="px-5 py-5">
+                  <span className="text-sm text-muted-foreground">{role.description}</span>
+                </TableCell>
                 {role.permissions.map((permission) => (
                   <TableCell className="px-5 py-5" key={permission.label}>
-                    <Label className="text-foreground">
-                      <Checkbox defaultChecked={permission.enabled} />
-                      <span>{permission.label}</span>
-                    </Label>
+                    <span className="text-sm text-foreground">
+                      {permission.enabled ? "允许" : "禁止"}
+                    </span>
                   </TableCell>
                 ))}
-                <TableCell className="px-5 py-5">
-                  <Button
-                    aria-label={`删除角色 ${role.name}`}
-                    className="size-8 rounded-[8px] text-destructive"
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <HugeiconsIcon
-                      color="currentColor"
-                      icon={Delete02Icon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                  </Button>
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>

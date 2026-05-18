@@ -18,7 +18,8 @@ import {
   type SettingsSubAccountUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { ForbiddenError } from "../../shared/errors.js";
 import { createManagedAccountSettingsService } from "./managed-accounts.service.js";
 import { createSidebarItemsSettingsService } from "./sidebar-items.service.js";
 import { createSubAccountSettingsService } from "./sub-accounts.service.js";
@@ -42,11 +43,12 @@ type SidebarItemParams = Static<typeof SidebarItemParamsSchema>;
 export async function registerSettingsRoutes(app: FastifyInstance) {
   app.get("/api/server/settings/managed-accounts", {
     preHandler: app.authenticate,
-  }, async (request) =>
-    apiSuccess(
+  }, async (request) => {
+    assertSettingsAccess(request);
+    return apiSuccess(
       await createManagedAccountSettingsService(app.db).list(getSubUserId(request)),
-    ),
-  );
+    );
+  });
 
   app.put<{
     Body: SettingsManagedAccountSubAccountsUpdateRequest;
@@ -60,31 +62,35 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         params: ManagedAccountParamsSchema,
       },
     },
-    async (request) =>
-      apiSuccess(
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
         await createManagedAccountSettingsService(app.db).updateSubAccounts(
           getSubUserId(request),
           request.params.managedAccountId,
           request.body,
         ),
-      ),
+      );
+    },
   );
 
   app.get("/api/server/settings/sub-accounts", {
     preHandler: app.authenticate,
-  }, async (request) =>
-    apiSuccess(
+  }, async (request) => {
+    assertSettingsManage(request);
+    return apiSuccess(
       await createSubAccountSettingsService(app.db).list(getSubUserId(request)),
-    ),
-  );
+    );
+  });
 
   app.get("/api/server/settings/sidebar-items", {
     preHandler: app.authenticate,
-  }, async (request) =>
-    apiSuccess(
+  }, async (request) => {
+    assertSettingsAccess(request);
+    return apiSuccess(
       await createSidebarItemsSettingsService(app.db).list(getSubUserId(request)),
-    ),
-  );
+    );
+  });
 
   app.post<{ Body: SettingsSidebarItemCreateRequest }>(
     "/api/server/settings/sidebar-items",
@@ -94,13 +100,15 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         body: SettingsSidebarItemCreateRequestSchema,
       },
     },
-    async (request) =>
-      apiSuccess(
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
         await createSidebarItemsSettingsService(app.db).create(
           getSubUserId(request),
           request.body,
         ),
-      ),
+      );
+    },
   );
 
   app.put<{
@@ -113,13 +121,15 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         body: SettingsSidebarItemsSortUpdateRequestSchema,
       },
     },
-    async (request) =>
-      apiSuccess(
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
         await createSidebarItemsSettingsService(app.db).updateSort(
           getSubUserId(request),
           request.body,
         ),
-      ),
+      );
+    },
   );
 
   app.put<{
@@ -134,14 +144,16 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         params: SidebarItemParamsSchema,
       },
     },
-    async (request) =>
-      apiSuccess(
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
         await createSidebarItemsSettingsService(app.db).update(
           getSubUserId(request),
           request.params.sidebarItemId,
           request.body,
         ),
-      ),
+      );
+    },
   );
 
   app.patch<{
@@ -156,14 +168,16 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         params: SidebarItemParamsSchema,
       },
     },
-    async (request) =>
-      apiSuccess(
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
         await createSidebarItemsSettingsService(app.db).updateStatus(
           getSubUserId(request),
           request.params.sidebarItemId,
           request.body.status,
         ),
-      ),
+      );
+    },
   );
 
   app.delete<{ Params: SidebarItemParams }>(
@@ -174,13 +188,15 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         params: SidebarItemParamsSchema,
       },
     },
-    async (request) =>
-      apiSuccess(
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
         await createSidebarItemsSettingsService(app.db).remove(
           getSubUserId(request),
           request.params.sidebarItemId,
         ),
-      ),
+      );
+    },
   );
 
   app.post<{ Body: SettingsSubAccountCreateRequest }>(
@@ -191,13 +207,15 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         body: SettingsSubAccountCreateRequestSchema,
       },
     },
-    async (request) =>
-      apiSuccess(
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
         await createSubAccountSettingsService(app.db).create(
           getSubUserId(request),
           request.body,
         ),
-      ),
+      );
+    },
   );
 
   app.put<{
@@ -212,14 +230,16 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         params: SubAccountParamsSchema,
       },
     },
-    async (request) =>
-      apiSuccess(
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
         await createSubAccountSettingsService(app.db).update(
           getSubUserId(request),
           request.params.subAccountId,
           request.body,
         ),
-      ),
+      );
+    },
   );
 
   app.patch<{
@@ -234,14 +254,16 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         params: SubAccountParamsSchema,
       },
     },
-    async (request) =>
-      apiSuccess(
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
         await createSubAccountSettingsService(app.db).updateStatus(
           getSubUserId(request),
           request.params.subAccountId,
           request.body.status,
         ),
-      ),
+      );
+    },
   );
 
   app.delete<{ Params: SubAccountParams }>(
@@ -252,16 +274,32 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         params: SubAccountParamsSchema,
       },
     },
-    async (request) =>
-      apiSuccess(
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
         await createSubAccountSettingsService(app.db).remove(
           getSubUserId(request),
           request.params.subAccountId,
         ),
-      ),
+      );
+    },
   );
 }
 
 function getSubUserId(request: { user?: { subUserId: string } }) {
   return request.user?.subUserId ?? "";
+}
+
+function assertSettingsAccess(request: FastifyRequest) {
+  const role = request.user?.roles?.[0];
+
+  if (role === "owner" || role === "admin") {
+    return;
+  }
+
+  throw new ForbiddenError("FORBIDDEN", "无权限访问");
+}
+
+function assertSettingsManage(request: FastifyRequest) {
+  assertSettingsAccess(request);
 }

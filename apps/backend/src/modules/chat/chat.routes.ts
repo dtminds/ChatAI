@@ -3,9 +3,10 @@ import type {
   WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WorkbenchService } from "./workbench.service.js";
 import { fetchProxiedMediaAsset } from "./media-proxy.service.js";
+import { ForbiddenError } from "../../shared/errors.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
@@ -206,11 +207,13 @@ export async function registerChatRoutes(app: FastifyInstance) {
         body: MediaUploadCredentialBodySchema,
       },
     },
-    async (request) =>
-      getWorkbenchService(app, request.log).getUploadCredential(
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request.log).getUploadCredential(
         getSubUserId(request),
         request.body.conversationId,
-      ),
+      );
+    },
   );
 
   app.get<{ Querystring: ConversationListQuery }>(
@@ -267,6 +270,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
+      assertChatWriteAccess(request);
       return getWorkbenchService(app, request.log).markConversationRead(
         getSubUserId(request),
         request.params.conversationId,
@@ -283,6 +287,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
+      assertChatWriteAccess(request);
       return getWorkbenchService(app, request.log).markConversationUnread(
         getSubUserId(request),
         request.params.conversationId,
@@ -299,6 +304,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
+      assertChatWriteAccess(request);
       return getWorkbenchService(app, request.log).pinConversation(
         getSubUserId(request),
         request.params.conversationId,
@@ -315,6 +321,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
+      assertChatWriteAccess(request);
       return getWorkbenchService(app, request.log).unpinConversation(
         getSubUserId(request),
         request.params.conversationId,
@@ -331,6 +338,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
+      assertChatWriteAccess(request);
       return getWorkbenchService(app, request.log).deleteConversation(
         getSubUserId(request),
         request.params.conversationId,
@@ -383,10 +391,13 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) =>
-      getWorkbenchService(app, request.log).sendMessage(
-        getSubUserId(request),
-        request.body satisfies WorkbenchSendMessagePayload,
-      ),
+      {
+        assertChatSendAccess(request);
+        return getWorkbenchService(app, request.log).sendMessage(
+          getSubUserId(request),
+          request.body satisfies WorkbenchSendMessagePayload,
+        );
+      },
   );
 
   app.post<{
@@ -402,11 +413,14 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) =>
-      getWorkbenchService(app, request.log).downloadMessageFile(
-        getSubUserId(request),
-        request.body.conversationId,
-        request.params.messageId,
-      ),
+      {
+        assertChatWriteAccess(request);
+        return getWorkbenchService(app, request.log).downloadMessageFile(
+          getSubUserId(request),
+          request.body.conversationId,
+          request.params.messageId,
+        );
+      },
   );
 
   app.post<{ Body: MessageDownloadStatusBody }>(
@@ -418,11 +432,14 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) =>
-      getWorkbenchService(app, request.log).getMessageFileDownloadStatus(
-        getSubUserId(request),
-        request.body.conversationId,
-        request.body.messageSeq,
-      ),
+      {
+        assertChatWriteAccess(request);
+        return getWorkbenchService(app, request.log).getMessageFileDownloadStatus(
+          getSubUserId(request),
+          request.body.conversationId,
+          request.body.messageSeq,
+        );
+      },
   );
 
   app.post<{ Params: SeatParams }>(
@@ -434,6 +451,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
+      assertChatTakeoverAccess(request);
       return getWorkbenchService(app, request.log).takeOverSeat(
         getSubUserId(request),
         request.params.seatId,
@@ -454,6 +472,24 @@ function parseOptionalInteger(value: string | undefined) {
   const parsed = Number.parseInt(value, 10);
 
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function assertChatSendAccess(request: FastifyRequest) {
+  if (request.user?.roles?.[0] === "viewer") {
+    throw new ForbiddenError("FORBIDDEN", "无权限访问");
+  }
+}
+
+function assertChatTakeoverAccess(request: FastifyRequest) {
+  if (request.user?.roles?.[0] === "viewer") {
+    throw new ForbiddenError("FORBIDDEN", "无权限访问");
+  }
+}
+
+function assertChatWriteAccess(request: FastifyRequest) {
+  if (request.user?.roles?.[0] === "viewer") {
+    throw new ForbiddenError("FORBIDDEN", "无权限访问");
+  }
 }
 
 function getWorkbenchService(

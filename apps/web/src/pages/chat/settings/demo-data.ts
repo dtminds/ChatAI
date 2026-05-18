@@ -22,32 +22,57 @@ export const qywxAccounts = [
   },
 ] as const;
 
-export const roles = [
+export const presetRoles = [
   {
-    name: "管理员",
-    description: "拥有账号、人员和配置管理权限",
+    description: "主账号，拥有所有 settings 和聊天权限",
+    name: "owner",
     permissions: [
-      { label: "可接待", enabled: true },
-      { label: "可管理", enabled: true },
-      { label: "可导出", enabled: true },
+      { label: "chat.access", enabled: true },
+      { label: "chat.send", enabled: true },
+      { label: "chat.takeover", enabled: true },
+      { label: "settings.access", enabled: true },
+      { label: "settings.subAccounts.manage", enabled: true },
+      { label: "settings.managedAccounts.manage", enabled: true },
+      { label: "settings.sidebar.manage", enabled: true },
     ],
   },
   {
-    name: "组长",
-    description: "可接待并查看小组数据",
+    description: "可管理设置，但不具备主账号身份",
+    name: "admin",
     permissions: [
-      { label: "可接待", enabled: true },
-      { label: "可管理", enabled: false },
-      { label: "可导出", enabled: true },
+      { label: "chat.access", enabled: true },
+      { label: "chat.send", enabled: true },
+      { label: "chat.takeover", enabled: true },
+      { label: "settings.access", enabled: true },
+      { label: "settings.subAccounts.manage", enabled: true },
+      { label: "settings.managedAccounts.manage", enabled: true },
+      { label: "settings.sidebar.manage", enabled: true },
     ],
   },
   {
-    name: "客服",
-    description: "处理会话和维护客户备注",
+    description: "可接管账号并发送消息",
+    name: "operator",
     permissions: [
-      { label: "可接待", enabled: true },
-      { label: "可管理", enabled: false },
-      { label: "可导出", enabled: false },
+      { label: "chat.access", enabled: true },
+      { label: "chat.send", enabled: true },
+      { label: "chat.takeover", enabled: true },
+      { label: "settings.access", enabled: false },
+      { label: "settings.subAccounts.manage", enabled: false },
+      { label: "settings.managedAccounts.manage", enabled: false },
+      { label: "settings.sidebar.manage", enabled: false },
+    ],
+  },
+  {
+    description: "只能查看会话，不能接管账号或发送消息",
+    name: "viewer",
+    permissions: [
+      { label: "chat.access", enabled: true },
+      { label: "chat.send", enabled: false },
+      { label: "chat.takeover", enabled: false },
+      { label: "settings.access", enabled: false },
+      { label: "settings.subAccounts.manage", enabled: false },
+      { label: "settings.managedAccounts.manage", enabled: false },
+      { label: "settings.sidebar.manage", enabled: false },
     ],
   },
 ] as const;

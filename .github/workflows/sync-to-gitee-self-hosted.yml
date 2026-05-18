@@ -38,7 +38,7 @@ jobs:
           echo "::group::Clone GitHub mirror"
           workdir=/tmp/repo-sync
           rm -rf "$workdir"
-          git clone --bare --progress \
+          git clone --bare \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
             "$workdir"
           echo "::endgroup::"

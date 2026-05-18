@@ -72,6 +72,7 @@ import {
 import { cn } from "@/lib/utils";
 import { sortSidebarItems } from "@/pages/chat/lib/sidebar-items";
 import { Field, PageHeader } from "@/pages/chat/settings/shared";
+import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 
 type DragOverlaySize = {
   height: number;
@@ -99,6 +100,7 @@ const maxSidebarItems = 10;
 const maxSidebarItemNameWeight = 8;
 
 export function SidebarSettingsPage() {
+  const { canManageSidebar } = useSettingsPermissions();
   const [items, setItems] = useState<SettingsSidebarItem[]>(emptyItems);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SettingsSidebarItem | null>(null);
@@ -287,7 +289,7 @@ export function SidebarSettingsPage() {
 
             <Button
               className="h-10 px-4"
-              disabled={items.length >= maxSidebarItems}
+              disabled={!canManageSidebar || items.length >= maxSidebarItems}
               onClick={() => setDialogState({ mode: "create" })}
               type="button"
             >
@@ -305,7 +307,7 @@ export function SidebarSettingsPage() {
             <section className="mt-6 rounded-[10px] border border-destructive/30 bg-destructive-muted p-5 text-sm text-destructive">
               {errorMessage}
             </section>
-          ) : !isLoading && filteredItems.length > 0 && !isSearching ? (
+          ) : !isLoading && filteredItems.length > 0 && !isSearching && canManageSidebar ? (
             <Sortable
               getItemValue={(item) => item.id}
               onDragCancel={() => {
@@ -335,6 +337,7 @@ export function SidebarSettingsPage() {
                 items={filteredItems}
                 renderRow={(item) => (
                   <SidebarItemRow
+                    canManage={canManageSidebar}
                     isPending={
                       pendingAction === `delete:${item.id}` ||
                       pendingAction === `edit:${item.id}` ||
@@ -367,6 +370,7 @@ export function SidebarSettingsPage() {
               items={filteredItems}
               renderRow={(item) => (
                 <SidebarItemRow
+                  canManage={canManageSidebar}
                   isPending={
                     pendingAction === `delete:${item.id}` ||
                     pendingAction === `edit:${item.id}` ||
@@ -508,6 +512,7 @@ function SidebarItemsTable({
 }
 
 function SidebarItemRow({
+  canManage,
   isPending,
   item,
   onDelete,
@@ -515,6 +520,7 @@ function SidebarItemRow({
   onToggleStatus,
   sortable = true,
 }: {
+  canManage: boolean;
   isPending: boolean;
   item: SettingsSidebarItem;
   onDelete: () => void;
@@ -553,7 +559,7 @@ function SidebarItemRow({
           <Switch
             aria-label={`${isActive ? "停用" : "启用"} ${item.name}`}
             checked={isActive}
-            disabled={isPending}
+            disabled={!canManage || isPending}
             onCheckedChange={onToggleStatus}
           />
         </div>
@@ -564,7 +570,7 @@ function SidebarItemRow({
             <Button
               aria-label={`打开 ${item.name} 操作菜单`}
               className="size-8 rounded-[8px]"
-              disabled={isPending}
+              disabled={!canManage || isPending}
               size="icon"
               type="button"
               variant="ghost"

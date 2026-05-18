@@ -44,7 +44,6 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
   app.get("/api/server/settings/managed-accounts", {
     preHandler: app.authenticate,
   }, async (request) => {
-    assertSettingsAccess(request);
     return apiSuccess(
       await createManagedAccountSettingsService(app.db).list(getSubUserId(request)),
     );
@@ -77,7 +76,6 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
   app.get("/api/server/settings/sub-accounts", {
     preHandler: app.authenticate,
   }, async (request) => {
-    assertSettingsManage(request);
     return apiSuccess(
       await createSubAccountSettingsService(app.db).list(getSubUserId(request)),
     );
@@ -86,7 +84,6 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
   app.get("/api/server/settings/sidebar-items", {
     preHandler: app.authenticate,
   }, async (request) => {
-    assertSettingsAccess(request);
     return apiSuccess(
       await createSidebarItemsSettingsService(app.db).list(getSubUserId(request)),
     );

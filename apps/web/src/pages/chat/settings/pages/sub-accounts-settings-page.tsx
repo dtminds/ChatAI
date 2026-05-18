@@ -85,6 +85,7 @@ import {
   updateSubAccountStatus,
 } from "@/pages/chat/settings/settings-service";
 import { Field, PageHeader, StatusText } from "@/pages/chat/settings/shared";
+import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 import { cn } from "@/lib/utils";
 
 const presetRoles: Array<{ label: string; value: AccountRole }> = [
@@ -127,6 +128,7 @@ function toSelectableRole(role: AccountRole): "admin" | "operator" | "viewer" {
 }
 
 export function SubAccountsSettingsPage() {
+  const { canManageSubAccounts } = useSettingsPermissions();
   const [data, setData] = useState<SettingsSubAccountsResponse>(emptyData);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SettingsSubAccount | null>(null);
@@ -303,6 +305,7 @@ export function SubAccountsSettingsPage() {
 
         <Button
           className="h-10 px-4"
+          disabled={!canManageSubAccounts}
           onClick={() => setDialogState({ mode: "create" })}
           type="button"
         >
@@ -354,6 +357,7 @@ export function SubAccountsSettingsPage() {
               ) : filteredSubAccounts.length > 0 ? (
                 filteredSubAccounts.map((subAccount) => (
                   <SubAccountRow
+                    canManage={canManageSubAccounts}
                     isDeleting={pendingAction === `delete:${subAccount.id}`}
                     isStatusPending={pendingAction === `status:${subAccount.id}`}
                     key={subAccount.id}
@@ -431,6 +435,7 @@ export function SubAccountsSettingsPage() {
 }
 
 function SubAccountRow({
+  canManage,
   isDeleting,
   isStatusPending,
   onDelete,
@@ -438,6 +443,7 @@ function SubAccountRow({
   onToggleStatus,
   subAccount,
 }: {
+  canManage: boolean;
   isDeleting: boolean;
   isStatusPending: boolean;
   onDelete: () => void;
@@ -483,6 +489,7 @@ function SubAccountRow({
             <Button
               aria-label={`打开 ${subAccount.name} 操作菜单`}
               className="size-8 rounded-[8px]"
+              disabled={!canManage}
               size="icon"
               type="button"
               variant="ghost"
@@ -1005,8 +1012,8 @@ function SubAccountDialog({
           <Field label="角色">
             {mode === "edit" && state?.subAccount?.type === 1 ? (
               <>
-                <Input aria-label="角色" disabled value="owner" />
-                <p className="text-xs text-muted-foreground">主账号角色固定为 owner</p>
+                <Input aria-label="角色" disabled value="主账号" />
+                <p className="text-xs text-muted-foreground">主账号角色固定为主账号</p>
               </>
             ) : (
               <Select

@@ -34,11 +34,24 @@ function renderRoute(initialEntry = "/chat") {
   return router;
 }
 
-function mockAuthenticatedSession() {
+function mockAuthenticatedSession(role = "admin") {
   mock.onGet("/auth/session").reply(200, {
     data: {
       subUser: {
         displayName: "客服一号",
+        permissions:
+          role === "admin"
+            ? [
+                "chat.access",
+                "chat.send",
+                "chat.takeover",
+                "settings.access",
+                "settings.subAccounts.manage",
+                "settings.managedAccounts.manage",
+                "settings.sidebar.manage",
+              ]
+            : ["chat.access", "chat.send", "chat.takeover"],
+        role,
         subUserId: "101",
       },
     },
@@ -339,12 +352,88 @@ describe("Chat settings pages", () => {
 
     expect(screen.getByRole("heading", { name: "权限角色" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "角色权限矩阵" })).toBeInTheDocument();
-    expect(screen.getByText("owner")).toBeInTheDocument();
-    expect(screen.getByText("admin")).toBeInTheDocument();
-    expect(screen.getByText("operator")).toBeInTheDocument();
-    expect(screen.getByText("viewer")).toBeInTheDocument();
-    expect(screen.getAllByText("主账号，拥有所有 settings 和聊天权限").length).toBeGreaterThan(0);
+    expect(screen.getByText("主账号")).toBeInTheDocument();
+    expect(screen.getByText("管理员")).toBeInTheDocument();
+    expect(screen.getByText("客服")).toBeInTheDocument();
+    expect(screen.getByText("客服（只读）")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "权限集" })).toBeInTheDocument();
+    expect(screen.queryByText("chat.access")).not.toBeInTheDocument();
+    await user.hover(screen.getByRole("button", { name: "查看 客服（只读） 权限明细" }));
+    expect(screen.getByText("会话查看")).toBeInTheDocument();
+    expect(screen.getByText("不可接管账号或发送消息")).toBeInTheDocument();
     expect(screen.queryByText("组长")).not.toBeInTheDocument();
+  });
+
+  it("keeps settings lists visible for operator sessions while disabling write actions", async () => {
+    const user = userEvent.setup();
+    mock.reset();
+    mockAuthenticatedSession("operator");
+    mock.onGet("/server/settings/sub-accounts").reply(200, {
+      data: {
+        seats: [],
+        subAccounts: [
+          {
+            account: "agent002",
+            id: "12",
+            name: "客服二号",
+            role: "operator",
+            seats: [],
+            status: "active",
+            type: 0,
+          },
+        ],
+      },
+      success: true,
+    });
+    mock.onGet("/server/settings/managed-accounts").reply(200, {
+      data: {
+        managedAccounts: [
+          {
+            id: "seat-1",
+            name: "德瑞可",
+            onlineStatus: "online",
+            subAccounts: [],
+          },
+        ],
+        subAccounts: [],
+      },
+      success: true,
+    });
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: [
+          {
+            id: "sidebar-1",
+            name: "客户详情",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/customer",
+          },
+        ],
+      },
+      success: true,
+    });
+    renderRoute("/chat/settings");
+
+    expect(await screen.findByText("德瑞可")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "关联子账号" })).toBeDisabled();
+
+    await user.click(screen.getByRole("link", { name: "子账号管理" }));
+
+    expect(await screen.findByText("客服二号")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新增子账号" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "打开 客服二号 操作菜单" })).toBeDisabled();
+
+    await user.click(screen.getByRole("link", { name: "侧边栏" }));
+
+    expect(
+      await screen.findByRole("button", { name: "打开 客户详情 操作菜单" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "新增页面" })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "停用 客户详情" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "拖动 客户详情 调整排序" }),
+    ).not.toBeInTheDocument();
   });
 
   it("manages sidebar items and previews active item ordering", async () => {

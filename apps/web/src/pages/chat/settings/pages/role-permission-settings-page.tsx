@@ -1,6 +1,13 @@
 import { SecurityCheckIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import {
   Table,
   TableBody,
@@ -16,7 +23,7 @@ export function RolePermissionSettingsPage() {
   return (
     <>
       <PageHeader
-        description="固定预设角色：owner、admin、operator、viewer。角色不可自定义，owner 仅由主账号推导。"
+        description="固定预设角色：主账号、管理员、客服、客服（只读）。角色不可自定义，主账号仅由主账号身份推导。"
         eyebrow="SETTINGS / ROLES"
         title="权限角色"
       />
@@ -25,52 +32,81 @@ export function RolePermissionSettingsPage() {
         <Table aria-label="角色权限矩阵">
           <TableHeader>
             <TableRow>
-              <TableHead className="px-5 py-4">角色</TableHead>
-              <TableHead className="px-5 py-4">说明</TableHead>
-              <TableHead className="px-5 py-4">chat.access</TableHead>
-              <TableHead className="px-5 py-4">chat.send</TableHead>
-              <TableHead className="px-5 py-4">chat.takeover</TableHead>
-              <TableHead className="px-5 py-4">settings.access</TableHead>
-              <TableHead className="px-5 py-4">settings.subAccounts.manage</TableHead>
-              <TableHead className="px-5 py-4">settings.managedAccounts.manage</TableHead>
-              <TableHead className="px-5 py-4">settings.sidebar.manage</TableHead>
+              <TableHead className="w-[24%] px-5 py-4">角色</TableHead>
+              <TableHead className="w-[46%] px-5 py-4">说明</TableHead>
+              <TableHead className="px-5 py-4">权限集</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {presetRoles.map((role) => (
-              <TableRow key={role.name}>
-                <TableCell className="px-5 py-5">
-                  <div className="flex items-center gap-3">
-                    <HugeiconsIcon
-                      className="text-primary"
-                      color="currentColor"
-                      icon={SecurityCheckIcon}
-                      size={18}
-                      strokeWidth={1.8}
-                    />
-                    <div>
-                      <p className="font-medium text-foreground">{role.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {role.description}
-                      </p>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell className="px-5 py-5">
-                  <span className="text-sm text-muted-foreground">{role.description}</span>
-                </TableCell>
-                {role.permissions.map((permission) => (
-                  <TableCell className="px-5 py-5" key={permission.label}>
-                    <span className="text-sm text-foreground">
-                      {permission.enabled ? "允许" : "禁止"}
-                    </span>
-                  </TableCell>
-                ))}
-              </TableRow>
+              <RolePermissionRow key={role.id} role={role} />
             ))}
           </TableBody>
         </Table>
       </section>
     </>
+  );
+}
+
+function RolePermissionRow({ role }: { role: (typeof presetRoles)[number] }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <TableRow>
+      <TableCell className="px-5 py-5">
+        <div className="flex items-center gap-3">
+          <HugeiconsIcon
+            className="text-primary"
+            color="currentColor"
+            icon={SecurityCheckIcon}
+            size={18}
+            strokeWidth={1.8}
+          />
+          <div>
+            <p className="font-medium text-foreground">{role.displayName}</p>
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className="px-5 py-5">
+        <span className="text-sm text-muted-foreground">{role.description}</span>
+      </TableCell>
+      <TableCell className="px-5 py-5">
+        <HoverCard open={isOpen} onOpenChange={setIsOpen}>
+          <HoverCardTrigger asChild>
+            <Button
+              aria-label={`查看 ${role.displayName} 权限明细`}
+              className="h-8 justify-start px-0 text-left font-normal"
+              onBlur={() => setIsOpen(false)}
+              onFocus={() => setIsOpen(true)}
+              onMouseEnter={() => setIsOpen(true)}
+              onMouseLeave={() => setIsOpen(false)}
+              type="button"
+              variant="ghost"
+            >
+              <span className="max-w-[18rem] truncate text-sm text-foreground">
+                {role.permissionSummary}
+              </span>
+            </Button>
+          </HoverCardTrigger>
+          <HoverCardContent align="start" className="w-64">
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">
+                {role.displayName}权限明细
+              </p>
+              <ul className="space-y-2">
+                {role.permissionDetails.map((permission) => (
+                  <li
+                    className="text-sm leading-5 text-muted-foreground"
+                    key={permission}
+                  >
+                    {permission}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </HoverCardContent>
+        </HoverCard>
+      </TableCell>
+    </TableRow>
   );
 }

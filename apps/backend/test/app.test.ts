@@ -896,6 +896,50 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("allows operator role sessions to read settings lists", async () => {
+    const { app, authorization } = await createAuthenticatedSettingsApp("operator");
+
+    const subAccounts = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/settings/sub-accounts",
+    });
+    const managedAccounts = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/settings/managed-accounts",
+    });
+    const sidebarItems = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/settings/sidebar-items",
+    });
+
+    expect(subAccounts.statusCode).toBe(200);
+    expect(subAccounts.json()).toMatchObject({
+      data: {
+        subAccounts: expect.any(Array),
+      },
+      success: true,
+    });
+    expect(managedAccounts.statusCode).toBe(200);
+    expect(managedAccounts.json()).toMatchObject({
+      data: {
+        managedAccounts: expect.any(Array),
+      },
+      success: true,
+    });
+    expect(sidebarItems.statusCode).toBe(200);
+    expect(sidebarItems.json()).toMatchObject({
+      data: {
+        items: expect.any(Array),
+      },
+      success: true,
+    });
+
+    await app.close();
+  });
+
   it("allows admin role sessions to create admin sub accounts", async () => {
     const { app, authorization } = await createAuthenticatedSettingsApp("admin");
 

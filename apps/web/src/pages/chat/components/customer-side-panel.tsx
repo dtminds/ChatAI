@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -246,9 +247,15 @@ export function CustomerSidePanel({
     !isGroupConversation && sidebarEntries.length === 0;
   const [activeSidebarValue, setActiveSidebarValue] =
     useState(defaultSidebarValue);
+  const previousDefaultSidebarValueRef = useRef(defaultSidebarValue);
 
   useEffect(() => {
     setActiveSidebarValue((current) => {
+      if (previousDefaultSidebarValueRef.current !== defaultSidebarValue) {
+        previousDefaultSidebarValueRef.current = defaultSidebarValue;
+        return defaultSidebarValue;
+      }
+
       if (current && sidebarEntries.some((entry) => entry.value === current)) {
         return current;
       }

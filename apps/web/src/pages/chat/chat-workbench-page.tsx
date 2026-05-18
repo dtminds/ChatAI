@@ -1044,19 +1044,15 @@ function ChatWorkbenchContent({
         <AlertDialogContent
           className="overflow-hidden p-0"
           size="sm"
-          style={{ height: 286, maxWidth: 520, width: 520 }}
+          style={{ height: 286, width: 520 }}
         >
           <div className="relative h-full overflow-hidden px-10 py-9">
-            <AlertDialogHeader className="relative z-10 min-w-0 max-w-[470px] space-y-4 text-left">
+            <AlertDialogHeader className="relative z-10 min-w-0 space-y-4 text-left">
               <AlertDialogTitle>
-                {pollingPauseReason
-                  ? getPollingPausedDialogCopy(pollingPauseReason).title
-                  : ""}
+                {getPollingPausedDialogCopy(pollingPauseReason).title}
               </AlertDialogTitle>
               <AlertDialogDescription>
-                {pollingPauseReason
-                  ? getPollingPausedDialogCopy(pollingPauseReason).description
-                  : ""}
+                {getPollingPausedDialogCopy(pollingPauseReason).description}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <img

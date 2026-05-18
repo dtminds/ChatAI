@@ -3,66 +3,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
-import MockAdapter from "axios-mock-adapter";
 import {
   GROUP_MEMBER_TYPE,
   type SettingsSidebarBindType,
   type WorkbenchMessageDto,
 } from "@chatai/contracts";
-import { requestInstance } from "@/lib/request";
 import {
   createMockWorkbenchService,
-  resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
-import {
-  resolveImageSegmentsForSend,
-  uploadWorkbenchFile,
-} from "@/pages/chat/api/media-upload-service";
 import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
-import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
-
-const mock = new MockAdapter(requestInstance);
-
-vi.mock("sonner", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("sonner")>();
-
-  return {
-    ...actual,
-    toast: {
-      ...actual.toast,
-      warning: vi.fn(),
-    },
-  };
-});
-
-vi.mock("@/pages/chat/api/media-upload-service", () => ({
-  resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments: ComposerSegment[]) =>
-    segments.map((segment: ComposerSegment) =>
-      segment.type === "image"
-        ? {
-            alt: segment.alt,
-            fileId: "chat-images/conv-001/mock-image.png",
-            height: segment.height,
-            type: "image",
-            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/mock-image.png",
-            width: segment.width,
-          }
-        : segment,
-    ),
-  ),
-  uploadWorkbenchFile: vi.fn(async (_conversationId, file: File) => ({
-    extension: file.name.split(".").pop() ?? "",
-    fileId: `chat-files/conv-001/${file.name}`,
-    fileName: file.name,
-    fileSize: file.size,
-    fileSizeLabel: `${file.size} B`,
-    type: "file",
-    url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
-  })),
-}));
+import {
+  installChatWorkbenchTestEnvironment,
+  renderChatWorkbenchPage,
+  resetChatWorkbenchTestState,
+} from "./workbench-test-utils";
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -129,46 +86,14 @@ const revokedVideoMessageDto = {
 describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
     vi.useRealTimers();
-    mock.reset();
-    vi.mocked(toast.warning).mockClear();
-    vi.mocked(resolveImageSegmentsForSend).mockImplementation(
-      async (_conversationId, segments) =>
-        segments.map((segment: ComposerSegment) =>
-          segment.type === "image"
-            ? {
-                alt: segment.alt,
-                fileId: "chat-images/conv-001/mock-image.png",
-                height: segment.height,
-                type: "image",
-                url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/mock-image.png",
-                width: segment.width,
-              }
-            : segment,
-        ),
-    );
-    vi.mocked(uploadWorkbenchFile).mockImplementation(
-      async (_conversationId, file: File) => ({
-        extension: file.name.split(".").pop() ?? "",
-        fileId: `chat-files/conv-001/${file.name}`,
-        fileName: file.name,
-        fileSize: file.size,
-        fileSizeLabel: `${file.size} B`,
-        type: "file",
-        url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
-      }),
-    );
-    resetWorkbenchService();
-    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      value: "visible",
-    });
+    resetChatWorkbenchTestState();
+    installChatWorkbenchTestEnvironment();
   });
 
   it("sends a message from the composer", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "收到，我来帮你确认");
@@ -185,10 +110,17 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("boots chat workbench through the shared test harness", async () => {
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
+  });
+
   it("sets and clears a quoted message preview from the message action menu", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
@@ -231,7 +163,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -268,7 +200,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -288,7 +220,7 @@ describe("ChatWorkbenchPage", () => {
   it("sends a selected quote with the composed text", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
@@ -325,7 +257,7 @@ describe("ChatWorkbenchPage", () => {
       type: "image/png",
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
@@ -362,7 +294,7 @@ describe("ChatWorkbenchPage", () => {
   it("inserts an @ mention from a group message action menu", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -382,7 +314,7 @@ describe("ChatWorkbenchPage", () => {
   it("renders pasted WeChat emoji tokens as images while sending the original token", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "好的[打脸]");
@@ -406,7 +338,7 @@ describe("ChatWorkbenchPage", () => {
       type: "image/png",
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await userEvent.click(composer);
@@ -437,7 +369,7 @@ describe("ChatWorkbenchPage", () => {
   });
 
   it("only accepts jpeg and png files from the composer image picker", async () => {
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -455,7 +387,7 @@ describe("ChatWorkbenchPage", () => {
     });
     vi.mocked(uploadWorkbenchFile).mockReturnValue(upload.promise);
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.upload(screen.getByLabelText("选择文件"), file);
@@ -2696,7 +2628,7 @@ describe("ChatWorkbenchPage", () => {
 
   it("logs out from the account menu", async () => {
     const user = userEvent.setup();
-    mock.onPost("/auth/logout").reply(200, {
+    workbenchHttpMock.onPost("/auth/logout").reply(200, {
       data: {
         revoked: true,
       },
@@ -2710,10 +2642,10 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("menuitem", { name: "退出登录" }));
 
     await waitFor(() => {
-      expect(mock.history.post[0]?.url).toBe("/auth/logout");
+      expect(workbenchHttpMock.history.post[0]?.url).toBe("/auth/logout");
     });
-    expect(mock.history.post).toHaveLength(1);
-    expect(mock.history.post[0]?.url).toBe("/auth/logout");
+    expect(workbenchHttpMock.history.post).toHaveLength(1);
+    expect(workbenchHttpMock.history.post[0]?.url).toBe("/auth/logout");
   });
 
   it("shows a paused sync dialog when another workbench tab takes polling ownership", async () => {

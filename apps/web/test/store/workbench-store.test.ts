@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMockWorkbenchService,
-  resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
@@ -12,6 +11,7 @@ import {
   useWorkbenchStore,
 } from "@/store/workbench-store";
 import type { Conversation } from "@/pages/chat/chat-types";
+import { resetChatWorkbenchTestState } from "../pages/chat/workbench-test-utils";
 
 vi.mock("@/pages/chat/api/media-upload-service", () => ({
   resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
@@ -54,11 +54,10 @@ function createCachedConversation(accountId: string): Conversation {
 
 describe("useWorkbenchStore", () => {
   beforeEach(() => {
-    resetWorkbenchService();
+    resetChatWorkbenchTestState();
     vi.mocked(resolveImageSegmentsForSend).mockImplementation(
       async (_conversationId, segments) => segments,
     );
-    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
 
   it("bootstraps the first account, conversation, and read state", async () => {

@@ -1,11 +1,20 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getMessageFeedItemKey, MessageRow } from "@/pages/chat/components/message-feed";
 import { TextMessageBubble } from "@/pages/chat/components/message";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import {
+  installChatWorkbenchTestEnvironment,
+  resetChatWorkbenchTestState,
+} from "./workbench-test-utils";
 
 describe("text message bubble layout", () => {
+  beforeEach(() => {
+    resetChatWorkbenchTestState();
+    installChatWorkbenchTestEnvironment();
+  });
+
   it("caps text bubbles to 90 percent of the message row", () => {
     render(<MessageRow message={createTextMessage("短消息")} />);
 

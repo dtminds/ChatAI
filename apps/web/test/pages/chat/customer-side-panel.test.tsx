@@ -1,8 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SettingsSidebarBindType } from "@chatai/contracts";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
+import {
+  installChatWorkbenchTestEnvironment,
+  resetChatWorkbenchTestState,
+} from "./workbench-test-utils";
 
 const sidebarIframeParamsFixture = {
   fsw: "fsw-cipher",
@@ -25,9 +29,10 @@ const defaultProps = {
 };
 
 describe("CustomerSidePanel", () => {
-  afterEach(() => {
+  beforeEach(() => {
+    resetChatWorkbenchTestState();
+    installChatWorkbenchTestEnvironment();
     window.localStorage.clear();
-    vi.clearAllMocks();
   });
 
   it("shows only sidebar items matching the conversation mode", () => {

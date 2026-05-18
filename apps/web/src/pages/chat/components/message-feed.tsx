@@ -215,6 +215,8 @@ function MessageActionAvatar({
     !message.isOwnMessage &&
     message.sender.groupMemberId,
   );
+  const canQuoteMessage = Boolean(onQuoteMessage);
+  const canSelectQuoteMessage = !message.isRevoked;
 
   return (
     <div className="relative shrink-0">
@@ -248,15 +250,27 @@ function MessageActionAvatar({
               @Ta
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuItem onSelect={() => onQuoteMessage?.(message)}>
-            <HugeiconsIcon
-              aria-hidden="true"
-              icon={QuoteUpIcon}
-              size={15}
-              strokeWidth={2}
-            />
-            引用消息
-          </DropdownMenuItem>
+          {canQuoteMessage ? (
+            <DropdownMenuItem
+              disabled={!canSelectQuoteMessage}
+              onSelect={(event) => {
+                if (!canSelectQuoteMessage) {
+                  event.preventDefault();
+                  return;
+                }
+
+                onQuoteMessage?.(message);
+              }}
+            >
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={QuoteUpIcon}
+                size={15}
+                strokeWidth={2}
+              />
+              引用消息
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

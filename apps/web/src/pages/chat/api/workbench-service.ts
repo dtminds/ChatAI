@@ -704,6 +704,7 @@ function buildMessageDto({
     createdAt: new Date(message.sentAt.replace(" ", "T")).getTime(),
     customerId,
     failReason: message.failReason,
+    isRevoked: message.isRevoked,
     messageId: message.remoteMessageId ?? message.id,
     senderAvatar: message.role === "system" ? undefined : message.sender.avatarUrl,
     senderName: message.role === "system" ? undefined : message.sender.name,

@@ -245,6 +245,27 @@ describe("text message bubble layout", () => {
     expect(screen.getByRole("menuitem", { name: "引用消息" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();
   });
+
+  it("disables the quote action for revoked messages", async () => {
+    const user = userEvent.setup();
+    const onQuoteMessage = vi.fn();
+
+    render(
+      <MessageRow
+        message={{ ...createTextMessage("已撤回原消息"), isRevoked: true }}
+        onQuoteMessage={onQuoteMessage}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "引用消息" })).toHaveAttribute(
+      "data-disabled",
+    );
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+
+    expect(onQuoteMessage).not.toHaveBeenCalled();
+  });
 });
 
 function createTextMessage(text: string): ChatMessage {

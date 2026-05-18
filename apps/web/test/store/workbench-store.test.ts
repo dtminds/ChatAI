@@ -148,6 +148,72 @@ describe("useWorkbenchStore", () => {
     expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(false);
   });
 
+  it("clears removed conversation resources from poll changes", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [
+            {
+              accountId: "drc",
+              conversationId: "conv-003",
+              seatId: "drc",
+              type: "remove",
+            },
+          ],
+          messageStatusChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      groupMembersByConversationId: {
+        ...state.groupMembersByConversationId,
+        "conv-003": [],
+      },
+      groupMembersLoadingByConversationId: {
+        ...state.groupMembersLoadingByConversationId,
+        "conv-003": true,
+      },
+      hasMoreHistoryByConversationId: {
+        ...state.hasMoreHistoryByConversationId,
+        "conv-003": true,
+      },
+      historyStatusByConversationId: {
+        ...state.historyStatusByConversationId,
+        "conv-003": "loading",
+      },
+      messagePaginationByConversationId: {
+        ...state.messagePaginationByConversationId,
+        "conv-003": {
+          hasMore: true,
+          nextBeforeSeq: 12,
+          skippedHiddenCount: 0,
+        },
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-003": seedMessages["conv-003"],
+      },
+    }));
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.messagesByConversationId["conv-003"]).toBeUndefined();
+    expect(state.messagePaginationByConversationId["conv-003"]).toBeUndefined();
+    expect(state.hasMoreHistoryByConversationId["conv-003"]).toBeUndefined();
+    expect(state.historyStatusByConversationId["conv-003"]).toBeUndefined();
+    expect(state.groupMembersByConversationId["conv-003"]).toBeUndefined();
+    expect(state.groupMembersLoadingByConversationId["conv-003"]).toBeUndefined();
+  });
+
   it("loads group members once when opening a group conversation", async () => {
     const baseService = createMockWorkbenchService();
     const observedConversationIds: string[] = [];
@@ -181,6 +247,60 @@ describe("useWorkbenchStore", () => {
         }),
       ]),
     );
+  });
+
+  it("clears group member cache when bootstrapping a fresh workbench snapshot", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    let state = useWorkbenchStore.getState();
+    expect(state.groupMembersByConversationId["conv-004"]).toBeDefined();
+
+    await useWorkbenchStore.getState().setActiveMode("single");
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    state = useWorkbenchStore.getState();
+    expect(state.activeConversationId).toBe("conv-001");
+    expect(state.groupMembersByConversationId).toEqual({});
+    expect(state.groupMembersLoadingByConversationId).toEqual({});
+  });
+
+  it("clears previous conversation message state while preserving cached group members", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    let state = useWorkbenchStore.getState();
+    expect(state.activeConversationId).toBe("conv-004");
+    expect(state.messagesByConversationId["conv-004"]).toBeDefined();
+    expect(state.messagePaginationByConversationId["conv-004"]).toBeDefined();
+    expect(state.hasMoreHistoryByConversationId["conv-004"]).toBeDefined();
+    expect(state.groupMembersByConversationId["conv-004"]).toBeDefined();
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    state = useWorkbenchStore.getState();
+    expect(state.activeConversationId).toBe("conv-001");
+    expect(state.messagesByConversationId["conv-004"]).toBeUndefined();
+    expect(state.messagePaginationByConversationId["conv-004"]).toBeUndefined();
+    expect(state.hasMoreHistoryByConversationId["conv-004"]).toBeUndefined();
+    expect(state.historyStatusByConversationId["conv-004"]).toBeUndefined();
+    expect(state.groupMembersByConversationId["conv-004"]).toBeDefined();
+  });
+
+  it("keeps previous conversation message state when it has pending messages", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("待确认消息");
+
+    let state = useWorkbenchStore.getState();
+    expect(state.pendingMessages.map((message) => message.conversationId)).toContain(
+      "conv-001",
+    );
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    state = useWorkbenchStore.getState();
+    expect(state.activeConversationId).toBe("conv-002");
+    expect(state.messagesByConversationId["conv-001"]).toBeDefined();
   });
 
   it("bootstraps conversations that contain video messages", async () => {
@@ -1271,7 +1391,7 @@ describe("useWorkbenchStore", () => {
 
     let state = useWorkbenchStore.getState();
 
-    expect(state.historyStatusByConversationId["conv-001"]).toBe("loading");
+    expect(state.historyStatusByConversationId["conv-001"]).toBeUndefined();
     expect(state.historyStatusByConversationId["conv-002"] ?? "idle").toBe("idle");
 
     historyGate.resolve();
@@ -1279,7 +1399,60 @@ describe("useWorkbenchStore", () => {
 
     state = useWorkbenchStore.getState();
 
-    expect(state.historyStatusByConversationId["conv-001"]).toBe("idle");
+    expect(state.historyStatusByConversationId["conv-001"]).toBeUndefined();
+  });
+
+  it("preserves pending conversation messages when a stale history load resolves", async () => {
+    const baseService = createMockWorkbenchService();
+    const historyGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return baseService.getMessages(conversationId, {
+            ...options,
+            limit: 5,
+          });
+        }
+
+        if (conversationId === "conv-001" && options?.beforeSeq != null) {
+          await historyGate.promise;
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("历史加载期间发送");
+    useWorkbenchStore.setState((state) => ({
+      hasMoreHistoryByConversationId: {
+        ...state.hasMoreHistoryByConversationId,
+        "conv-001": true,
+      },
+    }));
+
+    const historyPromise = useWorkbenchStore.getState().loadOlderMessages();
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    historyGate.resolve();
+    await historyPromise;
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pendingMessages.map((message) => message.conversationId)).toContain(
+      "conv-001",
+    );
+    expect(state.messagesByConversationId["conv-001"]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: {
+            text: "历史加载期间发送",
+            type: "text",
+          },
+        }),
+      ]),
+    );
   });
 
   it("tracks takeover status per account instead of globally", async () => {
@@ -1392,6 +1565,90 @@ describe("useWorkbenchStore", () => {
     ]);
     expect(state.conversationListsByScope["seat-d"]).toBeUndefined();
     expect(state.conversationModeLoadedAtByScope["seat-d"]).toBeUndefined();
+  });
+
+  it("clears resources for conversations whose seat list cache is evicted", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    const seatDConversation = createCachedConversation("seat-d");
+
+    useWorkbenchStore.setState((state) => ({
+      conversationListCacheSeatOrder: ["ndt", "drc", "seat-c", "seat-d"],
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        "seat-c": [createCachedConversation("seat-c")],
+        "seat-d": [seatDConversation],
+      },
+      conversationModeLoadedAtByScope: {
+        ...state.conversationModeLoadedAtByScope,
+        "seat-c": { single: 1 },
+        "seat-d": { single: 1 },
+      },
+      groupMembersByConversationId: {
+        ...state.groupMembersByConversationId,
+        [seatDConversation.id]: [],
+      },
+      groupMembersLoadingByConversationId: {
+        ...state.groupMembersLoadingByConversationId,
+        [seatDConversation.id]: true,
+      },
+      hasMoreHistoryByConversationId: {
+        ...state.hasMoreHistoryByConversationId,
+        [seatDConversation.id]: true,
+      },
+      historyStatusByConversationId: {
+        ...state.historyStatusByConversationId,
+        [seatDConversation.id]: "loading",
+      },
+      messagePaginationByConversationId: {
+        ...state.messagePaginationByConversationId,
+        [seatDConversation.id]: {
+          hasMore: true,
+          nextBeforeSeq: 12,
+          skippedHiddenCount: 0,
+        },
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        [seatDConversation.id]: [],
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveAccount("drc");
+
+    const state = useWorkbenchStore.getState();
+    expect(state.conversationListsByScope["seat-d"]).toBeUndefined();
+    expect(state.messagesByConversationId[seatDConversation.id]).toBeUndefined();
+    expect(state.messagePaginationByConversationId[seatDConversation.id]).toBeUndefined();
+    expect(state.hasMoreHistoryByConversationId[seatDConversation.id]).toBeUndefined();
+    expect(state.historyStatusByConversationId[seatDConversation.id]).toBeUndefined();
+    expect(state.groupMembersByConversationId[seatDConversation.id]).toBeUndefined();
+    expect(state.groupMembersLoadingByConversationId[seatDConversation.id]).toBeUndefined();
+  });
+
+  it("clears previous seat message and group member state when switching accounts", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    let state = useWorkbenchStore.getState();
+    expect(state.activeAccountId).toBe("drc");
+    expect(state.activeConversationId).toBe("conv-004");
+    expect(state.messagesByConversationId["conv-004"]).toBeDefined();
+    expect(state.groupMembersByConversationId["conv-004"]).toBeDefined();
+
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    state = useWorkbenchStore.getState();
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.activeConversationId).toBe("conv-005");
+    expect(state.messagesByConversationId["conv-004"]).toBeUndefined();
+    expect(state.messagePaginationByConversationId["conv-004"]).toBeUndefined();
+    expect(state.hasMoreHistoryByConversationId["conv-004"]).toBeUndefined();
+    expect(state.historyStatusByConversationId["conv-004"]).toBeUndefined();
+    expect(state.groupMembersByConversationId["conv-004"]).toBeUndefined();
+    expect(state.groupMembersLoadingByConversationId["conv-004"]).toBeUndefined();
+    expect(state.messagesByConversationId["conv-005"]).toBeDefined();
   });
 
   it("keeps recent seat conversation list caches when bootstrapping again", async () => {
@@ -1750,6 +2007,53 @@ describe("useWorkbenchStore", () => {
     expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
       authoritativeSeatUnreadCount,
     );
+  });
+
+  it("clears deleted conversation message and group member state", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    useWorkbenchStore.setState((state) => ({
+      groupMembersByConversationId: {
+        ...state.groupMembersByConversationId,
+        "conv-003": [],
+      },
+      groupMembersLoadingByConversationId: {
+        ...state.groupMembersLoadingByConversationId,
+        "conv-003": true,
+      },
+      hasMoreHistoryByConversationId: {
+        ...state.hasMoreHistoryByConversationId,
+        "conv-003": true,
+      },
+      historyStatusByConversationId: {
+        ...state.historyStatusByConversationId,
+        "conv-003": "loading",
+      },
+      messagePaginationByConversationId: {
+        ...state.messagePaginationByConversationId,
+        "conv-003": {
+          hasMore: true,
+          nextBeforeSeq: 12,
+          skippedHiddenCount: 0,
+        },
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-003": seedMessages["conv-003"],
+      },
+    }));
+
+    await useWorkbenchStore.getState().deleteConversation("conv-003");
+
+    const state = useWorkbenchStore.getState();
+    expect(state.messagesByConversationId["conv-003"]).toBeUndefined();
+    expect(state.messagePaginationByConversationId["conv-003"]).toBeUndefined();
+    expect(state.hasMoreHistoryByConversationId["conv-003"]).toBeUndefined();
+    expect(state.historyStatusByConversationId["conv-003"]).toBeUndefined();
+    expect(state.groupMembersByConversationId["conv-003"]).toBeUndefined();
+    expect(state.groupMembersLoadingByConversationId["conv-003"]).toBeUndefined();
   });
 
   it("selects the next conversation after deleting the active conversation", async () => {

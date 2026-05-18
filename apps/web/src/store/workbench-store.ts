@@ -608,6 +608,77 @@ function isAccountTakenOverByCurrentUser(account: Account | undefined, me: Emplo
   return !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
 }
 
+function omitByKeys<T>(record: Record<string, T>, keys: Iterable<string>) {
+  const omittedKeys = new Set(keys);
+
+  return Object.fromEntries(
+    Object.entries(record).filter(([key]) => !omittedKeys.has(key)),
+  );
+}
+
+function clearConversationMessageState(
+  state: WorkbenchStore,
+  conversationIds: Iterable<string>,
+  options: { preservePending?: boolean } = {},
+) {
+  const retainedConversationIds = options.preservePending
+    ? new Set(state.pendingMessages.map((message) => message.conversationId))
+    : new Set<string>();
+  const clearedConversationIds = [...conversationIds].filter(
+    (conversationId) => !retainedConversationIds.has(conversationId),
+  );
+
+  return {
+    hasMoreHistoryByConversationId: omitByKeys(
+      state.hasMoreHistoryByConversationId,
+      clearedConversationIds,
+    ),
+    historyStatusByConversationId: omitByKeys(
+      state.historyStatusByConversationId,
+      clearedConversationIds,
+    ),
+    messagePaginationByConversationId: omitByKeys(
+      state.messagePaginationByConversationId,
+      clearedConversationIds,
+    ),
+    messagesByConversationId: omitByKeys(
+      state.messagesByConversationId,
+      clearedConversationIds,
+    ),
+  };
+}
+
+function clearConversationResourceState(
+  state: WorkbenchStore,
+  conversationIds: Iterable<string>,
+  options: { preservePending?: boolean } = {},
+) {
+  return {
+    ...clearConversationMessageState(state, conversationIds, options),
+    groupMembersByConversationId: omitByKeys(
+      state.groupMembersByConversationId,
+      conversationIds,
+    ),
+    groupMembersLoadingByConversationId: omitByKeys(
+      state.groupMembersLoadingByConversationId,
+      conversationIds,
+    ),
+    historyStatusByConversationId: omitByKeys(
+      state.historyStatusByConversationId,
+      conversationIds,
+    ),
+  };
+}
+
+function getMessageStateConversationIds(state: WorkbenchStore) {
+  return new Set([
+    ...Object.keys(state.messagesByConversationId),
+    ...Object.keys(state.messagePaginationByConversationId),
+    ...Object.keys(state.hasMoreHistoryByConversationId),
+    ...Object.keys(state.historyStatusByConversationId),
+  ]);
+}
+
 export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
@@ -979,6 +1050,7 @@ export function createWorkbenchStore() {
         const requestId = shouldSwitchActive ? issueScopeRequestId() : latestScopeRequestId;
 
         set((latestState) => ({
+          ...clearConversationResourceState(latestState, [conversationId]),
           accounts: latestState.accounts.map((item) =>
             item.id === account.id
               ? {
@@ -1202,6 +1274,8 @@ export function createWorkbenchStore() {
             prunedConversationListCache.conversationListsByScope,
           conversationModeLoadedAtByScope:
             prunedConversationListCache.conversationModeLoadedAtByScope,
+          groupMembersByConversationId: {},
+          groupMembersLoadingByConversationId: {},
           hasMoreHistoryByConversationId: conversationPage
             ? {
                 [conversationPage.conversationId]: conversationPage.hasMoreHistory,
@@ -1326,6 +1400,7 @@ export function createWorkbenchStore() {
             };
           });
           const nextConversationLists = { ...currentState.conversationListsByScope };
+          const removedConversationIds: string[] = [];
 
           for (const change of response.conversationChanges) {
             const currentList = nextConversationLists[change.accountId] ?? [];
@@ -1334,6 +1409,7 @@ export function createWorkbenchStore() {
               nextConversationLists[change.accountId] = currentList.filter(
                 (conversation) => conversation.id !== change.conversationId,
               );
+              removedConversationIds.push(change.conversationId);
               continue;
             }
 
@@ -1343,7 +1419,16 @@ export function createWorkbenchStore() {
             );
           }
 
-          const nextMessagesByConversationId = { ...currentState.messagesByConversationId };
+          const clearedResourceState = removedConversationIds.length
+            ? clearConversationResourceState(
+                currentState,
+                removedConversationIds,
+                { preservePending: true },
+              )
+            : currentState;
+          const nextMessagesByConversationId = {
+            ...clearedResourceState.messagesByConversationId,
+          };
 
           if (
             response.activeConversationMessages.length > 0 &&
@@ -1394,6 +1479,16 @@ export function createWorkbenchStore() {
             ),
             conversationListsByScope: nextConversationLists,
             isPollBaselineFresh: false,
+            hasMoreHistoryByConversationId:
+              clearedResourceState.hasMoreHistoryByConversationId,
+            historyStatusByConversationId:
+              clearedResourceState.historyStatusByConversationId,
+            groupMembersByConversationId:
+              clearedResourceState.groupMembersByConversationId,
+            groupMembersLoadingByConversationId:
+              clearedResourceState.groupMembersLoadingByConversationId,
+            messagePaginationByConversationId:
+              clearedResourceState.messagePaginationByConversationId,
             messagesByConversationId: nextMessagesByConversationId,
             pendingMessages,
             pollState: {
@@ -1773,33 +1868,46 @@ export function createWorkbenchStore() {
           },
         );
 
-        set((currentState) => ({
-          hasMoreHistoryByConversationId: {
-            ...currentState.hasMoreHistoryByConversationId,
-            [conversationId]: page.hasMoreHistory,
-          },
-          historyStatusByConversationId: {
-            ...currentState.historyStatusByConversationId,
-            [conversationId]: "idle",
-          },
-          messagePaginationByConversationId: {
-            ...currentState.messagePaginationByConversationId,
-            [conversationId]: buildMessagePaginationState(page),
-          },
-          messagesByConversationId: {
-            ...currentState.messagesByConversationId,
-            [conversationId]: upsertMessageList(
-              page.messages,
-              currentState.messagesByConversationId[conversationId] ?? [],
-            ),
-          },
-        }));
+        set((currentState) => {
+          if (currentState.activeConversationId !== conversationId) {
+            return clearConversationMessageState(currentState, [conversationId], {
+              preservePending: true,
+            });
+          }
+
+          return {
+            hasMoreHistoryByConversationId: {
+              ...currentState.hasMoreHistoryByConversationId,
+              [conversationId]: page.hasMoreHistory,
+            },
+            historyStatusByConversationId: {
+              ...currentState.historyStatusByConversationId,
+              [conversationId]: "idle",
+            },
+            messagePaginationByConversationId: {
+              ...currentState.messagePaginationByConversationId,
+              [conversationId]: buildMessagePaginationState(page),
+            },
+            messagesByConversationId: {
+              ...currentState.messagesByConversationId,
+              [conversationId]: upsertMessageList(
+                page.messages,
+                currentState.messagesByConversationId[conversationId] ?? [],
+              ),
+            },
+          };
+        });
       } catch {
         set((currentState) => ({
-          historyStatusByConversationId: {
-            ...currentState.historyStatusByConversationId,
-            [conversationId]: "idle",
-          },
+          historyStatusByConversationId:
+            currentState.activeConversationId === conversationId
+              ? {
+                  ...currentState.historyStatusByConversationId,
+                  [conversationId]: "idle",
+                }
+              : omitByKeys(currentState.historyStatusByConversationId, [
+                  conversationId,
+                ]),
         }));
       }
     },
@@ -1881,7 +1989,20 @@ export function createWorkbenchStore() {
             seatOrder: conversationListCacheSeatOrder,
           });
 
+          const previousSeatConversationIds = Object.values(
+            currentState.conversationListsByScope,
+          )
+            .flat()
+            .filter((conversation) => conversation.accountId !== accountId)
+            .map((conversation) => conversation.id);
+          const clearedResourceState = clearConversationResourceState(
+            currentState,
+            previousSeatConversationIds,
+            { preservePending: true },
+          );
+
           return {
+            ...clearedResourceState,
             activeAccountId: accountId,
             activeConversationId: scopeResult.nextConversationId,
             activeMode: scopeResult.nextMode,
@@ -1902,33 +2023,33 @@ export function createWorkbenchStore() {
               prunedConversationListCache.conversationModeLoadedAtByScope,
             hasMoreHistoryByConversationId: conversationPage
               ? {
-                  ...currentState.hasMoreHistoryByConversationId,
+                  ...clearedResourceState.hasMoreHistoryByConversationId,
                   [conversationPage.conversationId]: conversationPage.hasMoreHistory,
                 }
-              : currentState.hasMoreHistoryByConversationId,
+              : clearedResourceState.hasMoreHistoryByConversationId,
             messagePaginationByConversationId: conversationPage
               ? {
-                  ...currentState.messagePaginationByConversationId,
+                  ...clearedResourceState.messagePaginationByConversationId,
                   [conversationPage.conversationId]: buildMessagePaginationState(conversationPage),
                 }
-              : currentState.messagePaginationByConversationId,
+              : clearedResourceState.messagePaginationByConversationId,
             isConversationLoading: false,
             messagesByConversationId: conversationPage
               ? {
-                  ...currentState.messagesByConversationId,
+                  ...clearedResourceState.messagesByConversationId,
                   [conversationPage.conversationId]: conversationPage.messages,
                 }
-              : currentState.messagesByConversationId,
+              : clearedResourceState.messagesByConversationId,
             scopeTransitionError: undefined,
             groupMembersLoadingByConversationId:
               nextConversation?.mode === "group" &&
-              currentState.groupMembersByConversationId[scopeResult.nextConversationId] ===
+              clearedResourceState.groupMembersByConversationId[scopeResult.nextConversationId] ===
                 undefined
                 ? {
-                    ...currentState.groupMembersLoadingByConversationId,
+                    ...clearedResourceState.groupMembersLoadingByConversationId,
                     [scopeResult.nextConversationId]: true,
-                }
-                : currentState.groupMembersLoadingByConversationId,
+                  }
+                : clearedResourceState.groupMembersLoadingByConversationId,
             isPollBaselineFresh: true,
             sinceVersion: scopeResult.pollBaseline,
           };
@@ -2007,29 +2128,39 @@ export function createWorkbenchStore() {
           return;
         }
 
-        set((currentState) => ({
-          activeMessageSeq: getActiveMessageSeq(
-            {
-              ...currentState.messagesByConversationId,
-              [conversationId]: page.messages,
-            },
-            conversationId,
-          ),
-          hasMoreHistoryByConversationId: {
-            ...currentState.hasMoreHistoryByConversationId,
-            [conversationId]: page.hasMoreHistory,
-          },
-          messagePaginationByConversationId: {
-            ...currentState.messagePaginationByConversationId,
-            [conversationId]: buildMessagePaginationState(page),
-          },
-          isConversationLoading: false,
-          messagesByConversationId: {
-            ...currentState.messagesByConversationId,
+        set((currentState) => {
+          const staleMessageConversationIds = [
+            ...getMessageStateConversationIds(currentState),
+          ].filter((cachedConversationId) => cachedConversationId !== conversationId);
+          const clearedMessageState = clearConversationMessageState(
+            currentState,
+            staleMessageConversationIds,
+            { preservePending: true },
+          );
+          const nextMessagesByConversationId = {
+            ...clearedMessageState.messagesByConversationId,
             [conversationId]: page.messages,
-          },
-          scopeTransitionError: undefined,
-        }));
+          };
+
+          return {
+            ...clearedMessageState,
+            activeMessageSeq: getActiveMessageSeq(
+              nextMessagesByConversationId,
+              conversationId,
+            ),
+            hasMoreHistoryByConversationId: {
+              ...clearedMessageState.hasMoreHistoryByConversationId,
+              [conversationId]: page.hasMoreHistory,
+            },
+            messagePaginationByConversationId: {
+              ...clearedMessageState.messagePaginationByConversationId,
+              [conversationId]: buildMessagePaginationState(page),
+            },
+            isConversationLoading: false,
+            messagesByConversationId: nextMessagesByConversationId,
+            scopeTransitionError: undefined,
+          };
+        });
 
         await loadGroupMembersForConversation(conversationId, requestId);
 

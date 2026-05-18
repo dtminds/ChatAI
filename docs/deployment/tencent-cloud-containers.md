@@ -189,7 +189,8 @@ openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
 
 - 在 TKE Secret 中写入 key 内容时要保留 PEM 换行，例如 `-----BEGIN PRIVATE KEY-----` 到 `-----END PRIVATE KEY-----` 的完整内容。
 - 所有环境都必须配置 `DATABASE_URL`，否则 backend 会拒绝启动；本地开发也不再提供无数据库降级运行模式。
-- `JAVA_INTERNAL_API_BASE_URL` 和 `JAVA_INTERNAL_API_TOKEN` 用于转发发送消息、会话已读、席位接管等写操作。
+- 生产环境必须配置 `JAVA_INTERNAL_API_BASE_URL`，否则 backend 会拒绝启动；本地开发和测试环境可按需留空并使用 mock 或非生产配置。
+- `JAVA_INTERNAL_API_BASE_URL` 用于转发发送消息、会话已读、席位接管等写操作；`JAVA_INTERNAL_API_TOKEN` 目前仍是可选项。
 - `JAVA_INTERNAL_API_BASE_URL` 只应配置在 backend 所在环境，不要放进 web 的 `VITE_*` 构建变量。
 - 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。
 - `REDIS_ENABLED=false` 是当前阶段可接受配置，Redis 不是必需依赖。
@@ -212,12 +213,13 @@ TKE / CLS 侧配置建议：
 - 采集源选择容器标准输出，解析模式选择 JSON。
 - 采集范围限定 `chatai-backend` 工作负载或对应 Pod label，避免 web / nginx 日志混入 backend 业务日志主题。
 - 保留 TKE 自动附带的 `namespace`、`pod_name`、`container_name`、`pod_label_*` 等元数据。
-- 为常用排障字段开启索引：`reqId`、`operation`、`subUserId`、`seatId`、`conversationId`、`messageId`、`clientMessageId`、`uid`、`platform`、`path`、`status`、`error`。
+- 为常用排障字段开启索引：`reqId`、`requestId`、`operation`、`subUserId`、`seatId`、`conversationId`、`messageId`、`clientMessageId`、`uid`、`platform`、`path`、`status`、`error`。
 
 应用侧日志字段约定：
 
 - 所有业务日志必须是结构化对象，不拼接自由文本承载排障字段。
-- Java 内部接口失败记录 `operation`、`path`、`uid`、`platform`、业务 id、Java 错误码或 HTTP 状态。
+- 工作台接口日志使用 Fastify 请求日志上下文；`requestId` 与 pino `reqId` 对齐，用于串联同一入口请求下的 backend 日志和 Java 调用日志。
+- Java 内部接口失败记录 `requestId`、`operation`、`path`、`uid`、`platform`、业务 id、Java 错误码或 HTTP 状态；backend 调 Java 时通过 `X-Request-Id` header 透传，不写入业务 payload。
 - 上传凭证成功只记录 `bucket`、`region`、`requestId` 等非敏感字段；不得记录 `tmpSecretKey`、`sessionToken`、`token`。
 - 媒体代理只记录 `host` 和 `path`，不得记录完整带签名或查询参数的 URL。
 - poll cursor 失效记录 `sinceVersion`、`sinceLastMsgTime`、`currentSeatId`、`activeConversationId`，用于判断是否需要前端重新加载基线。
@@ -294,7 +296,7 @@ kubectl -n chatai-prod set image deployment/chatai-web web=ccr.ccs.tencentyun.co
 - Web 构建变量为 `VITE_API_BASE_URL=/api`，如需微信表情资源则同步确认 `VITE_WECHAT_EMOJI_BASE_URL`。
 - Web 镜像内的 `deploy/nginx.conf` 支持前端路由 fallback，且不会把 `/api/*` 回退到 `index.html`。
 - Backend `NODE_ENV=production`。
-- Backend 已配置 `DATABASE_URL`、`JWT_PRIVATE_KEY`、`JWT_PUBLIC_KEY`、`ALTCHA_HMAC_SECRET`。
+- Backend 已配置 `DATABASE_URL`、`JWT_PRIVATE_KEY`、`JWT_PUBLIC_KEY`、`JAVA_INTERNAL_API_BASE_URL`、`ALTCHA_HMAC_SECRET`。
 - Ingress 已配置 `/api` 到 backend，`/` 到 web。
 - `/healthz` 和 `/readyz` 正常。
 - `/chat` 刷新不 404。

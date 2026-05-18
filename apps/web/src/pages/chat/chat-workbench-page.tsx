@@ -46,6 +46,7 @@ import type {
   ChatMessage,
   ChatMode,
   FileUploadQueueItem,
+  Message,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
@@ -213,6 +214,7 @@ function ChatWorkbenchContent({
     Record<string, "idle" | "transferring">
   >({});
   const downloadPollingTimeoutsRef = useRef(new Map<string, number>());
+  const downloadPollingMessageIdsRef = useRef(new Set<string>());
   const downloadPollingConversationRef = useRef<string | undefined>(undefined);
   const {
     customerPanelWidth,
@@ -329,6 +331,7 @@ function ChatWorkbenchContent({
       window.clearTimeout(timeoutId);
     });
     downloadPollingTimeoutsRef.current.clear();
+    downloadPollingMessageIdsRef.current.clear();
   };
 
   const updateDownloadTransferState = (
@@ -368,14 +371,18 @@ function ChatWorkbenchContent({
   }, [initializeWorkbench]);
 
   useEffect(
-    () => () => {
-      isMountedRef.current = false;
-      fileUploadAbortControllersRef.current.forEach((controller) => {
-        controller.abort();
-      });
-      fileUploadAbortControllersRef.current.clear();
-      fileUploadQueueRef.current = [];
-      clearDownloadPollingTimers();
+    () => {
+      isMountedRef.current = true;
+
+      return () => {
+        isMountedRef.current = false;
+        fileUploadAbortControllersRef.current.forEach((controller) => {
+          controller.abort();
+        });
+        fileUploadAbortControllersRef.current.clear();
+        fileUploadQueueRef.current = [];
+        clearDownloadPollingTimers();
+      };
     },
     [],
   );
@@ -389,6 +396,30 @@ function ChatWorkbenchContent({
     downloadPollingConversationRef.current = activeConversation?.id;
     setDownloadTransferStates({});
   }, [activeConversation?.id]);
+
+  useEffect(() => {
+    if (!activeConversation) {
+      return;
+    }
+
+    const restorableMessages = getRestorableDownloadMessages(activeMessages);
+    const restorableIds = new Set(restorableMessages.map((message) => message.id));
+
+    downloadPollingMessageIdsRef.current.forEach((messageId) => {
+      if (!restorableIds.has(messageId)) {
+        stopMessageDownloadPolling(messageId);
+      }
+    });
+
+    restorableMessages.forEach((message) => {
+      if (downloadPollingMessageIdsRef.current.has(message.id)) {
+        return;
+      }
+
+      updateDownloadTransferState(message.id, "transferring");
+      startMessageDownloadPolling(message);
+    });
+  }, [activeConversation?.id, activeMessages]);
 
   useEffect(() => {
     if (!readReceiptError) {
@@ -639,7 +670,7 @@ function ChatWorkbenchContent({
     }
 
     if (
-      Object.keys(downloadTransferStates).length >=
+      downloadPollingMessageIdsRef.current.size >=
       MAX_ACTIVE_DOWNLOAD_TRANSFERS
     ) {
       toast.warning("下载队列已满，请稍后");
@@ -651,6 +682,7 @@ function ChatWorkbenchContent({
     }
 
     updateDownloadTransferState(message.id, "transferring");
+    downloadPollingMessageIdsRef.current.add(message.id);
     updateMessageDownloadContent(message.conversationId, message.id, {
       downloadStatus: "ing",
     });
@@ -665,14 +697,14 @@ function ChatWorkbenchContent({
           return;
         }
 
-        pollMessageDownloadStatus(message, 0);
+        startMessageDownloadPolling(message);
       })
       .catch(() => {
         if (!isMountedRef.current) {
           return;
         }
 
-        updateDownloadTransferState(message.id, "idle");
+        stopMessageDownloadPolling(message.id);
         updateMessageDownloadContent(message.conversationId, message.id, {
           downloadStatus: "failed",
         });
@@ -680,14 +712,36 @@ function ChatWorkbenchContent({
       });
   };
 
+  const startMessageDownloadPolling = (message: ChatMessage) => {
+    downloadPollingMessageIdsRef.current.add(message.id);
+
+    if (downloadPollingTimeoutsRef.current.has(message.id)) {
+      return;
+    }
+
+    pollMessageDownloadStatus(message, 0);
+  };
+
+  const stopMessageDownloadPolling = (messageId: string) => {
+    const timeoutId = downloadPollingTimeoutsRef.current.get(messageId);
+
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+      downloadPollingTimeoutsRef.current.delete(messageId);
+    }
+
+    downloadPollingMessageIdsRef.current.delete(messageId);
+    updateDownloadTransferState(messageId, "idle");
+  };
+
   const pollMessageDownloadStatus = (message: ChatMessage, attempt: number) => {
     if (!isMountedRef.current || !message.seq) {
-      updateDownloadTransferState(message.id, "idle");
+      stopMessageDownloadPolling(message.id);
       return;
     }
 
     if (attempt >= MAX_DOWNLOAD_STATUS_POLL_COUNT) {
-      updateDownloadTransferState(message.id, "idle");
+      stopMessageDownloadPolling(message.id);
       updateMessageDownloadContent(message.conversationId, message.id, {
         downloadStatus: "failed",
       });
@@ -702,6 +756,7 @@ function ChatWorkbenchContent({
         !isMountedRef.current ||
         downloadPollingConversationRef.current !== message.conversationId
       ) {
+        downloadPollingMessageIdsRef.current.delete(message.id);
         return;
       }
 
@@ -718,7 +773,7 @@ function ChatWorkbenchContent({
           }
 
           if (status?.downloadStatus === "finished") {
-            updateDownloadTransferState(message.id, "idle");
+            stopMessageDownloadPolling(message.id);
             updateMessageDownloadContent(message.conversationId, message.id, {
               downloadStatus: "finished",
               fileUrlExpireTime: status.fileUrlExpireTime,
@@ -732,7 +787,7 @@ function ChatWorkbenchContent({
           }
 
           if (status?.downloadStatus === "failed") {
-            updateDownloadTransferState(message.id, "idle");
+            stopMessageDownloadPolling(message.id);
             updateMessageDownloadContent(message.conversationId, message.id, {
               downloadStatus: "failed",
             });
@@ -747,11 +802,24 @@ function ChatWorkbenchContent({
             return;
           }
 
-          updateDownloadTransferState(message.id, "idle");
+          if (downloadPollingConversationRef.current !== message.conversationId) {
+            return;
+          }
+
+          stopMessageDownloadPolling(message.id);
           updateMessageDownloadContent(message.conversationId, message.id, {
             downloadStatus: "failed",
           });
-          toast.warning("下载失败，请稍后重试");
+          window.setTimeout(() => {
+            if (
+              !isMountedRef.current ||
+              downloadPollingConversationRef.current !== message.conversationId
+            ) {
+              return;
+            }
+
+            toast.warning("下载失败，请稍后重试");
+          }, 0);
         });
     }, DOWNLOAD_STATUS_POLL_INTERVAL_MS);
 
@@ -1216,6 +1284,33 @@ function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
     message.content.downloadStatus === "finished" &&
     url
   );
+}
+
+function getRestorableDownloadMessages(messages: Message[]) {
+  return messages
+    .filter((message): message is ChatMessage => {
+      if (message.role === "system") {
+        return false;
+      }
+
+      if (message.content.type !== "file" && message.content.type !== "video") {
+        return false;
+      }
+
+      return (
+        message.content.downloadStatus === "ing" &&
+        Boolean(message.seq)
+      );
+    })
+    .sort(
+      (left, right) =>
+        getMessageDownloadOrderValue(right) - getMessageDownloadOrderValue(left),
+    )
+    .slice(0, MAX_ACTIVE_DOWNLOAD_TRANSFERS);
+}
+
+function getMessageDownloadOrderValue(message: ChatMessage) {
+  return message.seq ?? 0;
 }
 
 function buildQuotedMessagePreview(

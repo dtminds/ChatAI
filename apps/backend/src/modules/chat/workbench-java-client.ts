@@ -6,7 +6,12 @@ import {
   BadGatewayError,
   ServiceUnavailableError,
 } from "../../shared/errors.js";
-import { noopLogger, type AppLogger } from "../../shared/logger.js";
+import {
+  getLoggerRequestId,
+  noopLogger,
+  type AppLogger,
+  type RequestAwareLogger,
+} from "../../shared/logger.js";
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 
@@ -108,7 +113,9 @@ export type WorkbenchJavaClient = {
   }): Promise<void>;
 };
 
-export function createWorkbenchJavaClient(logger: AppLogger = noopLogger): WorkbenchJavaClient {
+export function createWorkbenchJavaClient(
+  logger: AppLogger | RequestAwareLogger = noopLogger,
+): WorkbenchJavaClient {
   const baseUrl = process.env.JAVA_INTERNAL_API_BASE_URL?.replace(/\/+$/, "");
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
@@ -273,6 +280,7 @@ async function postJava<T>(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), readJavaApiTimeoutMs());
   let response: Response;
+  const requestId = getLoggerRequestId(logger);
 
   try {
     response = await fetch(`${baseUrl}${path}`, {
@@ -280,6 +288,7 @@ async function postJava<T>(
       headers: {
         "content-type": "application/json",
         ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(requestId ? { "x-request-id": requestId } : {}),
       },
       method: "POST",
       signal: controller.signal,
@@ -288,6 +297,7 @@ async function postJava<T>(
     logger.error(
       {
         ...buildJavaLogContext(body),
+        requestId,
         operation,
         path,
         reason: error instanceof Error ? error.name : "unknown",
@@ -310,6 +320,7 @@ async function postJava<T>(
     logger.error(
       {
         ...buildJavaLogContext(body),
+        requestId,
         operation,
         path,
         status: response.status,
@@ -347,6 +358,7 @@ async function postJavaEnvelope<T>(
       {
         ...buildJavaLogContext(body),
         error: response.error,
+        requestId: getLoggerRequestId(logger),
         operation,
         path,
       },

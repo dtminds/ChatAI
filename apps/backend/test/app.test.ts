@@ -148,7 +148,9 @@ describe("backend app", () => {
   it("requires DATABASE_URL before backend startup", async () => {
     delete process.env.DATABASE_URL;
 
-    await expect(buildApp()).rejects.toThrow(/DATABASE_URL must be configured/);
+    await expect(buildApp()).rejects.toThrow(
+      /Missing required environment variables for development: DATABASE_URL/,
+    );
   });
 
   it("disables request logging for the media proxy route", async () => {
@@ -1061,23 +1063,42 @@ describe("backend app", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
 
-    await expect(buildApp()).rejects.toThrow(/JWT keys.*production mode/);
+    await expect(buildApp()).rejects.toThrow(
+      /Missing required environment variables for production: JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, JAVA_INTERNAL_API_BASE_URL/,
+    );
   });
 
   it("requires DATABASE_URL in production", async () => {
     process.env.NODE_ENV = "production";
     process.env.JWT_PRIVATE_KEY = "test-private-key";
     process.env.JWT_PUBLIC_KEY = "test-public-key";
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     delete process.env.DATABASE_URL;
 
-    await expect(buildApp()).rejects.toThrow(/DATABASE_URL must be configured/);
+    await expect(buildApp()).rejects.toThrow(
+      /Missing required environment variables for production: DATABASE_URL/,
+    );
   });
 
   it("requires DATABASE_URL in test mode", async () => {
     process.env.NODE_ENV = "test";
     delete process.env.DATABASE_URL;
 
-    await expect(buildApp()).rejects.toThrow(/DATABASE_URL must be configured/);
+    await expect(buildApp()).rejects.toThrow(
+      /Missing required environment variables for test: DATABASE_URL/,
+    );
+  });
+
+  it("requires JAVA_INTERNAL_API_BASE_URL in production", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
+    process.env.JWT_PRIVATE_KEY = "test-private-key";
+    process.env.JWT_PUBLIC_KEY = "test-public-key";
+    delete process.env.JAVA_INTERNAL_API_BASE_URL;
+
+    await expect(buildApp()).rejects.toThrow(
+      /Missing required environment variables for production: JAVA_INTERNAL_API_BASE_URL/,
+    );
   });
 
   it("serves workbench bootstrap resources from backend state", async () => {

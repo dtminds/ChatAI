@@ -93,3 +93,25 @@ export function getPort(env: NodeJS.ProcessEnv = process.env) {
 
   return port;
 }
+
+export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
+  const requiredVariables = ["DATABASE_URL"];
+
+  if (env.NODE_ENV === "production") {
+    requiredVariables.push(
+      "JWT_PRIVATE_KEY",
+      "JWT_PUBLIC_KEY",
+      "JAVA_INTERNAL_API_BASE_URL",
+    );
+  }
+
+  const missingVariables = requiredVariables.filter((name) => !env[name]);
+
+  if (missingVariables.length > 0) {
+    const environmentLabel = env.NODE_ENV ? ` for ${env.NODE_ENV}` : "";
+
+    throw new Error(
+      `Missing required environment variables${environmentLabel}: ${missingVariables.join(", ")}`,
+    );
+  }
+}

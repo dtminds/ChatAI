@@ -8,6 +8,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
+  AccountRole,
   SettingsSubAccount,
   SettingsSubAccountCreateRequest,
   SettingsSubAccountsResponse,
@@ -18,7 +19,14 @@ import {
   isValidSettingsSubAccountPassword,
   settingsSubAccountPasswordMessage,
 } from "@chatai/contracts";
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { toast } from "sonner";
 
 import {
@@ -61,6 +69,13 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -77,7 +92,21 @@ import {
   updateSubAccountStatus,
 } from "@/pages/chat/settings/settings-service";
 import { Field, PageHeader, StatusText } from "@/pages/chat/settings/shared";
+import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 import { cn } from "@/lib/utils";
+
+const presetRoles: Array<{ label: string; value: AccountRole }> = [
+  { label: "管理员", value: "admin" },
+  { label: "客服", value: "operator" },
+  { label: "客服（只读）", value: "viewer" },
+];
+
+const roleLabels = {
+  admin: "管理员",
+  operator: "客服",
+  owner: "主账号",
+  viewer: "客服（只读）",
+} as const satisfies Record<AccountRole, string>;
 
 type FormMode = "create" | "edit";
 
@@ -95,6 +124,7 @@ type FormValues = {
   account: string;
   name: string;
   password: string;
+  role: AccountRole;
   seatIds: string[];
 };
 
@@ -103,10 +133,21 @@ const emptyData: SettingsSubAccountsResponse = {
   subAccounts: [],
 };
 
+function toSelectableRole(role: AccountRole): "admin" | "operator" | "viewer" {
+  if (role === "admin" || role === "viewer") {
+    return role;
+  }
+
+  return "operator";
+}
+
 export function SubAccountsSettingsPage() {
+  const { canManageSubAccounts } = useSettingsPermissions();
   const [data, setData] = useState<SettingsSubAccountsResponse>(emptyData);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<SettingsSubAccount | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SettingsSubAccount | null>(
+    null,
+  );
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -151,22 +192,26 @@ export function SubAccountsSettingsPage() {
     }
 
     return data.subAccounts.filter((subAccount) =>
-      [subAccount.name, subAccount.account]
-        .some((value) => value.toLowerCase().includes(normalizedQuery)),
+      [subAccount.name, subAccount.account].some((value) =>
+        value.toLowerCase().includes(normalizedQuery),
+      ),
     );
   }, [data.subAccounts, query]);
 
   async function handleSubmit(values: FormValues, mode: FormMode) {
-    const actionKey = mode === "create" ? "create" : `edit:${dialogState?.subAccount?.id}`;
+    const actionKey =
+      mode === "create" ? "create" : `edit:${dialogState?.subAccount?.id}`;
 
     setPendingAction(actionKey);
 
     try {
       if (mode === "create") {
+        const createRole = toSelectableRole(values.role);
         const nextSubAccount = await createSubAccount({
           account: values.account.trim(),
           name: values.name.trim(),
           password: values.password,
+          role: createRole,
           seatIds: values.seatIds,
         } satisfies SettingsSubAccountCreateRequest);
 
@@ -176,11 +221,19 @@ export function SubAccountsSettingsPage() {
         }));
         toast.success("子账号已新增");
       } else if (dialogState?.mode === "edit") {
-        const nextSubAccount = await updateSubAccount(dialogState.subAccount.id, {
-          name: values.name.trim(),
-          password: values.password,
-          seatIds: values.seatIds,
-        } satisfies SettingsSubAccountUpdateRequest);
+        const updateRole =
+          dialogState.subAccount.type === 1
+            ? undefined
+            : toSelectableRole(values.role);
+        const nextSubAccount = await updateSubAccount(
+          dialogState.subAccount.id,
+          {
+            name: values.name.trim(),
+            password: values.password,
+            role: updateRole,
+            seatIds: values.seatIds,
+          } satisfies SettingsSubAccountUpdateRequest,
+        );
 
         setData((current) => ({
           ...current,
@@ -205,7 +258,10 @@ export function SubAccountsSettingsPage() {
     setPendingAction(`status:${subAccount.id}`);
 
     try {
-      const nextSubAccount = await updateSubAccountStatus(subAccount.id, nextStatus);
+      const nextSubAccount = await updateSubAccountStatus(
+        subAccount.id,
+        nextStatus,
+      );
 
       setData((current) => ({
         ...current,
@@ -273,6 +329,7 @@ export function SubAccountsSettingsPage() {
 
         <Button
           className="h-10 px-4"
+          disabled={!canManageSubAccounts}
           onClick={() => setDialogState({ mode: "create" })}
           type="button"
         >
@@ -296,9 +353,11 @@ export function SubAccountsSettingsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[28%] px-5 py-4">账号</TableHead>
-                <TableHead className="w-[14%] px-5 py-4">账号类型</TableHead>
-                <TableHead className="w-[14%] px-5 py-4">账号状态</TableHead>
-                <TableHead className="w-[30%] px-5 py-4">关联托管账号</TableHead>
+                <TableHead className="w-[14%] px-5 py-4">角色</TableHead>
+                <TableHead className="w-[12%] px-5 py-4">账号状态</TableHead>
+                <TableHead className="w-[32%] px-5 py-4">
+                  关联托管账号
+                </TableHead>
                 <TableHead className="px-5 py-4">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -324,8 +383,11 @@ export function SubAccountsSettingsPage() {
               ) : filteredSubAccounts.length > 0 ? (
                 filteredSubAccounts.map((subAccount) => (
                   <SubAccountRow
+                    canManage={canManageSubAccounts}
                     isDeleting={pendingAction === `delete:${subAccount.id}`}
-                    isStatusPending={pendingAction === `status:${subAccount.id}`}
+                    isStatusPending={
+                      pendingAction === `status:${subAccount.id}`
+                    }
                     key={subAccount.id}
                     onDelete={() => setDeleteTarget(subAccount)}
                     onEdit={() => setDialogState({ mode: "edit", subAccount })}
@@ -337,7 +399,10 @@ export function SubAccountsSettingsPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={5}>
+                  <TableCell
+                    className="px-5 py-8 text-sm text-muted-foreground"
+                    colSpan={5}
+                  >
                     暂无子账号
                   </TableCell>
                 </TableRow>
@@ -401,6 +466,7 @@ export function SubAccountsSettingsPage() {
 }
 
 function SubAccountRow({
+  canManage,
   isDeleting,
   isStatusPending,
   onDelete,
@@ -408,6 +474,7 @@ function SubAccountRow({
   onToggleStatus,
   subAccount,
 }: {
+  canManage: boolean;
   isDeleting: boolean;
   isStatusPending: boolean;
   onDelete: () => void;
@@ -422,13 +489,17 @@ function SubAccountRow({
     <TableRow>
       <TableCell className="px-5 py-5">
         <div className="min-w-0">
-          <p className="truncate font-medium text-foreground">{subAccount.name}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{subAccount.account}</p>
+          <p className="truncate font-medium text-foreground">
+            {subAccount.name}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {subAccount.account}
+          </p>
         </div>
       </TableCell>
       <TableCell className="px-5 py-5">
         <Badge
-          aria-label={isMainAccount ? "账号类型：主账号" : "账号类型：子账号"}
+          aria-label={`角色：${roleLabels[subAccount.role]}`}
           className={
             isMainAccount
               ? "bg-primary/12 text-primary"
@@ -436,7 +507,7 @@ function SubAccountRow({
           }
           variant={isMainAccount ? "default" : "secondary"}
         >
-          {isMainAccount ? "主账号" : "子账号"}
+          {roleLabels[subAccount.role]}
         </Badge>
       </TableCell>
       <TableCell className="px-5 py-5">
@@ -445,7 +516,10 @@ function SubAccountRow({
         </StatusText>
       </TableCell>
       <TableCell className="px-5 py-5">
-        <RelatedSeatsPreview seats={subAccount.seats} subAccountName={subAccount.name} />
+        <RelatedSeatsPreview
+          seats={subAccount.seats}
+          subAccountName={subAccount.name}
+        />
       </TableCell>
       <TableCell className="px-5 py-5">
         <DropdownMenu>
@@ -453,6 +527,7 @@ function SubAccountRow({
             <Button
               aria-label={`打开 ${subAccount.name} 操作菜单`}
               className="size-8 rounded-[8px]"
+              disabled={!canManage}
               size="icon"
               type="button"
               variant="ghost"
@@ -532,10 +607,7 @@ function RelatedSeatsPreview({
   }
 
   return (
-    <Popover
-      open={isOpen}
-      onOpenChange={setIsOpen}
-    >
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button
           aria-label={`查看 ${subAccountName} 的全部关联托管账号`}
@@ -660,33 +732,32 @@ function SeatSelectionList({
   selectedSeatIds: string[];
 }) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const searchInputId = useId();
   const pickerAnchorRef = useRef<HTMLDivElement | null>(null);
   const selectedSeatIdSet = new Set(selectedSeatIds);
   const normalizedQuery = query.trim().toLowerCase();
   const filteredSeats = normalizedQuery
     ? seats.filter((seat) => seat.name.toLowerCase().includes(normalizedQuery))
     : seats;
-  const selectedSeats = seats.filter((seat) => selectedSeatIdSet.has(seat.seatId));
+  const selectedSeats = seats.filter((seat) =>
+    selectedSeatIdSet.has(seat.seatId),
+  );
 
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-medium text-foreground">分配托管账号</h2>
+    <section className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <Label htmlFor={searchInputId}>分配托管账号</Label>
         <span className="text-xs text-muted-foreground">
           已选择 {selectedSeatIds.length} 个
         </span>
       </div>
 
-      <Popover
-        modal={false}
-        onOpenChange={setIsPickerOpen}
-        open={isPickerOpen}
-      >
+      <Popover modal={false} onOpenChange={setIsPickerOpen} open={isPickerOpen}>
         <PopoverAnchor asChild>
           <div ref={pickerAnchorRef}>
             <Input
               aria-label="搜索并选择托管账号"
-              className="h-9 rounded-[8px]"
+              id={searchInputId}
               onChange={(event) => {
                 onQueryChange(event.target.value);
                 setIsPickerOpen(true);
@@ -705,7 +776,10 @@ function SeatSelectionList({
           onInteractOutside={(event) => {
             const target = event.target;
 
-            if (target instanceof Node && pickerAnchorRef.current?.contains(target)) {
+            if (
+              target instanceof Node &&
+              pickerAnchorRef.current?.contains(target)
+            ) {
               event.preventDefault();
             }
           }}
@@ -727,7 +801,9 @@ function SeatSelectionList({
                         onCheckedChange={() => onToggleSeat(seat.seatId)}
                       />
                       <SeatAvatar seat={seat} />
-                      <span className="min-w-0 flex-1 truncate">{seat.name}</span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {seat.name}
+                      </span>
                     </label>
                   ))
                 ) : (
@@ -750,7 +826,7 @@ function SeatSelectionList({
           <div className="space-y-1 p-2">
             {selectedSeats.map((seat) => (
               <div
-                className="flex h-10 items-center gap-2 rounded-[8px] px-2.5 text-sm text-foreground"
+                className="flex h-10 items-center gap-2 rounded-[8px] px-1.5 text-sm text-foreground"
                 key={seat.seatId}
               >
                 <SeatAvatar seat={seat} />
@@ -795,6 +871,7 @@ function SubAccountDialog({
     account: "",
     name: "",
     password: "",
+    role: "operator",
     seatIds: [],
   });
   const [formError, setFormError] = useState("");
@@ -821,6 +898,10 @@ function SubAccountDialog({
       account: state.subAccount?.account ?? "",
       name: state.subAccount?.name ?? "",
       password: "",
+      role:
+        state.subAccount?.type === 1
+          ? "owner"
+          : (state.subAccount?.role ?? "operator"),
       seatIds: state.subAccount?.seats.map((seat) => seat.seatId) ?? [],
     });
     setFormError("");
@@ -872,7 +953,10 @@ function SubAccountDialog({
 
     const normalizedPassword = formValues.password.trim();
 
-    if (normalizedPassword && !isValidSettingsSubAccountPassword(normalizedPassword)) {
+    if (
+      normalizedPassword &&
+      !isValidSettingsSubAccountPassword(normalizedPassword)
+    ) {
       setPasswordError(settingsSubAccountPasswordMessage);
       return;
     }
@@ -882,9 +966,11 @@ function SubAccountDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[34rem]">
+      <DialogContent className="sm:max-w-[52rem]">
         <DialogHeader>
-          <DialogTitle>{mode === "create" ? "添加子账号" : "编辑子账号"}</DialogTitle>
+          <DialogTitle>
+            {mode === "create" ? "添加子账号" : "编辑子账号"}
+          </DialogTitle>
           <DialogDescription>
             {mode === "create"
               ? "填写登录信息，并为子账号分配可接待的托管账号"
@@ -892,93 +978,154 @@ function SubAccountDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form aria-label="子账号表单" className="space-y-5" onSubmit={handleSubmit}>
-          <Field htmlFor={accountId} label="登录用户名">
-            <Input
-              autoComplete="username"
-              disabled={mode === "edit"}
-              id={accountId}
-              onChange={(event) => updateField("account", event.target.value)}
-              placeholder="请输入"
-              value={formValues.account}
-            />
-          </Field>
+        <form
+          aria-label="子账号表单"
+          className="space-y-5"
+          onSubmit={handleSubmit}
+        >
+          <div className="grid gap-8 pt-2 md:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+            <section aria-label="账号信息" className="space-y-5" role="group">
+              <Field htmlFor={accountId} label="登录用户名">
+                <Input
+                  autoComplete="username"
+                  disabled={mode === "edit"}
+                  id={accountId}
+                  onChange={(event) =>
+                    updateField("account", event.target.value)
+                  }
+                  placeholder="请输入"
+                  value={formValues.account}
+                />
+              </Field>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <Label htmlFor={passwordId}>密码</Label>
-              <button
-                className="inline-flex items-center gap-1.5 text-sm font-medium leading-none text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
-                onClick={handleGeneratePassword}
-                type="button"
-              >
-                <HugeiconsIcon
-                  color="currentColor"
-                  icon={ShuffleIcon}
-                  size={15}
-                  strokeWidth={1.8}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor={passwordId}>密码</Label>
+                  <button
+                    className="inline-flex items-center gap-1.5 text-sm font-medium leading-none text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                    onClick={handleGeneratePassword}
+                    type="button"
+                  >
+                    <HugeiconsIcon
+                      color="currentColor"
+                      icon={ShuffleIcon}
+                      size={15}
+                      strokeWidth={1.8}
+                    />
+                    <span>随机生成</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <Input
+                    aria-describedby={passwordDescriptionId}
+                    aria-invalid={passwordError ? true : undefined}
+                    autoComplete="new-password"
+                    id={passwordId}
+                    name={
+                      mode === "create"
+                        ? "newSubAccountPassword"
+                        : "updatedSubAccountPassword"
+                    }
+                    onChange={(event) =>
+                      updateField("password", event.target.value)
+                    }
+                    placeholder={
+                      mode === "create" ? "请输入" : "留空则不修改密码"
+                    }
+                    type={showPassword ? "text" : "password"}
+                    value={formValues.password}
+                  />
+                  <Button
+                    aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                    className="absolute right-2 top-1/2 size-8 -translate-y-1/2 rounded-[8px] text-muted-foreground"
+                    onClick={() => setShowPassword((current) => !current)}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon
+                      color="currentColor"
+                      icon={showPassword ? ViewOffIcon : EyeIcon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                  </Button>
+                </div>
+                {passwordError ? (
+                  <p
+                    className="text-xs text-destructive"
+                    id={`${passwordHelpId}-error`}
+                  >
+                    {passwordError}
+                  </p>
+                ) : mode === "create" ? (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    id={`${passwordHelpId}-hint`}
+                  >
+                    {settingsSubAccountPasswordMessage}
+                  </p>
+                ) : null}
+              </div>
+
+              <Field htmlFor={nameId} label="姓名">
+                <Input
+                  autoComplete="name"
+                  id={nameId}
+                  onChange={(event) => updateField("name", event.target.value)}
+                  placeholder="请输入"
+                  value={formValues.name}
                 />
-                <span>随机生成</span>
-              </button>
-            </div>
-            <div className="relative">
-              <Input
-                aria-describedby={passwordDescriptionId}
-                aria-invalid={passwordError ? true : undefined}
-                autoComplete="new-password"
-                id={passwordId}
-                name={mode === "create" ? "newSubAccountPassword" : "updatedSubAccountPassword"}
-                onChange={(event) => updateField("password", event.target.value)}
-                placeholder={mode === "create" ? "请输入" : "留空则不修改密码"}
-                type={showPassword ? "text" : "password"}
-                value={formValues.password}
+              </Field>
+
+              <Field label="角色">
+                {mode === "edit" && state?.subAccount?.type === 1 ? (
+                  <>
+                    <Input aria-label="角色" disabled value="主账号" />
+                    <p className="text-xs text-muted-foreground">
+                      主账号角色固定为主账号
+                    </p>
+                  </>
+                ) : (
+                  <Select
+                    onValueChange={(value) =>
+                      updateField("role", value as AccountRole)
+                    }
+                    value={formValues.role}
+                  >
+                    <SelectTrigger aria-label="角色" className="w-full">
+                      <SelectValue placeholder="选择角色" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {presetRoles.map((role) => (
+                        <SelectItem key={role.value} value={role.value}>
+                          {role.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </Field>
+            </section>
+
+            <section
+              aria-label="分配托管账号"
+              className="space-y-5"
+              role="group"
+            >
+              <SeatSelectionList
+                query={seatQuery}
+                seats={seats}
+                selectedSeatIds={formValues.seatIds}
+                onQueryChange={setSeatQuery}
+                onToggleSeat={toggleSeat}
               />
-              <Button
-                aria-label={showPassword ? "隐藏密码" : "显示密码"}
-                className="absolute right-2 top-1/2 size-8 -translate-y-1/2 rounded-[8px] text-muted-foreground"
-                onClick={() => setShowPassword((current) => !current)}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon
-                  color="currentColor"
-                  icon={showPassword ? ViewOffIcon : EyeIcon}
-                  size={16}
-                  strokeWidth={1.8}
-                />
-              </Button>
-            </div>
-            {passwordError ? (
-              <p className="text-xs text-destructive" id={`${passwordHelpId}-error`}>
-                {passwordError}
-              </p>
-            ) : mode === "create" ? (
-              <p className="text-xs text-muted-foreground" id={`${passwordHelpId}-hint`}>
-                {settingsSubAccountPasswordMessage}
-              </p>
-            ) : null}
+            </section>
           </div>
 
-          <Field htmlFor={nameId} label="姓名">
-            <Input
-              autoComplete="name"
-              id={nameId}
-              onChange={(event) => updateField("name", event.target.value)}
-              placeholder="请输入"
-              value={formValues.name}
-            />
-          </Field>
-
-          <SeatSelectionList
-            query={seatQuery}
-            seats={seats}
-            selectedSeatIds={formValues.seatIds}
-            onQueryChange={setSeatQuery}
-            onToggleSeat={toggleSeat}
-          />
-
-          {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
+          {formError ? (
+            <p className="text-sm text-destructive">{formError}</p>
+          ) : null}
 
           <DialogFooter>
             <DialogClose asChild>
@@ -1014,13 +1161,18 @@ function generatePassword() {
   const digits = "23456789";
   const symbols = "!@#$%^&*";
   const all = `${upper}${lower}${digits}${symbols}`;
-  const required = [upper, lower, digits, symbols].map((chars) => pickRandomChar(chars));
+  const required = [upper, lower, digits, symbols].map((chars) =>
+    pickRandomChar(chars),
+  );
   const rest = Array.from({ length: 8 }, () => pickRandomChar(all));
   const combined = [...required, ...rest];
 
   for (let index = combined.length - 1; index > 0; index -= 1) {
     const swapIndex = getRandomInt(index + 1);
-    [combined[index], combined[swapIndex]] = [combined[swapIndex], combined[index]];
+    [combined[index], combined[swapIndex]] = [
+      combined[swapIndex],
+      combined[index],
+    ];
   }
 
   return combined.join("");

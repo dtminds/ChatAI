@@ -2391,6 +2391,9 @@ describe("ChatWorkbenchPage", () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新页面" })).toBeInTheDocument();
+    expect(
+      screen.getByTestId("polling-paused-illustration"),
+    ).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/pause_poll.png");
   });
 
 });

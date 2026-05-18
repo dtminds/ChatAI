@@ -1044,7 +1044,7 @@ function ChatWorkbenchContent({
         <AlertDialogContent
           className="overflow-hidden p-0"
           size="sm"
-          style={{ height: 286, width: 520 }}
+          style={{ height: 286, maxWidth: 520, width: 520 }}
         >
           <div className="relative h-full overflow-hidden px-10 py-9">
             <AlertDialogHeader className="relative z-10 min-w-0 space-y-4 text-left">
@@ -1063,12 +1063,9 @@ function ChatWorkbenchContent({
               src="https://b5.bokr.com.cn/dist/pause_poll.png"
             />
             <AlertDialogFooter className="absolute bottom-10 right-10 z-10">
-              <AlertDialogAction
-                className="shadow-[0_8px_18px_rgba(59,130,246,0.28)]"
-                onClick={() => {
-                  window.location.reload();
-                }}
-              >
+              <AlertDialogAction onClick={() => {
+                window.location.reload();
+              }}>
                 刷新页面
               </AlertDialogAction>
             </AlertDialogFooter>

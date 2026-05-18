@@ -929,6 +929,10 @@ function ChatWorkbenchContent({
   };
 
   const handleQuoteMessage = (message: ChatMessage) => {
+    if (message.isRevoked) {
+      return;
+    }
+
     setQuotedMessage(buildQuotedMessagePreview(message));
     composerRef.current?.focus();
   };

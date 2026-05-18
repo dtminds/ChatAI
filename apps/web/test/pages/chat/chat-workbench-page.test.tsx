@@ -4,7 +4,11 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import MockAdapter from "axios-mock-adapter";
-import { GROUP_MEMBER_TYPE, type SettingsSidebarBindType } from "@chatai/contracts";
+import {
+  GROUP_MEMBER_TYPE,
+  type SettingsSidebarBindType,
+  type WorkbenchMessageDto,
+} from "@chatai/contracts";
 import { requestInstance } from "@/lib/request";
 import {
   createMockWorkbenchService,
@@ -95,6 +99,33 @@ async function expectLatestConversationMessage(
   });
 }
 
+const revokedVideoMessageDto = {
+  content: {
+    alt: "视频",
+    coverImageUrl: "https://b5.bokr.com.cn/s5/msg/20260518/272/1a9c289075b642839f9f122a6ee79953.jpg",
+    downloadStatus: "ing",
+    durationLabel: "",
+    fileSerialNo: "807a4be011b24f7cba55dc21f6c9017e",
+    fileUrlExpireTime: 1779190726040,
+    videoUrl: "http://kfpt-file.oss-cn-hangzhou.aliyuncs.com/7-days-expired/wecom-ios-protocol/sm/msg-file/merchant/20260518/f8d0c5723ad647389ee993a6dfcbb733.mp4",
+  },
+  contentType: "video",
+  conversationId: "conv-001",
+  createdAt: 1779104311000,
+  customerId: "91AEEA34E7C775BF6B26EBB5E6F6F36E5194F219CF554649F1C4F9C615435A82",
+  isRevoked: true,
+  messageId: "1023715",
+  seatId: "drc",
+  senderAvatar: "http://wx.qlogo.cn/mmhead/iacibNfSguMWASWcMTVIKUb8VpibxJ0R3oQUcibrM7es5JI/0",
+  senderName: "lsave",
+  senderType: "customer",
+  seq: 718,
+  status: "read",
+  thirdExternalUserId: "91AEEA34E7C775BF6B26EBB5E6F6F36E5194F219CF554649F1C4F9C615435A82",
+  thirdFromId: "91AEEA34E7C775BF6B26EBB5E6F6F36E5194F219CF554649F1C4F9C615435A82",
+  thirdUserId: "73E453A96BB8A1A941C3AA6D13498D325194F219CF554649F1C4F9C615435A82",
+} satisfies WorkbenchMessageDto;
+
 describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -172,6 +203,84 @@ describe("ChatWorkbenchPage", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "取消引用" }));
+
+    expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
+  });
+
+  it("does not set a quote from a revoked message", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: page.messages.map((message) =>
+            message.messageId === "msg-006"
+              ? { ...message, isRevoked: true }
+              : message,
+          ),
+        };
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
+    const targetRow = targetMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    const quoteItem = screen.getByRole("menuitem", { name: "引用消息" });
+
+    expect(quoteItem).toHaveAttribute("data-disabled");
+    await user.click(quoteItem);
+
+    expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
+  });
+
+  it("does not set a quote from a revoked video message loaded from conversation detail", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [...page.messages, revokedVideoMessageDto],
+        };
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    const revokedState = await screen.findByText("已撤回");
+    const targetRow = revokedState.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
+    const quoteItem = screen.getByRole("menuitem", { name: "引用消息" });
+
+    expect(quoteItem).toHaveAttribute("data-disabled");
+    await user.click(quoteItem);
 
     expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
   });
@@ -1960,7 +2069,7 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.queryByRole("button", { name: "加载更早的对话" })).not.toBeInTheDocument();
   });
 
-  it("does not auto-loop when older history only contains hidden revoke events", async () => {
+  it("does not auto-loop when older history only contains revoke signals", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const calls: Array<{ beforeSeq?: number; conversationId: string }> = [];
@@ -1971,11 +2080,28 @@ describe("ChatWorkbenchPage", () => {
         calls.push({ beforeSeq: options?.beforeSeq, conversationId });
 
         if (conversationId === "conv-001" && options?.beforeSeq != null) {
+          const beforeSeq = options.beforeSeq;
+
           return {
-            filteredCount: 50,
+            filteredCount: 0,
             hasMore: true,
-            messages: [],
-            nextBeforeSeq: Math.max(options.beforeSeq - 50, 1),
+            messages: Array.from({ length: 50 }, (_, index) => ({
+              content: {
+                revokeMsgId: `older-message-${index}`,
+                revokeOriginMsgId: `older-message-${index}`,
+                type: "revoke",
+              },
+              contentType: "revoke",
+              conversationId,
+              createdAt: Date.now() - index,
+              customerId: "cust-001",
+              messageId: `revoke-older-message-${index}`,
+              seatId: "drc",
+              senderType: "system",
+              seq: beforeSeq - index - 1,
+              status: "read",
+            })) satisfies WorkbenchMessageDto[],
+            nextBeforeSeq: Math.max(beforeSeq - 50, 1),
             scannedCount: 50,
           };
         }
@@ -2001,7 +2127,7 @@ describe("ChatWorkbenchPage", () => {
 
     expect(
       await screen.findByRole("button", {
-        name: "已跳过 50 条不可展示记录，继续加载更早消息",
+        name: "加载更早的对话",
       }),
     ).toBeInTheDocument();
     expect(calls.filter((call) => call.beforeSeq != null)).toHaveLength(1);

@@ -92,6 +92,29 @@ export function adaptMessage(
   const status = adaptMessageStatus(dto.status);
   const isGroupConversation = Boolean(dto.thirdGroupId);
 
+  if (dto.contentType === "revoke") {
+    return {
+      clientMessageId: dto.clientMessageId,
+      content: {
+        revokeMsgId: asOptionalString(dto.content.revokeMsgId),
+        revokeOriginMsgId: asOptionalString(dto.content.revokeOriginMsgId),
+        text: readSystemMessageText(dto.content),
+        type: "revoke",
+      },
+      conversationId: dto.conversationId,
+      failReason: dto.failReason,
+      id: dto.messageId,
+      isRevoked: dto.isRevoked,
+      optNo: dto.optNo,
+      remoteMessageId: dto.messageId,
+      role: "system",
+      sentAt,
+      seq: dto.seq,
+      status,
+      author: "系统",
+    };
+  }
+
   if (dto.contentType === "system" || dto.senderType === "system") {
     return {
       clientMessageId: dto.clientMessageId,
@@ -328,6 +351,7 @@ function adaptChatMessageContent(
       };
     case "text":
     case "system":
+    case "revoke":
     default:
       return {
         text: String(content.text ?? ""),
@@ -362,6 +386,7 @@ function isQuotedPreviewContentType(
 ): value is QuotedMessagePreviewContent["contentType"] {
   return [
     "system",
+    "revoke",
     "text",
     "voice",
     "image",

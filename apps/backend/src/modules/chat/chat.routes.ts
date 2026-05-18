@@ -46,6 +46,7 @@ const MessageDownloadStatusBodySchema = Type.Object({
 
 const WorkbenchMessageContentTypeSchema = Type.Union([
   Type.Literal("system"),
+  Type.Literal("revoke"),
   Type.Literal("text"),
   Type.Literal("voice"),
   Type.Literal("image"),

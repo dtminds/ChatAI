@@ -36,6 +36,7 @@ export type ChatMessage = Static<typeof ChatMessageSchema>;
 
 export type WorkbenchMessageContentType =
   | "system"
+  | "revoke"
   | "text"
   | "voice"
   | "image"

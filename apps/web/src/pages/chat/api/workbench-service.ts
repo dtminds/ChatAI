@@ -49,6 +49,9 @@ export type WorkbenchConversationListOptions = {
 };
 
 export type WorkbenchService = {
+  __mock?: {
+    revokeMessage: (conversationId: string, messageId: string) => Promise<void>;
+  };
   deleteConversation: (conversationId: string) => Promise<WorkbenchConversationDeleteResponse>;
   getSeats: () => Promise<WorkbenchSeatDto[]>;
   getConversations: (
@@ -148,6 +151,11 @@ export function createMockWorkbenchService(): WorkbenchService {
   const state = buildInitialState();
 
   return {
+    __mock: {
+      async revokeMessage(conversationId, messageId) {
+        revokeMessage(state, conversationId, messageId);
+      },
+    },
     async getSeats() {
       return clone(state.seats);
     },
@@ -200,14 +208,10 @@ export function createMockWorkbenchService(): WorkbenchService {
           ? messages
           : messages.filter((message) => message.seq < beforeSeq);
       const scannedMessages = candidateMessages.slice(-(limit + 1)).slice(-limit);
-      const visibleMessages = scannedMessages.filter(
-        (message) => message.contentType !== "system" || message.content.type !== "revoke",
-      );
-
       return {
-        filteredCount: scannedMessages.length - visibleMessages.length,
+        filteredCount: 0,
         hasMore: candidateMessages.length > limit,
-        messages: clone(visibleMessages),
+        messages: clone(scannedMessages),
         nextBeforeSeq: scannedMessages[0]?.seq,
         scannedCount: scannedMessages.length,
       };
@@ -704,6 +708,7 @@ function buildMessageDto({
     createdAt: new Date(message.sentAt.replace(" ", "T")).getTime(),
     customerId,
     failReason: message.failReason,
+    isRevoked: message.isRevoked,
     messageId: message.remoteMessageId ?? message.id,
     senderAvatar: message.role === "system" ? undefined : message.sender.avatarUrl,
     senderName: message.role === "system" ? undefined : message.sender.name,
@@ -726,6 +731,13 @@ function buildContent(message: Message) {
   switch (message.content.type) {
     case "system":
       return { text: message.content.text };
+    case "revoke":
+      return {
+        revokeMsgId: message.content.revokeMsgId,
+        revokeOriginMsgId: message.content.revokeOriginMsgId,
+        text: message.content.text,
+        type: "revoke",
+      };
     case "text":
       return { text: message.content.text };
     case "voice":
@@ -1037,6 +1049,49 @@ function pushMessageStatusEvent(
     type: "message-status",
     version: state.version,
   });
+}
+
+function pushMessageEvent(state: MockState, message: WorkbenchMessageDto) {
+  state.version = Math.max(state.version + 1, Date.now(), message.createdAt ?? 0);
+  state.events.push({
+    payload: message,
+    type: "message",
+    version: state.version,
+  });
+}
+
+function revokeMessage(
+  state: MockState,
+  conversationId: string,
+  messageId: string,
+) {
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+  const originalMessage = messages.find((message) => message.messageId === messageId);
+
+  if (!originalMessage) {
+    return;
+  }
+
+  const revokeEventMessage = {
+    content: {
+      revokeMsgId: messageId,
+      revokeOriginMsgId: messageId,
+      type: "revoke",
+    },
+    contentType: "revoke",
+    conversationId,
+    createdAt: Math.max(Date.now(), (messages.at(-1)?.createdAt ?? 0) + 1),
+    customerId: originalMessage.customerId,
+    messageId: `revoke-${messageId}`,
+    seatId: originalMessage.seatId,
+    senderType: "system",
+    seq: getNextMessageSeq(state, conversationId),
+    status: "read",
+  } satisfies WorkbenchMessageDto;
+
+  state.messagesByConversationId[conversationId] = [...messages, revokeEventMessage];
+
+  pushMessageEvent(state, revokeEventMessage);
 }
 
 function getNextMessageSeq(state: MockState, conversationId: string) {

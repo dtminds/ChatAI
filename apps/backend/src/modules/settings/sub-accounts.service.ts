@@ -457,13 +457,10 @@ function mapSubAccount(
   row: SubAccountRow,
   seats: SettingsWeComSeat[],
 ): SettingsSubAccount {
-  const role =
-    row.type === dbSubAccountType.main
-      ? "owner"
-      : normalizeAccountRole(row.role) ?? deriveAccountRole({
-          role: row.role,
-          type: row.type,
-        });
+  const role = deriveAccountRole({
+    role: normalizeAccountRole(row.role),
+    type: row.type,
+  });
 
   return {
     account: row.account,

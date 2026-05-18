@@ -855,14 +855,15 @@ function SidebarItemDialog({
   );
 }
 
-function formatSidebarBindTypesLabel(bindTypes: readonly SettingsSidebarBindType[]) {
+function formatSidebarBindTypesLabel(bindTypes: readonly SettingsSidebarBindType[] | undefined) {
   const labels: string[] = [];
+  const safeBindTypes = Array.isArray(bindTypes) ? bindTypes : [];
 
-  if (bindTypes.includes("1")) {
+  if (safeBindTypes.includes("1")) {
     labels.push("单聊");
   }
 
-  if (bindTypes.includes("2")) {
+  if (safeBindTypes.includes("2")) {
     labels.push("群聊");
   }
 

@@ -555,7 +555,9 @@ describe("ChatWorkbenchPage", () => {
     });
 
     expect(await within(composer).findAllByRole("img")).toHaveLength(5);
-    expect(screen.getByRole("button", { name: "发送图片" })).toBeDisabled();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "发送图片" })).toBeDisabled();
+    });
   });
 
   it("keeps consecutive pasted images inline without visible spacer text", async () => {

@@ -113,7 +113,7 @@ export function SidebarSettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [query, setQuery] = useState("");
-  const isMountedRef = useRef(true);
+  const isMountedRef = useRef(false);
   const itemsRef = useRef<SettingsSidebarItem[]>(emptyItems);
 
   function applySidebarItems(nextItems: SettingsSidebarItem[]) {
@@ -153,11 +153,15 @@ export function SidebarSettingsPage() {
     return () => {
       ignore = true;
     };
-  }, [setWorkbenchSidebarItems]);
+  }, []);
 
   useEffect(
-    () => () => {
-      isMountedRef.current = false;
+    () => {
+      isMountedRef.current = true;
+
+      return () => {
+        isMountedRef.current = false;
+      };
     },
     [],
   );

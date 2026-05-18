@@ -537,7 +537,14 @@ describe("Chat settings pages", () => {
       within(sidebarTable).queryByRole("columnheader", { name: "页面地址" }),
     ).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByRole("columnheader", { name: "状态" })).not.toBeInTheDocument();
-    const cardRow = await within(sidebarTable).findByRole("row", { name: /企业名片/ });
+    const cardMenuButton = await screen.findByRole("button", { name: "打开 企业名片 操作菜单" });
+    const cardRow = cardMenuButton.closest("tr");
+
+    expect(cardRow).not.toBeNull();
+    if (!cardRow) {
+      throw new Error("Expected sidebar row for 企业名片");
+    }
+
     const cardRowCells = within(cardRow).getAllByRole(
       "cell",
     );

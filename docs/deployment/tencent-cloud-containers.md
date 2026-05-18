@@ -213,12 +213,13 @@ TKE / CLS 侧配置建议：
 - 采集源选择容器标准输出，解析模式选择 JSON。
 - 采集范围限定 `chatai-backend` 工作负载或对应 Pod label，避免 web / nginx 日志混入 backend 业务日志主题。
 - 保留 TKE 自动附带的 `namespace`、`pod_name`、`container_name`、`pod_label_*` 等元数据。
-- 为常用排障字段开启索引：`reqId`、`operation`、`subUserId`、`seatId`、`conversationId`、`messageId`、`clientMessageId`、`uid`、`platform`、`path`、`status`、`error`。
+- 为常用排障字段开启索引：`reqId`、`requestId`、`operation`、`subUserId`、`seatId`、`conversationId`、`messageId`、`clientMessageId`、`uid`、`platform`、`path`、`status`、`error`。
 
 应用侧日志字段约定：
 
 - 所有业务日志必须是结构化对象，不拼接自由文本承载排障字段。
-- Java 内部接口失败记录 `operation`、`path`、`uid`、`platform`、业务 id、Java 错误码或 HTTP 状态。
+- 工作台接口日志使用 Fastify 请求日志上下文；`requestId` 与 pino `reqId` 对齐，用于串联同一入口请求下的 backend 日志和 Java 调用日志。
+- Java 内部接口失败记录 `requestId`、`operation`、`path`、`uid`、`platform`、业务 id、Java 错误码或 HTTP 状态；backend 调 Java 时通过 `X-Request-Id` header 透传，不写入业务 payload。
 - 上传凭证成功只记录 `bucket`、`region`、`requestId` 等非敏感字段；不得记录 `tmpSecretKey`、`sessionToken`、`token`。
 - 媒体代理只记录 `host` 和 `path`，不得记录完整带签名或查询参数的 URL。
 - poll cursor 失效记录 `sinceVersion`、`sinceLastMsgTime`、`currentSeatId`、`activeConversationId`，用于判断是否需要前端重新加载基线。

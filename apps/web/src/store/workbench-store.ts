@@ -613,10 +613,16 @@ function isAccountTakenOverByCurrentUser(account: Account | undefined, me: Emplo
 }
 
 function omitByKeys<T>(record: Record<string, T>, keys: Iterable<string>) {
-  const next = { ...record };
+  const keySet = new Set(keys);
+  const next: Record<string, T> = {};
 
-  for (const key of keys) {
-    delete next[key];
+  for (const key in record) {
+    if (
+      Object.prototype.hasOwnProperty.call(record, key) &&
+      !keySet.has(key)
+    ) {
+      next[key] = record[key];
+    }
   }
 
   return next;

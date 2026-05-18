@@ -462,6 +462,10 @@ export interface XyWapEmbedSiderBarConfig {
    */
   show: Generated<number | null>;
   /**
+   * 绑定类型：1、单聊，2、群聊（多选用 "," 分割）
+   */
+  bind_types: string;
+  /**
    * 排序(越小越靠前，最小为1)
    */
   sort: Generated<number>;

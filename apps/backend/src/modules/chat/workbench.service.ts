@@ -16,6 +16,8 @@ import type {
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
+  WorkbenchSidebarIframeParamsDto,
+  WorkbenchSidebarIframeParamsRequest,
   WorkbenchSubUserDto,
   WorkbenchTakeOverSeatResponse,
   WorkbenchUploadCredentialResponse,
@@ -38,6 +40,7 @@ import {
   JAVA_MSG_TYPE,
   JAVA_SEND_TYPE,
 } from "./workbench-java-client.js";
+import { buildSidebarIframeTuseCipherTexts } from "../../lib/tuse-crypto.js";
 import {
   decodeConversationListCursor,
   parseMySqlId,
@@ -52,6 +55,13 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchConversationDeleteResponse> | WorkbenchConversationDeleteResponse;
+  /** 按席位与会话在服务端签发侧栏 iframe 涂色参数（不含 secret/iv） */
+  getSidebarIframeParams(
+    subUserId: string,
+    input: WorkbenchSidebarIframeParamsRequest,
+  ):
+    | Promise<WorkbenchSidebarIframeParamsDto>
+    | WorkbenchSidebarIframeParamsDto;
   getConversations(
     subUserId: string,
     seatId: string,
@@ -157,6 +167,46 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     return subUser;
+  }
+
+  async getSidebarIframeParams(
+    subUserId: string,
+    input: WorkbenchSidebarIframeParamsRequest,
+  ): Promise<WorkbenchSidebarIframeParamsDto> {
+    await this.getMe(subUserId);
+    await this.assertSeatAccess(subUserId, input.seatId);
+
+    const conversation = await this.repository.getConversationLookup(input.conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    if (conversation.seatId !== input.seatId) {
+      throw new BadRequestError("CONVERSATION_SEAT_MISMATCH", "会话与席位不匹配");
+    }
+
+    const secrets = await this.repository.getEmbedUserRelationTuseSecrets(subUserId);
+
+    if (!secrets) {
+      throw new NotFoundError(
+        "SIDEBAR_TUSE_CRYPTO_NOT_FOUND",
+        "侧栏加密配置不存在或未启用",
+      );
+    }
+
+    const cipherTexts = buildSidebarIframeTuseCipherTexts({
+      aesIvUtf8Secret: secrets.ivParameter,
+      aesKeyUtf8Secret: secrets.secret,
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdUserId: conversation.thirdUserId,
+      unixSeconds: Math.floor(Date.now() / 1000),
+    });
+
+    return {
+      mid: secrets.appId,
+      ...cipherTexts,
+    };
   }
 
   async getSeats(subUserId: string) {

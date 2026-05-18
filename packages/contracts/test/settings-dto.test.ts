@@ -113,6 +113,7 @@ describe("settings sub-account DTOs", () => {
       Value.Check(SettingsSidebarItemsResponseSchema, {
         items: [
           {
+            bindTypes: ["1"],
             id: "201",
             name: "企业名片",
             sort: 1,
@@ -120,6 +121,7 @@ describe("settings sub-account DTOs", () => {
             url: "https://example.com/card",
           },
           {
+            bindTypes: ["1", "2"],
             id: "202",
             name: "客户详情",
             sort: 2,
@@ -132,6 +134,22 @@ describe("settings sub-account DTOs", () => {
 
     expect(
       Value.Check(SettingsSidebarItemCreateRequestSchema, {
+        bindTypes: ["1", "2"],
+        name: "素材中心",
+        url: "https://example.com/assets",
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(SettingsSidebarItemCreateRequestSchema, {
+        name: "素材中心",
+        url: "https://example.com/assets",
+      }),
+    ).toBe(false);
+
+    expect(
+      Value.Check(SettingsSidebarItemCreateRequestSchema, {
+        bindTypes: ["1", "2"],
         name: "素材中心",
         show: 1,
         url: "https://example.com/assets",

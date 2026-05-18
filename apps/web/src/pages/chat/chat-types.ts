@@ -61,6 +61,12 @@ export type Conversation = {
   unread: number;
   mode: ChatMode;
   priority: "high" | "medium" | "low";
+  /** 三方用户 ID（侧栏 iframe 密文由服务端按会话签发） */
+  thirdUserId?: string;
+  /** 外部用户 ID（侧栏 iframe 密文由服务端按会话签发） */
+  thirdExternalUserId?: string;
+  /** 群会话三方群 ID，侧栏 iframe 在群聊时拼入查询参数 `qd` */
+  thirdGroupId?: string;
   isPinned?: boolean;
   isVerified?: boolean;
   updatedAtMs?: number;

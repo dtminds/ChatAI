@@ -89,7 +89,14 @@ export const SettingsSidebarItemStatusSchema = Type.Union([
   Type.Literal("disabled"),
 ]);
 
+/** 与会话类型绑定：`1` 单聊，`2` 群聊（与库表 `bind_types` 一致） */
+export const SettingsSidebarBindTypeSchema = Type.Union([
+  Type.Literal("1"),
+  Type.Literal("2"),
+]);
+
 export const SettingsSidebarItemSchema = Type.Object({
+  bindTypes: Type.Array(SettingsSidebarBindTypeSchema, { minItems: 1, maxItems: 2 }),
   id: Type.String(),
   name: Type.String(),
   sort: Type.Number(),
@@ -102,12 +109,14 @@ export const SettingsSidebarItemsResponseSchema = Type.Object({
 });
 
 export const SettingsSidebarItemCreateRequestSchema = Type.Object({
+  bindTypes: Type.Array(SettingsSidebarBindTypeSchema, { minItems: 1, maxItems: 2 }),
   name: Type.String({ minLength: 1 }),
   sort: Type.Optional(Type.Number({ minimum: 1 })),
   url: Type.String({ minLength: 1 }),
 }, { additionalProperties: false });
 
 export const SettingsSidebarItemUpdateRequestSchema = Type.Object({
+  bindTypes: Type.Array(SettingsSidebarBindTypeSchema, { minItems: 1, maxItems: 2 }),
   name: Type.String({ minLength: 1 }),
   url: Type.String({ minLength: 1 }),
 }, { additionalProperties: false });
@@ -151,6 +160,8 @@ export type SettingsSubAccountUpdateRequest = Static<
 export type SettingsSubAccountStatusUpdateRequest = Static<
   typeof SettingsSubAccountStatusUpdateRequestSchema
 >;
+export type SettingsSidebarBindType = Static<typeof SettingsSidebarBindTypeSchema>;
+
 export type SettingsSidebarItemStatus = Static<
   typeof SettingsSidebarItemStatusSchema
 >;

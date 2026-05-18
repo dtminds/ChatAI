@@ -9,6 +9,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
+  SettingsSidebarBindType,
   SettingsSidebarItem,
   SettingsSidebarItemCreateRequest,
   SettingsSidebarItemUpdateRequest,
@@ -27,6 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -551,6 +553,9 @@ function SidebarItemRow({
           )}
           <div className="min-w-0">
             <p className="truncate font-medium text-foreground">{item.name}</p>
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              {formatSidebarBindTypesLabel(item.bindTypes)}
+            </p>
           </div>
         </div>
       </TableCell>
@@ -630,7 +635,12 @@ function SidebarItemDragOverlay({
         <span className="flex size-7 shrink-0 items-center justify-center rounded-[6px] text-muted-foreground">
           <HugeiconsIcon icon={DragDropVerticalIcon} size={18} />
         </span>
-        <span className="truncate font-medium">{item.name}</span>
+        <div className="min-w-0">
+          <div className="truncate font-medium">{item.name}</div>
+          <div className="truncate text-[11px] text-muted-foreground">
+            {formatSidebarBindTypesLabel(item.bindTypes)}
+          </div>
+        </div>
       </div>
       <div aria-hidden="true" />
       <div aria-hidden="true" />
@@ -652,12 +662,15 @@ function SidebarPreview({ items }: { items: SettingsSidebarItem[] }) {
             {activeItems.map((item, index) => (
               <div
                 className={cn(
-                  "flex h-10 min-w-0 items-center justify-center px-0 py-2 text-muted-foreground",
+                  "flex h-auto min-h-10 min-w-0 flex-col items-center justify-center gap-0.5 px-0 py-1.5 text-muted-foreground",
                   index === 0 && "font-semibold text-foreground",
                 )}
                 key={item.id}
               >
-                <span className="truncate">{item.name}</span>
+                <span className="w-full truncate text-center">{item.name}</span>
+                <span className="w-full truncate text-center text-[10px] font-normal leading-4">
+                  {formatSidebarBindTypesLabel(item.bindTypes)}
+                </span>
               </div>
             ))}
             {activeItems.length === 0 ? (
@@ -703,6 +716,8 @@ function SidebarItemDialog({
 }) {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
+  const [bindSingle, setBindSingle] = useState(true);
+  const [bindGroup, setBindGroup] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
@@ -712,6 +727,8 @@ function SidebarItemDialog({
 
     setName(state.mode === "edit" ? state.item.name : "");
     setUrl(state.mode === "edit" ? state.item.url : "");
+    setBindSingle(state.mode !== "edit" || state.item.bindTypes.includes("1"));
+    setBindGroup(state.mode !== "edit" || state.item.bindTypes.includes("2"));
     setErrorMessage("");
   }, [state]);
 
@@ -733,7 +750,23 @@ function SidebarItemDialog({
       return;
     }
 
+    const bindTypes: SettingsSidebarBindType[] = [];
+
+    if (bindSingle) {
+      bindTypes.push("1");
+    }
+
+    if (bindGroup) {
+      bindTypes.push("2");
+    }
+
+    if (bindTypes.length === 0) {
+      setErrorMessage("请选择至少一种会话类型");
+      return;
+    }
+
     await onSubmit(state, {
+      bindTypes,
       name: normalizedName,
       url: normalizedUrl,
     });
@@ -747,7 +780,7 @@ function SidebarItemDialog({
             {state?.mode === "edit" ? "编辑侧边栏页面" : "新增侧边栏页面"}
           </DialogTitle>
           <DialogDescription>
-            配置页面名称和地址，保存后会同步到右侧聊天工具栏。
+            配置页面名称、地址及适用的会话类型，保存后会同步到右侧聊天工具栏
           </DialogDescription>
         </DialogHeader>
 
@@ -769,6 +802,32 @@ function SidebarItemDialog({
               placeholder="https://example.com/page"
               value={url}
             />
+          </Field>
+          <Field label="会话类型">
+            <div className="flex gap-3 pt-0.5 ">
+              <label className="flex cursor-pointer items-center gap-2.5 text-sm leading-none">
+                <Checkbox
+                  checked={bindSingle}
+                  disabled={isSubmitting}
+                  id="sidebar-settings-bind-single"
+                  onCheckedChange={(checked) => {
+                    setBindSingle(checked === true);
+                  }}
+                />
+                <span className={cn(isSubmitting ? "opacity-50" : undefined)}>私聊侧边栏</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2.5 text-sm leading-none">
+                <Checkbox
+                  checked={bindGroup}
+                  disabled={isSubmitting}
+                  id="sidebar-settings-bind-group"
+                  onCheckedChange={(checked) => {
+                    setBindGroup(checked === true);
+                  }}
+                />
+                <span className={cn(isSubmitting ? "opacity-50" : undefined)}>群聊侧边栏</span>
+              </label>
+            </div>
           </Field>
           {errorMessage ? (
             <p className="text-sm text-destructive">{errorMessage}</p>
@@ -794,6 +853,21 @@ function SidebarItemDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function formatSidebarBindTypesLabel(bindTypes: readonly SettingsSidebarBindType[] | undefined) {
+  const labels: string[] = [];
+  const safeBindTypes = Array.isArray(bindTypes) ? bindTypes : [];
+
+  if (safeBindTypes.includes("1")) {
+    labels.push("单聊");
+  }
+
+  if (safeBindTypes.includes("2")) {
+    labels.push("群聊");
+  }
+
+  return labels.length > 0 ? labels.join(" · ") : "未指定";
 }
 
 function getSidebarItemNameWeight(name: string) {

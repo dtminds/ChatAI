@@ -1,4 +1,4 @@
-import { useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { CustomerBasicInfoPanel } from "@/pages/chat/components/customer-basic-info-panel";
@@ -9,14 +9,46 @@ import type {
   GroupMember,
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
-import { sortSidebarItems } from "@/pages/chat/lib/sidebar-items";
+import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
+import { buildSidebarIframeSrc } from "@/pages/chat/lib/sidebar-iframe-url";
+import {
+  filterSidebarItemsForConversationMode,
+  sortSidebarItems,
+} from "@/pages/chat/lib/sidebar-items";
 
 const collapsedSidebarEntryCount = 4;
 const sidebarExpandedStorageKey = "chatai.customerSidePanel.sidebarExpanded";
 
+type SidebarIframeParamsPayload = {
+  fsw?: string;
+  mid?: string;
+  rd?: string;
+  ts?: string;
+};
+
+type ScopedSidebarIframeParams = {
+  scopeKey: string;
+  value: SidebarIframeParamsPayload | null;
+};
+
+function buildSidebarIframeParamsScopeKey(input: {
+  conversationId?: string;
+  seatId?: string;
+}): string {
+  return [input.seatId ?? "", input.conversationId ?? ""].join("\0");
+}
+
 type CustomerSidePanelProps = {
   accountName?: string;
   conversationMode?: ChatMode;
+  /** 当前席位 ID，用于服务端签发侧栏 iframe 涂色参数 */
+  sidebarIframeSeatId?: string;
+  /** 当前会话 ID，用于服务端按库表解析三方 ID 并签发参数 */
+  sidebarIframeConversationId?: string;
+  /** `tos`：`0` 未接管，`1` 已由当前坐席接管当前账号 */
+  sidebarIframeTos?: "0" | "1";
+  /** `qd`：群聊时为三方群 ID */
+  sidebarIframeQd?: string;
   customer?: CustomerProfile;
   groupMembers: GroupMember[];
   isGroupMembersLoading: boolean;
@@ -31,6 +63,10 @@ export function CustomerSidePanel({
   accountName,
   conversationMode,
   customer,
+  sidebarIframeConversationId,
+  sidebarIframeSeatId,
+  sidebarIframeTos,
+  sidebarIframeQd,
   groupMembers,
   isGroupMembersLoading,
   isResizing,
@@ -40,7 +76,128 @@ export function CustomerSidePanel({
   onResizeStart,
 }: CustomerSidePanelProps) {
   const isGroupConversation = conversationMode === "group";
-  const activeSidebarItems = sortSidebarItems(sidebarItems).filter(
+
+  const scopedSidebarItems = useMemo(
+    () => filterSidebarItemsForConversationMode(sidebarItems, conversationMode),
+    [conversationMode, sidebarItems],
+  );
+
+  const hasActiveCustomSidebar = useMemo(
+    () =>
+      sortSidebarItems(scopedSidebarItems).some((item) => item.status === "active"),
+    [scopedSidebarItems],
+  );
+
+  const needsSidebarIframeParams = Boolean(
+    hasActiveCustomSidebar && sidebarIframeSeatId && sidebarIframeConversationId,
+  );
+
+  const sidebarIframeParamsScopeKey = useMemo(
+    () =>
+      buildSidebarIframeParamsScopeKey({
+        conversationId: sidebarIframeConversationId,
+        seatId: sidebarIframeSeatId,
+      }),
+    [sidebarIframeConversationId, sidebarIframeSeatId],
+  );
+
+  const [sidebarIframeParams, setSidebarIframeParams] = useState<ScopedSidebarIframeParams | null>(
+    null,
+  );
+  const [isSidebarIframeParamsReady, setIsSidebarIframeParamsReady] = useState(true);
+
+  const sidebarIframeParamsForScope = useMemo(() => {
+    if (sidebarIframeParams?.scopeKey !== sidebarIframeParamsScopeKey) {
+      return null;
+    }
+
+    return sidebarIframeParams.value;
+  }, [sidebarIframeParams, sidebarIframeParamsScopeKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!needsSidebarIframeParams) {
+      setIsSidebarIframeParamsReady(true);
+      setSidebarIframeParams(null);
+
+      return;
+    }
+
+    const scopeKey = sidebarIframeParamsScopeKey;
+
+    setIsSidebarIframeParamsReady(false);
+    setSidebarIframeParams(null);
+
+    void (async () => {
+      try {
+        const dto = await fetchWorkbenchSidebarIframeParams({
+          conversationId: sidebarIframeConversationId!,
+          seatId: sidebarIframeSeatId!,
+        });
+
+        if (!cancelled) {
+          setSidebarIframeParams({
+            scopeKey,
+            value: dto
+              ? {
+                  ...(dto.rd ? { rd: dto.rd } : {}),
+                  ...(dto.fsw ? { fsw: dto.fsw } : {}),
+                  ts: dto.ts,
+                  ...(dto.mid ? { mid: dto.mid } : {}),
+                }
+              : null,
+          });
+        }
+      } catch {
+        console.error("Failed to fetch sidebar iframe params");
+        if (!cancelled) {
+          setSidebarIframeParams({ scopeKey, value: null });
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSidebarIframeParamsReady(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    needsSidebarIframeParams,
+    sidebarIframeConversationId,
+    sidebarIframeParamsScopeKey,
+    sidebarIframeSeatId,
+  ]);
+
+  const canRenderSidebarIframeSrc = useMemo(() => {
+    if (!needsSidebarIframeParams) {
+      return true;
+    }
+
+    if (!isSidebarIframeParamsReady) {
+      return false;
+    }
+
+    return sidebarIframeParams?.scopeKey === sidebarIframeParamsScopeKey;
+  }, [
+    isSidebarIframeParamsReady,
+    needsSidebarIframeParams,
+    sidebarIframeParams,
+    sidebarIframeParamsScopeKey,
+  ]);
+
+  const sidebarIframeSrcForUrl = useMemo(
+    () => (url: string) =>
+      buildSidebarIframeSrc(url, {
+        ...(sidebarIframeParamsForScope ?? {}),
+        ...(sidebarIframeTos ? { tos: sidebarIframeTos } : {}),
+        ...(sidebarIframeQd ? { qd: sidebarIframeQd } : {}),
+      }),
+    [sidebarIframeParamsForScope, sidebarIframeQd, sidebarIframeTos],
+  );
+  const activeSidebarItems = sortSidebarItems(scopedSidebarItems).filter(
     (item) => item.status === "active",
   );
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(readSidebarExpandedPreference);
@@ -134,9 +291,14 @@ export function CustomerSidePanel({
             >
               <iframe
                 className="h-full w-full border-0 bg-background"
+                key={`${item.id}:${sidebarIframeParamsScopeKey}`}
                 referrerPolicy="no-referrer-when-downgrade"
                 sandbox="allow-scripts allow-same-origin allow-forms"
-                src={item.url}
+                src={
+                  canRenderSidebarIframeSrc
+                    ? sidebarIframeSrcForUrl(item.url)
+                    : "about:blank"
+                }
                 title={`${item.name}扩展页`}
               />
             </TabsContent>

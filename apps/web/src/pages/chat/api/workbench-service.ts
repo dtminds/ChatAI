@@ -4,6 +4,7 @@ import {
   seedGroupMembersByConversationId,
   seedMessages,
 } from "@/pages/chat/mock-data";
+import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { http } from "@/lib/request";
 import {
   type ApiSuccessEnvelope,
@@ -29,6 +30,7 @@ import {
   type WorkbenchPollResponse,
   type WorkbenchSendMessagePayload,
   type SettingsSidebarItemsResponse,
+  type WorkbenchSidebarIframeParamsDto,
   type WorkbenchSendMessageResponse,
   type WorkbenchTakeOverSeatResponse,
   type WorkbenchUploadCredentialResponse,
@@ -54,6 +56,11 @@ export type WorkbenchService = {
     options?: WorkbenchConversationListOptions,
   ) => Promise<WorkbenchConversationListResponse>;
   getMe: () => Promise<WorkbenchSubUserDto>;
+  /** 未配置或未接入数据库时可为 `null` */
+  getSidebarIframeParams: (input: {
+    conversationId: string;
+    seatId: string;
+  }) => Promise<WorkbenchSidebarIframeParamsDto | null>;
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
   downloadMessageFile: (input: {
@@ -164,6 +171,9 @@ export function createMockWorkbenchService(): WorkbenchService {
     },
     async getMe() {
       return clone(state.subUser);
+    },
+    async getSidebarIframeParams() {
+      return null;
     },
     async getSidebarItems() {
       return {
@@ -503,6 +513,9 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     getMe() {
       return http.get<WorkbenchSubUserDto>("/server/me");
+    },
+    getSidebarIframeParams(input) {
+      return fetchWorkbenchSidebarIframeParams(input);
     },
     async getSidebarItems() {
       const response = await http.get<ApiSuccessEnvelope<SettingsSidebarItemsResponse>>(

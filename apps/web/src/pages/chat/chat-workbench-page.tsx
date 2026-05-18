@@ -286,7 +286,14 @@ function ChatWorkbenchContent({
     !!activeAccount?.takenOverEmployeeId &&
     activeAccount.takenOverEmployeeId === me?.id;
   const canSendMessage =
-    !!activeConversation && !isActiveAccountOffline && isActiveAccountTakenOver;
+    !!activeConversation &&
+    !isActiveAccountOffline &&
+    isActiveAccountTakenOver;
+  const sidebarIframeTos: "0" | "1" =
+    !!activeAccount?.takenOverEmployeeId &&
+    activeAccount.takenOverEmployeeId === me?.id
+      ? "1"
+      : "0";
   const isConversationActionDisabled =
     isActiveAccountOffline || !isActiveAccountTakenOver;
   const composerPlaceholder = canSendMessage
@@ -990,6 +997,7 @@ function ChatWorkbenchContent({
                 canSendMessage={canSendMessage}
                 composerPlaceholder={composerPlaceholder}
                 customer={activeCustomer}
+                sidebarIframeTos={sidebarIframeTos}
                 customerPanelWidth={customerPanelWidth}
                 draft={draft}
                 groupMembers={activeGroupMembers}

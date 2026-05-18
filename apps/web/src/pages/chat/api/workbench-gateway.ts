@@ -203,8 +203,17 @@ function isSidebarItemsPayload(value: unknown): value is { items: SettingsSideba
 }
 
 function isSidebarItem(value: unknown): value is SettingsSidebarItem {
+  if (!isObjectRecord(value)) {
+    return false;
+  }
+
+  const bindTypes = value.bindTypes;
+
   return (
-    isObjectRecord(value) &&
+    Array.isArray(bindTypes) &&
+    bindTypes.length > 0 &&
+    bindTypes.length <= 2 &&
+    bindTypes.every((element) => element === "1" || element === "2") &&
     typeof value.id === "string" &&
     typeof value.name === "string" &&
     typeof value.sort === "number" &&

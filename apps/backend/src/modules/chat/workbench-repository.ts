@@ -98,6 +98,39 @@ type ConversationHydrationSources = {
 export class WorkbenchRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
+  /**
+   * 按子账号租户与平台关联 `xy_wap_embed_user_relation`，取涂色侧栏 AES 密钥与 IV。
+   */
+  async getEmbedUserRelationTuseSecrets(subUserId: string) {
+    const subUserNumericId = parseMySqlId(subUserId);
+
+    if (subUserNumericId == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_sub_user as sub")
+      .innerJoin("xy_wap_embed_user_relation as rel", (join) =>
+        join.onRef("rel.uid", "=", "sub.uid").onRef("rel.platform", "=", "sub.platform"),
+      )
+      .select(["rel.appid as appid", "rel.secret as secret", "rel.iv_parameter as iv_parameter"])
+      .where("sub.id", "=", subUserNumericId)
+      .where("sub.status", "=", 1)
+      .where("rel.biz_status", "=", 1)
+      .orderBy("rel.id", "asc")
+      .executeTakeFirst();
+
+    const secret = row?.secret?.trim();
+    const ivParameter = row?.iv_parameter?.trim();
+    const appId = row?.appid?.trim() ?? "";
+
+    if (!secret || !ivParameter) {
+      return undefined;
+    }
+
+    return { appId, ivParameter, secret };
+  }
+
   async getSubUser(subUserId: string) {
     const subUserNumericId = parseMySqlId(subUserId);
 

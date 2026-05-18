@@ -217,7 +217,7 @@ export function CustomerSidePanel({
     ? "system"
     : activeSidebarItems[0]
       ? getSidebarTabValue(activeSidebarItems[0])
-      : undefined;
+      : "";
   const sidebarEntries = [
     ...(isGroupConversation
       ? [

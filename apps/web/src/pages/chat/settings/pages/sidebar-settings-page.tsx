@@ -14,7 +14,7 @@ import type {
   SettingsSidebarItemCreateRequest,
   SettingsSidebarItemUpdateRequest,
 } from "@chatai/contracts";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -113,6 +113,14 @@ export function SidebarSettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [query, setQuery] = useState("");
+  const isMountedRef = useRef(true);
+  const itemsRef = useRef<SettingsSidebarItem[]>(emptyItems);
+
+  function applySidebarItems(nextItems: SettingsSidebarItem[]) {
+    itemsRef.current = nextItems;
+    setItems(nextItems);
+    setWorkbenchSidebarItems(nextItems);
+  }
 
   useEffect(() => {
     let ignore = false;
@@ -127,8 +135,7 @@ export function SidebarSettingsPage() {
         if (!ignore) {
           const nextItems = sortSidebarItems(response.items);
 
-          setItems(nextItems);
-          setWorkbenchSidebarItems(nextItems);
+          applySidebarItems(nextItems);
         }
       } catch (error) {
         if (!ignore) {
@@ -147,6 +154,13 @@ export function SidebarSettingsPage() {
       ignore = true;
     };
   }, [setWorkbenchSidebarItems]);
+
+  useEffect(
+    () => () => {
+      isMountedRef.current = false;
+    },
+    [],
+  );
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -178,22 +192,27 @@ export function SidebarSettingsPage() {
           ? await createSidebarItem(payload)
           : await updateSidebarItem(state.item.id, payload);
 
-      setItems((current) => {
-        const nextItems = sortSidebarItems(
-          state.mode === "create"
-            ? [...current, nextItem]
-            : current.map((item) => (item.id === nextItem.id ? nextItem : item)),
-        );
+      if (!isMountedRef.current) {
+        return;
+      }
 
-        setWorkbenchSidebarItems(nextItems);
-        return nextItems;
-      });
+      const nextItems = sortSidebarItems(
+        state.mode === "create"
+          ? [...itemsRef.current, nextItem]
+          : itemsRef.current.map((item) => (item.id === nextItem.id ? nextItem : item)),
+      );
+
+      applySidebarItems(nextItems);
       setDialogState(null);
       toast.success(state.mode === "create" ? "侧边栏页面已新增" : "侧边栏页面已更新");
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      if (isMountedRef.current) {
+        toast.error(getErrorMessage(error));
+      }
     } finally {
-      setPendingAction(null);
+      if (isMountedRef.current) {
+        setPendingAction(null);
+      }
     }
   }
 
@@ -206,19 +225,24 @@ export function SidebarSettingsPage() {
         item.status === "active" ? "disabled" : "active",
       );
 
-      setItems((current) => {
-        const nextItems = sortSidebarItems(current.map((currentItem) =>
-          currentItem.id === nextItem.id ? nextItem : currentItem,
-        ));
+      if (!isMountedRef.current) {
+        return;
+      }
 
-        setWorkbenchSidebarItems(nextItems);
-        return nextItems;
-      });
+      const nextItems = sortSidebarItems(itemsRef.current.map((currentItem) =>
+        currentItem.id === nextItem.id ? nextItem : currentItem,
+      ));
+
+      applySidebarItems(nextItems);
       toast.success(nextItem.status === "active" ? "侧边栏页面已启用" : "侧边栏页面已停用");
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      if (isMountedRef.current) {
+        toast.error(getErrorMessage(error));
+      }
     } finally {
-      setPendingAction(null);
+      if (isMountedRef.current) {
+        setPendingAction(null);
+      }
     }
   }
 
@@ -236,22 +260,27 @@ export function SidebarSettingsPage() {
     }));
 
     setPendingAction("sort");
-    setItems(optimisticItems);
-    setWorkbenchSidebarItems(sortSidebarItems(optimisticItems));
+    applySidebarItems(sortSidebarItems(optimisticItems));
 
     try {
       const response = await updateSidebarItemsSort(optimisticItems.map((nextItem) => nextItem.id));
       const nextItems = sortSidebarItems(response.items);
 
-      setItems(nextItems);
-      setWorkbenchSidebarItems(nextItems);
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      applySidebarItems(nextItems);
       toast.success("侧边栏排序已更新");
     } catch (error) {
-      setItems(items);
-      setWorkbenchSidebarItems(items);
-      toast.error(getErrorMessage(error));
+      if (isMountedRef.current) {
+        applySidebarItems(items);
+        toast.error(getErrorMessage(error));
+      }
     } finally {
-      setPendingAction(null);
+      if (isMountedRef.current) {
+        setPendingAction(null);
+      }
     }
   }
 
@@ -264,18 +293,24 @@ export function SidebarSettingsPage() {
 
     try {
       await deleteSidebarItem(deleteTarget.id);
-      setItems((current) => {
-        const nextItems = sortSidebarItems(current.filter((item) => item.id !== deleteTarget.id));
 
-        setWorkbenchSidebarItems(nextItems);
-        return nextItems;
-      });
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      const nextItems = sortSidebarItems(itemsRef.current.filter((item) => item.id !== deleteTarget.id));
+
+      applySidebarItems(nextItems);
       setDeleteTarget(null);
       toast.success("侧边栏页面已删除");
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      if (isMountedRef.current) {
+        toast.error(getErrorMessage(error));
+      }
     } finally {
-      setPendingAction(null);
+      if (isMountedRef.current) {
+        setPendingAction(null);
+      }
     }
   }
 

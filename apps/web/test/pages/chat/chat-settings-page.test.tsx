@@ -528,11 +528,30 @@ describe("Chat settings pages", () => {
     const sidebarTable = screen.getByRole("table", { name: "侧边栏菜单列表" });
 
     expect(sidebarTable).toBeInTheDocument();
-    expect(within(sidebarTable).getByRole("columnheader", { name: "显示" })).toBeInTheDocument();
+    expect(
+      within(sidebarTable)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["页面", "显示", "会话类型", "操作"]);
     expect(
       within(sidebarTable).queryByRole("columnheader", { name: "页面地址" }),
     ).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByRole("columnheader", { name: "状态" })).not.toBeInTheDocument();
+    const cardMenuButton = await screen.findByRole("button", { name: "打开 企业名片 操作菜单" });
+    const cardRow = cardMenuButton.closest("tr");
+
+    expect(cardRow).not.toBeNull();
+    if (!cardRow) {
+      throw new Error("Expected sidebar row for 企业名片");
+    }
+
+    const cardRowCells = within(cardRow).getAllByRole(
+      "cell",
+    );
+    expect(cardRowCells[0]).toHaveTextContent("企业名片");
+    expect(cardRowCells[0]).not.toHaveTextContent("单聊");
+    expect(within(cardRowCells[1]).getByRole("switch", { name: "停用 企业名片" })).toBeInTheDocument();
+    expect(cardRowCells[2]).toHaveTextContent("单聊 · 群聊");
     const sidebarPreview = screen.getByRole("complementary", { name: "聊天工具栏示意图" });
     expect(sidebarPreview).toBeInTheDocument();
     expect(within(sidebarPreview).getByTestId("sidebar-preview-note-icon")).toHaveAttribute(
@@ -540,6 +559,8 @@ describe("Chat settings pages", () => {
       "alert-circle",
     );
     expect(within(sidebarPreview).queryByText("基础信息")).not.toBeInTheDocument();
+    expect(within(sidebarPreview).queryByText("单聊")).not.toBeInTheDocument();
+    expect(within(sidebarPreview).queryByText("群聊")).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "拖动 发起收款 调整排序" })).toBeInTheDocument();
     expect(within(sidebarTable).queryByText("https://example.com/card")).not.toBeInTheDocument();
     expect(within(sidebarTable).queryByText("启用")).not.toBeInTheDocument();
@@ -564,6 +585,15 @@ describe("Chat settings pages", () => {
       name: "素材中心",
       url: "https://example.com/assets",
     });
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().sidebarItems.map((item) => item.name)).toEqual([
+        "企业名片",
+        "发起收款",
+        "客户详情",
+        "快捷回复",
+        "素材中心",
+      ]);
+    });
 
     await user.click(screen.getByRole("button", { name: "打开 企业名片 操作菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "编辑" }));
@@ -583,6 +613,10 @@ describe("Chat settings pages", () => {
       expect(mock.history.patch[0]?.url).toBe("/server/settings/sidebar-items/201/status");
     });
     expect(JSON.parse(mock.history.patch[0]?.data ?? "{}")).toEqual({
+      status: "disabled",
+    });
+    expect(useWorkbenchStore.getState().sidebarItems.find((item) => item.id === "201")).toMatchObject({
+      name: "名片新版",
       status: "disabled",
     });
 
@@ -628,6 +662,7 @@ describe("Chat settings pages", () => {
     await waitFor(() => {
       expect(mock.history.delete[0]?.url).toBe("/server/settings/sidebar-items/203");
     });
+    expect(useWorkbenchStore.getState().sidebarItems.some((item) => item.id === "203")).toBe(false);
   });
 
   it("keeps sidebar preview fallback ordering aligned with numeric database ids", async () => {

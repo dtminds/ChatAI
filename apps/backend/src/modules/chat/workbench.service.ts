@@ -502,6 +502,18 @@ export class MysqlWorkbenchService implements WorkbenchService {
       );
     }
 
+    const latestChangedLastMessageTime = changedConversations.items.reduce(
+      (latest, conversation) =>
+        Math.max(latest, conversation.lastMessageTime ?? request.sinceVersion),
+      request.sinceVersion,
+    );
+    const nextVersion =
+      changedConversations.items.length === 0
+        ? request.sinceVersion
+        : latestChangedLastMessageTime > request.sinceVersion
+          ? latestChangedLastMessageTime
+          : request.sinceVersion + POLL_LAST_MESSAGE_OVERLAP_MS;
+
     const seatChange = request.currentSeatId
       ? await this.repository.getSeat(request.currentSeatId)
       : undefined;
@@ -513,7 +525,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         type: "upsert" as const,
       })),
       messageStatusChanges: [],
-      nextVersion: changedConversations.nextVersion,
+      nextVersion,
       seatChanges: seatChange
         ? [
             {

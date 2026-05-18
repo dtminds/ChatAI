@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { CustomerBasicInfoPanel } from "@/pages/chat/components/customer-basic-info-panel";
@@ -84,12 +91,16 @@ export function CustomerSidePanel({
 
   const hasActiveCustomSidebar = useMemo(
     () =>
-      sortSidebarItems(scopedSidebarItems).some((item) => item.status === "active"),
+      sortSidebarItems(scopedSidebarItems).some(
+        (item) => item.status === "active",
+      ),
     [scopedSidebarItems],
   );
 
   const needsSidebarIframeParams = Boolean(
-    hasActiveCustomSidebar && sidebarIframeSeatId && sidebarIframeConversationId,
+    hasActiveCustomSidebar &&
+    sidebarIframeSeatId &&
+    sidebarIframeConversationId,
   );
 
   const sidebarIframeParamsScopeKey = useMemo(
@@ -101,10 +112,10 @@ export function CustomerSidePanel({
     [sidebarIframeConversationId, sidebarIframeSeatId],
   );
 
-  const [sidebarIframeParams, setSidebarIframeParams] = useState<ScopedSidebarIframeParams | null>(
-    null,
-  );
-  const [isSidebarIframeParamsReady, setIsSidebarIframeParamsReady] = useState(true);
+  const [sidebarIframeParams, setSidebarIframeParams] =
+    useState<ScopedSidebarIframeParams | null>(null);
+  const [isSidebarIframeParamsReady, setIsSidebarIframeParamsReady] =
+    useState(true);
 
   const sidebarIframeParamsForScope = useMemo(() => {
     if (sidebarIframeParams?.scopeKey !== sidebarIframeParamsScopeKey) {
@@ -200,9 +211,25 @@ export function CustomerSidePanel({
   const activeSidebarItems = sortSidebarItems(scopedSidebarItems).filter(
     (item) => item.status === "active",
   );
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(readSidebarExpandedPreference);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(
+    readSidebarExpandedPreference,
+  );
+  const defaultSidebarValue = isGroupConversation
+    ? "system"
+    : activeSidebarItems[0]
+      ? getSidebarTabValue(activeSidebarItems[0])
+      : "";
   const sidebarEntries = [
-    { id: "system", kind: "system" as const, name: "基础信息", value: "system" },
+    ...(isGroupConversation
+      ? [
+          {
+            id: "system",
+            kind: "system" as const,
+            name: "基础信息",
+            value: "system",
+          },
+        ]
+      : []),
     ...activeSidebarItems.map((item) => ({
       id: item.id,
       item,
@@ -211,10 +238,31 @@ export function CustomerSidePanel({
       value: getSidebarTabValue(item),
     })),
   ];
-  const hasOverflowSidebarEntries = sidebarEntries.length > collapsedSidebarEntryCount;
+  const hasOverflowSidebarEntries =
+    sidebarEntries.length > collapsedSidebarEntryCount;
   const visibleSidebarEntries = isSidebarExpanded
     ? sidebarEntries
     : sidebarEntries.slice(0, collapsedSidebarEntryCount);
+  const shouldShowSingleConversationEmptyState =
+    !isGroupConversation && sidebarEntries.length === 0;
+  const [activeSidebarValue, setActiveSidebarValue] =
+    useState(defaultSidebarValue);
+  const previousDefaultSidebarValueRef = useRef(defaultSidebarValue);
+
+  useEffect(() => {
+    setActiveSidebarValue((current) => {
+      if (previousDefaultSidebarValueRef.current !== defaultSidebarValue) {
+        previousDefaultSidebarValueRef.current = defaultSidebarValue;
+        return defaultSidebarValue;
+      }
+
+      if (current && sidebarEntries.some((entry) => entry.value === current)) {
+        return current;
+      }
+
+      return defaultSidebarValue;
+    });
+  }, [defaultSidebarValue, sidebarEntries]);
 
   return (
     <>
@@ -240,72 +288,145 @@ export function CustomerSidePanel({
         className="flex min-h-0 min-w-0 flex-col bg-surface"
         style={{ width: `${panelWidth}px` }}
       >
-        <Tabs className="h-full min-h-0 gap-0" defaultValue="system">
-          <div className="flex items-start gap-4 border-b border-divider px-4 py-2">
-            <TabsList className="grid h-auto w-full grid-cols-4 gap-x-4 gap-y-1 rounded-none bg-transparent p-0">
-              {visibleSidebarEntries.map((entry) => (
-                <TabsTrigger
-                  className="h-10 min-w-0 rounded-none bg-transparent px-0 py-2 text-[13px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                  key={`${entry.kind}:${entry.id}`}
-                  value={entry.value}
+        {shouldShowSingleConversationEmptyState ? (
+          <SidebarEmptyState />
+        ) : (
+          <Tabs
+            className="h-full min-h-0 gap-0"
+            onValueChange={setActiveSidebarValue}
+            value={activeSidebarValue}
+          >
+            <div className="flex items-start gap-4 border-b border-divider px-4 py-2">
+              <TabsList className="grid h-auto w-full grid-cols-4 gap-x-4 gap-y-1 rounded-none bg-transparent p-0">
+                {visibleSidebarEntries.map((entry) => (
+                  <TabsTrigger
+                    className="h-10 min-w-0 rounded-none bg-transparent px-0 py-2 text-[13px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                    key={`${entry.kind}:${entry.id}`}
+                    value={entry.value}
+                  >
+                    <span className="truncate">{entry.name}</span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {hasOverflowSidebarEntries ? (
+                <button
+                  className="h-10 shrink-0 px-0 py-2 text-[13px] font-medium text-primary hover:text-primary/85 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+                  onClick={() => {
+                    setIsSidebarExpanded((current) => {
+                      const nextValue = !current;
+                      writeSidebarExpandedPreference(nextValue);
+
+                      return nextValue;
+                    });
+                  }}
+                  type="button"
                 >
-                  <span className="truncate">{entry.name}</span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            {hasOverflowSidebarEntries ? (
-              <button
-                className="h-10 shrink-0 px-0 py-2 text-[13px] font-medium text-primary hover:text-primary/85 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
-                onClick={() => {
-                  setIsSidebarExpanded((current) => {
-                    const nextValue = !current;
-                    writeSidebarExpandedPreference(nextValue);
+                  {isSidebarExpanded ? "收起" : "展开"}
+                </button>
+              ) : null}
+            </div>
 
-                    return nextValue;
-                  });
-                }}
-                type="button"
-              >
-                {isSidebarExpanded ? "收起" : "展开"}
-              </button>
-            ) : null}
-          </div>
-
-          <TabsContent className="mt-0 min-h-0 flex-1" value="system">
-            {isGroupConversation ? (
-              <GroupMembersSidePanel
-                groupMembers={groupMembers}
-                isLoading={isGroupMembersLoading}
-                onRefresh={onRefreshGroupMembers}
-              />
-            ) : (
-              <CustomerBasicInfoPanel accountName={accountName} customer={customer} />
-            )}
-          </TabsContent>
-
-          {activeSidebarItems.map((item) => (
-            <TabsContent
-              className="mt-0 min-h-0 flex-1 overflow-hidden"
-              key={item.id}
-              value={getSidebarTabValue(item)}
-            >
-              <iframe
-                className="h-full w-full border-0 bg-background"
-                key={`${item.id}:${sidebarIframeParamsScopeKey}`}
-                referrerPolicy="no-referrer-when-downgrade"
-                sandbox="allow-scripts allow-same-origin allow-forms"
-                src={
-                  canRenderSidebarIframeSrc
-                    ? sidebarIframeSrcForUrl(item.url)
-                    : "about:blank"
-                }
-                title={`${item.name}扩展页`}
-              />
+            <TabsContent className="mt-0 min-h-0 flex-1" value="system">
+              {isGroupConversation ? (
+                <GroupMembersSidePanel
+                  groupMembers={groupMembers}
+                  isLoading={isGroupMembersLoading}
+                  onRefresh={onRefreshGroupMembers}
+                />
+              ) : (
+                <CustomerBasicInfoPanel
+                  accountName={accountName}
+                  customer={customer}
+                />
+              )}
             </TabsContent>
-          ))}
-        </Tabs>
+
+            {activeSidebarItems.map((item) => (
+              <TabsContent
+                className="mt-0 min-h-0 flex-1 overflow-hidden"
+                key={item.id}
+                value={getSidebarTabValue(item)}
+              >
+                <CustomSidebarIframe
+                  isSrcPending={!canRenderSidebarIframeSrc}
+                  itemName={item.name}
+                  loadKey={`${item.id}:${sidebarIframeParamsScopeKey}:${sidebarIframeTos ?? ""}:${sidebarIframeQd ?? ""}`}
+                  src={
+                    canRenderSidebarIframeSrc
+                      ? sidebarIframeSrcForUrl(item.url)
+                      : "about:blank"
+                  }
+                />
+              </TabsContent>
+            ))}
+          </Tabs>
+        )}
       </aside>
     </>
+  );
+}
+
+function SidebarEmptyState() {
+  return (
+    <div
+      aria-label="暂未配置侧边栏"
+      className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground"
+      role="status"
+    >
+      <img
+        alt=""
+        aria-hidden="true"
+        className="h-64 w-64 object-contain"
+        src="https://b5.bokr.com.cn/dist/no_result.png"
+      />
+      <span>暂未配置侧边栏</span>
+    </div>
+  );
+}
+
+function CustomSidebarIframe({
+  isSrcPending,
+  itemName,
+  loadKey,
+  src,
+}: {
+  isSrcPending: boolean;
+  itemName: string;
+  loadKey: string;
+  src: string;
+}) {
+  const isBlankSrc = src === "about:blank";
+  const shouldShowLoading = isSrcPending || !isBlankSrc;
+  const [isLoading, setIsLoading] = useState(shouldShowLoading);
+
+  useEffect(() => {
+    setIsLoading(shouldShowLoading);
+  }, [loadKey, shouldShowLoading, src]);
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col bg-background">
+      {isLoading ? (
+        <div className="flex min-h-[120px] items-center justify-center py-4">
+          <DotMatrixLoader className="text-muted-foreground" type="square-5" />
+        </div>
+      ) : null}
+      <iframe
+        className={cn(
+          "min-h-0 flex-1 border-0 bg-background transition-opacity duration-150",
+          isLoading ? "opacity-0" : "opacity-100",
+        )}
+        key={loadKey}
+        onLoad={() => {
+          if (!isSrcPending && !isBlankSrc) {
+            setIsLoading(false);
+          }
+        }}
+        referrerPolicy="no-referrer-when-downgrade"
+        sandbox="allow-scripts allow-same-origin allow-forms"
+        src={src}
+        title={`${itemName}扩展页`}
+      />
+    </div>
   );
 }
 

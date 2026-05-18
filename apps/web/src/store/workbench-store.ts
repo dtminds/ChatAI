@@ -127,6 +127,7 @@ type WorkbenchState = {
     },
   ) => Promise<SendMessageResult>;
   sendAgentTextMessage: (text: string) => Promise<SendMessageResult>;
+  setSidebarItems: (items: SettingsSidebarItem[]) => void;
   takeOverAccount: (accountId: string) => Promise<void>;
   unpinConversation: (conversationId: string) => Promise<void>;
   retryFailedMessage: (messageId: string) => Promise<void>;
@@ -165,6 +166,7 @@ function createInitialState(): Omit<
   | "markConversationUnread"
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
+  | "setSidebarItems"
   | "takeOverAccount"
   | "unpinConversation"
   | "retryFailedMessage"
@@ -1032,6 +1034,9 @@ export function createWorkbenchStore() {
 
     return {
       ...createInitialState(),
+      setSidebarItems(items) {
+        set({ sidebarItems: items });
+      },
       async deleteConversation(conversationId) {
         const state = get();
         const conversation = getConversationById(state, conversationId);

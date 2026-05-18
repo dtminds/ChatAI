@@ -1313,7 +1313,7 @@ describe("ChatWorkbenchPage", () => {
       name: "客户信息栏",
     });
 
-    expect(within(sidePanel).getByRole("tab", { name: "基础信息" })).toBeInTheDocument();
+    expect(within(sidePanel).queryByRole("tab", { name: "基础信息" })).not.toBeInTheDocument();
     expect(within(sidePanel).getByRole("tab", { name: "快捷回复" })).toBeInTheDocument();
     expect(within(sidePanel).getByRole("tab", { name: "客户详情" })).toBeInTheDocument();
     expect(within(sidePanel).queryByRole("tab", { name: "隐藏页面" })).not.toBeInTheDocument();
@@ -1324,6 +1324,12 @@ describe("ChatWorkbenchPage", () => {
     await waitFor(() => {
       expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
     });
+    expect(
+      within(screen.getByRole("complementary", { name: "群成员信息栏" })).getByRole("tab", {
+        name: "基础信息",
+        selected: true,
+      }),
+    ).toBeInTheDocument();
     expect(getSidebarItems).toHaveBeenCalledTimes(1);
   });
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SettingsSidebarBindType } from "@chatai/contracts";
@@ -62,18 +62,42 @@ describe("CustomerSidePanel", () => {
     expect(within(sidePanel).getByRole("tab", { name: "仅群聊" })).toBeInTheDocument();
   });
 
-  it("falls back to the permanent basic info tab when sidebar items are missing", () => {
+  it("shows an empty state for single conversations without custom sidebar items", () => {
     render(
       <CustomerSidePanel
         {...defaultProps}
+        conversationMode="single"
         sidebarItems={undefined}
       />,
     );
 
     const sidePanel = screen.getByRole("complementary", { name: "客户信息栏" });
 
+    expect(within(sidePanel).queryByRole("tab", { name: "基础信息" })).not.toBeInTheDocument();
+    expect(within(sidePanel).queryByRole("tab")).not.toBeInTheDocument();
+    expect(
+      within(sidePanel).getByRole("status", { name: "暂未配置侧边栏" }),
+    ).toBeInTheDocument();
+    expect(sidePanel.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/no_result.png",
+    );
+  });
+
+  it("keeps the basic info tab for group conversations without custom sidebar items", () => {
+    render(
+      <CustomerSidePanel
+        {...defaultProps}
+        conversationMode="group"
+        sidebarItems={undefined}
+      />,
+    );
+
+    const sidePanel = screen.getByRole("complementary", { name: "群成员信息栏" });
+
     expect(within(sidePanel).getByRole("tab", { name: "基础信息" })).toBeInTheDocument();
     expect(within(sidePanel).getAllByRole("tab")).toHaveLength(1);
+    expect(within(sidePanel).queryByRole("status", { name: "暂未配置侧边栏" })).not.toBeInTheDocument();
   });
 
   it("collapses custom tabs to the first row and expands them on demand", async () => {
@@ -82,6 +106,7 @@ describe("CustomerSidePanel", () => {
     render(
       <CustomerSidePanel
         {...defaultProps}
+        conversationMode="single"
         sidebarItems={Array.from({ length: 5 }, (_, index) => ({
           bindTypes: ["1", "2"],
           id: String(index + 1),
@@ -95,16 +120,15 @@ describe("CustomerSidePanel", () => {
 
     const sidePanel = screen.getByRole("complementary", { name: "客户信息栏" });
 
-    expect(within(sidePanel).getByRole("tab", { name: "基础信息" })).toBeInTheDocument();
     expect(within(sidePanel).getByRole("tab", { name: "页面1" })).toBeInTheDocument();
     expect(within(sidePanel).getByRole("tab", { name: "页面2" })).toBeInTheDocument();
     expect(within(sidePanel).getByRole("tab", { name: "页面3" })).toBeInTheDocument();
-    expect(within(sidePanel).queryByRole("tab", { name: "页面4" })).not.toBeInTheDocument();
+    expect(within(sidePanel).getByRole("tab", { name: "页面4" })).toBeInTheDocument();
+    expect(within(sidePanel).queryByRole("tab", { name: "页面5" })).not.toBeInTheDocument();
     expect(within(sidePanel).getByRole("button", { name: "展开" })).toBeInTheDocument();
 
     await user.click(within(sidePanel).getByRole("button", { name: "展开" }));
 
-    expect(within(sidePanel).getByRole("tab", { name: "页面4" })).toBeInTheDocument();
     expect(within(sidePanel).getByRole("tab", { name: "页面5" })).toBeInTheDocument();
     expect(within(sidePanel).getByRole("button", { name: "收起" })).toBeInTheDocument();
   });
@@ -172,6 +196,89 @@ describe("CustomerSidePanel", () => {
       "referrerpolicy",
       "no-referrer-when-downgrade",
     );
+  });
+
+  it("resets the selected sidebar tab when switching to a conversation that does not have it", async () => {
+    const user = userEvent.setup();
+
+    const { rerender } = render(
+      <CustomerSidePanel
+        {...defaultProps}
+        conversationMode="single"
+        sidebarItems={[
+          {
+            bindTypes: ["1", "2"],
+            id: "1",
+            name: "页面A",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/a",
+          },
+          {
+            bindTypes: ["1", "2"],
+            id: "2",
+            name: "页面B",
+            sort: 2,
+            status: "active",
+            url: "https://example.com/b",
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "页面B" }));
+    expect(screen.getByRole("tab", { name: "页面B", selected: true })).toBeInTheDocument();
+
+    rerender(
+      <CustomerSidePanel
+        {...defaultProps}
+        conversationMode="single"
+        sidebarItems={[
+          {
+            bindTypes: ["1", "2"],
+            id: "1",
+            name: "页面A",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/a",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "页面A", selected: true })).toBeInTheDocument();
+  });
+
+  it("shows a loading indicator until the custom sidebar iframe finishes loading", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CustomerSidePanel
+        {...defaultProps}
+        sidebarIframeConversationId="conv-1"
+        sidebarIframeSeatId="seat-1"
+        sidebarItems={[
+          {
+            bindTypes: ["1", "2"],
+            id: "1",
+            name: "素材中心",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/assets",
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "素材中心" }));
+
+    expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
+
+    const iframe = screen.getByTitle("素材中心扩展页");
+
+    fireEvent.load(iframe);
+
+    expect(screen.queryByTestId("dot-matrix-loader")).not.toBeInTheDocument();
   });
 
   it("uses about:blank until iframe params match the current seat and conversation", async () => {

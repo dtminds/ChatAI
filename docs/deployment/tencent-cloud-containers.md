@@ -189,7 +189,8 @@ openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
 
 - 在 TKE Secret 中写入 key 内容时要保留 PEM 换行，例如 `-----BEGIN PRIVATE KEY-----` 到 `-----END PRIVATE KEY-----` 的完整内容。
 - 所有环境都必须配置 `DATABASE_URL`，否则 backend 会拒绝启动；本地开发也不再提供无数据库降级运行模式。
-- `JAVA_INTERNAL_API_BASE_URL` 和 `JAVA_INTERNAL_API_TOKEN` 用于转发发送消息、会话已读、席位接管等写操作。
+- 生产环境必须配置 `JAVA_INTERNAL_API_BASE_URL`，否则 backend 会拒绝启动；本地开发和测试环境可按需留空并使用 mock 或非生产配置。
+- `JAVA_INTERNAL_API_BASE_URL` 用于转发发送消息、会话已读、席位接管等写操作；`JAVA_INTERNAL_API_TOKEN` 目前仍是可选项。
 - `JAVA_INTERNAL_API_BASE_URL` 只应配置在 backend 所在环境，不要放进 web 的 `VITE_*` 构建变量。
 - 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。
 - `REDIS_ENABLED=false` 是当前阶段可接受配置，Redis 不是必需依赖。
@@ -294,7 +295,7 @@ kubectl -n chatai-prod set image deployment/chatai-web web=ccr.ccs.tencentyun.co
 - Web 构建变量为 `VITE_API_BASE_URL=/api`，如需微信表情资源则同步确认 `VITE_WECHAT_EMOJI_BASE_URL`。
 - Web 镜像内的 `deploy/nginx.conf` 支持前端路由 fallback，且不会把 `/api/*` 回退到 `index.html`。
 - Backend `NODE_ENV=production`。
-- Backend 已配置 `DATABASE_URL`、`JWT_PRIVATE_KEY`、`JWT_PUBLIC_KEY`、`ALTCHA_HMAC_SECRET`。
+- Backend 已配置 `DATABASE_URL`、`JWT_PRIVATE_KEY`、`JWT_PUBLIC_KEY`、`JAVA_INTERNAL_API_BASE_URL`、`ALTCHA_HMAC_SECRET`。
 - Ingress 已配置 `/api` 到 backend，`/` 到 web。
 - `/healthz` 和 `/readyz` 正常。
 - `/chat` 刷新不 404。

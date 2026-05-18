@@ -1,4 +1,5 @@
 import type {
+  AccountRole,
   AuthLoginRequest,
   AuthLoginResponse,
   AuthSubUser,
@@ -305,7 +306,7 @@ function signAccessToken(
   app: FastifyInstance,
   subUserId: string,
   session: { id: number; sessionVersion: number },
-  role: string = "operator",
+  role: AccountRole = "operator",
 ) {
   return app.jwt.sign({
     roles: [role],

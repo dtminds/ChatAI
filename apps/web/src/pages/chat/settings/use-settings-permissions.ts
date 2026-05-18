@@ -1,4 +1,4 @@
-import type { AccountPermission, AccountRole, AuthSubUser } from "@chatai/contracts";
+import type { AuthSubUser } from "@chatai/contracts";
 import { useEffect, useState } from "react";
 
 import { getAuthSession } from "@/pages/auth/auth-service";
@@ -47,31 +47,9 @@ export function useSettingsPermissions() {
 }
 
 function resolveSettingsPermissions(subUser: AuthSubUser): SettingsPermissionState {
-  const role = subUser.role;
-
   return {
-    canManageManagedAccounts: canManageByRoleOrPermission(
-      role,
-      subUser.permissions,
-      "settings.managedAccounts.manage",
-    ),
-    canManageSidebar: canManageByRoleOrPermission(
-      role,
-      subUser.permissions,
-      "settings.sidebar.manage",
-    ),
-    canManageSubAccounts: canManageByRoleOrPermission(
-      role,
-      subUser.permissions,
-      "settings.subAccounts.manage",
-    ),
+    canManageManagedAccounts: subUser.permissions.includes("settings.managedAccounts.manage"),
+    canManageSidebar: subUser.permissions.includes("settings.sidebar.manage"),
+    canManageSubAccounts: subUser.permissions.includes("settings.subAccounts.manage"),
   };
-}
-
-function canManageByRoleOrPermission(
-  role: AccountRole,
-  permissions: readonly AccountPermission[],
-  permission: AccountPermission,
-) {
-  return role === "owner" || role === "admin" || permissions.includes(permission);
 }

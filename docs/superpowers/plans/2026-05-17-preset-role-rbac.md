@@ -4,7 +4,7 @@
 
 **Goal:** Implement preset role RBAC for ChatAI settings so sub-accounts can be assigned admin, operator, or viewer roles without custom role definitions.
 
-**Architecture:** Shared contracts define roles, permissions, and DTO fields. Backend derives permissions from `xy_wap_embed_sub_user.type` and `role`, enforces permissions on settings routes, and persists role on sub-account create/update. Frontend displays fixed role definitions and adds role selection to sub-account management.
+**Architecture:** Shared contracts define roles, permissions, and DTO fields. Backend derives permissions from `xy_wap_embed_sub_user.type` and `role`, enforces permissions on settings routes, and persists role on sub-account create/update. `owner` is derived from `type=1` and is not stored in `role`; new tenant main-account rows should use `type=1 + role=admin`. Frontend displays fixed role definitions and adds role selection to sub-account management.
 
 **Tech Stack:** TypeScript, TypeBox, Fastify, Kysely, React 19, Vitest, Testing Library
 
@@ -84,7 +84,7 @@ Use a shared permission pre-handler for settings routes. Reads may use `settings
 
 - [ ] **Step 3: Persist and map sub-account roles**
 
-Update create/update/list mapping to read/write `role`. Main account maps to `owner`; invalid sub-account role falls back to `operator`; main account update rejects role changes.
+Update create/update/list mapping to read/write `role`. Main account maps to derived `owner`; new tenant main-account rows should be created as `type=1 + role=admin`; invalid sub-account role falls back to `operator`; main account update rejects role changes.
 
 - [ ] **Step 4: Verify backend settings tests**
 
@@ -144,4 +144,3 @@ Expected: all pass.
 - [ ] **Step 2: Review diff**
 
 Run: `git diff --stat` and inspect key files for scope creep.
-

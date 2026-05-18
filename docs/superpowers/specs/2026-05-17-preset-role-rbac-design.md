@@ -4,7 +4,7 @@
 
 **Goal:** 为 `/chat` 工作台补齐可落库、可校验的预设角色权限，支持把某个子账号提升为管理员，或设为只读客服，同时不开放自定义角色。
 
-**Architecture:** 采用“预设角色 + 固定能力集合 + 后端强校验”的轻量 RBAC。`type=1` 的主账号始终拥有最高权限；`type=0` 的子账号通过 `role` 字段绑定 `admin/operator/viewer` 预设角色。前端只负责展示和选择，所有权限判断最终由后端依据角色派生。
+**Architecture:** 采用“预设角色 + 固定能力集合 + 后端强校验”的轻量 RBAC。`type=1` 的主账号始终派生为 `owner` 并拥有最高权限，开户数据建议显式写入 `role=admin` 以保持数据语义正确；`type=0` 的子账号通过 `role` 字段绑定 `admin/operator/viewer` 预设角色。前端只负责展示和选择，所有权限判断最终由后端依据角色派生。
 
 **Tech Stack:** TypeScript、TypeBox、Fastify、Kysely、React 19、Zustand、shadcn/ui
 
@@ -45,7 +45,7 @@
 
 | 角色 | 来源 | 说明 |
 |---|---|---|
-| `owner` | `xy_wap_embed_sub_user.type = 1` | 主账号，永远拥有全部权限 |
+| `owner` | `xy_wap_embed_sub_user.type = 1`，通常 `role = admin` | 主账号的派生角色，永远拥有全部权限 |
 | `admin` | `xy_wap_embed_sub_user.type = 0` + `role = admin` | 管理员子账号 |
 | `operator` | `xy_wap_embed_sub_user.type = 0` + `role = operator` | 客服子账号 |
 | `viewer` | `xy_wap_embed_sub_user.type = 0` + `role = viewer` | 只读客服子账号 |
@@ -94,7 +94,8 @@ viewer:
 
 说明：
 
-- `owner` 不是一个可选项，而是 `type=1` 的固定归属。
+- `owner` 不是一个可写入或可选择的 `role` 值，而是 `type=1` 的派生角色。
+- 新开通租户时，主账号记录应写为 `type=1` 且 `role=admin`，保证落库语义与主账号管理能力一致。
 - `admin`、`operator` 和 `viewer` 只用于子账号。
 
 ## 4. 数据模型
@@ -105,21 +106,36 @@ viewer:
 
 ```sql
 ALTER TABLE xy_wap_embed_sub_user
-ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'operator';
+ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'operator'
+COMMENT '预设角色：admin管理员，operator客服，viewer只读客服；type=1主账号通常存admin并由系统推导为owner';
 ```
 
 约束：
 
-- `type = 1` 的记录忽略 `role`
+- `type = 1` 的记录由系统派生为 `owner`，开户和迁移时建议把 `role` 写为 `admin`
 - `type = 0` 的记录使用 `role`
 - `role` 只允许 `admin/operator/viewer`，`owner` 只由主账号类型推导
+- 字段默认值保持 `operator`，避免创建子账号漏传 `role` 时意外获得管理员权限
+
+新开通租户主账号时，应显式写入：
+
+```sql
+INSERT INTO xy_wap_embed_sub_user (..., type, role, ...)
+VALUES (..., 1, 'admin', ...);
+```
 
 ### 4.2 兼容策略
 
 - 老数据默认 `operator`
 - 新创建子账号默认 `operator`
-- 主账号记录无需迁移为 `owner` 值，推导即可
+- 主账号记录不迁移为 `owner` 值；建议把 `type=1` 的历史主账号补正为 `role=admin`，再由系统推导为 `owner`
 - 如果已有脏值，后端读取时回退到 `operator`
+
+```sql
+UPDATE xy_wap_embed_sub_user
+SET role = 'admin'
+WHERE type = 1;
+```
 
 ## 5. 后端设计
 
@@ -231,7 +247,7 @@ type SettingsSubAccount = {
 };
 ```
 
-`owner` 只在主账号记录上表现为推导结果，不作为可编辑值。
+`owner` 只在主账号记录上表现为推导结果，不作为可编辑值，也不作为 `xy_wap_embed_sub_user.role` 的落库值。主账号落库建议使用 `type=1 + role=admin`。
 
 ## 8. 错误处理
 

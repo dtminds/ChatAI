@@ -431,6 +431,15 @@ function upsertMessageList(
           ...merged[targetIndex],
           isRevoked: true,
         };
+      } else {
+        const appendedIndex = findRevokedMessageIndex(appendedMessages, nextMessage);
+
+        if (appendedIndex >= 0) {
+          appendedMessages[appendedIndex] = {
+            ...appendedMessages[appendedIndex],
+            isRevoked: true,
+          };
+        }
       }
 
       continue;

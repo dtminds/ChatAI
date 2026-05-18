@@ -642,6 +642,66 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("marks same-batch messages as revoked when the revoke signal arrives after them", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return {
+          activeConversationMessages: [
+            {
+              content: {
+                text: "待撤回消息",
+              },
+              contentType: "text",
+              conversationId: "conv-001",
+              createdAt: Date.now(),
+              customerId: "cust-001",
+              messageId: "msg-new-001",
+              seatId: "drc",
+              senderType: "customer",
+              seq: 7,
+              status: "read",
+            },
+            {
+              content: {
+                revokeMsgId: "msg-new-001",
+                revokeOriginMsgId: "msg-new-001",
+                type: "revoke",
+              },
+              contentType: "revoke",
+              conversationId: "conv-001",
+              createdAt: Date.now(),
+              customerId: "cust-001",
+              messageId: "revoke-msg-new-001",
+              seatId: "drc",
+              senderType: "system",
+              seq: 8,
+              status: "read",
+            },
+          ],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+    const targetMessage = messages.find((message) => message.id === "msg-new-001");
+
+    expect(targetMessage).toMatchObject({
+      id: "msg-new-001",
+      isRevoked: true,
+    });
+    expect(messages.some((message) => message.id === "revoke-msg-new-001")).toBe(false);
+  });
+
   it("resolves image segments before sending them to the message API", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);

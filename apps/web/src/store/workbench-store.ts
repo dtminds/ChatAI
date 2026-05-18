@@ -663,10 +663,6 @@ function clearConversationResourceState(
       state.groupMembersLoadingByConversationId,
       conversationIds,
     ),
-    historyStatusByConversationId: omitByKeys(
-      state.historyStatusByConversationId,
-      conversationIds,
-    ),
   };
 }
 

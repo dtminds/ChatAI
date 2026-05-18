@@ -1041,28 +1041,35 @@ function ChatWorkbenchContent({
         </div>
       </div>
       <AlertDialog open={pollingPauseReason !== null}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pollingPauseReason
-                ? getPollingPausedDialogCopy(pollingPauseReason).title
-                : ""}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {pollingPauseReason
-                ? getPollingPausedDialogCopy(pollingPauseReason).description
-                : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction
-              onClick={() => {
+        <AlertDialogContent
+          className="overflow-hidden p-0"
+          size="sm"
+          style={{ height: 286, maxWidth: 520, width: 520 }}
+        >
+          <div className="relative h-full overflow-hidden px-10 py-9">
+            <AlertDialogHeader className="relative z-10 min-w-0 space-y-4 text-left">
+              <AlertDialogTitle>
+                {getPollingPausedDialogCopy(pollingPauseReason).title}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {getPollingPausedDialogCopy(pollingPauseReason).description}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <img
+              alt=""
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-2 left-2 w-[250px] select-none"
+              data-testid="polling-paused-illustration"
+              src="https://b5.bokr.com.cn/dist/pause_poll.png"
+            />
+            <AlertDialogFooter className="absolute bottom-10 right-10 z-10">
+              <AlertDialogAction onClick={() => {
                 window.location.reload();
-              }}
-            >
-              刷新页面
-            </AlertDialogAction>
-          </AlertDialogFooter>
+              }}>
+                刷新页面
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </div>
         </AlertDialogContent>
       </AlertDialog>
       <AlertDialog
@@ -1167,9 +1174,8 @@ function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {
   }
 
   return {
-    description:
-      "当前页面已暂停消息同步。若要在此页面继续，请刷新页面重新接管。",
-    title: "实时同步已被其他工作台页面占用",
+    description: "当前页面已暂停消息同步。若要在此页面继续，请刷新页面",
+    title: "实时同步已被其他页面占用",
   };
 }
 

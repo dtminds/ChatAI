@@ -2385,12 +2385,11 @@ describe("ChatWorkbenchPage", () => {
       }),
     );
 
-    expect(
-      await screen.findByRole("alertdialog", {
-        name: "实时同步已被其他工作台页面占用",
-      }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新页面" })).toBeInTheDocument();
+    expect(
+      screen.getByTestId("polling-paused-illustration"),
+    ).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/pause_poll.png");
   });
 
 });

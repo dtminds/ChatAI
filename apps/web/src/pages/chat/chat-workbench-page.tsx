@@ -403,6 +403,13 @@ function ChatWorkbenchContent({
     }
 
     const restorableMessages = getRestorableDownloadMessages(activeMessages);
+    const restorableIds = new Set(restorableMessages.map((message) => message.id));
+
+    downloadPollingMessageIdsRef.current.forEach((messageId) => {
+      if (!restorableIds.has(messageId)) {
+        stopMessageDownloadPolling(messageId);
+      }
+    });
 
     restorableMessages.forEach((message) => {
       if (downloadPollingMessageIdsRef.current.has(message.id)) {
@@ -663,7 +670,7 @@ function ChatWorkbenchContent({
     }
 
     if (
-      Object.keys(downloadTransferStates).length >=
+      downloadPollingMessageIdsRef.current.size >=
       MAX_ACTIVE_DOWNLOAD_TRANSFERS
     ) {
       toast.warning("下载队列已满，请稍后");
@@ -795,11 +802,24 @@ function ChatWorkbenchContent({
             return;
           }
 
+          if (downloadPollingConversationRef.current !== message.conversationId) {
+            return;
+          }
+
           stopMessageDownloadPolling(message.id);
           updateMessageDownloadContent(message.conversationId, message.id, {
             downloadStatus: "failed",
           });
-          toast.warning("下载失败，请稍后重试");
+          window.setTimeout(() => {
+            if (
+              !isMountedRef.current ||
+              downloadPollingConversationRef.current !== message.conversationId
+            ) {
+              return;
+            }
+
+            toast.warning("下载失败，请稍后重试");
+          }, 0);
         });
     }, DOWNLOAD_STATUS_POLL_INTERVAL_MS);
 

@@ -2620,12 +2620,14 @@ describe("ChatWorkbenchPage", () => {
 function createInProgressVideoDto({
   alt,
   createdAt,
+  downloadStatus = "ing",
   fileSerialNo,
   messageId,
   seq,
 }: {
   alt: string;
   createdAt: number;
+  downloadStatus?: "ing" | "finished" | "failed";
   fileSerialNo?: string;
   messageId: string;
   seq: number;
@@ -2636,7 +2638,7 @@ function createInProgressVideoDto({
     content: {
       alt,
       coverImageUrl: "/covers/stage.jpg",
-      downloadStatus: "ing",
+      downloadStatus,
       durationLabel: "1:01",
       ...(resolvedFileSerialNo === undefined ? {} : { fileSerialNo: resolvedFileSerialNo }),
       videoUrl: "",

@@ -2016,27 +2016,41 @@ export function createWorkbenchStore() {
             ),
             seatOrder: conversationListCacheSeatOrder,
           });
-          const clearedResourceState = clearConversationResourceState(
-            currentState,
+          const evictedConversationIds =
             prunedConversationListCache.evictedSeatIds.flatMap(
               (seatId) =>
                 currentState.conversationListsByScope[seatId]?.map((conversation) => conversation.id) ?? [],
-            ),
+            );
+          const clearedMessageState = clearConversationMessageState(
+            currentState,
+            getMessageStateConversationIds(currentState),
             { preservePending: true },
+          );
+          const nextGroupMembersLoadingByConversationId = omitByKeys(
+            currentState.groupMembersLoadingByConversationId,
+            evictedConversationIds,
           );
 
           return {
-            ...clearedResourceState,
+            ...clearedMessageState,
+            groupMembersLoadedAtByConversationId: omitByKeys(
+              currentState.groupMembersLoadedAtByConversationId,
+              evictedConversationIds,
+            ),
+            groupMembersByConversationId: omitByKeys(
+              currentState.groupMembersByConversationId,
+              evictedConversationIds,
+            ),
             activeAccountId: accountId,
             activeConversationId: scopeResult.nextConversationId,
             activeMode: scopeResult.nextMode,
             activeMessageSeq: getActiveMessageSeq(
               conversationPage
                 ? {
-                    ...currentState.messagesByConversationId,
+                    ...clearedMessageState.messagesByConversationId,
                     [conversationPage.conversationId]: conversationPage.messages,
                   }
-                : currentState.messagesByConversationId,
+                : clearedMessageState.messagesByConversationId,
               scopeResult.nextConversationId,
             ),
             conversationListCacheSeatOrder:
@@ -2047,38 +2061,38 @@ export function createWorkbenchStore() {
               prunedConversationListCache.conversationModeLoadedAtByScope,
             hasMoreHistoryByConversationId: conversationPage
               ? {
-                  ...clearedResourceState.hasMoreHistoryByConversationId,
+                  ...clearedMessageState.hasMoreHistoryByConversationId,
                   [conversationPage.conversationId]: conversationPage.hasMoreHistory,
                 }
-              : clearedResourceState.hasMoreHistoryByConversationId,
+              : clearedMessageState.hasMoreHistoryByConversationId,
             messagePaginationByConversationId: conversationPage
               ? {
-                  ...clearedResourceState.messagePaginationByConversationId,
+                  ...clearedMessageState.messagePaginationByConversationId,
                   [conversationPage.conversationId]: buildMessagePaginationState(conversationPage),
                 }
-              : clearedResourceState.messagePaginationByConversationId,
+              : clearedMessageState.messagePaginationByConversationId,
             isConversationLoading: false,
             messagesByConversationId: conversationPage
               ? {
-                  ...clearedResourceState.messagesByConversationId,
+                  ...clearedMessageState.messagesByConversationId,
                   [conversationPage.conversationId]: conversationPage.messages,
                 }
-              : clearedResourceState.messagesByConversationId,
+              : clearedMessageState.messagesByConversationId,
             scopeTransitionError: undefined,
             groupMembersLoadingByConversationId:
               nextConversation?.mode === "group" &&
-              (clearedResourceState.groupMembersByConversationId[
+              (currentState.groupMembersByConversationId[
                 scopeResult.nextConversationId
               ] === undefined ||
                 !isGroupMembersCacheFresh(
-                  clearedResourceState.groupMembersLoadedAtByConversationId,
+                  currentState.groupMembersLoadedAtByConversationId,
                   scopeResult.nextConversationId,
                 ))
                 ? {
-                    ...clearedResourceState.groupMembersLoadingByConversationId,
+                    ...nextGroupMembersLoadingByConversationId,
                     [scopeResult.nextConversationId]: true,
                   }
-                : clearedResourceState.groupMembersLoadingByConversationId,
+                : nextGroupMembersLoadingByConversationId,
             isPollBaselineFresh: true,
             sinceVersion: scopeResult.pollBaseline,
           };

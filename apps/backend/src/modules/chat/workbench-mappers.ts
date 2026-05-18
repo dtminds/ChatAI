@@ -2,9 +2,16 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchMessageContentType,
   WorkbenchMessageDto,
+  WorkbenchMessageFileDownloadStatus,
   WorkbenchQuotedMessagePreviewDto,
   WorkbenchSeatDto,
 } from "@chatai/contracts";
+import {
+  isRecord,
+  normalizeMediaAssetUrl,
+  readRecordNumber,
+  readRecordString,
+} from "./workbench-content-utils.js";
 
 export type SeatRow = {
   avatar: string | null;
@@ -19,6 +26,7 @@ export type SeatRow = {
 
 export type ConversationRow = {
   chat_type: number;
+  create_time?: Date | number | string | null;
   customer_avatar: string | null;
   customer_name: string | null;
   group_avatar: string | null;
@@ -33,6 +41,7 @@ export type ConversationRow = {
   third_group_id: string;
   third_userid: string;
   unread_cnt: number | string;
+  verified?: number | string | null;
 };
 
 export type MessageRow = {
@@ -119,6 +128,7 @@ export function mapConversationRow(
 
   return {
     conversationId: String(row.id),
+    createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
     customerId,
     customerName,
@@ -132,6 +142,7 @@ export function mapConversationRow(
     thirdGroupId: row.third_group_id || undefined,
     thirdUserId: row.third_userid,
     unreadCount: toNumber(row.unread_cnt),
+    verified: row.verified == null ? undefined : toNumber(row.verified) === 1,
   };
 }
 
@@ -276,6 +287,8 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
       return "location";
     case "solitaire":
       return "solitaire";
+    case "redpacket":
+      return "redpacket";
     case "sphfeed":
       return "sphfeed";
     case "weapp":
@@ -334,7 +347,10 @@ function parseMessageContent(
       return {
         alt: "视频",
         coverImageUrl: normalizeMediaAssetUrl(readStringField(parsed, "coverUrl")),
+        downloadStatus: readDownloadStatus(parsed),
         durationLabel: "",
+        fileSerialNo: readStringField(parsed, "fileSerialNo"),
+        fileUrlExpireTime: readNumberField(parsed, "fileUrlExpireTime"),
         videoUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
       };
     case "file": {
@@ -342,8 +358,10 @@ function parseMessageContent(
       const extension = readStringField(parsed, "fileExt") || getFileExtension(fileName);
 
       return {
+        downloadStatus: readDownloadStatus(parsed),
         extension,
         fileName,
+        fileSerialNo: readStringField(parsed, "fileSerialNo"),
         fileSizeLabel: formatFileSize(readNumberField(parsed, "fileSize")),
         fileUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
         sourceLabel: "文件",
@@ -396,6 +414,13 @@ function parseMessageContent(
         items: readSolitaireItems(parsed),
         tail: readStringField(parsed, "tail"),
         title: readStringField(parsed, "title") || formatMessagePreview(msgtype, rawContent),
+      };
+    case "redpacket":
+      return {
+        description: readStringField(parsed, "description"),
+        title: readStringField(parsed, "title") || "红包",
+        totalAmount: readNumberField(parsed, "totalAmount"),
+        totalCnt: readNumberField(parsed, "totalCnt"),
       };
     case "weapp":
       return {
@@ -609,12 +634,6 @@ function reverseMapContentType(contentType: WorkbenchMessageContentType) {
   }
 }
 
-function readRecordString(value: Record<string, unknown>, key: string) {
-  const field = value[key];
-
-  return typeof field === "string" ? field : "";
-}
-
 function parseContent(rawContent: string | null): unknown {
   const content = rawContent?.trim();
 
@@ -639,15 +658,18 @@ function readStringField(value: unknown, key: string) {
   return typeof field === "string" ? field : "";
 }
 
+export function readDownloadStatus(
+  value: unknown,
+): WorkbenchMessageFileDownloadStatus | undefined {
+  const status = readStringField(value, "downloadStatus");
+
+  return status === "ing" || status === "finished" || status === "failed"
+    ? status
+    : undefined;
+}
+
 function readNumberField(value: unknown, key: string) {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const field = value[key];
-  const numeric = typeof field === "number" ? field : Number(field);
-
-  return Number.isFinite(numeric) ? numeric : undefined;
+  return isRecord(value) ? readRecordNumber(value, key) : undefined;
 }
 
 function readSolitaireItems(value: unknown) {
@@ -664,28 +686,6 @@ function readSolitaireItems(value: unknown) {
       timestamp: readNumberField(itemRecord, "timestamp"),
     };
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-const mediaAssetBaseUrl = "https://b5.bokr.com.cn";
-
-function normalizeMediaAssetUrl(value: string) {
-  const url = value.trim();
-
-  if (!url) {
-    return "";
-  }
-
-  try {
-    const parsedUrl = new URL(url);
-
-    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:" ? url : "";
-  } catch {
-    return `${mediaAssetBaseUrl}/${url.replace(/^\/+/, "")}`;
-  }
 }
 
 function getFileExtension(fileName: string) {
@@ -722,7 +722,7 @@ function normalizeOptionalId(value: number | string | null) {
   return id && id !== "0" ? id : undefined;
 }
 
-function toNumber(value: number | string | null) {
+function toNumber(value: number | string | null | undefined) {
   if (value == null || value === "") {
     return 0;
   }
@@ -732,13 +732,13 @@ function toNumber(value: number | string | null) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
-function toOptionalTimestamp(value: Date | number | string | null) {
+function toOptionalTimestamp(value: Date | number | string | null | undefined) {
   const timestamp = parseTimestamp(value);
 
   return timestamp && timestamp > 0 ? timestamp : undefined;
 }
 
-function parseTimestamp(value: Date | number | string | null) {
+function parseTimestamp(value: Date | number | string | null | undefined) {
   if (value == null || value === "") {
     return undefined;
   }

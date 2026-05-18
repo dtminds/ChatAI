@@ -49,14 +49,17 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
 
 export function adaptConversation(dto: WorkbenchConversationSummaryDto): Conversation {
   const lastMessageTime = normalizeOptionalTimestamp(dto.lastMessageTime);
+  const createdAt = normalizeOptionalTimestamp(dto.createdAt);
 
   return {
     accountId: dto.seatId,
+    createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,
     customerId: dto.customerId,
     customerName: dto.customerName,
     id: dto.conversationId,
     isPinned: dto.isPinned,
+    isVerified: dto.verified,
     mode: dto.mode,
     preview: dto.lastMessage,
     priority: dto.priority,
@@ -233,7 +236,10 @@ function adaptChatMessageContent(
       return {
         alt: String(content.alt ?? ""),
         coverImageUrl: String(content.coverImageUrl ?? ""),
+        downloadStatus: asDownloadStatus(content.downloadStatus),
         durationLabel: String(content.durationLabel ?? ""),
+        fileSerialNo: asOptionalString(content.fileSerialNo),
+        fileUrlExpireTime: asOptionalNumber(content.fileUrlExpireTime),
         height: asOptionalNumber(content.height),
         type: "video",
         videoUrl: String(content.videoUrl ?? ""),
@@ -241,9 +247,12 @@ function adaptChatMessageContent(
       };
     case "file":
       return {
+        downloadStatus: asDownloadStatus(content.downloadStatus),
         extension: String(content.extension ?? ""),
         fileName: String(content.fileName ?? ""),
+        fileSerialNo: asOptionalString(content.fileSerialNo),
         fileSizeLabel: String(content.fileSizeLabel ?? ""),
+        fileUrl: asOptionalString(content.fileUrl),
         sourceLabel: asOptionalString(content.sourceLabel),
         type: "file",
       };
@@ -302,6 +311,14 @@ function adaptChatMessageContent(
         title: String(content.title ?? ""),
         type: "solitaire",
       };
+    case "redpacket":
+      return {
+        description: String(content.description ?? ""),
+        title: String(content.title ?? ""),
+        totalAmount: asOptionalNumber(content.totalAmount),
+        totalCnt: asOptionalNumber(content.totalCnt),
+        type: "redpacket",
+      };
     case "quote":
       return {
         quoteMsgId: String(content.quoteMsgId ?? ""),
@@ -354,6 +371,7 @@ function isQuotedPreviewContentType(
     "contact-card",
     "location",
     "solitaire",
+    "redpacket",
     "sphfeed",
     "mini-program",
     "quote",
@@ -399,6 +417,12 @@ function buildAccountTone(accountId: string) {
 
 function asOptionalString(value: unknown) {
   return typeof value === "string" ? value : undefined;
+}
+
+function asDownloadStatus(value: unknown) {
+  return value === "ing" || value === "finished" || value === "failed"
+    ? value
+    : undefined;
 }
 
 function asOptionalNumber(value: unknown) {

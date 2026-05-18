@@ -1,12 +1,13 @@
-import {
-  Delete02Icon,
-  SecurityCheckIcon,
-} from "@hugeicons/core-free-icons";
+import { SecurityCheckIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import {
   Table,
   TableBody,
@@ -15,15 +16,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { roles } from "@/pages/chat/settings/demo-data";
+import { presetRoles } from "@/pages/chat/settings/demo-data";
 import { PageHeader } from "@/pages/chat/settings/shared";
 
 export function RolePermissionSettingsPage() {
   return (
     <>
       <PageHeader
-        description="典型权限矩阵：角色列、能力列、开关和危险操作入口，适合后续对接 RBAC 或团队权限模型。"
-        eyebrow="DEMO / RBAC"
+        description="查看各类账号可使用的功能范围，分配子账号时可选择管理员、客服或客服（只读）"
+        eyebrow="SETTINGS / ROLES"
         title="权限角色"
       />
 
@@ -31,62 +32,81 @@ export function RolePermissionSettingsPage() {
         <Table aria-label="角色权限矩阵">
           <TableHeader>
             <TableRow>
-              <TableHead className="px-5 py-4">角色</TableHead>
-              <TableHead className="px-5 py-4">会话接待</TableHead>
-              <TableHead className="px-5 py-4">账号管理</TableHead>
-              <TableHead className="px-5 py-4">数据导出</TableHead>
-              <TableHead className="px-5 py-4">操作</TableHead>
+              <TableHead className="w-[24%] px-5 py-4">角色</TableHead>
+              <TableHead className="w-[46%] px-5 py-4">说明</TableHead>
+              <TableHead className="px-5 py-4">权限集</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {roles.map((role) => (
-              <TableRow key={role.name}>
-                <TableCell className="px-5 py-5">
-                  <div className="flex items-center gap-3">
-                    <HugeiconsIcon
-                      className="text-primary"
-                      color="currentColor"
-                      icon={SecurityCheckIcon}
-                      size={18}
-                      strokeWidth={1.8}
-                    />
-                    <div>
-                      <p className="font-medium text-foreground">{role.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {role.description}
-                      </p>
-                    </div>
-                  </div>
-                </TableCell>
-                {role.permissions.map((permission) => (
-                  <TableCell className="px-5 py-5" key={permission.label}>
-                    <Label className="text-foreground">
-                      <Checkbox defaultChecked={permission.enabled} />
-                      <span>{permission.label}</span>
-                    </Label>
-                  </TableCell>
-                ))}
-                <TableCell className="px-5 py-5">
-                  <Button
-                    aria-label={`删除角色 ${role.name}`}
-                    className="size-8 rounded-[8px] text-destructive"
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <HugeiconsIcon
-                      color="currentColor"
-                      icon={Delete02Icon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                  </Button>
-                </TableCell>
-              </TableRow>
+            {presetRoles.map((role) => (
+              <RolePermissionRow key={role.id} role={role} />
             ))}
           </TableBody>
         </Table>
       </section>
     </>
+  );
+}
+
+function RolePermissionRow({ role }: { role: (typeof presetRoles)[number] }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <TableRow>
+      <TableCell className="px-5 py-5">
+        <div className="flex items-center gap-3">
+          <HugeiconsIcon
+            className="text-primary"
+            color="currentColor"
+            icon={SecurityCheckIcon}
+            size={18}
+            strokeWidth={1.8}
+          />
+          <div>
+            <p className="font-medium text-foreground">{role.displayName}</p>
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className="px-5 py-5">
+        <span className="text-sm text-muted-foreground">{role.description}</span>
+      </TableCell>
+      <TableCell className="px-5 py-5">
+        <HoverCard open={isOpen} onOpenChange={setIsOpen}>
+          <HoverCardTrigger asChild>
+            <Button
+              aria-label={`查看 ${role.displayName} 权限明细`}
+              className="h-8 justify-start px-0 text-left font-normal"
+              onBlur={() => setIsOpen(false)}
+              onFocus={() => setIsOpen(true)}
+              onMouseEnter={() => setIsOpen(true)}
+              onMouseLeave={() => setIsOpen(false)}
+              type="button"
+              variant="ghost"
+            >
+              <span className="max-w-[18rem] truncate text-sm text-foreground">
+                {role.permissionSummary}
+              </span>
+            </Button>
+          </HoverCardTrigger>
+          <HoverCardContent align="start" className="w-64">
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">
+                {role.displayName}权限明细
+              </p>
+              <ul className="space-y-2">
+                {role.permissionDetails.map((permission) => (
+                  <li
+                    className="text-sm leading-5 text-muted-foreground"
+                    key={permission}
+                  >
+                    {permission}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </HoverCardContent>
+        </HoverCard>
+      </TableCell>
+    </TableRow>
   );
 }

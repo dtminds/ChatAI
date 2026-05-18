@@ -3,17 +3,18 @@ import type {
   WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WorkbenchService } from "./workbench.service.js";
 import { fetchProxiedMediaAsset } from "./media-proxy.service.js";
-import { ServiceUnavailableError } from "../../shared/errors.js";
+import { ForbiddenError } from "../../shared/errors.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
 const ConversationListQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String()),
+  limit: Type.Optional(NumericStringSchema),
+  mode: Type.Optional(Type.Union([Type.Literal("single"), Type.Literal("group")])),
   seatId: Type.Optional(Type.String()),
-  page: Type.Optional(NumericStringSchema),
-  pageSize: Type.Optional(NumericStringSchema),
 });
 
 const ConversationParamsSchema = Type.Object({
@@ -33,6 +34,15 @@ const MediaUploadCredentialBodySchema = Type.Object({
   conversationId: Type.String(),
 });
 
+const MessageDownloadParamsSchema = Type.Object({
+  messageId: Type.String(),
+});
+
+const MessageDownloadStatusBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeq: Type.Number(),
+});
+
 const WorkbenchMessageContentTypeSchema = Type.Union([
   Type.Literal("system"),
   Type.Literal("text"),
@@ -44,6 +54,7 @@ const WorkbenchMessageContentTypeSchema = Type.Union([
   Type.Literal("contact-card"),
   Type.Literal("location"),
   Type.Literal("solitaire"),
+  Type.Literal("redpacket"),
   Type.Literal("sphfeed"),
   Type.Literal("mini-program"),
   Type.Literal("quote"),
@@ -53,6 +64,7 @@ const PollQuerySchema = Type.Object({
   active_conversation_id: Type.Optional(Type.String()),
   active_message_seq: Type.Optional(NumericStringSchema),
   current_seat_id: Type.Optional(Type.String()),
+  fresh_baseline: Type.Optional(Type.Union([Type.Literal("0"), Type.Literal("1")])),
   since_version: Type.Optional(NumericStringSchema),
 });
 
@@ -155,6 +167,8 @@ type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
 type MediaProxyQuery = Static<typeof MediaProxyQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
+type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
+type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
@@ -190,7 +204,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const media = await fetchProxiedMediaAsset(request.query.url);
+      const media = await fetchProxiedMediaAsset(request.query.url, request.log);
 
       reply.header("cache-control", "private, max-age=300");
       reply.header("content-type", media.contentType);
@@ -211,11 +225,13 @@ export async function registerChatRoutes(app: FastifyInstance) {
         body: MediaUploadCredentialBodySchema,
       },
     },
-    async (request) =>
-      getWorkbenchService(app).getUploadCredential(
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request.log).getUploadCredential(
         getSubUserId(request),
         request.body.conversationId,
-      ),
+      );
+    },
   );
 
   app.get<{ Querystring: ConversationListQuery }>(
@@ -227,9 +243,14 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return getWorkbenchService(app).getConversations(
+      return getWorkbenchService(app, request.log).getConversations(
         getSubUserId(request),
         request.query.seatId ?? "",
+        {
+          cursor: request.query.cursor,
+          limit: parseOptionalInteger(request.query.limit),
+          mode: request.query.mode,
+        },
       );
     },
   );
@@ -247,7 +268,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return getWorkbenchService(app).getMessages(
+      return getWorkbenchService(app, request.log).getMessages(
         getSubUserId(request),
         request.params.conversationId,
         {
@@ -267,7 +288,8 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return getWorkbenchService(app).markConversationRead(
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request.log).markConversationRead(
         getSubUserId(request),
         request.params.conversationId,
       );
@@ -283,7 +305,8 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return getWorkbenchService(app).markConversationUnread(
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request.log).markConversationUnread(
         getSubUserId(request),
         request.params.conversationId,
       );
@@ -299,7 +322,8 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return getWorkbenchService(app).pinConversation(
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request.log).pinConversation(
         getSubUserId(request),
         request.params.conversationId,
       );
@@ -315,7 +339,8 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return getWorkbenchService(app).unpinConversation(
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request.log).unpinConversation(
         getSubUserId(request),
         request.params.conversationId,
       );
@@ -331,7 +356,8 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return getWorkbenchService(app).deleteConversation(
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request.log).deleteConversation(
         getSubUserId(request),
         request.params.conversationId,
       );
@@ -347,7 +373,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) =>
-      getWorkbenchService(app).getGroupMembers(
+      getWorkbenchService(app, request.log).getGroupMembers(
         getSubUserId(request),
         request.params.conversationId,
       ),
@@ -366,10 +392,11 @@ export async function registerChatRoutes(app: FastifyInstance) {
         activeConversationId: request.query.active_conversation_id,
         activeMessageSeq: parseOptionalInteger(request.query.active_message_seq),
         currentSeatId: request.query.current_seat_id,
+        freshBaseline: request.query.fresh_baseline === "1",
         sinceVersion: parseOptionalInteger(request.query.since_version) ?? 0,
       } satisfies WorkbenchPollRequest;
 
-      return getWorkbenchService(app).poll(getSubUserId(request), pollRequest);
+      return getWorkbenchService(app, request.log).poll(getSubUserId(request), pollRequest);
     },
   );
 
@@ -381,11 +408,53 @@ export async function registerChatRoutes(app: FastifyInstance) {
         body: SendMessageBodySchema,
       },
     },
-    async (request) =>
-      getWorkbenchService(app).sendMessage(
+    async (request) => {
+      assertChatSendAccess(request);
+      return getWorkbenchService(app, request.log).sendMessage(
         getSubUserId(request),
         request.body satisfies WorkbenchSendMessagePayload,
-      ),
+      );
+    },
+  );
+
+  app.post<{
+    Body: MessageDownloadStatusBody;
+    Params: MessageDownloadParams;
+  }>(
+    "/api/server/messages/:messageId/download",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageDownloadStatusBodySchema,
+        params: MessageDownloadParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request.log).downloadMessageFile(
+        getSubUserId(request),
+        request.body.conversationId,
+        request.params.messageId,
+      );
+    },
+  );
+
+  app.post<{ Body: MessageDownloadStatusBody }>(
+    "/api/server/messages/download-status",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageDownloadStatusBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request.log).getMessageFileDownloadStatus(
+        getSubUserId(request),
+        request.body.conversationId,
+        request.body.messageSeq,
+      );
+    },
   );
 
   app.post<{ Params: SeatParams }>(
@@ -397,7 +466,8 @@ export async function registerChatRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
-      return getWorkbenchService(app).takeOverSeat(
+      assertChatTakeoverAccess(request);
+      return getWorkbenchService(app, request.log).takeOverSeat(
         getSubUserId(request),
         request.params.seatId,
       );
@@ -419,13 +489,27 @@ function parseOptionalInteger(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function getWorkbenchService(app: FastifyInstance): WorkbenchService {
-  if (app.workbenchService) {
-    return app.workbenchService;
-  }
+function assertChatSendAccess(request: FastifyRequest) {
+  assertNotViewer(request);
+}
 
-  throw new ServiceUnavailableError(
-    "DATABASE_NOT_CONFIGURED",
-    "工作台服务暂不可用",
-  );
+function assertChatTakeoverAccess(request: FastifyRequest) {
+  assertNotViewer(request);
+}
+
+function assertChatWriteAccess(request: FastifyRequest) {
+  assertNotViewer(request);
+}
+
+function assertNotViewer(request: FastifyRequest) {
+  if (request.user?.roles?.[0] === "viewer") {
+    throw new ForbiddenError("FORBIDDEN", "无权限访问");
+  }
+}
+
+function getWorkbenchService(
+  app: FastifyInstance,
+  logger?: Parameters<FastifyInstance["createWorkbenchService"]>[0],
+): WorkbenchService {
+  return app.createWorkbenchService?.(logger) ?? app.workbenchService;
 }

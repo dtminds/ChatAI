@@ -1,0 +1,66 @@
+name: Sync GitHub to Gitee (Self-hosted)
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: [self-hosted, mac-mini]
+    timeout-minutes: 30
+    steps:
+      - name: Mirror to Gitee in Docker
+        env:
+          GITEE_KEY: ${{ secrets.GITEE_RSA_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          docker run --rm \
+            -e GITEE_KEY \
+            -e GITHUB_TOKEN \
+            -e GITHUB_REPOSITORY \
+            alpine:3.20 sh -c '
+              set -eu
+
+              echo "::group::Install dependencies"
+              apk add --no-cache ca-certificates git openssh-client >/dev/null
+              echo "::endgroup::"
+
+              echo "::group::Configure SSH"
+              mkdir -p /root/.ssh
+              printf "%s\n" "$GITEE_KEY" > /root/.ssh/id_rsa
+              chmod 600 /root/.ssh/id_rsa
+              : > /root/.ssh/known_hosts
+              printf '%s\n' \
+                'gitee.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEKxHSJ7084RmkJ4YdEi5tngynE8aZe2uEoVVsB/OvYN' \
+                'gitee.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDMzG3r+88lWSDK9fyjcZmYsWGDBDmGoAasKMAmjoFloGt9HRQX2Qp4f9FY2XK/hsHYinvoh5Xytl9iaUNUWMfYR8q6VEMtOO87DgoAFcfKZHt0/nbAg9RoNTKYt6v8tPwYpr7N0JP/01nE4LFsNDnstr6H0bXSAzbKWCETLZfdPV4l2uSpRn3bU0ugoZ0aSKz5Dc/IloBfGCTvkSsxUydMRd/Chpjt6VxncDbp+Fa6pzsseK8OQzrg6Fgc5783EN3EQqZ2skqyCwExtx95BJlfx1B3luZnWfpkwNDnrZRT/Qx0OrWqyf0q6f9uQr+UG1S8qDcUn3e/9onq3rwBri8/' \
+                >> /root/.ssh/known_hosts
+              echo "::endgroup::"
+
+              workdir=/tmp/chatai-sync
+              echo "::group::Prepare workdir"
+              rm -rf "$workdir"
+              mkdir -p "$workdir"
+              cd "$workdir"
+              echo "::endgroup::"
+
+              echo "::group::Clone GitHub mirror"
+              git clone --bare --progress "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo.git
+              echo "::endgroup::"
+
+              cd repo.git
+              echo "::group::Switch remote"
+              git remote set-url origin git@gitee.com:dtminds/ChatAI.git
+              echo "::endgroup::"
+
+              echo "::group::Push branches"
+              git push --verbose origin "+refs/heads/*:refs/heads/*"
+              echo "::endgroup::"
+
+              echo "::group::Push tags"
+              git push --verbose origin "+refs/tags/*:refs/tags/*"
+              echo "::endgroup::"
+            '

@@ -5,11 +5,13 @@ import {
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
+import { seedMessages } from "@/pages/chat/mock-data";
 import {
-  seedConversations,
-  seedMessages,
-} from "@/pages/chat/mock-data";
-import { createWorkbenchStore, useWorkbenchStore } from "@/store/workbench-store";
+  createWorkbenchStore,
+  MAX_CONVERSATION_LIST_CACHE_SEATS,
+  useWorkbenchStore,
+} from "@/store/workbench-store";
+import type { Conversation } from "@/pages/chat/chat-types";
 
 vi.mock("@/pages/chat/api/media-upload-service", () => ({
   resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
@@ -30,34 +32,24 @@ function createDeferred<T = void>() {
   };
 }
 
-function getSeedUnreadAfterRead(accountId: string, readConversationId: string) {
-  return (seedConversations[accountId] ?? []).reduce(
-    (total, conversation) =>
-      total + (conversation.id === readConversationId ? 0 : conversation.unread),
-    0,
-  );
-}
-
-function getSeedUnreadAfterReadAndUnread(
-  accountId: string,
-  readConversationId: string,
-  unreadConversationId: string,
-) {
-  return (seedConversations[accountId] ?? []).reduce((total, conversation) => {
-    if (conversation.id === readConversationId) {
-      return total;
-    }
-
-    if (conversation.id === unreadConversationId) {
-      return total + 1;
-    }
-
-    return total + conversation.unread;
-  }, 0);
-}
-
 function getSeedMessageIdAt(conversationId: string, index: number) {
   return seedMessages[conversationId]?.[index]?.id;
+}
+
+function createCachedConversation(accountId: string): Conversation {
+  return {
+    accountId,
+    customerAvatarUrl: "",
+    customerId: `${accountId}-customer`,
+    customerName: `${accountId} 客户`,
+    id: `${accountId}-conversation`,
+    mode: "single",
+    preview: "缓存会话",
+    priority: "medium",
+    quietFor: "刚刚",
+    unread: 0,
+    updatedAt: "刚刚",
+  };
 }
 
 describe("useWorkbenchStore", () => {
@@ -86,9 +78,7 @@ describe("useWorkbenchStore", () => {
       id: "conv-001",
       unread: 0,
     });
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      getSeedUnreadAfterRead("drc", "conv-001"),
-    );
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(11);
   });
 
   it("requests 50 messages for initial and switched conversation pages", async () => {
@@ -108,6 +98,120 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveConversation("conv-002");
 
     expect(observedLimits).toEqual([50, 50]);
+  });
+
+  it("starts polling from the conversation snapshot baseline after bootstrap", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
+
+        return {
+          ...response,
+          snapshotAt: options?.mode === "single" ? 1_778_840_010_000 : 1_778_840_020_000,
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(useWorkbenchStore.getState().sinceVersion).toBe(1_778_840_010_000);
+    expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(true);
+  });
+
+  it("sends fresh baseline only for the first poll after bootstrap", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedFreshBaselines: Array<boolean | undefined> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        observedFreshBaselines.push(request.freshBaseline);
+
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedFreshBaselines).toEqual([true, false]);
+    expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(false);
+  });
+
+  it("clears removed conversation resources from poll changes", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [
+            {
+              accountId: "drc",
+              conversationId: "conv-003",
+              seatId: "drc",
+              type: "remove",
+            },
+          ],
+          messageStatusChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      groupMembersByConversationId: {
+        ...state.groupMembersByConversationId,
+        "conv-003": [],
+      },
+      groupMembersLoadingByConversationId: {
+        ...state.groupMembersLoadingByConversationId,
+        "conv-003": true,
+      },
+      hasMoreHistoryByConversationId: {
+        ...state.hasMoreHistoryByConversationId,
+        "conv-003": true,
+      },
+      historyStatusByConversationId: {
+        ...state.historyStatusByConversationId,
+        "conv-003": "loading",
+      },
+      messagePaginationByConversationId: {
+        ...state.messagePaginationByConversationId,
+        "conv-003": {
+          hasMore: true,
+          nextBeforeSeq: 12,
+          skippedHiddenCount: 0,
+        },
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-003": seedMessages["conv-003"],
+      },
+    }));
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.messagesByConversationId["conv-003"]).toBeUndefined();
+    expect(state.messagePaginationByConversationId["conv-003"]).toBeUndefined();
+    expect(state.hasMoreHistoryByConversationId["conv-003"]).toBeUndefined();
+    expect(state.historyStatusByConversationId["conv-003"]).toBeUndefined();
+    expect(state.groupMembersByConversationId["conv-003"]).toBeUndefined();
+    expect(state.groupMembersLoadingByConversationId["conv-003"]).toBeUndefined();
   });
 
   it("loads group members once when opening a group conversation", async () => {
@@ -143,6 +247,112 @@ describe("useWorkbenchStore", () => {
         }),
       ]),
     );
+  });
+
+  it("reuses fresh group member cache within five minutes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T10:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    let requestCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        requestCount += 1;
+
+        return baseService.getGroupMembers(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+    await useWorkbenchStore.getState().setActiveMode("single");
+    vi.setSystemTime(Date.now() + 5 * 60 * 1000 - 1);
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    expect(requestCount).toBe(1);
+
+    vi.useRealTimers();
+  });
+
+  it("reloads expired group member cache after five minutes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T10:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    let requestCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        requestCount += 1;
+
+        return baseService.getGroupMembers(conversationId);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+    await useWorkbenchStore.getState().setActiveMode("single");
+    vi.setSystemTime(Date.now() + 5 * 60 * 1000 + 1);
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    expect(requestCount).toBe(2);
+
+    vi.useRealTimers();
+  });
+
+  it("clears group member cache when bootstrapping a fresh workbench snapshot", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    let state = useWorkbenchStore.getState();
+    expect(state.groupMembersByConversationId["conv-004"]).toBeDefined();
+
+    await useWorkbenchStore.getState().setActiveMode("single");
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    state = useWorkbenchStore.getState();
+    expect(state.activeConversationId).toBe("conv-001");
+    expect(state.groupMembersByConversationId).toEqual({});
+    expect(state.groupMembersLoadingByConversationId).toEqual({});
+  });
+
+  it("clears previous conversation message state while preserving cached group members", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    let state = useWorkbenchStore.getState();
+    expect(state.activeConversationId).toBe("conv-004");
+    expect(state.messagesByConversationId["conv-004"]).toBeDefined();
+    expect(state.messagePaginationByConversationId["conv-004"]).toBeDefined();
+    expect(state.hasMoreHistoryByConversationId["conv-004"]).toBeDefined();
+    expect(state.groupMembersByConversationId["conv-004"]).toBeDefined();
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    state = useWorkbenchStore.getState();
+    expect(state.activeConversationId).toBe("conv-001");
+    expect(state.messagesByConversationId["conv-004"]).toBeUndefined();
+    expect(state.messagePaginationByConversationId["conv-004"]).toBeUndefined();
+    expect(state.hasMoreHistoryByConversationId["conv-004"]).toBeUndefined();
+    expect(state.historyStatusByConversationId["conv-004"]).toBeUndefined();
+    expect(state.groupMembersByConversationId["conv-004"]).toBeDefined();
+  });
+
+  it("keeps previous conversation message state when it has pending messages", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("待确认消息");
+
+    let state = useWorkbenchStore.getState();
+    expect(state.pendingMessages.map((message) => message.conversationId)).toContain(
+      "conv-001",
+    );
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    state = useWorkbenchStore.getState();
+    expect(state.activeConversationId).toBe("conv-002");
+    expect(state.messagesByConversationId["conv-001"]).toBeDefined();
   });
 
   it("bootstraps conversations that contain video messages", async () => {
@@ -883,7 +1093,7 @@ describe("useWorkbenchStore", () => {
     expect(state.pollState.status).toBe("idle");
     expect(state.activeConversationId).toBe("conv-001");
     expect(state.messagesByConversationId["conv-001"].length).toBeGreaterThan(0);
-    expect(state.sinceVersion).toBe(0);
+    expect(state.sinceVersion).toBeGreaterThan(0);
   });
 
   it("preserves the current conversation and unrelated pending messages during cursor recovery", async () => {
@@ -918,7 +1128,7 @@ describe("useWorkbenchStore", () => {
 
     expect(state.activeConversationId).toBe("conv-002");
     expect(state.pendingMessages).toEqual(pendingBeforeRecovery);
-    expect(state.sinceVersion).toBe(0);
+    expect(state.sinceVersion).toBeGreaterThan(0);
   });
 
   it("drops stale cursor recovery results after the active account changes", async () => {
@@ -928,12 +1138,12 @@ describe("useWorkbenchStore", () => {
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(accountId) {
+      async getConversations(accountId, options) {
         if (accountId === "drc" && !shouldInvalidateCursor) {
           await recoveryGate.promise;
         }
 
-        return baseService.getConversations(accountId);
+        return baseService.getConversations(accountId, options);
       },
       async poll(request) {
         if (shouldInvalidateCursor) {
@@ -1233,7 +1443,7 @@ describe("useWorkbenchStore", () => {
 
     let state = useWorkbenchStore.getState();
 
-    expect(state.historyStatusByConversationId["conv-001"]).toBe("loading");
+    expect(state.historyStatusByConversationId["conv-001"]).toBeUndefined();
     expect(state.historyStatusByConversationId["conv-002"] ?? "idle").toBe("idle");
 
     historyGate.resolve();
@@ -1241,7 +1451,60 @@ describe("useWorkbenchStore", () => {
 
     state = useWorkbenchStore.getState();
 
-    expect(state.historyStatusByConversationId["conv-001"]).toBe("idle");
+    expect(state.historyStatusByConversationId["conv-001"]).toBeUndefined();
+  });
+
+  it("preserves pending conversation messages when a stale history load resolves", async () => {
+    const baseService = createMockWorkbenchService();
+    const historyGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return baseService.getMessages(conversationId, {
+            ...options,
+            limit: 5,
+          });
+        }
+
+        if (conversationId === "conv-001" && options?.beforeSeq != null) {
+          await historyGate.promise;
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("历史加载期间发送");
+    useWorkbenchStore.setState((state) => ({
+      hasMoreHistoryByConversationId: {
+        ...state.hasMoreHistoryByConversationId,
+        "conv-001": true,
+      },
+    }));
+
+    const historyPromise = useWorkbenchStore.getState().loadOlderMessages();
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    historyGate.resolve();
+    await historyPromise;
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pendingMessages.map((message) => message.conversationId)).toContain(
+      "conv-001",
+    );
+    expect(state.messagesByConversationId["conv-001"]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: {
+            text: "历史加载期间发送",
+            type: "text",
+          },
+        }),
+      ]),
+    );
   });
 
   it("tracks takeover status per account instead of globally", async () => {
@@ -1288,6 +1551,187 @@ describe("useWorkbenchStore", () => {
 
     expect(state.accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
     expect(state.conversationListsByScope.ndt[0].unread).toBe(1);
+  });
+
+  it("refreshes non-active seat summaries without changing the selected seat", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        return baseService.getSeats().then((seats) =>
+          seats.map((seat) =>
+            seat.seatId === "drc"
+              ? {
+                  ...seat,
+                  unreadCount: 15,
+                }
+              : seat,
+          ),
+        );
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    await useWorkbenchStore.getState().refreshSeatSummaries();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(15);
+    expect(state.conversationListsByScope.ndt[0].unread).toBe(1);
+  });
+
+  it("evicts old seat conversation list caches while keeping recent and active seats", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    useWorkbenchStore.setState((state) => ({
+      conversationListCacheSeatOrder: ["ndt", "drc", "seat-c", "seat-d"],
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        "seat-c": [createCachedConversation("seat-c")],
+        "seat-d": [createCachedConversation("seat-d")],
+      },
+      conversationModeLoadedAtByScope: {
+        ...state.conversationModeLoadedAtByScope,
+        "seat-c": { single: 1 },
+        "seat-d": { single: 1 },
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveAccount("drc");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeAccountId).toBe("drc");
+    expect(state.conversationListCacheSeatOrder).toHaveLength(
+      MAX_CONVERSATION_LIST_CACHE_SEATS,
+    );
+    expect(Object.keys(state.conversationListsByScope).sort()).toEqual([
+      "drc",
+      "ndt",
+      "seat-c",
+    ]);
+    expect(state.conversationListsByScope["seat-d"]).toBeUndefined();
+    expect(state.conversationModeLoadedAtByScope["seat-d"]).toBeUndefined();
+  });
+
+  it("clears resources for conversations whose seat list cache is evicted", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    const seatDConversation = createCachedConversation("seat-d");
+
+    useWorkbenchStore.setState((state) => ({
+      conversationListCacheSeatOrder: ["ndt", "drc", "seat-c", "seat-d"],
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        "seat-c": [createCachedConversation("seat-c")],
+        "seat-d": [seatDConversation],
+      },
+      conversationModeLoadedAtByScope: {
+        ...state.conversationModeLoadedAtByScope,
+        "seat-c": { single: 1 },
+        "seat-d": { single: 1 },
+      },
+      groupMembersByConversationId: {
+        ...state.groupMembersByConversationId,
+        [seatDConversation.id]: [],
+      },
+      groupMembersLoadingByConversationId: {
+        ...state.groupMembersLoadingByConversationId,
+        [seatDConversation.id]: true,
+      },
+      hasMoreHistoryByConversationId: {
+        ...state.hasMoreHistoryByConversationId,
+        [seatDConversation.id]: true,
+      },
+      historyStatusByConversationId: {
+        ...state.historyStatusByConversationId,
+        [seatDConversation.id]: "loading",
+      },
+      messagePaginationByConversationId: {
+        ...state.messagePaginationByConversationId,
+        [seatDConversation.id]: {
+          hasMore: true,
+          nextBeforeSeq: 12,
+          skippedHiddenCount: 0,
+        },
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        [seatDConversation.id]: [],
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveAccount("drc");
+
+    const state = useWorkbenchStore.getState();
+    expect(state.conversationListsByScope["seat-d"]).toBeUndefined();
+    expect(state.messagesByConversationId[seatDConversation.id]).toBeUndefined();
+    expect(state.messagePaginationByConversationId[seatDConversation.id]).toBeUndefined();
+    expect(state.hasMoreHistoryByConversationId[seatDConversation.id]).toBeUndefined();
+    expect(state.historyStatusByConversationId[seatDConversation.id]).toBeUndefined();
+    expect(state.groupMembersByConversationId[seatDConversation.id]).toBeUndefined();
+    expect(state.groupMembersLoadingByConversationId[seatDConversation.id]).toBeUndefined();
+  });
+
+  it("clears previous seat message cache when switching accounts within the seat cache", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    let state = useWorkbenchStore.getState();
+    expect(state.activeAccountId).toBe("drc");
+    expect(state.activeConversationId).toBe("conv-004");
+    expect(state.messagesByConversationId["conv-004"]).toBeDefined();
+    expect(state.groupMembersByConversationId["conv-004"]).toBeDefined();
+
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    state = useWorkbenchStore.getState();
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.activeConversationId).toBe("conv-005");
+    expect(state.messagesByConversationId["conv-004"]).toBeUndefined();
+    expect(state.messagePaginationByConversationId["conv-004"]).toBeUndefined();
+    expect(state.hasMoreHistoryByConversationId["conv-004"]).toBeUndefined();
+    expect(state.historyStatusByConversationId["conv-004"]).toBeUndefined();
+    expect(state.groupMembersByConversationId["conv-004"]).toBeDefined();
+    expect(state.groupMembersLoadingByConversationId["conv-004"]).toBe(false);
+    expect(state.messagesByConversationId["conv-005"]).toBeDefined();
+  });
+
+  it("keeps recent seat conversation list caches when bootstrapping again", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    useWorkbenchStore.setState((state) => ({
+      conversationListCacheSeatOrder: ["ndt", "drc"],
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        ndt: [createCachedConversation("ndt")],
+      },
+      conversationModeLoadedAtByScope: {
+        ...state.conversationModeLoadedAtByScope,
+        ndt: { single: 1, group: 1 },
+      },
+    }));
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeAccountId).toBe("drc");
+    expect(state.conversationListsByScope.ndt).toEqual([
+      createCachedConversation("ndt"),
+    ]);
+    expect(state.conversationModeLoadedAtByScope.ndt).toEqual({
+      group: 1,
+      single: 1,
+    });
+    expect(state.conversationListCacheSeatOrder).toEqual(["drc", "ndt"]);
   });
 
   it("does not send messages from an untaken account", async () => {
@@ -1426,9 +1870,7 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
       unread: 1,
     });
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      getSeedUnreadAfterReadAndUnread("drc", "conv-001", "conv-002"),
-    );
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(12);
   });
 
   it("skips mark-unread when the active account is not taken over by the current user", async () => {
@@ -1454,14 +1896,14 @@ describe("useWorkbenchStore", () => {
   it("pins a conversation and reloads the active account conversations", async () => {
     const baseService = createMockWorkbenchService();
     const observedPinnedConversationIds: string[] = [];
-    const observedConversationScopes: string[] = [];
+    const observedConversationRequests: Array<{ accountId: string; mode?: string }> = [];
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(accountId) {
-        observedConversationScopes.push(accountId);
+      async getConversations(accountId, options) {
+        observedConversationRequests.push({ accountId, mode: options?.mode });
 
-        return baseService.getConversations(accountId);
+        return baseService.getConversations(accountId, options);
       },
       async pinConversation(conversationId) {
         observedPinnedConversationIds.push(conversationId);
@@ -1471,14 +1913,17 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    observedConversationScopes.length = 0;
+    observedConversationRequests.length = 0;
 
     await useWorkbenchStore.getState().pinConversation("conv-002");
 
     const state = useWorkbenchStore.getState();
 
     expect(observedPinnedConversationIds).toEqual(["conv-002"]);
-    expect(observedConversationScopes).toEqual(["drc"]);
+    expect(observedConversationRequests).toEqual([
+      { accountId: "drc", mode: "single" },
+      { accountId: "drc", mode: "group" },
+    ]);
     expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
       isPinned: true,
     });
@@ -1493,14 +1938,14 @@ describe("useWorkbenchStore", () => {
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(accountId) {
+      async getConversations(accountId, options) {
         if (deferDrcReload && accountId === "drc") {
           reloadRequested.resolve();
 
           return deferredReload.promise;
         }
 
-        return baseService.getConversations(accountId);
+        return baseService.getConversations(accountId, options);
       },
     });
 
@@ -1544,14 +1989,14 @@ describe("useWorkbenchStore", () => {
   it("unpins a conversation and reloads the active account conversations", async () => {
     const baseService = createMockWorkbenchService();
     const observedUnpinnedConversationIds: string[] = [];
-    const observedConversationScopes: string[] = [];
+    const observedConversationRequests: Array<{ accountId: string; mode?: string }> = [];
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(accountId) {
-        observedConversationScopes.push(accountId);
+      async getConversations(accountId, options) {
+        observedConversationRequests.push({ accountId, mode: options?.mode });
 
-        return baseService.getConversations(accountId);
+        return baseService.getConversations(accountId, options);
       },
       async unpinConversation(conversationId) {
         observedUnpinnedConversationIds.push(conversationId);
@@ -1561,14 +2006,17 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    observedConversationScopes.length = 0;
+    observedConversationRequests.length = 0;
 
     await useWorkbenchStore.getState().unpinConversation("conv-001");
 
     const state = useWorkbenchStore.getState();
 
     expect(observedUnpinnedConversationIds).toEqual(["conv-001"]);
-    expect(observedConversationScopes).toEqual(["drc"]);
+    expect(observedConversationRequests).toEqual([
+      { accountId: "drc", mode: "single" },
+      { accountId: "drc", mode: "group" },
+    ]);
     expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")).toMatchObject({
       isPinned: undefined,
     });
@@ -1578,18 +2026,24 @@ describe("useWorkbenchStore", () => {
     const baseService = createMockWorkbenchService();
     const observedDeletedConversationIds: string[] = [];
     const observedConversationScopes: string[] = [];
+    const authoritativeSeatUnreadCount = 42;
 
     setWorkbenchService({
       ...baseService,
       async deleteConversation(conversationId) {
         observedDeletedConversationIds.push(conversationId);
 
-        return baseService.deleteConversation(conversationId);
+        const result = await baseService.deleteConversation(conversationId);
+
+        return {
+          ...result,
+          seatUnreadCount: authoritativeSeatUnreadCount,
+        };
       },
-      async getConversations(accountId) {
+      async getConversations(accountId, options) {
         observedConversationScopes.push(accountId);
 
-        return baseService.getConversations(accountId);
+        return baseService.getConversations(accountId, options);
       },
     });
 
@@ -1603,8 +2057,55 @@ describe("useWorkbenchStore", () => {
     expect(observedConversationScopes).toEqual([]);
     expect(state.conversationListsByScope.drc.map((conversation) => conversation.id)).not.toContain("conv-003");
     expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      getSeedUnreadAfterRead("drc", "conv-001") - 4,
+      authoritativeSeatUnreadCount,
     );
+  });
+
+  it("clears deleted conversation message and group member state", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    useWorkbenchStore.setState((state) => ({
+      groupMembersByConversationId: {
+        ...state.groupMembersByConversationId,
+        "conv-003": [],
+      },
+      groupMembersLoadingByConversationId: {
+        ...state.groupMembersLoadingByConversationId,
+        "conv-003": true,
+      },
+      hasMoreHistoryByConversationId: {
+        ...state.hasMoreHistoryByConversationId,
+        "conv-003": true,
+      },
+      historyStatusByConversationId: {
+        ...state.historyStatusByConversationId,
+        "conv-003": "loading",
+      },
+      messagePaginationByConversationId: {
+        ...state.messagePaginationByConversationId,
+        "conv-003": {
+          hasMore: true,
+          nextBeforeSeq: 12,
+          skippedHiddenCount: 0,
+        },
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-003": seedMessages["conv-003"],
+      },
+    }));
+
+    await useWorkbenchStore.getState().deleteConversation("conv-003");
+
+    const state = useWorkbenchStore.getState();
+    expect(state.messagesByConversationId["conv-003"]).toBeUndefined();
+    expect(state.messagePaginationByConversationId["conv-003"]).toBeUndefined();
+    expect(state.hasMoreHistoryByConversationId["conv-003"]).toBeUndefined();
+    expect(state.historyStatusByConversationId["conv-003"]).toBeUndefined();
+    expect(state.groupMembersByConversationId["conv-003"]).toBeUndefined();
+    expect(state.groupMembersLoadingByConversationId["conv-003"]).toBeUndefined();
   });
 
   it("selects the next conversation after deleting the active conversation", async () => {

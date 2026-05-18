@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
@@ -69,6 +70,54 @@ describe("ConversationListPanel", () => {
     expect(screen.queryByText("暂无单聊")).not.toBeInTheDocument();
     expect(screen.queryByText("当前账号下暂无单聊。")).not.toBeInTheDocument();
     expect(screen.queryByText("当前账号下暂无单聊占位数据。")).not.toBeInTheDocument();
+  });
+
+  it("keeps inactive mode conversation cards mounted while switching tabs", () => {
+    const { rerender } = render(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={conversations}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    const singleCard = screen.getByText("星云客户 1").closest(".group");
+
+    expect(screen.queryByText("星云群聊 1")).not.toBeInTheDocument();
+
+    rerender(
+      <ConversationListPanel
+        activeMode="group"
+        conversations={conversations}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    const groupCard = screen.getByText("星云群聊 1").closest(".group");
+
+    expect(screen.getByText("星云客户 1")).not.toBeVisible();
+    expect(screen.getByText("星云群聊 1")).toBeVisible();
+    expect(screen.getByText("星云客户 1").closest(".group")).toBe(
+      singleCard,
+    );
+
+    rerender(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={conversations}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(screen.getByText("星云客户 1")).toBeVisible();
+    expect(screen.getByText("星云群聊 1")).not.toBeVisible();
+    expect(screen.getByText("星云群聊 1").closest(".group")).toBe(groupCard);
   });
 
   it("closes search results when clicking outside the dropdown", async () => {

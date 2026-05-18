@@ -88,6 +88,27 @@ beforeAll(() => {
     value: vi.fn((id: number) => window.clearTimeout(id)),
   });
 
+  if (!("hasPointerCapture" in window.HTMLElement.prototype)) {
+    Object.defineProperty(window.HTMLElement.prototype, "hasPointerCapture", {
+      writable: true,
+      value: vi.fn(() => false),
+    });
+  }
+
+  if (!("setPointerCapture" in window.HTMLElement.prototype)) {
+    Object.defineProperty(window.HTMLElement.prototype, "setPointerCapture", {
+      writable: true,
+      value: vi.fn(),
+    });
+  }
+
+  if (!("releasePointerCapture" in window.HTMLElement.prototype)) {
+    Object.defineProperty(window.HTMLElement.prototype, "releasePointerCapture", {
+      writable: true,
+      value: vi.fn(),
+    });
+  }
+
   class ResizeObserverMock {
     disconnect = vi.fn();
     observe = vi.fn();

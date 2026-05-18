@@ -39,6 +39,7 @@ type ChatPanelProps = {
   isSendingDraft: boolean;
   isResizingCustomerPanel: boolean;
   messages: Message[];
+  downloadTransferStates?: Record<string, "idle" | "transferring">;
   quotedMessage: QuotedMessagePreviewContent | null;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
@@ -48,6 +49,7 @@ type ChatPanelProps = {
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onCancelFileUpload: (uploadId: string) => void;
+  onDownloadMessageFile?: (message: ChatMessage) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
   onRefreshGroupMembers: () => void;
   onLoadOlderMessages: () => void;
@@ -85,6 +87,7 @@ export function ChatPanel({
   isSendingDraft,
   isResizingCustomerPanel,
   messages,
+  downloadTransferStates,
   quotedMessage,
   hasMoreHistory,
   historyLoadLabel,
@@ -94,6 +97,7 @@ export function ChatPanel({
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onCancelFileUpload,
+  onDownloadMessageFile,
   onFileSelect,
   onRefreshGroupMembers,
   onLoadOlderMessages,
@@ -137,7 +141,9 @@ export function ChatPanel({
             historyLoadLabel={historyLoadLabel}
             isConversationLoading={isConversationLoading}
             messages={messages}
+            downloadTransferStates={downloadTransferStates}
             messageViewportRef={messageViewportRef}
+            onDownloadMessageFile={onDownloadMessageFile}
             onMentionMessage={onMentionMessage}
             onLoadOlderMessages={onLoadOlderMessages}
             onOpenQuotedMessage={onOpenQuotedMessage}

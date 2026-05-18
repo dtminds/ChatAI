@@ -1,4 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
+import { AccountRoleSchema } from "../auth/dto.js";
 
 export const SettingsSubAccountStatusSchema = Type.Union([
   Type.Literal("active"),
@@ -20,6 +21,7 @@ export const SettingsSubAccountSchema = Type.Object({
   account: Type.String(),
   id: Type.String(),
   name: Type.String(),
+  role: AccountRoleSchema,
   seats: Type.Array(SettingsWeComSeatSchema),
   status: SettingsSubAccountStatusSchema,
   type: SettingsSubAccountTypeSchema,
@@ -65,12 +67,16 @@ export const SettingsSubAccountCreateRequestSchema = Type.Object({
   account: Type.String({ minLength: 1 }),
   name: Type.String({ minLength: 1 }),
   password: Type.String({ minLength: 1 }),
+  role: Type.Union([Type.Literal("admin"), Type.Literal("operator"), Type.Literal("viewer")]),
   seatIds: Type.Array(Type.String()),
 }, { additionalProperties: false });
 
 export const SettingsSubAccountUpdateRequestSchema = Type.Object({
   name: Type.String({ minLength: 1 }),
   password: Type.Optional(Type.String()),
+  role: Type.Optional(
+    Type.Union([Type.Literal("admin"), Type.Literal("operator"), Type.Literal("viewer")]),
+  ),
   seatIds: Type.Array(Type.String()),
 }, { additionalProperties: false });
 

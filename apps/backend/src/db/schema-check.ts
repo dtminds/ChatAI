@@ -4,16 +4,10 @@ import type { Database } from "./schema.js";
 export type SchemaCheckResult = {
   configured: boolean;
   ok: boolean;
+  reason?: string;
 };
 
-export async function checkSchema(db?: Kysely<Database>): Promise<SchemaCheckResult> {
-  if (!db) {
-    return {
-      configured: false,
-      ok: false,
-    };
-  }
-
+export async function checkSchema(db: Kysely<Database>): Promise<SchemaCheckResult> {
   await db.selectNoFrom((expressionBuilder) =>
     expressionBuilder.val(1).as("schema_check"),
   ).executeTakeFirstOrThrow();

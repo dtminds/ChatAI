@@ -1,0 +1,75 @@
+name: Contracts CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: contracts-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    name: Detect Contracts Changes
+    runs-on: ubuntu-latest
+    outputs:
+      contracts: ${{ steps.filter.outputs.contracts }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed areas
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            contracts:
+              - ".github/workflows/ci.yml"
+              - ".github/workflows/contracts-ci.yml"
+              - "package.json"
+              - "packages/contracts/**"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig*.json"
+              - "tsconfig.base.json"
+
+  contracts:
+    name: Contracts
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck contracts
+        run: pnpm contracts:typecheck
+
+      - name: Test contracts
+        run: pnpm contracts:test
+
+      - name: Build contracts
+        run: pnpm contracts:build

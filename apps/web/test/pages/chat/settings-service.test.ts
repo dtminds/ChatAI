@@ -55,11 +55,13 @@ describe("settings service", () => {
       account: "agent001",
       name: "客服一号",
       password: "Strong1!",
+      role: "admin",
       seatIds: ["101"],
     });
     await updateSubAccount("11", {
       name: "客服一号改",
       password: "",
+      role: "operator",
       seatIds: [],
     });
     await updateSubAccountStatus("11", "disabled");

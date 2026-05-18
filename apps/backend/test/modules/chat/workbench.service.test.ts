@@ -2,8 +2,33 @@ import { describe, expect, it, vi } from "vitest";
 import { MysqlWorkbenchService } from "../../../src/modules/chat/workbench.service.js";
 import type { WorkbenchJavaClient } from "../../../src/modules/chat/workbench-java-client.js";
 import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
+import { BadGatewayError } from "../../../src/shared/errors.js";
 
 describe("MysqlWorkbenchService", () => {
+  it("rejects invalid conversation list cursors before querying conversations", async () => {
+    const javaClient = createJavaClient();
+    const listConversations = vi.fn();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        listConversations,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getConversations("101", "12", {
+        cursor: "not-a-valid-cursor",
+        limit: 30,
+        mode: "single",
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_CONVERSATION_CURSOR",
+      statusCode: 400,
+    });
+    expect(listConversations).not.toHaveBeenCalled();
+  });
+
   it("takes over an accessible seat through Java and persists host sub-user locally", async () => {
     const javaClient = createJavaClient();
     const getSeat = vi.fn().mockResolvedValue({
@@ -386,7 +411,9 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
+          seatUnreadCount: 9,
           uid: 9001,
+          unreadCount: 2,
         }),
         hideConversation,
       } as unknown as WorkbenchRepository,
@@ -396,6 +423,7 @@ describe("MysqlWorkbenchService", () => {
     await expect(service.deleteConversation("101", "88")).resolves.toEqual({
       conversationId: "88",
       seatId: "12",
+      seatUnreadCount: 7,
     });
     expect(javaClient.deleteConversation).toHaveBeenCalledWith({
       conversationId: "88",
@@ -447,128 +475,327 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("issues sidebar iframe params from server-side conversation lookup", async () => {
+  it("logs upload credential request context without credential secrets", async () => {
     const javaClient = createJavaClient();
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_735_689_600_123);
+    const logger = createLoggerMock();
+    vi.mocked(javaClient.getUploadCredential).mockResolvedValue({
+      allowPerfixs: ["chat-images/"],
+      bucket: "examplebucket-1250000000",
+      credentials: {
+        sessionToken: "session-token-secret",
+        tmpSecretId: "tmp-secret-id-secret",
+        tmpSecretKey: "tmp-secret-key-secret",
+        token: "token-secret",
+      },
+      expiration: "2026-05-13T12:00:00Z",
+      expiredTime: 1778673600,
+      region: "ap-guangzhou",
+      requestId: "request-001",
+      startTime: 1778670000,
+    });
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
           id: "88",
-          platform: 1,
+          platform: 5,
           seatId: "12",
-          thirdExternalUserId: "ext-42",
-          thirdUserId: "third-42",
+          seatHostSubUserId: "101",
           uid: 9001,
-          unreadCount: 0,
-        }),
-        getEmbedUserRelationTuseSecrets: vi.fn().mockResolvedValue({
-          appId: "app-for-mid",
-          ivParameter: "03A2056448BF2-06C002FB-1688-4A2F-B25A-F20AD4C89CB2",
-          secret: "03A2056448BF1-BD0B89DE-10E2-4732-96E0-1D85B30731BF",
-        }),
-        getSubUser: vi.fn().mockResolvedValue({
-          displayName: "Tester",
-          subUserId: "101",
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
+      logger,
     );
 
-    try {
-      const { encryptTuseFswFromThirdExternalUserId, encryptTuseRdFromThirdUserId, encryptTuseTsFromUnixSeconds } =
-        await import("../../../src/lib/tuse-crypto.js");
+    await service.getUploadCredential("101", "88");
 
-      await expect(
-        service.getSidebarIframeParams("101", {
-          conversationId: "88",
-          seatId: "12",
-        }),
-      ).resolves.toEqual({
-        fsw: encryptTuseFswFromThirdExternalUserId(
-          "03A2056448BF1-BD0B89DE-10E2-4732-96E0-1D85B30731BF",
-          "03A2056448BF2-06C002FB-1688-4A2F-B25A-F20AD4C89CB2",
-          "ext-42",
-        ),
-        mid: "app-for-mid",
-        rd: encryptTuseRdFromThirdUserId(
-          "03A2056448BF1-BD0B89DE-10E2-4732-96E0-1D85B30731BF",
-          "03A2056448BF2-06C002FB-1688-4A2F-B25A-F20AD4C89CB2",
-          "third-42",
-        ),
-        ts: encryptTuseTsFromUnixSeconds(
-          "03A2056448BF1-BD0B89DE-10E2-4732-96E0-1D85B30731BF",
-          "03A2056448BF2-06C002FB-1688-4A2F-B25A-F20AD4C89CB2",
-          1_735_689_600,
-        ),
-      });
-    } finally {
-      nowSpy.mockRestore();
-    }
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        bucket: "examplebucket-1250000000",
+        conversationId: "88",
+        javaRequestId: "request-001",
+        operation: "get-upload-credential",
+        region: "ap-guangzhou",
+        seatId: "12",
+        subUserId: "101",
+        uid: 9001,
+      },
+      "工作台上传凭证获取成功",
+    );
+    const loggedPayload = JSON.stringify(logger.info.mock.calls);
+    expect(loggedPayload).not.toContain("session-token-secret");
+    expect(loggedPayload).not.toContain("tmp-secret-key-secret");
+    expect(loggedPayload).not.toContain("token-secret");
   });
 
-  it("rejects sidebar iframe params when conversation seat does not match request", async () => {
+  it("does not leak Java errorMsg when upload credential request fails", async () => {
+    const javaClient = createJavaClient();
+    const logger = createLoggerMock();
+    vi.mocked(javaClient.getUploadCredential).mockRejectedValue(
+      new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败"),
+    );
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      logger,
+    );
+
+    await expect(service.getUploadCredential("101", "88")).rejects.toMatchObject({
+      code: "JAVA_INTERNAL_API_FAILED",
+      statusCode: 502,
+    });
+
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it("starts message file transfer with the audit msgid in an accessible conversation", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
           id: "88",
-          platform: 1,
+          platform: 5,
           seatId: "12",
-          thirdUserId: "third-42",
+          seatHostSubUserId: "101",
           uid: 9001,
-          unreadCount: 0,
-        }),
-        getSubUser: vi.fn().mockResolvedValue({
-          displayName: "Tester",
-          subUserId: "101",
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
     );
 
     await expect(
-      service.getSidebarIframeParams("101", {
-        conversationId: "88",
-        seatId: "99",
-      }),
-    ).rejects.toMatchObject({
-      code: "CONVERSATION_SEAT_MISMATCH",
-      statusCode: 400,
+      service.downloadMessageFile("101", "88", "remote-msg-file-001"),
+    ).resolves.toEqual({
+      messageId: "remote-msg-file-001",
+      status: "accepted",
+    });
+    expect(javaClient.downloadMsgFile).toHaveBeenCalledWith({
+      msgid: "remote-msg-file-001",
+      platform: 5,
+      uid: 9001,
     });
   });
 
-  it("rejects sidebar iframe params when relation secrets are unavailable", async () => {
+  it("rejects message file transfer when msgid is empty", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
           id: "88",
-          platform: 1,
+          platform: 5,
           seatId: "12",
-          thirdUserId: "third-42",
+          seatHostSubUserId: "101",
           uid: 9001,
-          unreadCount: 0,
-        }),
-        getEmbedUserRelationTuseSecrets: vi.fn().mockResolvedValue(undefined),
-        getSubUser: vi.fn().mockResolvedValue({
-          displayName: "Tester",
-          subUserId: "101",
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
     );
 
     await expect(
-      service.getSidebarIframeParams("101", {
-        conversationId: "88",
-        seatId: "12",
+      service.downloadMessageFile("101", "88", "  "),
+    ).rejects.toMatchObject({
+      code: "INVALID_MESSAGE_ID",
+      statusCode: 400,
+    });
+    expect(javaClient.downloadMsgFile).not.toHaveBeenCalled();
+  });
+
+  it("polls new-message conversation changes for the current seat", async () => {
+    const javaClient = createJavaClient();
+    const listChangedConversations = vi.fn().mockResolvedValue({
+      hasMore: false,
+      items: [
+        {
+          conversationId: "88",
+          customerAvatar: "",
+          customerId: "customer-001",
+          customerName: "微信客户",
+          lastMessage: "新消息",
+          lastMessageTime: 1_778_840_001_000,
+          mode: "single",
+          priority: "medium",
+          seatId: "12",
+          unreadCount: 1,
+        },
+      ],
+      nextVersion: 1_778_840_002_000,
+    });
+    const getSeat = vi.fn().mockResolvedValue({
+      avatar: "",
+      description: "私域客户管理",
+      lastMessageTime: 1_778_840_001_000,
+      loginStatus: "online",
+      name: "德瑞可",
+      operatorName: "小可",
+      phone: "13296712905",
+      seatId: "12",
+      unreadCount: 7,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+        getSeat,
+        listChangedConversations,
+        listMessages: vi.fn().mockResolvedValue({
+          filteredCount: 0,
+          hasMore: false,
+          messages: [],
+          scannedCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.poll("101", {
+        activeConversationId: "88",
+        activeMessageSeq: 5,
+        currentSeatId: "12",
+        sinceVersion: 1_778_840_000_000,
+      }),
+    ).resolves.toMatchObject({
+      activeConversationMessages: [],
+      conversationChanges: [
+        {
+          conversationId: "88",
+          lastMessage: "新消息",
+          type: "upsert",
+        },
+      ],
+      nextVersion: 1_778_840_002_000,
+      seatChanges: [
+        {
+          seatId: "12",
+          unreadCount: 7,
+        },
+      ],
+    });
+    expect(listChangedConversations).toHaveBeenCalledWith("12", {
+      limit: 500,
+      sinceLastMsgTime: 1_778_839_999_999,
+    });
+    expect(getSeat).toHaveBeenCalledWith("12");
+  });
+
+  it("does not overlap the first poll after a fresh conversation baseline", async () => {
+    const javaClient = createJavaClient();
+    const listChangedConversations = vi.fn().mockResolvedValue({
+      hasMore: false,
+      items: [],
+      nextVersion: 1_778_840_002_000,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeat: vi.fn().mockResolvedValue(undefined),
+        listChangedConversations,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.poll("101", {
+      currentSeatId: "12",
+      freshBaseline: true,
+      sinceVersion: 1_778_840_000_000,
+    });
+
+    expect(listChangedConversations).toHaveBeenCalledWith("12", {
+      limit: 500,
+      sinceLastMsgTime: 1_778_840_000_000,
+    });
+  });
+
+  it("logs poll cursor invalidation context before rejecting", async () => {
+    const javaClient = createJavaClient();
+    const logger = createLoggerMock();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeat: vi.fn(),
+        listChangedConversations: vi.fn().mockResolvedValue({
+          hasMore: true,
+          items: [],
+          nextVersion: 1_778_840_002_000,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      logger,
+    );
+
+    await expect(
+      service.poll("101", {
+        currentSeatId: "12",
+        sinceVersion: 1_778_840_000_000,
       }),
     ).rejects.toMatchObject({
-      code: "SIDEBAR_TUSE_CRYPTO_NOT_FOUND",
-      statusCode: 404,
+      code: "WORKBENCH_CURSOR_INVALIDATED",
+      statusCode: 409,
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        currentSeatId: "12",
+        operation: "workbench-poll",
+        sinceLastMsgTime: 1_778_839_999_999,
+        sinceVersion: 1_778_840_000_000,
+        subUserId: "101",
+      },
+      "工作台 poll cursor 失效",
+    );
+  });
+
+  it("reads message file transfer status after seat access is verified", async () => {
+    const javaClient = createJavaClient();
+    const getMessageFileDownloadStatus = vi.fn().mockResolvedValue({
+      downloadStatus: "finished",
+      fileSerialNo: "serial-file-001",
+      fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+        getMessageFileDownloadStatus,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getMessageFileDownloadStatus("101", "88", 321),
+    ).resolves.toEqual({
+      downloadStatus: "finished",
+      fileSerialNo: "serial-file-001",
+      fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+    });
+    expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
+      auditId: 321,
+      platform: 5,
+      uid: 9001,
     });
   });
 
@@ -1022,6 +1249,7 @@ describe("MysqlWorkbenchService", () => {
 function createJavaClient(): WorkbenchJavaClient {
   return {
     deleteConversation: vi.fn().mockResolvedValue(undefined),
+    downloadMsgFile: vi.fn().mockResolvedValue(undefined),
     getUploadCredential: vi.fn(),
     markConversationRead: vi.fn().mockResolvedValue(undefined),
     markConversationUnread: vi.fn().mockResolvedValue(undefined),
@@ -1029,5 +1257,14 @@ function createJavaClient(): WorkbenchJavaClient {
     sendMessage: vi.fn(),
     takeOverSeat: vi.fn().mockResolvedValue(undefined),
     unpinConversation: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createLoggerMock() {
+  return {
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
   };
 }

@@ -1,18 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { solveChallenge, type Challenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/scrypt";
 import argon2 from "argon2";
 import { buildApp } from "../src/app";
-import { createMemoryWorkbenchService } from "../src/modules/chat/workbench-memory.service";
+import { createMemoryWorkbenchService } from "./fixtures/workbench-memory.service";
 import {
   ACCESS_TOKEN_COOKIE_NAME,
   REFRESH_TOKEN_COOKIE_NAME,
 } from "../src/modules/auth/auth-cookies";
+import { shouldDisableRequestLogging } from "../src/app";
 
 async function createAuthenticatedApp() {
   const app = await buildApp();
   const token = app.jwt.sign({
-    roles: ["agent"],
+    roles: ["operator"],
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "101",
@@ -23,6 +24,56 @@ async function createAuthenticatedApp() {
     sub_user_id: "101",
   });
   app.workbenchService = createMemoryWorkbenchService();
+  app.createWorkbenchService = () => app.workbenchService;
+
+  return {
+    app,
+    authorization: `Bearer ${token}`,
+  };
+}
+
+async function createAuthenticatedAppWithRole(role: "admin" | "operator" | "viewer") {
+  const app = await buildApp();
+  const token = app.jwt.sign({
+    roles: [role],
+    sessionId: "501",
+    sessionVersion: 1,
+    subUserId: "101",
+  });
+  app.db = createSessionDbMock({
+    id: "501",
+    session_version: 1,
+    sub_user_id: "101",
+  });
+  app.workbenchService = createMemoryWorkbenchService();
+  app.createWorkbenchService = () => app.workbenchService;
+
+  return {
+    app,
+    authorization: `Bearer ${token}`,
+  };
+}
+
+async function createAuthenticatedSettingsApp(
+  role: "admin" | "operator" | "viewer" = "admin",
+) {
+  const app = await buildApp();
+  const token = app.jwt.sign({
+    roles: [role],
+    sessionId: "501",
+    sessionVersion: 1,
+    subUserId: "101",
+  });
+  app.db = createSettingsDbMock({
+    account: "agent001",
+    id: 101,
+    name: "客服一号",
+    platform: 1,
+    role,
+    type: 0,
+    uid: 9001,
+  });
+  app.workbenchService = createMemoryWorkbenchService();
 
   return {
     app,
@@ -31,6 +82,11 @@ async function createAuthenticatedApp() {
 }
 
 describe("backend app", () => {
+  beforeEach(() => {
+    process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
+    process.env.NODE_ENV = "development";
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     delete process.env.ALTCHA_COST;
@@ -41,6 +97,7 @@ describe("backend app", () => {
     delete process.env.ALTCHA_PARALLELISM;
     delete process.env.AUTH_COOKIE_SECURE;
     delete process.env.AUTH_DEV_BYPASS;
+    delete process.env.DATABASE_URL;
     delete process.env.JWT_DEV_SECRET;
     delete process.env.JWT_PRIVATE_KEY;
     delete process.env.JWT_PUBLIC_KEY;
@@ -49,6 +106,7 @@ describe("backend app", () => {
 
   it("serves health and readiness endpoints", async () => {
     const app = await buildApp();
+    app.db = createReadyDbMock();
 
     const health = await app.inject({ method: "GET", url: "/healthz" });
     const readiness = await app.inject({ method: "GET", url: "/readyz" });
@@ -56,11 +114,12 @@ describe("backend app", () => {
     expect(health.statusCode).toBe(200);
     expect(health.json()).toEqual({ status: "ok" });
     expect(readiness.statusCode).toBe(200);
-    expect(readiness.json()).toMatchObject({
+    expect(readiness.json()).toEqual({
       database: {
-        configured: false,
+        configured: true,
+        ok: true,
       },
-      status: "not-ready",
+      status: "ready",
     });
 
     await app.close();
@@ -86,25 +145,15 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("returns service unavailable for workbench routes when the database is missing", async () => {
-    const { app, authorization } = await createAuthenticatedApp();
-    delete app.workbenchService;
+  it("requires DATABASE_URL before backend startup", async () => {
+    delete process.env.DATABASE_URL;
 
-    const response = await app.inject({
-      headers: { authorization },
-      method: "GET",
-      url: "/api/server/seats",
-    });
+    await expect(buildApp()).rejects.toThrow(/DATABASE_URL must be configured/);
+  });
 
-    expect(response.statusCode).toBe(503);
-    expect(response.json()).toMatchObject({
-      error: {
-        code: "DATABASE_NOT_CONFIGURED",
-      },
-      success: false,
-    });
-
-    await app.close();
+  it("disables request logging for the media proxy route", async () => {
+    expect(shouldDisableRequestLogging({ url: "/api/server/media/proxy?url=https%3A%2F%2Fb5.bokr.com.cn%2Ffoo" })).toBe(true);
+    expect(shouldDisableRequestLogging({ url: "/api/server/conversations" })).toBe(false);
   });
 
   it("serves and verifies ALTCHA challenges once", async () => {
@@ -289,7 +338,14 @@ describe("backend app", () => {
       data: {
         expiresIn: 1200,
         subUser: {
+          accountType: "sub",
           displayName: "客服一号",
+          permissions: [
+            "chat.access",
+            "chat.send",
+            "chat.takeover",
+          ],
+          role: "operator",
           subUserId: "101",
         },
       },
@@ -316,10 +372,67 @@ describe("backend app", () => {
     const decoded = app.jwt.verify(readSetCookieValue(response, ACCESS_TOKEN_COOKIE_NAME));
 
     expect(decoded).toMatchObject({
-      roles: ["agent"],
+      roles: ["operator"],
       sessionId: "501",
       sessionVersion: 1,
       subUserId: "101",
+    });
+
+    await app.close();
+  });
+
+  it("returns owner permissions for main account sessions", async () => {
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    const app = await buildApp();
+    const token = app.jwt.sign({
+      roles: ["owner"],
+      sessionId: "501",
+      sessionVersion: 1,
+      subUserId: "101",
+    });
+    app.db = createSessionDbMock({
+      id: "501",
+      session_version: 1,
+      sub_user_id: "101",
+      subUser: {
+        account: "owner001",
+        id: 101,
+        name: "主账号",
+        platform: 1,
+        role: "operator",
+        type: 1,
+        uid: 9001,
+      },
+    });
+
+    const response = await app.inject({
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+      method: "GET",
+      url: "/api/auth/session",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        subUser: {
+          accountType: "main",
+          displayName: "主账号",
+          permissions: [
+            "chat.access",
+            "chat.send",
+            "chat.takeover",
+            "settings.access",
+            "settings.subAccounts.manage",
+            "settings.managedAccounts.manage",
+            "settings.sidebar.manage",
+          ],
+          role: "owner",
+          subUserId: "101",
+        },
+      },
+      success: true,
     });
 
     await app.close();
@@ -755,6 +868,134 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("rejects settings writes for operator role sessions", async () => {
+    const { app, authorization } = await createAuthenticatedSettingsApp("operator");
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        account: "agent002",
+        name: "客服二号",
+        password: "Strong1!",
+        role: "operator",
+        seatIds: [],
+      },
+      url: "/api/server/settings/sub-accounts",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      error: {
+        code: "FORBIDDEN",
+        message: "无权限访问",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("allows operator role sessions to read settings lists", async () => {
+    const { app, authorization } = await createAuthenticatedSettingsApp("operator");
+
+    const subAccounts = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/settings/sub-accounts",
+    });
+    const managedAccounts = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/settings/managed-accounts",
+    });
+    const sidebarItems = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/settings/sidebar-items",
+    });
+
+    expect(subAccounts.statusCode).toBe(200);
+    expect(subAccounts.json()).toMatchObject({
+      data: {
+        subAccounts: expect.any(Array),
+      },
+      success: true,
+    });
+    expect(managedAccounts.statusCode).toBe(200);
+    expect(managedAccounts.json()).toMatchObject({
+      data: {
+        managedAccounts: expect.any(Array),
+      },
+      success: true,
+    });
+    expect(sidebarItems.statusCode).toBe(200);
+    expect(sidebarItems.json()).toMatchObject({
+      data: {
+        items: expect.any(Array),
+      },
+      success: true,
+    });
+
+    await app.close();
+  });
+
+  it("allows admin role sessions to create admin sub accounts", async () => {
+    const { app, authorization } = await createAuthenticatedSettingsApp("admin");
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        account: "agent002",
+        name: "客服二号",
+        password: "Strong1!",
+        role: "admin",
+        seatIds: [],
+      },
+      url: "/api/server/settings/sub-accounts",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        account: "agent002",
+        name: "客服二号",
+        role: "admin",
+        type: 0,
+      },
+      success: true,
+    });
+
+    await app.close();
+  });
+
+  it("rejects role changes for main accounts", async () => {
+    const { app, authorization } = await createAuthenticatedSettingsApp("admin");
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        name: "主账号",
+        password: "",
+        role: "operator",
+        seatIds: [],
+      },
+      url: "/api/server/settings/sub-accounts/601",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "OWNER_ROLE_IMMUTABLE",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
   it("rejects login with a uniform error when the password is wrong", async () => {
     process.env.ALTCHA_COST = "4";
     process.env.ALTCHA_COUNTER_MIN = "1";
@@ -818,8 +1059,25 @@ describe("backend app", () => {
 
   it("requires explicit JWT configuration in production", async () => {
     process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "mysql://user:password@localhost:3306/chatai";
 
     await expect(buildApp()).rejects.toThrow(/JWT keys.*production mode/);
+  });
+
+  it("requires DATABASE_URL in production", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.JWT_PRIVATE_KEY = "test-private-key";
+    process.env.JWT_PUBLIC_KEY = "test-public-key";
+    delete process.env.DATABASE_URL;
+
+    await expect(buildApp()).rejects.toThrow(/DATABASE_URL must be configured/);
+  });
+
+  it("requires DATABASE_URL in test mode", async () => {
+    process.env.NODE_ENV = "test";
+    delete process.env.DATABASE_URL;
+
+    await expect(buildApp()).rejects.toThrow(/DATABASE_URL must be configured/);
   });
 
   it("serves workbench bootstrap resources from backend state", async () => {
@@ -838,7 +1096,7 @@ describe("backend app", () => {
     const conversations = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/conversations?seatId=drc&page=1&pageSize=30",
+      url: "/api/server/conversations?seatId=drc&mode=single&limit=1000",
     });
     const messages = await app.inject({
       headers: { authorization },
@@ -858,7 +1116,12 @@ describe("backend app", () => {
       hostSubUserId: "sub-user-001",
     });
     expect(conversations.statusCode).toBe(200);
-    expect(conversations.json()[0]).toMatchObject({
+    expect(conversations.json()).toMatchObject({
+      hasMore: false,
+      items: expect.any(Array),
+      snapshotAt: expect.any(Number),
+    });
+    expect(conversations.json().items[0]).toMatchObject({
       conversationId: "conv-001",
       seatId: "drc",
       unreadCount: 2,
@@ -1080,6 +1343,7 @@ describe("backend app", () => {
     expect(conversations.statusCode).toBe(200);
     const conversationIds = conversations
       .json()
+      .items
       .map((conversation: { conversationId: string }) => conversation.conversationId);
 
     expect(conversationIds.slice(0, 2)).toEqual(["conv-001", "conv-002"]);
@@ -1248,8 +1512,9 @@ describe("backend app", () => {
     expect(response.json()).toEqual({
       conversationId: "conv-002",
       seatId: "drc",
+      seatUnreadCount: 13,
     });
-    expect(conversations.json()).not.toEqual(
+    expect(conversations.json().items).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ conversationId: "conv-002" }),
       ]),
@@ -1436,6 +1701,54 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("rejects chat writes for viewer role sessions", async () => {
+    const { app, authorization } = await createAuthenticatedAppWithRole("viewer");
+
+    const send = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        clientMessageId: "viewer-send-001",
+        content: "只读客服不能发送",
+        contentType: "text",
+        conversationId: "conv-001",
+        seatId: "drc",
+      },
+      url: "/api/server/messages/send",
+    });
+    const takeOver = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/seats/ndt/take-over",
+    });
+    const markRead = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/conversations/conv-001/read",
+    });
+    const uploadCredential = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+      },
+      url: "/api/server/media/upload-credential",
+    });
+
+    for (const response of [send, takeOver, markRead, uploadCredential]) {
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({
+        error: {
+          code: "FORBIDDEN",
+          message: "无权限访问",
+        },
+        success: false,
+      });
+    }
+
+    await app.close();
+  });
+
   it("takes over a seat and returns the updated seat", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
@@ -1533,6 +1846,8 @@ function createAuthDbMock(
     name: string;
     password_hash: string;
     platform: number;
+    role?: string;
+    type?: number;
     uid: number;
   },
   options: {
@@ -1644,28 +1959,269 @@ function createSessionDbMock(session: {
   id: string;
   session_version: number;
   sub_user_id: string;
+  subUser?: {
+    account: string;
+    id: number;
+    name: string;
+    platform: number;
+    role: string;
+    type: number;
+    uid: number;
+  };
 }) {
   return {
     selectFrom(table: string) {
-      if (table !== "xy_wap_embed_sub_user_session") {
+      if (
+        table !== "xy_wap_embed_sub_user_session" &&
+        table !== "xy_wap_embed_sub_user"
+      ) {
         throw new Error(`Unexpected select table: ${table}`);
       }
 
       const builder = {
-        executeTakeFirst: async () => ({
-          expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-          id: session.id,
-          refresh_token_hash: "dev-refresh-token-hash",
-          revoked_at: null,
-          session_version: session.session_version,
-          sub_user_id: session.sub_user_id,
-        }),
+        executeTakeFirst: async () => {
+          if (table === "xy_wap_embed_sub_user") {
+            return session.subUser;
+          }
+
+          return {
+            expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+            id: session.id,
+            refresh_token_hash: "dev-refresh-token-hash",
+            revoked_at: null,
+            session_version: session.session_version,
+            sub_user_id: session.sub_user_id,
+          };
+        },
         orderBy: () => builder,
         select: () => builder,
         where: () => builder,
       };
 
       return builder;
+    },
+  } as never;
+}
+
+function createSettingsDbMock(currentSubUser: {
+  account: string;
+  id: number;
+  name: string;
+  platform: number;
+  role: string;
+  type: number;
+  uid: number;
+}) {
+  const session = {
+    expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+    id: 501,
+    refresh_token_hash: "",
+    revoked_at: null as Date | null,
+    session_version: 1,
+    sub_user_id: currentSubUser.id,
+  };
+  const subAccounts = new Map<number, {
+    account: string;
+    id: number;
+    name: string;
+    password_hash: string;
+    platform: number;
+    role: string;
+    status: number;
+    type: number;
+    uid: number;
+  }>([
+    [
+      currentSubUser.id,
+      {
+        ...currentSubUser,
+        password_hash: "hash",
+        status: 1,
+      },
+    ],
+    [
+      601,
+      {
+        account: "owner001",
+        id: 601,
+        name: "主账号",
+        password_hash: "hash",
+        platform: currentSubUser.platform,
+        role: "operator",
+        status: 1,
+        type: 1,
+        uid: currentSubUser.uid,
+      },
+    ],
+  ]);
+  let lastInsertedId = 201;
+
+  return {
+    deleteFrom() {
+      const builder = {
+        execute: async () => [],
+        where: () => builder,
+      };
+
+      return builder;
+    },
+    insertInto(table: string) {
+      const builder = {
+        execute: async () => [],
+        executeTakeFirstOrThrow: async () => ({ insertId: lastInsertedId }),
+        values: (values: Record<string, unknown> | Record<string, unknown>[]) => {
+          if (table === "xy_wap_embed_sub_user") {
+            const row = values as Record<string, unknown>;
+            lastInsertedId += 1;
+            subAccounts.set(lastInsertedId, {
+              account: String(row.account),
+              id: lastInsertedId,
+              name: String(row.name),
+              password_hash: String(row.password_hash),
+              platform: Number(row.platform),
+              role: String(row.role ?? "operator"),
+              status: Number(row.status),
+              type: Number(row.type),
+              uid: Number(row.uid),
+            });
+          }
+
+          return builder;
+        },
+      };
+
+      return builder;
+    },
+    selectFrom(table: string) {
+      const wheres: Array<[string, string, unknown]> = [];
+      const builder = {
+        execute: async () => {
+          if (table === "xy_wap_embed_sub_user_session") {
+            return matchesSimpleWheres(session as Record<string, unknown>, wheres)
+              ? [session]
+              : [];
+          }
+
+          if (table === "xy_wap_embed_user_seat") {
+            return [];
+          }
+
+          if (table.includes("xy_wap_embed_user_seat_sub_relation")) {
+            return [];
+          }
+
+          if (table === "xy_wap_embed_sub_user" || table.includes("xy_wap_embed_sub_user")) {
+            return Array.from(subAccounts.values()).filter((row) =>
+              matchesSimpleWheres(row, wheres),
+            );
+          }
+
+          return [];
+        },
+        executeTakeFirst: async () => {
+          if (table === "xy_wap_embed_sub_user_session") {
+            return matchesSimpleWheres(session as Record<string, unknown>, wheres)
+              ? session
+              : undefined;
+          }
+
+          return (await builder.execute())[0];
+        },
+        executeTakeFirstOrThrow: async () => {
+          const result = await builder.executeTakeFirst();
+
+          if (!result) {
+            throw new Error(`No row for table: ${table}`);
+          }
+
+          return result;
+        },
+        innerJoin: () => builder,
+        orderBy: () => builder,
+        select: () => builder,
+        where: (column: string, operator: string, value: unknown) => {
+          wheres.push([column, operator, value]);
+          return builder;
+        },
+      };
+
+      return builder;
+    },
+    updateTable(table: string) {
+      const wheres: Array<[string, string, unknown]> = [];
+      let nextValues: Record<string, unknown> = {};
+      const builder = {
+        execute: async () => {
+          if (table === "xy_wap_embed_sub_user") {
+            for (const [id, row] of subAccounts) {
+              if (matchesSimpleWheres(row, wheres)) {
+                subAccounts.set(id, {
+                  ...row,
+                  ...(nextValues as Partial<typeof row>),
+                });
+              }
+            }
+          }
+
+          return [];
+        },
+        set: (values: Record<string, unknown>) => {
+          nextValues = values;
+          return builder;
+        },
+        where: (column: string, operator: string, value: unknown) => {
+          wheres.push([column, operator, value]);
+          return builder;
+        },
+      };
+
+      return builder;
+    },
+  } as never;
+}
+
+function matchesSimpleWheres(
+  row: Record<string, unknown>,
+  wheres: Array<[string, string, unknown]>,
+) {
+  return wheres.every(([column, operator, value]) => {
+    const key = column.split(".").at(-1) ?? column;
+    const rowValue = row[key];
+
+    if (operator === "=") {
+      return String(rowValue) === String(value);
+    }
+
+    if (operator === "!=") {
+      return String(rowValue) !== String(value);
+    }
+
+    if (operator === "in" && Array.isArray(value)) {
+      return value.map(String).includes(String(rowValue));
+    }
+
+    return true;
+  });
+}
+
+function createReadyDbMock() {
+  return {
+    selectNoFrom(callback: (expressionBuilder: {
+      val: (value: number) => { as: (alias: string) => { alias: string; value: number } };
+    }) => unknown) {
+      callback({
+        val(value: number) {
+          return {
+            as(alias: string) {
+              return { alias, value };
+            },
+          };
+        },
+      });
+
+      return {
+        executeTakeFirstOrThrow: async () => ({ schema_check: 1 }),
+      };
     },
   } as never;
 }

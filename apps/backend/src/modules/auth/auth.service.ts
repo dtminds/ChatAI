@@ -1,16 +1,22 @@
 import type {
+  AccountRole,
   AuthLoginRequest,
   AuthLoginResponse,
+  AuthSubUser,
   JwtUser,
-  WorkbenchSubUserDto,
 } from "@chatai/contracts";
 import { createHash, randomBytes } from "node:crypto";
 import type { Kysely } from "kysely";
 import type { FastifyInstance } from "fastify";
 import type { Database } from "../../db/schema.js";
-import { AppError, ServiceUnavailableError, UnauthorizedError } from "../../shared/errors.js";
+import { AppError, UnauthorizedError } from "../../shared/errors.js";
 import { verifyAltchaPayload } from "./altcha.service.js";
 import { verifyPassword } from "./password.service.js";
+import {
+  deriveAccountRole,
+  deriveAccountType,
+  getRolePermissions,
+} from "./permissions.js";
 
 const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 20 * 60;
 const REFRESH_TOKEN_EXPIRES_IN_DAYS = 14;
@@ -21,6 +27,8 @@ type SubUserCredentialRow = {
   id: number;
   name: string;
   password_hash: string;
+  role: string;
+  type: number;
 };
 
 type SessionRow = {
@@ -48,7 +56,7 @@ export type AuthSessionTokens = {
   expiresIn: number;
   refreshToken: string;
   refreshTokenExpiresIn: number;
-  subUser?: WorkbenchSubUserDto;
+  subUser?: AuthSubUser;
   tokenType: "Bearer";
 };
 
@@ -61,10 +69,6 @@ export async function loginWithPassword(
 
   if (!altcha.verified) {
     throw new InvalidCredentialsError();
-  }
-
-  if (!app.db) {
-    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "登录服务暂不可用");
   }
 
   const subUser = await findActiveSubUserCredential(app.db, payload.account);
@@ -82,17 +86,15 @@ export async function loginWithPassword(
     userAgent: metadata.userAgent,
   });
   const subUserId = String(subUser.id);
-  const accessToken = signAccessToken(app, subUserId, session);
+  const accountRole = deriveAccountRole(subUser);
+  const accessToken = signAccessToken(app, subUserId, session, accountRole);
 
   return {
     accessToken,
     expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
     refreshToken: session.refreshToken,
     refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
-    subUser: {
-      displayName: subUser.name,
-      subUserId,
-    },
+    subUser: mapAuthSubUser(subUser),
     tokenType: "Bearer",
   };
 }
@@ -101,10 +103,6 @@ export async function refreshAccessToken(
   app: FastifyInstance,
   refreshToken: string,
 ): Promise<AuthSessionTokens> {
-  if (!app.db) {
-    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "登录服务暂不可用");
-  }
-
   const session = await findActiveSessionByRefreshToken(app.db, refreshToken);
 
   if (!session) {
@@ -113,11 +111,17 @@ export async function refreshAccessToken(
 
   await touchSession(app.db, session.id);
 
+  const subUser = await findActiveSubUser(app.db, session.sub_user_id);
+
+  if (!subUser) {
+    throw new UnauthorizedError();
+  }
+
   return {
     accessToken: signAccessToken(app, String(session.sub_user_id), {
       id: session.id,
       sessionVersion: session.session_version,
-    }),
+    }, deriveAccountRole(subUser)),
     expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
     refreshToken,
     refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
@@ -129,10 +133,6 @@ export async function getCurrentSession(
   app: FastifyInstance,
   user: JwtUser,
 ): Promise<AuthLoginResponse["subUser"]> {
-  if (!app.db) {
-    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "登录服务暂不可用");
-  }
-
   const subUserId = Number(user.subUserId);
 
   if (!Number.isSafeInteger(subUserId)) {
@@ -141,7 +141,7 @@ export async function getCurrentSession(
 
   const subUser = await app.db
     .selectFrom("xy_wap_embed_sub_user")
-    .select(["id", "name"])
+    .select(["id", "name", "role", "type"])
     .where("id", "=", subUserId)
     .where("status", "=", 1)
     .executeTakeFirst();
@@ -150,17 +150,10 @@ export async function getCurrentSession(
     throw new UnauthorizedError();
   }
 
-  return {
-    displayName: subUser.name,
-    subUserId: String(subUser.id),
-  };
+  return mapAuthSubUser(subUser);
 }
 
 export async function revokeSession(app: FastifyInstance, user: JwtUser) {
-  if (!app.db) {
-    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "登录服务暂不可用");
-  }
-
   await app.db
     .updateTable("xy_wap_embed_sub_user_session")
     .set({
@@ -215,8 +208,17 @@ async function findActiveSubUserCredential(
 
   return db
     .selectFrom("xy_wap_embed_sub_user")
-    .select(["id", "name", "password_hash"])
+    .select(["id", "name", "password_hash", "role", "type"])
     .where("account", "=", normalizedAccount)
+    .where("status", "=", 1)
+    .executeTakeFirst();
+}
+
+async function findActiveSubUser(db: Kysely<Database>, subUserId: number) {
+  return db
+    .selectFrom("xy_wap_embed_sub_user")
+    .select(["id", "name", "role", "type"])
+    .where("id", "=", subUserId)
     .where("status", "=", 1)
     .executeTakeFirst();
 }
@@ -304,13 +306,31 @@ function signAccessToken(
   app: FastifyInstance,
   subUserId: string,
   session: { id: number; sessionVersion: number },
+  role: AccountRole = "operator",
 ) {
   return app.jwt.sign({
-    roles: ["agent"],
+    roles: [role],
     sessionId: String(session.id),
     sessionVersion: session.sessionVersion,
     subUserId,
   });
+}
+
+function mapAuthSubUser(row: {
+  id: number;
+  name: string;
+  role?: string | null;
+  type?: number | null;
+}): AuthSubUser {
+  const role = deriveAccountRole(row);
+
+  return {
+    accountType: deriveAccountType(row.type),
+    displayName: row.name,
+    permissions: getRolePermissions(role),
+    role,
+    subUserId: String(row.id),
+  };
 }
 
 function createRefreshToken() {

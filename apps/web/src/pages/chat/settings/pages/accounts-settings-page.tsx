@@ -43,6 +43,7 @@ import {
   updateManagedAccountSubAccounts,
 } from "@/pages/chat/settings/settings-service";
 import { PageHeader, StatusText } from "@/pages/chat/settings/shared";
+import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 import { cn } from "@/lib/utils";
 
 type DialogState = {
@@ -55,6 +56,7 @@ const emptyData: SettingsManagedAccountsResponse = {
 };
 
 export function AccountsSettingsPage() {
+  const { canManageManagedAccounts } = useSettingsPermissions();
   const [data, setData] = useState<SettingsManagedAccountsResponse>(emptyData);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -193,6 +195,7 @@ export function AccountsSettingsPage() {
                 filteredAccounts.map((account) => (
                   <ManagedAccountRow
                     account={account}
+                    canManage={canManageManagedAccounts}
                     isSubmitting={pendingAccountId === account.id}
                     key={account.id}
                     onAssign={() => setDialogState({ managedAccount: account })}
@@ -228,10 +231,12 @@ export function AccountsSettingsPage() {
 
 function ManagedAccountRow({
   account,
+  canManage,
   isSubmitting,
   onAssign,
 }: {
   account: SettingsManagedAccount;
+  canManage: boolean;
   isSubmitting: boolean;
   onAssign: () => void;
 }) {
@@ -261,7 +266,7 @@ function ManagedAccountRow({
       <TableCell className="px-5 py-5">
         <Button
           className="h-8 px-3 text-primary"
-          disabled={isSubmitting}
+          disabled={!canManage || isSubmitting}
           onClick={onAssign}
           type="button"
           variant="ghost"

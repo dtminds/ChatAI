@@ -2,10 +2,19 @@ import {
   GROUP_MEMBER_TYPE,
   type WorkbenchGroupMemberDto,
   type WorkbenchGroupMembersResponse,
+  type WorkbenchConversationCursorDto,
+  type WorkbenchConversationListResponse,
   type WorkbenchMessagePageDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
+import {
+  isRecord,
+  normalizeMediaAssetUrl,
+  parseJsonRecord,
+  readRecordNumber,
+  readRecordString,
+} from "./workbench-content-utils.js";
 import {
   buildMissingQuotedMessagePreview,
   buildQuotedMessagePreview,
@@ -15,6 +24,7 @@ import {
   mapConversationRow,
   mapMessageRow,
   mapSeatRow,
+  readDownloadStatus,
   type ConversationRow,
   type MessageHydrationSources,
   type MessageRow,
@@ -23,7 +33,12 @@ import {
 } from "./workbench-mappers.js";
 const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
+const CHAT_TYPE_SINGLE = 1;
 const CHAT_TYPE_GROUP = 2;
+const DEFAULT_CONVERSATION_LIST_LIMIT = 500;
+const MAX_CONVERSATION_LIST_LIMIT = 1000;
+const DEFAULT_POLL_CONVERSATION_CHANGE_LIMIT = 200;
+const MAX_POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const GROUP_MEMBER_SORT_RANK = {
   [GROUP_MEMBER_TYPE.OWNER]: 0,
   [GROUP_MEMBER_TYPE.ADMIN]: 1,
@@ -48,6 +63,36 @@ export type SeatOperateScope = {
   seatId: string;
   thirdUserId: string;
   uid: number;
+};
+
+export type ConversationListCursor = WorkbenchConversationCursorDto;
+
+export type ChangedConversationListResult = {
+  hasMore: boolean;
+  items: WorkbenchConversationListResponse["items"];
+  nextVersion: number;
+};
+
+type ConversationPageRow = Omit<
+  ConversationRow,
+  | "customer_avatar"
+  | "customer_name"
+  | "group_avatar"
+  | "group_name"
+  | "last_message_content"
+  | "last_message_type"
+> & {
+  last_audit_info_id: number | string | null;
+};
+
+type ConversationHydrationSources = {
+  bindsByThirdExternalId: Map<string, { remark: string | null }>;
+  contactsByThirdExternalId: Map<
+    string,
+    { avatar: string | null; name: string | null; realName: string | null }
+  >;
+  groupsByThirdGroupId: Map<string, { avatar: string | null; name: string | null }>;
+  lastMessagesById: Map<string, { content: string | null; msgtype: string | null }>;
 };
 
 export class WorkbenchRepository {
@@ -130,6 +175,30 @@ export class WorkbenchRepository {
       .executeTakeFirst();
 
     return readQuoteContentBase64(extend?.origin_data);
+  }
+
+  async getMessageFileDownloadStatus(input: {
+    auditId: number;
+    platform: number;
+    uid: number;
+  }) {
+    if (!Number.isInteger(input.auditId) || input.auditId <= 0) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_info")
+      .select(["content"])
+      .where("id", "=", input.auditId)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    return readMessageFileDownloadStatus(row.content);
   }
 
   async listSeats(subUserId: string) {
@@ -284,84 +353,197 @@ export class WorkbenchRepository {
     return Boolean(relation);
   }
 
-  async listConversations(seatId: string) {
+  async listConversations(
+    seatId: string,
+    options?: {
+      cursor?: ConversationListCursor;
+      limit?: number;
+      mode?: "single" | "group";
+    },
+  ): Promise<WorkbenchConversationListResponse> {
     const seatNumericId = parseMySqlId(seatId);
 
     if (seatNumericId == null) {
-      return [];
+      return emptyConversationListPage(Date.now());
     }
 
     const seat = await this.getSeatRecord(seatNumericId);
 
     if (!seat) {
-      return [];
+      return emptyConversationListPage(Date.now());
     }
 
-    const rows = await this.db
+    const limit = normalizeConversationListLimit(options?.limit);
+    const snapshotAt = options?.cursor?.snapshotAt ?? Date.now();
+    const cursor = options?.cursor;
+
+    let query = this.db
       .selectFrom("xy_wap_embed_conversation as conversation")
-      .leftJoin("xy_wap_embed_msg_audit_info as last_message", (join) =>
-        join
-          .onRef("last_message.id", "=", "conversation.last_audit_info_id")
-          .onRef("last_message.uid", "=", "conversation.uid")
-          .onRef("last_message.platform", "=", "conversation.platform"),
-      )
-      .leftJoin("xy_wap_embed_contact as contact", (join) =>
-        join
-          .onRef("contact.third_external_userid", "=", "conversation.third_external_userid")
-          .onRef("contact.uid", "=", "conversation.uid")
-          .onRef("contact.platform", "=", "conversation.platform"),
-      )
-      .leftJoin("xy_wap_embed_customer_bind_relation as bind", (join) =>
-        join
-          .onRef("bind.third_external_userid", "=", "conversation.third_external_userid")
-          .onRef("bind.third_userid", "=", "conversation.third_userid")
-          .onRef("bind.uid", "=", "conversation.uid")
-          .onRef("bind.platform", "=", "conversation.platform"),
-      )
       .select([
         "conversation.id as id",
         "conversation.chat_type as chat_type",
+        "conversation.create_time as create_time",
+        "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
         "conversation.unread_cnt as unread_cnt",
         "conversation.last_msgtime as last_msgtime",
         "conversation.pinned_time as pinned_time",
-        "last_message.content as last_message_content",
-        "last_message.msgtype as last_message_type",
-        "contact.avatar as customer_avatar",
+        "conversation.verified as verified",
       ])
       .select((expressionBuilder) => [
         expressionBuilder.val(seatNumericId).as("seat_id"),
-        expressionBuilder.val(null).as("group_avatar"),
-        expressionBuilder.val(null).as("group_name"),
-        expressionBuilder.fn
-          .coalesce("bind.remark", "contact.real_name", "contact.name")
-          .as("customer_name"),
       ])
       .where("conversation.uid", "=", seat.uid)
       .where("conversation.platform", "=", seat.platform)
       .where("conversation.third_userid", "=", seat.third_userid)
       .where("conversation.biz_status", "=", 1)
-      .orderBy("conversation.pinned_time", "desc")
-      .orderBy("conversation.last_msgtime", "desc")
-      .execute();
+      .where("conversation.last_msgtime", "<=", snapshotAt);
 
-    const conversationRows = rows.map((row) => row as ConversationRow);
-    const groupsByThirdGroupId = await this.getConversationGroups(
+    if (options?.mode) {
+      query = query.where(
+        "conversation.chat_type",
+        "=",
+        options.mode === "group" ? CHAT_TYPE_GROUP : CHAT_TYPE_SINGLE,
+      );
+    }
+
+    if (cursor) {
+      query = query.where((expressionBuilder) =>
+        expressionBuilder.or([
+          expressionBuilder("conversation.last_msgtime", "<", cursor.lastMsgTime),
+          expressionBuilder.and([
+            expressionBuilder("conversation.last_msgtime", "=", cursor.lastMsgTime),
+            expressionBuilder("conversation.id", "<", asSchemaBigIntId(cursor.id)),
+          ]),
+        ]),
+      )
+        .orderBy("conversation.last_msgtime", "desc")
+        .orderBy("conversation.id", "desc");
+    } else {
+      query = query
+        .orderBy("conversation.pinned_time", "desc")
+        .orderBy("conversation.last_msgtime", "desc")
+        .orderBy("conversation.id", "desc")
+        .limit(limit + 1);
+    }
+
+    if (cursor) {
+      query = query.limit(limit + 1);
+    }
+
+    const rows = await query.execute();
+
+    const pageRows = rows.slice(0, limit);
+    const conversationRows = pageRows.map((row) => row as ConversationPageRow);
+    const hydrationSources = await this.getConversationHydrationSources(
       conversationRows,
       seat.uid,
       seat.platform,
+      seat.third_userid,
     );
 
-    return conversationRows.map((row) =>
-      mapConversationRow({
-        ...row,
-        group_avatar:
-          groupsByThirdGroupId.get(row.third_group_id)?.avatar ?? row.group_avatar,
-        group_name: groupsByThirdGroupId.get(row.third_group_id)?.name ?? row.group_name,
-      }),
+    const items = this.mapHydratedConversationRows(conversationRows, hydrationSources);
+    const lastRow = conversationRows.at(-1);
+
+    return {
+      hasMore: rows.length > limit,
+      items,
+      nextCursor:
+        rows.length > limit && lastRow
+          ? encodeConversationListCursor({
+              id: String(lastRow.id),
+              lastMsgTime: Number(lastRow.last_msgtime),
+              snapshotAt,
+            })
+          : undefined,
+      snapshotAt,
+    };
+  }
+
+  async listChangedConversations(
+    seatId: string,
+    options: {
+      limit: number;
+      sinceLastMsgTime: number;
+    },
+  ): Promise<ChangedConversationListResult> {
+    const seatNumericId = parseMySqlId(seatId);
+    const snapshotAt = Date.now();
+
+    if (seatNumericId == null) {
+      return {
+        hasMore: false,
+        items: [],
+        nextVersion: snapshotAt,
+      };
+    }
+
+    const seat = await this.getSeatRecord(seatNumericId);
+
+    if (!seat) {
+      return {
+        hasMore: false,
+        items: [],
+        nextVersion: snapshotAt,
+      };
+    }
+
+    const limit = normalizePollConversationChangeLimit(options.limit);
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .select([
+        "conversation.id as id",
+        "conversation.chat_type as chat_type",
+        "conversation.create_time as create_time",
+        "conversation.last_audit_info_id as last_audit_info_id",
+        "conversation.third_userid as third_userid",
+        "conversation.third_external_userid as third_external_userid",
+        "conversation.third_group_id as third_group_id",
+        "conversation.unread_cnt as unread_cnt",
+        "conversation.last_msgtime as last_msgtime",
+        "conversation.pinned_time as pinned_time",
+        "conversation.verified as verified",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder.val(seatNumericId).as("seat_id"),
+      ])
+      .where("conversation.uid", "=", seat.uid)
+      .where("conversation.platform", "=", seat.platform)
+      .where("conversation.third_userid", "=", seat.third_userid)
+      .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("conversation.last_msgtime", ">", options.sinceLastMsgTime)
+      .where("conversation.last_msgtime", "<=", snapshotAt)
+      .orderBy("conversation.last_msgtime", "asc")
+      .orderBy("conversation.id", "asc")
+      .limit(limit + 1)
+      .execute();
+
+    if (rows.length > limit) {
+      return {
+        hasMore: true,
+        items: [],
+        nextVersion: snapshotAt,
+      };
+    }
+
+    const pageRows = rows.slice(0, limit);
+    const conversationRows = pageRows.map((row) => row as ConversationPageRow);
+    const hydrationSources = await this.getConversationHydrationSources(
+      conversationRows,
+      seat.uid,
+      seat.platform,
+      seat.third_userid,
     );
+
+    const items = this.mapHydratedConversationRows(conversationRows, hydrationSources);
+
+    return {
+      hasMore: rows.length > limit,
+      items,
+      nextVersion: snapshotAt,
+    };
   }
 
   async getConversationLookup(conversationId: string): Promise<ConversationLookup | undefined> {
@@ -855,6 +1037,140 @@ export class WorkbenchRepository {
     );
   }
 
+  private async getConversationHydrationSources(
+    rows: ConversationPageRow[],
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+  ): Promise<ConversationHydrationSources> {
+    const lastMessageIds = uniqueIds(
+      rows.map((row) => row.last_audit_info_id),
+    );
+    const contactThirdExternalIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type !== CHAT_TYPE_GROUP)
+        .map((row) => row.third_external_userid),
+    );
+    const groupIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type === CHAT_TYPE_GROUP)
+        .map((row) => row.third_group_id),
+    );
+
+    const [lastMessages, contacts, binds, groups] = await Promise.all([
+      lastMessageIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_msg_audit_info")
+            .select(["id", "content", "msgtype"])
+            .where("id", "in", asSchemaBigIntIds(lastMessageIds))
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .execute()
+        : [],
+      contactThirdExternalIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_contact")
+            .select(["third_external_userid", "avatar", "name", "real_name"])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_external_userid", "in", contactThirdExternalIds)
+            .where("biz_status", "=", 1)
+            .execute()
+        : [],
+      contactThirdExternalIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_customer_bind_relation")
+            .select(["third_external_userid", "remark"])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_userid", "=", seatThirdUserId)
+            .where("third_external_userid", "in", contactThirdExternalIds)
+            .where("biz_status", "=", 1)
+            .execute()
+        : [],
+      groupIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_group_seat")
+            .select(["third_group_id", "avatar", "name"])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_userid", "=", seatThirdUserId)
+            .where("third_group_id", "in", groupIds)
+            .where("biz_status", "=", 1)
+            .execute()
+        : [],
+    ]);
+
+    return {
+      bindsByThirdExternalId: new Map(
+        binds.map((bind) => [
+          bind.third_external_userid,
+          {
+            remark: bind.remark,
+          },
+        ]),
+      ),
+      contactsByThirdExternalId: new Map(
+        contacts.map((contact) => [
+          contact.third_external_userid,
+          {
+            avatar: contact.avatar,
+            name: contact.name,
+            realName: contact.real_name,
+          },
+        ]),
+      ),
+      groupsByThirdGroupId: new Map(
+        groups.map((group) => [
+          group.third_group_id,
+          {
+            avatar: group.avatar,
+            name: group.name,
+          },
+        ]),
+      ),
+      lastMessagesById: new Map(
+        lastMessages.map((message) => [
+          String(message.id),
+          {
+            content: message.content,
+            msgtype: message.msgtype,
+          },
+        ]),
+      ),
+    };
+  }
+
+  private mapHydratedConversationRows(
+    rows: ConversationPageRow[],
+    hydrationSources: ConversationHydrationSources,
+  ): WorkbenchConversationListResponse["items"] {
+    return rows.map((row) => this.mapHydratedConversationRow(row, hydrationSources));
+  }
+
+  private mapHydratedConversationRow(
+    row: ConversationPageRow,
+    hydrationSources: ConversationHydrationSources,
+  ): WorkbenchConversationListResponse["items"][number] {
+    const lastMessage =
+      row.last_audit_info_id != null
+        ? hydrationSources.lastMessagesById.get(String(row.last_audit_info_id))
+        : undefined;
+    const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
+    const bind = hydrationSources.bindsByThirdExternalId.get(row.third_external_userid);
+    const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
+
+    return mapConversationRow({
+      ...row,
+      customer_avatar: contact?.avatar ?? null,
+      customer_name: bind?.remark ?? contact?.realName ?? contact?.name ?? null,
+      group_avatar: group?.avatar ?? null,
+      group_name: group?.name ?? null,
+      last_message_content: lastMessage?.content ?? null,
+      last_message_type: lastMessage?.msgtype ?? null,
+    });
+  }
+
   private async getMessageHydrationSources(
     rows: MessageRow[],
     uid: number,
@@ -1016,6 +1332,21 @@ function readQuoteContentBase64(rawOriginData: string | null | undefined) {
   }
 }
 
+function readMessageFileDownloadStatus(content: string | null) {
+  const parsed = parseJsonRecord(content);
+
+  if (!parsed) {
+    return {};
+  }
+
+  return {
+    downloadStatus: readDownloadStatus(parsed),
+    fileSerialNo: readRecordString(parsed, "fileSerialNo") || undefined,
+    fileUrlExpireTime: readRecordNumber(parsed, "fileUrlExpireTime"),
+    fileUrl: normalizeMediaAssetUrl(readRecordString(parsed, "fileUrl")),
+  };
+}
+
 function toNumber(value: number | string | null | undefined) {
   if (value == null) {
     return undefined;
@@ -1024,10 +1355,6 @@ function toNumber(value: number | string | null | undefined) {
   const numberValue = typeof value === "number" ? value : Number(value);
 
   return Number.isFinite(numberValue) ? numberValue : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function uniqueNonEmpty(values: Array<string | null | undefined>) {
@@ -1039,6 +1366,24 @@ function uniqueNonEmpty(values: Array<string | null | undefined>) {
         .filter(Boolean),
     ),
   );
+}
+
+function uniqueIds(values: Array<number | string | null | undefined>) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => /^[1-9]\d*$/.test(value)),
+    ),
+  );
+}
+
+function asSchemaBigIntId(value: string) {
+  return value as unknown as number;
+}
+
+function asSchemaBigIntIds(values: string[]) {
+  return values as unknown as number[];
 }
 
 function uniqueNumbers(values: Array<number | undefined>) {
@@ -1063,6 +1408,68 @@ export function parseMySqlId(value: string) {
   }
 
   return numeric;
+}
+
+function normalizeConversationListLimit(value: number | undefined) {
+  if (value == null || !Number.isSafeInteger(value) || value <= 0) {
+    return DEFAULT_CONVERSATION_LIST_LIMIT;
+  }
+
+  return Math.min(value, MAX_CONVERSATION_LIST_LIMIT);
+}
+
+function normalizePollConversationChangeLimit(value: number | undefined) {
+  if (value == null || !Number.isSafeInteger(value) || value <= 0) {
+    return DEFAULT_POLL_CONVERSATION_CHANGE_LIMIT;
+  }
+
+  return Math.min(value, MAX_POLL_CONVERSATION_CHANGE_LIMIT);
+}
+
+function emptyConversationListPage(snapshotAt: number): WorkbenchConversationListResponse {
+  return {
+    hasMore: false,
+    items: [],
+    snapshotAt,
+  };
+}
+
+export function encodeConversationListCursor(cursor: ConversationListCursor) {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+export function decodeConversationListCursor(value: string): ConversationListCursor | undefined {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as unknown;
+
+    if (!isConversationListCursor(parsed)) {
+      return undefined;
+    }
+
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function isConversationListCursor(value: unknown): value is ConversationListCursor {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<ConversationListCursor>;
+  const { id, lastMsgTime, snapshotAt } = candidate;
+
+  return (
+    typeof id === "string" &&
+    /^[1-9]\d*$/.test(id) &&
+    Number.isSafeInteger(lastMsgTime) &&
+    typeof lastMsgTime === "number" &&
+    lastMsgTime >= 0 &&
+    Number.isSafeInteger(snapshotAt) &&
+    typeof snapshotAt === "number" &&
+    snapshotAt >= 0
+  );
 }
 
 type GroupMemberRow = {

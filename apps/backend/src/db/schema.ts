@@ -502,6 +502,10 @@ export interface XyWapEmbedSubUser {
    */
   password_hash: string;
   /**
+   * 预设角色：operator客服，viewer只读客服，admin管理员；主账号由type=1推导为owner
+   */
+  role: Generated<string>;
+  /**
    * 内嵌平台 5、比邻
    */
   platform: Generated<number>;

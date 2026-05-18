@@ -36,9 +36,9 @@ describe("workbench MySQL mappers", () => {
   });
 
   it("maps a single conversation row with customer metadata", () => {
-    expect(
-      mapConversationRow({
+    const conversation = mapConversationRow({
         chat_type: 1,
+        create_time: new Date("2026-05-15T08:00:00.000Z"),
         customer_avatar: "https://example.com/customer.png",
         customer_name: "客户备注",
         group_avatar: "",
@@ -53,8 +53,10 @@ describe("workbench MySQL mappers", () => {
         third_group_id: "",
         third_userid: "third-user-1",
         unread_cnt: 2,
-      }),
-    ).toMatchObject({
+        verified: 0,
+      });
+
+    expect(conversation).toMatchObject({
       conversationId: "88",
       customerAvatar: "https://example.com/customer.png",
       customerId: "external-1",
@@ -66,12 +68,15 @@ describe("workbench MySQL mappers", () => {
       thirdUserId: "third-user-1",
       unreadCount: 2,
     });
+    expect(conversation.createdAt).toBe(1778832000000);
+    expect(conversation.verified).toBe(false);
   });
 
   it("does not coerce conversations without a last message time to epoch", () => {
     expect(
       mapConversationRow({
         chat_type: 2,
+        create_time: null,
         customer_avatar: "",
         customer_name: null,
         group_avatar: "https://example.com/group.png",
@@ -86,6 +91,7 @@ describe("workbench MySQL mappers", () => {
         third_group_id: "group-2",
         third_userid: "third-user-1",
         unread_cnt: 0,
+        verified: 1,
       }),
     ).toMatchObject({
       conversationId: "89",
@@ -98,6 +104,7 @@ describe("workbench MySQL mappers", () => {
     expect(
       mapConversationRow({
         chat_type: 2,
+        create_time: null,
         customer_avatar: "",
         customer_name: null,
         group_avatar: "https://example.com/group.png",
@@ -112,6 +119,7 @@ describe("workbench MySQL mappers", () => {
         third_group_id: "group-3",
         third_userid: "third-user-1",
         unread_cnt: 0,
+        verified: 1,
       }),
     ).toMatchObject({
       conversationId: "90",
@@ -169,6 +177,56 @@ describe("workbench MySQL mappers", () => {
         text: "正式引用消息",
       },
       contentType: "quote",
+    });
+  });
+
+  it("maps file transfer metadata from audit message content", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          downloadStatus: "failed",
+          fileExt: "pdf",
+          fileName: "报价单.pdf",
+          fileSerialNo: "serial-file-001",
+          fileSize: 2048,
+          fileUrl: "chat-files/quote.pdf",
+        }),
+        msgtype: "file",
+      })),
+    ).toMatchObject({
+      content: {
+        downloadStatus: "failed",
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        fileSerialNo: "serial-file-001",
+        fileSizeLabel: "2.00 KB",
+        fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+      },
+      contentType: "file",
+    });
+  });
+
+  it("maps video transfer metadata from audit message content", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          coverUrl: "covers/video.jpg",
+          downloadStatus: "ing",
+          fileSerialNo: "serial-video-001",
+          fileUrlExpireTime: 1778919538036,
+          fileUrl: "videos/demo.mp4",
+        }),
+        msgtype: "video",
+      })),
+    ).toMatchObject({
+      content: {
+        coverImageUrl: "https://b5.bokr.com.cn/covers/video.jpg",
+        downloadStatus: "ing",
+        fileSerialNo: "serial-video-001",
+        fileUrlExpireTime: 1778919538036,
+        videoUrl: "https://b5.bokr.com.cn/videos/demo.mp4",
+      },
+      contentType: "video",
     });
   });
 
@@ -763,6 +821,27 @@ describe("workbench MySQL mappers", () => {
         title: "#接龙\n哈哈哈",
       },
       contentType: "solitaire",
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          description: "来自哼╭(╯^╰)╮的红包，请进入手机版企业微信领取",
+          title: "恭喜发财，大吉大利",
+          totalAmount: 1,
+          totalCnt: 1,
+          type: 1,
+        }),
+        msgtype: "redpacket",
+      })),
+    ).toMatchObject({
+      content: {
+        description: "来自哼╭(╯^╰)╮的红包，请进入手机版企业微信领取",
+        title: "恭喜发财，大吉大利",
+        totalAmount: 1,
+        totalCnt: 1,
+      },
+      contentType: "redpacket",
     });
   });
 

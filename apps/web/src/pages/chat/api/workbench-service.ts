@@ -9,6 +9,7 @@ import { http } from "@/lib/request";
 import {
   type ApiSuccessEnvelope,
   type WorkbenchConversationDeleteResponse,
+  type WorkbenchConversationListResponse,
   type WorkbenchSeatChangeDto,
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
@@ -20,6 +21,8 @@ import {
   type WorkbenchGroupMembersResponse,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
+  type WorkbenchMessageFileDownloadResponse,
+  type WorkbenchMessageFileDownloadStatusResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchMessageStatus,
   type WorkbenchMessageStatusChangeDto,
@@ -32,12 +35,26 @@ import {
   type WorkbenchTakeOverSeatResponse,
   type WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
-import type { Message } from "@/pages/chat/chat-types";
+import type {
+  ChatMode,
+  FileMessageContent,
+  Message,
+  VideoMessageContent,
+} from "@/pages/chat/chat-types";
+
+export type WorkbenchConversationListOptions = {
+  cursor?: string;
+  limit?: number;
+  mode?: ChatMode;
+};
 
 export type WorkbenchService = {
   deleteConversation: (conversationId: string) => Promise<WorkbenchConversationDeleteResponse>;
   getSeats: () => Promise<WorkbenchSeatDto[]>;
-  getConversations: (seatId: string) => Promise<WorkbenchConversationSummaryDto[]>;
+  getConversations: (
+    seatId: string,
+    options?: WorkbenchConversationListOptions,
+  ) => Promise<WorkbenchConversationListResponse>;
   getMe: () => Promise<WorkbenchSubUserDto>;
   /** 未配置或未接入数据库时可为 `null` */
   getSidebarIframeParams: (input: {
@@ -46,6 +63,15 @@ export type WorkbenchService = {
   }) => Promise<WorkbenchSidebarIframeParamsDto | null>;
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
+  downloadMessageFile: (input: {
+    conversationId: string;
+    messageId: string;
+    messageSeq: number;
+  }) => Promise<WorkbenchMessageFileDownloadResponse>;
+  getMessageFileDownloadStatus: (input: {
+    conversationId: string;
+    messageSeq: number;
+  }) => Promise<WorkbenchMessageFileDownloadStatusResponse | undefined>;
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
   getUploadCredential: (conversationId: string) => Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
@@ -93,7 +119,12 @@ type MockState = {
 };
 
 const CURRENT_SUB_USER_ID = "sub-user-001";
-const INITIAL_VERSION = 1284;
+const INITIAL_VERSION = 1_778_400_000_000;
+const MOCK_POLL_OVERLAP_MS = 1;
+const MOCK_SEAT_UNREAD_COUNTS: Record<string, number> = {
+  drc: 13,
+  ndt: 1,
+};
 
 let activeWorkbenchService: WorkbenchService = createWorkbenchService();
 
@@ -123,10 +154,20 @@ export function createMockWorkbenchService(): WorkbenchService {
     async deleteConversation(conversationId) {
       return removeConversation(state, conversationId);
     },
-    async getConversations(seatId) {
+    async getConversations(seatId, options) {
       const conversations = state.conversationsByAccount[seatId] ?? [];
+      const snapshotAt = Date.now();
+      state.version = Math.max(state.version, snapshotAt);
 
-      return clone(sortConversations(conversations));
+      return {
+        hasMore: false,
+        items: clone(
+          sortConversations(conversations)
+            .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
+            .slice(0, options?.limit),
+        ),
+        snapshotAt,
+      };
     },
     async getMe() {
       return clone(state.subUser);
@@ -169,6 +210,52 @@ export function createMockWorkbenchService(): WorkbenchService {
         messages: clone(visibleMessages),
         nextBeforeSeq: scannedMessages[0]?.seq,
         scannedCount: scannedMessages.length,
+      };
+    },
+    async downloadMessageFile(input) {
+      const message = findMessageByIdOrSeq(
+        state,
+        input.conversationId,
+        input.messageId,
+        input.messageSeq,
+      );
+
+      if (!message) {
+        throw new Error("Message not found");
+      }
+
+      updateMessageDownloadContent(state, input.conversationId, input.messageId, {
+        downloadStatus: "ing",
+      });
+
+      return {
+        messageId: input.messageId,
+        status: "accepted",
+      };
+    },
+    async getMessageFileDownloadStatus(input) {
+      const message = findMessageByIdOrSeq(
+        state,
+        input.conversationId,
+        undefined,
+        input.messageSeq,
+      );
+
+      if (!message) {
+        return undefined;
+      }
+
+      const content = message.content;
+
+      if (!isFileDownloadContent(content)) {
+        return undefined;
+      }
+
+      return {
+        downloadStatus: content.downloadStatus,
+        fileUrlExpireTime: content.type === "video" ? content.fileUrlExpireTime : undefined,
+        fileSerialNo: content.fileSerialNo,
+        fileUrl: content.type === "file" ? content.fileUrl : content.videoUrl,
       };
     },
     async getGroupMembers(conversationId) {
@@ -217,13 +304,18 @@ export function createMockWorkbenchService(): WorkbenchService {
       };
 
       upsertConversation(state, nextConversation);
-      syncAccountUnread(state, nextConversation.seatId);
+      setAccountUnreadCount(
+        state,
+        nextConversation.seatId,
+        Math.max(0, getAccountUnreadCountValue(state, nextConversation.seatId) - conversation.unreadCount),
+      );
+      syncAccountLastMessageTime(state, nextConversation.seatId);
       pushConversationEvent(state, nextConversation);
       pushAccountEvent(state, nextConversation.seatId);
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: findAccount(state, nextConversation.seatId)?.unreadCount ?? 0,
+        seatUnreadCount: getAccountUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 0,
       };
@@ -241,13 +333,18 @@ export function createMockWorkbenchService(): WorkbenchService {
       };
 
       upsertConversation(state, nextConversation);
-      syncAccountUnread(state, nextConversation.seatId);
+      setAccountUnreadCount(
+        state,
+        nextConversation.seatId,
+        Math.max(0, getAccountUnreadCountValue(state, nextConversation.seatId) + 1 - conversation.unreadCount),
+      );
+      syncAccountLastMessageTime(state, nextConversation.seatId);
       pushConversationEvent(state, nextConversation);
       pushAccountEvent(state, nextConversation.seatId);
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: findAccount(state, nextConversation.seatId)?.unreadCount ?? 0,
+        seatUnreadCount: getAccountUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 1,
       };
@@ -259,7 +356,11 @@ export function createMockWorkbenchService(): WorkbenchService {
       return setConversationPinned(state, conversationId, false);
     },
     async poll(request) {
-      const relevantEvents = state.events.filter((event) => event.version > request.sinceVersion);
+      const sinceVersion = Math.max(
+        0,
+        request.sinceVersion - (request.freshBaseline ? 0 : MOCK_POLL_OVERLAP_MS),
+      );
+      const relevantEvents = state.events.filter((event) => event.version > sinceVersion);
       const seatChanges = collapseLatest(
         relevantEvents.filter((event): event is Extract<WorkbenchEvent, { type: "seat" }> => event.type === "seat"),
         (event) => event.payload.seatId,
@@ -344,7 +445,7 @@ export function createMockWorkbenchService(): WorkbenchService {
       };
 
       upsertConversation(state, nextConversation);
-      syncAccountUnread(state, payload.seatId);
+      syncAccountLastMessageTime(state, payload.seatId);
       pushConversationEvent(state, nextConversation);
       pushAccountEvent(state, payload.seatId);
       backendMessages.forEach((message) => {
@@ -400,12 +501,13 @@ export function createHttpWorkbenchService(): WorkbenchService {
         `/server/conversations/${conversationId}/delete`,
       );
     },
-    getConversations(seatId) {
-      return http.get<WorkbenchConversationSummaryDto[]>("/server/conversations", {
+    getConversations(seatId, options) {
+      return http.get<WorkbenchConversationListResponse>("/server/conversations", {
         params: {
+          cursor: options?.cursor,
+          limit: options?.limit,
+          mode: options?.mode,
           seatId,
-          page: 1,
-          pageSize: 30,
         },
       });
     },
@@ -432,6 +534,24 @@ export function createHttpWorkbenchService(): WorkbenchService {
           },
         },
       );
+    },
+    downloadMessageFile(input) {
+      return http.post<
+        WorkbenchMessageFileDownloadResponse,
+        { conversationId: string; messageSeq: number }
+      >(`/server/messages/${input.messageId}/download`, {
+        conversationId: input.conversationId,
+        messageSeq: input.messageSeq,
+      });
+    },
+    getMessageFileDownloadStatus(input) {
+      return http.post<
+        WorkbenchMessageFileDownloadStatusResponse | undefined,
+        { conversationId: string; messageSeq: number }
+      >("/server/messages/download-status", {
+        conversationId: input.conversationId,
+        messageSeq: input.messageSeq,
+      });
     },
     getGroupMembers(conversationId) {
       return http.get<WorkbenchGroupMembersResponse>(
@@ -467,6 +587,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
           active_conversation_id: request.activeConversationId,
           active_message_seq: request.activeMessageSeq,
           current_seat_id: request.currentSeatId,
+          fresh_baseline: request.freshBaseline ? "1" : undefined,
           since_version: request.sinceVersion,
         },
       });
@@ -522,7 +643,7 @@ function buildInitialState(): MockState {
     operatorName: seat.operator,
     phone: seat.phone,
     hostSubUserId: seat.id === "drc" ? CURRENT_SUB_USER_ID : undefined,
-    unreadCount: getAccountUnreadCount(conversationsByAccount[seat.id] ?? []),
+    unreadCount: seat.unreadCount ?? MOCK_SEAT_UNREAD_COUNTS[seat.id] ?? 0,
   }));
 
   const messagesByConversationId = Object.fromEntries(
@@ -623,16 +744,22 @@ function buildContent(message: Message) {
       return {
         alt: message.content.alt,
         coverImageUrl: message.content.coverImageUrl,
+        downloadStatus: message.content.downloadStatus,
         durationLabel: message.content.durationLabel,
+        fileSerialNo: message.content.fileSerialNo,
+        fileUrlExpireTime: message.content.fileUrlExpireTime,
         height: message.content.height,
         videoUrl: message.content.videoUrl,
         width: message.content.width,
       };
     case "file":
       return {
+        downloadStatus: message.content.downloadStatus,
         extension: message.content.extension,
         fileName: message.content.fileName,
+        fileSerialNo: message.content.fileSerialNo,
         fileSizeLabel: message.content.fileSizeLabel,
+        fileUrl: message.content.fileUrl,
         sourceLabel: message.content.sourceLabel,
       };
     case "h5":
@@ -684,6 +811,13 @@ function buildContent(message: Message) {
         tail: message.content.tail,
         title: message.content.title,
       };
+    case "redpacket":
+      return {
+        description: message.content.description,
+        title: message.content.title,
+        totalAmount: message.content.totalAmount,
+        totalCnt: message.content.totalCnt,
+      };
     case "quote":
       return {
         quoteMsgId: message.content.quoteMsgId,
@@ -729,10 +863,6 @@ function isGroupConversationId(conversationId: string) {
   return Object.values(seedConversations)
     .flat()
     .some((item) => item.id === conversationId && item.mode === "group");
-}
-
-function getAccountUnreadCount(conversations: WorkbenchConversationSummaryDto[]) {
-  return conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0);
 }
 
 function getAccountLastMessageTime(conversations: WorkbenchConversationSummaryDto[]) {
@@ -804,17 +934,41 @@ function removeConversation(
   state.conversationsByAccount[conversation.seatId] = (
     state.conversationsByAccount[conversation.seatId] ?? []
   ).filter((item) => item.conversationId !== conversationId);
-  syncAccountUnread(state, conversation.seatId);
+  setAccountUnreadCount(
+    state,
+    conversation.seatId,
+    Math.max(0, getAccountUnreadCountValue(state, conversation.seatId) - conversation.unreadCount),
+  );
+  syncAccountLastMessageTime(state, conversation.seatId);
   pushConversationRemoveEvent(state, conversation.seatId, conversationId);
   pushAccountEvent(state, conversation.seatId);
 
   return {
     conversationId,
     seatId: conversation.seatId,
+    seatUnreadCount: getAccountUnreadCountValue(state, conversation.seatId),
   };
 }
 
-function syncAccountUnread(state: MockState, seatId: string) {
+function getAccountUnreadCountValue(state: MockState, seatId: string) {
+  return findAccount(state, seatId)?.unreadCount ?? 0;
+}
+
+function setAccountUnreadCount(
+  state: MockState,
+  seatId: string,
+  unreadCount: number,
+) {
+  const seat = findAccount(state, seatId);
+
+  if (!seat) {
+    return;
+  }
+
+  seat.unreadCount = unreadCount;
+}
+
+function syncAccountLastMessageTime(state: MockState, seatId: string) {
   const seat = findAccount(state, seatId);
 
   if (!seat) {
@@ -822,7 +976,6 @@ function syncAccountUnread(state: MockState, seatId: string) {
   }
 
   const conversations = state.conversationsByAccount[seatId] ?? [];
-  seat.unreadCount = getAccountUnreadCount(conversations);
   seat.lastMessageTime = getAccountLastMessageTime(conversations);
 }
 
@@ -833,7 +986,7 @@ function pushAccountEvent(state: MockState, seatId: string) {
     return;
   }
 
-  state.version += 1;
+  state.version = Math.max(state.version + 1, Date.now());
   state.events.push({
     payload: {
       seatId,
@@ -846,7 +999,7 @@ function pushAccountEvent(state: MockState, seatId: string) {
 }
 
 function pushConversationEvent(state: MockState, conversation: WorkbenchConversationSummaryDto) {
-  state.version += 1;
+  state.version = Math.max(state.version + 1, Date.now(), conversation.lastMessageTime ?? 0);
   state.events.push({
     payload: {
       ...conversation,
@@ -862,7 +1015,7 @@ function pushConversationRemoveEvent(
   seatId: string,
   conversationId: string,
 ) {
-  state.version += 1;
+  state.version = Math.max(state.version + 1, Date.now());
   state.events.push({
     payload: {
       conversationId,
@@ -878,7 +1031,7 @@ function pushMessageStatusEvent(
   state: MockState,
   change: WorkbenchMessageStatusChangeDto,
 ) {
-  state.version += 1;
+  state.version = Math.max(state.version + 1, Date.now());
   state.events.push({
     payload: change,
     type: "message-status",
@@ -936,6 +1089,7 @@ function buildPayloadSegmentContent(
       extension: segment.extension,
       fileName: segment.fileName,
       fileSizeLabel: segment.fileSizeLabel ?? "",
+      fileUrl: segment.url,
       sourceLabel: "文件",
     };
   }
@@ -943,6 +1097,59 @@ function buildPayloadSegmentContent(
   return {
     text: segment.text,
   };
+}
+
+function findMessageByIdOrSeq(
+  state: MockState,
+  conversationId: string,
+  messageId: string | undefined,
+  messageSeq: number,
+) {
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+
+  return messages.find(
+    (message) =>
+      (messageId && message.messageId === messageId) || message.seq === messageSeq,
+  );
+}
+
+function updateMessageDownloadContent(
+  state: MockState,
+  conversationId: string,
+  messageId: string,
+  patch: {
+    downloadStatus: "ing" | "finished" | "failed";
+    fileUrl?: string;
+    fileUrlExpireTime?: number;
+  },
+) {
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+
+  state.messagesByConversationId[conversationId] = messages.map((message) => {
+    if (message.messageId !== messageId || !isFileDownloadContent(message.content)) {
+      return message;
+    }
+
+    return {
+      ...message,
+      content: {
+        ...message.content,
+        ...stripUndefinedFields(patch),
+      },
+    };
+  });
+}
+
+function stripUndefinedFields<T extends Record<string, unknown>>(value: T) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, fieldValue]) => fieldValue !== undefined),
+  ) as Partial<T>;
+}
+
+function isFileDownloadContent(
+  content: WorkbenchMessageDto["content"],
+): content is (FileMessageContent | VideoMessageContent) & Record<string, unknown> {
+  return content.type === "file" || content.type === "video";
 }
 
 function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {
@@ -987,7 +1194,9 @@ function resolveSendOutcome(
 
 function sortConversations(conversations: WorkbenchConversationSummaryDto[]) {
   return [...conversations].sort(
-    (left, right) => (right.lastMessageTime ?? 0) - (left.lastMessageTime ?? 0),
+    (left, right) =>
+      Number(Boolean(right.isPinned)) - Number(Boolean(left.isPinned)) ||
+      (right.lastMessageTime ?? 0) - (left.lastMessageTime ?? 0),
   );
 }
 

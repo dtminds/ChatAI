@@ -287,11 +287,7 @@ export class SidebarItemsSettingsService {
   }
 }
 
-export function createSidebarItemsSettingsService(db: Kysely<Database> | undefined) {
-  if (!db) {
-    throw new ServiceUnavailableError("DATABASE_NOT_CONFIGURED", "设置服务暂不可用");
-  }
-
+export function createSidebarItemsSettingsService(db: Kysely<Database>) {
   return new SidebarItemsSettingsService(db);
 }
 

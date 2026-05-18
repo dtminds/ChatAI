@@ -1,5 +1,6 @@
 import {
   startTransition,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -37,7 +38,9 @@ import {
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
+import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
+import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
   ChatMessage,
@@ -46,11 +49,21 @@ import type {
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
+import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
+import {
+  downloadMessageFile,
+  getMessageFileDownloadStatus,
+} from "@/pages/chat/api/workbench-gateway";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
 } from "@/pages/chat/lib/composer-file-files";
-import { extractComposerMentionState, type ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import {
+  extractComposerMentionState,
+  type ComposerSegment,
+} from "@/pages/chat/lib/composer-segments";
+import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
+import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
 import {
   CONVERSATION_LIST_PANEL_WIDTH,
@@ -58,6 +71,9 @@ import {
 } from "@/pages/chat/lib/panel-width";
 
 const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
+const MAX_ACTIVE_DOWNLOAD_TRANSFERS = 3;
+const DOWNLOAD_STATUS_POLL_INTERVAL_MS = 3000;
+const MAX_DOWNLOAD_STATUS_POLL_COUNT = 40;
 
 type PendingComposerDiscardSwitch =
   | {
@@ -71,7 +87,9 @@ type PendingComposerDiscardSwitch =
 
 function getInitialAccountRailCollapsed() {
   try {
-    return window.localStorage.getItem(ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY) === "true";
+    return (
+      window.localStorage.getItem(ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY) === "true"
+    );
   } catch {
     return false;
   }
@@ -129,6 +147,7 @@ function ChatWorkbenchContent({
     isConversationLoading,
     loadActiveGroupMembers,
     loadOlderMessages,
+    refreshSeatSummaries,
     markConversationRead,
     markConversationUnread,
     me,
@@ -148,18 +167,29 @@ function ChatWorkbenchContent({
     takeOverAccount,
     takeoverStatusByAccountId,
     unpinConversation,
+    updateMessageDownloadContent,
   } = useWorkbenchStore();
 
   const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-  const [composerSegments, setComposerSegments] = useState<ComposerSegment[]>([]);
+  const [composerSegments, setComposerSegments] = useState<ComposerSegment[]>(
+    [],
+  );
   const [sendFailureDialog, setSendFailureDialog] = useState<{
     description: string;
     title: string;
   } | null>(null);
-  const [fileUploadTransitionError, setFileUploadTransitionError] =
-    useState<string | undefined>();
-  const [fileUploadQueue, setFileUploadQueue] = useState<FileUploadQueueItem[]>([]);
+  const [pollingPauseReason, setPollingPauseReason] =
+    useState<PollingPauseReason | null>(null);
+  const handlePollingPaused = useCallback((reason: PollingPauseReason) => {
+    setPollingPauseReason(reason);
+  }, []);
+  const [fileUploadTransitionError, setFileUploadTransitionError] = useState<
+    string | undefined
+  >();
+  const [fileUploadQueue, setFileUploadQueue] = useState<FileUploadQueueItem[]>(
+    [],
+  );
   const [isSendingDraft, setIsSendingDraft] = useState(false);
   const [quotedMessage, setQuotedMessage] =
     useState<QuotedMessagePreviewContent | null>(null);
@@ -179,6 +209,11 @@ function ChatWorkbenchContent({
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
   );
+  const [downloadTransferStates, setDownloadTransferStates] = useState<
+    Record<string, "idle" | "transferring">
+  >({});
+  const downloadPollingTimeoutsRef = useRef(new Map<string, number>());
+  const downloadPollingConversationRef = useRef<string | undefined>(undefined);
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
@@ -206,7 +241,9 @@ function ChatWorkbenchContent({
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
   const allConversations = conversationListsByScope[activeAccountId] ?? [];
-  const visibleConversations = allConversations.filter(
+  const visibleSearchableConversations =
+    getVisibleConversations(allConversations);
+  const visibleConversations = visibleSearchableConversations.filter(
     (conversation) => conversation.mode === activeMode,
   );
   const activeConversation =
@@ -214,23 +251,25 @@ function ChatWorkbenchContent({
       (conversation) => conversation.id === activeConversationId,
     ) ?? visibleConversations[0];
   const activeMessages =
-    (activeConversation && messagesByConversationId[activeConversation.id]) ?? [];
+    (activeConversation && messagesByConversationId[activeConversation.id]) ??
+    [];
   const activeGroupMembers =
     activeConversation?.mode === "group"
-      ? groupMembersByConversationId[activeConversation.id] ?? []
+      ? (groupMembersByConversationId[activeConversation.id] ?? [])
       : [];
   const isActiveGroupMembersLoading =
     activeConversation?.mode === "group"
       ? groupMembersLoadingByConversationId[activeConversation.id] === true
       : false;
   const activeHistoryStatus = activeConversation
-    ? historyStatusByConversationId[activeConversation.id] ?? "idle"
+    ? (historyStatusByConversationId[activeConversation.id] ?? "idle")
     : "idle";
   const hasMoreHistory = activeConversation
     ? hasMoreHistoryByConversationId[activeConversation.id] === true
     : false;
   const skippedHiddenCount = activeConversation
-    ? messagePaginationByConversationId[activeConversation.id]?.skippedHiddenCount ?? 0
+    ? (messagePaginationByConversationId[activeConversation.id]
+        ?.skippedHiddenCount ?? 0)
     : 0;
   const historyLoadLabel =
     skippedHiddenCount > 0
@@ -240,6 +279,8 @@ function ChatWorkbenchContent({
     (activeConversation &&
       customerProfilesById[activeConversation.customerId]) ??
     undefined;
+
+  useConversationRevealTimer(allConversations);
   const isActiveAccountOffline = activeAccount?.loginStatus === "offline";
   const isActiveAccountTakenOver =
     !!activeAccount?.takenOverEmployeeId &&
@@ -259,16 +300,15 @@ function ChatWorkbenchContent({
     ? "请输入消息……"
     : bootstrapStatus === "loading" && !activeConversation
       ? "正在加载会话数据..."
-    : isActiveAccountOffline
-      ? "当前账号离线，暂时无法发送消息"
-    : !isActiveAccountTakenOver
-      ? "当前账号未接管，暂时无法发送消息"
-    : !activeConversation
-      ? "当前列表暂无可发送会话"
-    : "当前会话暂不可发送消息";
+      : isActiveAccountOffline
+        ? "当前账号离线，暂时无法发送消息"
+        : !isActiveAccountTakenOver
+          ? "当前账号未接管，暂时无法发送消息"
+          : !activeConversation
+            ? "当前列表暂无可发送会话"
+            : "当前会话暂不可发送消息";
 
-  const hasActiveFileUploads = () =>
-    fileUploadQueueRef.current.length > 0;
+  const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
 
   const setFileUploadQueueState = (
     updater: (queue: typeof fileUploadQueue) => typeof fileUploadQueue,
@@ -284,32 +324,71 @@ function ChatWorkbenchContent({
     });
   };
 
-  const {
-    handleLoadOlderMessages,
-    handleMessageViewportScroll,
-  } =
+  const clearDownloadPollingTimers = () => {
+    downloadPollingTimeoutsRef.current.forEach((timeoutId) => {
+      window.clearTimeout(timeoutId);
+    });
+    downloadPollingTimeoutsRef.current.clear();
+  };
+
+  const updateDownloadTransferState = (
+    messageId: string,
+    state: "idle" | "transferring",
+  ) => {
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    setDownloadTransferStates((currentStates) => {
+      if (state === "idle") {
+        const { [messageId]: _ignored, ...nextStates } = currentStates;
+        return nextStates;
+      }
+
+      return {
+        ...currentStates,
+        [messageId]: state,
+      };
+    });
+  };
+
+  const { handleLoadOlderMessages, handleMessageViewportScroll } =
     useMessageScrollRestoration({
-    activeConversationId: activeConversation?.id,
-    activeHistoryStatus,
-    hasMoreHistory,
-    isHistoryLoading: activeHistoryStatus === "loading",
-    loadOlderMessages,
-    messageCount: activeMessages.length,
-    messageViewportRef,
+      activeConversationId: activeConversation?.id,
+      activeHistoryStatus,
+      hasMoreHistory,
+      isHistoryLoading: activeHistoryStatus === "loading",
+      loadOlderMessages,
+      messageCount: activeMessages.length,
+      messageViewportRef,
     });
 
   useEffect(() => {
     void initializeWorkbench();
   }, [initializeWorkbench]);
 
-  useEffect(() => () => {
-    isMountedRef.current = false;
-    fileUploadAbortControllersRef.current.forEach((controller) => {
-      controller.abort();
-    });
-    fileUploadAbortControllersRef.current.clear();
-    fileUploadQueueRef.current = [];
-  }, []);
+  useEffect(
+    () => () => {
+      isMountedRef.current = false;
+      fileUploadAbortControllersRef.current.forEach((controller) => {
+        controller.abort();
+      });
+      fileUploadAbortControllersRef.current.clear();
+      fileUploadQueueRef.current = [];
+      clearDownloadPollingTimers();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (downloadPollingConversationRef.current === activeConversation?.id) {
+      return;
+    }
+
+    clearDownloadPollingTimers();
+    downloadPollingConversationRef.current = activeConversation?.id;
+    setDownloadTransferStates({});
+  }, [activeConversation?.id]);
 
   useEffect(() => {
     if (!readReceiptError) {
@@ -327,8 +406,11 @@ function ChatWorkbenchContent({
   useWorkbenchPolling({
     activeAccountId,
     bootstrapStatus,
+    currentUserId: me?.id,
     intervalMs: pollState.intervalMs,
     jitterMs: pollState.jitterMs,
+    onPollingPaused: handlePollingPaused,
+    refreshSeatSummaries,
     pollWorkbench,
   });
 
@@ -408,7 +490,9 @@ function ChatWorkbenchContent({
         return;
       }
 
-      clearComposer({ keepQuote: quotedMessage !== null && !result.didConsumeQuote });
+      clearComposer({
+        keepQuote: quotedMessage !== null && !result.didConsumeQuote,
+      });
       composerRef.current?.focus();
     } finally {
       isSendingDraftRef.current = false;
@@ -470,29 +554,31 @@ function ChatWorkbenchContent({
 
       void (async () => {
         try {
-          const fileSegment = await uploadWorkbenchFile(activeConversation.id, file, {
-            onProgress(progress) {
-              setFileUploadQueueState((currentQueue) =>
-                currentQueue.map((item) =>
-                  item.id === uploadId
-                    ? {
-                        ...item,
-                        progress: Math.max(
-                          item.progress,
-                          Math.min(100, progress),
-                        ),
-                      }
-                    : item,
-                ),
-              );
+          const fileSegment = await uploadWorkbenchFile(
+            activeConversation.id,
+            file,
+            {
+              onProgress(progress) {
+                setFileUploadQueueState((currentQueue) =>
+                  currentQueue.map((item) =>
+                    item.id === uploadId
+                      ? {
+                          ...item,
+                          progress: Math.max(
+                            item.progress,
+                            Math.min(100, progress),
+                          ),
+                        }
+                      : item,
+                  ),
+                );
+              },
+              signal: abortController.signal,
             },
-            signal: abortController.signal,
-          });
+          );
 
           if (
-            !fileUploadQueueRef.current.some(
-              (item) => item.id === uploadId,
-            )
+            !fileUploadQueueRef.current.some((item) => item.id === uploadId)
           ) {
             return;
           }
@@ -523,11 +609,7 @@ function ChatWorkbenchContent({
             return;
           }
 
-          if (
-            fileUploadQueueRef.current.some(
-              (item) => item.id === uploadId,
-            )
-          ) {
+          if (fileUploadQueueRef.current.some((item) => item.id === uploadId)) {
             setSendFailureDialog(
               getSendFailureDialogCopy("file-upload", getSendErrorCode(error)),
             );
@@ -540,6 +622,142 @@ function ChatWorkbenchContent({
     }
   };
 
+  const handleDownloadMessageFile = (message: ChatMessage) => {
+    if (message.content.type !== "file" && message.content.type !== "video") {
+      return;
+    }
+
+    const url = getMessageDownloadUrl(message);
+
+    if (isMessageDownloadUrlReady(message, url)) {
+      openMessageDownloadUrl(message, url);
+      return;
+    }
+
+    if (!message.content.fileSerialNo || !message.seq || !activeConversation) {
+      return;
+    }
+
+    if (
+      Object.keys(downloadTransferStates).length >=
+      MAX_ACTIVE_DOWNLOAD_TRANSFERS
+    ) {
+      toast.warning("下载队列已满，请稍后");
+      return;
+    }
+
+    if (message.conversationId !== activeConversation.id) {
+      return;
+    }
+
+    updateDownloadTransferState(message.id, "transferring");
+    updateMessageDownloadContent(message.conversationId, message.id, {
+      downloadStatus: "ing",
+    });
+
+    void downloadMessageFile({
+      conversationId: message.conversationId,
+      messageId: message.remoteMessageId ?? message.id,
+      messageSeq: message.seq,
+    })
+      .then(() => {
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        pollMessageDownloadStatus(message, 0);
+      })
+      .catch(() => {
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        updateDownloadTransferState(message.id, "idle");
+        updateMessageDownloadContent(message.conversationId, message.id, {
+          downloadStatus: "failed",
+        });
+        toast.warning("下载失败，请稍后重试");
+      });
+  };
+
+  const pollMessageDownloadStatus = (message: ChatMessage, attempt: number) => {
+    if (!isMountedRef.current || !message.seq) {
+      updateDownloadTransferState(message.id, "idle");
+      return;
+    }
+
+    if (attempt >= MAX_DOWNLOAD_STATUS_POLL_COUNT) {
+      updateDownloadTransferState(message.id, "idle");
+      updateMessageDownloadContent(message.conversationId, message.id, {
+        downloadStatus: "failed",
+      });
+      toast.warning("文件下载超时，请稍后重试");
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      downloadPollingTimeoutsRef.current.delete(message.id);
+
+      if (
+        !isMountedRef.current ||
+        downloadPollingConversationRef.current !== message.conversationId
+      ) {
+        return;
+      }
+
+      void getMessageFileDownloadStatus({
+        conversationId: message.conversationId,
+        messageSeq: message.seq ?? 0,
+      })
+        .then((status) => {
+          if (
+            !isMountedRef.current ||
+            downloadPollingConversationRef.current !== message.conversationId
+          ) {
+            return;
+          }
+
+          if (status?.downloadStatus === "finished") {
+            updateDownloadTransferState(message.id, "idle");
+            updateMessageDownloadContent(message.conversationId, message.id, {
+              downloadStatus: "finished",
+              fileUrlExpireTime: status.fileUrlExpireTime,
+              fileUrl: status.fileUrl,
+            });
+
+            if (message.content.type === "file" && status.fileUrl) {
+              openMessageDownloadUrl(message, status.fileUrl);
+            }
+            return;
+          }
+
+          if (status?.downloadStatus === "failed") {
+            updateDownloadTransferState(message.id, "idle");
+            updateMessageDownloadContent(message.conversationId, message.id, {
+              downloadStatus: "failed",
+            });
+            toast.warning("下载失败，请稍后重试");
+            return;
+          }
+
+          pollMessageDownloadStatus(message, attempt + 1);
+        })
+        .catch(() => {
+          if (!isMountedRef.current) {
+            return;
+          }
+
+          updateDownloadTransferState(message.id, "idle");
+          updateMessageDownloadContent(message.conversationId, message.id, {
+            downloadStatus: "failed",
+          });
+          toast.warning("下载失败，请稍后重试");
+        });
+    }, DOWNLOAD_STATUS_POLL_INTERVAL_MS);
+
+    downloadPollingTimeoutsRef.current.set(message.id, timeoutId);
+  };
+
   const handleDraftChange = (nextDraft: string) => {
     setDraft(nextDraft);
   };
@@ -549,7 +767,9 @@ function ChatWorkbenchContent({
   };
 
   const hasUnsentComposerContent = () =>
-    draft.trim().length > 0 || composerSegments.length > 0 || quotedMessage !== null;
+    draft.trim().length > 0 ||
+    composerSegments.length > 0 ||
+    quotedMessage !== null;
 
   const handleSelectConversation = async (conversationId: string) => {
     if (conversationId === activeConversationId) {
@@ -624,9 +844,10 @@ function ChatWorkbenchContent({
       ? activeMessages.find((message) => message.seq === quoteSeq)
       : undefined;
     const viewport = messageViewportRef.current;
-    const anchor = viewport && originalMessage
-      ? findViewportAnchor(viewport, originalMessage.id)
-      : null;
+    const anchor =
+      viewport && originalMessage
+        ? findViewportAnchor(viewport, originalMessage.id)
+        : null;
 
     if (!anchor) {
       toast.warning("当前未加载原始消息");
@@ -680,7 +901,9 @@ function ChatWorkbenchContent({
     return (
       <div className="flex h-svh items-center justify-center bg-background px-6">
         <div className="max-w-md rounded-2xl border border-destructive/25 bg-surface px-6 py-5 shadow-sm">
-          <p className="text-sm font-semibold text-foreground">工作台初始化失败</p>
+          <p className="text-sm font-semibold text-foreground">
+            工作台初始化失败
+          </p>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {bootstrapError ?? "暂时无法获取会话数据。"}
           </p>
@@ -739,7 +962,8 @@ function ChatWorkbenchContent({
           <div
             className={cn(
               "h-full min-h-0",
-              (isResizingAccountRail || isResizingCustomerPanel) && "select-none",
+              (isResizingAccountRail || isResizingCustomerPanel) &&
+                "select-none",
             )}
             data-testid="chat-workbench-content"
             style={{ minWidth: `${MIN_WORKBENCH_CONTENT_WIDTH}px` }}
@@ -754,7 +978,7 @@ function ChatWorkbenchContent({
               <ConversationListPanel
                 activeConversation={activeConversation}
                 activeMode={activeMode}
-                conversations={visibleConversations}
+                conversations={visibleSearchableConversations}
                 isConversationActionDisabled={isConversationActionDisabled}
                 onDeleteConversation={deleteConversation}
                 onMarkConversationRead={markConversationRead}
@@ -763,7 +987,7 @@ function ChatWorkbenchContent({
                 onSelectConversation={handleSelectConversation}
                 onSelectMode={handleSelectMode}
                 onUnpinConversation={unpinConversation}
-                searchableConversations={allConversations}
+                searchableConversations={visibleSearchableConversations}
               />
 
               <ChatPanel
@@ -784,6 +1008,7 @@ function ChatWorkbenchContent({
                 isSendingDraft={isSendingDraft}
                 isResizingCustomerPanel={isResizingCustomerPanel}
                 fileUploadQueue={fileUploadQueue}
+                downloadTransferStates={downloadTransferStates}
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
@@ -794,6 +1019,7 @@ function ChatWorkbenchContent({
                 onComposerSegmentsChange={handleComposerSegmentsChange}
                 onCancelFileUpload={handleCancelFileUpload}
                 onClearQuotedMessage={() => setQuotedMessage(null)}
+                onDownloadMessageFile={handleDownloadMessageFile}
                 onDraftChange={handleDraftChange}
                 onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                 onEnterBehaviorChange={setInputEnterBehavior}
@@ -822,6 +1048,38 @@ function ChatWorkbenchContent({
           </div>
         </div>
       </div>
+      <AlertDialog open={pollingPauseReason !== null}>
+        <AlertDialogContent
+          className="overflow-hidden p-0"
+          size="sm"
+          style={{ height: 286, maxWidth: 520, width: 520 }}
+        >
+          <div className="relative h-full overflow-hidden px-10 py-9">
+            <AlertDialogHeader className="relative z-10 min-w-0 space-y-4 text-left">
+              <AlertDialogTitle>
+                {getPollingPausedDialogCopy(pollingPauseReason).title}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {getPollingPausedDialogCopy(pollingPauseReason).description}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <img
+              alt=""
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-2 left-2 w-[250px] select-none"
+              data-testid="polling-paused-illustration"
+              src="https://b5.bokr.com.cn/dist/pause_poll.png"
+            />
+            <AlertDialogFooter className="absolute bottom-10 right-10 z-10">
+              <AlertDialogAction onClick={() => {
+                window.location.reload();
+              }}>
+                刷新页面
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={sendFailureDialog !== null}
         onOpenChange={(open) => {
@@ -915,8 +1173,52 @@ function getSendFailureDialogCopy(
   };
 }
 
-function buildQuotedMessagePreview(message: ChatMessage): QuotedMessagePreviewContent {
-  const senderName = message.senderDisplayName || message.sender.name || message.author;
+function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {
+  if (reason === "idle") {
+    return {
+      description: "检测到你已离开页面一段时间，已暂停消息同步。",
+      title: "已暂停新消息同步",
+    };
+  }
+
+  return {
+    description: "当前页面已暂停消息同步。若要在此页面继续，请刷新页面",
+    title: "实时同步已被其他页面占用",
+  };
+}
+
+function getMessageDownloadUrl(message: ChatMessage) {
+  if (message.content.type === "file") {
+    return message.content.fileUrl?.trim() ?? "";
+  }
+
+  if (message.content.type === "video") {
+    return message.content.videoUrl?.trim() ?? "";
+  }
+
+  return "";
+}
+
+function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
+  if (message.content.type === "video") {
+    return (
+      message.content.downloadStatus === "finished" &&
+      canUseExpiringUrl(url, message.content.fileUrlExpireTime)
+    );
+  }
+
+  return (
+    message.content.type === "file" &&
+    message.content.downloadStatus === "finished" &&
+    url
+  );
+}
+
+function buildQuotedMessagePreview(
+  message: ChatMessage,
+): QuotedMessagePreviewContent {
+  const senderName =
+    message.senderDisplayName || message.sender.name || message.author;
   const basePreview = {
     contentType: message.content.type,
     quoteMsgId: String(message.seq ?? message.remoteMessageId ?? message.id),
@@ -996,6 +1298,12 @@ function buildQuotedMessagePreview(message: ChatMessage): QuotedMessagePreviewCo
       return {
         ...basePreview,
         fallbackText: "[接龙]",
+        title: message.content.title,
+      };
+    case "redpacket":
+      return {
+        ...basePreview,
+        fallbackText: "[红包]",
         title: message.content.title,
       };
     case "quote":

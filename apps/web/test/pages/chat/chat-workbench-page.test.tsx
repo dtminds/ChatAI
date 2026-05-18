@@ -83,8 +83,20 @@ async function pasteIntoComposer(
   await user.paste(text);
 }
 
+async function expectLatestConversationMessage(
+  conversationId: string,
+  expectedMessage: object,
+) {
+  await waitFor(() => {
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId[conversationId].at(-1),
+    ).toMatchObject(expectedMessage);
+  });
+}
+
 describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     mock.reset();
     vi.mocked(toast.warning).mockClear();
     vi.mocked(resolveImageSegmentsForSend).mockImplementation(
@@ -115,6 +127,10 @@ describe("ChatWorkbenchPage", () => {
     );
     resetWorkbenchService();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
   });
 
   it("sends a message from the composer", async () => {
@@ -127,9 +143,7 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
     expect(composer).toHaveTextContent("");
-    expect(
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
-    ).toMatchObject({
+    await expectLatestConversationMessage("conv-001", {
       content: {
         text: "收到，我来帮你确认",
         type: "text",
@@ -228,9 +242,7 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByTestId("composer-quote-preview")).toHaveTextContent(
       "丹阳草莓，得利市大樱桃：我先截了个竖图版本给你看。",
     );
-    expect(
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
-    ).toMatchObject({
+    await expectLatestConversationMessage("conv-001", {
       content: {
         type: "image",
       },
@@ -269,9 +281,7 @@ describe("ChatWorkbenchPage", () => {
 
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
-    expect(
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
-    ).toMatchObject({
+    await expectLatestConversationMessage("conv-001", {
       content: {
         text: "好的[打脸]",
         type: "text",
@@ -305,9 +315,7 @@ describe("ChatWorkbenchPage", () => {
         within(composer).queryByRole("img", { name: "clipboard.png" }),
       ).not.toBeInTheDocument();
     });
-    expect(
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
-    ).toMatchObject({
+    await expectLatestConversationMessage("conv-001", {
       content: {
         imageUrl:
           "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/mock-image.png",
@@ -366,9 +374,7 @@ describe("ChatWorkbenchPage", () => {
     await waitFor(() => {
       expect(screen.queryByText("正在准备发送")).not.toBeInTheDocument();
     });
-    expect(
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
-    ).toMatchObject({
+    await expectLatestConversationMessage("conv-001", {
       content: {
         extension: "pdf",
         fileName: "报价单.pdf",
@@ -1404,17 +1410,20 @@ describe("ChatWorkbenchPage", () => {
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(seatId) {
-        const conversations = await baseService.getConversations(seatId);
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
 
-        return conversations.map((conversation) =>
-          conversation.conversationId === "conv-004"
-            ? {
-                ...conversation,
-                conversationId: "backend-group-001",
-              }
-            : conversation,
-        );
+        return {
+          ...response,
+          items: response.items.map((conversation) =>
+            conversation.conversationId === "conv-004"
+              ? {
+                  ...conversation,
+                  conversationId: "backend-group-001",
+                }
+              : conversation,
+          ),
+        };
       },
     });
 
@@ -2162,6 +2171,119 @@ describe("ChatWorkbenchPage", () => {
     expect(toast.warning).toHaveBeenCalledWith("当前未加载原始消息");
   });
 
+  it("restarts video transfer instead of opening an expired finished video URL", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const downloadMessageFile = vi.fn(baseService.downloadMessageFile);
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    setWorkbenchService({
+      ...baseService,
+      downloadMessageFile,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              {
+                content: {
+                  alt: "已过期视频",
+                  coverImageUrl: "/covers/stage.jpg",
+                  downloadStatus: "finished",
+                  durationLabel: "1:01",
+                  fileSerialNo: "serial-video-001",
+                  fileUrlExpireTime: Date.now() - 1000,
+                  videoUrl: "https://b5.bokr.com.cn/chat-videos/expired.mp4",
+                },
+                contentType: "video",
+                conversationId: "conv-001",
+                createdAt: 1778240300000,
+                customerId: "cust-001",
+                messageId: "remote-expired-video",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 539,
+                status: "read",
+              },
+            ],
+            scannedCount: 1,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "下载视频：已过期视频" }));
+
+    expect(downloadMessageFile).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageId: "remote-expired-video",
+      messageSeq: 539,
+    });
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not update download UI after unmounting during a transfer request", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const transferGate = createDeferred<Awaited<ReturnType<typeof baseService.downloadMessageFile>>>();
+
+    setWorkbenchService({
+      ...baseService,
+      async downloadMessageFile() {
+        return transferGate.promise;
+      },
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              {
+                content: {
+                  alt: "待转存视频",
+                  coverImageUrl: "/covers/stage.jpg",
+                  downloadStatus: "failed",
+                  durationLabel: "1:01",
+                  fileSerialNo: "serial-video-001",
+                  videoUrl: "",
+                },
+                contentType: "video",
+                conversationId: "conv-001",
+                createdAt: 1778240300000,
+                customerId: "cust-001",
+                messageId: "remote-pending-video",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 539,
+                status: "read",
+              },
+            ],
+            scannedCount: 1,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    const { unmount } = render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "下载视频：待转存视频" }));
+
+    unmount();
+    transferGate.reject(new Error("transfer failed after unmount"));
+    await expect(transferGate.promise).rejects.toThrow("transfer failed after unmount");
+
+    expect(toast.warning).not.toHaveBeenCalledWith("下载失败，请稍后重试");
+  });
+
   it("shows scope transition errors in the workbench", async () => {
     const baseService = createMockWorkbenchService();
 
@@ -2247,4 +2369,30 @@ describe("ChatWorkbenchPage", () => {
     expect(mock.history.post).toHaveLength(1);
     expect(mock.history.post[0]?.url).toBe("/auth/logout");
   });
+
+  it("shows a paused sync dialog when another workbench tab takes polling ownership", async () => {
+    render(<ChatWorkbenchPage />);
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    fireEvent(
+      window,
+      new StorageEvent("storage", {
+        key: "chatai.workbench.pollOwner",
+        newValue: JSON.stringify({
+          ownerTabId: "newer-tab",
+          ownerUserId: "sub-user-001",
+          expiresAt: Date.now() + 15000,
+          updatedAt: Date.now(),
+        }),
+      }),
+    );
+
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新页面" })).toBeInTheDocument();
+    expect(
+      screen.getByTestId("polling-paused-illustration"),
+    ).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/pause_poll.png");
+  });
+
 });

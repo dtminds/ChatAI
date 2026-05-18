@@ -22,33 +22,48 @@ export const qywxAccounts = [
   },
 ] as const;
 
-export const roles = [
+export const presetRoles = [
   {
-    name: "管理员",
-    description: "拥有账号、人员和配置管理权限",
-    permissions: [
-      { label: "可接待", enabled: true },
-      { label: "可管理", enabled: true },
-      { label: "可导出", enabled: true },
+    description: "主账号身份自动拥有全部工作台和设置管理能力",
+    displayName: "主账号",
+    id: "owner",
+    permissionDetails: [
+      "会话查看",
+      "接管托管账号",
+      "发送消息",
+      "子账号管理",
+      "托管账号关联",
+      "侧边栏管理",
     ],
+    permissionSummary: "全部管理权限、会话处理",
   },
   {
-    name: "组长",
-    description: "可接待并查看小组数据",
-    permissions: [
-      { label: "可接待", enabled: true },
-      { label: "可管理", enabled: false },
-      { label: "可导出", enabled: true },
+    description: "负责设置管理和日常客服处理，不具备主账号身份",
+    displayName: "管理员",
+    id: "admin",
+    permissionDetails: [
+      "会话查看",
+      "接管托管账号",
+      "发送消息",
+      "子账号管理",
+      "托管账号关联",
+      "侧边栏管理",
     ],
+    permissionSummary: "设置管理、会话处理",
   },
   {
-    name: "客服",
-    description: "处理会话和维护客户备注",
-    permissions: [
-      { label: "可接待", enabled: true },
-      { label: "可管理", enabled: false },
-      { label: "可导出", enabled: false },
-    ],
+    description: "可接管账号并发送消息",
+    displayName: "客服",
+    id: "operator",
+    permissionDetails: ["会话查看", "接管托管账号", "发送消息"],
+    permissionSummary: "会话查看、接管、发送",
+  },
+  {
+    description: "只能查看会话，不能接管账号或发送消息",
+    displayName: "客服（只读）",
+    id: "viewer",
+    permissionDetails: ["会话查看", "不可接管账号或发送消息"],
+    permissionSummary: "只读会话",
   },
 ] as const;
 

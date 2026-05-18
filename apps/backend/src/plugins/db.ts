@@ -5,11 +5,13 @@ import type { Database } from "../db/schema.js";
 import { WorkbenchRepository } from "../modules/chat/workbench-repository.js";
 import { MysqlWorkbenchService, type WorkbenchService } from "../modules/chat/workbench.service.js";
 import { createWorkbenchJavaClient } from "../modules/chat/workbench-java-client.js";
+import type { AppLogger } from "../shared/logger.js";
 
 declare module "fastify" {
   interface FastifyInstance {
-    db?: Kysely<Database>;
-    workbenchService?: WorkbenchService;
+    db: Kysely<Database>;
+    createWorkbenchService(logger?: AppLogger): WorkbenchService;
+    workbenchService: WorkbenchService;
   }
 }
 
@@ -17,19 +19,23 @@ export const dbPlugin = fp(async (app) => {
   const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
-    app.log.warn("DATABASE_URL is not configured; database plugin is disabled");
-    return;
+    const errorMessage = "DATABASE_URL must be configured";
+    app.log.error(errorMessage);
+    throw new Error(errorMessage);
   }
 
   const db = createDatabase(databaseUrl);
-  app.decorate("db", db);
-  app.decorate(
-    "workbenchService",
+  const repository = new WorkbenchRepository(db);
+  const createService = (logger: AppLogger = app.log) =>
     new MysqlWorkbenchService(
-      new WorkbenchRepository(db),
-      createWorkbenchJavaClient(),
-    ),
-  );
+      repository,
+      createWorkbenchJavaClient(logger),
+      logger,
+    );
+
+  app.decorate("db", db);
+  app.decorate("createWorkbenchService", createService);
+  app.decorate("workbenchService", createService(app.log));
   app.addHook("onClose", async () => {
     await db.destroy();
   });

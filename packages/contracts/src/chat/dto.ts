@@ -45,6 +45,7 @@ export type WorkbenchMessageContentType =
   | "contact-card"
   | "location"
   | "solitaire"
+  | "redpacket"
   | "sphfeed"
   | "mini-program"
   | "quote";
@@ -59,6 +60,24 @@ export type WorkbenchQuotedMessagePreviewDto = {
 };
 
 export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed" | "read";
+export type WorkbenchMessageFileDownloadStatus = "ing" | "finished" | "failed";
+
+export type WorkbenchMessageFileDownloadResponse = {
+  messageId: string;
+  status: "accepted";
+};
+
+export type WorkbenchMessageFileDownloadStatusResponse = {
+  downloadStatus?: WorkbenchMessageFileDownloadStatus;
+  fileSerialNo?: string;
+  fileUrlExpireTime?: number;
+  fileUrl?: string;
+};
+
+export type WorkbenchMessageFileDownloadStatusRequest = {
+  conversationId: string;
+  messageSeq: number;
+};
 
 export type WorkbenchSubUserDto = {
   subUserId: string;
@@ -103,6 +122,7 @@ export type WorkbenchConversationSummaryDto = {
   thirdUserId?: string;
   thirdExternalUserId?: string;
   thirdGroupId?: string;
+  createdAt?: number;
   customerId: string;
   customerName: string;
   customerAvatar: string;
@@ -112,6 +132,20 @@ export type WorkbenchConversationSummaryDto = {
   mode: "single" | "group";
   isPinned?: boolean;
   priority: "high" | "medium" | "low";
+  verified?: boolean;
+};
+
+export type WorkbenchConversationCursorDto = {
+  id: string;
+  lastMsgTime: number;
+  snapshotAt: number;
+};
+
+export type WorkbenchConversationListResponse = {
+  hasMore: boolean;
+  items: WorkbenchConversationSummaryDto[];
+  nextCursor?: string;
+  snapshotAt: number;
 };
 
 export type WorkbenchMessageBaseDto = {
@@ -173,6 +207,7 @@ export type WorkbenchMessageStatusChangeDto = {
 
 export type WorkbenchPollRequest = {
   sinceVersion: number;
+  freshBaseline?: boolean;
   currentSeatId?: string;
   activeConversationId?: string;
   activeMessageSeq?: number;
@@ -271,6 +306,7 @@ export type WorkbenchConversationUnpinResponse = WorkbenchConversationPinRespons
 export type WorkbenchConversationDeleteResponse = {
   conversationId: string;
   seatId: string;
+  seatUnreadCount: number;
 };
 
 export type WorkbenchGroupMemberType =

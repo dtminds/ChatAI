@@ -19,6 +19,17 @@ describe("workbench adapter", () => {
       updatedAtMs: undefined,
     });
   });
+
+  it("adapts conversation recognition metadata for temporary sidebar visibility", () => {
+    const conversation = adaptConversation({
+      ...conversationDto,
+      createdAt: 1778832000000,
+      verified: false,
+    });
+
+    expect(conversation.createdAtMs).toBe(1778832000000);
+    expect(conversation.isVerified).toBe(false);
+  });
 });
 
 describe("adaptMessage", () => {
@@ -257,6 +268,71 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("adapts file transfer metadata", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            downloadStatus: "failed",
+            extension: "pdf",
+            fileName: "报价单.pdf",
+            fileSerialNo: "serial-file-001",
+            fileSizeLabel: "2 KB",
+            fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+            sourceLabel: "文件",
+          },
+          contentType: "file",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        downloadStatus: "failed",
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        fileSerialNo: "serial-file-001",
+        fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+        type: "file",
+      },
+      id: "message-1",
+      seq: 1,
+    });
+  });
+
+  it("adapts video transfer metadata", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            alt: "演示视频",
+            coverImageUrl: "https://b5.bokr.com.cn/covers/video.jpg",
+            downloadStatus: "finished",
+            durationLabel: "",
+            fileSerialNo: "serial-video-001",
+            fileUrlExpireTime: 1778919538036,
+            videoUrl: "https://b5.bokr.com.cn/videos/demo.mp4",
+          },
+          contentType: "video",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        downloadStatus: "finished",
+        fileSerialNo: "serial-video-001",
+        fileUrlExpireTime: 1778919538036,
+        type: "video",
+        videoUrl: "https://b5.bokr.com.cn/videos/demo.mp4",
+      },
+    });
+  });
+
   it("adapts contact card message content", () => {
     expect(
       adaptMessage(
@@ -397,6 +473,35 @@ describe("adaptMessage", () => {
         tail: "",
         title: "#接龙\n哈哈哈",
         type: "solitaire",
+      },
+    });
+  });
+
+  it("adapts red packet message content", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            description: "来自哼╭(╯^╰)╮的红包，请进入手机版企业微信领取",
+            title: "恭喜发财，大吉大利",
+            totalAmount: 1,
+            totalCnt: 1,
+            type: 1,
+          },
+          contentType: "redpacket",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        description: "来自哼╭(╯^╰)╮的红包，请进入手机版企业微信领取",
+        title: "恭喜发财，大吉大利",
+        totalAmount: 1,
+        totalCnt: 1,
+        type: "redpacket",
       },
     });
   });

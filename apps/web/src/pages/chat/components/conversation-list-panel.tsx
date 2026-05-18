@@ -1,4 +1,4 @@
-import { startTransition, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import {
   Cancel01Icon,
   LicenseNoIcon,
@@ -18,6 +18,7 @@ import type { ChatMode, Conversation } from "@/pages/chat/chat-types";
 
 const CUSTOMER_PREVIEW_LIMIT = 5;
 const GROUP_PREVIEW_LIMIT = 10;
+const CHAT_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 
 type ConversationListPanelProps = {
   activeConversation?: Conversation;
@@ -54,6 +55,16 @@ export function ConversationListPanel({
   );
   const normalizedKeyword = searchKeyword.trim().toLocaleLowerCase();
   const isSearchOpen = normalizedKeyword.length > 0;
+  const [mountedModes, setMountedModes] = useState<ReadonlySet<ChatMode>>(
+    () => new Set([activeMode]),
+  );
+  const conversationsByMode = useMemo(
+    () => ({
+      group: conversations.filter((conversation) => conversation.mode === "group"),
+      single: conversations.filter((conversation) => conversation.mode === "single"),
+    }),
+    [conversations],
+  );
   const searchResults = useMemo(() => {
     if (!normalizedKeyword) {
       return { customers: [], groups: [] };
@@ -70,6 +81,16 @@ export function ConversationListPanel({
       groups: matchedConversations.filter((conversation) => conversation.mode === "group"),
     };
   }, [normalizedKeyword, searchableConversations]);
+
+  useEffect(() => {
+    setMountedModes((currentModes) => {
+      if (currentModes.has(activeMode)) {
+        return currentModes;
+      }
+
+      return new Set([...currentModes, activeMode]);
+    });
+  }, [activeMode]);
 
   const handleSearchSelect = (conversation: Conversation) => {
     setSearchKeyword("");
@@ -190,60 +211,82 @@ export function ConversationListPanel({
             </TabsList>
           </div>
 
-          <TabsContent className="mt-0 min-h-0 flex-1" value={activeMode}>
-            <ScrollArea className="h-full" data-testid="conversation-list-scroll-area">
-              <div className="bg-surface px-2 py-1.5">
-                {conversations.length === 0 ? (
-                  <Empty
-                    aria-label="暂无数据"
-                    className="min-h-40 gap-2 px-2 py-6 text-[13px] text-muted-foreground"
-                    role="status"
+          {CHAT_MODES.map((mode) => {
+            const modeConversations = conversationsByMode[mode];
+
+            return (
+              <TabsContent
+                className={cn(
+                  "mt-0 min-h-0 flex-1",
+                  mode !== activeMode && "hidden",
+                )}
+                forceMount={mountedModes.has(mode) ? true : undefined}
+                hidden={mode !== activeMode}
+                key={mode}
+                value={mode}
+              >
+                {mountedModes.has(mode) ? (
+                  <ScrollArea
+                    className="h-full"
+                    data-testid={
+                      mode === activeMode ? "conversation-list-scroll-area" : undefined
+                    }
                   >
-                    <EmptyMedia
-                      className="bg-background text-muted-foreground"
-                      variant="icon"
-                    >
-                      <HugeiconsIcon
-                        color="currentColor"
-                        icon={LicenseNoIcon}
-                        size={22}
-                        strokeWidth={1.8}
-                      />
-                    </EmptyMedia>
-                    <span>暂无数据</span>
-                  </Empty>
+                    <div className="bg-surface px-2 py-1.5">
+                      {modeConversations.length === 0 ? (
+                        <Empty
+                          aria-label="暂无数据"
+                          className="min-h-40 gap-2 px-2 py-6 text-[13px] text-muted-foreground"
+                          role="status"
+                        >
+                          <EmptyMedia
+                            className="bg-background text-muted-foreground"
+                            variant="icon"
+                          >
+                            <HugeiconsIcon
+                              color="currentColor"
+                              icon={LicenseNoIcon}
+                              size={22}
+                              strokeWidth={1.8}
+                            />
+                          </EmptyMedia>
+                          <span>暂无数据</span>
+                        </Empty>
+                      ) : null}
+                      {modeConversations.map((conversation) => (
+                        <ConversationCard
+                          conversation={conversation}
+                          isActionDisabled={isConversationActionDisabled}
+                          isActive={conversation.id === activeConversation?.id}
+                          key={conversation.id}
+                          onDelete={() => {
+                            void onDeleteConversation?.(conversation.id);
+                          }}
+                          onMarkRead={() => {
+                            void onMarkConversationRead?.(conversation.id);
+                          }}
+                          onMarkUnread={() => {
+                            void onMarkConversationUnread?.(conversation.id);
+                          }}
+                          onPin={() => {
+                            void onPinConversation?.(conversation.id);
+                          }}
+                          onSelect={() => {
+                            startTransition(() => {
+                              void onSelectConversation(conversation.id);
+                            });
+                          }}
+                          onUnpin={() => {
+                            void onUnpinConversation?.(conversation.id);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </ScrollArea>
                 ) : null}
-                {conversations.map((conversation) => (
-                  <ConversationCard
-                    conversation={conversation}
-                    isActionDisabled={isConversationActionDisabled}
-                    isActive={conversation.id === activeConversation?.id}
-                    key={conversation.id}
-                    onDelete={() => {
-                      void onDeleteConversation?.(conversation.id);
-                    }}
-                    onMarkRead={() => {
-                      void onMarkConversationRead?.(conversation.id);
-                    }}
-                    onMarkUnread={() => {
-                      void onMarkConversationUnread?.(conversation.id);
-                    }}
-                    onPin={() => {
-                      void onPinConversation?.(conversation.id);
-                    }}
-                    onSelect={() => {
-                      startTransition(() => {
-                        void onSelectConversation(conversation.id);
-                      });
-                    }}
-                    onUnpin={() => {
-                      void onUnpinConversation?.(conversation.id);
-                    }}
-                  />
-                ))}
-              </div>
-            </ScrollArea>
-          </TabsContent>
+              </TabsContent>
+            );
+          })}
         </Tabs>
       </div>
     </section>

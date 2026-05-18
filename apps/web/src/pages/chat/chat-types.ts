@@ -54,6 +54,7 @@ export type Conversation = {
   customerId: string;
   customerName: string;
   customerAvatarUrl: string;
+  createdAtMs?: number;
   preview: string;
   updatedAt: string;
   quietFor: string;
@@ -67,6 +68,7 @@ export type Conversation = {
   /** 群会话三方群 ID，侧栏 iframe 在群聊时拼入查询参数 `qd` */
   thirdGroupId?: string;
   isPinned?: boolean;
+  isVerified?: boolean;
   updatedAtMs?: number;
 };
 
@@ -101,12 +103,17 @@ export type ImageMessageContent = {
   height?: number;
 };
 
+export type MessageFileDownloadStatus = "ing" | "finished" | "failed";
+
 export type VideoMessageContent = {
   type: "video";
   videoUrl: string;
   coverImageUrl: string;
   alt: string;
   durationLabel: string;
+  downloadStatus?: MessageFileDownloadStatus;
+  fileSerialNo?: string;
+  fileUrlExpireTime?: number;
   width?: number;
   height?: number;
 };
@@ -116,6 +123,9 @@ export type FileMessageContent = {
   fileName: string;
   fileSizeLabel: string;
   extension: string;
+  downloadStatus?: MessageFileDownloadStatus;
+  fileSerialNo?: string;
+  fileUrl?: string;
   sourceLabel?: string;
 };
 
@@ -180,6 +190,14 @@ export type SolitaireMessageContent = {
   createMemberSerialNo?: string;
 };
 
+export type RedPacketMessageContent = {
+  type: "redpacket";
+  title: string;
+  description: string;
+  totalAmount?: number;
+  totalCnt?: number;
+};
+
 export type QuotedMessagePreviewContent = {
   contentType: WorkbenchMessageContentType;
   fallbackText?: string;
@@ -212,6 +230,7 @@ export type MessageContent =
   | LocationMessageContent
   | SphFeedMessageContent
   | SolitaireMessageContent
+  | RedPacketMessageContent
   | QuoteMessageContent;
 
 type BaseMessage = {
@@ -252,6 +271,7 @@ export type ChatMessage = BaseMessage & {
     | LocationMessageContent
     | SphFeedMessageContent
     | SolitaireMessageContent
+    | RedPacketMessageContent
     | QuoteMessageContent;
 };
 

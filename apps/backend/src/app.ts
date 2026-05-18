@@ -4,11 +4,14 @@ import { checkSchema } from "./db/schema-check.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
 import { registerChatRoutes } from "./modules/chat/chat.routes.js";
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
+import { validateBackendEnv } from "./config/env.js";
 import { authPlugin } from "./plugins/auth.js";
 import { dbPlugin } from "./plugins/db.js";
 import { registerErrorHandler } from "./plugins/error-handler.js";
 
 export async function buildApp() {
+  validateBackendEnv();
+
   const app = Fastify({
     disableRequestLogging: shouldDisableRequestLogging,
     logger: {

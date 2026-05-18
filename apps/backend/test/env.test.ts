@@ -2,11 +2,18 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { getPort, loadBackendEnv } from "../src/config/env";
+import {
+  getPort,
+  loadBackendEnv,
+  validateBackendEnv,
+} from "../src/config/env";
 
 const ENV_KEYS = [
   "DATABASE_URL",
+  "JAVA_INTERNAL_API_BASE_URL",
   "JWT_DEV_SECRET",
+  "JWT_PRIVATE_KEY",
+  "JWT_PUBLIC_KEY",
   "NODE_ENV",
   "PORT",
 ] as const;
@@ -91,5 +98,53 @@ describe("backend env config", () => {
     expect(() => getPort({ PORT: "3001abc" })).toThrow("Invalid PORT: 3001abc");
     expect(() => getPort({ PORT: "70000" })).toThrow("Invalid PORT: 70000");
     expect(() => getPort({ PORT: "0" })).toThrow("Invalid PORT: 0");
+  });
+
+  it("requires production backend secrets and java base url", () => {
+    expect(() =>
+      validateBackendEnv({
+        NODE_ENV: "production",
+      }),
+    ).toThrow(
+      "Missing required environment variables for production: DATABASE_URL, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, JAVA_INTERNAL_API_BASE_URL",
+    );
+
+    expect(() =>
+      validateBackendEnv({
+        DATABASE_URL: "mysql://prod",
+        NODE_ENV: "production",
+      }),
+    ).toThrow(
+      "Missing required environment variables for production: JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, JAVA_INTERNAL_API_BASE_URL",
+    );
+
+    expect(() =>
+      validateBackendEnv({
+        DATABASE_URL: "mysql://prod",
+        JWT_PRIVATE_KEY: "private",
+        JWT_PUBLIC_KEY: "public",
+        NODE_ENV: "production",
+      }),
+    ).toThrow(
+      "Missing required environment variables for production: JAVA_INTERNAL_API_BASE_URL",
+    );
+
+    expect(() =>
+      validateBackendEnv({
+        DATABASE_URL: "mysql://prod",
+        JAVA_INTERNAL_API_BASE_URL: "https://java.internal",
+        JWT_PRIVATE_KEY: "private",
+        JWT_PUBLIC_KEY: "public",
+        NODE_ENV: "production",
+      }),
+    ).not.toThrow();
+  });
+
+  it("requires database url in test mode", () => {
+    expect(() =>
+      validateBackendEnv({
+        NODE_ENV: "test",
+      }),
+    ).toThrow("Missing required environment variables for test: DATABASE_URL");
   });
 });

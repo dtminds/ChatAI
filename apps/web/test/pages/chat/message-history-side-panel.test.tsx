@@ -106,9 +106,9 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.queryByRole("button", { name: "消息操作" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("message-row")).not.toBeInTheDocument();
     expect(screen.queryByTestId("text-message-bubble")).not.toBeInTheDocument();
-    expect(screen.getByText("余圆圆")).toHaveClass("text-sm");
-    expect(screen.getByText("3/9 10:30")).toBeInTheDocument();
-    expect(screen.getByText("2025/12/31 09:08")).toBeInTheDocument();
+    expect(screen.getByText("余圆圆")).toHaveClass("text-sm", "text-muted-foreground");
+    expect(screen.getByText("3/9 10:30")).toHaveClass("text-xs", "text-muted-foreground/70");
+    expect(screen.getByText("2025/12/31 09:08")).toHaveClass("text-xs", "text-muted-foreground/70");
     expect(screen.queryByText("10:30:45")).not.toBeInTheDocument();
     expect(compactText).toHaveClass("w-full", "max-w-full", "min-w-0", "break-words", "text-sm");
     expect(compactText).not.toHaveClass("w-max", "max-w-none", "whitespace-nowrap");

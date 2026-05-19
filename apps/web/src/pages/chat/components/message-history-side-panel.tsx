@@ -297,10 +297,10 @@ function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
           key={message.clientMessageId ?? message.optNo ?? message.id}
         >
           <div className="flex w-full max-w-full min-w-0 items-baseline gap-2">
-            <span className="min-w-0 truncate text-sm font-medium leading-5 text-foreground">
+            <span className="min-w-0 truncate text-sm font-medium leading-5 text-muted-foreground">
               {getHistoryMessageAuthor(message)}
             </span>
-            <span className="shrink-0 text-sm leading-5 text-muted-foreground">
+            <span className="shrink-0 text-xs leading-5 text-muted-foreground/70">
               {formatHistoryMessageTime(message.sentAt)}
             </span>
           </div>

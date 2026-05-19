@@ -106,12 +106,47 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.queryByRole("button", { name: "消息操作" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("message-row")).not.toBeInTheDocument();
     expect(screen.queryByTestId("text-message-bubble")).not.toBeInTheDocument();
-    expect(screen.getByText("余圆圆")).toHaveClass("text-sm", "text-muted-foreground");
+    expect(screen.getByText("余圆圆")).toHaveClass("text-[13px]", "text-muted-foreground/80");
     expect(screen.getByText("3/9 10:30")).toHaveClass("text-xs", "text-muted-foreground/70");
     expect(screen.getByText("2025/12/31 09:08")).toHaveClass("text-xs", "text-muted-foreground/70");
     expect(screen.queryByText("10:30:45")).not.toBeInTheDocument();
     expect(compactText).toHaveClass("w-full", "max-w-full", "min-w-0", "break-words", "text-sm");
     expect(compactText).not.toHaveClass("w-max", "max-w-none", "whitespace-nowrap");
+  });
+
+  it("keeps long non-breaking history text inside the panel width", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createTextMessage(
+              "message-long",
+              "Welcome\u00a0to\u00a0BoomerHome\u00a0pet\u00a0service\u00a0platform!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const historyText = screen.getByTestId("history-message-text");
+
+    expect(historyText.textContent).not.toContain("\u00a0");
+    expect(historyText).toHaveClass("w-full", "max-w-full", "min-w-0", "[overflow-wrap:anywhere]");
+    expect(historyText).not.toHaveClass("w-max", "max-w-none", "whitespace-nowrap");
   });
 
   it("fills the sidebar slot without overlay shadow or fixed width", () => {

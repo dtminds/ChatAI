@@ -8,7 +8,11 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -91,7 +95,13 @@ export function MessageHistorySidePanel({
             {activeConversation ? activeConversation.customerName : "当前会话"}
           </p>
         </div>
-        <Button aria-label="关闭历史记录" className="size-8 p-0" onClick={onClose} size="icon" variant="ghost">
+        <Button
+          aria-label="关闭历史记录"
+          className="size-8 p-0"
+          onClick={onClose}
+          size="icon"
+          variant="ghost"
+        >
           <HugeiconsIcon icon={Cancel01Icon} size={18} strokeWidth={1.8} />
         </Button>
       </div>
@@ -104,19 +114,34 @@ export function MessageHistorySidePanel({
         >
           <div className="border-b border-divider px-4 py-3">
             <TabsList className="h-auto w-full justify-start gap-8 overflow-x-auto rounded-none border-b border-divider bg-transparent p-0">
-              <TabsTrigger className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="all">
+              <TabsTrigger
+                className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                value="all"
+              >
                 全部
               </TabsTrigger>
-              <TabsTrigger className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="file">
+              <TabsTrigger
+                className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                value="file"
+              >
                 文件
               </TabsTrigger>
-              <TabsTrigger className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="media">
+              <TabsTrigger
+                className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                value="media"
+              >
                 图片与视频
               </TabsTrigger>
-              <TabsTrigger className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="h5">
+              <TabsTrigger
+                className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                value="h5"
+              >
                 链接
               </TabsTrigger>
-              <TabsTrigger className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="mini-program">
+              <TabsTrigger
+                className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                value="mini-program"
+              >
                 小程序
               </TabsTrigger>
             </TabsList>
@@ -129,8 +154,16 @@ export function MessageHistorySidePanel({
                 onChange={onSetSenderId}
                 value={activeHistoryFilters.senderId}
               />
-              <DateFilter value={activeHistoryFilters.day} onChange={onSetDay} />
-              <Button className="ml-auto h-8 px-3 text-[12px]" onClick={onRefresh} size="sm" variant="ghost">
+              <DateFilter
+                value={activeHistoryFilters.day}
+                onChange={onSetDay}
+              />
+              <Button
+                className="ml-auto h-8 px-3 text-[12px]"
+                onClick={onRefresh}
+                size="sm"
+                variant="ghost"
+              >
                 刷新
               </Button>
             </div>
@@ -145,7 +178,9 @@ export function MessageHistorySidePanel({
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
-                <HistoryCompactMessageList messages={activeHistory?.messages ?? []} />
+                <HistoryCompactMessageList
+                  messages={activeHistory?.messages ?? []}
+                />
               </HistoryMessageViewport>
             </TabsContent>
             <TabsContent className="mt-0 h-full min-h-0" value="file">
@@ -225,7 +260,8 @@ function HistoryMessageViewport({
     previousScrollHeight: number;
     previousScrollTop: number;
   } | null>(null);
-  const messageIdsKey = activeHistory?.messages.map((message) => message.id).join("\u0000") ?? "";
+  const messageIdsKey =
+    activeHistory?.messages.map((message) => message.id).join("\u0000") ?? "";
   const handleLoadMorePrev = () => {
     const viewport = viewportRef.current;
 
@@ -266,16 +302,31 @@ function HistoryMessageViewport({
           </div>
         ) : null}
         <div className="flex items-center justify-between gap-2">
-          <Button className="h-8 px-3 text-[12px]" disabled={!activeHistory?.hasPrev || activeHistoryLoading} onClick={handleLoadMorePrev} variant="outline">
+          <Button
+            className="h-8 px-3 text-[12px]"
+            disabled={!activeHistory?.hasPrev || activeHistoryLoading}
+            onClick={handleLoadMorePrev}
+            variant="outline"
+          >
             更早
           </Button>
-          <Button className="h-8 px-3 text-[12px]" disabled={!activeHistory?.hasNext || activeHistoryLoading} onClick={onLoadMoreNext} variant="outline">
+          <Button
+            className="h-8 px-3 text-[12px]"
+            disabled={!activeHistory?.hasNext || activeHistoryLoading}
+            onClick={onLoadMoreNext}
+            variant="outline"
+          >
             更新
           </Button>
         </div>
         {activeHistoryLoading ? (
           <div className="flex min-h-[140px] items-center justify-center text-sm text-muted-foreground">
-            <HugeiconsIcon className="animate-spin" icon={Loading03Icon} size={18} strokeWidth={1.8} />
+            <HugeiconsIcon
+              className="animate-spin"
+              icon={Loading03Icon}
+              size={18}
+              strokeWidth={1.8}
+            />
           </div>
         ) : null}
         <div>{children}</div>
@@ -297,7 +348,7 @@ function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
           key={message.clientMessageId ?? message.optNo ?? message.id}
         >
           <div className="flex w-full max-w-full min-w-0 items-baseline gap-2">
-            <span className="min-w-0 truncate text-sm font-medium leading-5 text-muted-foreground">
+            <span className="min-w-0 truncate text-[13px] font-medium leading-5 text-muted-foreground/80">
               {getHistoryMessageAuthor(message)}
             </span>
             <span className="shrink-0 text-xs leading-5 text-muted-foreground/70">
@@ -308,7 +359,9 @@ function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
         </div>
       ))}
       {chatMessages.length === 0 ? (
-        <div className="px-3 py-10 text-center text-sm text-muted-foreground">暂无历史记录</div>
+        <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+          暂无历史记录
+        </div>
       ) : null}
     </div>
   );
@@ -317,15 +370,21 @@ function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
 function HistoryCompactMessageContent({ message }: { message: ChatMessage }) {
   if (message.content.type === "text") {
     return (
-      <p className="w-full max-w-full min-w-0 whitespace-pre-wrap break-words text-sm font-medium leading-6 text-foreground">
-        {message.content.text}
+      <p
+        className="w-full max-w-full min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm font-medium leading-6 text-foreground"
+        data-testid="history-message-text"
+      >
+        {normalizeHistoryText(message.content.text)}
       </p>
     );
   }
 
   return (
     <div className="w-full max-w-full min-w-0">
-      <MessageContentRenderer isAgent={message.role === "agent"} message={message} />
+      <MessageContentRenderer
+        isAgent={message.role === "agent"}
+        message={message}
+      />
     </div>
   );
 }
@@ -336,18 +395,26 @@ function HistoryResourceList({ messages }: { messages: Message[] }) {
   return (
     <div className="space-y-3">
       {chatMessages.map((message) => (
-        <div className="rounded-[8px] border border-border bg-surface px-3 py-2 text-sm text-foreground" key={message.id}>
+        <div
+          className="rounded-[8px] border border-border bg-surface px-3 py-2 text-sm text-foreground"
+          key={message.id}
+        >
           <div className="flex items-center justify-between gap-3 text-[12px] text-muted-foreground">
             <span className="truncate">{message.author}</span>
             <span className="shrink-0">{message.sentAt}</span>
           </div>
           <div className="mt-2">
-            <MessageContentRenderer isAgent={message.role === "agent"} message={message} />
+            <MessageContentRenderer
+              isAgent={message.role === "agent"}
+              message={message}
+            />
           </div>
         </div>
       ))}
       {chatMessages.length === 0 ? (
-        <div className="px-3 py-10 text-center text-sm text-muted-foreground">暂无历史记录</div>
+        <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+          暂无历史记录
+        </div>
       ) : null}
     </div>
   );
@@ -364,7 +431,9 @@ function HistoryMediaWall({ messages }: { messages: Message[] }) {
         ))}
       </div>
       {mediaMessages.length === 0 ? (
-        <div className="px-3 py-10 text-center text-sm text-muted-foreground">暂无历史记录</div>
+        <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+          暂无历史记录
+        </div>
       ) : null}
     </div>
   );
@@ -376,11 +445,15 @@ type MediaHistoryMessage = ChatMessage & {
 
 function HistoryMediaTile({ message }: { message: MediaHistoryMessage }) {
   const content = message.content;
-  const imageUrl = content.type === "image"
-    ? content.imageUrl.trim()
-    : content.coverImageUrl.trim();
-  const optimizedImageUrl = imageUrl ? getOptimizedMessageImageUrl(imageUrl) : "";
-  const fallbackText = content.type === "image" ? "图片不可用" : "视频封面不可用";
+  const imageUrl =
+    content.type === "image"
+      ? content.imageUrl.trim()
+      : content.coverImageUrl.trim();
+  const optimizedImageUrl = imageUrl
+    ? getOptimizedMessageImageUrl(imageUrl)
+    : "";
+  const fallbackText =
+    content.type === "image" ? "图片不可用" : "视频封面不可用";
   const tileContent = optimizedImageUrl ? (
     <LoadableMessageImage
       alt={content.alt}
@@ -413,7 +486,9 @@ function HistoryMediaTile({ message }: { message: MediaHistoryMessage }) {
         <button
           aria-label={`播放视频：${content.alt}`}
           className="block h-full w-full p-0 text-left outline-none focus-visible:ring-4 focus-visible:ring-ring/25"
-          onClick={() => window.open(content.videoUrl, "_blank", "noopener,noreferrer")}
+          onClick={() =>
+            window.open(content.videoUrl, "_blank", "noopener,noreferrer")
+          }
           type="button"
         >
           {tileContent}
@@ -423,12 +498,19 @@ function HistoryMediaTile({ message }: { message: MediaHistoryMessage }) {
       )}
       {content.type === "video" ? (
         <span className="absolute left-1/2 top-1/2 z-1 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-black/25 text-white shadow-sm backdrop-blur-[1px]">
-          <HugeiconsIcon className="translate-x-[1px]" icon={PlayIcon} size={21} strokeWidth={2.1} />
+          <HugeiconsIcon
+            className="translate-x-[1px]"
+            icon={PlayIcon}
+            size={21}
+            strokeWidth={2.1}
+          />
         </span>
       ) : null}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-1 bg-gradient-to-t from-black/65 via-black/25 to-transparent px-2 pb-2 pt-7 text-white">
         <div className="truncate text-[12px] leading-4">{message.author}</div>
-        <div className="truncate text-[11px] leading-4 text-white/78">{message.sentAt}</div>
+        <div className="truncate text-[11px] leading-4 text-white/78">
+          {message.sentAt}
+        </div>
       </div>
     </div>
   );
@@ -438,9 +520,7 @@ function isChatMessage(message: Message): message is ChatMessage {
   return message.role !== "system";
 }
 
-function isMediaMessage(
-  message: Message,
-): message is MediaHistoryMessage {
+function isMediaMessage(message: Message): message is MediaHistoryMessage {
   return (
     message.role !== "system" &&
     (message.content.type === "image" || message.content.type === "video")
@@ -449,6 +529,10 @@ function isMediaMessage(
 
 function getHistoryMessageAuthor(message: ChatMessage) {
   return message.author || message.senderDisplayName || message.sender.name;
+}
+
+function normalizeHistoryText(value: string) {
+  return value.replace(/\u00a0/g, " ");
 }
 
 function formatHistoryMessageTime(value: string) {
@@ -503,16 +587,29 @@ function DateFilter({
       <PopoverTrigger asChild>
         <Button
           aria-label="日期"
-          className={cn("h-9 gap-2 rounded-[6px] px-3 text-sm", value && "text-foreground")}
+          className={cn(
+            "h-9 gap-2 rounded-[6px] px-3 text-sm",
+            value && "text-foreground",
+          )}
           variant="outline"
         >
           <span>{value ?? "日期"}</span>
-          <HugeiconsIcon aria-hidden="true" icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={ArrowDown01Icon}
+            size={14}
+            strokeWidth={1.8}
+          />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
         <div className="mb-2 flex items-center justify-between gap-2 px-2">
-          <Button className="h-7 px-2 text-[12px]" onClick={() => onChange(undefined)} size="sm" variant="ghost">
+          <Button
+            className="h-7 px-2 text-[12px]"
+            onClick={() => onChange(undefined)}
+            size="sm"
+            variant="ghost"
+          >
             清空
           </Button>
         </div>
@@ -539,28 +636,48 @@ function SenderFilter({
   onChange: (senderId?: string) => void;
   value?: string;
 }) {
-  const options = buildSenderOptions(activeConversation, groupMembers, customerName);
+  const options = buildSenderOptions(
+    activeConversation,
+    groupMembers,
+    customerName,
+  );
 
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button
-          className={cn("h-9 gap-2 rounded-[6px] px-3 text-sm", value && "text-foreground")}
+          className={cn(
+            "h-9 gap-2 rounded-[6px] px-3 text-sm",
+            value && "text-foreground",
+          )}
           variant="outline"
         >
           <span>发送人</span>
-          <HugeiconsIcon aria-hidden="true" icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={ArrowDown01Icon}
+            size={14}
+            strokeWidth={1.8}
+          />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-2">
-        <RadioGroup value={value ?? "__all__"} onValueChange={(nextValue) => onChange(nextValue === "__all__" ? undefined : nextValue)}>
+        <RadioGroup
+          value={value ?? "__all__"}
+          onValueChange={(nextValue) =>
+            onChange(nextValue === "__all__" ? undefined : nextValue)
+          }
+        >
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-sm">
               <RadioGroupItem value="__all__" />
               全部
             </label>
             {options.map((option) => (
-              <label className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-sm" key={option.id}>
+              <label
+                className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-sm"
+                key={option.id}
+              >
                 <RadioGroupItem value={option.id} />
                 <span className="truncate">{option.label}</span>
               </label>

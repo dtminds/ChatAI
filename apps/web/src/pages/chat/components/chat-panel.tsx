@@ -3,6 +3,7 @@ import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { ChatComposer } from "@/pages/chat/components/chat-composer";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
@@ -244,7 +245,13 @@ export function ChatPanel({
           data-testid="customer-side-panel-shell"
           style={{ width: `${customerPanelWidth + 4}px` }}
         >
-          <div className={historyPanel?.isOpen ? "invisible pointer-events-none" : "visible"}>
+          <div
+            className={cn(
+              "flex h-full min-h-0 shrink-0",
+              historyPanel?.isOpen ? "invisible pointer-events-none" : "visible",
+            )}
+            data-testid="customer-side-panel-layout"
+          >
             <CustomerSidePanel
               accountName={accountName}
               conversationMode={activeConversation?.mode}

@@ -1,11 +1,11 @@
 import { createRef } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import type { Conversation } from "@/pages/chat/chat-types";
 
 describe("ChatPanel", () => {
-  it("keeps the customer side panel in the main layout width", () => {
+  it("keeps the customer side panel shell in the main layout width", () => {
     render(
       <ChatPanel
         activeConversation={createConversation()}
@@ -61,6 +61,78 @@ describe("ChatPanel", () => {
     expect(
       screen.getByRole("button", { name: "调整客户信息栏宽度" }),
     ).toBeInTheDocument();
+  });
+
+  it("preserves the customer side panel flex layout while history is closed", () => {
+    render(
+      <ChatPanel
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[
+          {
+            bindTypes: ["1", "2"],
+            id: "assets",
+            name: "素材中心",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/assets",
+          },
+        ]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    const shell = screen.getByTestId("customer-side-panel-shell");
+    const preservedLayout = within(shell).getByTestId("customer-side-panel-layout");
+
+    expect(preservedLayout).toHaveClass("flex", "h-full", "min-h-0", "shrink-0");
+    expect(
+      within(preservedLayout).getByRole("button", { name: "调整客户信息栏宽度" }),
+    ).toBeInTheDocument();
+    expect(within(preservedLayout).getByRole("complementary", { name: "客户信息栏" })).toHaveStyle({
+      width: "375px",
+    });
+    expect(screen.getByTitle("素材中心扩展页").parentElement).toHaveClass("h-full");
   });
 });
 

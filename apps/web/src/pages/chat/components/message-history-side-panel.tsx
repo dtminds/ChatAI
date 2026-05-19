@@ -23,6 +23,7 @@ import {
   MessageContentRenderer,
   WechatEmojiText,
 } from "@/pages/chat/components/message";
+import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 import type {
   ChatMessage,
@@ -374,10 +375,9 @@ function HistoryCompactMessageContent({ message }: { message: ChatMessage }) {
     return (
       <div className="flex w-full max-w-full min-w-0 flex-col items-start gap-2">
         <HistoryCompactText text={message.content.text} />
-        <HistoryQuotePreview
-          fallbackText={message.content.quotedMessage?.fallbackText}
-          senderName={message.content.quotedMessage?.senderName}
-          text={message.content.quotedMessage?.text}
+        <QuoteMessagePreview
+          quoteMsgId={message.content.quoteMsgId}
+          quotedMessage={message.content.quotedMessage}
         />
       </div>
     );
@@ -400,31 +400,6 @@ function HistoryCompactText({ text }: { text: string }) {
       data-testid="history-message-text"
     >
       <WechatEmojiText text={normalizeHistoryText(text)} />
-    </div>
-  );
-}
-
-function HistoryQuotePreview({
-  fallbackText,
-  senderName,
-  text,
-}: {
-  fallbackText?: string;
-  senderName?: string;
-  text?: string;
-}) {
-  const previewText = text || fallbackText || "引用消息不可用";
-  const prefixedText = senderName ? `${senderName}：${previewText}` : previewText;
-
-  return (
-    <div
-      className="w-full max-w-full min-w-0 border-l-2 border-divider py-1 pl-3 text-xs leading-5 text-muted-foreground/80"
-      data-testid="history-quote-preview"
-    >
-      <WechatEmojiText
-        className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
-        text={normalizeHistoryText(prefixedText)}
-      />
     </div>
   );
 }
@@ -628,7 +603,7 @@ function DateFilter({
         <Button
           aria-label="日期"
           className={cn(
-            "h-8 gap-1.5 rounded-[6px] px-2.5 text-[12px]",
+            "h-8 gap-1.5 rounded-[6px] px-2.5 py-0 text-[12px]",
             value && "text-foreground",
           )}
           variant="outline"
@@ -687,7 +662,7 @@ function SenderFilter({
       <PopoverTrigger asChild>
         <Button
           className={cn(
-            "h-8 gap-1.5 rounded-[6px] px-2.5 text-[12px]",
+            "h-8 gap-1.5 rounded-[6px] px-2.5 py-0 text-[12px]",
             value && "text-foreground",
           )}
           variant="outline"

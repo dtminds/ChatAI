@@ -196,7 +196,12 @@ describe("MessageHistorySidePanel", () => {
           messages: [
             createQuoteMessage({
               author: "范双飞test",
-              text: "我是客服",
+              quotedMessage: {
+                contentType: "file",
+                senderName: "余圆圆",
+                title: "报价单.pdf",
+              },
+              text: "请看附件",
             }),
           ],
         }}
@@ -216,16 +221,19 @@ describe("MessageHistorySidePanel", () => {
 
     const historyItem = screen.getByTestId("history-message-item");
     const quoteText = screen.getByTestId("history-message-text");
-    const quotePreview = screen.getByTestId("history-quote-preview");
+    const quotePreview = screen.getByTestId("quote-generic-preview");
+    const quoteIcon = screen.getByTestId("quote-file-attachment-icon");
 
     expect(historyItem).toHaveClass("items-start");
     expect(historyItem).not.toHaveClass("items-end", "justify-end");
-    expect(quoteText).toHaveTextContent("我是客服");
+    expect(quoteText).toHaveTextContent("请看附件");
     expect(quoteText).not.toHaveClass("rounded-", "bg-primary", "bg-muted");
     expect(screen.queryByTestId("text-message-bubble")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("quote-text-preview")).not.toBeInTheDocument();
-    expect(quotePreview).toHaveClass("w-full", "max-w-full", "border-l-2", "text-xs");
-    expect(quotePreview).toHaveTextContent("引用消息不可用");
+    expect(quotePreview).toHaveClass("border-l-2", "text-[12px]");
+    expect(quotePreview).toHaveTextContent("余圆圆");
+    expect(quotePreview).toHaveTextContent("报价单.pdf");
+    expect(screen.queryByText("引用消息不可用")).not.toBeInTheDocument();
+    expect(quoteIcon).toHaveAttribute("data-icon-name", "file-empty-01");
   });
 
   it("fills the sidebar slot without overlay shadow or fixed width", () => {
@@ -383,14 +391,17 @@ function createTextMessage(
 function createQuoteMessage({
   author,
   text,
+  quotedMessage,
 }: {
   author: string;
+  quotedMessage?: NonNullable<ChatMessage & { content: { type: "quote" } }>["content"]["quotedMessage"];
   text: string;
 }): ChatMessage {
   return {
     author,
     content: {
       quoteMsgId: "quote-1",
+      quotedMessage,
       text,
       type: "quote",
     },

@@ -8,6 +8,33 @@
 
 **Tech Stack:** Vitest, Testing Library, jsdom, React, Zustand, Vite test config.
 
+## 当前 PR 交付
+
+本分支已经完成并验证的内容：
+
+- 抽出 `apps/web/test/pages/chat/workbench-test-utils.tsx` 作为 chat 工作台测试底座
+- 将整页测试里的高频重路径拆到独立文件：
+  - `chat-workbench-composer.int.test.tsx`
+  - `chat-workbench-downloads.int.test.tsx`
+  - `chat-workbench-sidebar.int.test.tsx`
+  - `chat-workbench-session.int.test.tsx`
+- 保留 `chat-workbench-page.test.tsx` 作为轻量页面 smoke / 主流程补充
+- 新增 `test:unit` / `test:integration`，并让 CI 分开跑轻量单测和重型页面流
+- 为 integration 组单独放宽 Vitest 超时，避免 StrictMode / 下载轮询类 case 误伤
+
+已跑验证：
+
+- `pnpm --filter @chatai/web test:unit`
+- `pnpm --filter @chatai/web test:integration`
+- `pnpm --filter @chatai/web build`
+- `git diff --check`
+
+当前分支不包含的后续项：
+
+- 把更多 page 级行为继续下沉到 store / 组件测试
+- 进一步收缩 `chat-workbench-page.test.tsx`
+- 按需继续拆分 `message-feed`、`message-text` 等更细层的行为测试
+
 ---
 
 ### Task 1: 提取 chat 工作台测试公共底座

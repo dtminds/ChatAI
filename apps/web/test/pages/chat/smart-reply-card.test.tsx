@@ -85,6 +85,95 @@ describe("SmartReplyCard", () => {
     expect(screen.getByRole("menuitem", { name: "重新生成" })).toBeInTheDocument();
   });
 
+  it("opens edit dialog from message anchor", async () => {
+    const user = userEvent.setup();
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌，太好用了",
+          versionCount: 1,
+          versionIndex: 0,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+
+    expect(screen.getByTestId("smart-reply-edit-dialog")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveTextContent("编辑");
+    expect(screen.getByRole("button", { name: "违规词检测" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加到FAQ" })).toBeInTheDocument();
+    expect(screen.getByText("推荐附件：请按需勾选需要发送的附件 (1/4)")).toBeInTheDocument();
+  });
+
+  it("shows success banner when no banned words are found in edit dialog", async () => {
+    const user = userEvent.setup();
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌",
+          versionCount: 1,
+          versionIndex: 0,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.click(screen.getByRole("button", { name: "违规词检测" }));
+
+    const successBanner = await screen.findByTestId(
+      "smart-reply-violation-check-success",
+    );
+    expect(successBanner).toHaveTextContent("做的太棒了，暂未检测到错误处");
+    expect(
+      screen.queryByTestId("smart-reply-violation-result"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows violation result after checking banned words in edit dialog", async () => {
+    const user = userEvent.setup();
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "这款产品太好用了",
+          versionCount: 1,
+          versionIndex: 0,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.click(screen.getByRole("button", { name: "违规词检测" }));
+
+    const violationPanel = await screen.findByTestId("smart-reply-violation-result");
+    expect(violationPanel).toHaveTextContent("广告法_通用禁用极限词");
+    expect(violationPanel).toHaveTextContent("太好用了");
+  });
+
   it("renders smart reply card inline below the message anchor", () => {
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },

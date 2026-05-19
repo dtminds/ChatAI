@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import { SmartReplyEditDialog } from "@/pages/chat/components/smart-reply-edit-dialog";
 
 const SMART_REPLY_TRIGGER_ICON =
   "https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/customer/容器@2x (1).png!tiny.webp";
@@ -32,11 +33,9 @@ export type SmartReplyCardProps = {
   assistantAvatarUrl?: string;
   assistantName: string;
   content: string;
-  isEditing?: boolean;
   isThinking?: boolean;
   isProcessing?: boolean;
   isKnowledgeHit?: boolean;
-  onContentChange?: (content: string) => void;
   onEdit?: () => void;
   onMakeShorter?: () => void;
   onRegenerate?: () => void;
@@ -49,11 +48,9 @@ export function SmartReplyCard({
   assistantAvatarUrl,
   assistantName,
   content,
-  isEditing = false, 
   isThinking = false,
   isProcessing = false,
   isKnowledgeHit = true,
-  onContentChange,
   onEdit,
   onMakeShorter,
   onRegenerate,
@@ -103,14 +100,12 @@ export function SmartReplyCard({
         <>
           <SmartReplyContentBody
             content={content}
-            isEditing={isEditing}
             isThinking={isThinking}
             isProcessing={isProcessing}
             isKnowledgeHit={isKnowledgeHit}
-            onContentChange={onContentChange}
           />
           {
-            isKnowledgeHit && !isEditing && !isThinking && !isProcessing ? 
+            isKnowledgeHit && !isThinking && !isProcessing ? 
             <footer className="flex items-center justify-between px-[16px] pb-[12px]">
               <SmartReplyToolbar
                 onMakeShorter={onMakeShorter}
@@ -149,17 +144,15 @@ export function SmartReplyMessageAnchor({
   suggestion,
 }: SmartReplyMessageAnchorProps) {
   const [dismissed, setDismissed] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [draftContent, setDraftContent] = useState("");
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   const resolvedSuggestion = suggestion ?? createDemoSuggestion(message);
-  const displayContent = isEditing ? draftContent : resolvedSuggestion.content;
+  const displayContent = resolvedSuggestion.content;
   const isThinking = resolvedSuggestion.status === "thinking";
 
   const handleDismiss = () => {
     setDismissed(true);
-    setIsEditing(false);
-    setDraftContent("");
+    setIsEditDialogOpen(false);
   };
 
   if (dismissed) {
@@ -167,42 +160,52 @@ export function SmartReplyMessageAnchor({
   }
 
   return (
-    <SmartReplyCard
-      assistantAvatarUrl={resolvedSuggestion.assistantAvatarUrl}
-      assistantName={resolvedSuggestion.assistantName}
-      content={displayContent}
-      isEditing={isEditing}
-      isThinking={isThinking}
-      onContentChange={setDraftContent}
-      onEdit={() => {
-        setDraftContent(displayContent);
-        setIsEditing(true);
-      }}
-      onMakeShorter={
-        onMakeShorter
-          ? () => {
-              onMakeShorter(message);
-            }
-          : undefined
-      }
-      onRegenerate={
-        onRegenerate
-          ? () => {
-              onRegenerate(message);
-            }
-          : undefined
-      }
-      onSend={
-        onSend
-          ? () => {
-              onSend(message, displayContent.trim());
-              handleDismiss();
-            }
-          : undefined
-      }
-      versionCount={resolvedSuggestion.versionCount}
-      versionIndex={resolvedSuggestion.versionIndex}
-    />
+    <>
+      <SmartReplyCard
+        assistantAvatarUrl={resolvedSuggestion.assistantAvatarUrl}
+        assistantName={resolvedSuggestion.assistantName}
+        content={displayContent}
+        isThinking={isThinking}
+        onEdit={() => setIsEditDialogOpen(true)}
+        onMakeShorter={
+          onMakeShorter
+            ? () => {
+                onMakeShorter(message);
+              }
+            : undefined
+        }
+        onRegenerate={
+          onRegenerate
+            ? () => {
+                onRegenerate(message);
+              }
+            : undefined
+        }
+        onSend={
+          onSend
+            ? () => {
+                onSend(message, displayContent.trim());
+                handleDismiss();
+              }
+            : undefined
+        }
+        versionCount={resolvedSuggestion.versionCount}
+        versionIndex={resolvedSuggestion.versionIndex}
+      />
+      <SmartReplyEditDialog
+        initialContent={displayContent}
+        onOpenChange={setIsEditDialogOpen}
+        onSend={
+          onSend
+            ? ({ content }) => {
+                onSend(message, content);
+                handleDismiss();
+              }
+            : undefined
+        }
+        open={isEditDialogOpen}
+      />
+    </>
   );
 }
 
@@ -236,58 +239,64 @@ function SmartReplyAssistantAvatar({
 
 function SmartReplyContentBody({
   content,
-  isEditing,
   isThinking,
   isProcessing,
   isKnowledgeHit,
-  onContentChange,
 }: {
   content: string;
-  isEditing: boolean;
   isThinking: boolean;
   isProcessing: boolean;
   isKnowledgeHit: boolean;
-  onContentChange?: (content: string) => void;
 }) {
   return (
     <div className="px-[16px] py-[12px]">
-      {isEditing || isProcessing || !isKnowledgeHit ? (
-        <SmartReplyReadonlyContent content={content} isThinking={isThinking} isProcessing={isProcessing} isKnowledgeHit={!isKnowledgeHit} />
-      ) : (
-        <textarea
-          className="min-h-[54px] w-full max-h-[110px] resize-none rounded-[6px] bg-surface-muted px-[12px] py-[5px] text-[13px] leading-[22px] text-[#101419] outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
-          onChange={(event) => onContentChange(event.target.value)}
-          value={content}
+      {isThinking || isProcessing || !isKnowledgeHit ? (
+        <SmartReplyReadonlyContent
+          isKnowledgeHit={isKnowledgeHit}
+          isProcessing={isProcessing}
+          isThinking={isThinking}
         />
-    )}
+      ) : (
+        <p className="max-h-[120px] overflow-y-auto whitespace-pre-wrap text-[13px] leading-[22px] text-[#101419] bg-[#F6F6F6] px-[12px] py-[5px] rounded-[6px]">
+          {content}
+        </p>
+      )}
     </div>
   );
 }
 
 function SmartReplyReadonlyContent({
-  content,
   isThinking,
   isProcessing,
   isKnowledgeHit,
 }: {
-  content: string;
   isThinking: boolean;
   isProcessing: boolean;
   isKnowledgeHit: boolean;
 }) {
   return (
     <div className="rounded-[10px]">
-      {isThinking || isProcessing ? 
-      <div className="flex items-center gap-1">
-        <HugeiconsIcon icon={Loading03Icon} size={14} strokeWidth={2} color="#666666"/>
-        <p className="text-[#3D3D3D] text-[13px]" role="status">
-          {isThinking ? "AI正在生成话术..." : isProcessing ? "正在处理消息..." : "🤔未命中知识集，暂无推荐话术"}
-        </p>
-      </div> : null}
-      {isKnowledgeHit ? null : <div className="flex items-center">
-        <p className="text-[#3D3D3D] text-[13px]">🤔未命中知识集，暂无推荐话术</p>
-        <span className="text-[#267FF0] text-[13px] ml-[10px] cursor-pointer">重试</span>
-      </div>}
+      {isThinking || isProcessing ? (
+        <div className="flex items-center gap-1">
+          <HugeiconsIcon
+            color="#666666"
+            icon={Loading03Icon}
+            size={14}
+            strokeWidth={2}
+          />
+          <p className="text-[13px] text-[#3D3D3D]" role="status">
+            {isThinking ? "AI正在生成话术..." : "正在处理消息..."}
+          </p>
+        </div>
+      ) : null}
+      {!isKnowledgeHit ? (
+        <div className="flex items-center">
+          <p className="text-[13px] text-[#3D3D3D]">🤔未命中知识集，暂无推荐话术</p>
+          <span className="ml-[10px] cursor-pointer text-[13px] text-[#267FF0]">
+            重试
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -383,7 +392,7 @@ function createDemoSuggestion(message: ChatMessage): SmartReplySuggestion {
     content: [
       "111",
       preview ? `参考客户消息：${preview}` : "",
-      "建议从肤质与当前季节切入，先确认是否敏感肌，再推荐温和修护类产品",
+      "建议从肤质与当前季节切入，先确认是否敏感肌，再推荐温和修护类产品 太好用了",
     ]
       .filter(Boolean)
       .join("\n\n"),

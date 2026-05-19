@@ -1,8 +1,17 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
+import {
+  installChatWorkbenchTestEnvironment,
+  resetChatWorkbenchTestState,
+} from "./workbench-test-utils";
 
 describe("workbench scrollbar policy", () => {
+  beforeEach(() => {
+    resetChatWorkbenchTestState();
+    installChatWorkbenchTestEnvironment();
+  });
+
   it("keeps the conversation list on the default behavior and shows the message scrollbar only while scrolling", async () => {
     render(<ChatWorkbenchPage />);
 

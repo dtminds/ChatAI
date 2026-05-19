@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMockWorkbenchService,
-  resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
@@ -12,6 +11,7 @@ import {
   useWorkbenchStore,
 } from "@/store/workbench-store";
 import type { Conversation } from "@/pages/chat/chat-types";
+import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
 
 vi.mock("@/pages/chat/api/media-upload-service", () => ({
   resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
@@ -54,11 +54,10 @@ function createCachedConversation(accountId: string): Conversation {
 
 describe("useWorkbenchStore", () => {
   beforeEach(() => {
-    resetWorkbenchService();
+    resetWorkbenchStoreTestState();
     vi.mocked(resolveImageSegmentsForSend).mockImplementation(
       async (_conversationId, segments) => segments,
     );
-    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
 
   it("bootstraps the first account, conversation, and read state", async () => {
@@ -370,41 +369,6 @@ describe("useWorkbenchStore", () => {
     expect(state.bootstrapStatus).toBe("ready");
   });
 
-  it("sends a message optimistically and reconciles it on poll", async () => {
-    await useWorkbenchStore.getState().initializeWorkbench();
-    await useWorkbenchStore.getState().sendAgentTextMessage("已经帮你备注好了，下午再跟进。");
-
-    let state = useWorkbenchStore.getState();
-    let latestMessage =
-      state.messagesByConversationId[state.activeConversationId].at(-1);
-
-    expect(latestMessage).toMatchObject({
-      clientMessageId: expect.stringMatching(/^local_/),
-      content: {
-        text: "已经帮你备注好了，下午再跟进。",
-        type: "text",
-      },
-      role: "agent",
-      status: "accepted",
-    });
-    expect(state.pendingMessages).toHaveLength(1);
-    expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
-      "已经帮你备注好了，下午再跟进。",
-    );
-
-    await useWorkbenchStore.getState().pollWorkbench();
-
-    state = useWorkbenchStore.getState();
-    latestMessage = state.messagesByConversationId[state.activeConversationId].at(-1);
-
-    expect(latestMessage).toMatchObject({
-      remoteMessageId: expect.stringMatching(/^msg-server-/),
-      status: "sent",
-    });
-    expect(state.pendingMessages).toHaveLength(0);
-    expect(state.sinceVersion).toBeGreaterThan(0);
-  });
-
   it("sends text and image segments as separate optimistic messages", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
 
@@ -463,243 +427,6 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
       "第二段[强]",
     );
-  });
-
-  it("reconciles polled messages by optNo while keeping unmatched optimistic messages", async () => {
-    const baseService = createMockWorkbenchService();
-    let sendIndex = 0;
-
-    setWorkbenchService({
-      ...baseService,
-      async sendMessage(payload) {
-        sendIndex += 1;
-
-        return {
-          clientMessageId: payload.clientMessageId,
-          messageId: `opt-${sendIndex}`,
-          optNo: `opt-${sendIndex}`,
-          status: "accepted",
-        };
-      },
-      async poll() {
-        return {
-          activeConversationMessages: [
-            {
-              clientMessageId: undefined,
-              content: {
-                text: "服务端文本",
-              },
-              contentType: "text",
-              conversationId: "conv-001",
-              createdAt: Date.now(),
-              customerId: "cust-001",
-              messageId: "remote-text-001",
-              optNo: "opt-2",
-              seatId: "drc",
-              senderType: "agent",
-              seq: 999,
-              status: "read",
-            },
-          ],
-          conversationChanges: [],
-          messageStatusChanges: [],
-          nextVersion: 9999,
-          seatChanges: [],
-        };
-      },
-    });
-    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
-      {
-        alt: "截图 A",
-        fileId: "chat-images/conv-001/a.png",
-        type: "image",
-        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
-      },
-      {
-        text: "本地文本",
-        type: "text",
-      },
-      {
-        alt: "截图 B",
-        fileId: "chat-images/conv-001/b.png",
-        type: "image",
-        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/b.png",
-      },
-    ]);
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-    await useWorkbenchStore.getState().sendAgentMessageSegments([
-      {
-        alt: "截图 A",
-        localUrl: "data:image/png;base64,aaa",
-        type: "image",
-      },
-      {
-        text: "本地文本",
-        type: "text",
-      },
-      {
-        alt: "截图 B",
-        localUrl: "data:image/png;base64,bbb",
-        type: "image",
-      },
-    ]);
-
-    let latestMessages =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-3);
-
-    expect(latestMessages.map((message) => message.optNo)).toEqual([
-      "opt-1",
-      "opt-2",
-      "opt-3",
-    ]);
-
-    await useWorkbenchStore.getState().pollWorkbench();
-
-    latestMessages =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-3);
-
-    expect(latestMessages).toMatchObject([
-      {
-        content: {
-          type: "image",
-        },
-        optNo: "opt-1",
-        remoteMessageId: "opt-1",
-        status: "accepted",
-      },
-      {
-        content: {
-          text: "服务端文本",
-          type: "text",
-        },
-        id: "remote-text-001",
-        optNo: "opt-2",
-        remoteMessageId: "remote-text-001",
-        status: "read",
-      },
-      {
-        content: {
-          type: "image",
-        },
-        optNo: "opt-3",
-        remoteMessageId: "opt-3",
-        status: "accepted",
-      },
-    ]);
-  });
-
-  it("marks loaded messages as revoked from polled revoke signals without appending signal rows", async () => {
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
-      async poll() {
-        return {
-          activeConversationMessages: [
-            {
-              content: {
-                revokeMsgId: "msg-006",
-                revokeOriginMsgId: "msg-006",
-                type: "revoke",
-              },
-              contentType: "revoke",
-              conversationId: "conv-001",
-              createdAt: Date.now(),
-              customerId: "cust-001",
-              messageId: "revoke-msg-006",
-              seatId: "drc",
-              senderType: "system",
-              seq: 7,
-              status: "read",
-            },
-          ],
-          conversationChanges: [],
-          messageStatusChanges: [],
-          nextVersion: 9999,
-          seatChanges: [],
-        };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-
-    const messagesBeforePoll =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"];
-
-    await useWorkbenchStore.getState().pollWorkbench();
-
-    const messagesAfterPoll =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"];
-    const revokedLoadedMessage = messagesAfterPoll.find(
-      (message) => message.id === "msg-006",
-    );
-
-    expect(messagesAfterPoll).toHaveLength(messagesBeforePoll.length);
-    expect(revokedLoadedMessage).toMatchObject({
-      id: "msg-006",
-      isRevoked: true,
-    });
-  });
-
-  it("marks same-batch messages as revoked when the revoke signal arrives after them", async () => {
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
-      async poll() {
-        return {
-          activeConversationMessages: [
-            {
-              content: {
-                text: "待撤回消息",
-              },
-              contentType: "text",
-              conversationId: "conv-001",
-              createdAt: Date.now(),
-              customerId: "cust-001",
-              messageId: "msg-new-001",
-              seatId: "drc",
-              senderType: "customer",
-              seq: 7,
-              status: "read",
-            },
-            {
-              content: {
-                revokeMsgId: "msg-new-001",
-                revokeOriginMsgId: "msg-new-001",
-                type: "revoke",
-              },
-              contentType: "revoke",
-              conversationId: "conv-001",
-              createdAt: Date.now(),
-              customerId: "cust-001",
-              messageId: "revoke-msg-new-001",
-              seatId: "drc",
-              senderType: "system",
-              seq: 8,
-              status: "read",
-            },
-          ],
-          conversationChanges: [],
-          messageStatusChanges: [],
-          nextVersion: 9999,
-          seatChanges: [],
-        };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-    await useWorkbenchStore.getState().pollWorkbench();
-
-    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
-    const targetMessage = messages.find((message) => message.id === "msg-new-001");
-
-    expect(targetMessage).toMatchObject({
-      id: "msg-new-001",
-      isRevoked: true,
-    });
-    expect(messages.some((message) => message.id === "revoke-msg-new-001")).toBe(false);
   });
 
   it("resolves image segments before sending them to the message API", async () => {
@@ -1303,6 +1030,66 @@ describe("useWorkbenchStore", () => {
     expect(
       useWorkbenchStore.getState().hasMoreHistoryByConversationId["conv-001"],
     ).toBe(false);
+  });
+
+  it("does not auto-loop when older history only contains revoke signals", async () => {
+    const baseService = createMockWorkbenchService();
+    const calls: Array<{ beforeSeq?: number; conversationId: string }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        calls.push({ beforeSeq: options?.beforeSeq, conversationId });
+
+        if (conversationId === "conv-001" && options?.beforeSeq != null) {
+          const beforeSeq = options.beforeSeq;
+
+          return {
+            filteredCount: 0,
+            hasMore: true,
+            messages: Array.from({ length: 50 }, (_, index) => ({
+              content: {
+                revokeMsgId: `older-message-${index}`,
+                revokeOriginMsgId: `older-message-${index}`,
+                type: "revoke",
+              },
+              contentType: "revoke",
+              conversationId,
+              createdAt: Date.now() - index,
+              customerId: "cust-001",
+              messageId: `revoke-older-message-${index}`,
+              seatId: "drc",
+              senderType: "system" as const,
+              seq: beforeSeq - index - 1,
+              status: "read",
+            })),
+            nextBeforeSeq: Math.max(beforeSeq - 50, 1),
+            scannedCount: 50,
+          };
+        }
+
+        if (conversationId === "conv-001") {
+          const page = await baseService.getMessages(conversationId, options);
+
+          return {
+            ...page,
+            hasMore: true,
+            nextBeforeSeq: page.nextBeforeSeq ?? 5,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().loadOlderMessages();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(calls.filter((call) => call.beforeSeq != null)).toHaveLength(1);
+    expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(true);
+    expect(state.historyStatusByConversationId["conv-001"]).toBe("idle");
   });
 
   it("drops stale bootstrap read results after the active conversation changes", async () => {

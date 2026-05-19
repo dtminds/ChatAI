@@ -31,7 +31,11 @@ describe("MessageHistorySidePanel", () => {
     const tabs = screen.getByRole("tablist");
     const activeTab = screen.getByRole("tab", { name: "全部" });
 
-    expect(tabs).toHaveClass("w-full", "justify-start", "border-b", "border-divider");
+    expect(screen.getByRole("complementary", { name: "聊天记录" })).toBeInTheDocument();
+    expect(screen.getByText("聊天记录")).toHaveClass("text-sm");
+    expect(screen.queryByText("测试客户")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "关闭聊天记录" })).toBeInTheDocument();
+    expect(tabs).toHaveClass("w-full", "justify-start", "border-b", "border-divider", "px-4");
     expect(tabs).not.toHaveClass("rounded-2xl", "bg-secondary/90", "grid");
     expect(activeTab).toHaveClass("border-b-2", "text-sm");
     expect(activeTab).not.toHaveClass("text-base", "text-lg");
@@ -61,8 +65,8 @@ describe("MessageHistorySidePanel", () => {
     );
 
     expect(screen.queryByPlaceholderText("搜索聊天记录")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "发送人" })).toHaveClass("text-sm");
-    expect(screen.getByRole("button", { name: "日期" })).toHaveClass("text-sm");
+    expect(screen.getByRole("button", { name: "发送人" })).toHaveClass("h-8", "text-[12px]");
+    expect(screen.getByRole("button", { name: "日期" })).toHaveClass("h-8", "text-[12px]");
   });
 
   it("renders all-scope messages in a compact linear history layout", () => {
@@ -247,7 +251,7 @@ describe("MessageHistorySidePanel", () => {
       />,
     );
 
-    const panel = screen.getByRole("complementary", { name: "历史记录" });
+    const panel = screen.getByRole("complementary", { name: "聊天记录" });
 
     expect(panel).toHaveClass("absolute", "inset-0", "w-full", "border-l", "border-divider");
     expect(panel).not.toHaveClass("w-[420px]");

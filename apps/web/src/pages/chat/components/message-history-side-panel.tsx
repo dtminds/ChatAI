@@ -88,18 +88,13 @@ export function MessageHistorySidePanel({
 
   return (
     <aside
-      aria-label="历史记录"
+      aria-label="聊天记录"
       className="absolute inset-0 z-20 flex w-full min-w-0 flex-col border-l border-divider bg-surface"
     >
-      <div className="flex items-center justify-between border-b border-divider px-4 py-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">历史记录</p>
-          <p className="text-xs text-muted-foreground">
-            {activeConversation ? activeConversation.customerName : "当前会话"}
-          </p>
-        </div>
+      <div className="flex items-center justify-between px-4 py-3">
+        <p className="min-w-0 text-sm font-semibold text-foreground">聊天记录</p>
         <Button
-          aria-label="关闭历史记录"
+          aria-label="关闭聊天记录"
           className="size-8 p-0"
           onClick={onClose}
           size="icon"
@@ -115,8 +110,8 @@ export function MessageHistorySidePanel({
           onValueChange={(value) => onSetScope(value as HistoryPanelScope)}
           value={activeHistoryFilters.scope}
         >
-          <div className="border-b border-divider px-4 py-3">
-            <TabsList className="h-auto w-full justify-start gap-8 overflow-x-auto rounded-none border-b border-divider bg-transparent p-0">
+          <div className="pb-3">
+            <TabsList className="h-auto w-full justify-start gap-8 overflow-x-auto rounded-none border-0 border-b border-divider bg-transparent px-4 py-0">
               <TabsTrigger
                 className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                 value="all"
@@ -149,7 +144,7 @@ export function MessageHistorySidePanel({
               </TabsTrigger>
             </TabsList>
 
-            <div className="mt-3 flex items-center gap-2">
+            <div className="mt-2.5 flex items-center gap-1.5 px-4">
               <SenderFilter
                 activeConversation={activeConversation}
                 customerName={customer?.name}
@@ -633,7 +628,7 @@ function DateFilter({
         <Button
           aria-label="日期"
           className={cn(
-            "h-9 gap-2 rounded-[6px] px-3 text-sm",
+            "h-8 gap-1.5 rounded-[6px] px-2.5 text-[12px]",
             value && "text-foreground",
           )}
           variant="outline"
@@ -692,7 +687,7 @@ function SenderFilter({
       <PopoverTrigger asChild>
         <Button
           className={cn(
-            "h-9 gap-2 rounded-[6px] px-3 text-sm",
+            "h-8 gap-1.5 rounded-[6px] px-2.5 text-[12px]",
             value && "text-foreground",
           )}
           variant="outline"

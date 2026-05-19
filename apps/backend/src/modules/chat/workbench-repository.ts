@@ -4,6 +4,8 @@ import {
   type WorkbenchGroupMembersResponse,
   type WorkbenchConversationCursorDto,
   type WorkbenchConversationListResponse,
+  type WorkbenchHistoryMessagePageDto,
+  type WorkbenchHistoryMessageQuery,
   type WorkbenchMessagePageDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
@@ -909,6 +911,13 @@ export class WorkbenchRepository {
     };
   }
 
+  async listHistoryMessages(
+    _conversationId: string,
+    _options: WorkbenchHistoryMessageQuery = {},
+  ): Promise<WorkbenchHistoryMessagePageDto> {
+    return emptyHistoryMessagePage();
+  }
+
   private async getQuotedMessageRows(
     rows: MessageRow[],
     conversation: {
@@ -1286,6 +1295,13 @@ function emptyMessagePage(): WorkbenchMessagePageDto {
   };
 }
 
+function emptyHistoryMessagePage(): WorkbenchHistoryMessagePageDto {
+  return {
+    hasNext: false,
+    hasPrev: false,
+    messages: [],
+  };
+}
 
 function readQuoteContentBase64(rawOriginData: string | null | undefined) {
   if (!rawOriginData) {

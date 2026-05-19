@@ -27,6 +27,22 @@ const ConversationMessagesQuerySchema = Type.Object({
   limit: Type.Optional(NumericStringSchema),
 });
 
+const HistoryMessagesQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String()),
+  day: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+  limit: Type.Optional(NumericStringSchema),
+  scope: Type.Optional(
+    Type.Union([
+      Type.Literal("all"),
+      Type.Literal("file"),
+      Type.Literal("media"),
+      Type.Literal("h5"),
+      Type.Literal("mini-program"),
+    ]),
+  ),
+  sender_id: Type.Optional(Type.String()),
+});
+
 const MediaProxyQuerySchema = Type.Object({
   url: Type.String({ minLength: 1 }),
 });
@@ -168,6 +184,7 @@ const SidebarIframeParamsBodySchema = Type.Object({
 type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
 type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
+type HistoryMessagesQuery = Static<typeof HistoryMessagesQuerySchema>;
 type MediaProxyQuery = Static<typeof MediaProxyQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
@@ -280,6 +297,33 @@ export async function registerChatRoutes(app: FastifyInstance) {
         {
           beforeSeq: parseOptionalInteger(request.query.before_seq),
           limit: parseOptionalInteger(request.query.limit),
+        },
+      );
+    },
+  );
+
+  app.get<{
+    Params: ConversationParams;
+    Querystring: HistoryMessagesQuery;
+  }>(
+    "/api/server/conversations/:conversationId/history-messages",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConversationParamsSchema,
+        querystring: HistoryMessagesQuerySchema,
+      },
+    },
+    async (request) => {
+      return getWorkbenchService(app, request).getHistoryMessages(
+        getSubUserId(request),
+        request.params.conversationId,
+        {
+          cursor: request.query.cursor,
+          day: request.query.day,
+          limit: parseOptionalInteger(request.query.limit),
+          scope: request.query.scope,
+          senderId: request.query.sender_id,
         },
       );
     },

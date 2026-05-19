@@ -701,6 +701,57 @@ describe("MysqlWorkbenchService", () => {
     expect(getSeat).toHaveBeenCalledWith("12");
   });
 
+  it("checks seat access before listing history messages", async () => {
+    const javaClient = createJavaClient();
+    const canAccessSeat = vi.fn().mockResolvedValue(true);
+    const listHistoryMessages = vi.fn().mockResolvedValue({
+      hasNext: false,
+      hasPrev: false,
+      messages: [],
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat,
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-1",
+          thirdGroupId: undefined,
+          thirdUserId: "seat-third-user-1",
+          uid: 272,
+          unreadCount: 0,
+        }),
+        listHistoryMessages,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getHistoryMessages("101", "88", {
+        cursor: "history-cursor",
+        day: "2026-05-19",
+        limit: 20,
+        scope: "file",
+        senderId: "external-1",
+      }),
+    ).resolves.toEqual({
+      hasNext: false,
+      hasPrev: false,
+      messages: [],
+    });
+
+    expect(canAccessSeat).toHaveBeenCalledWith("101", "12");
+    expect(listHistoryMessages).toHaveBeenCalledWith("88", {
+      cursor: "history-cursor",
+      day: "2026-05-19",
+      limit: 20,
+      scope: "file",
+      senderId: "external-1",
+    });
+  });
+
   it("polls active conversation messages through the shared message page query", async () => {
     const javaClient = createJavaClient();
     const listMessages = vi.fn().mockResolvedValue({

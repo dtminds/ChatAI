@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import {
   Calendar03Icon,
   Cancel01Icon,
@@ -222,8 +222,45 @@ function HistoryMessageViewport({
   onLoadMoreNext: () => void;
   onLoadMorePrev: () => void;
 }) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const pendingPrependRestoreRef = useRef<{
+    previousScrollHeight: number;
+    previousScrollTop: number;
+  } | null>(null);
+  const messageIdsKey = activeHistory?.messages.map((message) => message.id).join("\u0000") ?? "";
+  const handleLoadMorePrev = () => {
+    const viewport = viewportRef.current;
+
+    if (viewport) {
+      pendingPrependRestoreRef.current = {
+        previousScrollHeight: viewport.scrollHeight,
+        previousScrollTop: viewport.scrollTop,
+      };
+    }
+
+    onLoadMorePrev();
+  };
+
+  useLayoutEffect(() => {
+    const pendingRestore = pendingPrependRestoreRef.current;
+    const viewport = viewportRef.current;
+
+    if (!pendingRestore || !viewport) {
+      return;
+    }
+
+    pendingPrependRestoreRef.current = null;
+    viewport.scrollTop =
+      pendingRestore.previousScrollTop +
+      (viewport.scrollHeight - pendingRestore.previousScrollHeight);
+  }, [messageIdsKey]);
+
   return (
-    <ScrollArea className="h-full">
+    <ScrollArea
+      className="h-full"
+      viewportRef={viewportRef}
+      viewportTestId="history-message-viewport"
+    >
       <div className="space-y-3 px-4 py-4">
         {activeHistoryError ? (
           <div className="rounded-[8px] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -231,7 +268,7 @@ function HistoryMessageViewport({
           </div>
         ) : null}
         <div className="flex items-center justify-between gap-2">
-          <Button className="h-8 px-3 text-[12px]" disabled={!activeHistory?.hasPrev || activeHistoryLoading} onClick={onLoadMorePrev} variant="outline">
+          <Button className="h-8 px-3 text-[12px]" disabled={!activeHistory?.hasPrev || activeHistoryLoading} onClick={handleLoadMorePrev} variant="outline">
             更早
           </Button>
           <Button className="h-8 px-3 text-[12px]" disabled={!activeHistory?.hasNext || activeHistoryLoading} onClick={onLoadMoreNext} variant="outline">

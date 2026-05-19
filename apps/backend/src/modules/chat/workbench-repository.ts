@@ -892,7 +892,7 @@ export class WorkbenchRepository {
       .execute();
 
     const rawRows = rows.slice(0, options.limit) as MessageRow[];
-    const messageRows = rawRows.reverse();
+    const messageRows = [...rawRows].reverse();
     const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
     const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
     const hydrationSources = await this.getMessageHydrationSources(

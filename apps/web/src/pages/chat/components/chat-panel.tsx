@@ -60,6 +60,7 @@ type ChatPanelProps = {
       senderId?: string;
       scope: "all" | "file" | "media" | "h5" | "mini-program";
     };
+    scrollMode?: "end";
     isOpen: boolean;
   };
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -282,6 +283,8 @@ export function ChatPanel({
               activeHistoryError={historyPanel.activeHistoryError}
               activeHistoryFilters={historyPanel.activeHistoryFilters}
               activeHistoryLoading={historyPanel.activeHistoryLoading}
+              onDownloadMessageFile={onDownloadMessageFile}
+              scrollMode={historyPanel.scrollMode}
               customer={customer}
               groupMembers={groupMembers}
               isOpen={historyPanel.isOpen}

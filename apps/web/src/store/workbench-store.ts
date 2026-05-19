@@ -91,6 +91,8 @@ type HistoryPanelState = {
   prevCursor?: string;
 };
 
+type HistoryPanelScrollMode = "end";
+
 const emptyHistoryPanelState: HistoryPanelState = {
   hasNext: false,
   hasPrev: false,
@@ -120,6 +122,7 @@ type WorkbenchState = {
   historyPanelFiltersByConversationId: Record<string, HistoryPanelFilters | undefined>;
   historyPanelLoadingByConversationId: Record<string, boolean>;
   historyPanelErrorByConversationId: Record<string, string | undefined>;
+  historyPanelScrollModeByConversationId: Record<string, HistoryPanelScrollMode | undefined>;
   historyPanelOpenConversationId?: string;
   groupMembersByConversationId: Record<string, GroupMember[]>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
@@ -238,6 +241,7 @@ function createInitialState(): Omit<
     historyPanelFiltersByConversationId: {},
     historyPanelLoadingByConversationId: {},
     historyPanelErrorByConversationId: {},
+    historyPanelScrollModeByConversationId: {},
     historyPanelOpenConversationId: undefined,
     isConversationLoading: false,
     me: undefined,
@@ -778,6 +782,10 @@ function clearConversationMessageState(
       state.historyPanelErrorByConversationId,
       clearedConversationIds,
     ),
+    historyPanelScrollModeByConversationId: omitByKeys(
+      state.historyPanelScrollModeByConversationId,
+      clearedConversationIds,
+    ),
     messagePaginationByConversationId: omitByKeys(
       state.messagePaginationByConversationId,
       clearedConversationIds,
@@ -821,6 +829,7 @@ function getMessageStateConversationIds(state: WorkbenchStore) {
     ...Object.keys(state.historyPanelFiltersByConversationId),
     ...Object.keys(state.historyPanelLoadingByConversationId),
     ...Object.keys(state.historyPanelErrorByConversationId),
+    ...Object.keys(state.historyPanelScrollModeByConversationId),
   ]);
 }
 
@@ -2103,6 +2112,10 @@ export function createWorkbenchStore() {
           ...currentState.historyPanelErrorByConversationId,
           [nextConversationId]: undefined,
         },
+        historyPanelScrollModeByConversationId: {
+          ...currentState.historyPanelScrollModeByConversationId,
+          [nextConversationId]: "end",
+        },
       }));
 
       await get().loadHistoryMessages({ direction: "next" });
@@ -2144,6 +2157,10 @@ export function createWorkbenchStore() {
             scope,
           },
         },
+        historyPanelScrollModeByConversationId: {
+          ...currentState.historyPanelScrollModeByConversationId,
+          [conversationId]: undefined,
+        },
       }));
 
       await get().loadHistoryMessages({ direction: "next" });
@@ -2174,6 +2191,10 @@ export function createWorkbenchStore() {
             day,
           },
         },
+        historyPanelScrollModeByConversationId: {
+          ...currentState.historyPanelScrollModeByConversationId,
+          [conversationId]: undefined,
+        },
       }));
 
       await get().loadHistoryMessages({ direction: "next" });
@@ -2203,6 +2224,10 @@ export function createWorkbenchStore() {
             }),
             senderId,
           },
+        },
+        historyPanelScrollModeByConversationId: {
+          ...currentState.historyPanelScrollModeByConversationId,
+          [conversationId]: undefined,
         },
       }));
 
@@ -2256,6 +2281,8 @@ export function createWorkbenchStore() {
 
         set((currentState) => {
           const currentConversationId = currentState.historyPanelOpenConversationId;
+          const currentScrollMode =
+            currentState.historyPanelScrollModeByConversationId[conversationId];
 
           if (currentConversationId !== conversationId) {
             return {
@@ -2305,6 +2332,11 @@ export function createWorkbenchStore() {
             historyPanelLoadingByConversationId: {
               ...currentState.historyPanelLoadingByConversationId,
               [conversationId]: false,
+            },
+            historyPanelScrollModeByConversationId: {
+              ...currentState.historyPanelScrollModeByConversationId,
+              [conversationId]:
+                cursor == null && currentScrollMode === "end" ? "end" : undefined,
             },
           };
         });

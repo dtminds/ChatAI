@@ -191,7 +191,7 @@ describe("ChatPanel", () => {
     );
 
     const shell = screen.getByTestId("customer-side-panel-shell");
-    const historyPanel = within(shell).getByRole("complementary", { name: "历史记录" });
+    const historyPanel = within(shell).getByRole("complementary", { name: "聊天记录" });
 
     expect(shell).toHaveStyle({ width: "379px" });
     expect(historyPanel).toHaveClass("absolute", "inset-0", "w-full");

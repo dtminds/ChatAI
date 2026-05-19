@@ -148,6 +148,7 @@ function ChatWorkbenchContent({
     historyPanelErrorByConversationId,
     historyPanelFiltersByConversationId,
     historyPanelLoadingByConversationId,
+    historyPanelScrollModeByConversationId,
     historyPanelOpenConversationId,
     initializeWorkbench,
     isConversationLoading,
@@ -1175,6 +1176,8 @@ function ChatWorkbenchContent({
                         activeHistoryLoading:
                           historyPanelLoadingByConversationId[activeConversation.id] ??
                           false,
+                        scrollMode:
+                          historyPanelScrollModeByConversationId[activeConversation.id],
                         isOpen:
                           historyPanelOpenConversationId === activeConversation.id,
                       }

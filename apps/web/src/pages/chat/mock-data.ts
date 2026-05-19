@@ -1,3 +1,4 @@
+import { CONVERSATION_CUSTODY_MODE } from "@chatai/contracts";
 import type {
   Account,
   Conversation,
@@ -5,6 +6,15 @@ import type {
   GroupMember,
   Message,
 } from "@/pages/chat/chat-types";
+
+type SeedConversation = Omit<Conversation, "custodyMode">;
+
+function withDefaultCustodyMode(conversations: SeedConversation[]): Conversation[] {
+  return conversations.map((conversation) => ({
+    ...conversation,
+    custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
+  }));
+}
 
 const accountAvatarDrcUrl =
   "http://wework.qpic.cn/wwhead/duc2TvpEgSTewUnFO43HZ22H445fU0MTybfXZqjldjWlOArMJOM2GNsH3CUWyOuESHYdY5oHPhk/60";
@@ -127,7 +137,7 @@ export const seedAccounts: Account[] = [
   },
 ];
 
-export const seedConversations: Record<string, Conversation[]> = {
+const rawSeedConversations: Record<string, SeedConversation[]> = {
   drc: [
     {
       id: "conv-001",
@@ -213,6 +223,13 @@ export const seedConversations: Record<string, Conversation[]> = {
     },
   ],
 };
+
+export const seedConversations: Record<string, Conversation[]> = Object.fromEntries(
+  Object.entries(rawSeedConversations).map(([accountId, conversations]) => [
+    accountId,
+    withDefaultCustodyMode(conversations),
+  ]),
+);
 
 export const seedGroupMembersByConversationId: Record<string, GroupMember[]> = {
   "conv-004": [
@@ -971,7 +988,7 @@ function createStarCloudConversation({
   index: number;
   mode: Conversation["mode"];
   name: string;
-}): Conversation {
+}): SeedConversation {
   const isGroup = mode === "group";
   const displayIndex = String(index + 1).padStart(2, "0");
   const day = String(10 - Math.floor(index / 4)).padStart(2, "0");
@@ -996,7 +1013,7 @@ function createStarCloudConversation({
 }
 
 function createStarCloudCustomerProfile(
-  conversation: Conversation,
+  conversation: SeedConversation,
   index: number,
 ): CustomerProfile {
   const isGroup = conversation.mode === "group";

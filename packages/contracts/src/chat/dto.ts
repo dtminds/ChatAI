@@ -3,6 +3,7 @@ import {
   GROUP_MEMBER_TYPE,
   LoginStatusSchema,
   TakeoverStatusSchema,
+  type ConversationCustodyMode,
 } from "./enums.js";
 
 export const ChatSeatSchema = Type.Object({
@@ -120,6 +121,8 @@ export type WorkbenchSeatDto = {
 
 export type WorkbenchConversationSummaryDto = {
   conversationId: string;
+  /** 会话托管模式：full 全托管，semi 半托管 */
+  custodyMode: ConversationCustodyMode;
   seatId: string;
   thirdUserId?: string;
   thirdExternalUserId?: string;

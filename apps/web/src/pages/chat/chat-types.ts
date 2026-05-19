@@ -3,6 +3,8 @@ import type {
   WorkbenchMessageContentType,
 } from "@chatai/contracts";
 
+import type { ConversationCustodyMode } from "@chatai/contracts";
+
 export type ChatMode = "single" | "group";
 
 export type MessageRole = "customer" | "agent" | "system";
@@ -50,6 +52,8 @@ export type Account = {
 
 export type Conversation = {
   id: string;
+  /** 会话托管模式：full 全托管，semi 半托管 */
+  custodyMode: ConversationCustodyMode;
   accountId: string;
   customerId: string;
   customerName: string;

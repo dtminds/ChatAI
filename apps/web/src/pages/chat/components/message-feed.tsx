@@ -15,6 +15,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
+import {
+  SmartReplyMessageAnchor,
+  SmartReplyTriggerIcon,
+  type SmartReplySuggestion,
+} from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 
 const TIMESTAMP_BREAK_MS = 30 * 60 * 1000;
@@ -27,6 +32,7 @@ type ChatMessageListProps = {
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
+  smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
 };
 
 type FeedItem =
@@ -48,6 +54,7 @@ export function ChatMessageList({
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
+  smartReplyByMessageId,
 }: ChatMessageListProps) {
   const items = buildFeedItems(messages);
 
@@ -71,6 +78,7 @@ export function ChatMessageList({
               onOpenQuotedMessage={onOpenQuotedMessage}
               onQuoteMessage={onQuoteMessage}
               onRetryMessage={onRetryMessage}
+              smartReply={smartReplyByMessageId?.[item.message.id]}
             />
           </div>
         ),
@@ -114,6 +122,7 @@ export function MessageRow({
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
+  smartReply,
 }: {
   message: Message;
   downloadTransferState?: "idle" | "transferring";
@@ -122,6 +131,7 @@ export function MessageRow({
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
+  smartReply?: SmartReplySuggestion;
 }) {
   if (message.role === "system") {
     return <SystemMessageNotice text={message.content.text} />;
@@ -179,18 +189,28 @@ export function MessageRow({
                   {message.senderDisplayName}
                 </p>
               ) : null}
-              <MessageContentRenderer
-                downloadTransferState={downloadTransferState}
-                isAgent={isAgent}
-                message={message}
-                onDownloadMessageFile={onDownloadMessageFile}
-                onOpenQuotedMessage={onOpenQuotedMessage}
-              />
+              <div className="flex items-center gap-1">
+                <MessageContentRenderer
+                  downloadTransferState={downloadTransferState}
+                  isAgent={isAgent}
+                  message={message}
+                  onDownloadMessageFile={onDownloadMessageFile}
+                  onOpenQuotedMessage={onOpenQuotedMessage}
+                />
+                {!isAgent && !message.isRevoked ? (
+                  <div className="ml-[16px] cursor-pointer">
+                    <SmartReplyTriggerIcon/>
+                  </div>
+                ) : null}
+              </div>
               {message.isRevoked ? <MessageRevokedState /> : null}
+              {!isAgent && !message.isRevoked ? (
+                <SmartReplyMessageAnchor message={message} suggestion={smartReply} />
+              ) : null}
             </div>
           </div>
           {isAgent && !inlineDeliveryState ? (
-            <MessageDeliveryState message={message} />
+            <MessageDeliveryState message={message}/>
           ) : null}
         </div>
 

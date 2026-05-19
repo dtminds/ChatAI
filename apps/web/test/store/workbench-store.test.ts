@@ -39,6 +39,7 @@ function getSeedMessageIdAt(conversationId: string, index: number) {
 function createCachedConversation(accountId: string): Conversation {
   return {
     accountId,
+    custodyMode: "semi",
     customerAvatarUrl: "",
     customerId: `${accountId}-customer`,
     customerName: `${accountId} 客户`,

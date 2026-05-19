@@ -58,6 +58,7 @@ describe("workbench MySQL mappers", () => {
 
     expect(conversation).toMatchObject({
       conversationId: "88",
+      custodyMode: "semi",
       customerAvatar: "https://example.com/customer.png",
       customerId: "external-1",
       customerName: "客户备注",

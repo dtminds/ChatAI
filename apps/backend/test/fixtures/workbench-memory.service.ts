@@ -552,6 +552,7 @@ function conversation(
   return {
     seatId,
     conversationId,
+    custodyMode: "semi",
     customerAvatar,
     customerId,
     customerName,

@@ -16,6 +16,7 @@ function createConversation({
 }): Conversation {
   return {
     accountId: "account-1",
+    custodyMode: "semi",
     customerAvatarUrl: `https://example.com/${id}.png`,
     customerId: `customer-${id}`,
     customerName,

@@ -623,6 +623,7 @@ function buildInitialState(): MockState {
         conversations.map((conversation) => ({
           seatId: conversation.accountId,
           conversationId: conversation.id,
+          custodyMode: conversation.custodyMode,
           customerAvatar: conversation.customerAvatarUrl,
           customerId: conversation.customerId,
           customerName: conversation.customerName,

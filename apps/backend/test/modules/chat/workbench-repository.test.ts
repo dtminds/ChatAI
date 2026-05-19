@@ -1525,6 +1525,52 @@ describe("WorkbenchRepository", () => {
     expect(page.nextCursor).toBeDefined();
   });
 
+  it("hydrates quote previews in history messages", async () => {
+    const db = createHistoryMessagesDb([
+      messageRow({
+        content: JSON.stringify({
+          content: "正式引用消息",
+          quoteMsgId: 101,
+        }),
+        from_type: 1,
+        id: 102,
+        msgid: "remote-msg-102",
+        msgtype: "quote",
+      }),
+      messageRow({
+        content: JSON.stringify({ text: "测试被引用" }),
+        from_type: 2,
+        id: 101,
+        msgid: "remote-msg-101",
+        msgtype: "text",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    const page = await repository.listHistoryMessages("88", { limit: 2 });
+
+    expect(page.messages).toMatchObject([
+      {
+        content: { text: "测试被引用" },
+        messageId: "remote-msg-101",
+      },
+      {
+        content: {
+          quotedMessage: {
+            contentType: "text",
+            senderName: "external-1",
+            text: "测试被引用",
+          },
+          quoteMsgId: "101",
+          text: "正式引用消息",
+        },
+        contentType: "quote",
+        messageId: "remote-msg-102",
+      },
+    ]);
+    expect(db.messageQueries).toHaveLength(1);
+  });
+
   it("applies media scope with day and sender filters in history queries", async () => {
     const db = createHistoryMessagesDb([
       messageRow({

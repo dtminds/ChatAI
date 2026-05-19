@@ -1061,12 +1061,29 @@ export class WorkbenchRepository {
     const hasMoreInDirection = rows.length > limit;
     const pageRows = rows.slice(0, limit) as MessageRow[];
     const messageRows = orderDirection === "desc" ? pageRows.reverse() : pageRows;
+    const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
+    const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
     const hydrationSources = await this.getMessageHydrationSources(
-      messageRows,
+      allRowsToHydrate,
       conversation.uid,
       conversation.platform,
     );
     const hydratedMessageRows = hydrateMessageRows(messageRows, hydrationSources);
+    const hydratedFetchedQuoteRows = hydrateMessageRows(
+      quotedRows.fetchedRows,
+      hydrationSources,
+    );
+    const currentQuoteRowsById = new Map(
+      hydratedMessageRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const fetchedQuoteRowsById = new Map(
+      hydratedFetchedQuoteRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const quotePreviewsByRowId = this.buildQuotePreviewsByRowId(
+      hydratedMessageRows,
+      currentQuoteRowsById,
+      fetchedQuoteRowsById,
+    );
     const firstRow = hydratedMessageRows[0];
     const lastRow = hydratedMessageRows.at(-1);
     const firstAnchorId = String(firstRow?.id ?? "");
@@ -1090,7 +1107,9 @@ export class WorkbenchRepository {
     return {
       hasNext,
       hasPrev,
-      messages: hydratedMessageRows.map((row) => mapMessageRow(row)),
+      messages: hydratedMessageRows.map((row) =>
+        mapMessageRow(row, quotePreviewsByRowId.get(toNumber(row.id))),
+      ),
       nextCursor: hasRows
         ? encodeHistoryMessageCursor({
             anchorId: lastAnchorId,

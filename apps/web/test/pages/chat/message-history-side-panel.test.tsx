@@ -354,7 +354,7 @@ describe("MessageHistorySidePanel", () => {
     defineScrollMetric(viewport, "scrollHeight", 400);
     viewport.scrollTop = 120;
 
-    await user.click(screen.getByRole("button", { name: "更早" }));
+    await user.click(screen.getByRole("button", { name: "加载更早的对话" }));
 
     expect(handleLoadMorePrev).toHaveBeenCalledTimes(1);
 
@@ -388,6 +388,40 @@ describe("MessageHistorySidePanel", () => {
     );
 
     expect(viewport.scrollTop).toBe(340);
+  });
+
+  it("triggers next history loading from the bottom loader", async () => {
+    const user = userEvent.setup();
+    const handleLoadMoreNext = vi.fn();
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: true,
+          hasPrev: false,
+          messages: [
+            createTextMessage("message-1", "第一条"),
+            createTextMessage("message-2", "第二条"),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={handleLoadMoreNext}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "加载更多对话" }));
+
+    expect(handleLoadMoreNext).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -289,35 +289,16 @@ function HistoryMessageViewport({
   }, [messageIdsKey]);
 
   return (
-    <ScrollArea
-      className="h-full"
-      viewportRef={viewportRef}
-      viewportTestId="history-message-viewport"
-    >
+    <ScrollArea className="h-full" viewportRef={viewportRef} viewportTestId="history-message-viewport">
       <div className="space-y-3 px-4 py-4">
         {activeHistoryError ? (
           <div className="rounded-[8px] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             {activeHistoryError}
           </div>
         ) : null}
-        <div className="flex items-center justify-between gap-2">
-          <Button
-            className="h-8 px-3 text-[12px]"
-            disabled={!activeHistory?.hasPrev || activeHistoryLoading}
-            onClick={handleLoadMorePrev}
-            variant="outline"
-          >
-            更早
-          </Button>
-          <Button
-            className="h-8 px-3 text-[12px]"
-            disabled={!activeHistory?.hasNext || activeHistoryLoading}
-            onClick={onLoadMoreNext}
-            variant="outline"
-          >
-            更新
-          </Button>
-        </div>
+        {activeHistory?.hasPrev ? (
+          <HistoryEdgeLoader onClick={handleLoadMorePrev} text="加载更早的对话" />
+        ) : null}
         {activeHistoryLoading && !(activeHistory?.messages.length ?? 0) ? (
           <div className="flex min-h-[140px] items-center justify-center text-sm text-muted-foreground">
             <HugeiconsIcon
@@ -330,8 +311,25 @@ function HistoryMessageViewport({
         ) : (
           <div>{children}</div>
         )}
+        {activeHistory?.hasNext ? <HistoryEdgeLoader onClick={onLoadMoreNext} text="加载更多对话" /> : null}
       </div>
     </ScrollArea>
+  );
+}
+
+function HistoryEdgeLoader({
+  onClick,
+  text,
+}: {
+  onClick: () => void;
+  text: string;
+}) {
+  return (
+    <div className="flex justify-center">
+      <Button className="h-8 px-3 text-[12px]" onClick={onClick} variant="outline">
+        {text}
+      </Button>
+    </div>
   );
 }
 

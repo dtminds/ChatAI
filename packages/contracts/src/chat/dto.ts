@@ -40,6 +40,7 @@ export type WorkbenchMessageContentType =
   | "text"
   | "voice"
   | "image"
+  | "emotion"
   | "video"
   | "file"
   | "h5"

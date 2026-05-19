@@ -248,11 +248,13 @@ function adaptChatMessageContent(
         type: "voice",
       };
     case "image":
+    case "emotion":
       return {
         alt: String(content.alt ?? ""),
         height: asOptionalNumber(content.height),
         imageUrl: String(content.imageUrl ?? ""),
         type: "image",
+        variant: contentType,
         width: asOptionalNumber(content.width),
       };
     case "video":
@@ -390,6 +392,7 @@ function isQuotedPreviewContentType(
     "text",
     "voice",
     "image",
+    "emotion",
     "video",
     "file",
     "h5",

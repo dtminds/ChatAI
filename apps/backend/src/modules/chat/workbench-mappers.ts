@@ -271,8 +271,9 @@ function mapSenderType(row: MessageRow): WorkbenchMessageDto["senderType"] {
 function mapContentType(msgtype: string): WorkbenchMessageContentType {
   switch (msgtype) {
     case "image":
-    case "emotion":
       return "image";
+    case "emotion":
+      return "emotion";
     case "voice":
       return "voice";
     case "video":
@@ -565,8 +566,9 @@ export function buildQuotedMessagePreview(row: MessageRow): MessageRowQuotePrevi
         text: String(mapped.content.text ?? ""),
       };
     case "image":
+    case "emotion":
       return {
-        contentType: "image",
+        contentType: mapped.contentType,
         imageUrl: readRecordString(mapped.content, "imageUrl"),
         senderName,
       };

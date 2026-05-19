@@ -69,6 +69,59 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.getByRole("button", { name: "日期" })).toHaveClass("h-8", "py-0", "text-[12px]");
   });
 
+  it("does not show empty state while loading history data", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [],
+        }}
+        activeHistoryFilters={{ scope: "file" }}
+        activeHistoryLoading
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("暂无历史记录")).not.toBeInTheDocument();
+  });
+
+  it("keeps existing history items visible while loading more data", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: true,
+          hasPrev: true,
+          messages: [createTextMessage("message-loading", "已有消息")],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("已有消息")).toBeInTheDocument();
+    expect(screen.queryByText("暂无历史记录")).not.toBeInTheDocument();
+  });
+
   it("renders all-scope messages in a compact linear history layout", () => {
     render(
       <MessageHistorySidePanel

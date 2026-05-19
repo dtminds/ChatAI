@@ -318,7 +318,7 @@ function HistoryMessageViewport({
             更新
           </Button>
         </div>
-        {activeHistoryLoading ? (
+        {activeHistoryLoading && !(activeHistory?.messages.length ?? 0) ? (
           <div className="flex min-h-[140px] items-center justify-center text-sm text-muted-foreground">
             <HugeiconsIcon
               className="animate-spin"
@@ -327,8 +327,9 @@ function HistoryMessageViewport({
               strokeWidth={1.8}
             />
           </div>
-        ) : null}
-        <div>{children}</div>
+        ) : (
+          <div>{children}</div>
+        )}
       </div>
     </ScrollArea>
   );

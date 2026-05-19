@@ -64,8 +64,11 @@ jobs:
       - name: Typecheck frontend
         run: pnpm --filter @chatai/web typecheck
 
-      - name: Test frontend
-        run: pnpm --filter @chatai/web test
+      - name: Test frontend (unit)
+        run: pnpm --filter @chatai/web test:unit
+
+      - name: Test frontend (integration)
+        run: pnpm --filter @chatai/web test:integration
 
       - name: Build frontend
         run: pnpm --filter @chatai/web build

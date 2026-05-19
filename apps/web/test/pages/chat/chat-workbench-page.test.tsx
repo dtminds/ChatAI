@@ -52,6 +52,13 @@ describe("ChatWorkbenchPage", () => {
     installChatWorkbenchTestEnvironment();
   });
 
+  it("boots chat workbench through the shared test harness", async () => {
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
+  });
+
   it("switches conversation mode and shows the matching conversation", async () => {
     const user = userEvent.setup();
 

@@ -13,6 +13,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "VITEST_TEST_GROUP=integration vitest run",
+    "test:unit": "VITEST_TEST_GROUP=unit vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {

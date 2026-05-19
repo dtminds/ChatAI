@@ -239,7 +239,11 @@ export function ChatPanel({
           </div>
         </div>
 
-        <div className="relative min-h-0 min-w-0">
+        <div
+          className="relative flex h-full min-h-0 min-w-0 shrink-0"
+          data-testid="customer-side-panel-shell"
+          style={{ width: `${customerPanelWidth + 4}px` }}
+        >
           <div className={historyPanel?.isOpen ? "invisible pointer-events-none" : "visible"}>
             <CustomerSidePanel
               accountName={accountName}

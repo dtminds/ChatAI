@@ -288,15 +288,15 @@ function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
   const chatMessages = messages.filter(isChatMessage);
 
   return (
-    <div className="space-y-4">
+    <div className="w-full max-w-full min-w-0 space-y-4">
       {chatMessages.map((message) => (
         <div
-          className="flex min-w-0 flex-col items-start gap-1.5"
+          className="flex w-full max-w-full min-w-0 flex-col items-start gap-1.5"
           data-scroll-anchor={message.id}
           data-testid="history-message-item"
           key={message.clientMessageId ?? message.optNo ?? message.id}
         >
-          <div className="flex max-w-full items-baseline gap-2">
+          <div className="flex w-full max-w-full min-w-0 items-baseline gap-2">
             <span className="min-w-0 truncate text-sm font-medium leading-5 text-foreground">
               {getHistoryMessageAuthor(message)}
             </span>
@@ -317,14 +317,14 @@ function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
 function HistoryCompactMessageContent({ message }: { message: ChatMessage }) {
   if (message.content.type === "text") {
     return (
-      <p className="whitespace-pre-wrap break-words text-sm font-medium leading-6 text-foreground">
+      <p className="w-full max-w-full min-w-0 whitespace-pre-wrap break-words text-sm font-medium leading-6 text-foreground">
         {message.content.text}
       </p>
     );
   }
 
   return (
-    <div className="max-w-full">
+    <div className="w-full max-w-full min-w-0">
       <MessageContentRenderer isAgent={message.role === "agent"} message={message} />
     </div>
   );

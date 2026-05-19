@@ -98,9 +98,10 @@ describe("MessageHistorySidePanel", () => {
     );
 
     const historyItems = screen.getAllByTestId("history-message-item");
+    const compactText = screen.getByText("老郁，我下午三点去「茶甜甜」这个客户这里拜访");
 
     expect(historyItems).toHaveLength(2);
-    expect(historyItems[0]).toHaveClass("items-start");
+    expect(historyItems[0]).toHaveClass("w-full", "max-w-full", "min-w-0", "items-start");
     expect(historyItems[0]).not.toHaveClass("justify-end", "justify-start");
     expect(screen.queryByRole("button", { name: "消息操作" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("message-row")).not.toBeInTheDocument();
@@ -109,7 +110,8 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.getByText("3/9 10:30")).toBeInTheDocument();
     expect(screen.getByText("2025/12/31 09:08")).toBeInTheDocument();
     expect(screen.queryByText("10:30:45")).not.toBeInTheDocument();
-    expect(screen.getByText("老郁，我下午三点去「茶甜甜」这个客户这里拜访")).toHaveClass("text-sm");
+    expect(compactText).toHaveClass("w-full", "max-w-full", "min-w-0", "break-words", "text-sm");
+    expect(compactText).not.toHaveClass("w-max", "max-w-none", "whitespace-nowrap");
   });
 
   it("fills the sidebar slot without overlay shadow or fixed width", () => {

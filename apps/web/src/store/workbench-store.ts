@@ -450,9 +450,11 @@ function upsertMessageList(
     );
 
     if (existingIndex >= 0) {
+      const currentMessage = merged[existingIndex];
       merged[existingIndex] = {
-        ...merged[existingIndex],
+        ...currentMessage,
         ...nextMessage,
+        clientMessageId: nextMessage.clientMessageId ?? currentMessage.clientMessageId,
       };
       continue;
     }
@@ -1563,7 +1565,7 @@ export function createWorkbenchStore() {
                 return {
                   ...message,
                   failReason: change.reason,
-                  remoteMessageId: change.remoteMessageId,
+                  remoteMessageId: change.remoteMessageId ?? message.remoteMessageId,
                   status: change.status,
                 };
               },

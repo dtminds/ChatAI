@@ -27,6 +27,44 @@ import {
   workbenchHttpMock,
 } from "./workbench-test-utils";
 
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      warning: vi.fn(),
+    },
+  };
+});
+
+vi.mock("@/pages/chat/api/media-upload-service", () => ({
+  resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) =>
+    segments.map((segment: ComposerSegment) =>
+      segment.type === "image"
+        ? {
+            alt: segment.alt,
+            fileId: "chat-images/conv-001/mock-image.png",
+            height: segment.height,
+            type: "image",
+            url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/mock-image.png",
+            width: segment.width,
+          }
+        : segment,
+    ),
+  ),
+  uploadWorkbenchFile: vi.fn(async (_conversationId, file: File) => ({
+    extension: file.name.split(".").pop() ?? "",
+    fileId: `chat-files/conv-001/${file.name}`,
+    fileName: file.name,
+    fileSize: file.size,
+    fileSizeLabel: `${file.size} B`,
+    type: "file",
+    url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
+  })),
+}));
+
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;

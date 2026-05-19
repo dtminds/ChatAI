@@ -5,6 +5,38 @@ import { MessageHistorySidePanel } from "@/pages/chat/components/message-history
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 
 describe("MessageHistorySidePanel", () => {
+  it("uses the shared tab component styling for history scopes", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const tabs = screen.getByRole("tablist");
+    const activeTab = screen.getByRole("tab", { name: "全部" });
+
+    expect(tabs).toHaveClass("rounded-2xl", "bg-secondary/90");
+    expect(tabs).not.toHaveClass("grid", "rounded-none", "bg-transparent");
+    expect(activeTab).toHaveClass("rounded-xl");
+    expect(activeTab).not.toHaveClass("rounded-none");
+  });
+
   it("fills the sidebar slot without overlay shadow or fixed width", () => {
     render(
       <MessageHistorySidePanel

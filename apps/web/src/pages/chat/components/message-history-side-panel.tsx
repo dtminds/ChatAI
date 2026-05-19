@@ -104,20 +104,20 @@ export function MessageHistorySidePanel({
           value={activeHistoryFilters.scope}
         >
           <div className="border-b border-divider px-4 pt-3">
-            <TabsList className="grid h-auto w-full grid-cols-5 gap-2 rounded-none bg-transparent p-0">
-              <TabsTrigger className="h-8 rounded-none px-0 text-[13px]" value="all">
+            <TabsList className="max-w-full overflow-x-auto">
+              <TabsTrigger className="whitespace-nowrap" value="all">
                 全部
               </TabsTrigger>
-              <TabsTrigger className="h-8 rounded-none px-0 text-[13px]" value="file">
+              <TabsTrigger className="whitespace-nowrap" value="file">
                 文件
               </TabsTrigger>
-              <TabsTrigger className="h-8 rounded-none px-0 text-[13px]" value="media">
+              <TabsTrigger className="whitespace-nowrap" value="media">
                 图片与视频
               </TabsTrigger>
-              <TabsTrigger className="h-8 rounded-none px-0 text-[13px]" value="h5">
+              <TabsTrigger className="whitespace-nowrap" value="h5">
                 链接
               </TabsTrigger>
-              <TabsTrigger className="h-8 rounded-none px-0 text-[13px]" value="mini-program">
+              <TabsTrigger className="whitespace-nowrap" value="mini-program">
                 小程序
               </TabsTrigger>
             </TabsList>

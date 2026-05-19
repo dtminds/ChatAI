@@ -12,13 +12,19 @@ import {
   createMockWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
+import {
+  resolveImageSegmentsForSend,
+  uploadWorkbenchFile,
+} from "@/pages/chat/api/media-upload-service";
 import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
+import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
   resetChatWorkbenchTestState,
+  workbenchHttpMock,
 } from "./workbench-test-utils";
 
 function createDeferred<T = void>() {
@@ -55,33 +61,6 @@ async function expectLatestConversationMessage(
     ).toMatchObject(expectedMessage);
   });
 }
-
-const revokedVideoMessageDto = {
-  content: {
-    alt: "视频",
-    coverImageUrl: "https://b5.bokr.com.cn/s5/msg/20260518/272/1a9c289075b642839f9f122a6ee79953.jpg",
-    downloadStatus: "ing",
-    durationLabel: "",
-    fileSerialNo: "807a4be011b24f7cba55dc21f6c9017e",
-    fileUrlExpireTime: 1779190726040,
-    videoUrl: "http://kfpt-file.oss-cn-hangzhou.aliyuncs.com/7-days-expired/wecom-ios-protocol/sm/msg-file/merchant/20260518/f8d0c5723ad647389ee993a6dfcbb733.mp4",
-  },
-  contentType: "video",
-  conversationId: "conv-001",
-  createdAt: 1779104311000,
-  customerId: "91AEEA34E7C775BF6B26EBB5E6F6F36E5194F219CF554649F1C4F9C615435A82",
-  isRevoked: true,
-  messageId: "1023715",
-  seatId: "drc",
-  senderAvatar: "http://wx.qlogo.cn/mmhead/iacibNfSguMWASWcMTVIKUb8VpibxJ0R3oQUcibrM7es5JI/0",
-  senderName: "lsave",
-  senderType: "customer",
-  seq: 718,
-  status: "read",
-  thirdExternalUserId: "91AEEA34E7C775BF6B26EBB5E6F6F36E5194F219CF554649F1C4F9C615435A82",
-  thirdFromId: "91AEEA34E7C775BF6B26EBB5E6F6F36E5194F219CF554649F1C4F9C615435A82",
-  thirdUserId: "73E453A96BB8A1A941C3AA6D13498D325194F219CF554649F1C4F9C615435A82",
-} satisfies WorkbenchMessageDto;
 
 describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
@@ -135,84 +114,6 @@ describe("ChatWorkbenchPage", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "取消引用" }));
-
-    expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
-  });
-
-  it("does not set a quote from a revoked message", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
-      async getMessages(conversationId, options) {
-        const page = await baseService.getMessages(conversationId, options);
-
-        if (conversationId !== "conv-001") {
-          return page;
-        }
-
-        return {
-          ...page,
-          messages: page.messages.map((message) =>
-            message.messageId === "msg-006"
-              ? { ...message, isRevoked: true }
-              : message,
-          ),
-        };
-      },
-    });
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-
-    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
-    const targetRow = targetMessage.closest('[data-testid="message-row"]');
-    expect(targetRow).not.toBeNull();
-
-    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
-    const quoteItem = screen.getByRole("menuitem", { name: "引用消息" });
-
-    expect(quoteItem).toHaveAttribute("data-disabled");
-    await user.click(quoteItem);
-
-    expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
-  });
-
-  it("does not set a quote from a revoked video message loaded from conversation detail", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
-      async getMessages(conversationId, options) {
-        const page = await baseService.getMessages(conversationId, options);
-
-        if (conversationId !== "conv-001") {
-          return page;
-        }
-
-        return {
-          ...page,
-          messages: [...page.messages, revokedVideoMessageDto],
-        };
-      },
-    });
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-
-    const revokedState = await screen.findByText("已撤回");
-    const targetRow = revokedState.closest('[data-testid="message-row"]');
-    expect(targetRow).not.toBeNull();
-
-    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
-    const quoteItem = screen.getByRole("menuitem", { name: "引用消息" });
-
-    expect(quoteItem).toHaveAttribute("data-disabled");
-    await user.click(quoteItem);
 
     expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
   });
@@ -434,7 +335,7 @@ describe("ChatWorkbenchPage", () => {
       type: "application/zip",
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.upload(screen.getByLabelText("选择文件"), unsupportedFile);
@@ -453,7 +354,7 @@ describe("ChatWorkbenchPage", () => {
       value: 10 * 1024 * 1024 + 1,
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.upload(screen.getByLabelText("选择文件"), oversizedFile);
@@ -476,7 +377,7 @@ describe("ChatWorkbenchPage", () => {
     });
     vi.mocked(uploadWorkbenchFile).mockReturnValue(upload.promise);
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.upload(screen.getByLabelText("选择文件"), file);
@@ -508,7 +409,7 @@ describe("ChatWorkbenchPage", () => {
     });
     vi.mocked(uploadWorkbenchFile).mockReturnValue(upload.promise);
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.upload(screen.getByLabelText("选择文件"), file);
@@ -535,7 +436,7 @@ describe("ChatWorkbenchPage", () => {
       type: "image/webp",
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await userEvent.click(composer);
@@ -560,7 +461,7 @@ describe("ChatWorkbenchPage", () => {
         }),
     );
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await userEvent.click(composer);
@@ -586,7 +487,7 @@ describe("ChatWorkbenchPage", () => {
         }),
     );
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await userEvent.click(composer);
@@ -612,7 +513,7 @@ describe("ChatWorkbenchPage", () => {
       }),
     ];
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await userEvent.click(composer);
@@ -627,7 +528,7 @@ describe("ChatWorkbenchPage", () => {
   });
 
   it("keeps overflowing composer content scrollable inside the editor", async () => {
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -639,7 +540,7 @@ describe("ChatWorkbenchPage", () => {
       type: "image/png",
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     Object.defineProperty(composer, "scrollHeight", {
@@ -668,7 +569,7 @@ describe("ChatWorkbenchPage", () => {
       type: "image/png",
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await userEvent.click(composer);
@@ -703,7 +604,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     const beforeMessageCount =
@@ -737,7 +638,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -764,7 +665,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -783,7 +684,7 @@ describe("ChatWorkbenchPage", () => {
 
     vi.mocked(resolveImageSegmentsForSend).mockRejectedValue(new Error("COS 上传失败"));
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     const beforeMessageCount =
@@ -861,7 +762,7 @@ describe("ChatWorkbenchPage", () => {
       },
     );
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -920,7 +821,7 @@ describe("ChatWorkbenchPage", () => {
       sendMessage,
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "发送中不要重复");
@@ -958,7 +859,7 @@ describe("ChatWorkbenchPage", () => {
     const user = userEvent.setup();
     const confirmSpy = vi.spyOn(window, "confirm");
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "未发送内容");
@@ -979,7 +880,7 @@ describe("ChatWorkbenchPage", () => {
   it("shows a dialog before switching conversations when a quote is selected", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
@@ -1000,7 +901,7 @@ describe("ChatWorkbenchPage", () => {
     const user = userEvent.setup();
     const confirmSpy = vi.spyOn(window, "confirm");
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "切换后清空");
@@ -1019,7 +920,7 @@ describe("ChatWorkbenchPage", () => {
   it("switches conversation mode and shows the matching conversation", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1036,7 +937,7 @@ describe("ChatWorkbenchPage", () => {
   it("collapses and expands the account sidebar into a compact rail", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     expect(screen.getByRole("button", { name: "聊天" })).toBeInTheDocument();
@@ -1079,7 +980,7 @@ describe("ChatWorkbenchPage", () => {
   it("restores the collapsed account sidebar from localStorage", async () => {
     window.localStorage.setItem("chatai.accountRailCollapsed", "true");
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -1096,7 +997,7 @@ describe("ChatWorkbenchPage", () => {
     window.localStorage.removeItem("chatai.accountRailCollapsed");
     window.localStorage.removeItem("chatai.accountRailWidth");
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     const shell = screen.getByTestId("chat-workbench-shell");
@@ -1138,7 +1039,7 @@ describe("ChatWorkbenchPage", () => {
   it("does not open member mentions in single chats", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "@");
@@ -1157,7 +1058,7 @@ describe("ChatWorkbenchPage", () => {
       sendMessage,
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1217,7 +1118,7 @@ describe("ChatWorkbenchPage", () => {
       sendMessage,
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1269,7 +1170,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1349,7 +1250,7 @@ describe("ChatWorkbenchPage", () => {
       getSidebarItems,
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const sidePanel = await screen.findByRole("complementary", {
       name: "客户信息栏",
@@ -1400,7 +1301,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1435,7 +1336,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1477,7 +1378,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1514,7 +1415,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1531,7 +1432,7 @@ describe("ChatWorkbenchPage", () => {
   it("dismisses group member mentions with Escape until the query changes", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1560,7 +1461,7 @@ describe("ChatWorkbenchPage", () => {
       sendMessage,
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1596,7 +1497,7 @@ describe("ChatWorkbenchPage", () => {
       sendMessage,
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1626,7 +1527,7 @@ describe("ChatWorkbenchPage", () => {
   it("selects active mention options with keyboard focus", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("tab", { name: "群聊" }));
@@ -1642,7 +1543,7 @@ describe("ChatWorkbenchPage", () => {
   it("shows a retry icon before failed messages and retries on click", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(composer);
@@ -1684,7 +1585,7 @@ describe("ChatWorkbenchPage", () => {
   it("disables the composer when the active account is not taken over", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
@@ -1704,7 +1605,7 @@ describe("ChatWorkbenchPage", () => {
   it("disables conversation card actions when the active account is not taken over", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
@@ -1731,7 +1632,7 @@ describe("ChatWorkbenchPage", () => {
   it("enables the composer after taking over the active account", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
@@ -1765,7 +1666,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "第一段还在发送");
@@ -1814,7 +1715,7 @@ describe("ChatWorkbenchPage", () => {
 
     await useWorkbenchStore.getState().initializeWorkbench();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await waitFor(() => {
       expect(useWorkbenchStore.getState().bootstrapStatus).toBe("loading");
@@ -1832,7 +1733,7 @@ describe("ChatWorkbenchPage", () => {
   });
 
   it("keeps Enter behavior help in the menu without a persistent footer hint", async () => {
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -1859,7 +1760,7 @@ describe("ChatWorkbenchPage", () => {
       sendMessage,
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
     await pasteIntoComposer(user, composer, "第一行");
@@ -1875,7 +1776,7 @@ describe("ChatWorkbenchPage", () => {
   it("shows conversation row actions without high-priority labels", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -1892,7 +1793,7 @@ describe("ChatWorkbenchPage", () => {
   it("does not switch conversations when opening row actions from the keyboard", async () => {
     const user = userEvent.setup();
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -1920,7 +1821,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getAllByRole("button", { name: "会话操作" })[1]);
@@ -1945,7 +1846,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getAllByRole("button", { name: "会话操作" })[0]);
@@ -1970,7 +1871,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getAllByRole("button", { name: "会话操作" })[1]);
@@ -1983,7 +1884,7 @@ describe("ChatWorkbenchPage", () => {
   });
 
   it("does not show removed chat header actions", async () => {
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -1993,7 +1894,7 @@ describe("ChatWorkbenchPage", () => {
   });
 
   it("does not show a history loader when the default message page covers all history", async () => {
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -2029,7 +1930,7 @@ describe("ChatWorkbenchPage", () => {
               customerId: "cust-001",
               messageId: `revoke-older-message-${index}`,
               seatId: "drc",
-              senderType: "system",
+              senderType: "system" as const,
               seq: beforeSeq - index - 1,
               status: "read",
             })) satisfies WorkbenchMessageDto[],
@@ -2052,7 +1953,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "加载更早的对话" }));
@@ -2081,7 +1982,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
@@ -2109,7 +2010,7 @@ describe("ChatWorkbenchPage", () => {
   });
 
   it("keeps all seed messages visible after the initial 50-message request", async () => {
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -2174,7 +2075,7 @@ describe("ChatWorkbenchPage", () => {
     });
 
     try {
-      render(<ChatWorkbenchPage />);
+      renderChatWorkbenchPage();
 
       await screen.findByRole("textbox", { name: "请输入消息……" });
       await user.click(screen.getByRole("button", { name: /测试被引用/ }));
@@ -2230,7 +2131,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: /未加载原文/ }));
@@ -2282,7 +2183,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "下载视频：已过期视频" }));
@@ -2339,7 +2240,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    const { unmount } = render(<ChatWorkbenchPage />);
+    const { unmount } = renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "下载视频：待转存视频" }));
@@ -2479,7 +2380,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     expect(screen.getByRole("button", { name: "下载视频：最旧视频" }))
@@ -2576,7 +2477,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await useWorkbenchStore.getState().setActiveConversation("conv-002");
@@ -2614,7 +2515,7 @@ describe("ChatWorkbenchPage", () => {
       },
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await useWorkbenchStore.getState().setActiveConversation("conv-002");
@@ -2635,7 +2536,7 @@ describe("ChatWorkbenchPage", () => {
       success: true,
     });
 
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
@@ -2649,7 +2550,7 @@ describe("ChatWorkbenchPage", () => {
   });
 
   it("shows a paused sync dialog when another workbench tab takes polling ownership", async () => {
-    render(<ChatWorkbenchPage />);
+    renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 

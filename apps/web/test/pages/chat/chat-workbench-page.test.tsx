@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { StrictMode } from "react";
@@ -15,10 +15,8 @@ import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
-import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
-  render,
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
   resetChatWorkbenchTestState,

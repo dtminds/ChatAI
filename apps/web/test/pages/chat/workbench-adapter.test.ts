@@ -506,6 +506,31 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("adapts emotion messages as compact image content", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            alt: "表情",
+            imageUrl: "https://cdn.example.com/emotion.gif",
+          },
+          contentType: "emotion",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        alt: "表情",
+        imageUrl: "https://cdn.example.com/emotion.gif",
+        type: "image",
+        variant: "emotion",
+      },
+    });
+  });
+
   it("adapts quote message content with normalized preview data", () => {
     expect(
       adaptMessage(

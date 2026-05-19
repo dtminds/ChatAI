@@ -128,6 +128,31 @@ describe("MessageContentRenderer image messages", () => {
     expect(image).toHaveClass("h-auto", "max-h-[360px]", "w-auto", "max-w-full");
   });
 
+  it("uses compact constraints for emotion images", () => {
+    render(
+      <ImageMessageCard
+        content={{
+          type: "image",
+          alt: "客户表情",
+          imageUrl: "https://cdn.example.com/chat/emotion.gif",
+          variant: "emotion",
+        }}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "查看大图：客户表情" });
+    const image = screen.getByRole("img", { name: "客户表情" });
+
+    expect(trigger).toHaveStyle({
+      maxHeight: "120px",
+      maxWidth: "120px",
+      minHeight: "48px",
+      minWidth: "48px",
+      width: "fit-content",
+    });
+    expect(image).toHaveClass("max-h-[120px]");
+  });
+
   it("uses the natural image ratio for invalid image sizes", () => {
     render(
       <ImageMessageCard

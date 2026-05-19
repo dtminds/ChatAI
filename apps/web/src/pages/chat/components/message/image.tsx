@@ -19,6 +19,7 @@ type ImageMessageCardProps = {
 export function ImageMessageCard({ content }: ImageMessageCardProps) {
   const mediaSize = getValidImageSize(content);
   const imageUrl = content.imageUrl.trim();
+  const isEmotion = content.variant === "emotion";
 
   if (!imageUrl) {
     return (
@@ -31,11 +32,15 @@ export function ImageMessageCard({ content }: ImageMessageCardProps) {
       alt={content.alt}
       imageUrl={imageUrl}
       triggerClassName="relative isolate inline-block overflow-hidden rounded-[8px] border border-border/40 bg-muted-foreground/10 p-0 outline-none transition-[border-color,filter] hover:brightness-[0.98] focus-visible:ring-4 focus-visible:ring-ring/25"
-      triggerStyle={imageConstraintStyle}
+      triggerStyle={isEmotion ? emotionConstraintStyle : imageConstraintStyle}
     >
       <LoadableMessageImage
         alt={content.alt}
-        className="block h-auto max-h-[360px] w-auto max-w-full object-cover"
+        className={
+          isEmotion
+            ? "block h-auto max-h-[120px] w-auto max-w-full object-contain"
+            : "block h-auto max-h-[360px] w-auto max-w-full object-cover"
+        }
         fallback={<ImageMessageFallback alt={content.alt} />}
         height={mediaSize?.height}
         loading="lazy"
@@ -112,6 +117,14 @@ const imageConstraintStyle = {
   maxHeight: "360px",
   maxWidth: "300px",
   minWidth: "120px",
+  width: "fit-content",
+} satisfies CSSProperties;
+
+const emotionConstraintStyle = {
+  maxHeight: "120px",
+  maxWidth: "120px",
+  minHeight: "48px",
+  minWidth: "48px",
   width: "fit-content",
 } satisfies CSSProperties;
 

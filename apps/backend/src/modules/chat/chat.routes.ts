@@ -50,6 +50,7 @@ const WorkbenchMessageContentTypeSchema = Type.Union([
   Type.Literal("text"),
   Type.Literal("voice"),
   Type.Literal("image"),
+  Type.Literal("emotion"),
   Type.Literal("video"),
   Type.Literal("file"),
   Type.Literal("h5"),

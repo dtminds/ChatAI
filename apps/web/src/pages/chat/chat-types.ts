@@ -106,6 +106,7 @@ export type ImageMessageContent = {
   type: "image";
   imageUrl: string;
   alt: string;
+  variant?: "image" | "emotion";
   width?: number;
   height?: number;
 };

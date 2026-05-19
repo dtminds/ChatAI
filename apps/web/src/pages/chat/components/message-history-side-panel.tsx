@@ -259,6 +259,7 @@ function HistoryMessageViewport({
     previousScrollHeight: number;
     previousScrollTop: number;
   } | null>(null);
+  const previousMessageIdsKeyRef = useRef("");
   const messageIdsKey =
     activeHistory?.messages.map((message) => message.id).join("\u0000") ?? "";
   const handleLoadMorePrev = () => {
@@ -278,14 +279,21 @@ function HistoryMessageViewport({
     const pendingRestore = pendingPrependRestoreRef.current;
     const viewport = viewportRef.current;
 
-    if (!pendingRestore || !viewport) {
+    if (!viewport) {
+      previousMessageIdsKeyRef.current = messageIdsKey;
       return;
     }
 
-    pendingPrependRestoreRef.current = null;
-    viewport.scrollTop =
-      pendingRestore.previousScrollTop +
-      (viewport.scrollHeight - pendingRestore.previousScrollHeight);
+    if (pendingRestore) {
+      pendingPrependRestoreRef.current = null;
+      viewport.scrollTop =
+        pendingRestore.previousScrollTop +
+        (viewport.scrollHeight - pendingRestore.previousScrollHeight);
+    } else if (!previousMessageIdsKeyRef.current && messageIdsKey) {
+      viewport.scrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+    }
+
+    previousMessageIdsKeyRef.current = messageIdsKey;
   }, [messageIdsKey]);
 
   return (

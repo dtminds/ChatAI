@@ -9,6 +9,10 @@ describe("Calendar", () => {
     const selectedCell = screen.getByRole("gridcell", { selected: true });
 
     expect(selectedCell).toHaveClass("overflow-hidden");
-    expect(selectedCell.querySelector("button")).toHaveClass("data-[selected-single=true]:rounded-md");
+    expect(selectedCell.querySelector("button")).toHaveClass(
+      "data-[selected-single=true]:rounded-md",
+      "active:rounded-md",
+      "focus-visible:rounded-md",
+    );
   });
 });

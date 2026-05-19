@@ -289,6 +289,62 @@ describe("MessageHistorySidePanel", () => {
     expect(quoteIcon).toHaveAttribute("data-icon-name", "file-empty-01");
   });
 
+  it("keeps the viewport at the end after the first history load", () => {
+    const { rerender } = render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const viewport = screen.getByTestId("history-message-viewport");
+
+    defineScrollMetric(viewport, "scrollHeight", 600);
+    defineScrollMetric(viewport, "clientHeight", 300);
+
+    rerender(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: true,
+          messages: [
+            createTextMessage("message-1", "第一条"),
+            createTextMessage("message-2", "第二条"),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(viewport.scrollTop).toBe(300);
+  });
+
   it("fills the sidebar slot without overlay shadow or fixed width", () => {
     render(
       <MessageHistorySidePanel

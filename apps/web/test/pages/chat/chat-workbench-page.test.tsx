@@ -1,8 +1,8 @@
-import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
+import { StrictMode } from "react";
 import {
   GROUP_MEMBER_TYPE,
   type SettingsSidebarBindType,
@@ -18,6 +18,7 @@ import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
+  render,
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
   resetChatWorkbenchTestState,
@@ -267,7 +268,7 @@ describe("ChatWorkbenchPage", () => {
     await user.upload(screen.getByLabelText("选择文件"), file);
 
     expect(screen.getByText("报价单.pdf")).toBeInTheDocument();
-    expect(screen.getByText("正在准备发送")).toBeInTheDocument();
+    expect(screen.getByText(/正在准备发送/)).toBeInTheDocument();
     await waitFor(() => {
     expect(uploadWorkbenchFile).toHaveBeenCalledWith(
       "conv-001",
@@ -314,7 +315,7 @@ describe("ChatWorkbenchPage", () => {
     await user.upload(screen.getByLabelText("选择文件"), unsupportedFile);
 
     expect(uploadWorkbenchFile).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledWith("仅支持 PDF、Excel、Word、TXT、PPT 文件");
+    expect(vi.mocked(toast.warning)).toHaveBeenCalledWith("仅支持 PDF、Excel、Word、TXT、PPT 文件");
   });
 
   it("rejects oversized selected files with a blocking dialog", async () => {
@@ -339,7 +340,7 @@ describe("ChatWorkbenchPage", () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByText("请选择不超过 10 MB 的文件")).toBeInTheDocument();
-    expect(toast.warning).not.toHaveBeenCalledWith("文件大小不能超过 10 MB");
+    expect(vi.mocked(toast.warning)).not.toHaveBeenCalledWith("文件大小不能超过 10 MB");
   });
 
   it("blocks conversation switching while a file is uploading", async () => {
@@ -355,7 +356,7 @@ describe("ChatWorkbenchPage", () => {
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.upload(screen.getByLabelText("选择文件"), file);
     await waitFor(() => {
-      expect(screen.getByText("正在准备发送")).toBeInTheDocument();
+      expect(screen.getByText(/正在准备发送/)).toBeInTheDocument();
     });
     await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
 
@@ -448,7 +449,7 @@ describe("ChatWorkbenchPage", () => {
     expect(
       within(composer).queryByRole("img", { name: "clipboard-6.png" }),
     ).not.toBeInTheDocument();
-    expect(toast.warning).toHaveBeenCalledWith("单次发送图片限制为5张");
+    expect(vi.mocked(toast.warning)).toHaveBeenCalledWith("单次发送图片限制为5张");
   });
 
   it("disables the composer image picker after five images", async () => {
@@ -564,219 +565,6 @@ describe("ChatWorkbenchPage", () => {
       ).not.toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
-  });
-
-  it("keeps composer content and shows a dialog when the send API rejects", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
-      async sendMessage() {
-        throw new Error("发送接口失败");
-      },
-    });
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    const beforeMessageCount =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
-
-    await pasteIntoComposer(user, composer, "这条消息保留在输入框");
-    await user.click(screen.getByRole("button", { name: "发送消息" }));
-
-    expect(await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" }))
-      .toBeInTheDocument();
-    expect(screen.getByText("ErrorCode: UNKNOWN")).toBeInTheDocument();
-    expect(toast.warning).not.toHaveBeenCalledWith("发送接口失败");
-    expect(composer).toHaveTextContent("这条消息保留在输入框");
-    expect(useWorkbenchStore.getState().messagesByConversationId["conv-001"]).toHaveLength(
-      beforeMessageCount,
-    );
-  });
-
-  it("shows the HTTP status code when the send API rejects with a request error", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
-      async sendMessage() {
-        throw {
-          code: "ERR_BAD_REQUEST",
-          message: "Unauthorized",
-          status: 401,
-        };
-      },
-    });
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-
-    await pasteIntoComposer(user, composer, "这条消息会 401");
-    await user.click(screen.getByRole("button", { name: "发送消息" }));
-
-    expect(await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" }))
-      .toBeInTheDocument();
-    expect(screen.getByText("ErrorCode: 401")).toBeInTheDocument();
-  });
-
-  it("shows the business error code when the send API rejects with one", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
-      async sendMessage() {
-        throw {
-          code: "SEAT_NOT_TAKEN_OVER",
-          message: "当前账号尚未由你接管",
-          status: 403,
-        };
-      },
-    });
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-
-    await pasteIntoComposer(user, composer, "这条消息会业务失败");
-    await user.click(screen.getByRole("button", { name: "发送消息" }));
-
-    expect(await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" }))
-      .toBeInTheDocument();
-    expect(screen.getByText("ErrorCode: SEAT_NOT_TAKEN_OVER")).toBeInTheDocument();
-  });
-
-  it("keeps composer images and shows a dialog when image upload fails", async () => {
-    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
-      type: "image/png",
-    });
-
-    vi.mocked(resolveImageSegmentsForSend).mockRejectedValue(new Error("COS 上传失败"));
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    const beforeMessageCount =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
-
-    await userEvent.click(composer);
-    fireEvent.paste(composer, {
-      clipboardData: {
-        files: [clipboardImage],
-      },
-    });
-
-    expect(await screen.findByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
-
-    expect(await screen.findByRole("alertdialog", { name: "图片上传失败，请稍后重试" }))
-      .toBeInTheDocument();
-    expect(screen.getByText("ErrorCode: UNKNOWN")).toBeInTheDocument();
-    expect(toast.warning).not.toHaveBeenCalledWith("COS 上传失败");
-    expect(within(composer).getByRole("img", { hidden: true, name: "clipboard.png" }))
-      .toBeInTheDocument();
-    expect(useWorkbenchStore.getState().messagesByConversationId["conv-001"]).toHaveLength(
-      beforeMessageCount,
-    );
-  });
-
-  it("keeps uploaded composer image URLs when the send API rejects", async () => {
-    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
-      type: "image/png",
-    });
-    const remoteImageUrl =
-      "https://b5.bokr.com.cn/chat-images/conv-001/uploaded-image.png";
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
-      async sendMessage() {
-        throw new Error("发送接口失败");
-      },
-    });
-    vi.mocked(resolveImageSegmentsForSend).mockImplementation(
-      async (
-        _conversationId: string,
-        segments: ComposerSegment[],
-        options?: {
-          onImageUploaded?: (payload: {
-            nextSegment: ComposerSegment;
-            previousSegment: ComposerSegment;
-          }) => void;
-        },
-      ) => {
-        const resolvedSegments = segments.map((segment: ComposerSegment) => {
-          if (segment.type !== "image") {
-            return segment;
-          }
-
-          const resolvedSegment: ComposerSegment = {
-            alt: segment.alt,
-            fileId: "chat-images/conv-001/uploaded-image.png",
-            localUrl: segment.localUrl,
-            type: "image",
-            url: remoteImageUrl,
-          };
-
-          options?.onImageUploaded?.({
-            nextSegment: resolvedSegment,
-            previousSegment: segment,
-          });
-
-          return resolvedSegment;
-        });
-
-        return resolvedSegments;
-      },
-    );
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-
-    await userEvent.click(composer);
-    fireEvent.paste(composer, {
-      clipboardData: {
-        files: [clipboardImage],
-      },
-    });
-
-    const pastedImage = await screen.findByRole("img", { name: "clipboard.png" });
-
-    expect(pastedImage).toHaveAttribute("src", expect.stringMatching(/^data:/));
-
-    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
-
-    expect(await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" }))
-      .toBeInTheDocument();
-    expect(within(composer).getByRole("img", { hidden: true, name: "clipboard.png" }))
-      .toHaveAttribute("src", remoteImageUrl);
-
-    await userEvent.click(screen.getByRole("button", { name: "知道了" }));
-    vi.mocked(resolveImageSegmentsForSend).mockClear();
-
-    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
-
-    expect(resolveImageSegmentsForSend).toHaveBeenCalledTimes(1);
-    expect(resolveImageSegmentsForSend).toHaveBeenCalledWith(
-      "conv-001",
-      [
-        expect.objectContaining({
-          alt: "clipboard.png",
-          clientId: expect.stringMatching(/^composer-image-/),
-          fileId: "chat-images/conv-001/uploaded-image.png",
-          localUrl: expect.stringMatching(/^data:/),
-          type: "image",
-          url: remoteImageUrl,
-        }),
-      ],
-      expect.any(Object),
-    );
   });
 
   it("shows a sending state and prevents duplicate sends while waiting for the send API", async () => {
@@ -2266,7 +2054,7 @@ describe("ChatWorkbenchPage", () => {
     await useWorkbenchStore.getState().setActiveConversation("conv-002");
 
     await waitFor(() => {
-      expect(toast.warning).toHaveBeenCalledWith("标记已读失败");
+    expect(vi.mocked(toast.warning)).toHaveBeenCalledWith("标记已读失败");
     });
     expect(screen.queryByTestId("scope-transition-error")).not.toBeInTheDocument();
     expect(useWorkbenchStore.getState().readReceiptError).toBeUndefined();

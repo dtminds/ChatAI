@@ -24,6 +24,7 @@ import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
 type ChatPanelProps = {
   accountName?: string;
+  accountAvatarUrl?: string;
   activeConversation?: Conversation;
   activeHistoryStatus: "idle" | "loading" | "error";
   canSendMessage: boolean;
@@ -99,6 +100,7 @@ type ChatPanelProps = {
 
 export function ChatPanel({
   accountName,
+  accountAvatarUrl,
   activeConversation,
   activeHistoryStatus,
   canSendMessage,
@@ -278,6 +280,8 @@ export function ChatPanel({
           </div>
           {historyPanel ? (
             <MessageHistorySidePanel
+              accountAvatarUrl={accountAvatarUrl}
+              accountName={accountName}
               activeConversation={activeConversation}
               activeHistory={historyPanel.activeHistory}
               activeHistoryError={historyPanel.activeHistoryError}

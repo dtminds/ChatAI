@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDown01Icon,
   Cancel01Icon,
@@ -6,6 +6,11 @@ import {
   PlayIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -13,7 +18,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -53,6 +57,8 @@ type HistoryMessageHistoryPanelProps = {
   activeHistoryError?: string;
   activeHistoryLoading: boolean;
   scrollMode?: "end";
+  accountAvatarUrl?: string;
+  accountName?: string;
   activeHistoryFilters: {
     day?: string;
     senderId?: string;
@@ -80,6 +86,8 @@ export function MessageHistorySidePanel({
   activeHistoryFilters,
   activeHistoryLoading,
   scrollMode,
+  accountAvatarUrl,
+  accountName,
   customer,
   groupMembers,
   isOpen,
@@ -159,6 +167,8 @@ export function MessageHistorySidePanel({
             <div className="mt-2.5 flex items-center gap-1.5 px-4">
               <SenderFilter
                 activeConversation={activeConversation}
+                accountAvatarUrl={accountAvatarUrl}
+                accountName={accountName}
                 customerName={customer?.name}
                 groupMembers={groupMembers}
                 onChange={onSetSenderId}
@@ -1021,12 +1031,16 @@ function DateFilter({
 
 function SenderFilter({
   activeConversation,
+  accountAvatarUrl,
+  accountName,
   customerName,
   groupMembers,
   onChange,
   value,
 }: {
   activeConversation?: Conversation;
+  accountAvatarUrl?: string;
+  accountName?: string;
   customerName?: string;
   groupMembers: GroupMember[];
   onChange: (senderId?: string) => void;
@@ -1034,12 +1048,15 @@ function SenderFilter({
 }) {
   const options = buildSenderOptions(
     activeConversation,
+    accountAvatarUrl,
+    accountName,
     groupMembers,
     customerName,
   );
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <Popover>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button
           className={cn(
@@ -1057,29 +1074,56 @@ function SenderFilter({
           />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-2">
-        <RadioGroup
-          value={value ?? "__all__"}
-          onValueChange={(nextValue) =>
-            onChange(nextValue === "__all__" ? undefined : nextValue)
-          }
-        >
-          <div className="space-y-1.5">
-            <label className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-sm">
-              <RadioGroupItem value="__all__" />
-              全部
-            </label>
-            {options.map((option) => (
-              <label
-                className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-sm"
+      <PopoverContent align="start" className="w-72 p-2">
+        <div className="space-y-1">
+          <button
+            aria-pressed={(value ?? "__all__") === "__all__"}
+            className={cn(
+              "flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-sm outline-none transition-colors focus-visible:bg-muted",
+              (value ?? "__all__") === "__all__" && "bg-muted/70",
+            )}
+            onClick={() => {
+              onChange(undefined);
+              setIsOpen(false);
+            }}
+            type="button"
+          >
+            <span className="w-4 shrink-0 text-[13px] leading-none">
+              {(value ?? "__all__") === "__all__" ? "☑️" : "☐"}
+            </span>
+            <span className="min-w-0 flex-1 truncate">全部</span>
+          </button>
+          {options.map((option) => {
+            const isSelected = value === option.id;
+
+            return (
+              <button
+                aria-pressed={isSelected}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-sm outline-none transition-colors focus-visible:bg-muted",
+                  isSelected && "bg-muted/70",
+                )}
                 key={option.id}
+                onClick={() => {
+                  onChange(option.id);
+                  setIsOpen(false);
+                }}
+                type="button"
               >
-                <RadioGroupItem value={option.id} />
-                <span className="truncate">{option.label}</span>
-              </label>
-            ))}
-          </div>
-        </RadioGroup>
+                <span className="w-4 shrink-0 text-[13px] leading-none">
+                  {isSelected ? "☑️" : "☐"}
+                </span>
+                <Avatar className="size-7 shrink-0">
+                  <AvatarImage alt={option.label} src={option.avatarUrl} />
+                  <AvatarFallback className="text-[11px]">
+                    {getFirstGrapheme(option.label)}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -1087,6 +1131,8 @@ function SenderFilter({
 
 function buildSenderOptions(
   activeConversation?: Conversation,
+  accountAvatarUrl?: string,
+  accountName?: string,
   groupMembers: GroupMember[] = [],
   customerName?: string,
 ) {
@@ -1098,16 +1144,19 @@ function buildSenderOptions(
     return [
       {
         id: activeConversation.thirdUserId ?? "",
-        label: "当前客服",
+        avatarUrl: accountAvatarUrl,
+        label: accountName ?? "客服",
       },
       {
         id: activeConversation.thirdExternalUserId ?? "",
+        avatarUrl: activeConversation.customerAvatarUrl,
         label: customerName ?? activeConversation.customerName,
       },
     ].filter((item) => item.id);
   }
 
   return groupMembers.map((member) => ({
+    avatarUrl: member.avatarUrl,
     id: member.id,
     label: member.displayName,
   }));
@@ -1127,4 +1176,25 @@ function getHistoryFilterKey(filters: {
   scope: HistoryPanelScope;
 }) {
   return `${filters.scope}\u0000${filters.day ?? ""}\u0000${filters.senderId ?? ""}`;
+}
+
+function getFirstGrapheme(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "?";
+  }
+
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter(undefined, {
+      granularity: "grapheme",
+    });
+    const first = segmenter.segment(trimmed)[Symbol.iterator]().next();
+
+    if (!first.done) {
+      return String(first.value.segment).slice(0, 1);
+    }
+  }
+
+  return trimmed.slice(0, 1);
 }

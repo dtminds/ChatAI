@@ -1,5 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { GROUP_MEMBER_TYPE } from "@chatai/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { MessageHistorySidePanel } from "@/pages/chat/components/message-history-side-panel";
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
@@ -72,6 +73,108 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.queryByPlaceholderText("搜索聊天记录")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送人" })).toHaveClass("h-8", "py-0", "text-[12px]");
     expect(screen.getByRole("button", { name: "日期" })).toHaveClass("h-8", "py-0", "text-[12px]");
+  });
+
+  it("renders sender options with avatars and the real account name in single conversations", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageHistorySidePanel
+        accountAvatarUrl="https://cdn.example.com/account.png"
+        accountName="林洒"
+        activeConversation={{
+          ...createConversation(),
+          customerAvatarUrl: "https://cdn.example.com/customer.png",
+          thirdExternalUserId: "customer-1",
+          thirdUserId: "seat-1",
+        }}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "发送人" }));
+
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前客服")).not.toBeInTheDocument();
+    const singleDialog = screen.getByRole("dialog");
+    const singleAccountButton = within(singleDialog).getByRole("button", { name: /林洒/ });
+    const singleCustomerButton = within(singleDialog).getByRole("button", { name: /测试客户/ });
+
+    expect(singleAccountButton).toBeInTheDocument();
+    expect(singleCustomerButton).toBeInTheDocument();
+    expect(within(singleAccountButton).getByText("☐")).toBeInTheDocument();
+    expect(within(singleCustomerButton).getByText("☐")).toBeInTheDocument();
+    expect(within(singleAccountButton).getByText("林")).toBeInTheDocument();
+    expect(within(singleCustomerButton).getByText("测")).toBeInTheDocument();
+  });
+
+  it("renders sender options with avatars and checkbox marks in group conversations", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={{
+          ...createConversation(),
+          mode: "group",
+        }}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[
+          {
+            avatarUrl: "https://cdn.example.com/member-1.png",
+            displayName: "小林",
+            id: "member-1",
+            type: GROUP_MEMBER_TYPE.OWNER,
+          },
+          {
+            avatarUrl: "https://cdn.example.com/member-2.png",
+            displayName: "睿白鸽",
+            id: "member-2",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "发送人" }));
+
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前客服")).not.toBeInTheDocument();
+    expect(screen.getByText("☑️")).toBeInTheDocument();
+    const groupDialog = screen.getByRole("dialog");
+    const groupMemberButton = within(groupDialog).getByRole("button", { name: /小林/ });
+    const anotherMemberButton = within(groupDialog).getByRole("button", { name: /睿白鸽/ });
+
+    expect(within(groupMemberButton).getByText("小")).toBeInTheDocument();
+    expect(within(anotherMemberButton).getByText("睿")).toBeInTheDocument();
   });
 
   it("does not show empty state while loading history data", () => {

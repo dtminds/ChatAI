@@ -1076,6 +1076,7 @@ function ChatWorkbenchContent({
 
               <ChatPanel
                 accountName={activeAccount?.name}
+                accountAvatarUrl={activeAccount?.avatarUrl}
                 activeConversation={activeConversation}
                 activeHistoryStatus={activeHistoryStatus}
                 canSendMessage={canSendMessage}

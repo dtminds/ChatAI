@@ -18,7 +18,7 @@ export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
   return (
     <div className="w-[240px] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5">
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-        <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <div className="flex size-4 items-center justify-center rounded-full bg-primary/10 text-primary">
           {content.logoUrl ? (
             <img
               alt={content.appName}
@@ -72,7 +72,10 @@ function MiniProgramCoverFallback({ title }: { title: string }) {
   );
 }
 
-export function MiniProgramMark({ className, ...props }: SVGProps<SVGSVGElement>) {
+export function MiniProgramMark({
+  className,
+  ...props
+}: SVGProps<SVGSVGElement>) {
   return (
     <svg
       aria-hidden="true"

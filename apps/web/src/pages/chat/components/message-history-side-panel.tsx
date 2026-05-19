@@ -17,6 +17,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { ImagePreviewDialog } from "@/pages/chat/components/message/image";
 import { LoadableMessageImage } from "@/pages/chat/components/message/media-fallback";
 import {
@@ -25,16 +26,20 @@ import {
 } from "@/pages/chat/components/message";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
+import { getSafeMessageUrl } from "@/pages/chat/components/message/url";
 import type {
   ChatMessage,
   Conversation,
   GroupMember,
+  H5CardMessageContent,
   ImageMessageContent,
+  MiniProgramMessageContent,
   Message,
   VideoMessageContent,
 } from "@/pages/chat/chat-types";
 
 type HistoryPanelScope = "all" | "file" | "media" | "h5" | "mini-program";
+type HistoryTabSortDirection = "ascending" | "descending";
 
 type HistoryMessageHistoryPanelProps = {
   activeConversation?: Conversation;
@@ -47,6 +52,7 @@ type HistoryMessageHistoryPanelProps = {
   };
   activeHistoryError?: string;
   activeHistoryLoading: boolean;
+  scrollMode?: "end";
   activeHistoryFilters: {
     day?: string;
     senderId?: string;
@@ -60,6 +66,7 @@ type HistoryMessageHistoryPanelProps = {
   onClose: () => void;
   onLoadMoreNext: () => void;
   onLoadMorePrev: () => void;
+  onDownloadMessageFile?: (message: ChatMessage) => void;
   onRefresh: () => void;
   onSetDay: (day?: string) => void;
   onSetScope: (scope: HistoryPanelScope) => void;
@@ -72,12 +79,14 @@ export function MessageHistorySidePanel({
   activeHistoryError,
   activeHistoryFilters,
   activeHistoryLoading,
+  scrollMode,
   customer,
   groupMembers,
   isOpen,
   onClose,
   onLoadMoreNext,
   onLoadMorePrev,
+  onDownloadMessageFile,
   onRefresh,
   onSetDay,
   onSetScope,
@@ -93,7 +102,9 @@ export function MessageHistorySidePanel({
       className="absolute inset-0 z-20 flex w-full min-w-0 flex-col border-l border-divider bg-surface"
     >
       <div className="flex items-center justify-between px-4 py-3">
-        <p className="min-w-0 text-sm font-semibold text-foreground">聊天记录</p>
+        <p className="min-w-0 text-sm font-semibold text-foreground">
+          聊天记录
+        </p>
         <Button
           aria-label="关闭聊天记录"
           className="size-8 p-0"
@@ -174,6 +185,12 @@ export function MessageHistorySidePanel({
                 activeHistory={activeHistory}
                 activeHistoryError={activeHistoryError}
                 activeHistoryLoading={activeHistoryLoading}
+                filterKey={getHistoryFilterKey(activeHistoryFilters)}
+                scrollMode={scrollMode}
+                sortDirection={getHistoryTabSortDirection(
+                  activeHistoryFilters.scope,
+                )}
+                onDownloadMessageFile={onDownloadMessageFile}
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
@@ -187,10 +204,22 @@ export function MessageHistorySidePanel({
                 activeHistory={activeHistory}
                 activeHistoryError={activeHistoryError}
                 activeHistoryLoading={activeHistoryLoading}
+                filterKey={getHistoryFilterKey(activeHistoryFilters)}
+                scrollMode={scrollMode}
+                sortDirection={getHistoryTabSortDirection(
+                  activeHistoryFilters.scope,
+                )}
+                onDownloadMessageFile={onDownloadMessageFile}
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
-                <HistoryResourceList messages={activeHistory?.messages ?? []} />
+                <HistoryFileList
+                  messages={getHistoryTabMessages(
+                    activeHistory?.messages ?? [],
+                    activeHistoryFilters.scope,
+                  )}
+                  onDownloadMessageFile={onDownloadMessageFile}
+                />
               </HistoryMessageViewport>
             </TabsContent>
             <TabsContent className="mt-0 h-full min-h-0" value="media">
@@ -198,10 +227,21 @@ export function MessageHistorySidePanel({
                 activeHistory={activeHistory}
                 activeHistoryError={activeHistoryError}
                 activeHistoryLoading={activeHistoryLoading}
+                filterKey={getHistoryFilterKey(activeHistoryFilters)}
+                scrollMode={scrollMode}
+                sortDirection={getHistoryTabSortDirection(
+                  activeHistoryFilters.scope,
+                )}
+                onDownloadMessageFile={onDownloadMessageFile}
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
-                <HistoryMediaWall messages={activeHistory?.messages ?? []} />
+                <HistoryMediaWall
+                  messages={getHistoryTabMessages(
+                    activeHistory?.messages ?? [],
+                    activeHistoryFilters.scope,
+                  )}
+                />
               </HistoryMessageViewport>
             </TabsContent>
             <TabsContent className="mt-0 h-full min-h-0" value="h5">
@@ -209,10 +249,21 @@ export function MessageHistorySidePanel({
                 activeHistory={activeHistory}
                 activeHistoryError={activeHistoryError}
                 activeHistoryLoading={activeHistoryLoading}
+                filterKey={getHistoryFilterKey(activeHistoryFilters)}
+                scrollMode={scrollMode}
+                sortDirection={getHistoryTabSortDirection(
+                  activeHistoryFilters.scope,
+                )}
+                onDownloadMessageFile={onDownloadMessageFile}
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
-                <HistoryResourceList messages={activeHistory?.messages ?? []} />
+                <HistoryLinkList
+                  messages={getHistoryTabMessages(
+                    activeHistory?.messages ?? [],
+                    activeHistoryFilters.scope,
+                  )}
+                />
               </HistoryMessageViewport>
             </TabsContent>
             <TabsContent className="mt-0 h-full min-h-0" value="mini-program">
@@ -220,10 +271,21 @@ export function MessageHistorySidePanel({
                 activeHistory={activeHistory}
                 activeHistoryError={activeHistoryError}
                 activeHistoryLoading={activeHistoryLoading}
+                filterKey={getHistoryFilterKey(activeHistoryFilters)}
+                scrollMode={scrollMode}
+                sortDirection={getHistoryTabSortDirection(
+                  activeHistoryFilters.scope,
+                )}
+                onDownloadMessageFile={onDownloadMessageFile}
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
-                <HistoryResourceList messages={activeHistory?.messages ?? []} />
+                <HistoryMiniProgramList
+                  messages={getHistoryTabMessages(
+                    activeHistory?.messages ?? [],
+                    activeHistoryFilters.scope,
+                  )}
+                />
               </HistoryMessageViewport>
             </TabsContent>
           </div>
@@ -237,6 +299,10 @@ function HistoryMessageViewport({
   activeHistory,
   activeHistoryError,
   activeHistoryLoading,
+  filterKey,
+  onDownloadMessageFile,
+  scrollMode,
+  sortDirection,
   children,
   onLoadMoreNext,
   onLoadMorePrev,
@@ -250,6 +316,10 @@ function HistoryMessageViewport({
   };
   activeHistoryError?: string;
   activeHistoryLoading: boolean;
+  filterKey: string;
+  onDownloadMessageFile?: (message: ChatMessage) => void;
+  sortDirection: HistoryTabSortDirection;
+  scrollMode?: "end";
   children: ReactNode;
   onLoadMoreNext: () => void;
   onLoadMorePrev: () => void;
@@ -260,6 +330,7 @@ function HistoryMessageViewport({
     previousScrollTop: number;
   } | null>(null);
   const previousMessageIdsKeyRef = useRef("");
+  const previousFilterKeyRef = useRef("");
   const messageIdsKey =
     activeHistory?.messages.map((message) => message.id).join("\u0000") ?? "";
   const handleLoadMorePrev = () => {
@@ -281,6 +352,7 @@ function HistoryMessageViewport({
 
     if (!viewport) {
       previousMessageIdsKeyRef.current = messageIdsKey;
+      previousFilterKeyRef.current = filterKey;
       return;
     }
 
@@ -289,15 +361,28 @@ function HistoryMessageViewport({
       viewport.scrollTop =
         pendingRestore.previousScrollTop +
         (viewport.scrollHeight - pendingRestore.previousScrollHeight);
-    } else if (!previousMessageIdsKeyRef.current && messageIdsKey) {
-      viewport.scrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+    } else if (scrollMode === "end") {
+      viewport.scrollTop = Math.max(
+        0,
+        viewport.scrollHeight - viewport.clientHeight,
+      );
+    } else if (
+      previousFilterKeyRef.current &&
+      previousFilterKeyRef.current !== filterKey
+    ) {
+      viewport.scrollTop = 0;
     }
 
     previousMessageIdsKeyRef.current = messageIdsKey;
-  }, [messageIdsKey]);
+    previousFilterKeyRef.current = filterKey;
+  }, [filterKey, messageIdsKey, scrollMode]);
 
   return (
-    <ScrollArea className="h-full" viewportRef={viewportRef} viewportTestId="history-message-viewport">
+    <ScrollArea
+      className="h-full"
+      viewportRef={viewportRef}
+      viewportTestId="history-message-viewport"
+    >
       <div className="space-y-3 px-4 py-4">
         {activeHistoryError ? (
           <div className="rounded-[8px] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -305,7 +390,14 @@ function HistoryMessageViewport({
           </div>
         ) : null}
         {activeHistory?.hasPrev ? (
-          <HistoryEdgeLoader onClick={handleLoadMorePrev} text="加载更早的对话" />
+          <HistoryEdgeLoader
+            onClick={
+              sortDirection === "ascending" ? handleLoadMorePrev : onLoadMoreNext
+            }
+            text={
+              sortDirection === "ascending" ? "加载更早的对话" : "加载更多对话"
+            }
+          />
         ) : null}
         {activeHistoryLoading && !(activeHistory?.messages.length ?? 0) ? (
           <div className="flex min-h-[140px] items-center justify-center text-sm text-muted-foreground">
@@ -319,7 +411,16 @@ function HistoryMessageViewport({
         ) : (
           <div>{children}</div>
         )}
-        {activeHistory?.hasNext ? <HistoryEdgeLoader onClick={onLoadMoreNext} text="加载更多对话" /> : null}
+        {activeHistory?.hasNext ? (
+          <HistoryEdgeLoader
+            onClick={
+              sortDirection === "ascending" ? onLoadMoreNext : handleLoadMorePrev
+            }
+            text={
+              sortDirection === "ascending" ? "加载更多对话" : "加载更早的对话"
+            }
+          />
+        ) : null}
       </div>
     </ScrollArea>
   );
@@ -334,7 +435,11 @@ function HistoryEdgeLoader({
 }) {
   return (
     <div className="flex justify-center">
-      <Button className="h-8 px-3 text-[12px]" onClick={onClick} variant="outline">
+      <Button
+        className="h-8 px-3 text-[12px]"
+        onClick={onClick}
+        variant="outline"
+      >
         {text}
       </Button>
     </div>
@@ -411,29 +516,57 @@ function HistoryCompactText({ text }: { text: string }) {
   );
 }
 
-function HistoryResourceList({ messages }: { messages: Message[] }) {
-  const chatMessages = messages.filter(isChatMessage);
+function HistoryFileList({
+  messages,
+  onDownloadMessageFile,
+}: {
+  messages: Message[];
+  onDownloadMessageFile?: (message: ChatMessage) => void;
+}) {
+  const fileMessages = messages.filter(isFileMessage);
 
   return (
-    <div className="space-y-3">
-      {chatMessages.map((message) => (
+    <div className="w-full max-w-full min-w-0 divide-y divide-divider/80 overflow-hidden">
+      {fileMessages.map((message) => (
         <div
-          className="rounded-[8px] border border-border bg-surface px-3 py-2 text-sm text-foreground"
+          className="grid w-full max-w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 overflow-hidden px-2 py-3"
           key={message.id}
         >
-          <div className="flex items-center justify-between gap-3 text-[12px] text-muted-foreground">
-            <span className="truncate">{message.author}</span>
-            <span className="shrink-0">{message.sentAt}</span>
-          </div>
-          <div className="mt-2">
-            <MessageContentRenderer
-              isAgent={message.role === "agent"}
-              message={message}
-            />
+          <HistoryFileBadge message={message} />
+          <div className="min-w-0 overflow-hidden">
+            <div className="flex min-w-0 items-start gap-2 overflow-hidden">
+              <div className="block min-w-0 flex-1 truncate text-[14px] font-semibold leading-5 text-foreground">
+                {message.content.fileName}
+              </div>
+              {onDownloadMessageFile ? (
+                <button
+                  aria-label={`下载文件：${message.content.fileName}`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-[4px] text-[12px] font-medium text-foreground outline-none transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/35"
+                  onClick={() => onDownloadMessageFile(message)}
+                  type="button"
+                >
+                  <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
+                  下载
+                </button>
+              ) : null}
+            </div>
+            <div className="mt-0.5 block w-full min-w-0 max-w-full truncate text-[12px] leading-5 text-muted-foreground/75">
+              <span>{message.author}</span>
+              {message.content.fileSizeLabel ? (
+                <span>
+                  <span className="mx-1.5 text-muted-foreground/45">|</span>
+                  {message.content.fileSizeLabel}
+                </span>
+              ) : null}
+              <span>
+                <span className="mx-1.5 text-muted-foreground/45">|</span>
+                {formatHistoryResourceDate(message.sentAt)}
+              </span>
+            </div>
           </div>
         </div>
       ))}
-      {chatMessages.length === 0 ? (
+      {fileMessages.length === 0 ? (
         <div className="px-3 py-10 text-center text-sm text-muted-foreground">
           暂无历史记录
         </div>
@@ -442,16 +575,190 @@ function HistoryResourceList({ messages }: { messages: Message[] }) {
   );
 }
 
-function HistoryMediaWall({ messages }: { messages: Message[] }) {
-  const mediaMessages = messages.filter(isMediaMessage);
+function getHistoryTabMessages(messages: Message[], scope: HistoryPanelScope) {
+  if (scope === "all") {
+    return messages;
+  }
+
+  return [...messages].sort((left, right) => {
+    const rightTime = parseHistoryMessageDate(right.sentAt)?.getTime() ?? 0;
+    const leftTime = parseHistoryMessageDate(left.sentAt)?.getTime() ?? 0;
+
+    if (rightTime !== leftTime) {
+      return rightTime - leftTime;
+    }
+
+    return right.id.localeCompare(left.id);
+  });
+}
+
+function getHistoryTabSortDirection(
+  scope: HistoryPanelScope,
+): HistoryTabSortDirection {
+  return scope === "all" ? "ascending" : "descending";
+}
+
+function HistoryFileBadge({ message }: { message: FileHistoryMessage }) {
+  return (
+    <FileExtensionBadge
+      className="size-10 shrink-0"
+      extension={message.content.extension}
+    />
+  );
+}
+
+function HistoryResourceThumbFallback() {
+  return (
+    <div className="size-10 shrink-0 rounded-[8px] bg-muted-foreground/5" />
+  );
+}
+
+function HistoryLinkList({ messages }: { messages: Message[] }) {
+  const linkMessages = messages.filter(isH5Message);
 
   return (
-    <div>
-      <div className="grid grid-cols-2 gap-2">
-        {mediaMessages.map((message) => (
-          <HistoryMediaTile key={message.id} message={message} />
-        ))}
+    <div className="w-full max-w-full min-w-0 divide-y divide-divider/80 overflow-hidden">
+      {linkMessages.map((message) => (
+        <HistoryLinkRow key={message.id} message={message} />
+      ))}
+      {linkMessages.length === 0 ? (
+        <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+          暂无历史记录
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function HistoryLinkRow({ message }: { message: H5HistoryMessage }) {
+  const safeUrl = getSafeMessageUrl(message.content.url);
+
+  const handleClick = () => {
+    if (!safeUrl) {
+      return;
+    }
+
+    window.open(safeUrl, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <div
+      className="grid w-full max-w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 overflow-hidden px-2 py-3"
+      onClick={handleClick}
+      role={safeUrl ? "link" : undefined}
+      tabIndex={safeUrl ? 0 : undefined}
+    >
+      <HistoryLinkThumb message={message} />
+      <div className="min-w-0 overflow-hidden">
+        <div className="flex min-w-0 items-start gap-2 overflow-hidden">
+          <div className="block min-w-0 flex-1 truncate text-[14px] font-semibold leading-5 text-foreground">
+            {message.content.title || message.content.description || "H5"}
+          </div>
+        </div>
+        <div className="mt-0.5 block w-full min-w-0 max-w-full truncate text-[12px] leading-5 text-muted-foreground/75">
+          <span>{message.author}</span>
+          <span>
+            <span className="mx-1.5 text-muted-foreground/45">|</span>
+            {formatHistoryResourceDate(message.sentAt)}
+          </span>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function HistoryLinkThumb({ message }: { message: H5HistoryMessage }) {
+  const previewImageUrl = message.content.previewImageUrl?.trim();
+
+  if (previewImageUrl) {
+    return (
+      <LoadableMessageImage
+        alt={message.content.title}
+        className="size-10 shrink-0 rounded-[8px] object-cover"
+        fallback={<HistoryResourceThumbFallback />}
+        loading="lazy"
+        src={previewImageUrl}
+      />
+    );
+  }
+
+  return <HistoryResourceThumbFallback />;
+}
+
+function HistoryMiniProgramList({ messages }: { messages: Message[] }) {
+  const miniProgramMessages = messages.filter(isMiniProgramMessage);
+
+  return (
+    <div className="w-full max-w-full min-w-0 divide-y divide-divider/80 overflow-hidden">
+      {miniProgramMessages.map((message) => (
+        <div
+          className="grid w-full max-w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 overflow-hidden px-2 py-3"
+          key={message.id}
+        >
+          <HistoryMiniProgramThumb message={message} />
+          <div className="min-w-0 overflow-hidden">
+            <div className="flex min-w-0 items-start gap-2 overflow-hidden">
+              <div className="block min-w-0 flex-1 truncate text-[14px] font-semibold leading-5 text-foreground">
+                {message.content.title || message.content.appName || "小程序"}
+              </div>
+            </div>
+            <div className="mt-0.5 block w-full min-w-0 max-w-full truncate text-[12px] leading-5 text-muted-foreground/75">
+              <span>{message.author}</span>
+              <span>
+                <span className="mx-1.5 text-muted-foreground/45">|</span>
+                {formatHistoryResourceDate(message.sentAt)}
+              </span>
+            </div>
+          </div>
+        </div>
+      ))}
+      {miniProgramMessages.length === 0 ? (
+        <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+          暂无历史记录
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function HistoryMiniProgramThumb({
+  message,
+}: {
+  message: MiniProgramHistoryMessage;
+}) {
+  const coverImageUrl = message.content.coverImageUrl?.trim();
+
+  if (coverImageUrl) {
+    return (
+      <LoadableMessageImage
+        alt={message.content.title}
+        className="size-10 shrink-0 rounded-[8px] object-cover"
+        fallback={<HistoryResourceThumbFallback />}
+        loading="lazy"
+        src={coverImageUrl}
+      />
+    );
+  }
+
+  return <HistoryResourceThumbFallback />;
+}
+
+function HistoryMediaWall({ messages }: { messages: Message[] }) {
+  const mediaMessages = messages.filter(isMediaMessage);
+  const groupedMediaMessages = groupMediaMessagesByDate(mediaMessages);
+
+  return (
+    <div className="space-y-5 px-0 py-3">
+      {groupedMediaMessages.map((group) => (
+        <div key={group.label} className="space-y-3">
+          <HistoryDateDivider label={group.label} />
+          <div className="grid grid-cols-3 gap-2">
+            {group.messages.map((message) => (
+              <HistoryMediaTile key={message.id} message={message} />
+            ))}
+          </div>
+        </div>
+      ))}
       {mediaMessages.length === 0 ? (
         <div className="px-3 py-10 text-center text-sm text-muted-foreground">
           暂无历史记录
@@ -463,6 +770,18 @@ function HistoryMediaWall({ messages }: { messages: Message[] }) {
 
 type MediaHistoryMessage = ChatMessage & {
   content: ImageMessageContent | VideoMessageContent;
+};
+
+type FileHistoryMessage = ChatMessage & {
+  content: ChatMessage["content"] & { type: "file" };
+};
+
+type H5HistoryMessage = ChatMessage & {
+  content: H5CardMessageContent;
+};
+
+type MiniProgramHistoryMessage = ChatMessage & {
+  content: MiniProgramMessageContent;
 };
 
 function HistoryMediaTile({ message }: { message: MediaHistoryMessage }) {
@@ -479,7 +798,7 @@ function HistoryMediaTile({ message }: { message: MediaHistoryMessage }) {
   const tileContent = optimizedImageUrl ? (
     <LoadableMessageImage
       alt={content.alt}
-      className="h-full w-full object-cover transition-transform duration-200 group-hover/media:scale-[1.02]"
+      className="h-full w-full object-contain transition-transform duration-200 group-hover/media:scale-[1.01]"
       fallback={
         <div className="flex h-full w-full items-center justify-center bg-muted text-xs text-muted-foreground">
           {fallbackText}
@@ -528,12 +847,16 @@ function HistoryMediaTile({ message }: { message: MediaHistoryMessage }) {
           />
         </span>
       ) : null}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-1 bg-gradient-to-t from-black/65 via-black/25 to-transparent px-2 pb-2 pt-7 text-white">
-        <div className="truncate text-[12px] leading-4">{message.author}</div>
-        <div className="truncate text-[11px] leading-4 text-white/78">
-          {message.sentAt}
-        </div>
-      </div>
+    </div>
+  );
+}
+
+function HistoryDateDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 px-2 text-[12px] leading-5 text-muted-foreground">
+      <span className="h-px flex-1 bg-divider" />
+      <span className="shrink-0">{label}</span>
+      <span className="h-px flex-1 bg-divider" />
     </div>
   );
 }
@@ -549,8 +872,42 @@ function isMediaMessage(message: Message): message is MediaHistoryMessage {
   );
 }
 
+function isFileMessage(message: Message): message is FileHistoryMessage {
+  return message.role !== "system" && message.content.type === "file";
+}
+
+function isH5Message(message: Message): message is H5HistoryMessage {
+  return message.role !== "system" && message.content.type === "h5";
+}
+
+function isMiniProgramMessage(
+  message: Message,
+): message is MiniProgramHistoryMessage {
+  return message.role !== "system" && message.content.type === "mini-program";
+}
+
 function getHistoryMessageAuthor(message: ChatMessage) {
   return message.author || message.senderDisplayName || message.sender.name;
+}
+
+function groupMediaMessagesByDate(messages: MediaHistoryMessage[]) {
+  const groups: Array<{ label: string; messages: MediaHistoryMessage[] }> = [];
+
+  for (const message of messages) {
+    const label = formatHistoryResourceDate(message.sentAt);
+    const previousGroup = groups[groups.length - 1];
+
+    if (previousGroup && previousGroup.label === label) {
+      previousGroup.messages.push(message);
+    } else {
+      groups.push({
+        label,
+        messages: [message],
+      });
+    }
+  }
+
+  return groups;
 }
 
 function normalizeHistoryText(value: string) {
@@ -574,6 +931,23 @@ function formatHistoryMessageTime(value: string) {
   }
 
   return `${date.getFullYear()}/${month}/${day} ${time}`;
+}
+
+function formatHistoryResourceDate(value: string) {
+  const date = parseHistoryMessageDate(value);
+
+  if (!date) {
+    return value.split(" ")[0] ?? value;
+  }
+
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+
+  if (date.getFullYear() === new Date().getFullYear()) {
+    return `${month}/${day}`;
+  }
+
+  return `${date.getFullYear()}/${month}/${day}`;
 }
 
 function parseHistoryMessageDate(value: string) {
@@ -745,4 +1119,12 @@ function formatDay(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function getHistoryFilterKey(filters: {
+  day?: string;
+  senderId?: string;
+  scope: HistoryPanelScope;
+}) {
+  return `${filters.scope}\u0000${filters.day ?? ""}\u0000${filters.senderId ?? ""}`;
 }

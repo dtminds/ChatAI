@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { MessageHistorySidePanel } from "@/pages/chat/components/message-history-side-panel";
@@ -11,11 +11,15 @@ describe("MessageHistorySidePanel", () => {
         activeConversation={createConversation()}
         activeHistory={{
           hasNext: false,
-          hasPrev: false,
-          messages: [],
+          hasPrev: true,
+          messages: [
+            createTextMessage("message-1", "第一条"),
+            createTextMessage("message-2", "第二条"),
+          ],
         }}
         activeHistoryFilters={{ scope: "all" }}
         activeHistoryLoading={false}
+        scrollMode="end"
         groupMembers={[]}
         isOpen
         onClose={vi.fn()}
@@ -52,6 +56,7 @@ describe("MessageHistorySidePanel", () => {
         }}
         activeHistoryFilters={{ scope: "all" }}
         activeHistoryLoading={false}
+        scrollMode="end"
         groupMembers={[]}
         isOpen
         onClose={vi.fn()}
@@ -142,6 +147,7 @@ describe("MessageHistorySidePanel", () => {
         }}
         activeHistoryFilters={{ scope: "all" }}
         activeHistoryLoading={false}
+        scrollMode="end"
         groupMembers={[]}
         isOpen
         onClose={vi.fn()}
@@ -289,7 +295,403 @@ describe("MessageHistorySidePanel", () => {
     expect(quoteIcon).toHaveAttribute("data-icon-name", "file-empty-01");
   });
 
-  it("keeps the viewport at the end after the first history load", () => {
+  it("renders the file tab as a compact list row layout", async () => {
+    const user = userEvent.setup();
+    const handleDownloadMessageFile = vi.fn();
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createFileMessage("file-1", {
+              extension: "xlsx",
+              fileName: "2026年五一值班表.xlsx",
+              fileSizeLabel: "16K",
+              sourceLabel: "范双飞（饭饭）",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "file" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={handleDownloadMessageFile}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("2026年五一值班表.xlsx")).toHaveClass("truncate", "text-[14px]", "font-semibold");
+    expect(screen.getByText("xlsx")).toBeInTheDocument();
+    expect(screen.getByText("范双飞（饭饭）")).toBeInTheDocument();
+    expect(screen.getByText(/16K/)).toBeInTheDocument();
+    expect(screen.getByText("5/19")).toBeInTheDocument();
+    expect(screen.queryByText("5/19 10:00")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载文件：2026年五一值班表.xlsx" }))
+      .toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "下载文件：2026年五一值班表.xlsx" }));
+    expect(handleDownloadMessageFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("text-message-bubble")).not.toBeInTheDocument();
+  });
+
+  it("renders link history rows with preview images and opens the link", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createH5Message("h5-1", {
+              title: "活动链接",
+              description: "活动说明",
+              previewImageUrl: "https://cdn.example.com/h5.png",
+              url: "https://example.com/h5",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "h5" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByAltText("活动链接")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/h5.png",
+    );
+    expect(screen.getByText("活动链接")).toBeInTheDocument();
+    const viewport = within(screen.getByTestId("history-message-viewport"));
+    expect(viewport.queryByText("链接")).not.toBeInTheDocument();
+    expect(viewport.queryByText("H5")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link"));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://example.com/h5",
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    openSpy.mockRestore();
+  });
+
+  it("renders mini-program history rows with cover images and no type text", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createMiniProgramMessage("mini-1", {
+              appName: "商城小程序",
+              coverImageUrl: "https://cdn.example.com/mini.png",
+              title: "订单详情",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "mini-program" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByAltText("订单详情")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/mini.png",
+    );
+    expect(screen.getByText("订单详情")).toBeInTheDocument();
+    const viewport = within(screen.getByTestId("history-message-viewport"));
+    expect(viewport.queryByText("小程序")).not.toBeInTheDocument();
+    expect(viewport.queryByText("MP")).not.toBeInTheDocument();
+  });
+
+  it("shows newer file messages before older ones in file tab", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createFileMessage("file-old", {
+              extension: "pdf",
+              fileName: "老文件.pdf",
+              fileSizeLabel: "12K",
+              sourceLabel: "范双飞（饭饭）",
+              sentAt: "2026-05-18 10:00:00",
+            }),
+            createFileMessage("file-new", {
+              extension: "pdf",
+              fileName: "新文件.pdf",
+              fileSizeLabel: "14K",
+              sourceLabel: "范双飞（饭饭）",
+              sentAt: "2026-05-19 10:00:00",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "file" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const titles = screen.getAllByText(/文件\.pdf$/);
+
+    expect(titles[0]).toHaveTextContent("新文件.pdf");
+    expect(titles[1]).toHaveTextContent("老文件.pdf");
+  });
+
+  it("uses reversed loader semantics in file tab", async () => {
+    const user = userEvent.setup();
+    const handleLoadMorePrev = vi.fn();
+    const handleLoadMoreNext = vi.fn();
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: true,
+          hasPrev: true,
+          messages: [
+            createFileMessage("file-old", {
+              extension: "pdf",
+              fileName: "老文件.pdf",
+              fileSizeLabel: "12K",
+              sourceLabel: "范双飞（饭饭）",
+              sentAt: "2026-05-18 10:00:00",
+            }),
+            createFileMessage("file-new", {
+              extension: "pdf",
+              fileName: "新文件.pdf",
+              fileSizeLabel: "14K",
+              sourceLabel: "范双飞（饭饭）",
+              sentAt: "2026-05-19 10:00:00",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "file" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={handleLoadMoreNext}
+        onLoadMorePrev={handleLoadMorePrev}
+        onDownloadMessageFile={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "加载更多对话" }));
+    await user.click(screen.getByRole("button", { name: "加载更早的对话" }));
+
+    expect(handleLoadMorePrev).toHaveBeenCalledTimes(1);
+    expect(handleLoadMoreNext).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the media tab as a three-column date grouped image wall", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createImageMessage("image-1", {
+              alt: "图片 1",
+              imageUrl: "https://example.com/image-1.png",
+              sentAt: "2026-05-19 10:00:00",
+            }),
+            createImageMessage("image-2", {
+              alt: "图片 2",
+              imageUrl: "https://example.com/image-2.png",
+              sentAt: "2026-05-19 11:00:00",
+            }),
+            createImageMessage("image-3", {
+              alt: "图片 3",
+              imageUrl: "https://example.com/image-3.png",
+              sentAt: "2026-05-18 12:00:00",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("5/19")).toBeInTheDocument();
+    expect(screen.getByText("5/18")).toBeInTheDocument();
+    expect(screen.getAllByAltText(/图片 [123]/)).toHaveLength(3);
+    expect(screen.getByAltText("图片 1")).toHaveClass("object-contain");
+    expect(screen.queryByText("10:00:00")).not.toBeInTheDocument();
+    expect(screen.queryByText("11:00:00")).not.toBeInTheDocument();
+    expect(screen.queryByText("12:00:00")).not.toBeInTheDocument();
+  });
+
+  it("shows newer media groups before older ones in media tab", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createImageMessage("image-old", {
+              alt: "旧图片",
+              imageUrl: "https://example.com/image-old.png",
+              sentAt: "2026-05-18 10:00:00",
+            }),
+            createImageMessage("image-new", {
+              alt: "新图片",
+              imageUrl: "https://example.com/image-new.png",
+              sentAt: "2026-05-19 10:00:00",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const dateLabels = screen.getAllByText(/\d{1,2}\/\d{1,2}/);
+
+    expect(dateLabels[0]).toHaveTextContent("5/19");
+    expect(dateLabels[1]).toHaveTextContent("5/18");
+  });
+
+  it("uses reversed loader semantics in media tab", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: true,
+          hasPrev: true,
+          messages: [
+            createImageMessage("image-old", {
+              alt: "旧图片",
+              imageUrl: "https://example.com/image-old.png",
+              sentAt: "2026-05-18 10:00:00",
+            }),
+            createImageMessage("image-new", {
+              alt: "新图片",
+              imageUrl: "https://example.com/image-new.png",
+              sentAt: "2026-05-19 10:00:00",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "加载更多对话" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "加载更早的对话" })).toBeInTheDocument();
+  });
+
+  it("keeps long file names inside the history panel width", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createFileMessage("file-long", {
+              extension: "docx",
+              fileName: "智能应用可行性报告_gemini2.5pro_非常非常非常非常非常非常长的文件名.docx",
+              fileSizeLabel: "431.68 KB",
+              sourceLabel: "范双飞test",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "file" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const title = screen.getByText("智能应用可行性报告_gemini2.5pro_非常非常非常非常非常非常长的文件名.docx");
+
+    expect(title).toHaveClass("min-w-0", "truncate");
+    expect(title.closest(".grid")).toHaveClass("grid-cols-[auto_minmax(0,1fr)]", "w-full", "max-w-full", "min-w-0", "overflow-hidden");
+  });
+
+  it("keeps the viewport at the end when the panel opens", () => {
     const { rerender } = render(
       <MessageHistorySidePanel
         activeConversation={createConversation()}
@@ -330,6 +732,7 @@ describe("MessageHistorySidePanel", () => {
         }}
         activeHistoryFilters={{ scope: "all" }}
         activeHistoryLoading={false}
+        scrollMode="end"
         groupMembers={[]}
         isOpen
         onClose={vi.fn()}
@@ -343,6 +746,116 @@ describe("MessageHistorySidePanel", () => {
     );
 
     expect(viewport.scrollTop).toBe(300);
+  });
+
+  it("does not force bottom alignment when the history is reloaded for a date change", () => {
+    const { rerender } = render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const viewport = screen.getByTestId("history-message-viewport");
+
+    defineScrollMetric(viewport, "scrollHeight", 600);
+    defineScrollMetric(viewport, "clientHeight", 300);
+
+    rerender(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: true,
+          messages: [
+            createTextMessage("message-1", "第一条"),
+            createTextMessage("message-2", "第二条"),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "all", day: "2026-05-19" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(viewport.scrollTop).toBe(0);
+  });
+
+  it("resets the viewport to the top when the history filter changes", () => {
+    const { rerender } = render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [createTextMessage("message-1", "第一条")],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const viewport = screen.getByTestId("history-message-viewport");
+
+    defineScrollMetric(viewport, "scrollHeight", 600);
+    defineScrollMetric(viewport, "clientHeight", 300);
+    viewport.scrollTop = 180;
+
+    rerender(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [createTextMessage("message-2", "第二条")],
+        }}
+        activeHistoryFilters={{ scope: "all", day: "2026-05-19" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(viewport.scrollTop).toBe(0);
   });
 
   it("fills the sidebar slot without overlay shadow or fixed width", () => {
@@ -527,6 +1040,114 @@ function createTextMessage(
       name: "客户",
     },
     sentAt: overrides.sentAt ?? "2026-05-19 10:00:00",
+    status: "read",
+  };
+}
+
+function createImageMessage(
+  id: string,
+  overrides: {
+    alt: string;
+    imageUrl: string;
+    sentAt: string;
+  },
+): ChatMessage {
+  return {
+    author: "客户",
+    content: {
+      alt: overrides.alt,
+      imageUrl: overrides.imageUrl,
+      type: "image",
+    },
+    conversationId: "conversation-1",
+    id,
+    role: "customer",
+    sender: {
+      id: "customer-1",
+      name: "客户",
+    },
+    sentAt: overrides.sentAt,
+    status: "read",
+  };
+}
+
+function createFileMessage(
+  id: string,
+  content: {
+    extension: string;
+    fileName: string;
+    fileSizeLabel: string;
+    sourceLabel?: string;
+    sentAt?: string;
+  },
+): ChatMessage {
+  return {
+    author: content.sourceLabel ?? "客户",
+    content: {
+      ...content,
+      type: "file",
+    },
+    conversationId: "conversation-1",
+    id,
+    role: "customer",
+    sender: {
+      id: "customer-1",
+      name: content.sourceLabel ?? "客户",
+    },
+    sentAt: content.sentAt ?? "2026-05-19 10:00:00",
+    status: "read",
+  };
+}
+
+function createH5Message(
+  id: string,
+  content: {
+    description: string;
+    previewImageUrl?: string;
+    title: string;
+    url?: string;
+  },
+): ChatMessage {
+  return {
+    author: "客户",
+    content: {
+      ...content,
+      type: "h5",
+    },
+    conversationId: "conversation-1",
+    id,
+    role: "customer",
+    sender: {
+      id: "customer-1",
+      name: "客户",
+    },
+    sentAt: "2026-05-19 10:00:00",
+    status: "read",
+  };
+}
+
+function createMiniProgramMessage(
+  id: string,
+  content: {
+    appName: string;
+    coverImageUrl?: string;
+    title: string;
+  },
+): ChatMessage {
+  return {
+    author: "客户",
+    content: {
+      ...content,
+      type: "mini-program",
+    },
+    conversationId: "conversation-1",
+    id,
+    role: "customer",
+    sender: {
+      id: "customer-1",
+      name: "客户",
+    },
+    sentAt: "2026-05-19 10:00:00",
     status: "read",
   };
 }

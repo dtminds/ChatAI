@@ -81,7 +81,10 @@ export function MessageHistorySidePanel({
   }
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-20 flex w-[420px] min-w-0 flex-col border-l border-divider bg-surface shadow-[0_0_24px_var(--shadow-soft)]">
+    <aside
+      aria-label="历史记录"
+      className="absolute inset-0 z-20 flex w-full min-w-0 flex-col border-l border-divider bg-surface"
+    >
       <div className="flex items-center justify-between border-b border-divider px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">历史记录</p>

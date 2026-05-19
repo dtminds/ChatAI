@@ -5,6 +5,36 @@ import { MessageHistorySidePanel } from "@/pages/chat/components/message-history
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 
 describe("MessageHistorySidePanel", () => {
+  it("fills the sidebar slot without overlay shadow or fixed width", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const panel = screen.getByRole("complementary", { name: "历史记录" });
+
+    expect(panel).toHaveClass("absolute", "inset-0", "w-full", "border-l", "border-divider");
+    expect(panel).not.toHaveClass("w-[420px]");
+    expect(panel.className).not.toContain("shadow");
+  });
+
   it("keeps the viewport anchored when older messages are prepended", async () => {
     const user = userEvent.setup();
     const handleLoadMorePrev = vi.fn();

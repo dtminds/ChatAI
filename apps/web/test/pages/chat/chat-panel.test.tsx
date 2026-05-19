@@ -134,6 +134,70 @@ describe("ChatPanel", () => {
     });
     expect(screen.getByTitle("素材中心扩展页").parentElement).toHaveClass("h-full");
   });
+
+  it("renders history in the current customer side panel slot", () => {
+    render(
+      <ChatPanel
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{
+          activeHistory: { hasNext: false, hasPrev: false, messages: [] },
+          activeHistoryFilters: { scope: "all" },
+          activeHistoryLoading: false,
+          isOpen: true,
+        }}
+        inputEnterBehavior="send"
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    const shell = screen.getByTestId("customer-side-panel-shell");
+    const historyPanel = within(shell).getByRole("complementary", { name: "历史记录" });
+
+    expect(shell).toHaveStyle({ width: "379px" });
+    expect(historyPanel).toHaveClass("absolute", "inset-0", "w-full");
+    expect(historyPanel).not.toHaveClass("w-[420px]");
+    expect(historyPanel.className).not.toContain("shadow");
+  });
 });
 
 function createConversation(): Conversation {

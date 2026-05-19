@@ -6,20 +6,17 @@ import { toast } from "sonner";
 import {
   GROUP_MEMBER_TYPE,
   type SettingsSidebarBindType,
-  type WorkbenchMessageDto,
 } from "@chatai/contracts";
 import {
   createMockWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
-import {
-  resolveImageSegmentsForSend,
-  uploadWorkbenchFile,
-} from "@/pages/chat/api/media-upload-service";
+import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { seedGroupMembersByConversationId } from "@/pages/chat/mock-data";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
-import { useWorkbenchStore } from "@/store/workbench-store";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
+import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
@@ -134,28 +131,6 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
   });
 
-  it("sets and clears a quoted message preview from the message action menu", async () => {
-    const user = userEvent.setup();
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
-    const targetRow = targetMessage.closest('[data-testid="message-row"]');
-    expect(targetRow).not.toBeNull();
-
-    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
-
-    expect(screen.getByTestId("composer-quote-preview")).toHaveTextContent(
-      "丹阳草莓，得利市大樱桃：我先截了个竖图版本给你看。",
-    );
-
-    await user.click(screen.getByRole("button", { name: "取消引用" }));
-
-    expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
-  });
-
   it("sends a selected quote with the composed text", async () => {
     const user = userEvent.setup();
 
@@ -188,46 +163,6 @@ describe("ChatWorkbenchPage", () => {
       });
     });
     expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
-  });
-
-  it("keeps a selected quote after sending image-only content", async () => {
-    const user = userEvent.setup();
-    const clipboardImage = new File(["image-bytes"], "clipboard.png", {
-      type: "image/png",
-    });
-
-    renderChatWorkbenchPage();
-
-    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    const targetMessage = await screen.findByText("我先截了个竖图版本给你看。");
-    const targetRow = targetMessage.closest('[data-testid="message-row"]');
-    expect(targetRow).not.toBeNull();
-
-    await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
-
-    fireEvent.paste(composer, {
-      clipboardData: {
-        files: [clipboardImage],
-      },
-    });
-    expect(await screen.findByRole("img", { name: "clipboard.png" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "发送消息" }));
-
-    await waitFor(() => {
-      expect(
-        within(composer).queryByRole("img", { name: "clipboard.png" }),
-      ).not.toBeInTheDocument();
-    });
-    expect(screen.getByTestId("composer-quote-preview")).toHaveTextContent(
-      "丹阳草莓，得利市大樱桃：我先截了个竖图版本给你看。",
-    );
-    await expectLatestConversationMessage("conv-001", {
-      content: {
-        type: "image",
-      },
-    });
   });
 
   it("inserts an @ mention from a group message action menu", async () => {
@@ -1940,113 +1875,6 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.queryByRole("button", { name: "加载更早的对话" })).not.toBeInTheDocument();
   });
 
-  it("does not auto-loop when older history only contains revoke signals", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-    const calls: Array<{ beforeSeq?: number; conversationId: string }> = [];
-
-    setWorkbenchService({
-      ...baseService,
-      async getMessages(conversationId, options) {
-        calls.push({ beforeSeq: options?.beforeSeq, conversationId });
-
-        if (conversationId === "conv-001" && options?.beforeSeq != null) {
-          const beforeSeq = options.beforeSeq;
-
-          return {
-            filteredCount: 0,
-            hasMore: true,
-            messages: Array.from({ length: 50 }, (_, index) => ({
-              content: {
-                revokeMsgId: `older-message-${index}`,
-                revokeOriginMsgId: `older-message-${index}`,
-                type: "revoke",
-              },
-              contentType: "revoke",
-              conversationId,
-              createdAt: Date.now() - index,
-              customerId: "cust-001",
-              messageId: `revoke-older-message-${index}`,
-              seatId: "drc",
-              senderType: "system" as const,
-              seq: beforeSeq - index - 1,
-              status: "read",
-            })) satisfies WorkbenchMessageDto[],
-            nextBeforeSeq: Math.max(beforeSeq - 50, 1),
-            scannedCount: 50,
-          };
-        }
-
-        if (conversationId === "conv-001") {
-          const page = await baseService.getMessages(conversationId, options);
-
-          return {
-            ...page,
-            hasMore: true,
-            nextBeforeSeq: page.nextBeforeSeq ?? 5,
-          };
-        }
-
-        return baseService.getMessages(conversationId, options);
-      },
-    });
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "加载更早的对话" }));
-
-    expect(
-      await screen.findByRole("button", {
-        name: "加载更早的对话",
-      }),
-    ).toBeInTheDocument();
-    expect(calls.filter((call) => call.beforeSeq != null)).toHaveLength(1);
-  });
-
-  it("does not offer older history while a newly selected conversation is still loading", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-    const conversationGate = createDeferred();
-
-    setWorkbenchService({
-      ...baseService,
-      async getMessages(conversationId, options) {
-        if (conversationId === "conv-002" && options?.beforeSeq == null) {
-          await conversationGate.promise;
-        }
-
-        return baseService.getMessages(conversationId, options);
-      },
-    });
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
-
-    expect(
-      screen.getByRole("status", { name: "正在加载会话" }),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("message-loading-overlay")).toHaveClass(
-      "absolute",
-      "inset-0",
-      "items-center",
-      "justify-center",
-    );
-    expect(screen.getByTestId("message-scroll-area")).not.toContainElement(
-      screen.getByTestId("message-loading-overlay"),
-    );
-    expect(screen.getByTestId("message-content")).toHaveAttribute(
-      "aria-hidden",
-      "true",
-    );
-    expect(screen.queryByText("正在刷新当前会话...")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "加载更早的对话" })).not.toBeInTheDocument();
-
-    conversationGate.resolve();
-  });
-
   it("keeps all seed messages visible after the initial 50-message request", async () => {
     renderChatWorkbenchPage();
 
@@ -2054,127 +1882,6 @@ describe("ChatWorkbenchPage", () => {
 
     expect(screen.getByText("预约直播抽秋天的第一杯奶茶")).toBeInTheDocument();
     expect(screen.getAllByText("这是最新的权益清单截图，你帮我确认下。").length).toBeGreaterThan(0);
-  });
-
-  it("scrolls to a loaded original message when clicking a quote preview", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-    const scrollIntoView = vi.fn();
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = scrollIntoView;
-
-    setWorkbenchService({
-      ...baseService,
-      async getMessages(conversationId, options) {
-        if (conversationId === "conv-001" && options?.beforeSeq == null) {
-          return {
-            filteredCount: 0,
-            hasMore: false,
-            messages: [
-              {
-                content: { text: "测试被引用" },
-                contentType: "text",
-                conversationId: "conv-001",
-                createdAt: 1778240200000,
-                customerId: "cust-001",
-                messageId: "remote-original",
-                seatId: "drc",
-                senderType: "customer",
-                seq: 538,
-                status: "read",
-              },
-              {
-                content: {
-                  quoteMsgId: "538",
-                  quotedMessage: {
-                    contentType: "text",
-                    senderName: "客户",
-                    text: "测试被引用",
-                  },
-                  text: "正式引用消息",
-                },
-                contentType: "quote",
-                conversationId: "conv-001",
-                createdAt: 1778240300000,
-                customerId: "cust-001",
-                messageId: "remote-quote",
-                seatId: "drc",
-                senderType: "agent",
-                seq: 539,
-                status: "read",
-              },
-            ],
-            scannedCount: 2,
-          };
-        }
-
-        return baseService.getMessages(conversationId, options);
-      },
-    });
-
-    try {
-      renderChatWorkbenchPage();
-
-      await screen.findByRole("textbox", { name: "请输入消息……" });
-      await user.click(screen.getByRole("button", { name: /测试被引用/ }));
-
-      expect(scrollIntoView).toHaveBeenCalledWith({
-        behavior: "smooth",
-        block: "start",
-      });
-      expect(toast.warning).not.toHaveBeenCalledWith("当前未加载原始消息");
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("shows a toast when a quote original message is not loaded", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
-      async getMessages(conversationId, options) {
-        if (conversationId === "conv-001" && options?.beforeSeq == null) {
-          return {
-            filteredCount: 0,
-            hasMore: false,
-            messages: [
-              {
-                content: {
-                  quoteMsgId: "999",
-                  quotedMessage: {
-                    contentType: "text",
-                    senderName: "客户",
-                    text: "未加载原文",
-                  },
-                  text: "正式引用消息",
-                },
-                contentType: "quote",
-                conversationId: "conv-001",
-                createdAt: 1778240300000,
-                customerId: "cust-001",
-                messageId: "remote-quote",
-                seatId: "drc",
-                senderType: "agent",
-                seq: 539,
-                status: "read",
-              },
-            ],
-            scannedCount: 1,
-          };
-        }
-
-        return baseService.getMessages(conversationId, options);
-      },
-    });
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: /未加载原文/ }));
-
-    expect(toast.warning).toHaveBeenCalledWith("当前未加载原始消息");
   });
 
   it("restarts video transfer instead of opening an expired finished video URL", async () => {

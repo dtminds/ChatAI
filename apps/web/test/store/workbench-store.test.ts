@@ -1032,6 +1032,66 @@ describe("useWorkbenchStore", () => {
     ).toBe(false);
   });
 
+  it("does not auto-loop when older history only contains revoke signals", async () => {
+    const baseService = createMockWorkbenchService();
+    const calls: Array<{ beforeSeq?: number; conversationId: string }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        calls.push({ beforeSeq: options?.beforeSeq, conversationId });
+
+        if (conversationId === "conv-001" && options?.beforeSeq != null) {
+          const beforeSeq = options.beforeSeq;
+
+          return {
+            filteredCount: 0,
+            hasMore: true,
+            messages: Array.from({ length: 50 }, (_, index) => ({
+              content: {
+                revokeMsgId: `older-message-${index}`,
+                revokeOriginMsgId: `older-message-${index}`,
+                type: "revoke",
+              },
+              contentType: "revoke",
+              conversationId,
+              createdAt: Date.now() - index,
+              customerId: "cust-001",
+              messageId: `revoke-older-message-${index}`,
+              seatId: "drc",
+              senderType: "system" as const,
+              seq: beforeSeq - index - 1,
+              status: "read",
+            })),
+            nextBeforeSeq: Math.max(beforeSeq - 50, 1),
+            scannedCount: 50,
+          };
+        }
+
+        if (conversationId === "conv-001") {
+          const page = await baseService.getMessages(conversationId, options);
+
+          return {
+            ...page,
+            hasMore: true,
+            nextBeforeSeq: page.nextBeforeSeq ?? 5,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().loadOlderMessages();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(calls.filter((call) => call.beforeSeq != null)).toHaveLength(1);
+    expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(true);
+    expect(state.historyStatusByConversationId["conv-001"]).toBe("idle");
+  });
+
   it("drops stale bootstrap read results after the active conversation changes", async () => {
     const baseService = createMockWorkbenchService();
     const bootstrapReadStarted = createDeferred();

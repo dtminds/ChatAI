@@ -98,7 +98,7 @@ describe("MessageHistorySidePanel", () => {
     );
 
     const historyItems = screen.getAllByTestId("history-message-item");
-    const compactText = screen.getByText("老郁，我下午三点去「茶甜甜」这个客户这里拜访");
+    const compactText = screen.getAllByTestId("history-message-text")[0];
 
     expect(historyItems).toHaveLength(2);
     expect(historyItems[0]).toHaveClass("w-full", "max-w-full", "min-w-0", "items-start");
@@ -110,6 +110,7 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.getByText("3/9 10:30")).toHaveClass("text-xs", "text-muted-foreground/70");
     expect(screen.getByText("2025/12/31 09:08")).toHaveClass("text-xs", "text-muted-foreground/70");
     expect(screen.queryByText("10:30:45")).not.toBeInTheDocument();
+    expect(compactText).toHaveTextContent("老郁，我下午三点去「茶甜甜」这个客户这里拜访");
     expect(compactText).toHaveClass("w-full", "max-w-full", "min-w-0", "break-words", "text-sm");
     expect(compactText).not.toHaveClass("w-max", "max-w-none", "whitespace-nowrap");
   });
@@ -147,6 +148,38 @@ describe("MessageHistorySidePanel", () => {
     expect(historyText.textContent).not.toContain("\u00a0");
     expect(historyText).toHaveClass("w-full", "max-w-full", "min-w-0", "[overflow-wrap:anywhere]");
     expect(historyText).not.toHaveClass("w-max", "max-w-none", "whitespace-nowrap");
+  });
+
+  it("renders WeChat emoji tokens as inline images in compact history text", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [createTextMessage("message-emoji", "收到[微笑]")],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const historyText = screen.getByTestId("history-message-text");
+    const emoji = screen.getByRole("img", { name: "微笑" });
+
+    expect(historyText).toHaveTextContent("收到");
+    expect(historyText).not.toHaveTextContent("[微笑]");
+    expect(emoji).toHaveAttribute("src", expect.stringContaining("/face/微笑.png"));
+    expect(emoji).toHaveClass("inline-block", "size-6");
   });
 
   it("renders quote messages without chat bubble alignment in history", () => {

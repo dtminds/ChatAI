@@ -19,7 +19,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ImagePreviewDialog } from "@/pages/chat/components/message/image";
 import { LoadableMessageImage } from "@/pages/chat/components/message/media-fallback";
-import { MessageContentRenderer } from "@/pages/chat/components/message";
+import {
+  MessageContentRenderer,
+  WechatEmojiText,
+} from "@/pages/chat/components/message";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 import type {
   ChatMessage,
@@ -397,12 +400,12 @@ function HistoryCompactMessageContent({ message }: { message: ChatMessage }) {
 
 function HistoryCompactText({ text }: { text: string }) {
   return (
-    <p
+    <div
       className="w-full max-w-full min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm font-medium leading-6 text-foreground"
       data-testid="history-message-text"
     >
-      {normalizeHistoryText(text)}
-    </p>
+      <WechatEmojiText text={normalizeHistoryText(text)} />
+    </div>
   );
 }
 
@@ -423,9 +426,10 @@ function HistoryQuotePreview({
       className="w-full max-w-full min-w-0 border-l-2 border-divider py-1 pl-3 text-xs leading-5 text-muted-foreground/80"
       data-testid="history-quote-preview"
     >
-      <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-        {normalizeHistoryText(prefixedText)}
-      </span>
+      <WechatEmojiText
+        className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+        text={normalizeHistoryText(prefixedText)}
+      />
     </div>
   );
 }

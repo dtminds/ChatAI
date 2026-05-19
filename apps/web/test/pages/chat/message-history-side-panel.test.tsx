@@ -65,6 +65,53 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.getByRole("button", { name: "日期" })).toHaveClass("text-sm");
   });
 
+  it("renders all-scope messages in a compact linear history layout", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createTextMessage("message-1", "老郁，我下午三点去「茶甜甜」这个客户这里拜访", {
+              author: "余圆圆",
+              sentAt: "2026-03-09 10:30:45",
+            }),
+            createTextMessage("message-2", "OK", {
+              author: "郁佳杰",
+              sentAt: "2025-12-31 09:08:07",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const historyItems = screen.getAllByTestId("history-message-item");
+
+    expect(historyItems).toHaveLength(2);
+    expect(historyItems[0]).toHaveClass("items-start");
+    expect(historyItems[0]).not.toHaveClass("justify-end", "justify-start");
+    expect(screen.queryByRole("button", { name: "消息操作" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("message-row")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("text-message-bubble")).not.toBeInTheDocument();
+    expect(screen.getByText("余圆圆")).toHaveClass("text-sm");
+    expect(screen.getByText("3/9 10:30")).toBeInTheDocument();
+    expect(screen.getByText("2025/12/31 09:08")).toBeInTheDocument();
+    expect(screen.queryByText("10:30:45")).not.toBeInTheDocument();
+    expect(screen.getByText("老郁，我下午三点去「茶甜甜」这个客户这里拜访")).toHaveClass("text-sm");
+  });
+
   it("fills the sidebar slot without overlay shadow or fixed width", () => {
     render(
       <MessageHistorySidePanel
@@ -194,9 +241,13 @@ function createConversation(): Conversation {
   };
 }
 
-function createTextMessage(id: string, text: string): ChatMessage {
+function createTextMessage(
+  id: string,
+  text: string,
+  overrides: Partial<Pick<ChatMessage, "author" | "sentAt">> = {},
+): ChatMessage {
   return {
-    author: "客户",
+    author: overrides.author ?? "客户",
     content: {
       text,
       type: "text",
@@ -208,7 +259,7 @@ function createTextMessage(id: string, text: string): ChatMessage {
       id: "customer-1",
       name: "客户",
     },
-    sentAt: "2026-05-19 10:00:00",
+    sentAt: overrides.sentAt ?? "2026-05-19 10:00:00",
     status: "read",
   };
 }

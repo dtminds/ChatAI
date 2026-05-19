@@ -13,7 +13,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { ChatMessageList } from "@/pages/chat/components/message-feed";
 import { ImagePreviewDialog } from "@/pages/chat/components/message/image";
 import { LoadableMessageImage } from "@/pages/chat/components/message/media-fallback";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
@@ -146,11 +145,7 @@ export function MessageHistorySidePanel({
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
-                <ChatMessageList
-                  messages={activeHistory?.messages ?? []}
-                  showTimeDividers={false}
-                  showTimestamps
-                />
+                <HistoryCompactMessageList messages={activeHistory?.messages ?? []} />
               </HistoryMessageViewport>
             </TabsContent>
             <TabsContent className="mt-0 h-full min-h-0" value="file">
@@ -289,6 +284,52 @@ function HistoryMessageViewport({
   );
 }
 
+function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
+  const chatMessages = messages.filter(isChatMessage);
+
+  return (
+    <div className="space-y-4">
+      {chatMessages.map((message) => (
+        <div
+          className="flex min-w-0 flex-col items-start gap-1.5"
+          data-scroll-anchor={message.id}
+          data-testid="history-message-item"
+          key={message.clientMessageId ?? message.optNo ?? message.id}
+        >
+          <div className="flex max-w-full items-baseline gap-2">
+            <span className="min-w-0 truncate text-sm font-medium leading-5 text-foreground">
+              {getHistoryMessageAuthor(message)}
+            </span>
+            <span className="shrink-0 text-sm leading-5 text-muted-foreground">
+              {formatHistoryMessageTime(message.sentAt)}
+            </span>
+          </div>
+          <HistoryCompactMessageContent message={message} />
+        </div>
+      ))}
+      {chatMessages.length === 0 ? (
+        <div className="px-3 py-10 text-center text-sm text-muted-foreground">暂无历史记录</div>
+      ) : null}
+    </div>
+  );
+}
+
+function HistoryCompactMessageContent({ message }: { message: ChatMessage }) {
+  if (message.content.type === "text") {
+    return (
+      <p className="whitespace-pre-wrap break-words text-sm font-medium leading-6 text-foreground">
+        {message.content.text}
+      </p>
+    );
+  }
+
+  return (
+    <div className="max-w-full">
+      <MessageContentRenderer isAgent={message.role === "agent"} message={message} />
+    </div>
+  );
+}
+
 function HistoryResourceList({ messages }: { messages: Message[] }) {
   const chatMessages = messages.filter(isChatMessage);
 
@@ -404,6 +445,48 @@ function isMediaMessage(
     message.role !== "system" &&
     (message.content.type === "image" || message.content.type === "video")
   );
+}
+
+function getHistoryMessageAuthor(message: ChatMessage) {
+  return message.author || message.senderDisplayName || message.sender.name;
+}
+
+function formatHistoryMessageTime(value: string) {
+  const date = parseHistoryMessageDate(value);
+
+  if (!date) {
+    return value.replace(/:\d{2}$/, "");
+  }
+
+  const time = formatHistoryTimePart(date);
+  const now = new Date();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${month}/${day} ${time}`;
+  }
+
+  return `${date.getFullYear()}/${month}/${day} ${time}`;
+}
+
+function parseHistoryMessageDate(value: string) {
+  const normalized = value.trim().replace(" ", "T");
+  const date = new Date(normalized);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date;
+}
+
+function formatHistoryTimePart(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
 function DateFilter({

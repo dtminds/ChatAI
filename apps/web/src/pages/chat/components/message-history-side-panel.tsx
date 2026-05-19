@@ -369,13 +369,19 @@ function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
 
 function HistoryCompactMessageContent({ message }: { message: ChatMessage }) {
   if (message.content.type === "text") {
+    return <HistoryCompactText text={message.content.text} />;
+  }
+
+  if (message.content.type === "quote") {
     return (
-      <p
-        className="w-full max-w-full min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm font-medium leading-6 text-foreground"
-        data-testid="history-message-text"
-      >
-        {normalizeHistoryText(message.content.text)}
-      </p>
+      <div className="flex w-full max-w-full min-w-0 flex-col items-start gap-2">
+        <HistoryCompactText text={message.content.text} />
+        <HistoryQuotePreview
+          fallbackText={message.content.quotedMessage?.fallbackText}
+          senderName={message.content.quotedMessage?.senderName}
+          text={message.content.quotedMessage?.text}
+        />
+      </div>
     );
   }
 
@@ -385,6 +391,41 @@ function HistoryCompactMessageContent({ message }: { message: ChatMessage }) {
         isAgent={message.role === "agent"}
         message={message}
       />
+    </div>
+  );
+}
+
+function HistoryCompactText({ text }: { text: string }) {
+  return (
+    <p
+      className="w-full max-w-full min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm font-medium leading-6 text-foreground"
+      data-testid="history-message-text"
+    >
+      {normalizeHistoryText(text)}
+    </p>
+  );
+}
+
+function HistoryQuotePreview({
+  fallbackText,
+  senderName,
+  text,
+}: {
+  fallbackText?: string;
+  senderName?: string;
+  text?: string;
+}) {
+  const previewText = text || fallbackText || "引用消息不可用";
+  const prefixedText = senderName ? `${senderName}：${previewText}` : previewText;
+
+  return (
+    <div
+      className="w-full max-w-full min-w-0 border-l-2 border-divider py-1 pl-3 text-xs leading-5 text-muted-foreground/80"
+      data-testid="history-quote-preview"
+    >
+      <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+        {normalizeHistoryText(prefixedText)}
+      </span>
     </div>
   );
 }

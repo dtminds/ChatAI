@@ -149,6 +149,48 @@ describe("MessageHistorySidePanel", () => {
     expect(historyText).not.toHaveClass("w-max", "max-w-none", "whitespace-nowrap");
   });
 
+  it("renders quote messages without chat bubble alignment in history", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createQuoteMessage({
+              author: "范双飞test",
+              text: "我是客服",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    const historyItem = screen.getByTestId("history-message-item");
+    const quoteText = screen.getByTestId("history-message-text");
+    const quotePreview = screen.getByTestId("history-quote-preview");
+
+    expect(historyItem).toHaveClass("items-start");
+    expect(historyItem).not.toHaveClass("items-end", "justify-end");
+    expect(quoteText).toHaveTextContent("我是客服");
+    expect(quoteText).not.toHaveClass("rounded-", "bg-primary", "bg-muted");
+    expect(screen.queryByTestId("text-message-bubble")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("quote-text-preview")).not.toBeInTheDocument();
+    expect(quotePreview).toHaveClass("w-full", "max-w-full", "border-l-2", "text-xs");
+    expect(quotePreview).toHaveTextContent("引用消息不可用");
+  });
+
   it("fills the sidebar slot without overlay shadow or fixed width", () => {
     render(
       <MessageHistorySidePanel
@@ -297,6 +339,32 @@ function createTextMessage(
       name: "客户",
     },
     sentAt: overrides.sentAt ?? "2026-05-19 10:00:00",
+    status: "read",
+  };
+}
+
+function createQuoteMessage({
+  author,
+  text,
+}: {
+  author: string;
+  text: string;
+}): ChatMessage {
+  return {
+    author,
+    content: {
+      quoteMsgId: "quote-1",
+      text,
+      type: "quote",
+    },
+    conversationId: "conversation-1",
+    id: "quote-message-1",
+    role: "agent",
+    sender: {
+      id: "agent-1",
+      name: author,
+    },
+    sentAt: "2026-05-19 10:12:00",
     status: "read",
   };
 }

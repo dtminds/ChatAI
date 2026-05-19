@@ -11,7 +11,10 @@ import {
   useWorkbenchStore,
 } from "@/store/workbench-store";
 import type { Conversation } from "@/pages/chat/chat-types";
-import type { WorkbenchMessageDto } from "@chatai/contracts";
+import type {
+  WorkbenchHistoryMessagePageDto,
+  WorkbenchMessageDto,
+} from "@chatai/contracts";
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
 
 vi.mock("@/pages/chat/api/media-upload-service", () => ({
@@ -188,6 +191,49 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]
         ?.messages.map((message) => message.id),
     ).toEqual(["history-0", "history-1", "history-2", "history-3", "history-4"]);
+  });
+
+  it("clears history panel messages immediately when changing scope", async () => {
+    const baseService = createMockWorkbenchService();
+    const pendingHistoryPage = createDeferred<WorkbenchHistoryMessagePageDto>();
+
+    setWorkbenchService({
+      ...baseService,
+      async getHistoryMessages(conversationId, options) {
+        if (options?.scope === "file") {
+          return pendingHistoryPage.promise;
+        }
+
+        return {
+          hasNext: false,
+          hasPrev: false,
+          messages: [createHistoryMessageDto("history-text", 1, "旧文本")],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
+
+    const switchScopePromise = useWorkbenchStore.getState().setHistoryPanelScope("file");
+    const stateWhileLoading = useWorkbenchStore.getState();
+
+    expect(
+      stateWhileLoading.historyPanelByConversationId["conv-001"]?.messages,
+    ).toEqual([]);
+    expect(stateWhileLoading.historyPanelLoadingByConversationId["conv-001"]).toBe(true);
+
+    pendingHistoryPage.resolve({
+      hasNext: false,
+      hasPrev: false,
+      messages: [createHistoryMessageDto("history-file", 2, "文件")],
+    });
+    await switchScopePromise;
+
+    expect(
+      useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]
+        ?.messages.map((message) => message.id),
+    ).toEqual(["history-file"]);
   });
 
   it("starts polling from the conversation snapshot baseline after bootstrap", async () => {

@@ -91,6 +91,12 @@ type HistoryPanelState = {
   prevCursor?: string;
 };
 
+const emptyHistoryPanelState: HistoryPanelState = {
+  hasNext: false,
+  hasPrev: false,
+  messages: [],
+};
+
 type WorkbenchState = {
   me?: EmployeeProfile;
   accounts: Account[];
@@ -2121,6 +2127,14 @@ export function createWorkbenchStore() {
       }
 
       set((currentState) => ({
+        historyPanelByConversationId: {
+          ...currentState.historyPanelByConversationId,
+          [conversationId]: emptyHistoryPanelState,
+        },
+        historyPanelErrorByConversationId: {
+          ...currentState.historyPanelErrorByConversationId,
+          [conversationId]: undefined,
+        },
         historyPanelFiltersByConversationId: {
           ...currentState.historyPanelFiltersByConversationId,
           [conversationId]: {
@@ -2143,6 +2157,14 @@ export function createWorkbenchStore() {
       }
 
       set((currentState) => ({
+        historyPanelByConversationId: {
+          ...currentState.historyPanelByConversationId,
+          [conversationId]: emptyHistoryPanelState,
+        },
+        historyPanelErrorByConversationId: {
+          ...currentState.historyPanelErrorByConversationId,
+          [conversationId]: undefined,
+        },
         historyPanelFiltersByConversationId: {
           ...currentState.historyPanelFiltersByConversationId,
           [conversationId]: {
@@ -2165,6 +2187,14 @@ export function createWorkbenchStore() {
       }
 
       set((currentState) => ({
+        historyPanelByConversationId: {
+          ...currentState.historyPanelByConversationId,
+          [conversationId]: emptyHistoryPanelState,
+        },
+        historyPanelErrorByConversationId: {
+          ...currentState.historyPanelErrorByConversationId,
+          [conversationId]: undefined,
+        },
         historyPanelFiltersByConversationId: {
           ...currentState.historyPanelFiltersByConversationId,
           [conversationId]: {

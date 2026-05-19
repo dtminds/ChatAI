@@ -111,7 +111,46 @@ describe("SmartReplyCard", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("编辑");
     expect(screen.getByRole("button", { name: "违规词检测" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "添加到FAQ" })).toBeInTheDocument();
-    expect(screen.getByText("推荐附件：请按需勾选需要发送的附件 (1/4)")).toBeInTheDocument();
+    expect(screen.getByText(/推荐附件/)).toBeInTheDocument();
+    expect(screen.getByText(/请按需勾选需要发送的附件 \(1\/4\)/)).toBeInTheDocument();
+  });
+
+  it("opens add to faq dialog from edit dialog", async () => {
+    const user = userEvent.setup();
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌\n这款产品适合温和修护",
+          versionCount: 1,
+          versionIndex: 0,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.click(screen.getByRole("button", { name: "添加到FAQ" }));
+
+    const faqDialog = screen.getByTestId("smart-reply-add-to-faq-dialog");
+    expect(faqDialog).toBeInTheDocument();
+    expect(faqDialog).toHaveTextContent("添加至FAQ");
+    expect(screen.getByText("知识集")).toBeInTheDocument();
+    expect(screen.getByText("选择FAQ")).toBeInTheDocument();
+    expect(screen.getByText("相似问法")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "问题" })).toHaveValue(
+      "建议先确认是否敏感肌",
+    );
+    expect(screen.getByRole("textbox", { name: "答案" })).toHaveValue(
+      "建议先确认是否敏感肌\n这款产品适合温和修护",
+    );
   });
 
   it("shows success banner when no banned words are found in edit dialog", async () => {

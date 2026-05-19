@@ -19,6 +19,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  SmartReplyAddToFaqDialog,
+  type SmartReplyAddToFaqPayload,
+} from "@/pages/chat/components/smart-reply-add-to-faq-dialog";
 import { cn } from "@/lib/utils";
 
 export type SmartReplyRecommendedAttachment = {
@@ -44,7 +48,7 @@ export type SmartReplyEditDialogProps = {
     content: string;
     selectedAttachmentIds: string[];
   }) => void;
-  onAddToFaq?: (content: string) => void;
+  onAddToFaq?: (payload: SmartReplyAddToFaqPayload) => void;
   onCheckViolations?: (content: string) => Promise<SmartReplyViolationResult | null>;
 };
 
@@ -102,6 +106,7 @@ export function SmartReplyEditDialog({
         .filter((item) => item.defaultSelected)
         .map((item) => item.id),
   );
+  const [isFaqDialogOpen, setIsFaqDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -110,12 +115,18 @@ export function SmartReplyEditDialog({
     setDraftContent(initialContent);
     setViolationResult(null);
     setViolationCheckPhase("none");
+    setIsFaqDialogOpen(false);
     setSelectedAttachmentIds(
       recommendedAttachments
         .filter((item) => item.defaultSelected)
         .map((item) => item.id),
     );
   }, [initialContent, open, recommendedAttachments]);
+
+  const faqInitialQuestion = useMemo(
+    () => draftContent.split("\n").find((line) => line.trim())?.trim() ?? draftContent.trim(),
+    [draftContent],
+  );
 
   const highlightedWords = useMemo(
     () => violationResult?.words ?? [],
@@ -194,6 +205,7 @@ export function SmartReplyEditDialog({
   const totalAttachments = recommendedAttachments.length;
 
   return (
+    <>
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
@@ -236,7 +248,7 @@ export function SmartReplyEditDialog({
             <Button
               className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
               disabled={!draftContent.trim()}
-              onClick={() => onAddToFaq?.(draftContent.trim())}
+              onClick={() => setIsFaqDialogOpen(true)}
               type="button"
               variant="outline"
             >
@@ -280,7 +292,7 @@ export function SmartReplyEditDialog({
           ) : null} 
         </div>
 
-        <DialogFooter className="gap-2 border-t border-border px-5 py-4 sm:justify-end">
+        <DialogFooter className="gap-2 py-4 sm:justify-end">
           <Button
             className="h-9 min-w-[72px] rounded-[8px] px-4 text-[13px]"
             onClick={() => onOpenChange(false)}
@@ -300,6 +312,14 @@ export function SmartReplyEditDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <SmartReplyAddToFaqDialog
+      initialAnswer={draftContent.trim()}
+      initialQuestion={faqInitialQuestion}
+      onOpenChange={setIsFaqDialogOpen}
+      onSave={onAddToFaq}
+      open={isFaqDialogOpen}
+    />
+    </>
   );
 }
 

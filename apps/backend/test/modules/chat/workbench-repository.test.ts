@@ -1283,7 +1283,7 @@ describe("WorkbenchRepository", () => {
           messageId: "remote-msg-103",
         },
       ],
-      nextBeforeSeq: 103,
+      nextBeforeSeq: 101,
       scannedCount: 3,
     });
   });

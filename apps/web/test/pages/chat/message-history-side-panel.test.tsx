@@ -5,7 +5,7 @@ import { MessageHistorySidePanel } from "@/pages/chat/components/message-history
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 
 describe("MessageHistorySidePanel", () => {
-  it("uses the shared tab component styling for history scopes", () => {
+  it("uses a compact underline tab layout for history scopes", () => {
     render(
       <MessageHistorySidePanel
         activeConversation={createConversation()}
@@ -31,10 +31,38 @@ describe("MessageHistorySidePanel", () => {
     const tabs = screen.getByRole("tablist");
     const activeTab = screen.getByRole("tab", { name: "全部" });
 
-    expect(tabs).toHaveClass("rounded-2xl", "bg-secondary/90");
-    expect(tabs).not.toHaveClass("grid", "rounded-none", "bg-transparent");
-    expect(activeTab).toHaveClass("rounded-xl");
-    expect(activeTab).not.toHaveClass("rounded-none");
+    expect(tabs).toHaveClass("w-full", "justify-start", "border-b", "border-divider");
+    expect(tabs).not.toHaveClass("rounded-2xl", "bg-secondary/90", "grid");
+    expect(activeTab).toHaveClass("border-b-2", "text-sm");
+    expect(activeTab).not.toHaveClass("text-base", "text-lg");
+  });
+
+  it("renders the history filter controls in the header without search", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByPlaceholderText("搜索聊天记录")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发送人" })).toHaveClass("text-sm");
+    expect(screen.getByRole("button", { name: "日期" })).toHaveClass("text-sm");
   });
 
   it("fills the sidebar slot without overlay shadow or fixed width", () => {

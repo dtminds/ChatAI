@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import {
-  Calendar03Icon,
+  ArrowDown01Icon,
   Cancel01Icon,
   Loading03Icon,
   PlayIcon,
@@ -103,27 +103,26 @@ export function MessageHistorySidePanel({
           onValueChange={(value) => onSetScope(value as HistoryPanelScope)}
           value={activeHistoryFilters.scope}
         >
-          <div className="border-b border-divider px-4 pt-3">
-            <TabsList className="max-w-full overflow-x-auto">
-              <TabsTrigger className="whitespace-nowrap" value="all">
+          <div className="border-b border-divider px-4 py-3">
+            <TabsList className="h-auto w-full justify-start gap-8 overflow-x-auto rounded-none border-b border-divider bg-transparent p-0">
+              <TabsTrigger className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="all">
                 全部
               </TabsTrigger>
-              <TabsTrigger className="whitespace-nowrap" value="file">
+              <TabsTrigger className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="file">
                 文件
               </TabsTrigger>
-              <TabsTrigger className="whitespace-nowrap" value="media">
+              <TabsTrigger className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="media">
                 图片与视频
               </TabsTrigger>
-              <TabsTrigger className="whitespace-nowrap" value="h5">
+              <TabsTrigger className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="h5">
                 链接
               </TabsTrigger>
-              <TabsTrigger className="whitespace-nowrap" value="mini-program">
+              <TabsTrigger className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-2 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="mini-program">
                 小程序
               </TabsTrigger>
             </TabsList>
 
-            <div className="mt-3 flex items-center gap-2 pb-3">
-              <DateFilter value={activeHistoryFilters.day} onChange={onSetDay} />
+            <div className="mt-3 flex items-center gap-2">
               <SenderFilter
                 activeConversation={activeConversation}
                 customerName={customer?.name}
@@ -131,6 +130,7 @@ export function MessageHistorySidePanel({
                 onChange={onSetSenderId}
                 value={activeHistoryFilters.senderId}
               />
+              <DateFilter value={activeHistoryFilters.day} onChange={onSetDay} />
               <Button className="ml-auto h-8 px-3 text-[12px]" onClick={onRefresh} size="sm" variant="ghost">
                 刷新
               </Button>
@@ -418,9 +418,13 @@ function DateFilter({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button className={cn("h-8 gap-2 px-3 text-[12px]", value && "text-foreground")} variant="outline">
-          <HugeiconsIcon icon={Calendar03Icon} size={14} strokeWidth={1.8} />
-          {value ?? "选择日期"}
+        <Button
+          aria-label="日期"
+          className={cn("h-9 gap-2 rounded-[6px] px-3 text-sm", value && "text-foreground")}
+          variant="outline"
+        >
+          <span>{value ?? "日期"}</span>
+          <HugeiconsIcon aria-hidden="true" icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
@@ -457,8 +461,12 @@ function SenderFilter({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button className={cn("h-8 gap-2 px-3 text-[12px]", value && "text-foreground")} variant="outline">
-          发送人
+        <Button
+          className={cn("h-9 gap-2 rounded-[6px] px-3 text-sm", value && "text-foreground")}
+          variant="outline"
+        >
+          <span>发送人</span>
+          <HugeiconsIcon aria-hidden="true" icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-2">

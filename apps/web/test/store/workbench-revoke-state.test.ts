@@ -6,7 +6,7 @@ import {
 } from "@/pages/chat/api/workbench-service";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
-import { resetChatWorkbenchTestState } from "../pages/chat/workbench-test-utils";
+import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
 
 vi.mock("@/pages/chat/api/media-upload-service", () => ({
   resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
@@ -38,7 +38,7 @@ function createRevokeSignalDto(input: {
 
 describe("workbench revoke state", () => {
   beforeEach(() => {
-    resetChatWorkbenchTestState();
+    resetWorkbenchStoreTestState();
     vi.mocked(resolveImageSegmentsForSend).mockImplementation(
       async (_conversationId, segments) => segments,
     );

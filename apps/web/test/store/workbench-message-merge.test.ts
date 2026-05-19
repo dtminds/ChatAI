@@ -10,7 +10,7 @@ import {
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
 import { seedMessages } from "@/pages/chat/mock-data";
 import { useWorkbenchStore } from "@/store/workbench-store";
-import { resetChatWorkbenchTestState } from "../pages/chat/workbench-test-utils";
+import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
 
 vi.mock("@/pages/chat/api/media-upload-service", () => ({
   resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
@@ -18,7 +18,7 @@ vi.mock("@/pages/chat/api/media-upload-service", () => ({
 
 describe("workbench message merge state", () => {
   beforeEach(() => {
-    resetChatWorkbenchTestState();
+    resetWorkbenchStoreTestState();
     vi.mocked(resolveImageSegmentsForSend).mockImplementation(
       async (_conversationId, segments) => segments,
     );

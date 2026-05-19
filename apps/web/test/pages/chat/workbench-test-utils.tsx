@@ -5,28 +5,12 @@ import { vi } from "vitest";
 import { requestInstance } from "@/lib/request";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
-import {
-  resolveImageSegmentsForSend,
-  uploadWorkbenchFile,
-} from "@/pages/chat/api/media-upload-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
 export const workbenchHttpMock = new MockAdapter(requestInstance);
 
-vi.mock("sonner", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("sonner")>();
-
-  return {
-    ...actual,
-    toast: {
-      ...actual.toast,
-      warning: vi.fn(),
-    },
-  };
-});
-
-vi.mock("@/pages/chat/api/media-upload-service", () => ({
+const mediaUploadMocks = vi.hoisted(() => ({
   resolveImageSegmentsForSend: vi.fn(
     async (_conversationId: string, segments: ComposerSegment[]) =>
       segments.map((segment: ComposerSegment) =>
@@ -42,16 +26,39 @@ vi.mock("@/pages/chat/api/media-upload-service", () => ({
           : segment,
       ),
   ),
-  uploadWorkbenchFile: vi.fn(async (_conversationId: string, file: File) => ({
-    extension: file.name.split(".").pop() ?? "",
-    fileId: `chat-files/conv-001/${file.name}`,
-    fileName: file.name,
-    fileSize: file.size,
-    fileSizeLabel: `${file.size} B`,
-    type: "file",
-    url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
-  })),
+  uploadWorkbenchFile: vi.fn(
+    async (
+      _conversationId: string,
+      file: File,
+      _options?: {
+        onProgress?: (progress: number) => void;
+        signal?: AbortSignal;
+      },
+    ) => ({
+      extension: file.name.split(".").pop() ?? "",
+      fileId: `chat-files/conv-001/${file.name}`,
+      fileName: file.name,
+      fileSize: file.size,
+      fileSizeLabel: `${file.size} B`,
+      type: "file",
+      url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
+    }),
+  ),
 }));
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      warning: vi.fn(),
+    },
+  };
+});
+
+vi.mock("@/pages/chat/api/media-upload-service", () => mediaUploadMocks);
 
 export function renderChatWorkbenchPage() {
   return render(<ChatWorkbenchPage />);
@@ -64,7 +71,7 @@ export function installChatWorkbenchTestEnvironment() {
 export function resetChatWorkbenchTestState() {
   workbenchHttpMock.reset();
   resetWorkbenchService();
-  vi.mocked(resolveImageSegmentsForSend).mockImplementation(
+  vi.mocked(mediaUploadMocks.resolveImageSegmentsForSend).mockImplementation(
     async (_conversationId, segments) =>
       segments.map((segment: ComposerSegment) =>
         segment.type === "image"
@@ -79,8 +86,8 @@ export function resetChatWorkbenchTestState() {
           : segment,
       ),
   );
-  vi.mocked(uploadWorkbenchFile).mockImplementation(
-    async (_conversationId, file: File) => ({
+  vi.mocked(mediaUploadMocks.uploadWorkbenchFile).mockImplementation(
+    async (_conversationId, file: File, _options) => ({
       extension: file.name.split(".").pop() ?? "",
       fileId: `chat-files/conv-001/${file.name}`,
       fileName: file.name,
@@ -97,5 +104,9 @@ export function resetChatWorkbenchTestState() {
     value: "visible",
   });
 }
+
+export {
+  mediaUploadMocks,
+};
 
 export { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";

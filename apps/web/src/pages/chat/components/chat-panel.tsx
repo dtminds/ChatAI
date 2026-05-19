@@ -7,6 +7,7 @@ import { ChatComposer } from "@/pages/chat/components/chat-composer";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
+import { MessageHistorySidePanel } from "@/pages/chat/components/message-history-side-panel";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import type {
   Conversation,
@@ -43,6 +44,23 @@ type ChatPanelProps = {
   quotedMessage: QuotedMessagePreviewContent | null;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
+  historyPanel?: {
+    activeHistory?: {
+      hasNext: boolean;
+      hasPrev: boolean;
+      messages: Message[];
+      nextCursor?: string;
+      prevCursor?: string;
+    };
+    activeHistoryError?: string;
+    activeHistoryLoading: boolean;
+    activeHistoryFilters: {
+      day?: string;
+      senderId?: string;
+      scope: "all" | "file" | "media" | "h5" | "mini-program";
+    };
+    isOpen: boolean;
+  };
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onComposerSegmentsChange: (segments: ComposerSegment[]) => void;
   onDraftChange: (draft: string) => void;
@@ -51,6 +69,14 @@ type ChatPanelProps = {
   onCancelFileUpload: (uploadId: string) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
+  onOpenHistory: () => void;
+  onHistoryClose: () => void;
+  onHistoryLoadMoreNext: () => void;
+  onHistoryLoadMorePrev: () => void;
+  onHistoryRefresh: () => void;
+  onHistorySetDay: (day?: string) => void;
+  onHistorySetScope: (scope: "all" | "file" | "media" | "h5" | "mini-program") => void;
+  onHistorySetSenderId: (senderId?: string) => void;
   onRefreshGroupMembers: () => void;
   onLoadOlderMessages: () => void;
   onMentionMessage?: (message: ChatMessage) => void;
@@ -91,6 +117,7 @@ export function ChatPanel({
   quotedMessage,
   hasMoreHistory,
   historyLoadLabel,
+  historyPanel,
   onCustomerPanelResizeStart,
   onComposerSegmentsChange,
   onDraftChange,
@@ -99,6 +126,14 @@ export function ChatPanel({
   onCancelFileUpload,
   onDownloadMessageFile,
   onFileSelect,
+  onOpenHistory,
+  onHistoryClose,
+  onHistoryLoadMoreNext,
+  onHistoryLoadMorePrev,
+  onHistoryRefresh,
+  onHistorySetDay,
+  onHistorySetScope,
+  onHistorySetSenderId,
   onRefreshGroupMembers,
   onLoadOlderMessages,
   onMentionMessage,
@@ -193,6 +228,7 @@ export function ChatPanel({
                 onEmojiPickerOpenChange={onEmojiPickerOpenChange}
                 onEnterBehaviorChange={onEnterBehaviorChange}
                 onFileSelect={onFileSelect}
+                onOpenHistory={onOpenHistory}
                 onSegmentsChange={onComposerSegmentsChange}
                 onSendDraft={onSendDraft}
                 placeholder={composerPlaceholder}
@@ -203,28 +239,51 @@ export function ChatPanel({
           </div>
         </div>
 
-        <CustomerSidePanel
-          accountName={accountName}
-          conversationMode={activeConversation?.mode}
-          customer={customer}
-          sidebarIframeQd={
-            activeConversation?.mode === "group" &&
-            activeConversation.thirdGroupId !== undefined &&
-            activeConversation.thirdGroupId !== ""
-              ? activeConversation.thirdGroupId
-              : undefined
-          }
-          sidebarIframeConversationId={activeConversation?.id}
-          sidebarIframeSeatId={activeConversation?.accountId}
-          sidebarIframeTos={sidebarIframeTos}
-          groupMembers={groupMembers}
-          isGroupMembersLoading={isGroupMembersLoading}
-          isResizing={isResizingCustomerPanel}
-          onRefreshGroupMembers={onRefreshGroupMembers}
-          onResizeStart={onCustomerPanelResizeStart}
-          panelWidth={customerPanelWidth}
-          sidebarItems={sidebarItems}
-        />
+        <div className="relative min-h-0 min-w-0">
+          <div className={historyPanel?.isOpen ? "invisible pointer-events-none" : "visible"}>
+            <CustomerSidePanel
+              accountName={accountName}
+              conversationMode={activeConversation?.mode}
+              customer={customer}
+              sidebarIframeQd={
+                activeConversation?.mode === "group" &&
+                activeConversation.thirdGroupId !== undefined &&
+                activeConversation.thirdGroupId !== ""
+                  ? activeConversation.thirdGroupId
+                  : undefined
+              }
+              sidebarIframeConversationId={activeConversation?.id}
+              sidebarIframeSeatId={activeConversation?.accountId}
+              sidebarIframeTos={sidebarIframeTos}
+              groupMembers={groupMembers}
+              isGroupMembersLoading={isGroupMembersLoading}
+              isResizing={isResizingCustomerPanel}
+              onRefreshGroupMembers={onRefreshGroupMembers}
+              onResizeStart={onCustomerPanelResizeStart}
+              panelWidth={customerPanelWidth}
+              sidebarItems={sidebarItems}
+            />
+          </div>
+          {historyPanel ? (
+            <MessageHistorySidePanel
+              activeConversation={activeConversation}
+              activeHistory={historyPanel.activeHistory}
+              activeHistoryError={historyPanel.activeHistoryError}
+              activeHistoryFilters={historyPanel.activeHistoryFilters}
+              activeHistoryLoading={historyPanel.activeHistoryLoading}
+              customer={customer}
+              groupMembers={groupMembers}
+              isOpen={historyPanel.isOpen}
+              onClose={onHistoryClose}
+              onLoadMoreNext={onHistoryLoadMoreNext}
+              onLoadMorePrev={onHistoryLoadMorePrev}
+              onRefresh={onHistoryRefresh}
+              onSetDay={onHistorySetDay}
+              onSetScope={onHistorySetScope}
+              onSetSenderId={onHistorySetSenderId}
+            />
+          ) : null}
+        </div>
       </div>
     </section>
   );

@@ -70,6 +70,7 @@ type ChatComposerProps = {
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
+  onOpenHistory: () => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
   placeholder: string;
@@ -108,6 +109,7 @@ export function ChatComposer({
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onFileSelect,
+  onOpenHistory,
   onSegmentsChange,
   onSendDraft,
   placeholder,
@@ -458,6 +460,7 @@ export function ChatComposer({
           <Button
             aria-label="历史记录"
             className={composerActionButtonClass}
+            onClick={onOpenHistory}
             size="icon"
             type="button"
             variant="ghost"

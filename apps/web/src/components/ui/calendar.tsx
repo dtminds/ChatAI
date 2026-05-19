@@ -6,6 +6,7 @@ import {
   ArrowRight01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { zhCN } from "date-fns/locale/zh-CN";
 import * as React from "react";
 import {
   DayPicker,
@@ -23,6 +24,7 @@ function Calendar({
   captionLayout = "label",
   buttonVariant = "ghost",
   formatters,
+  locale = zhCN,
   components,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
@@ -32,6 +34,7 @@ function Calendar({
 
   return (
     <DayPicker
+      locale={locale}
       showOutsideDays={showOutsideDays}
       className={cn(
         "group/calendar bg-background p-3 [--cell-size:--spacing(8)] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",

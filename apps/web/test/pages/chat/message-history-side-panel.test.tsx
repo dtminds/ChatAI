@@ -65,8 +65,8 @@ describe("MessageHistorySidePanel", () => {
     );
 
     expect(screen.queryByPlaceholderText("搜索聊天记录")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "发送人" })).toHaveClass("h-8", "text-[12px]");
-    expect(screen.getByRole("button", { name: "日期" })).toHaveClass("h-8", "text-[12px]");
+    expect(screen.getByRole("button", { name: "发送人" })).toHaveClass("h-8", "py-0", "text-[12px]");
+    expect(screen.getByRole("button", { name: "日期" })).toHaveClass("h-8", "py-0", "text-[12px]");
   });
 
   it("renders all-scope messages in a compact linear history layout", () => {

@@ -12,6 +12,14 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
   AlertDialog,
@@ -85,6 +93,13 @@ type PendingComposerDiscardSwitch =
       mode: ChatMode;
       type: "mode";
     };
+
+type MentionRetryDialogState = {
+  conversationId: string;
+  displayName: string;
+  groupMemberId: string;
+  refreshedOnce: boolean;
+};
 
 function getInitialAccountRailCollapsed() {
   try {
@@ -208,6 +223,10 @@ function ChatWorkbenchContent({
     useState<QuotedMessagePreviewContent | null>(null);
   const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
     useState<PendingComposerDiscardSwitch | null>(null);
+  const [mentionRetryDialogState, setMentionRetryDialogState] =
+    useState<MentionRetryDialogState | null>(null);
+  const [isRefreshingMentionTarget, setIsRefreshingMentionTarget] =
+    useState(false);
   const [isAccountRailCollapsed, setIsAccountRailCollapsed] = useState(
     getInitialAccountRailCollapsed,
   );
@@ -216,6 +235,8 @@ function ChatWorkbenchContent({
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
+  const mentionRetryDialogStateRef =
+    useRef<MentionRetryDialogState | null>(null);
   const isSendingDraftRef = useRef(false);
   const isMountedRef = useRef(true);
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
@@ -447,6 +468,16 @@ function ChatWorkbenchContent({
   useEffect(() => {
     setIsEmojiPickerOpen(false);
   }, [activeConversation?.id]);
+
+  useEffect(() => {
+    mentionRetryDialogStateRef.current = null;
+    setMentionRetryDialogState(null);
+    setIsRefreshingMentionTarget(false);
+  }, [activeConversation?.id]);
+
+  useEffect(() => {
+    mentionRetryDialogStateRef.current = mentionRetryDialogState;
+  }, [mentionRetryDialogState]);
 
   useWorkbenchPolling({
     activeAccountId,
@@ -976,11 +1007,83 @@ function ChatWorkbenchContent({
       return;
     }
 
+    const activeGroupMember = activeGroupMembers.find(
+      (member) => member.id === message.sender.groupMemberId,
+    );
+
+    if (!activeGroupMember) {
+      const retryDialogState = {
+        conversationId: message.conversationId,
+        displayName: message.senderDisplayName || message.sender.name,
+        groupMemberId: message.sender.groupMemberId,
+        refreshedOnce: false,
+      };
+
+      mentionRetryDialogStateRef.current = retryDialogState;
+      setMentionRetryDialogState(retryDialogState);
+      return;
+    }
+
     composerRef.current?.dispatchCommand(INSERT_COMPOSER_MENTION_COMMAND, {
-      displayName: message.senderDisplayName || message.sender.name,
-      memberId: message.sender.groupMemberId,
+      displayName: activeGroupMember.displayName,
+      memberId: activeGroupMember.id,
     });
     composerRef.current?.focus();
+  };
+
+  const handleRetryMentionTarget = async () => {
+    const dialogState = mentionRetryDialogState;
+
+    if (!dialogState || !activeConversation?.id || isRefreshingMentionTarget) {
+      return;
+    }
+
+    setIsRefreshingMentionTarget(true);
+
+    try {
+      await loadActiveGroupMembers({ force: true });
+
+      const refreshedState = useWorkbenchStore.getState();
+      const isStillActiveRetry =
+        refreshedState.activeConversationId === dialogState.conversationId &&
+        mentionRetryDialogStateRef.current?.conversationId ===
+          dialogState.conversationId &&
+        mentionRetryDialogStateRef.current?.groupMemberId ===
+          dialogState.groupMemberId;
+
+      if (!isStillActiveRetry) {
+        return;
+      }
+
+      const refreshedMembers =
+        refreshedState.groupMembersByConversationId[
+          dialogState.conversationId
+        ] ?? [];
+      const refreshedMember = refreshedMembers.find(
+        (member) => member.id === dialogState.groupMemberId,
+      );
+
+      if (!refreshedMember) {
+        const nextDialogState = {
+          ...dialogState,
+          refreshedOnce: true,
+        };
+
+        mentionRetryDialogStateRef.current = nextDialogState;
+        setMentionRetryDialogState(nextDialogState);
+        return;
+      }
+
+      composerRef.current?.dispatchCommand(INSERT_COMPOSER_MENTION_COMMAND, {
+        displayName: refreshedMember.displayName,
+        memberId: refreshedMember.id,
+      });
+      composerRef.current?.focus();
+      mentionRetryDialogStateRef.current = null;
+      setMentionRetryDialogState(null);
+    } finally {
+      setIsRefreshingMentionTarget(false);
+    }
   };
 
   if (bootstrapStatus === "loading" && accounts.length === 0) {
@@ -1304,6 +1407,51 @@ function ChatWorkbenchContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Dialog
+        open={mentionRetryDialogState !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            mentionRetryDialogStateRef.current = null;
+            setMentionRetryDialogState(null);
+            setIsRefreshingMentionTarget(false);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {mentionRetryDialogState?.refreshedOnce
+                ? "刷新后仍未找到该成员"
+                : "该成员已退群或群成员数据未更新"}
+            </DialogTitle>
+            <DialogDescription>
+              {mentionRetryDialogState?.refreshedOnce
+                ? `${mentionRetryDialogState.displayName} 可能已退群，暂不支持 @Ta`
+                : `${mentionRetryDialogState?.displayName ?? ""} 暂不支持 @Ta，请刷新群成员后重试`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              disabled={isRefreshingMentionTarget}
+              onClick={() => {
+                void handleRetryMentionTarget();
+              }}
+            >
+              {isRefreshingMentionTarget ? "刷新中" : "刷新群成员并重试"}
+            </Button>
+            <Button
+              onClick={() => {
+                mentionRetryDialogStateRef.current = null;
+                setMentionRetryDialogState(null);
+                setIsRefreshingMentionTarget(false);
+              }}
+              variant="outline"
+            >
+              取消
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

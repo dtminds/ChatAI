@@ -539,6 +539,48 @@ function upsertMessageList(
   return [...merged, ...sortMessagesForAppend(appendedMessages)];
 }
 
+function patchExistingMessageList(
+  currentMessages: Message[],
+  refreshedMessages: Message[],
+) {
+  if (!currentMessages.length || !refreshedMessages.length) {
+    return currentMessages;
+  }
+
+  const currentIndexById = new Map<string, number>();
+
+  currentMessages.forEach((message, index) => {
+    currentIndexById.set(message.id, index);
+  });
+
+  const merged = [...currentMessages];
+
+  for (const refreshedMessage of refreshedMessages) {
+    const existingIndex = currentIndexById.get(refreshedMessage.id);
+
+    if (existingIndex == null) {
+      continue;
+    }
+
+    const currentMessage = merged[existingIndex];
+
+    if (currentMessage.role === "system" || refreshedMessage.role === "system") {
+      merged[existingIndex] = {
+        ...currentMessage,
+        ...refreshedMessage,
+      };
+      continue;
+    }
+
+    merged[existingIndex] = {
+      ...currentMessage,
+      ...refreshedMessage,
+    };
+  }
+
+  return merged;
+}
+
 function isRevokeSignalMessage(message: Message) {
   return (
     message.role === "system" &&
@@ -1684,7 +1726,7 @@ export function createWorkbenchStore() {
             }
 
             const conversationMessages = nextMessagesByConversationId[conversationId] ?? [];
-            nextMessagesByConversationId[conversationId] = upsertMessageList(
+            nextMessagesByConversationId[conversationId] = patchExistingMessageList(
               conversationMessages,
               refreshedMessages,
             );

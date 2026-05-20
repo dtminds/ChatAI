@@ -880,7 +880,7 @@ describe("MysqlWorkbenchService", () => {
 
     expect(listMessageUpdateEvents).toHaveBeenCalledWith("88", {
       afterCreateTime: 1_778_840_000_000,
-      limit: 50,
+      limit: 200,
     });
   });
 
@@ -945,41 +945,6 @@ describe("MysqlWorkbenchService", () => {
       }),
     ).resolves.toMatchObject({
       nextMessageUpdateCursor: 1_778_840_003_000,
-    });
-  });
-
-  it("advances the message update cursor by 1s when events stay on the same timestamp", async () => {
-    const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
-        listChangedConversations: vi.fn().mockResolvedValue({
-          hasMore: false,
-          items: [],
-          nextVersion: 1_778_840_030_000,
-        }),
-        listMessageUpdateEvents: vi.fn().mockResolvedValue([
-          {
-            conversationId: "88",
-            eventId: 4,
-            eventTime: 1_778_840_000_000,
-            messageId: "829",
-          },
-        ]),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-    );
-
-    await expect(
-      service.poll("101", {
-        activeConversationId: "88",
-        currentSeatId: "12",
-        messageUpdateCursor: 1_778_840_000_000,
-        sinceVersion: 1_778_839_000_000,
-      }),
-    ).resolves.toMatchObject({
-      nextMessageUpdateCursor: 1_778_840_001_000,
     });
   });
 

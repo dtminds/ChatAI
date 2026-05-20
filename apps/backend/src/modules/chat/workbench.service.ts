@@ -53,8 +53,7 @@ import {
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
-const POLL_MESSAGE_UPDATE_OVERLAP_MS = 1_000;
-const POLL_MESSAGE_UPDATE_LIMIT = 50;
+const POLL_MESSAGE_UPDATE_LIMIT = 200;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -785,7 +784,7 @@ function getNextMessageUpdateCursor(
     currentCursor,
   );
 
-  return latestEventTime > currentCursor ? latestEventTime : currentCursor + POLL_MESSAGE_UPDATE_OVERLAP_MS;
+  return latestEventTime;
 }
 
 function getSingleSendSegment(

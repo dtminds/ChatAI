@@ -87,7 +87,6 @@ export type MessageUpdateEventListResult = Array<
   }
 >;
 
-const MESSAGE_UPDATE_OVERLAP_MS = 1_000;
 type HistoryMessageCursor = {
   anchorId: string;
   direction: "next" | "prev";
@@ -269,8 +268,8 @@ export class WorkbenchRepository {
     if (options.afterCreateTime != null) {
       query = query.where(
         "event.create_time",
-        ">=",
-        new Date(Math.max(0, options.afterCreateTime - MESSAGE_UPDATE_OVERLAP_MS)),
+        ">",
+        new Date(Math.max(0, options.afterCreateTime)),
       );
     }
 

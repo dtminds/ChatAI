@@ -202,6 +202,60 @@ describe("ChatWorkbenchPage", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
+  it("shows the API error message instead of the error code when send fails", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        throw {
+          code: "SEAT_NOT_TAKEN_OVER",
+          message: "当前账号尚未由你接管，无法发送消息",
+          status: 403,
+        };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "这条消息会触发失败");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" });
+
+    expect(
+      screen.getByText("当前账号尚未由你接管，无法发送消息"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("ErrorCode: SEAT_NOT_TAKEN_OVER")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the error code when send fails without an API message", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        throw {
+          code: "SEND_RATE_LIMITED",
+          status: 429,
+        };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "这条消息没有接口文案");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" });
+
+    expect(screen.getByText("ErrorCode: SEND_RATE_LIMITED")).toBeInTheDocument();
+  });
+
   it("does not show a history loader when the default message page covers all history", async () => {
     renderChatWorkbenchPage();
 

@@ -229,7 +229,7 @@ describe("LoginPage", () => {
     });
     mock.onPost("/auth/login").reply(401, {
       error: {
-        code: "SUB_USER_DISABLED",
+        code: "INVALID_CREDENTIALS",
         message: "该子账号已停用，请联系管理员",
       },
       success: false,

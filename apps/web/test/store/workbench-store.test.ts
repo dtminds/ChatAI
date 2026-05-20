@@ -10,7 +10,7 @@ import {
   MAX_CONVERSATION_LIST_CACHE_SEATS,
   useWorkbenchStore,
 } from "@/store/workbench-store";
-import type { Conversation } from "@/pages/chat/chat-types";
+import type { Conversation, Message, ChatMessage } from "@/pages/chat/chat-types";
 import type {
   WorkbenchHistoryMessagePageDto,
   WorkbenchMessageDto,
@@ -54,6 +54,10 @@ function createCachedConversation(accountId: string): Conversation {
     unread: 0,
     updatedAt: "刚刚",
   };
+}
+
+function isChatMessage(message: Message): message is ChatMessage {
+  return message.role !== "system";
 }
 
 function createHistoryMessageDto(
@@ -1163,6 +1167,64 @@ describe("useWorkbenchStore", () => {
         (message) => message.id === "829",
       ),
     ).toBe(true);
+  });
+
+  it("keeps the existing sender avatar when refreshed message details omit it", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessagesByIds(input) {
+        if (input.conversationId === "conv-001" && input.messageIds.includes("msg-005")) {
+          return {
+            messages: [
+              {
+                content: {
+                  type: "text",
+                  text: "Seedream 4.0 这张活动卡片我准备转给群里，你看标题会不会太满？",
+                },
+                contentType: "text",
+                conversationId: "conv-001",
+                createdAt: 1_778_410_200_000,
+                customerId: "cust-001",
+                messageId: "msg-005",
+                seatId: "drc",
+                senderAvatar: "",
+                senderName: "丹阳草莓，得利市大樱桃",
+                senderType: "customer",
+                seq: 5,
+                status: "read",
+                thirdExternalUserId: "external-1",
+                thirdFromId: "sender-cust-001",
+                thirdUserId: "third-user-drc",
+              },
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const beforeMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (message): message is ChatMessage => message.id === "msg-005" && isChatMessage(message),
+      );
+    const beforeAvatar = beforeMessage?.sender.avatarUrl;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const refreshedMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (message): message is ChatMessage => message.id === "msg-005" && isChatMessage(message),
+      );
+
+    expect(beforeAvatar).toBeTruthy();
+    expect(refreshedMessage?.sender.avatarUrl).toBe(beforeAvatar);
   });
 
   it("preserves the current conversation and unrelated pending messages during cursor recovery", async () => {

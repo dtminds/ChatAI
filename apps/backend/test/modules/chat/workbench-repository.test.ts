@@ -54,7 +54,8 @@ function createHistoryMessagesDb(rows: MessageRow[], conversationOverrides: Reco
       if (
         table === "xy_wap_embed_group_member as member" ||
         table === "xy_wap_embed_user_seat" ||
-        table === "xy_wap_embed_contact"
+        table === "xy_wap_embed_contact" ||
+        table === "xy_wap_embed_customer_bind_relation"
       ) {
         return createQueryBuilder([]);
       }
@@ -103,7 +104,8 @@ function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
       if (
         table === "xy_wap_embed_group_member as member" ||
         table === "xy_wap_embed_user_seat" ||
-        table === "xy_wap_embed_contact"
+        table === "xy_wap_embed_contact" ||
+        table === "xy_wap_embed_customer_bind_relation"
       ) {
         return createQueryBuilder([]);
       }
@@ -151,6 +153,14 @@ function createMessagesByIdsDb(rows: MessageRow[]) {
           wheres: query.wheres,
         });
         return query;
+      }
+
+      if (
+        table === "xy_wap_embed_contact" ||
+        table === "xy_wap_embed_customer_bind_relation" ||
+        table === "xy_wap_embed_group_member as member"
+      ) {
+        return createQueryBuilder([]);
       }
 
       throw new Error(`unexpected table ${table}`);
@@ -940,6 +950,8 @@ describe("WorkbenchRepository", () => {
       messages: [
         expect.objectContaining({
           messageId: "remote-msg-829",
+          senderAvatar: "",
+          senderName: "external-1",
           seq: 829,
         }),
       ],

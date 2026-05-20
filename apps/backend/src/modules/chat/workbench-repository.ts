@@ -364,7 +364,13 @@ export class WorkbenchRepository {
       .where("message.id", "in", normalizedIds)
       .execute();
 
-    const messages = rows.map((row) =>
+    const hydrationSources = await this.getMessageHydrationSources(
+      rows as MessageRow[],
+      conversation.uid,
+      conversation.platform,
+    );
+    const hydratedRows = hydrateMessageRows(rows as MessageRow[], hydrationSources);
+    const messages = hydratedRows.map((row) =>
       mapMessageRow({
         ...(row as MessageRow),
         chat_type: conversation.chat_type,

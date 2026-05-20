@@ -507,9 +507,27 @@ function upsertMessageList(
 
     if (existingIndex >= 0) {
       const currentMessage = merged[existingIndex];
+      if (currentMessage.role === "system" || nextMessage.role === "system") {
+        merged[existingIndex] = {
+          ...currentMessage,
+          ...nextMessage,
+        };
+        continue;
+      }
+
+      const nextSender = nextMessage.sender;
       merged[existingIndex] = {
         ...currentMessage,
         ...nextMessage,
+        sender: {
+          ...currentMessage.sender,
+          ...nextSender,
+          avatarUrl: nextSender.avatarUrl || currentMessage.sender.avatarUrl,
+          name: nextSender.name || currentMessage.sender.name,
+        },
+        senderDisplayName:
+          nextMessage.senderDisplayName ?? currentMessage.senderDisplayName,
+        author: nextMessage.author || currentMessage.author,
         clientMessageId: nextMessage.clientMessageId ?? currentMessage.clientMessageId,
       };
       continue;

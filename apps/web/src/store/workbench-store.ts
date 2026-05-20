@@ -56,7 +56,7 @@ type SendMessageResult =
     }
   | {
       errorCode: string;
-      errorMessage: string;
+      errorMessage?: string;
       reason: "file-upload" | "image-upload" | "send" | "unavailable";
       ok: false;
     };
@@ -1968,7 +1968,7 @@ export function createWorkbenchStore() {
 
         return {
           errorCode: getRequestErrorCode(error),
-          errorMessage: getRequestErrorMessage(error, "消息发送失败"),
+          errorMessage: getRequestApiErrorMessage(error),
           reason: "send",
           ok: false,
         };
@@ -2877,6 +2877,18 @@ function getRequestErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function getRequestApiErrorMessage(error: unknown) {
+  if (!isErrorWithMessage(error)) {
+    return undefined;
+  }
+
+  if (isErrorWithCode(error) || isErrorWithStatus(error)) {
+    return error.message;
+  }
+
+  return undefined;
 }
 
 function isErrorWithStatus(error: unknown): error is { status: number | string } {

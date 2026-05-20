@@ -970,7 +970,7 @@ describe("useWorkbenchStore", () => {
 
     expect(result).toEqual({
       errorCode: "UNKNOWN",
-      errorMessage: "发送接口失败",
+      errorMessage: undefined,
       reason: "send",
       ok: false,
     });

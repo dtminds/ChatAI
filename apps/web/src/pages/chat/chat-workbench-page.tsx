@@ -525,6 +525,10 @@ function ChatWorkbenchContent({
         },
       });
 
+      if (!isMountedRef.current) {
+        return;
+      }
+
       if (!result.ok) {
         setSendFailureDialog(
           getSendFailureDialogCopy(

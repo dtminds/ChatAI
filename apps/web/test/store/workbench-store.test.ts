@@ -236,6 +236,39 @@ describe("useWorkbenchStore", () => {
     ).toEqual(["history-file"]);
   });
 
+  it("keeps history scroll pinned to the end only for all-scope filters without a day", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
+
+    expect(
+      useWorkbenchStore.getState().historyPanelScrollModeByConversationId["conv-001"],
+    ).toBe("end");
+
+    await useWorkbenchStore.getState().setHistoryPanelSenderId("customer-1");
+
+    expect(
+      useWorkbenchStore.getState().historyPanelScrollModeByConversationId["conv-001"],
+    ).toBe("end");
+
+    await useWorkbenchStore.getState().setHistoryPanelDay("2026-05-20");
+
+    expect(
+      useWorkbenchStore.getState().historyPanelScrollModeByConversationId["conv-001"],
+    ).toBeUndefined();
+
+    await useWorkbenchStore.getState().setHistoryPanelDay(undefined);
+
+    expect(
+      useWorkbenchStore.getState().historyPanelScrollModeByConversationId["conv-001"],
+    ).toBe("end");
+
+    await useWorkbenchStore.getState().setHistoryPanelScope("file");
+
+    expect(
+      useWorkbenchStore.getState().historyPanelScrollModeByConversationId["conv-001"],
+    ).toBeUndefined();
+  });
+
   it("starts polling from the conversation snapshot baseline after bootstrap", async () => {
     const baseService = createMockWorkbenchService();
 

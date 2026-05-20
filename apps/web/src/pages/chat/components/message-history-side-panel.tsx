@@ -360,6 +360,18 @@ function HistoryMessageViewport({
 
     onLoadMorePrev();
   };
+  const showTopLoader =
+    sortDirection === "ascending" ? activeHistory?.hasPrev : activeHistory?.hasNext;
+  const showBottomLoader =
+    sortDirection === "ascending" ? activeHistory?.hasNext : activeHistory?.hasPrev;
+  const topLoaderText =
+    sortDirection === "ascending" ? "加载更早的对话" : "加载更多对话";
+  const bottomLoaderText =
+    sortDirection === "ascending" ? "加载更多对话" : "加载更早的对话";
+  const topLoaderOnClick =
+    sortDirection === "ascending" ? handleLoadMorePrev : onLoadMoreNext;
+  const bottomLoaderOnClick =
+    sortDirection === "ascending" ? onLoadMoreNext : handleLoadMorePrev;
 
   useLayoutEffect(() => {
     const pendingRestore = pendingPrependRestoreRef.current;
@@ -398,21 +410,14 @@ function HistoryMessageViewport({
       viewportRef={viewportRef}
       viewportTestId="history-message-viewport"
     >
-      <div className="space-y-3 px-4 py-4">
+      <div className="space-y-3 px-4 py-0">
         {activeHistoryError ? (
           <div className="rounded-[8px] border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             {activeHistoryError}
           </div>
         ) : null}
-        {activeHistory?.hasPrev ? (
-          <HistoryEdgeLoader
-            onClick={
-              sortDirection === "ascending" ? handleLoadMorePrev : onLoadMoreNext
-            }
-            text={
-              sortDirection === "ascending" ? "加载更早的对话" : "加载更多对话"
-            }
-          />
+        {showTopLoader ? (
+          <HistoryEdgeLoader onClick={topLoaderOnClick} text={topLoaderText} />
         ) : null}
         {activeHistoryLoading && !(activeHistory?.messages.length ?? 0) ? (
           <div className="flex min-h-[140px] items-center justify-center text-sm text-muted-foreground">
@@ -426,15 +431,8 @@ function HistoryMessageViewport({
         ) : (
           <div>{children}</div>
         )}
-        {activeHistory?.hasNext ? (
-          <HistoryEdgeLoader
-            onClick={
-              sortDirection === "ascending" ? onLoadMoreNext : handleLoadMorePrev
-            }
-            text={
-              sortDirection === "ascending" ? "加载更多对话" : "加载更早的对话"
-            }
-          />
+        {showBottomLoader ? (
+          <HistoryEdgeLoader onClick={bottomLoaderOnClick} text={bottomLoaderText} />
         ) : null}
       </div>
     </ScrollArea>
@@ -648,20 +646,13 @@ function HistoryLinkList({ messages }: { messages: Message[] }) {
 function HistoryLinkRow({ message }: { message: H5HistoryMessage }) {
   const safeUrl = getSafeMessageUrl(message.content.url);
 
-  const handleClick = () => {
-    if (!safeUrl) {
-      return;
-    }
-
-    window.open(safeUrl, "_blank", "noopener,noreferrer");
-  };
-
   return (
-    <div
+    <a
+      aria-disabled={!safeUrl}
       className="grid w-full max-w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 overflow-hidden px-2 py-3"
-      onClick={handleClick}
-      role={safeUrl ? "link" : undefined}
-      tabIndex={safeUrl ? 0 : undefined}
+      href={safeUrl ?? undefined}
+      rel={safeUrl ? "noopener noreferrer" : undefined}
+      target={safeUrl ? "_blank" : undefined}
     >
       <HistoryLinkThumb message={message} />
       <div className="min-w-0 overflow-hidden">
@@ -678,7 +669,7 @@ function HistoryLinkRow({ message }: { message: H5HistoryMessage }) {
           </span>
         </div>
       </div>
-    </div>
+    </a>
   );
 }
 
@@ -868,7 +859,7 @@ function HistoryMediaTile({ message }: { message: MediaHistoryMessage }) {
 
 function HistoryDateDivider({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-3 px-2 text-[12px] leading-5 text-muted-foreground">
+    <div className="flex items-center gap-3 px-12 text-[12px] leading-5 text-muted-foreground">
       <span className="h-px flex-1 bg-divider" />
       <span className="shrink-0">{label}</span>
       <span className="h-px flex-1 bg-divider" />
@@ -1203,9 +1194,9 @@ function getFirstGrapheme(value: string) {
     const first = segmenter.segment(trimmed)[Symbol.iterator]().next();
 
     if (!first.done) {
-      return String(first.value.segment).slice(0, 1);
+      return first.value.segment;
     }
   }
 
-  return trimmed.slice(0, 1);
+  return Array.from(trimmed)[0] ?? "?";
 }

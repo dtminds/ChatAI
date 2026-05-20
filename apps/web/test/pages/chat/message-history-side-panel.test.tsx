@@ -148,6 +148,12 @@ describe("MessageHistorySidePanel", () => {
             type: GROUP_MEMBER_TYPE.OWNER,
           },
           {
+            avatarUrl: "https://cdn.example.com/member-emoji.png",
+            displayName: "👨‍👩‍👧‍👦客服",
+            id: "member-emoji",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+          {
             avatarUrl: "https://cdn.example.com/member-2.png",
             displayName: "睿白鸽",
             id: "member-2",
@@ -174,9 +180,11 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.queryByText("☐")).not.toBeInTheDocument();
     const groupDialog = screen.getByRole("dialog");
     const groupMemberButton = within(groupDialog).getByRole("button", { name: /小林/ });
+    const emojiMemberButton = within(groupDialog).getByRole("button", { name: /👨‍👩‍👧‍👦客服/ });
     const anotherMemberButton = within(groupDialog).getByRole("button", { name: /睿白鸽/ });
 
     expect(within(groupMemberButton).getByText("小")).toBeInTheDocument();
+    expect(within(emojiMemberButton).getByText("👨‍👩‍👧‍👦")).toBeInTheDocument();
     expect(within(anotherMemberButton).getByText("睿")).toBeInTheDocument();
   });
 
@@ -525,9 +533,6 @@ describe("MessageHistorySidePanel", () => {
   });
 
   it("renders link history rows with preview images and opens the link", async () => {
-    const user = userEvent.setup();
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-
     render(
       <MessageHistorySidePanel
         activeConversation={createConversation()}
@@ -565,16 +570,18 @@ describe("MessageHistorySidePanel", () => {
     const viewport = within(screen.getByTestId("history-message-viewport"));
     expect(viewport.queryByText("链接")).not.toBeInTheDocument();
     expect(viewport.queryByText("H5")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("link"));
-
-    expect(openSpy).toHaveBeenCalledWith(
+    expect(screen.getByRole("link", { name: /活动链接/ })).toHaveAttribute(
+      "href",
       "https://example.com/h5",
-      "_blank",
-      "noopener,noreferrer",
     );
-
-    openSpy.mockRestore();
+    expect(screen.getByRole("link", { name: /活动链接/ })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+    expect(screen.getByRole("link", { name: /活动链接/ })).toHaveAttribute(
+      "rel",
+      expect.stringContaining("noopener"),
+    );
   });
 
   it("renders mini-program history rows with cover images and no type text", () => {
@@ -704,6 +711,8 @@ describe("MessageHistorySidePanel", () => {
       />,
     );
 
+    expect(screen.getAllByRole("button", { name: "加载更多对话" })[0]).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "加载更早的对话" })[0]).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "加载更多对话" }));
     await user.click(screen.getByRole("button", { name: "加载更早的对话" }));
 

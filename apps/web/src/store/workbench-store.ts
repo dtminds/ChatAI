@@ -99,6 +99,10 @@ const emptyHistoryPanelState: HistoryPanelState = {
   messages: [],
 };
 
+function getHistoryPanelScrollMode(filters: HistoryPanelFilters) {
+  return filters.scope === "all" && !filters.day ? "end" : undefined;
+}
+
 type WorkbenchState = {
   me?: EmployeeProfile;
   accounts: Account[];
@@ -2106,17 +2110,23 @@ export function createWorkbenchStore() {
         return;
       }
 
-      set((currentState) => ({
-        historyPanelOpenConversationId: nextConversationId,
-        historyPanelErrorByConversationId: {
-          ...currentState.historyPanelErrorByConversationId,
-          [nextConversationId]: undefined,
-        },
-        historyPanelScrollModeByConversationId: {
-          ...currentState.historyPanelScrollModeByConversationId,
-          [nextConversationId]: "end",
-        },
-      }));
+      set((currentState) => {
+        const filters = currentState.historyPanelFiltersByConversationId[
+          nextConversationId
+        ] ?? { scope: "all" as const };
+
+        return {
+          historyPanelOpenConversationId: nextConversationId,
+          historyPanelErrorByConversationId: {
+            ...currentState.historyPanelErrorByConversationId,
+            [nextConversationId]: undefined,
+          },
+          historyPanelScrollModeByConversationId: {
+            ...currentState.historyPanelScrollModeByConversationId,
+            [nextConversationId]: getHistoryPanelScrollMode(filters),
+          },
+        };
+      });
 
       await get().loadHistoryMessages({ direction: "next" });
     },
@@ -2139,29 +2149,33 @@ export function createWorkbenchStore() {
         return;
       }
 
-      set((currentState) => ({
-        historyPanelByConversationId: {
-          ...currentState.historyPanelByConversationId,
-          [conversationId]: emptyHistoryPanelState,
-        },
-        historyPanelErrorByConversationId: {
-          ...currentState.historyPanelErrorByConversationId,
-          [conversationId]: undefined,
-        },
-        historyPanelFiltersByConversationId: {
-          ...currentState.historyPanelFiltersByConversationId,
-          [conversationId]: {
-            ...(currentState.historyPanelFiltersByConversationId[conversationId] ?? {
-              scope: "all",
-            }),
-            scope,
+      set((currentState) => {
+        const filters = {
+          ...(currentState.historyPanelFiltersByConversationId[conversationId] ?? {
+            scope: "all" as const,
+          }),
+          scope,
+        };
+
+        return {
+          historyPanelByConversationId: {
+            ...currentState.historyPanelByConversationId,
+            [conversationId]: emptyHistoryPanelState,
           },
-        },
-        historyPanelScrollModeByConversationId: {
-          ...currentState.historyPanelScrollModeByConversationId,
-          [conversationId]: undefined,
-        },
-      }));
+          historyPanelErrorByConversationId: {
+            ...currentState.historyPanelErrorByConversationId,
+            [conversationId]: undefined,
+          },
+          historyPanelFiltersByConversationId: {
+            ...currentState.historyPanelFiltersByConversationId,
+            [conversationId]: filters,
+          },
+          historyPanelScrollModeByConversationId: {
+            ...currentState.historyPanelScrollModeByConversationId,
+            [conversationId]: getHistoryPanelScrollMode(filters),
+          },
+        };
+      });
 
       await get().loadHistoryMessages({ direction: "next" });
     },
@@ -2173,29 +2187,33 @@ export function createWorkbenchStore() {
         return;
       }
 
-      set((currentState) => ({
-        historyPanelByConversationId: {
-          ...currentState.historyPanelByConversationId,
-          [conversationId]: emptyHistoryPanelState,
-        },
-        historyPanelErrorByConversationId: {
-          ...currentState.historyPanelErrorByConversationId,
-          [conversationId]: undefined,
-        },
-        historyPanelFiltersByConversationId: {
-          ...currentState.historyPanelFiltersByConversationId,
-          [conversationId]: {
-            ...(currentState.historyPanelFiltersByConversationId[conversationId] ?? {
-              scope: "all",
-            }),
-            day,
+      set((currentState) => {
+        const filters = {
+          ...(currentState.historyPanelFiltersByConversationId[conversationId] ?? {
+            scope: "all" as const,
+          }),
+          day,
+        };
+
+        return {
+          historyPanelByConversationId: {
+            ...currentState.historyPanelByConversationId,
+            [conversationId]: emptyHistoryPanelState,
           },
-        },
-        historyPanelScrollModeByConversationId: {
-          ...currentState.historyPanelScrollModeByConversationId,
-          [conversationId]: undefined,
-        },
-      }));
+          historyPanelErrorByConversationId: {
+            ...currentState.historyPanelErrorByConversationId,
+            [conversationId]: undefined,
+          },
+          historyPanelFiltersByConversationId: {
+            ...currentState.historyPanelFiltersByConversationId,
+            [conversationId]: filters,
+          },
+          historyPanelScrollModeByConversationId: {
+            ...currentState.historyPanelScrollModeByConversationId,
+            [conversationId]: getHistoryPanelScrollMode(filters),
+          },
+        };
+      });
 
       await get().loadHistoryMessages({ direction: "next" });
     },
@@ -2207,29 +2225,33 @@ export function createWorkbenchStore() {
         return;
       }
 
-      set((currentState) => ({
-        historyPanelByConversationId: {
-          ...currentState.historyPanelByConversationId,
-          [conversationId]: emptyHistoryPanelState,
-        },
-        historyPanelErrorByConversationId: {
-          ...currentState.historyPanelErrorByConversationId,
-          [conversationId]: undefined,
-        },
-        historyPanelFiltersByConversationId: {
-          ...currentState.historyPanelFiltersByConversationId,
-          [conversationId]: {
-            ...(currentState.historyPanelFiltersByConversationId[conversationId] ?? {
-              scope: "all",
-            }),
-            senderId,
+      set((currentState) => {
+        const filters = {
+          ...(currentState.historyPanelFiltersByConversationId[conversationId] ?? {
+            scope: "all" as const,
+          }),
+          senderId,
+        };
+
+        return {
+          historyPanelByConversationId: {
+            ...currentState.historyPanelByConversationId,
+            [conversationId]: emptyHistoryPanelState,
           },
-        },
-        historyPanelScrollModeByConversationId: {
-          ...currentState.historyPanelScrollModeByConversationId,
-          [conversationId]: undefined,
-        },
-      }));
+          historyPanelErrorByConversationId: {
+            ...currentState.historyPanelErrorByConversationId,
+            [conversationId]: undefined,
+          },
+          historyPanelFiltersByConversationId: {
+            ...currentState.historyPanelFiltersByConversationId,
+            [conversationId]: filters,
+          },
+          historyPanelScrollModeByConversationId: {
+            ...currentState.historyPanelScrollModeByConversationId,
+            [conversationId]: getHistoryPanelScrollMode(filters),
+          },
+        };
+      });
 
       await get().loadHistoryMessages({ direction: "next" });
     },

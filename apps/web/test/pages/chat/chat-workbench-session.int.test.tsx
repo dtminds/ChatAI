@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -111,6 +111,12 @@ describe("ChatWorkbenchPage session flows", () => {
     });
     await user.hover(screen.getByRole("button", { name: "选择 念都堂" }));
     await user.click(screen.getByRole("button", { name: "接管账号" }));
+    const confirmDialog = await screen.findByRole("alertdialog", {
+      name: "是否确认接管：念都堂",
+    });
+    await user.click(
+      within(confirmDialog).getByRole("button", { name: "确认接管" }),
+    );
 
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "请输入消息……" })).not.toHaveAttribute(

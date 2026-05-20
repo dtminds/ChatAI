@@ -12,6 +12,7 @@ import {
   loadGroupMembers,
   loadAccountScope,
   loadConversationMessagesPage,
+  loadMessagesByIds,
   loadSeats,
   markConversationRead,
   markConversationUnread,
@@ -1558,6 +1559,33 @@ export function createWorkbenchStore() {
           customerProfilesById: state.customerProfilesById,
           me: state.me,
         });
+        const messageUpdateIdsByConversationId = (response.messageUpdateEvents ?? []).reduce(
+          (accumulator, event) => {
+            const currentIds = accumulator[event.conversationId] ?? [];
+            accumulator[event.conversationId] = [...currentIds, event.messageId];
+            return accumulator;
+          },
+          {} as Record<string, string[]>,
+        );
+
+        const refreshedMessagesByConversationId = Object.fromEntries(
+          await Promise.all(
+            Object.entries(messageUpdateIdsByConversationId).map(
+              async ([conversationId, messageIds]): Promise<[string, Message[]]> => [
+                conversationId,
+                await loadMessagesByIds(
+                  {
+                    accounts: state.accounts,
+                    customerProfilesById: state.customerProfilesById,
+                    me: state.me,
+                  },
+                  conversationId,
+                  messageIds,
+                ),
+              ],
+            ),
+          ),
+        ) as Record<string, Message[]>;
 
         set((currentState) => {
           const isStaleScope =
@@ -1619,7 +1647,6 @@ export function createWorkbenchStore() {
           const nextMessagesByConversationId = {
             ...clearedResourceState.messagesByConversationId,
           };
-          const messageUpdateEvents = response.messageUpdateEvents ?? [];
 
           if (
             response.activeConversationMessages.length > 0 &&
@@ -1631,15 +1658,18 @@ export function createWorkbenchStore() {
               upsertMessageList(currentMessages, response.activeConversationMessages);
           }
 
-          for (const updateEvent of messageUpdateEvents) {
-            if (updateEvent.message) {
-              const conversationMessages =
-                nextMessagesByConversationId[updateEvent.conversationId] ?? [];
-              nextMessagesByConversationId[updateEvent.conversationId] = upsertMessageList(
-                conversationMessages,
-                [updateEvent.message],
-              );
+          for (const [conversationId, refreshedMessages] of Object.entries(
+            refreshedMessagesByConversationId,
+          )) {
+            if (!refreshedMessages.length) {
+              continue;
             }
+
+            const conversationMessages = nextMessagesByConversationId[conversationId] ?? [];
+            nextMessagesByConversationId[conversationId] = upsertMessageList(
+              conversationMessages,
+              refreshedMessages,
+            );
           }
 
           for (const change of response.messageStatusChanges) {

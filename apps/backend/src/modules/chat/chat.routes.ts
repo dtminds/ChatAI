@@ -1,4 +1,5 @@
 import type {
+  WorkbenchMessageQueryByIdsRequest,
   WorkbenchPollRequest,
   WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
@@ -58,6 +59,11 @@ const MessageDownloadParamsSchema = Type.Object({
 const MessageDownloadStatusBodySchema = Type.Object({
   conversationId: Type.String(),
   messageSeq: Type.Number(),
+});
+
+const MessageQueryByIdsBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageIds: Type.Array(Type.String()),
 });
 
 const WorkbenchMessageContentTypeSchema = Type.Union([
@@ -189,6 +195,7 @@ type MediaProxyQuery = Static<typeof MediaProxyQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
+type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
@@ -300,6 +307,22 @@ export async function registerChatRoutes(app: FastifyInstance) {
         },
       );
     },
+  );
+
+  app.post<{ Body: MessageQueryByIdsBody }>(
+    "/api/server/messages/query-by-ids",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageQueryByIdsBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getMessagesByIds(
+        getSubUserId(request),
+        request.body.conversationId,
+        request.body.messageIds,
+      ),
   );
 
   app.get<{

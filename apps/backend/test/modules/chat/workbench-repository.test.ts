@@ -113,6 +113,51 @@ function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
   };
 }
 
+function createMessagesByIdsDb(rows: MessageRow[]) {
+  const messageQueries: Array<{
+    table: string;
+    wheres: Array<[string, string, unknown]>;
+  }> = [];
+
+  return {
+    messageQueries,
+    selectFrom(table: string) {
+      if (table === "xy_wap_embed_conversation as conversation") {
+        return createQueryBuilder({
+          chat_type: 1,
+          conversation_external_id: "external-1",
+          conversation_group_id: "",
+          conversation_id: 88,
+          platform: 5,
+          seat_id: 12,
+          third_userid: "seat-third-user-1",
+          uid: 9001,
+        });
+      }
+
+      if (table === "xy_wap_embed_user_seat as seat") {
+        return createQueryBuilder({
+          id: 12,
+          third_userid: "seat-third-user-1",
+          uid: 9001,
+          platform: 5,
+        });
+      }
+
+      if (table === "xy_wap_embed_msg_audit_info as message") {
+        const query = createQueryBuilder(rows);
+        messageQueries.push({
+          table,
+          wheres: query.wheres,
+        });
+        return query;
+      }
+
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+}
+
 function createQueryBuilder(result: unknown) {
   let currentResult = result;
   const wheres: Array<[string, string, unknown]> = [];
@@ -267,6 +312,29 @@ function createConversationRow(overrides: Partial<Record<string, unknown>> = {})
     third_userid: "seat-user-001",
     unread_cnt: 0,
     verified: 1,
+    ...overrides,
+  };
+}
+
+function createConversationMessageRow(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    chat_type: 1,
+    content: JSON.stringify({ text: "hello" }),
+    conversation_external_id: "external-1",
+    conversation_group_id: "",
+    conversation_id: 88,
+    from_type: 2,
+    id: 829,
+    msgid: "remote-msg-829",
+    msgtime: 1_778_840_010_000,
+    msgtype: "text",
+    opt_no: null,
+    revoke_status: 0,
+    seat_id: 12,
+    third_external_id: "external-1",
+    third_from_id: "external-1",
+    third_group_id: null,
+    third_user_id: "seat-user-001",
     ...overrides,
   };
 }
@@ -849,6 +917,33 @@ describe("WorkbenchRepository", () => {
       1_778_840_000_000,
     ]);
     expect(query.wheres).toContainEqual(["conversation.biz_status", "=", 1]);
+  });
+
+  it("lists messages by ids in the conversation tenant scope", async () => {
+    const messageRows = [
+      createConversationMessageRow({
+        id: 829,
+        msgid: "remote-msg-829",
+        msgtime: 1_778_840_010_000,
+        third_external_id: "external-1",
+        third_from_id: "external-1",
+        third_user_id: "seat-user-001",
+      }),
+    ];
+    const repository = new WorkbenchRepository(
+      createMessagesByIdsDb(messageRows) as never,
+    );
+
+    await expect(
+      repository.listMessagesByIds("88", ["829", "829", "0", "bad"]),
+    ).resolves.toMatchObject({
+      messages: [
+        expect.objectContaining({
+          messageId: "remote-msg-829",
+          seq: 829,
+        }),
+      ],
+    });
   });
 
   it("skips changed conversation hydration when the poll change limit is exceeded", async () => {

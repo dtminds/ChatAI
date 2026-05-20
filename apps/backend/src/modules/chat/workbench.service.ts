@@ -12,6 +12,8 @@ import type {
   WorkbenchMessageFileDownloadResponse,
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchMessagePageDto,
+  WorkbenchMessageQueryByIdsRequest,
+  WorkbenchMessageQueryByIdsResponse,
   WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
@@ -77,6 +79,11 @@ export type WorkbenchService = {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ): Promise<WorkbenchMessagePageDto> | WorkbenchMessagePageDto;
+  getMessagesByIds(
+    subUserId: string,
+    conversationId: string,
+    messageIds: string[],
+  ): Promise<WorkbenchMessageQueryByIdsResponse> | WorkbenchMessageQueryByIdsResponse;
   getHistoryMessages(
     subUserId: string,
     conversationId: string,
@@ -262,6 +269,22 @@ export class MysqlWorkbenchService implements WorkbenchService {
       beforeSeq: options?.beforeSeq,
       limit: options?.limit ?? 30,
     });
+  }
+
+  async getMessagesByIds(
+    subUserId: string,
+    conversationId: string,
+    messageIds: string[],
+  ) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    return this.repository.listMessagesByIds(conversationId, messageIds);
   }
 
   async getHistoryMessages(

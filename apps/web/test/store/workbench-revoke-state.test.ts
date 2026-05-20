@@ -206,7 +206,19 @@ describe("workbench revoke state", () => {
             {
               conversationId: "conv-001",
               eventId: 11,
-              message: {
+              messageId: "msg-010",
+            },
+          ],
+          nextMessageUpdateCursor: 11,
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+      async getMessagesByIds(input) {
+        if (input.conversationId === "conv-001" && input.messageIds.includes("msg-010")) {
+          return {
+            messages: [
+              {
                 content: {
                   appName: "小程序",
                   coverImageUrl: "https://cdn.example.com/ready-cover.jpg",
@@ -222,13 +234,11 @@ describe("workbench revoke state", () => {
                 seq: 10,
                 status: "read",
               },
-              messageId: "10",
-            },
-          ],
-          nextMessageUpdateCursor: 11,
-          nextVersion: 9999,
-          seatChanges: [],
-        };
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
       },
     });
 
@@ -262,7 +272,19 @@ describe("workbench revoke state", () => {
             {
               conversationId: "conv-001",
               eventId: 12,
-              message: {
+              messageId: "msg-006",
+            },
+          ],
+          nextMessageUpdateCursor: 12,
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+      async getMessagesByIds(input) {
+        if (input.conversationId === "conv-001" && input.messageIds.includes("msg-006")) {
+          return {
+            messages: [
+              {
                 content: {
                   text: "已撤回消息",
                 },
@@ -277,13 +299,11 @@ describe("workbench revoke state", () => {
                 seq: 6,
                 status: "read",
               },
-              messageId: "msg-006",
-            },
-          ],
-          nextMessageUpdateCursor: 12,
-          nextVersion: 9999,
-          seatChanges: [],
-        };
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
       },
     });
 

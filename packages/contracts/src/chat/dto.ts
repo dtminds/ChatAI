@@ -233,8 +233,16 @@ export type WorkbenchMessageStatusChangeDto = {
 export type WorkbenchMessageUpdateEventDto = {
   conversationId: string;
   eventId: number;
-  message?: WorkbenchMessageDto;
   messageId: string;
+};
+
+export type WorkbenchMessageQueryByIdsRequest = {
+  conversationId: string;
+  messageIds: string[];
+};
+
+export type WorkbenchMessageQueryByIdsResponse = {
+  messages: WorkbenchMessageDto[];
 };
 
 export type WorkbenchPollRequest = {

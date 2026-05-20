@@ -130,6 +130,53 @@ describe("workbench gateway message paging", () => {
     });
   });
 
+  it("keeps message update events as ids-only poll metadata", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          messageUpdateEvents: [
+            {
+              conversationId: request.activeConversationId ?? "",
+              eventId: 4,
+              messageId: "829",
+            },
+          ],
+          nextMessageUpdateCursor: 1_778_840_010_000,
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    const result = await pollWorkbench(
+      {
+        activeConversationId: "conv-001",
+        activeMessageSeq: 9,
+        currentAccountId: "drc",
+        freshBaseline: true,
+        sinceVersion: 1_778_840_010_000,
+      },
+      {
+        accounts: [],
+        customerProfilesById: {},
+      },
+    );
+
+    expect(result.messageUpdateEvents).toEqual([
+      {
+        conversationId: "conv-001",
+        eventId: 4,
+        messageId: "829",
+      },
+    ]);
+  });
+
   it("keeps pinned conversations first when merging mode-specific lists", async () => {
     const baseService = createMockWorkbenchService();
     const now = new Date("2026-05-15T08:00:00.000Z").getTime();

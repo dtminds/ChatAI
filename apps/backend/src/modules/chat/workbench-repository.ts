@@ -7,6 +7,7 @@ import {
   type WorkbenchHistoryMessagePageDto,
   type WorkbenchHistoryMessageQuery,
   type WorkbenchHistoryMessageScope,
+  type WorkbenchMessageQueryByIdsResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchMessageUpdateEventDto,
 } from "@chatai/contracts";
@@ -278,30 +279,70 @@ export class WorkbenchRepository {
       .orderBy("event.id", "asc")
       .limit(options.limit)
       .execute();
-    const parsedRows = rows.map((row) => ({
-      event: parseMessageUpdateEvent(String(row.content ?? "")),
-      eventTime: toTimestamp(row.create_time),
-      row,
-    }));
+    return rows
+      .map((row) => {
+        const event = parseMessageUpdateEvent(String(row.content ?? ""));
 
-    const messageSeqs = uniqueNumbers(
-      parsedRows
-        .map(({ event }) => Number(event?.messageId))
-        .filter((value) => Number.isSafeInteger(value) && value > 0),
-    );
+        if (!event?.messageId) {
+          return undefined;
+        }
 
-    if (!messageSeqs.length) {
-      return parsedRows.map(({ event, eventTime, row }) => {
         return {
           conversationId,
           eventId: Number(row.event_id),
-          eventTime,
-          messageId: event?.messageId ?? "",
+          eventTime: toTimestamp(row.create_time),
+          messageId: event.messageId,
         };
-      });
+      })
+      .filter(
+        (event): event is WorkbenchMessageUpdateEventDto & { eventTime: number } =>
+          Boolean(event),
+      );
+  }
+
+  async listMessagesByIds(
+    conversationId: string,
+    messageIds: string[],
+  ): Promise<WorkbenchMessageQueryByIdsResponse> {
+    const conversationNumericId = parseMySqlId(conversationId);
+    const normalizedIds = uniqueNumbers(
+      messageIds
+        .map((value) => Number.parseInt(value, 10))
+        .filter((value) => Number.isSafeInteger(value) && value > 0),
+    );
+
+    if (conversationNumericId == null || !normalizedIds.length) {
+      return { messages: [] };
     }
 
-    const messages = await this.db
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.third_userid", "=", "conversation.third_userid")
+          .onRef("seat.uid", "=", "conversation.uid")
+          .onRef("seat.platform", "=", "conversation.platform"),
+      )
+      .select([
+        "conversation.id as conversation_id",
+        "conversation.chat_type as chat_type",
+        "conversation.third_external_userid as conversation_external_id",
+        "conversation.third_group_id as conversation_group_id",
+        "conversation.third_userid as third_userid",
+        "conversation.platform as platform",
+        "seat.id as seat_id",
+        "conversation.uid as uid",
+      ])
+      .where("conversation.id", "=", conversationNumericId)
+      .where("seat.biz_status", "=", 1)
+      .where("conversation.biz_status", "=", 1)
+      .executeTakeFirst();
+
+    if (!conversation) {
+      return { messages: [] };
+    }
+
+    const rows = await this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
       .select([
         "message.id as id",
@@ -320,22 +361,25 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.id", "in", messageSeqs)
+      .where("message.id", "in", normalizedIds)
       .execute();
 
-    const messagesBySeq = new Map(messages.map((row) => [Number(row.id), row] as const));
+    const messages = rows.map((row) =>
+      mapMessageRow({
+        ...(row as MessageRow),
+        chat_type: conversation.chat_type,
+        conversation_external_id: conversation.conversation_external_id,
+        conversation_group_id: conversation.conversation_group_id,
+        conversation_id: conversation.conversation_id,
+        seat_id: conversation.seat_id,
+        third_external_id: row.third_external_id ?? undefined,
+        third_from_id: row.third_from_id ?? undefined,
+        third_group_id: row.third_group_id ?? undefined,
+        third_user_id: row.third_user_id ?? undefined,
+      }),
+    );
 
-    return parsedRows.map(({ event, eventTime, row }) => {
-      const messageRow = event ? messagesBySeq.get(Number(event.messageId)) : undefined;
-
-      return {
-        conversationId,
-        eventId: Number(row.event_id),
-        eventTime,
-        message: messageRow ? mapMessageRow(messageRow as MessageRow) : undefined,
-        messageId: event?.messageId ?? "",
-      };
-    });
+    return { messages };
   }
 
   async listSeats(subUserId: string) {

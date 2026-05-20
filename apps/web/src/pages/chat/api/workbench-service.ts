@@ -24,6 +24,8 @@ import {
   type WorkbenchGroupMembersResponse,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
+  type WorkbenchMessageQueryByIdsRequest,
+  type WorkbenchMessageQueryByIdsResponse,
   type WorkbenchMessageFileDownloadResponse,
   type WorkbenchMessageFileDownloadStatusResponse,
   type WorkbenchMessagePageDto,
@@ -74,6 +76,9 @@ export type WorkbenchService = {
   ) => Promise<WorkbenchHistoryMessagePageDto>;
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
+  getMessagesByIds: (
+    input: WorkbenchMessageQueryByIdsRequest,
+  ) => Promise<WorkbenchMessageQueryByIdsResponse>;
   downloadMessageFile: (input: {
     conversationId: string;
     messageId: string;
@@ -256,6 +261,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         messages: clone(scannedMessages),
         nextBeforeSeq: scannedMessages[0]?.seq,
         scannedCount: scannedMessages.length,
+      };
+    },
+    async getMessagesByIds(input) {
+      const messages = state.messagesByConversationId[input.conversationId] ?? [];
+      const normalizedIds = new Set(input.messageIds);
+
+      return {
+        messages: clone(
+          messages.filter((message) => normalizedIds.has(message.messageId)),
+        ),
       };
     },
     async downloadMessageFile(input) {
@@ -601,6 +616,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
             limit: options?.limit ?? 30,
           },
         },
+      );
+    },
+    getMessagesByIds(input) {
+      return http.post<WorkbenchMessageQueryByIdsResponse, WorkbenchMessageQueryByIdsRequest>(
+        "/server/messages/query-by-ids",
+        input,
       );
     },
     downloadMessageFile(input) {
@@ -1316,7 +1337,6 @@ function revokeMessage(
   pushMessageUpdateEvent(state, {
     conversationId,
     eventId: state.version + 1,
-    message: nextMessage,
     messageId,
   });
 }

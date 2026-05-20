@@ -20,6 +20,8 @@ import type {
   WorkbenchSendMessageResponse,
   WorkbenchSeatChangeDto,
   WorkbenchUploadCredentialResponse,
+  WorkbenchMessageQueryByIdsRequest,
+  WorkbenchMessageUpdateEventDto,
 } from "@chatai/contracts";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import type {
@@ -115,18 +117,11 @@ export type WorkbenchPollResult = {
   accountChanges: Array<WorkbenchSeatChangeDto & { accountId: string }>;
   activeConversationMessages: Message[];
   conversationChanges: WorkbenchConversationChange[];
-  messageUpdateEvents: WorkbenchMessageUpdateEvent[];
+  messageUpdateEvents: WorkbenchMessageUpdateEventDto[];
   messageStatusChanges: WorkbenchMessageStatusChange[];
   nextMessageUpdateCursor?: number;
   nextVersion: number;
   request: WorkbenchScopeRequest;
-};
-
-export type WorkbenchMessageUpdateEvent = {
-  conversationId: string;
-  eventId: number;
-  message?: Message;
-  messageId: string;
 };
 
 const DEFAULT_MESSAGE_PAGE_SIZE = 50;
@@ -340,6 +335,23 @@ export async function loadConversationMessagesPage(
   };
 }
 
+export async function loadMessagesByIds(
+  context: GatewayContext,
+  conversationId: string,
+  messageIds: string[],
+): Promise<Message[]> {
+  if (!messageIds.length) {
+    return [];
+  }
+
+  const response = await getWorkbenchService().getMessagesByIds({
+    conversationId,
+    messageIds,
+  } satisfies WorkbenchMessageQueryByIdsRequest);
+
+  return adaptMessages(response.messages, context);
+}
+
 export async function loadConversationHistoryMessagesPage(
   context: GatewayContext,
   conversationId: string,
@@ -424,7 +436,6 @@ export async function pollWorkbench(
   request: WorkbenchScopeRequest,
   context: GatewayContext,
 ): Promise<WorkbenchPollResult> {
-  const accountMap = buildAccountMap(context.accounts);
   const response = await getWorkbenchService().poll({
     activeConversationId: request.activeConversationId,
     activeMessageSeq: request.activeMessageSeq,
@@ -453,14 +464,7 @@ export async function pollWorkbench(
             type: "upsert" as const,
         },
     ),
-    messageUpdateEvents: (response.messageUpdateEvents ?? []).map((event) => ({
-      conversationId: event.conversationId,
-      eventId: event.eventId,
-      message: event.message
-        ? adaptMessage(event.message, context.customerProfilesById, accountMap, context.me)
-        : undefined,
-      messageId: event.messageId,
-    })),
+    messageUpdateEvents: response.messageUpdateEvents ?? [],
     messageStatusChanges: response.messageStatusChanges.map((change) => ({
       clientMessageId: change.clientMessageId,
       conversationId: change.conversationId,

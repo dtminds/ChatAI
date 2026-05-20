@@ -7,6 +7,16 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -41,6 +51,7 @@ export function AccountSidebarItem({
 }) {
   const closePopoverTimerRef = useRef<number | null>(null);
   const [isTakeoverPopoverOpen, setIsTakeoverPopoverOpen] = useState(false);
+  const [isTakeoverConfirmOpen, setIsTakeoverConfirmOpen] = useState(false);
   const isOffline = account.loginStatus === "offline";
   const isTakenOverByCurrentUser =
     !!account.takenOverEmployeeId && account.takenOverEmployeeId === currentEmployeeId;
@@ -215,9 +226,7 @@ export function AccountSidebarItem({
                   return;
                 }
 
-                startTransition(() => {
-                  void onTakeOverAccount?.(account.id);
-                });
+                setIsTakeoverConfirmOpen(true);
               }}
               size="sm"
               type="button"
@@ -233,6 +242,32 @@ export function AccountSidebarItem({
             </Button>
           </PopoverContent>
         ) : null}
+        <AlertDialog
+          onOpenChange={setIsTakeoverConfirmOpen}
+          open={isTakeoverConfirmOpen}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>是否确认接管：{account.name}</AlertDialogTitle>
+              <AlertDialogDescription>
+                接管后，将由你负责处理对话，其他子账号将无权发送消息
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  startTransition(() => {
+                    void onTakeOverAccount?.(account.id);
+                  });
+                }}
+                variant="default"
+              >
+                确认接管
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </Popover>
     );
   }
@@ -333,9 +368,7 @@ export function AccountSidebarItem({
                 return;
               }
 
-              startTransition(() => {
-                void onTakeOverAccount?.(account.id);
-              });
+              setIsTakeoverConfirmOpen(true);
             }}
             size="sm"
             type="button"
@@ -351,6 +384,32 @@ export function AccountSidebarItem({
           </Button>
         </PopoverContent>
       ) : null}
+      <AlertDialog
+        onOpenChange={setIsTakeoverConfirmOpen}
+        open={isTakeoverConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>是否确认接管：{account.name}</AlertDialogTitle>
+            <AlertDialogDescription>
+              接管后，将由你负责处理对话，其他子账号将无权发送消息
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                startTransition(() => {
+                  void onTakeOverAccount?.(account.id);
+                });
+              }}
+              variant="default"
+            >
+              确认接管
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Popover>
   );
 }

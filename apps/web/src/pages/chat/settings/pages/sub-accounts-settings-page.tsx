@@ -721,12 +721,14 @@ function getSeatInitial(name: string) {
 function SeatSelectionList({
   onQueryChange,
   onToggleSeat,
+  pickerPortalContainer,
   query,
   seats,
   selectedSeatIds,
 }: {
   onQueryChange: (query: string) => void;
   onToggleSeat: (seatId: string) => void;
+  pickerPortalContainer?: HTMLElement | null;
   query: string;
   seats: SettingsWeComSeat[];
   selectedSeatIds: string[];
@@ -784,6 +786,7 @@ function SeatSelectionList({
             }
           }}
           onOpenAutoFocus={(event) => event.preventDefault()}
+          portalContainer={pickerPortalContainer}
           sideOffset={8}
         >
           {seats.length > 0 ? (
@@ -878,6 +881,7 @@ function SubAccountDialog({
   const [passwordError, setPasswordError] = useState("");
   const [seatQuery, setSeatQuery] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const accountId = useId();
   const nameId = useId();
   const passwordId = useId();
@@ -966,7 +970,7 @@ function SubAccountDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[52rem]">
+      <DialogContent className="sm:max-w-[52rem]" ref={setContentElement}>
         <DialogHeader>
           <DialogTitle>
             {mode === "create" ? "添加子账号" : "编辑子账号"}
@@ -1114,6 +1118,7 @@ function SubAccountDialog({
               role="group"
             >
               <SeatSelectionList
+                pickerPortalContainer={contentElement}
                 query={seatQuery}
                 seats={seats}
                 selectedSeatIds={formValues.seatIds}

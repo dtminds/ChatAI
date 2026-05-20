@@ -853,6 +853,7 @@ describe("Chat settings pages", () => {
     await user.click(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
     await user.type(screen.getByRole("textbox", { name: "搜索并选择托管账号" }), "念都");
     expect(screen.getByText("念都堂")).toBeInTheDocument();
+    expect(createDialog).toContainElement(screen.getByText("念都堂"));
     expect(screen.queryByText("德瑞可")).not.toBeInTheDocument();
     await user.clear(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
     await user.type(screen.getByLabelText("登录用户名"), "agent003");
@@ -1046,6 +1047,7 @@ describe("Chat settings pages", () => {
 
     await user.click(screen.getByRole("textbox", { name: "搜索并选择子账号" }));
     expect(screen.getByRole("checkbox", { name: "主账号" })).toBeInTheDocument();
+    expect(dialog).toContainElement(screen.getByRole("checkbox", { name: "主账号" }));
     await user.type(screen.getByRole("textbox", { name: "搜索并选择子账号" }), "二号");
     expect(screen.getByRole("checkbox", { name: "客服二号" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "客服三号" })).not.toBeInTheDocument();

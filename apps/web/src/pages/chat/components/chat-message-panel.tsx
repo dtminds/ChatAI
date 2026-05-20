@@ -7,6 +7,7 @@ import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
   bottomOverlay?: ReactNode;
+  canUseMessageActions?: boolean;
   downloadTransferStates?: Record<string, "idle" | "transferring">;
   hasBottomOverlay?: boolean;
   hasMoreHistory: boolean;
@@ -26,6 +27,7 @@ type ChatMessagePanelProps = {
 export function ChatMessagePanel({
   activeHistoryStatus,
   bottomOverlay,
+  canUseMessageActions = true,
   downloadTransferStates,
   hasBottomOverlay = false,
   hasMoreHistory,
@@ -80,6 +82,7 @@ export function ChatMessagePanel({
                 </div>
               ) : null}
               <ChatMessageList
+                canUseMessageActions={canUseMessageActions}
                 downloadTransferStates={downloadTransferStates}
                 messages={messages}
                 onDownloadMessageFile={onDownloadMessageFile}

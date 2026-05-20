@@ -2880,11 +2880,7 @@ function getRequestErrorMessage(error: unknown, fallback: string) {
 }
 
 function getRequestApiErrorMessage(error: unknown) {
-  if (!isErrorWithMessage(error)) {
-    return undefined;
-  }
-
-  if (isErrorWithCode(error) || isErrorWithStatus(error)) {
+  if (isErrorWithMessage(error)) {
     return error.message;
   }
 

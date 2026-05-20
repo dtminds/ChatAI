@@ -31,9 +31,13 @@ describe("chat utility helpers", () => {
   });
 
   it("parses workbench timestamps and rejects invalid values", () => {
-    expect(parseWorkbenchDate("2026-05-06 10:05:00")?.toISOString()).toBe(
-      "2026-05-06T02:05:00.000Z",
-    );
+    const date = parseWorkbenchDate("2026-05-06 10:05:00");
+
+    expect(date?.getFullYear()).toBe(2026);
+    expect(date?.getMonth()).toBe(4);
+    expect(date?.getDate()).toBe(6);
+    expect(date?.getHours()).toBe(10);
+    expect(date?.getMinutes()).toBe(5);
     expect(parseWorkbenchDate("不是日期")).toBeNull();
   });
 

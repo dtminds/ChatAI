@@ -383,6 +383,102 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("shows a specific message when a sub user is disabled", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    const app = await buildApp();
+    app.db = createAuthDbMock({
+      account: "agent001",
+      id: 101,
+      name: "客服一号",
+      password_hash: await argon2.hash("correct-password", {
+        hashLength: 32,
+        memoryCost: 4096,
+        parallelism: 1,
+        timeCost: 2,
+        type: argon2.argon2id,
+      }),
+      platform: 1,
+      status: 2,
+      uid: 9001,
+    });
+    const altcha = await createSolvedAltchaPayload(app);
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha,
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({
+      error: {
+        code: "INVALID_CREDENTIALS",
+        message: "该子账号已停用，请联系管理员",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("keeps deleted sub users indistinguishable from invalid credentials", async () => {
+    process.env.ALTCHA_COST = "4";
+    process.env.ALTCHA_COUNTER_MIN = "1";
+    process.env.ALTCHA_COUNTER_MAX = "3";
+    process.env.ALTCHA_HMAC_SECRET = "test-altcha-secret";
+    process.env.ALTCHA_MEMORY_COST = "8";
+    process.env.ALTCHA_PARALLELISM = "1";
+    process.env.JWT_DEV_SECRET = "test-jwt-secret";
+    const app = await buildApp();
+    app.db = createAuthDbMock({
+      account: "agent001",
+      id: 101,
+      name: "客服一号",
+      password_hash: await argon2.hash("correct-password", {
+        hashLength: 32,
+        memoryCost: 4096,
+        parallelism: 1,
+        timeCost: 2,
+        type: argon2.argon2id,
+      }),
+      platform: 1,
+      status: 0,
+      uid: 9001,
+    });
+    const altcha = await createSolvedAltchaPayload(app);
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        account: "agent001",
+        altcha,
+        password: "correct-password",
+      },
+      url: "/api/auth/login",
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({
+      error: {
+        code: "INVALID_CREDENTIALS",
+        message: "用户名或密码错误",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
   it("returns owner permissions for main account sessions", async () => {
     process.env.JWT_DEV_SECRET = "test-jwt-secret";
     const app = await buildApp();
@@ -1908,13 +2004,14 @@ async function createSolvedAltchaPayload(app: Awaited<ReturnType<typeof buildApp
   );
 }
 
-function createAuthDbMock(
+  function createAuthDbMock(
   record: {
     account: string;
     id: number;
     name: string;
     password_hash: string;
     platform: number;
+    status?: number;
     role?: string;
     type?: number;
     uid: number;
@@ -1938,7 +2035,19 @@ function createAuthDbMock(
       const builder = {
         executeTakeFirst: async () => {
           if (table === "xy_wap_embed_sub_user") {
-            return record;
+            const recordStatus = record.status ?? 1;
+            const statusFilter = wheres.find(
+              ([column, operator]) => column === "status" && operator === "=",
+            );
+
+            if (statusFilter && statusFilter[2] !== recordStatus) {
+              return undefined;
+            }
+
+            return {
+              ...record,
+              status: recordStatus,
+            };
           }
 
           if (table === "xy_wap_embed_sub_user_session") {

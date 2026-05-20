@@ -28,6 +28,7 @@ type SubUserCredentialRow = {
   name: string;
   password_hash: string;
   role: string;
+  status: number;
   type: number;
 };
 
@@ -51,6 +52,12 @@ export class InvalidCredentialsError extends AppError {
   }
 }
 
+export class DisabledSubUserError extends AppError {
+  constructor() {
+    super("INVALID_CREDENTIALS", "该子账号已停用，请联系管理员", 401);
+  }
+}
+
 export type AuthSessionTokens = {
   accessToken: string;
   expiresIn: number;
@@ -71,9 +78,17 @@ export async function loginWithPassword(
     throw new InvalidCredentialsError();
   }
 
-  const subUser = await findActiveSubUserCredential(app.db, payload.account);
+  const subUser = await findSubUserCredential(app.db, payload.account);
 
   if (!subUser) {
+    throw new InvalidCredentialsError();
+  }
+
+  if (subUser.status === 2) {
+    throw new DisabledSubUserError();
+  }
+
+  if (subUser.status !== 1) {
     throw new InvalidCredentialsError();
   }
 
@@ -196,7 +211,7 @@ export async function verifyAccessSession(
   return Boolean(session);
 }
 
-async function findActiveSubUserCredential(
+async function findSubUserCredential(
   db: Kysely<Database>,
   account: string,
 ): Promise<SubUserCredentialRow | undefined> {
@@ -208,9 +223,8 @@ async function findActiveSubUserCredential(
 
   return db
     .selectFrom("xy_wap_embed_sub_user")
-    .select(["id", "name", "password_hash", "role", "type"])
+    .select(["id", "name", "password_hash", "role", "status", "type"])
     .where("account", "=", normalizedAccount)
-    .where("status", "=", 1)
     .executeTakeFirst();
 }
 

@@ -64,6 +64,7 @@ type ChatPanelProps = {
     scrollMode?: "end";
     isOpen: boolean;
   };
+  isHistoryPanelOpen: boolean;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onComposerSegmentsChange: (segments: ComposerSegment[]) => void;
   onDraftChange: (draft: string) => void;
@@ -122,6 +123,7 @@ export function ChatPanel({
   hasMoreHistory,
   historyLoadLabel,
   historyPanel,
+  isHistoryPanelOpen,
   onCustomerPanelResizeStart,
   onComposerSegmentsChange,
   onDraftChange,
@@ -227,6 +229,7 @@ export function ChatPanel({
                 inputEnterBehavior={inputEnterBehavior}
                 isEmojiPickerOpen={isEmojiPickerOpen}
                 isSending={isSendingDraft}
+                isHistoryPanelOpen={isHistoryPanelOpen}
                 onClearQuotedMessage={onClearQuotedMessage}
                 onDraftChange={onDraftChange}
                 onEmojiPickerOpenChange={onEmojiPickerOpenChange}

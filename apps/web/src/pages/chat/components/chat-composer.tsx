@@ -65,6 +65,7 @@ type ChatComposerProps = {
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isSending: boolean;
+  isHistoryPanelOpen: boolean;
   onClearQuotedMessage: () => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
@@ -104,6 +105,7 @@ export function ChatComposer({
   isGroupConversation,
   isEmojiPickerOpen,
   isSending,
+  isHistoryPanelOpen,
   onClearQuotedMessage,
   onDraftChange,
   onEmojiPickerOpenChange,
@@ -459,7 +461,12 @@ export function ChatComposer({
           />
           <Button
             aria-label="历史记录"
-            className={composerActionButtonClass}
+            aria-pressed={isHistoryPanelOpen}
+            className={cn(
+              composerActionButtonClass,
+              isHistoryPanelOpen &&
+                "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
             onClick={onOpenHistory}
             size="icon"
             type="button"

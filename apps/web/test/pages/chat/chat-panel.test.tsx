@@ -19,6 +19,7 @@ describe("ChatPanel", () => {
         hasMoreHistory={false}
         historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
         inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -77,6 +78,7 @@ describe("ChatPanel", () => {
         hasMoreHistory={false}
         historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
         inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}
@@ -154,6 +156,7 @@ describe("ChatPanel", () => {
           isOpen: true,
         }}
         inputEnterBehavior="send"
+        isHistoryPanelOpen
         isConversationLoading={false}
         isEmojiPickerOpen={false}
         isGroupMembersLoading={false}

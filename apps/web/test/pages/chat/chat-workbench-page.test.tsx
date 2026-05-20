@@ -211,6 +211,36 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.queryByRole("button", { name: "加载更早的对话" })).not.toBeInTheDocument();
   });
 
+  it("toggles the history panel from the composer history button", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    const historyButton = screen.getByRole("button", { name: "历史记录" });
+
+    expect(historyButton).toHaveAttribute("aria-pressed", "false");
+    expect(historyButton).not.toHaveClass("bg-accent", "text-accent-foreground");
+
+    await user.click(historyButton);
+
+    expect(
+      await screen.findByRole("complementary", { name: "聊天记录" }),
+    ).toBeInTheDocument();
+    expect(historyButton).toHaveAttribute("aria-pressed", "true");
+    expect(historyButton).toHaveClass("bg-accent", "text-accent-foreground");
+
+    await user.click(historyButton);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("complementary", { name: "聊天记录" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(historyButton).toHaveAttribute("aria-pressed", "false");
+    expect(historyButton).not.toHaveClass("bg-accent", "text-accent-foreground");
+  });
+
   it("keeps all seed messages visible after the initial 50-message request", async () => {
     renderChatWorkbenchPage();
 

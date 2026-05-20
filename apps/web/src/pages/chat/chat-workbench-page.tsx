@@ -264,6 +264,8 @@ function ChatWorkbenchContent({
     visibleConversations.find(
       (conversation) => conversation.id === activeConversationId,
     ) ?? visibleConversations[0];
+  const isHistoryPanelOpen =
+    historyPanelOpenConversationId === activeConversation?.id;
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
     [];
@@ -1110,6 +1112,11 @@ function ChatWorkbenchContent({
                 onEnterBehaviorChange={setInputEnterBehavior}
                 onFileSelect={handleFileSelect}
                 onOpenHistory={() => {
+                  if (isHistoryPanelOpen) {
+                    closeHistoryPanel();
+                    return;
+                  }
+
                   void openHistoryPanel(activeConversation?.id);
                 }}
                 onHistoryClose={() => closeHistoryPanel()}
@@ -1179,11 +1186,11 @@ function ChatWorkbenchContent({
                           false,
                         scrollMode:
                           historyPanelScrollModeByConversationId[activeConversation.id],
-                        isOpen:
-                          historyPanelOpenConversationId === activeConversation.id,
+                        isOpen: isHistoryPanelOpen,
                       }
                     : undefined
                 }
+                isHistoryPanelOpen={isHistoryPanelOpen}
                 composerRef={composerRef}
                 workbenchBodyRef={workbenchBodyRef}
               />

@@ -1089,20 +1089,20 @@ export class WorkbenchRepository {
     const firstAnchorId = String(firstRow?.id ?? "");
     const lastAnchorId = String(lastRow?.id ?? "");
     const hasRows = hydratedMessageRows.length > 0;
-    const hasNext = cursor
-      ? cursor.direction === "next"
-        ? hasMoreInDirection
-        : true
-      : dayBounds
-        ? hasMoreInDirection
-        : false;
-    const hasPrev = cursor
-      ? cursor.direction === "prev"
-        ? hasMoreInDirection
-        : true
-      : dayBounds
-        ? false
-        : hasMoreInDirection;
+    let hasNext = false;
+    let hasPrev = false;
+
+    if (cursor?.direction === "next") {
+      hasNext = hasMoreInDirection;
+      hasPrev = true;
+    } else if (cursor?.direction === "prev") {
+      hasNext = true;
+      hasPrev = hasMoreInDirection;
+    } else if (dayBounds) {
+      hasNext = hasMoreInDirection;
+    } else {
+      hasPrev = hasMoreInDirection;
+    }
 
     return {
       hasNext,

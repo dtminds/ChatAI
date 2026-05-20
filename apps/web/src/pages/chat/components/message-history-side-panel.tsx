@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { format, isValid, parseISO } from "date-fns";
 import {
   ArrowDown01Icon,
   Cancel01Icon,
@@ -342,8 +343,11 @@ function HistoryMessageViewport({
   } | null>(null);
   const previousMessageIdsKeyRef = useRef("");
   const previousFilterKeyRef = useRef("");
-  const messageIdsKey =
-    activeHistory?.messages.map((message) => message.id).join("\u0000") ?? "";
+  const historyMessages = activeHistory?.messages;
+  const messageIdsKey = useMemo(
+    () => historyMessages?.map((message) => message.id).join("\u0000") ?? "",
+    [historyMessages],
+  );
   const handleLoadMorePrev = () => {
     const viewport = viewportRef.current;
 
@@ -962,10 +966,9 @@ function formatHistoryResourceDate(value: string) {
 }
 
 function parseHistoryMessageDate(value: string) {
-  const normalized = value.trim().replace(" ", "T");
-  const date = new Date(normalized);
+  const date = parseISO(value.trim().replace(" ", "T"));
 
-  if (Number.isNaN(date.getTime())) {
+  if (!isValid(date)) {
     return null;
   }
 
@@ -1175,11 +1178,7 @@ function buildSenderOptions(
 }
 
 function formatDay(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+  return format(date, "yyyy-MM-dd");
 }
 
 function getHistoryFilterKey(filters: {

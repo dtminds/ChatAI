@@ -4,7 +4,6 @@ import {
   ArrowDown01Icon,
   Cancel01Icon,
   Loading03Icon,
-  PlayIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -29,6 +28,7 @@ import { LoadableMessageImage } from "@/pages/chat/components/message/media-fall
 import {
   MessageContentRenderer,
   WechatEmojiText,
+  VideoMessageCard,
 } from "@/pages/chat/components/message";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
@@ -202,12 +202,12 @@ export function MessageHistorySidePanel({
                 sortDirection={getHistoryTabSortDirection(
                   activeHistoryFilters.scope,
                 )}
-                onDownloadMessageFile={onDownloadMessageFile}
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
                 <HistoryCompactMessageList
                   messages={activeHistory?.messages ?? []}
+                  onDownloadMessageFile={onDownloadMessageFile}
                 />
               </HistoryMessageViewport>
             </TabsContent>
@@ -221,7 +221,6 @@ export function MessageHistorySidePanel({
                 sortDirection={getHistoryTabSortDirection(
                   activeHistoryFilters.scope,
                 )}
-                onDownloadMessageFile={onDownloadMessageFile}
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
@@ -244,7 +243,6 @@ export function MessageHistorySidePanel({
                 sortDirection={getHistoryTabSortDirection(
                   activeHistoryFilters.scope,
                 )}
-                onDownloadMessageFile={onDownloadMessageFile}
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
@@ -253,6 +251,7 @@ export function MessageHistorySidePanel({
                     activeHistory?.messages ?? [],
                     activeHistoryFilters.scope,
                   )}
+                  onDownloadMessageFile={onDownloadMessageFile}
                 />
               </HistoryMessageViewport>
             </TabsContent>
@@ -266,7 +265,6 @@ export function MessageHistorySidePanel({
                 sortDirection={getHistoryTabSortDirection(
                   activeHistoryFilters.scope,
                 )}
-                onDownloadMessageFile={onDownloadMessageFile}
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
@@ -288,7 +286,6 @@ export function MessageHistorySidePanel({
                 sortDirection={getHistoryTabSortDirection(
                   activeHistoryFilters.scope,
                 )}
-                onDownloadMessageFile={onDownloadMessageFile}
                 onLoadMoreNext={onLoadMoreNext}
                 onLoadMorePrev={onLoadMorePrev}
               >
@@ -312,7 +309,6 @@ function HistoryMessageViewport({
   activeHistoryError,
   activeHistoryLoading,
   filterKey,
-  onDownloadMessageFile,
   scrollMode,
   sortDirection,
   children,
@@ -329,7 +325,6 @@ function HistoryMessageViewport({
   activeHistoryError?: string;
   activeHistoryLoading: boolean;
   filterKey: string;
-  onDownloadMessageFile?: (message: ChatMessage) => void;
   sortDirection: HistoryTabSortDirection;
   scrollMode?: "end";
   children: ReactNode;
@@ -459,7 +454,13 @@ function HistoryEdgeLoader({
   );
 }
 
-function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
+function HistoryCompactMessageList({
+  messages,
+  onDownloadMessageFile,
+}: {
+  messages: Message[];
+  onDownloadMessageFile?: (message: ChatMessage) => void;
+}) {
   const chatMessages = messages.filter(isChatMessage);
 
   return (
@@ -479,7 +480,10 @@ function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
               {formatHistoryMessageTime(message.sentAt)}
             </span>
           </div>
-          <HistoryCompactMessageContent message={message} />
+          <HistoryCompactMessageContent
+            message={message}
+            onDownloadMessageFile={onDownloadMessageFile}
+          />
         </div>
       ))}
       {chatMessages.length === 0 ? (
@@ -491,7 +495,13 @@ function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
   );
 }
 
-function HistoryCompactMessageContent({ message }: { message: ChatMessage }) {
+function HistoryCompactMessageContent({
+  message,
+  onDownloadMessageFile,
+}: {
+  message: ChatMessage;
+  onDownloadMessageFile?: (message: ChatMessage) => void;
+}) {
   if (message.content.type === "text") {
     return <HistoryCompactText text={message.content.text} />;
   }
@@ -513,6 +523,7 @@ function HistoryCompactMessageContent({ message }: { message: ChatMessage }) {
       <MessageContentRenderer
         isAgent={message.role === "agent"}
         message={message}
+        onDownloadMessageFile={onDownloadMessageFile}
       />
     </div>
   );
@@ -540,45 +551,69 @@ function HistoryFileList({
 
   return (
     <div className="w-full max-w-full min-w-0 divide-y divide-divider/80 overflow-hidden">
-      {fileMessages.map((message) => (
-        <div
-          className="grid w-full max-w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 overflow-hidden px-2 py-3"
-          key={message.id}
-        >
-          <HistoryFileBadge message={message} />
-          <div className="min-w-0 overflow-hidden">
-            <div className="flex min-w-0 items-start gap-2 overflow-hidden">
-              <div className="block min-w-0 flex-1 truncate text-[14px] font-semibold leading-5 text-foreground">
-                {message.content.fileName}
+      {fileMessages.map((message) => {
+        const isDownloading = message.content.downloadStatus === "ing";
+
+        return (
+          <div
+            className="grid w-full max-w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 overflow-hidden px-2 py-3"
+            key={message.id}
+          >
+            <HistoryFileBadge message={message} />
+            <div className="min-w-0 overflow-hidden">
+              <div className="flex min-w-0 items-start gap-2 overflow-hidden">
+                <div className="block min-w-0 flex-1 truncate text-[14px] font-semibold leading-5 text-foreground">
+                  {message.content.fileName}
+                </div>
               </div>
-              {onDownloadMessageFile ? (
-                <button
-                  aria-label={`下载文件：${message.content.fileName}`}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-[4px] text-[12px] font-medium text-foreground outline-none transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/35"
-                  onClick={() => onDownloadMessageFile(message)}
-                  type="button"
-                >
-                  <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
-                  下载
-                </button>
-              ) : null}
-            </div>
-            <div className="mt-0.5 block w-full min-w-0 max-w-full truncate text-[12px] leading-5 text-muted-foreground/75">
-              <span>{message.author}</span>
-              {message.content.fileSizeLabel ? (
-                <span>
-                  <span className="mx-1.5 text-muted-foreground/45">|</span>
-                  {message.content.fileSizeLabel}
-                </span>
-              ) : null}
-              <span>
-                <span className="mx-1.5 text-muted-foreground/45">|</span>
-                {formatHistoryResourceDate(message.sentAt)}
-              </span>
+              <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[12px] leading-5 text-muted-foreground/75">
+                <div className="block min-w-0 flex-1 truncate">
+                  <span>{message.author}</span>
+                  {message.content.fileSizeLabel ? (
+                    <span>
+                      <span className="mx-1.5 text-muted-foreground/45">|</span>
+                      {message.content.fileSizeLabel}
+                    </span>
+                  ) : null}
+                  <span>
+                    <span className="mx-1.5 text-muted-foreground/45">|</span>
+                    {formatHistoryResourceDate(message.sentAt)}
+                  </span>
+                </div>
+                {isDownloading ? (
+                  <span
+                    aria-label="文件下载中"
+                    className="inline-flex shrink-0 items-center gap-1 font-medium text-muted-foreground"
+                    role="status"
+                  >
+                    <HugeiconsIcon
+                      className="animate-spin"
+                      icon={Loading03Icon}
+                      size={14}
+                      strokeWidth={1.8}
+                    />
+                    下载中
+                  </span>
+                ) : onDownloadMessageFile ? (
+                  <button
+                    aria-label={`下载文件：${message.content.fileName}`}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-[4px] font-medium text-foreground outline-none transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/35"
+                    onClick={() => onDownloadMessageFile(message)}
+                    type="button"
+                  >
+                    <HugeiconsIcon
+                      icon={ArrowDown01Icon}
+                      size={14}
+                      strokeWidth={1.8}
+                    />
+                    下载
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {fileMessages.length === 0 ? (
         <div className="px-3 py-10 text-center text-sm text-muted-foreground">
           暂无历史记录
@@ -749,7 +784,13 @@ function HistoryMiniProgramThumb({
   return <HistoryResourceThumbFallback />;
 }
 
-function HistoryMediaWall({ messages }: { messages: Message[] }) {
+function HistoryMediaWall({
+  messages,
+  onDownloadMessageFile,
+}: {
+  messages: Message[];
+  onDownloadMessageFile?: (message: ChatMessage) => void;
+}) {
   const mediaMessages = messages.filter(isMediaMessage);
   const groupedMediaMessages = groupMediaMessagesByDate(mediaMessages);
 
@@ -760,7 +801,11 @@ function HistoryMediaWall({ messages }: { messages: Message[] }) {
           <HistoryDateDivider label={group.label} />
           <div className="grid grid-cols-3 gap-2">
             {group.messages.map((message) => (
-              <HistoryMediaTile key={message.id} message={message} />
+              <HistoryMediaTile
+                key={message.id}
+                message={message}
+                onDownloadMessageFile={onDownloadMessageFile}
+              />
             ))}
           </div>
         </div>
@@ -790,69 +835,45 @@ type MiniProgramHistoryMessage = ChatMessage & {
   content: MiniProgramMessageContent;
 };
 
-function HistoryMediaTile({ message }: { message: MediaHistoryMessage }) {
-  const content = message.content;
-  const imageUrl =
-    content.type === "image"
-      ? content.imageUrl.trim()
-      : content.coverImageUrl.trim();
-  const optimizedImageUrl = imageUrl
-    ? getOptimizedMessageImageUrl(imageUrl)
-    : "";
-  const fallbackText =
-    content.type === "image" ? "图片不可用" : "视频封面不可用";
-  const tileContent = optimizedImageUrl ? (
-    <LoadableMessageImage
-      alt={content.alt}
-      className="h-full w-full object-contain transition-transform duration-200 group-hover/media:scale-[1.01]"
-      fallback={
-        <div className="flex h-full w-full items-center justify-center bg-muted text-xs text-muted-foreground">
-          {fallbackText}
-        </div>
-      }
-      loading="lazy"
-      src={optimizedImageUrl}
-    />
-  ) : (
-    <div className="flex h-full w-full items-center justify-center bg-muted text-xs text-muted-foreground">
-      {fallbackText}
-    </div>
-  );
-
+function HistoryMediaTile({
+  message,
+  onDownloadMessageFile,
+}: {
+  message: MediaHistoryMessage;
+  onDownloadMessageFile?: (message: ChatMessage) => void;
+}) {
   return (
     <div className="group/media relative isolate aspect-square overflow-hidden rounded-[8px] border border-border bg-muted">
-      {content.type === "image" && imageUrl ? (
+      {message.content.type === "image" && message.content.imageUrl.trim() ? (
         <ImagePreviewDialog
-          alt={content.alt}
-          imageUrl={imageUrl}
+          alt={message.content.alt}
+          imageUrl={message.content.imageUrl.trim()}
           triggerClassName="block h-full w-full p-0 text-left outline-none focus-visible:ring-4 focus-visible:ring-ring/25"
         >
-          {tileContent}
-        </ImagePreviewDialog>
-      ) : content.type === "video" && content.videoUrl ? (
-        <button
-          aria-label={`播放视频：${content.alt}`}
-          className="block h-full w-full p-0 text-left outline-none focus-visible:ring-4 focus-visible:ring-ring/25"
-          onClick={() =>
-            window.open(content.videoUrl, "_blank", "noopener,noreferrer")
-          }
-          type="button"
-        >
-          {tileContent}
-        </button>
-      ) : (
-        tileContent
-      )}
-      {content.type === "video" ? (
-        <span className="absolute left-1/2 top-1/2 z-1 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-black/25 text-white shadow-sm backdrop-blur-[1px]">
-          <HugeiconsIcon
-            className="translate-x-[1px]"
-            icon={PlayIcon}
-            size={21}
-            strokeWidth={2.1}
+          <LoadableMessageImage
+            alt={message.content.alt}
+            className="h-full w-full object-contain transition-transform duration-200 group-hover/media:scale-[1.01]"
+            fallback={
+              <div className="flex h-full w-full items-center justify-center bg-muted text-xs text-muted-foreground">
+                图片不可用
+              </div>
+            }
+            loading="lazy"
+            src={getOptimizedMessageImageUrl(message.content.imageUrl.trim())}
           />
-        </span>
-      ) : null}
+        </ImagePreviewDialog>
+      ) : message.content.type === "video" ? (
+        <VideoMessageCard
+          content={message.content}
+          onDownloadClick={
+            onDownloadMessageFile ? () => onDownloadMessageFile(message) : undefined
+          }
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-muted text-xs text-muted-foreground">
+          视频封面不可用
+        </div>
+      )}
     </div>
   );
 }

@@ -1165,11 +1165,40 @@ describe("useWorkbenchStore", () => {
     ).toBe(false);
   });
 
-  it("ignores refreshed message details when the message is not already in store", async () => {
+  it("patches download updates into the history panel as well as the active message list", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
       ...baseService,
+      async getMessagesByIds(input) {
+        if (input.conversationId === "conv-001" && input.messageIds.includes("msg-004")) {
+          return {
+            messages: [
+              {
+                content: {
+                  downloadStatus: "finished",
+                  extension: "pdf",
+                  fileName: "求未 AI 智能营销系统.pdf",
+                  fileSerialNo: "serial-file-004",
+                  fileSizeLabel: "6.10M",
+                  fileUrl: "https://b5.bokr.com.cn/chat-files/system.pdf",
+                },
+                contentType: "file",
+                conversationId: "conv-001",
+                createdAt: 1_778_840_010_000,
+                customerId: "cust-001",
+                messageId: "msg-004",
+                seatId: "drc",
+                senderType: "agent",
+                seq: 4,
+                status: "read",
+              },
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
+      },
       async poll(request) {
         return {
           activeConversationMessages: [],
@@ -1178,8 +1207,8 @@ describe("useWorkbenchStore", () => {
           messageUpdateEvents: [
             {
               conversationId: request.activeConversationId ?? "conv-001",
-              eventId: 6,
-              messageId: "999999",
+              eventId: 4,
+              messageId: "msg-004",
             },
           ],
           nextMessageUpdateCursor: 1_778_840_010_000,
@@ -1187,6 +1216,37 @@ describe("useWorkbenchStore", () => {
           seatChanges: [],
         };
       },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
+    await useWorkbenchStore.getState().loadHistoryMessages({ direction: "next" });
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const activeMessages =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+    const historyMessages =
+      useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]?.messages ??
+      [];
+
+    const activeMessage = activeMessages.find((message) => message.id === "msg-004");
+    const historyMessage = historyMessages.find((message) => message.id === "msg-004");
+
+    expect(activeMessage?.content.type).toBe("file");
+    expect(historyMessage?.content.type).toBe("file");
+    if (activeMessage?.content.type === "file") {
+      expect(activeMessage.content.downloadStatus).toBe("finished");
+    }
+    if (historyMessage?.content.type === "file") {
+      expect(historyMessage.content.downloadStatus).toBe("finished");
+    }
+  });
+
+  it("ignores refreshed message details when the message is not already in store", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
       async getMessagesByIds(input) {
         if (input.messageIds.includes("999999")) {
           return {
@@ -1214,7 +1274,35 @@ describe("useWorkbenchStore", () => {
 
         return baseService.getMessagesByIds(input);
       },
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          messageUpdateEvents: [
+            {
+              conversationId: request.activeConversationId ?? "conv-001",
+              eventId: 6,
+              messageId: "999999",
+            },
+          ],
+          nextMessageUpdateCursor: 1_778_840_010_000,
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
     });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
+    await useWorkbenchStore.getState().loadHistoryMessages({ direction: "next" });
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].find(
+        (message) => message.id === "999999",
+      ),
+    ).toBeUndefined();
 
     await useWorkbenchStore.getState().initializeWorkbench();
     const beforeLength = useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;

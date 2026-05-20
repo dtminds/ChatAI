@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
+import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
@@ -45,137 +46,33 @@ describe("ChatWorkbenchPage download flows", () => {
     installChatWorkbenchTestEnvironment();
   });
 
-  it("restarts video transfer instead of opening an expired finished video URL", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-    const downloadMessageFile = vi.fn(baseService.downloadMessageFile);
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-
-    setWorkbenchService({
-      ...baseService,
-      downloadMessageFile,
-      async getMessages(conversationId, options) {
-        if (conversationId === "conv-001" && options?.beforeSeq == null) {
-          return {
-            filteredCount: 0,
-            hasMore: false,
-            messages: [
-              {
-                content: {
-                  alt: "已过期视频",
-                  coverImageUrl: "/covers/stage.jpg",
-                  downloadStatus: "finished",
-                  durationLabel: "1:01",
-                  fileSerialNo: "serial-video-001",
-                  fileUrlExpireTime: Date.now() - 1000,
-                  videoUrl: "https://b5.bokr.com.cn/chat-videos/expired.mp4",
-                },
-                contentType: "video",
-                conversationId: "conv-001",
-                createdAt: 1778240300000,
-                customerId: "cust-001",
-                messageId: "remote-expired-video",
-                seatId: "drc",
-                senderType: "customer",
-                seq: 539,
-                status: "read",
-              },
-            ],
-            scannedCount: 1,
-          };
-        }
-
-        return baseService.getMessages(conversationId, options);
-      },
-    });
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "下载视频：已过期视频" }));
-
-    expect(downloadMessageFile).toHaveBeenCalledWith({
-      conversationId: "conv-001",
-      messageId: "remote-expired-video",
-      messageSeq: 539,
-    });
-    expect(openSpy).not.toHaveBeenCalled();
-  });
-
-  it("does not update download UI after unmounting during a transfer request", async () => {
-    const user = userEvent.setup();
-    const baseService = createMockWorkbenchService();
-    const transferGate = createDeferred<Awaited<ReturnType<typeof baseService.downloadMessageFile>>>();
-
-    setWorkbenchService({
-      ...baseService,
-      async downloadMessageFile() {
-        return transferGate.promise;
-      },
-      async getMessages(conversationId, options) {
-        if (conversationId === "conv-001" && options?.beforeSeq == null) {
-          return {
-            filteredCount: 0,
-            hasMore: false,
-            messages: [
-              {
-                content: {
-                  alt: "待转存视频",
-                  coverImageUrl: "/covers/stage.jpg",
-                  downloadStatus: "failed",
-                  durationLabel: "1:01",
-                  fileSerialNo: "serial-video-001",
-                  videoUrl: "",
-                },
-                contentType: "video",
-                conversationId: "conv-001",
-                createdAt: 1778240300000,
-                customerId: "cust-001",
-                messageId: "remote-pending-video",
-                seatId: "drc",
-                senderType: "customer",
-                seq: 539,
-                status: "read",
-              },
-            ],
-            scannedCount: 1,
-          };
-        }
-
-        return baseService.getMessages(conversationId, options);
-      },
-    });
-
-    const { unmount } = renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "下载视频：待转存视频" }));
-
-    unmount();
-    transferGate.reject(new Error("transfer failed after unmount"));
-    await expect(transferGate.promise).rejects.toThrow("transfer failed after unmount");
-
-    expect(toast.warning).not.toHaveBeenCalledWith("下载失败，请稍后重试");
-  });
-
-  it("keeps clicked video downloads in loading state and starts polling after StrictMode remount", async () => {
+  it("updates video download state from poll message-update events", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const downloadMessageFile = vi.fn(async () => ({
       messageId: "remote-pending-video",
       status: "accepted" as const,
     }));
-    const getMessageFileDownloadStatus = vi.fn(
-      async (input: { conversationId: string; messageSeq: number }) => ({
-        downloadStatus: "ing" as const,
-        fileSerialNo: `serial-${input.messageSeq}`,
-      }),
-    );
+    const poll = vi.fn(async (request) => ({
+      activeConversationMessages: [],
+      conversationChanges: [],
+      messageStatusChanges: [],
+      messageUpdateEvents: [
+        {
+          conversationId: request.activeConversationId ?? "conv-001",
+          eventId: 4,
+          messageId: "remote-pending-video",
+        },
+      ],
+      nextMessageUpdateCursor: 1_778_840_010_000,
+      nextVersion: request.sinceVersion + 1,
+      seatChanges: [],
+    }));
 
     setWorkbenchService({
       ...baseService,
       downloadMessageFile,
-      getMessageFileDownloadStatus,
+      poll,
       async getMessages(conversationId, options) {
         if (conversationId === "conv-001" && options?.beforeSeq == null) {
           return {
@@ -208,6 +105,36 @@ describe("ChatWorkbenchPage download flows", () => {
 
         return baseService.getMessages(conversationId, options);
       },
+      async getMessagesByIds(input) {
+        if (input.conversationId === "conv-001" && input.messageIds.includes("remote-pending-video")) {
+          return {
+            messages: [
+              {
+                content: {
+                  alt: "待转存视频",
+                  coverImageUrl: "/covers/stage.jpg",
+                  downloadStatus: "finished",
+                  durationLabel: "1:01",
+                  fileSerialNo: "serial-video-001",
+                  fileUrlExpireTime: Date.now() + 30 * 60 * 1000,
+                  videoUrl: "https://b5.bokr.com.cn/chat-videos/pending.mp4",
+                },
+                contentType: "video",
+                conversationId: "conv-001",
+                createdAt: 1778240300000,
+                customerId: "cust-001",
+                messageId: "remote-pending-video",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 539,
+                status: "read",
+              },
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
+      },
     });
 
     render(
@@ -226,123 +153,64 @@ describe("ChatWorkbenchPage download flows", () => {
     });
     expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
 
+    await useWorkbenchStore.getState().pollWorkbench();
+
     await waitFor(() => {
-      expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
-        conversationId: "conv-001",
-        messageSeq: 539,
-      });
-    }, { timeout: 3500 });
+      expect(screen.getByRole("button", { name: "播放视频：待转存视频" })).toBeInTheDocument();
+    });
   });
 
-  it("restores polling for the latest three in-progress downloads", async () => {
+  it("marks the message loading immediately and keeps the store in sync when poll updates arrive", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const getMessageFileDownloadStatus = vi.fn(
-      async (input: { conversationId: string; messageSeq: number }) => ({
-        downloadStatus: "ing" as const,
-        fileSerialNo: `serial-${input.messageSeq}`,
-      }),
-    );
+    const downloadGate = createDeferred<Awaited<ReturnType<typeof baseService.downloadMessageFile>>>();
+    const poll = vi.fn(async () => ({
+      activeConversationMessages: [],
+      conversationChanges: [],
+      messageStatusChanges: [],
+      messageUpdateEvents: [
+        {
+          conversationId: "conv-001",
+          eventId: 4,
+          messageId: "remote-pending-file",
+        },
+      ],
+      nextMessageUpdateCursor: 1_778_840_010_000,
+      nextVersion: 1_778_840_020_000,
+      seatChanges: [],
+    }));
 
     setWorkbenchService({
       ...baseService,
-      getMessageFileDownloadStatus,
-      async getMessages(conversationId, options) {
-        if (conversationId === "conv-001" && options?.beforeSeq == null) {
-          return {
-            filteredCount: 0,
-            hasMore: false,
-            messages: [
-              createInProgressVideoDto({
-                alt: "最旧视频",
-                createdAt: 1778240000000,
-                messageId: "remote-old-video",
-                seq: 536,
-              }),
-              createInProgressFileDto({
-                createdAt: 1778240100000,
-                fileName: "第三新文件.pdf",
-                messageId: "remote-third-file",
-                seq: 537,
-              }),
-              createInProgressVideoDto({
-                alt: "第二新视频",
-                createdAt: 1778240200000,
-                messageId: "remote-second-video",
-                seq: 538,
-              }),
-              createInProgressFileDto({
-                createdAt: 1778240300000,
-                fileName: "最新文件.pdf",
-                messageId: "remote-new-file",
-                seq: 539,
-              }),
-            ],
-            scannedCount: 4,
-          };
-        }
-
-        return baseService.getMessages(conversationId, options);
+      async downloadMessageFile() {
+        return downloadGate.promise;
       },
-    });
-
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    expect(screen.getByRole("button", { name: "下载视频：最旧视频" }))
-      .toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
-    expect(screen.getAllByRole("status", { name: "文件下载中" })).toHaveLength(2);
-
-    await waitFor(() => {
-      expect(getMessageFileDownloadStatus).toHaveBeenCalledTimes(3);
-    }, { timeout: 3500 });
-    expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
-      conversationId: "conv-001",
-      messageSeq: 537,
-    });
-    expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
-      conversationId: "conv-001",
-      messageSeq: 538,
-    });
-    expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
-      conversationId: "conv-001",
-      messageSeq: 539,
-    });
-    expect(getMessageFileDownloadStatus).not.toHaveBeenCalledWith({
-      conversationId: "conv-001",
-      messageSeq: 536,
-    });
-
-    await user.click(screen.getByRole("button", { name: "下载视频：最旧视频" }));
-
-    expect(toast.warning).toHaveBeenCalledWith("下载队列已满，请稍后");
-  });
-
-  it("restores in-progress download polling after StrictMode remount", async () => {
-    const baseService = createMockWorkbenchService();
-    const getMessageFileDownloadStatus = vi.fn(
-      async (input: { conversationId: string; messageSeq: number }) => ({
-        downloadStatus: "ing" as const,
-        fileSerialNo: `serial-${input.messageSeq}`,
-      }),
-    );
-
-    setWorkbenchService({
-      ...baseService,
-      getMessageFileDownloadStatus,
+      poll,
       async getMessages(conversationId, options) {
         if (conversationId === "conv-001" && options?.beforeSeq == null) {
           return {
             filteredCount: 0,
             hasMore: false,
             messages: [
-              createInProgressVideoDto({
-                alt: "转存中视频",
+              {
+                content: {
+                  downloadStatus: "failed",
+                  extension: "pdf",
+                  fileName: "报价单.pdf",
+                  fileSerialNo: "serial-file-001",
+                  fileSizeLabel: "2 KB",
+                  fileUrl: "",
+                },
+                contentType: "file",
+                conversationId: "conv-001",
                 createdAt: 1778240300000,
-                messageId: "remote-strict-video",
-                seq: 539,
-              }),
+                customerId: "cust-001",
+                messageId: "remote-pending-file",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 540,
+                status: "read",
+              },
             ],
             scannedCount: 1,
           };
@@ -350,92 +218,56 @@ describe("ChatWorkbenchPage download flows", () => {
 
         return baseService.getMessages(conversationId, options);
       },
+      async getMessagesByIds(input) {
+        if (input.conversationId === "conv-001" && input.messageIds.includes("remote-pending-file")) {
+          return {
+            messages: [
+              {
+                content: {
+                  downloadStatus: "finished",
+                  extension: "pdf",
+                  fileName: "报价单.pdf",
+                  fileSerialNo: "serial-file-001",
+                  fileSizeLabel: "2 KB",
+                  fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+                },
+                contentType: "file",
+                conversationId: "conv-001",
+                createdAt: 1778240300000,
+                customerId: "cust-001",
+                messageId: "remote-pending-file",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 540,
+                status: "read",
+              },
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
+      },
     });
 
-    render(
-      <StrictMode>
-        <ChatWorkbenchPage />
-      </StrictMode>,
-    );
+    const { unmount } = renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "下载文件：报价单.pdf" }));
+
+    expect(screen.getByRole("status", { name: "文件下载中" })).toBeInTheDocument();
+
+    downloadGate.resolve({
+      messageId: "remote-pending-file",
+      status: "accepted" as const,
+    });
+
+    await useWorkbenchStore.getState().pollWorkbench();
 
     await waitFor(() => {
-      expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
-        conversationId: "conv-001",
-        messageSeq: 539,
-      });
-    }, { timeout: 3500 });
+      expect(screen.getByRole("button", { name: "下载文件：报价单.pdf" })).toBeInTheDocument();
+    });
+
+    unmount();
+    expect(toast.warning).not.toHaveBeenCalledWith("下载失败，请稍后重试");
   });
 });
-
-function createInProgressVideoDto({
-  alt,
-  createdAt,
-  downloadStatus = "ing",
-  fileSerialNo,
-  messageId,
-  seq,
-}: {
-  alt: string;
-  createdAt: number;
-  downloadStatus?: "ing" | "finished" | "failed";
-  fileSerialNo?: string;
-  messageId: string;
-  seq: number;
-}) {
-  const resolvedFileSerialNo = fileSerialNo ?? `serial-${seq}`;
-
-  return {
-    content: {
-      alt,
-      coverImageUrl: "/covers/stage.jpg",
-      downloadStatus,
-      durationLabel: "1:01",
-      ...(resolvedFileSerialNo === undefined ? {} : { fileSerialNo: resolvedFileSerialNo }),
-      videoUrl: "",
-    },
-    contentType: "video" as const,
-    conversationId: "conv-001",
-    createdAt,
-    customerId: "cust-001",
-    messageId,
-    seatId: "drc",
-    senderType: "customer" as const,
-    seq,
-    status: "read" as const,
-  };
-}
-
-function createInProgressFileDto({
-  createdAt,
-  fileName,
-  messageId,
-  seq,
-}: {
-  createdAt: number;
-  fileName: string;
-  messageId: string;
-  seq: number;
-}) {
-  return {
-    content: {
-      downloadStatus: "ing",
-      extension: "pdf",
-      fileName,
-      fileSerialNo: `serial-${seq}`,
-      fileSizeLabel: "2 KB",
-      fileUrl: "",
-    },
-    contentType: "file" as const,
-    conversationId: "conv-001",
-    createdAt,
-    customerId: "cust-001",
-    messageId,
-    seatId: "drc",
-    senderType: "customer" as const,
-    seq,
-    status: "read" as const,
-  };
-}

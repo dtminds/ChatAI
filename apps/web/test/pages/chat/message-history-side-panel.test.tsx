@@ -532,6 +532,43 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.queryByTestId("text-message-bubble")).not.toBeInTheDocument();
   });
 
+  it("renders file download state in the history file tab", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createFileMessageWithDownloadStatus("file-downloading", {
+              downloadStatus: "ing",
+              extension: "pdf",
+              fileName: "转存中.pdf",
+              fileSizeLabel: "16K",
+              sourceLabel: "范双飞（饭饭）",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "file" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "文件下载中" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下载文件：转存中.pdf" }))
+      .not.toBeInTheDocument();
+  });
+
   it("renders link history rows with preview images and opens the link", async () => {
     render(
       <MessageHistorySidePanel
@@ -1276,6 +1313,39 @@ function createFileMessage(
     author: content.sourceLabel ?? "客户",
     content: {
       ...content,
+      type: "file",
+    },
+    conversationId: "conversation-1",
+    id,
+    role: "customer",
+    sender: {
+      id: "customer-1",
+      name: content.sourceLabel ?? "客户",
+    },
+    sentAt: content.sentAt ?? "2026-05-19 10:00:00",
+    status: "read",
+  };
+}
+
+function createFileMessageWithDownloadStatus(
+  id: string,
+  content: {
+    downloadStatus?: "ing" | "finished" | "failed";
+    extension: string;
+    fileName: string;
+    fileSizeLabel: string;
+    sourceLabel?: string;
+    sentAt?: string;
+  },
+): ChatMessage {
+  return {
+    author: content.sourceLabel ?? "客户",
+    content: {
+      downloadStatus: content.downloadStatus,
+      extension: content.extension,
+      fileName: content.fileName,
+      fileSizeLabel: content.fileSizeLabel,
+      sourceLabel: content.sourceLabel,
       type: "file",
     },
     conversationId: "conversation-1",

@@ -1043,6 +1043,10 @@ function ChatWorkbenchContent({
     try {
       await loadActiveGroupMembers({ force: true });
 
+      if (!isMountedRef.current) {
+        return;
+      }
+
       const refreshedState = useWorkbenchStore.getState();
       const isStillActiveRetry =
         refreshedState.activeConversationId === dialogState.conversationId &&
@@ -1082,7 +1086,9 @@ function ChatWorkbenchContent({
       mentionRetryDialogStateRef.current = null;
       setMentionRetryDialogState(null);
     } finally {
-      setIsRefreshingMentionTarget(false);
+      if (isMountedRef.current) {
+        setIsRefreshingMentionTarget(false);
+      }
     }
   };
 

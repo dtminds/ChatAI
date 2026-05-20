@@ -677,6 +677,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
           active_message_seq: request.activeMessageSeq,
           current_seat_id: request.currentSeatId,
           fresh_baseline: request.freshBaseline ? "1" : undefined,
+          message_update_cursor: request.messageUpdateCursor,
           since_version: request.sinceVersion,
         },
       });

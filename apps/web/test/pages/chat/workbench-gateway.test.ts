@@ -113,6 +113,7 @@ describe("workbench gateway message paging", () => {
         activeMessageSeq: 9,
         currentAccountId: "drc",
         freshBaseline: true,
+        messageUpdateCursor: 1_778_840_020_000,
         sinceVersion: 1_778_840_010_000,
       },
       {
@@ -126,6 +127,7 @@ describe("workbench gateway message paging", () => {
       activeMessageSeq: 9,
       currentSeatId: "drc",
       freshBaseline: true,
+      messageUpdateCursor: 1_778_840_020_000,
       sinceVersion: 1_778_840_010_000,
     });
   });

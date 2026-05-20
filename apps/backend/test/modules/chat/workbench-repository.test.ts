@@ -115,7 +115,11 @@ function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
   };
 }
 
-function createMessagesByIdsDb(rows: MessageRow[]) {
+function createMessagesByIdsDb(
+  rows: MessageRow[],
+  quoteRows: MessageRow[] = [],
+  conversationOverrides: Record<string, unknown> = {},
+) {
   const messageQueries: Array<{
     table: string;
     wheres: Array<[string, string, unknown]>;
@@ -134,6 +138,7 @@ function createMessagesByIdsDb(rows: MessageRow[]) {
           seat_id: 12,
           third_userid: "seat-third-user-1",
           uid: 9001,
+          ...conversationOverrides,
         });
       }
 
@@ -147,7 +152,8 @@ function createMessagesByIdsDb(rows: MessageRow[]) {
       }
 
       if (table === "xy_wap_embed_msg_audit_info as message") {
-        const query = createQueryBuilder(rows);
+        const queryIndex = messageQueries.filter((query) => query.table === table).length;
+        const query = createQueryBuilder(queryIndex === 0 ? rows : quoteRows);
         messageQueries.push({
           table,
           wheres: query.wheres,
@@ -956,6 +962,114 @@ describe("WorkbenchRepository", () => {
         }),
       ],
     });
+  });
+
+  it("scopes message id lookup to the single conversation key", async () => {
+    const db = createMessagesByIdsDb([
+      createConversationMessageRow({
+        id: 829,
+        msgid: "remote-msg-829",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.listMessagesByIds("88", ["829"]);
+
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.uid", "=", 9001]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.platform", "=", 5]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "seat-third-user-1",
+    ]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_external_id",
+      "=",
+      "external-1",
+    ]);
+  });
+
+  it("scopes message id lookup to the group conversation key", async () => {
+    const db = createMessagesByIdsDb(
+      [
+        createConversationMessageRow({
+          chat_type: 2,
+          conversation_external_id: "",
+          conversation_group_id: "group-1",
+          id: 829,
+          msgid: "remote-msg-829",
+          third_external_id: null,
+          third_group_id: "group-1",
+        }),
+      ],
+      [],
+      {
+        chat_type: 2,
+        conversation_external_id: "",
+        conversation_group_id: "group-1",
+      },
+    );
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.listMessagesByIds("88", ["829"]);
+
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.uid", "=", 9001]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.platform", "=", 5]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "seat-third-user-1",
+    ]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_group_id",
+      "=",
+      "group-1",
+    ]);
+  });
+
+  it("hydrates quote previews when fetching messages by ids", async () => {
+    const db = createMessagesByIdsDb(
+      [
+        createConversationMessageRow({
+          content: JSON.stringify({
+            content: "正式引用消息",
+            quoteMsgId: 101,
+          }),
+          id: 102,
+          msgid: "remote-msg-102",
+          msgtype: "quote",
+        }),
+      ],
+      [
+        createConversationMessageRow({
+          content: JSON.stringify({ text: "测试被引用" }),
+          id: 101,
+          msgid: "remote-msg-101",
+          msgtype: "text",
+          third_user_id: "seat-third-user-1",
+        }),
+      ],
+    );
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(repository.listMessagesByIds("88", ["102"])).resolves.toMatchObject({
+      messages: [
+        {
+          content: {
+            quotedMessage: {
+              contentType: "text",
+              senderName: "external-1",
+              text: "测试被引用",
+            },
+            quoteMsgId: "101",
+            text: "正式引用消息",
+          },
+          contentType: "quote",
+          messageId: "remote-msg-102",
+        },
+      ],
+    });
+    expect(db.messageQueries).toHaveLength(2);
   });
 
   it("skips changed conversation hydration when the poll change limit is exceeded", async () => {

@@ -341,7 +341,7 @@ export class WorkbenchRepository {
       return { messages: [] };
     }
 
-    const rows = await this.db
+    let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
       .select([
         "message.id as id",
@@ -360,28 +360,60 @@ export class WorkbenchRepository {
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
-      .where("message.id", "in", normalizedIds)
-      .execute();
+      .where("message.third_user_id", "=", conversation.third_userid)
+      .where("message.id", "in", normalizedIds);
 
+    if (conversation.chat_type === CHAT_TYPE_GROUP) {
+      query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
+    } else {
+      query = query.where(
+        "message.third_external_id",
+        "=",
+        conversation.conversation_external_id,
+      );
+    }
+
+    const rows = await query.execute();
+    const messageRows = rows as MessageRow[];
+    const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
+    const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
     const hydrationSources = await this.getMessageHydrationSources(
-      rows as MessageRow[],
+      allRowsToHydrate,
       conversation.uid,
       conversation.platform,
     );
-    const hydratedRows = hydrateMessageRows(rows as MessageRow[], hydrationSources);
+    const hydratedRows = hydrateMessageRows(messageRows, hydrationSources);
+    const hydratedQuotedRows = hydrateMessageRows(
+      quotedRows.fetchedRows,
+      hydrationSources,
+    );
+    const currentQuoteRowsById = new Map(
+      hydratedRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const fetchedQuoteRowsById = new Map(
+      hydratedQuotedRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const quotePreviewsByRowId = this.buildQuotePreviewsByRowId(
+      hydratedRows,
+      currentQuoteRowsById,
+      fetchedQuoteRowsById,
+    );
     const messages = hydratedRows.map((row) =>
-      mapMessageRow({
-        ...(row as MessageRow),
-        chat_type: conversation.chat_type,
-        conversation_external_id: conversation.conversation_external_id,
-        conversation_group_id: conversation.conversation_group_id,
-        conversation_id: conversation.conversation_id,
-        seat_id: conversation.seat_id,
-        third_external_id: row.third_external_id ?? undefined,
-        third_from_id: row.third_from_id ?? undefined,
-        third_group_id: row.third_group_id ?? undefined,
-        third_user_id: row.third_user_id ?? undefined,
-      }),
+      mapMessageRow(
+        {
+          ...(row as MessageRow),
+          chat_type: conversation.chat_type,
+          conversation_external_id: conversation.conversation_external_id,
+          conversation_group_id: conversation.conversation_group_id,
+          conversation_id: conversation.conversation_id,
+          seat_id: conversation.seat_id,
+          third_external_id: row.third_external_id ?? undefined,
+          third_from_id: row.third_from_id ?? undefined,
+          third_group_id: row.third_group_id ?? undefined,
+          third_user_id: row.third_user_id ?? undefined,
+        },
+        quotePreviewsByRowId.get(toNumber(row.id)),
+      ),
     );
 
     return { messages };

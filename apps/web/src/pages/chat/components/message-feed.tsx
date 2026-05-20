@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 
-const TIMESTAMP_BREAK_MS = 30 * 60 * 1000;
+const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 
 type ChatMessageListProps = {
   canUseMessageActions?: boolean;

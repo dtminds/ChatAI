@@ -5,6 +5,8 @@ import {
   type WorkbenchConversationCursorDto,
   type WorkbenchConversationListResponse,
   type WorkbenchMessagePageDto,
+  type WorkbenchMessageDto,
+  type WorkbenchMessageUpdateEventDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
@@ -72,6 +74,14 @@ export type ChangedConversationListResult = {
   items: WorkbenchConversationListResponse["items"];
   nextVersion: number;
 };
+
+export type MessageUpdateEventListResult = Array<
+  WorkbenchMessageUpdateEventDto & {
+    eventTime: number;
+  }
+>;
+
+const MESSAGE_UPDATE_OVERLAP_MS = 1_000;
 
 type ConversationPageRow = Omit<
   ConversationRow,
@@ -199,6 +209,116 @@ export class WorkbenchRepository {
     }
 
     return readMessageFileDownloadStatus(row.content);
+  }
+
+  async listMessageUpdateEvents(
+    conversationId: string,
+    options: {
+      afterCreateTime?: number;
+      limit: number;
+    },
+  ): Promise<MessageUpdateEventListResult> {
+    const conversationNumericId = parseMySqlId(conversationId);
+
+    if (conversationNumericId == null || options.limit <= 0) {
+      return [];
+    }
+
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .select(["conversation.id as conversation_id", "conversation.uid as uid", "conversation.platform as platform", "conversation.third_userid as third_userid", "conversation.third_external_userid as conversation_external_id", "conversation.third_group_id as conversation_group_id", "conversation.chat_type as chat_type"])
+      .where("conversation.id", "=", conversationNumericId)
+      .where("conversation.biz_status", "=", 1)
+      .executeTakeFirst();
+
+    if (!conversation) {
+      return [];
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_broadcast_event as event")
+      .select([
+        "event.id as event_id",
+        "event.create_time as create_time",
+        "event.content as content",
+      ])
+      .where("event.uid", "=", conversation.uid)
+      .where("event.platform", "=", conversation.platform)
+      .where("event.category", "=", "conversation")
+      .where("event.category_bind_id", "=", String(conversation.conversation_id))
+      .where("event.event", "=", "message.update");
+
+    if (options.afterCreateTime != null) {
+      query = query.where(
+        "event.create_time",
+        ">=",
+        new Date(Math.max(0, options.afterCreateTime - MESSAGE_UPDATE_OVERLAP_MS)),
+      );
+    }
+
+    const rows = await query
+      .orderBy("event.create_time", "asc")
+      .orderBy("event.id", "asc")
+      .limit(options.limit)
+      .execute();
+    const messageIds = rows
+      .map((row) => parseMessageUpdateEvent(String(row.content ?? "")))
+      .filter((event): event is ParsedMessageUpdateEvent => event !== undefined);
+
+    const messageSeqs = uniqueNumbers(
+      messageIds
+        .map((event) => Number(event.messageId))
+        .filter((value) => Number.isSafeInteger(value) && value > 0),
+    );
+
+    if (!messageSeqs.length) {
+      return rows.map((row) => {
+        const event = parseMessageUpdateEvent(String(row.content ?? ""));
+        return {
+          conversationId,
+          eventId: Number(row.event_id),
+          eventTime: toTimestamp(row.create_time),
+          messageId: event?.messageId ?? "",
+        };
+      });
+    }
+
+    const messages = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.msgid as msgid",
+        "message.chat_type as chat_type",
+        "message.from_type as from_type",
+        "message.third_user_id as third_user_id",
+        "message.third_external_id as third_external_id",
+        "message.third_from_id as third_from_id",
+        "message.third_group_id as third_group_id",
+        "message.content as content",
+        "message.msgtype as msgtype",
+        "message.msgtime as msgtime",
+        "message.opt_no as opt_no",
+        "message.revoke_status as revoke_status",
+      ])
+      .where("message.uid", "=", conversation.uid)
+      .where("message.platform", "=", conversation.platform)
+      .where("message.id", "in", messageSeqs)
+      .execute();
+
+    const messagesBySeq = new Map(messages.map((row) => [Number(row.id), row] as const));
+
+    return rows.map((row) => {
+      const event = parseMessageUpdateEvent(String(row.content ?? ""));
+      const messageRow = event ? messagesBySeq.get(Number(event.messageId)) : undefined;
+
+      return {
+        conversationId,
+        eventId: Number(row.event_id),
+        eventTime: toTimestamp(row.create_time),
+        message: messageRow ? mapMessageRow(messageRow as MessageRow) : undefined,
+        messageId: event?.messageId ?? "",
+      };
+    });
   }
 
   async listSeats(subUserId: string) {
@@ -1284,6 +1404,46 @@ function emptyMessagePage(): WorkbenchMessagePageDto {
     messages: [],
     scannedCount: 0,
   };
+}
+
+type ParsedMessageUpdateEvent = {
+  messageId: string;
+};
+
+function parseMessageUpdateEvent(content: string): ParsedMessageUpdateEvent | undefined {
+  try {
+    const parsed: unknown = JSON.parse(content);
+
+    if (!isRecord(parsed)) {
+      return undefined;
+    }
+
+    const messageId = readRecordNumber(parsed, "messageId");
+
+    if (!messageId) {
+      return undefined;
+    }
+
+    return {
+      messageId: String(messageId),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function toTimestamp(value: Date | number | string | null | undefined) {
+  if (value == null) {
+    return 0;
+  }
+
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 

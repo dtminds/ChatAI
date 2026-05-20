@@ -100,6 +100,7 @@ type WorkbenchState = {
   takeoverStatusByAccountId: Record<string, TakeoverStatus>;
   pollState: PollState;
   sinceVersion: number;
+  messageUpdateCursor?: number;
   isPollBaselineFresh: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
@@ -208,6 +209,7 @@ function createInitialState(): Omit<
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
     sinceVersion: 0,
+    messageUpdateCursor: undefined,
     isPollBaselineFresh: false,
     sidebarItems: [],
     takeoverStatusByAccountId: {},
@@ -1356,10 +1358,10 @@ export function createWorkbenchStore() {
           seatOrder: conversationListCacheSeatOrder,
         });
 
-        set({
-          accounts: bootstrapResult.accounts,
-          activeAccountId: bootstrapResult.activeAccountId,
-          activeConversationId: bootstrapResult.activeConversationId,
+          set({
+            accounts: bootstrapResult.accounts,
+            activeAccountId: bootstrapResult.activeAccountId,
+            activeConversationId: bootstrapResult.activeConversationId,
           activeMessageSeq: getActiveMessageSeq(
             conversationPage
               ? {
@@ -1400,6 +1402,7 @@ export function createWorkbenchStore() {
             : {},
           sidebarItems: bootstrapResult.sidebarItems,
           isPollBaselineFresh: true,
+          messageUpdateCursor: undefined,
           sinceVersion: bootstrapResult.pollBaseline,
         });
 
@@ -1469,6 +1472,7 @@ export function createWorkbenchStore() {
           activeMessageSeq: state.activeMessageSeq,
           currentAccountId: state.activeAccountId,
           freshBaseline: state.isPollBaselineFresh,
+          messageUpdateCursor: state.messageUpdateCursor,
           sinceVersion: state.sinceVersion,
         };
         const response = await pollWorkbench(request, {
@@ -1537,6 +1541,7 @@ export function createWorkbenchStore() {
           const nextMessagesByConversationId = {
             ...clearedResourceState.messagesByConversationId,
           };
+          const messageUpdateEvents = response.messageUpdateEvents ?? [];
 
           if (
             response.activeConversationMessages.length > 0 &&
@@ -1546,6 +1551,17 @@ export function createWorkbenchStore() {
               nextMessagesByConversationId[response.request.activeConversationId] ?? [];
             nextMessagesByConversationId[response.request.activeConversationId] =
               upsertMessageList(currentMessages, response.activeConversationMessages);
+          }
+
+          for (const updateEvent of messageUpdateEvents) {
+            if (updateEvent.message) {
+              const conversationMessages =
+                nextMessagesByConversationId[updateEvent.conversationId] ?? [];
+              nextMessagesByConversationId[updateEvent.conversationId] = upsertMessageList(
+                conversationMessages,
+                [updateEvent.message],
+              );
+            }
           }
 
           for (const change of response.messageStatusChanges) {
@@ -1606,6 +1622,8 @@ export function createWorkbenchStore() {
               lastSuccessAt: Date.now(),
               status: "idle",
             },
+            messageUpdateCursor:
+              response.nextMessageUpdateCursor ?? currentState.messageUpdateCursor,
             sinceVersion: response.nextVersion,
           };
         });
@@ -1686,17 +1704,18 @@ export function createWorkbenchStore() {
                 ? currentState.activeConversationId
                 : scopeResult.nextConversationId;
 
-              return {
-                ...nextState,
-                activeConversationId: nextActiveConversationId,
-                activeMessageSeq: getActiveMessageSeq(
-                  nextMessagesByConversationId,
-                  nextActiveConversationId,
-                ),
-                pendingMessages: currentState.pendingMessages.filter(
-                  (message) => message.conversationId !== state.activeConversationId,
-                ),
-                isPollBaselineFresh: true,
+            return {
+              ...nextState,
+              activeConversationId: nextActiveConversationId,
+              activeMessageSeq: getActiveMessageSeq(
+                nextMessagesByConversationId,
+                nextActiveConversationId,
+              ),
+              messageUpdateCursor: undefined,
+              pendingMessages: currentState.pendingMessages.filter(
+                (message) => message.conversationId !== state.activeConversationId,
+              ),
+              isPollBaselineFresh: true,
                 sinceVersion: scopeResult.pollBaseline,
               };
             });
@@ -2182,6 +2201,7 @@ export function createWorkbenchStore() {
                   }
                 : nextGroupMembersLoadingByConversationId,
             isPollBaselineFresh: true,
+            messageUpdateCursor: undefined,
             sinceVersion: scopeResult.pollBaseline,
           };
         });
@@ -2228,6 +2248,7 @@ export function createWorkbenchStore() {
         activeConversationId: conversationId,
         isConversationLoading: true,
         scopeTransitionError: undefined,
+        messageUpdateCursor: undefined,
       });
 
       if (currentConversation?.mode === "group") {
@@ -2293,6 +2314,7 @@ export function createWorkbenchStore() {
             },
             isConversationLoading: false,
             messagesByConversationId: nextMessagesByConversationId,
+            messageUpdateCursor: undefined,
             scopeTransitionError: undefined,
           };
         });

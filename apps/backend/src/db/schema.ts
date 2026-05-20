@@ -9,6 +9,38 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
 
+export interface XyWapEmbedBroadcastEvent {
+  /**
+   * 事件分类：conversation-会话
+   */
+  category: Generated<string>;
+  /**
+   * 事件分类关联id（conversation分类，则为conversation.id）
+   */
+  category_bind_id: Generated<string>;
+  /**
+   * 事件内容（不同的事件类型会不同）
+   */
+  content: string | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 事件类型
+   */
+  event: string;
+  id: Generated<number>;
+  /**
+   * 接入平台 5、比邻
+   */
+  platform: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: number;
+}
+
 export interface XyWapEmbedContact {
   /**
    * 第三方客户头像
@@ -438,6 +470,10 @@ export interface XyWapEmbedMsgAuditInfoExtend {
 
 export interface XyWapEmbedSiderBarConfig {
   /**
+   * 绑定类型：1、单聊，2、群聊（多选用“,”分割）
+   */
+  bind_types: Generated<string>;
+  /**
    * 会话状态：1、正常，0、删除
    */
   biz_status: Generated<number | null>;
@@ -461,10 +497,6 @@ export interface XyWapEmbedSiderBarConfig {
    * 是否展示
    */
   show: Generated<number | null>;
-  /**
-   * 绑定类型：1、单聊，2、群聊（多选用 "," 分割）
-   */
-  bind_types: string;
   /**
    * 排序(越小越靠前，最小为1)
    */
@@ -502,13 +534,13 @@ export interface XyWapEmbedSubUser {
    */
   password_hash: string;
   /**
-   * 预设角色：operator客服，viewer只读客服，admin管理员；主账号由type=1推导为owner
-   */
-  role: Generated<string>;
-  /**
    * 内嵌平台 5、比邻
    */
   platform: Generated<number>;
+  /**
+   * 预设角色：operator客服，viewer客服(只读)，admin管理员；主账号由type=1推导为owner
+   */
+  role: Generated<string>;
   /**
    * 状态：1正常，2禁用，0删除
    */
@@ -714,6 +746,7 @@ export interface XyWapEmbedUserSeatSubRelation {
 }
 
 export interface DB {
+  xy_wap_embed_broadcast_event: XyWapEmbedBroadcastEvent;
   xy_wap_embed_contact: XyWapEmbedContact;
   xy_wap_embed_conversation: XyWapEmbedConversation;
   xy_wap_embed_customer_bind_relation: XyWapEmbedCustomerBindRelation;

@@ -43,6 +43,7 @@ export type WorkbenchScopeRequest = {
   activeMessageSeq: number;
   currentAccountId: string;
   freshBaseline?: boolean;
+  messageUpdateCursor?: number;
   sinceVersion: number;
 };
 
@@ -104,9 +105,18 @@ export type WorkbenchPollResult = {
   accountChanges: Array<WorkbenchSeatChangeDto & { accountId: string }>;
   activeConversationMessages: Message[];
   conversationChanges: WorkbenchConversationChange[];
+  messageUpdateEvents: WorkbenchMessageUpdateEvent[];
   messageStatusChanges: WorkbenchMessageStatusChange[];
+  nextMessageUpdateCursor?: number;
   nextVersion: number;
   request: WorkbenchScopeRequest;
+};
+
+export type WorkbenchMessageUpdateEvent = {
+  conversationId: string;
+  eventId: number;
+  message?: Message;
+  messageId: string;
 };
 
 const DEFAULT_MESSAGE_PAGE_SIZE = 50;
@@ -394,11 +404,13 @@ export async function pollWorkbench(
   request: WorkbenchScopeRequest,
   context: GatewayContext,
 ): Promise<WorkbenchPollResult> {
+  const accountMap = buildAccountMap(context.accounts);
   const response = await getWorkbenchService().poll({
     activeConversationId: request.activeConversationId,
     activeMessageSeq: request.activeMessageSeq,
     currentSeatId: request.currentAccountId,
     freshBaseline: request.freshBaseline,
+    messageUpdateCursor: request.messageUpdateCursor,
     sinceVersion: request.sinceVersion,
   });
 
@@ -419,8 +431,16 @@ export async function pollWorkbench(
             accountId: change.seatId,
             conversation: adaptConversation(change),
             type: "upsert" as const,
-          },
+        },
     ),
+    messageUpdateEvents: (response.messageUpdateEvents ?? []).map((event) => ({
+      conversationId: event.conversationId,
+      eventId: event.eventId,
+      message: event.message
+        ? adaptMessage(event.message, context.customerProfilesById, accountMap, context.me)
+        : undefined,
+      messageId: event.messageId,
+    })),
     messageStatusChanges: response.messageStatusChanges.map((change) => ({
       clientMessageId: change.clientMessageId,
       conversationId: change.conversationId,
@@ -428,6 +448,7 @@ export async function pollWorkbench(
       remoteMessageId: change.messageId,
       status: adaptMessageStatus(change.status),
     })),
+    nextMessageUpdateCursor: response.nextMessageUpdateCursor,
     nextVersion: response.nextVersion,
     request,
   };
@@ -437,9 +458,7 @@ function adaptMessages(
   messageDtos: Parameters<typeof adaptMessage>[0][],
   context: GatewayContext,
 ) {
-  const accountMap = Object.fromEntries(
-    context.accounts.map((account) => [account.id, account]),
-  ) as Record<string, Account>;
+  const accountMap = buildAccountMap(context.accounts);
 
   return messageDtos.map((message) =>
     adaptMessage(
@@ -449,6 +468,13 @@ function adaptMessages(
       context.me,
     ),
   );
+}
+
+function buildAccountMap(accounts: Account[]) {
+  return Object.fromEntries(accounts.map((account) => [account.id, account])) as Record<
+    string,
+    Account
+  >;
 }
 
 function adaptMessageStatus(status: WorkbenchMessageStatus): MessageStatus {

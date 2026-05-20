@@ -207,20 +207,30 @@ export type WorkbenchMessageStatusChangeDto = {
   reason?: string;
 };
 
+export type WorkbenchMessageUpdateEventDto = {
+  conversationId: string;
+  eventId: number;
+  message?: WorkbenchMessageDto;
+  messageId: string;
+};
+
 export type WorkbenchPollRequest = {
   sinceVersion: number;
   freshBaseline?: boolean;
   currentSeatId?: string;
   activeConversationId?: string;
   activeMessageSeq?: number;
+  messageUpdateCursor?: number;
 };
 
 export type WorkbenchPollResponse = {
   nextVersion: number;
+  nextMessageUpdateCursor?: number;
   seatChanges: WorkbenchSeatChangeDto[];
   conversationChanges: WorkbenchConversationChangeDto[];
   activeConversationMessages: WorkbenchMessageDto[];
   messageStatusChanges: WorkbenchMessageStatusChangeDto[];
+  messageUpdateEvents?: WorkbenchMessageUpdateEventDto[];
 };
 
 export type WorkbenchOutgoingMessageTextSegment = {

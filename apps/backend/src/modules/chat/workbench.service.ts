@@ -49,6 +49,8 @@ import {
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
+const POLL_MESSAGE_UPDATE_OVERLAP_MS = 1_000;
+const POLL_MESSAGE_UPDATE_LIMIT = 50;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -466,6 +468,15 @@ export class MysqlWorkbenchService implements WorkbenchService {
             page.messages.filter((message) => message.seq > (request.activeMessageSeq ?? 0)),
           )
         : [];
+    const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
+    const messageUpdateEvents =
+      request.activeConversationId &&
+      typeof this.repository.listMessageUpdateEvents === "function"
+        ? await this.repository.listMessageUpdateEvents(request.activeConversationId, {
+            afterCreateTime: messageUpdateCursor,
+            limit: POLL_MESSAGE_UPDATE_LIMIT,
+          })
+        : [];
     const sinceLastMsgTime = Math.max(
       0,
       request.sinceVersion -
@@ -525,7 +536,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
         type: "upsert" as const,
       })),
       messageStatusChanges: [],
+      messageUpdateEvents,
       nextVersion,
+      nextMessageUpdateCursor: getNextMessageUpdateCursor(
+        messageUpdateCursor,
+        messageUpdateEvents,
+      ),
       seatChanges: seatChange
         ? [
             {
@@ -688,6 +704,32 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     return conversation;
   }
+}
+
+function getNextMessageUpdateCursor(
+  currentCursor: number,
+  events: Array<{
+    eventTime?: number;
+  }>,
+) {
+  if (!Number.isFinite(currentCursor)) {
+    return undefined;
+  }
+
+  const latestEventTime = events.reduce(
+    (latest, event) => {
+      const eventTime = event.eventTime;
+
+      if (eventTime == null) {
+        return latest;
+      }
+
+      return Math.max(latest, eventTime);
+    },
+    currentCursor,
+  );
+
+  return latestEventTime > currentCursor ? latestEventTime : currentCursor + POLL_MESSAGE_UPDATE_OVERLAP_MS;
 }
 
 function getSingleSendSegment(

@@ -189,7 +189,7 @@ const SearchQuerySchema = Type.Object({
 
 const GetOrCreateConversationBodySchema = Type.Object({
   seatId: Type.String({ minLength: 1 }),
-  chatType: Type.Number(),
+  chatType: Type.Union([Type.Literal(1), Type.Literal(2)]),
   thirdExternalUserId: Type.Optional(Type.String()),
   thirdGroupId: Type.Optional(Type.String()),
 });

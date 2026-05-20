@@ -200,7 +200,6 @@ type WorkbenchState = {
 type WorkbenchStore = WorkbenchState;
 
 const defaultCustomerProfiles = seedCustomerProfiles;
-let searchDebounceTimer: any = null;
 const MESSAGE_PAGE_SIZE = 50;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -871,6 +870,7 @@ export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
   let latestGroupMembersRequestId = 0;
+  let searchDebounceTimer: NodeJS.Timeout | null = null;
   const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
   const latestGroupMembersRequestIdByConversationId: Record<string, number> = {};
 
@@ -1239,7 +1239,7 @@ export function createWorkbenchStore() {
           }
         } catch (error) {
           if (get().searchKeyword === keyword && get().activeAccountId === seatId) {
-            set({ isSearchLoading: false });
+            set({ searchResults: null, isSearchLoading: false });
           }
         }
       },

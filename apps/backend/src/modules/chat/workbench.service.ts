@@ -54,6 +54,7 @@ import {
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
+const CHAT_TYPE_GROUP = 2;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -774,7 +775,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const seatThirdUserId = seatScope.thirdUserId;
-    const targetId = payload.chatType === 2 ? payload.thirdGroupId : payload.thirdExternalUserId;
+    const targetId = payload.chatType === CHAT_TYPE_GROUP ? payload.thirdGroupId : payload.thirdExternalUserId;
 
     if (!targetId) {
       throw new BadRequestError("INVALID_TARGET_ID", "目标ID无效");

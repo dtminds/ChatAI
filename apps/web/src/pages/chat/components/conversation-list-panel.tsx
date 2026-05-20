@@ -25,7 +25,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ConversationCard } from "@/pages/chat/components/conversation-card";
 import type { ChatMode, Conversation } from "@/pages/chat/chat-types";
+import type {
+  WorkbenchSearchContactResultDto,
+  WorkbenchSearchGroupResultDto,
+} from "@chatai/contracts";
 import { useWorkbenchStore } from "@/store/workbench-store";
+
+type SearchResultItem = WorkbenchSearchContactResultDto | WorkbenchSearchGroupResultDto;
 
 const CUSTOMER_PREVIEW_LIMIT = 5;
 const GROUP_PREVIEW_LIMIT = 10;
@@ -95,11 +101,7 @@ export function ConversationListPanel({
     });
   }, [activeMode]);
 
-  const handleSearchSelect = (
-    item:
-      | import("@chatai/contracts").WorkbenchSearchContactResultDto
-      | import("@chatai/contracts").WorkbenchSearchGroupResultDto,
-  ) => {
+  const handleSearchSelect = (item: SearchResultItem) => {
     setExpandedSearchSection(null);
     void selectOrCreateAndSelectConversation(item);
   };
@@ -330,17 +332,13 @@ function SearchResultDropdown({
   onSelect,
   isLoading,
 }: {
-  customers: import("@chatai/contracts").WorkbenchSearchContactResultDto[];
+  customers: WorkbenchSearchContactResultDto[];
   expandedSection: ChatMode | null;
-  groups: import("@chatai/contracts").WorkbenchSearchGroupResultDto[];
+  groups: WorkbenchSearchGroupResultDto[];
   keyword: string;
   onCollapse: () => void;
   onExpand: (section: ChatMode) => void;
-  onSelect: (
-    item:
-      | import("@chatai/contracts").WorkbenchSearchContactResultDto
-      | import("@chatai/contracts").WorkbenchSearchGroupResultDto,
-  ) => void;
+  onSelect: (item: SearchResultItem) => void;
   isLoading: boolean;
 }) {
   const isShowingCustomers = expandedSection === null || expandedSection === "single";
@@ -499,7 +497,7 @@ function SearchContactResultItem({
   keyword,
   onSelect,
 }: {
-  item: import("@chatai/contracts").WorkbenchSearchContactResultDto;
+  item: WorkbenchSearchContactResultDto;
   keyword: string;
   onSelect: () => void;
 }) {
@@ -532,7 +530,7 @@ function SearchGroupResultItem({
   keyword,
   onSelect,
 }: {
-  item: import("@chatai/contracts").WorkbenchSearchGroupResultDto;
+  item: WorkbenchSearchGroupResultDto;
   keyword: string;
   onSelect: () => void;
 }) {

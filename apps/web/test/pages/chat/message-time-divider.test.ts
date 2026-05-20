@@ -57,16 +57,34 @@ describe("formatMessageDividerLabel", () => {
       createElement(ChatMessageList, {
         messages: [
           createMessage("message-1", "第一条", "2026-05-09 14:00:00"),
-          createMessage("message-2", "第二条", "2026-05-09 14:05:00"),
+          createMessage("message-2", "第二条", "2026-05-09 14:02:00"),
           createMessage("message-3", "无有效时间", ""),
-          createMessage("message-4", "第四条", "2026-05-09 14:10:00"),
+          createMessage("message-4", "第四条", "2026-05-09 14:04:59"),
         ],
       }),
     );
 
     expect(screen.getByText("14:00")).toBeInTheDocument();
     expect(screen.queryByText(/1970/)).not.toBeInTheDocument();
-    expect(screen.queryByText("14:10")).not.toBeInTheDocument();
+    expect(screen.queryByText("14:04")).not.toBeInTheDocument();
+  });
+
+  it("inserts a divider when messages are at least five minutes apart", () => {
+    vi.setSystemTime(new Date("2026-05-09T16:00:00"));
+
+    render(
+      createElement(ChatMessageList, {
+        messages: [
+          createMessage("message-1", "第一条", "2026-05-09 14:00:00"),
+          createMessage("message-2", "第二条", "2026-05-09 14:04:00"),
+          createMessage("message-3", "第三条", "2026-05-09 14:09:00"),
+        ],
+      }),
+    );
+
+    expect(screen.getByText("14:00")).toBeInTheDocument();
+    expect(screen.queryByText("14:04")).not.toBeInTheDocument();
+    expect(screen.getByText("14:09")).toBeInTheDocument();
   });
 
   it("passes download transfer state and handler to file messages", async () => {

@@ -35,7 +35,7 @@ export function formatConversationTimestamp(value: string) {
   ].join("/");
 }
 
-function parseWorkbenchDate(value: string) {
+export function parseWorkbenchDate(value: string) {
   const normalized = value.trim().replace(" ", "T");
   const date = new Date(normalized);
 
@@ -46,7 +46,7 @@ function parseWorkbenchDate(value: string) {
   return date;
 }
 
-function isSameCalendarDay(a: Date, b: Date) {
+export function isSameCalendarDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&

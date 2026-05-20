@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatConversationTimestamp } from "@/pages/chat/lib/chat-time";
+import {
+  formatConversationTimestamp,
+  isSameCalendarDay,
+  parseWorkbenchDate,
+} from "@/pages/chat/lib/chat-time";
 import {
   MAX_ACCOUNT_RAIL_WIDTH,
   MIN_ACCOUNT_RAIL_WIDTH,
@@ -24,6 +28,32 @@ describe("chat utility helpers", () => {
     expect(formatConversationTimestamp("不是日期")).toBe("不是日期");
 
     vi.useRealTimers();
+  });
+
+  it("parses workbench timestamps and rejects invalid values", () => {
+    const date = parseWorkbenchDate("2026-05-06 10:05:00");
+
+    expect(date?.getFullYear()).toBe(2026);
+    expect(date?.getMonth()).toBe(4);
+    expect(date?.getDate()).toBe(6);
+    expect(date?.getHours()).toBe(10);
+    expect(date?.getMinutes()).toBe(5);
+    expect(parseWorkbenchDate("不是日期")).toBeNull();
+  });
+
+  it("compares dates by local calendar day", () => {
+    expect(
+      isSameCalendarDay(
+        new Date("2026-05-06T00:00:00"),
+        new Date("2026-05-06T23:59:59"),
+      ),
+    ).toBe(true);
+    expect(
+      isSameCalendarDay(
+        new Date("2026-05-06T23:59:59"),
+        new Date("2026-05-07T00:00:00"),
+      ),
+    ).toBe(false);
   });
 
   it("clamps the customer panel width inside available workbench space", () => {

@@ -5,6 +5,7 @@ import {
   QuoteUpIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +17,10 @@ import {
 import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
+import {
+  isSameCalendarDay,
+  parseWorkbenchDate,
+} from "@/pages/chat/lib/chat-time";
 
 const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 
@@ -55,7 +60,10 @@ export function ChatMessageList({
   onQuoteMessage,
   onRetryMessage,
 }: ChatMessageListProps) {
-  const items = buildFeedItems(messages, showTimeDividers);
+  const items = useMemo(
+    () => buildFeedItems(messages, showTimeDividers),
+    [messages, showTimeDividers],
+  );
 
   return (
     <div className="space-y-3">
@@ -508,25 +516,6 @@ export function formatMessageDividerLabel(value: string) {
   }
 
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
-}
-
-function parseWorkbenchDate(value: string) {
-  const normalized = value.trim().replace(" ", "T");
-  const date = new Date(normalized);
-
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return date;
-}
-
-function isSameCalendarDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
 }
 
 function isSameWeekMondayToSunday(a: Date, b: Date) {

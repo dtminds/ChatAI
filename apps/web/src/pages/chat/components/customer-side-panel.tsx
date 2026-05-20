@@ -369,7 +369,7 @@ export function CustomerSidePanel({
 function SidebarEmptyState() {
   return (
     <div
-      aria-label="暂未配置侧边栏"
+      aria-label="请前往设置页配置聊天侧边栏"
       className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground"
       role="status"
     >
@@ -379,7 +379,16 @@ function SidebarEmptyState() {
         className="h-64 w-64 object-contain"
         src="https://b5.bokr.com.cn/dist/no_result.png"
       />
-      <span>暂未配置侧边栏</span>
+      <span>
+        请前往
+        <a
+          className="mx-1 font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25"
+          href="/chat/settings/sidebar"
+        >
+          设置
+        </a>
+        页配置聊天侧边栏
+      </span>
     </div>
   );
 }

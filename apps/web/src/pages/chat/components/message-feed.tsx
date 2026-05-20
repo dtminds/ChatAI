@@ -20,6 +20,7 @@ import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 const TIMESTAMP_BREAK_MS = 30 * 60 * 1000;
 
 type ChatMessageListProps = {
+  canUseMessageActions?: boolean;
   downloadTransferStates?: Record<string, "idle" | "transferring">;
   messages: Message[];
   showTimeDividers?: boolean;
@@ -43,6 +44,7 @@ type FeedItem =
     };
 
 export function ChatMessageList({
+  canUseMessageActions = true,
   downloadTransferStates = {},
   messages,
   showTimeDividers = true,
@@ -69,6 +71,7 @@ export function ChatMessageList({
           >
             <MessageRow
               message={item.message}
+              canUseMessageActions={canUseMessageActions}
               downloadTransferState={downloadTransferStates[item.message.id]}
               showTimestamp={showTimestamps}
               onDownloadMessageFile={onDownloadMessageFile}
@@ -113,6 +116,7 @@ function SystemMessageNotice({ text }: { text: string }) {
 
 export function MessageRow({
   message,
+  canUseMessageActions = true,
   downloadTransferState,
   showTimestamp = false,
   onDownloadMessageFile,
@@ -122,6 +126,7 @@ export function MessageRow({
   onRetryMessage,
 }: {
   message: Message;
+  canUseMessageActions?: boolean;
   downloadTransferState?: "idle" | "transferring";
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -141,6 +146,7 @@ export function MessageRow({
   const messageActions = (
     <MessageActionAvatar
       message={message}
+      canUseMessageActions={canUseMessageActions}
       onMentionMessage={onMentionMessage}
       onQuoteMessage={onQuoteMessage}
     />
@@ -214,10 +220,12 @@ export function MessageRow({
 
 function MessageActionAvatar({
   message,
+  canUseMessageActions,
   onMentionMessage,
   onQuoteMessage,
 }: {
   message: ChatMessage;
+  canUseMessageActions: boolean;
   onMentionMessage?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
 }) {
@@ -227,8 +235,12 @@ function MessageActionAvatar({
     !message.isOwnMessage &&
     message.sender.groupMemberId,
   );
+  const canSelectMentionMessage = canUseMessageActions;
   const canQuoteMessage = Boolean(onQuoteMessage);
-  const canSelectQuoteMessage = !message.isRevoked;
+  const canSelectQuoteMessage =
+    canUseMessageActions &&
+    !message.isRevoked &&
+    message.content.type !== "contact-card";
 
   return (
     <div className="relative shrink-0">
@@ -252,7 +264,17 @@ function MessageActionAvatar({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center" side="bottom">
           {canMentionMessage ? (
-            <DropdownMenuItem onSelect={() => onMentionMessage?.(message)}>
+            <DropdownMenuItem
+              disabled={!canSelectMentionMessage}
+              onSelect={(event) => {
+                if (!canSelectMentionMessage) {
+                  event.preventDefault();
+                  return;
+                }
+
+                onMentionMessage?.(message);
+              }}
+            >
               <HugeiconsIcon
                 aria-hidden="true"
                 icon={AtIcon}

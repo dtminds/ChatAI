@@ -177,6 +177,7 @@ export function ChatPanel({
                 />
               ) : null
             }
+            canUseMessageActions={canSendMessage}
             hasBottomOverlay={hasActiveFileUpload}
             hasMoreHistory={hasMoreHistory}
             historyLoadLabel={historyLoadLabel}

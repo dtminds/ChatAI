@@ -305,7 +305,7 @@ export function ChatComposer({
   ]);
 
   const handleImageFiles = async (fileList: FileList | File[] | null) => {
-    if (isSending) {
+    if (isSending || !canSendMessage) {
       return;
     }
 
@@ -354,7 +354,7 @@ export function ChatComposer({
   };
 
   const handleEmojiSelect = (name: WechatEmojiName) => {
-    if (isSending) {
+    if (isSending || !canSendMessage) {
       return;
     }
 
@@ -397,7 +397,7 @@ export function ChatComposer({
                 composerActionButtonClass,
                 isEmojiPickerOpen && "bg-primary/10 text-primary",
               )}
-              disabled={isSending}
+              disabled={isSending || !canSendMessage}
               onClick={() => onEmojiPickerOpenChange(!isEmojiPickerOpen)}
               size="icon"
               type="button"

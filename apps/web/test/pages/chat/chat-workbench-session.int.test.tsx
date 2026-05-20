@@ -45,11 +45,30 @@ describe("ChatWorkbenchPage session flows", () => {
         screen.getByRole("textbox", { name: "当前账号未接管，暂时无法发送消息" }),
       ).toHaveAttribute("aria-readonly", "true");
       expect(screen.getAllByText("当前账号未接管，暂时无法发送消息")).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "微信表情" })).toBeDisabled();
       expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
       expect(
         screen.queryByText("当前账号未接管，暂时无法发送消息。"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("disables message avatar menu actions when the active account is not taken over", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
+
+    await screen.findByRole("textbox", {
+      name: "当前账号未接管，暂时无法发送消息",
+    });
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "引用消息" })).toHaveAttribute(
+      "data-disabled",
+    );
   });
 
   it("disables conversation card actions when the active account is not taken over", async () => {

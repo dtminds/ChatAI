@@ -475,10 +475,6 @@ function ChatWorkbenchContent({
     setIsRefreshingMentionTarget(false);
   }, [activeConversation?.id]);
 
-  useEffect(() => {
-    mentionRetryDialogStateRef.current = mentionRetryDialogState;
-  }, [mentionRetryDialogState]);
-
   useWorkbenchPolling({
     activeAccountId,
     bootstrapStatus,

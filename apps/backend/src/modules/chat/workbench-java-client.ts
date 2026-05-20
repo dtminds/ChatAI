@@ -15,16 +15,14 @@ import {
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 
-export const JAVA_MSG_TYPE = {
-  FILE: 2010,
-  IMAGE: 2002,
-  QUOTE_TEXT: 2033,
-  TEXT: 2001,
-} as const;
-
 export const JAVA_SEND_TYPE = {
   GROUP: 2,
   SINGLE: 1,
+} as const;
+
+export const JAVA_MESSAGE_SOURCE = {
+  WORKBENCH: 1,
+  WX_SIDEBAR: 2,
 } as const;
 
 export const JAVA_MENTION_LOCATION = {
@@ -43,23 +41,38 @@ type JavaApiResponse<T> = {
   success?: boolean;
 };
 
-export type JavaSendMessageData = {
+type JavaMentionFields = {
   atLocation?: number;
   atWxSerialNos?: string[];
   isHit?: number;
-  msgContent: string;
-  msgNum: number;
-  msgType: (typeof JAVA_MSG_TYPE)[keyof typeof JAVA_MSG_TYPE];
-  quoteContentBase64?: string;
-  vcHref?: string;
-  vcTitle?: string;
 };
+
+export type JavaSendMessageData =
+  | ({
+      msgtype: "text";
+      text: string;
+    } & JavaMentionFields)
+  | {
+      fileUrl: string;
+      msgtype: "image";
+    }
+  | {
+      fileName: string;
+      fileUrl: string;
+      msgtype: "file";
+    }
+  | ({
+      msgtype: "quote";
+      quoteMsgId: number;
+      text: string;
+    } & JavaMentionFields);
 
 export type JavaSendMessageInput = {
   clientMessageId: string;
-  message: JavaSendMessageData;
+  msgData: JavaSendMessageData;
   platform: number;
   sendType: (typeof JAVA_SEND_TYPE)[keyof typeof JAVA_SEND_TYPE];
+  source: (typeof JAVA_MESSAGE_SOURCE)[keyof typeof JAVA_MESSAGE_SOURCE];
   thirdExternalUserid?: string;
   thirdGroupId?: string;
   thirdUserId: string;
@@ -242,9 +255,10 @@ async function postConversationOperate(
 
 function buildJavaSendMessageBody(input: JavaSendMessageInput) {
   return {
-    msgDatas: [input.message],
+    msgData: input.msgData,
     platform: input.platform,
     sendType: input.sendType,
+    source: input.source,
     ...(input.thirdExternalUserid
       ? { thirdExternalUserid: input.thirdExternalUserid }
       : {}),
@@ -396,12 +410,9 @@ function buildJavaLogContext(body: unknown) {
     }
   }
 
-  const msgDatas = body["msgDatas"];
-  if (Array.isArray(msgDatas)) {
-    context.messageCount = msgDatas.length;
-    context.messageTypes = msgDatas
-      .map((item) => (isRecord(item) ? item["msgType"] : undefined))
-      .filter((value) => value != null);
+  const msgData = body["msgData"];
+  if (isRecord(msgData)) {
+    context.messageType = msgData["msgtype"];
   }
 
   return context;

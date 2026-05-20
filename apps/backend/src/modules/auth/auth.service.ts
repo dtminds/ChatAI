@@ -23,6 +23,12 @@ const REFRESH_TOKEN_EXPIRES_IN_DAYS = 14;
 export const REFRESH_TOKEN_EXPIRES_IN_SECONDS =
   REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60;
 
+const SUB_USER_STATUS = {
+  deleted: 0,
+  active: 1,
+  disabled: 2,
+} as const;
+
 type SubUserCredentialRow = {
   id: number;
   name: string;
@@ -84,11 +90,11 @@ export async function loginWithPassword(
     throw new InvalidCredentialsError();
   }
 
-  if (subUser.status === 2) {
+  if (subUser.status === SUB_USER_STATUS.disabled) {
     throw new DisabledSubUserError();
   }
 
-  if (subUser.status !== 1) {
+  if (subUser.status !== SUB_USER_STATUS.active) {
     throw new InvalidCredentialsError();
   }
 
@@ -158,7 +164,7 @@ export async function getCurrentSession(
     .selectFrom("xy_wap_embed_sub_user")
     .select(["id", "name", "role", "type"])
     .where("id", "=", subUserId)
-    .where("status", "=", 1)
+    .where("status", "=", SUB_USER_STATUS.active)
     .executeTakeFirst();
 
   if (!subUser) {

@@ -22,6 +22,8 @@ const TIMESTAMP_BREAK_MS = 30 * 60 * 1000;
 type ChatMessageListProps = {
   downloadTransferStates?: Record<string, "idle" | "transferring">;
   messages: Message[];
+  showTimeDividers?: boolean;
+  showTimestamps?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
@@ -43,13 +45,15 @@ type FeedItem =
 export function ChatMessageList({
   downloadTransferStates = {},
   messages,
+  showTimeDividers = true,
+  showTimestamps = false,
   onDownloadMessageFile,
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
 }: ChatMessageListProps) {
-  const items = buildFeedItems(messages);
+  const items = buildFeedItems(messages, showTimeDividers);
 
   return (
     <div className="space-y-3">
@@ -66,6 +70,7 @@ export function ChatMessageList({
             <MessageRow
               message={item.message}
               downloadTransferState={downloadTransferStates[item.message.id]}
+              showTimestamp={showTimestamps}
               onDownloadMessageFile={onDownloadMessageFile}
               onMentionMessage={onMentionMessage}
               onOpenQuotedMessage={onOpenQuotedMessage}
@@ -109,6 +114,7 @@ function SystemMessageNotice({ text }: { text: string }) {
 export function MessageRow({
   message,
   downloadTransferState,
+  showTimestamp = false,
   onDownloadMessageFile,
   onMentionMessage,
   onOpenQuotedMessage,
@@ -117,6 +123,7 @@ export function MessageRow({
 }: {
   message: Message;
   downloadTransferState?: "idle" | "transferring";
+  showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
@@ -187,6 +194,11 @@ export function MessageRow({
                 onOpenQuotedMessage={onOpenQuotedMessage}
               />
               {message.isRevoked ? <MessageRevokedState /> : null}
+              {showTimestamp ? (
+                <p className="px-1 text-[11px] leading-4 text-muted-foreground/80">
+                  {message.sentAt}
+                </p>
+              ) : null}
             </div>
           </div>
           {isAgent && !inlineDeliveryState ? (
@@ -397,14 +409,18 @@ export function MessageAvatar({ message }: { message: ChatMessage }) {
   );
 }
 
-function buildFeedItems(messages: Message[]): FeedItem[] {
+function buildFeedItems(messages: Message[], showTimeDividers: boolean): FeedItem[] {
   const items: FeedItem[] = [];
   let previousTimestampedMessage: Message | undefined;
 
   messages.forEach((message) => {
     const hasValidTimestamp = parseWorkbenchDate(message.sentAt) !== null;
 
-    if (hasValidTimestamp && shouldInsertDivider(previousTimestampedMessage, message)) {
+    if (
+      showTimeDividers &&
+      hasValidTimestamp &&
+      shouldInsertDivider(previousTimestampedMessage, message)
+    ) {
       items.push({
         id: `divider-${message.id}`,
         label: formatMessageDividerLabel(message.sentAt),

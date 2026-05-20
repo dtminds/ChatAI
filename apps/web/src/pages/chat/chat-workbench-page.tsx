@@ -144,6 +144,12 @@ function ChatWorkbenchContent({
     dismissReadReceiptError,
     hasMoreHistoryByConversationId,
     historyStatusByConversationId,
+    historyPanelByConversationId,
+    historyPanelErrorByConversationId,
+    historyPanelFiltersByConversationId,
+    historyPanelLoadingByConversationId,
+    historyPanelScrollModeByConversationId,
+    historyPanelOpenConversationId,
     initializeWorkbench,
     isConversationLoading,
     loadActiveGroupMembers,
@@ -159,6 +165,12 @@ function ChatWorkbenchContent({
     readReceiptError,
     pinConversation,
     retryFailedMessage,
+    closeHistoryPanel,
+    loadHistoryMessages,
+    openHistoryPanel,
+    setHistoryPanelDay,
+    setHistoryPanelScope,
+    setHistoryPanelSenderId,
     scopeTransitionError,
     sendAgentMessageSegments,
     setActiveAccount,
@@ -252,6 +264,8 @@ function ChatWorkbenchContent({
     visibleConversations.find(
       (conversation) => conversation.id === activeConversationId,
     ) ?? visibleConversations[0];
+  const isHistoryPanelOpen =
+    historyPanelOpenConversationId === activeConversation?.id;
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
     [];
@@ -1064,6 +1078,7 @@ function ChatWorkbenchContent({
 
               <ChatPanel
                 accountName={activeAccount?.name}
+                accountAvatarUrl={activeAccount?.avatarUrl}
                 activeConversation={activeConversation}
                 activeHistoryStatus={activeHistoryStatus}
                 canSendMessage={canSendMessage}
@@ -1096,6 +1111,47 @@ function ChatWorkbenchContent({
                 onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                 onEnterBehaviorChange={setInputEnterBehavior}
                 onFileSelect={handleFileSelect}
+                onOpenHistory={() => {
+                  if (isHistoryPanelOpen) {
+                    closeHistoryPanel();
+                    return;
+                  }
+
+                  void openHistoryPanel(activeConversation?.id);
+                }}
+                onHistoryClose={() => closeHistoryPanel()}
+                onHistoryLoadMoreNext={() => {
+                  const nextCursor =
+                    activeConversation
+                      ? historyPanelByConversationId[activeConversation.id]?.nextCursor
+                      : undefined;
+                  void loadHistoryMessages({
+                    cursor: nextCursor,
+                    direction: "next",
+                  });
+                }}
+                onHistoryLoadMorePrev={() => {
+                  const prevCursor =
+                    activeConversation
+                      ? historyPanelByConversationId[activeConversation.id]?.prevCursor
+                      : undefined;
+                  void loadHistoryMessages({
+                    cursor: prevCursor,
+                    direction: "prev",
+                  });
+                }}
+                onHistoryRefresh={() => {
+                  void loadHistoryMessages({ direction: "next" });
+                }}
+                onHistorySetDay={(day) => {
+                  void setHistoryPanelDay(day);
+                }}
+                onHistorySetScope={(scope) => {
+                  void setHistoryPanelScope(scope);
+                }}
+                onHistorySetSenderId={(senderId) => {
+                  void setHistoryPanelSenderId(senderId);
+                }}
                 onRefreshGroupMembers={() => {
                   void loadActiveGroupMembers({ force: true });
                 }}
@@ -1113,6 +1169,28 @@ function ChatWorkbenchContent({
                 scopeTransitionError={
                   fileUploadTransitionError ?? scopeTransitionError
                 }
+                historyPanel={
+                  activeConversation
+                    ? {
+                        activeHistory:
+                          historyPanelByConversationId[activeConversation.id],
+                        activeHistoryError:
+                          historyPanelErrorByConversationId[activeConversation.id],
+                        activeHistoryFilters:
+                          historyPanelFiltersByConversationId[activeConversation.id] ??
+                          {
+                            scope: "all",
+                          },
+                        activeHistoryLoading:
+                          historyPanelLoadingByConversationId[activeConversation.id] ??
+                          false,
+                        scrollMode:
+                          historyPanelScrollModeByConversationId[activeConversation.id],
+                        isOpen: isHistoryPanelOpen,
+                      }
+                    : undefined
+                }
+                isHistoryPanelOpen={isHistoryPanelOpen}
                 composerRef={composerRef}
                 workbenchBodyRef={workbenchBodyRef}
               />

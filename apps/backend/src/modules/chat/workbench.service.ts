@@ -6,6 +6,8 @@ import type {
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
   WorkbenchGroupMembersResponse,
+  WorkbenchHistoryMessagePageDto,
+  WorkbenchHistoryMessageQuery,
   WorkbenchMessageDto,
   WorkbenchMessageFileDownloadResponse,
   WorkbenchMessageFileDownloadStatusResponse,
@@ -73,6 +75,11 @@ export type WorkbenchService = {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ): Promise<WorkbenchMessagePageDto> | WorkbenchMessagePageDto;
+  getHistoryMessages(
+    subUserId: string,
+    conversationId: string,
+    options?: WorkbenchHistoryMessageQuery,
+  ): Promise<WorkbenchHistoryMessagePageDto> | WorkbenchHistoryMessagePageDto;
   downloadMessageFile(
     subUserId: string,
     conversationId: string,
@@ -252,6 +259,28 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return this.repository.listMessages(conversationId, {
       beforeSeq: options?.beforeSeq,
       limit: options?.limit ?? 30,
+    });
+  }
+
+  async getHistoryMessages(
+    subUserId: string,
+    conversationId: string,
+    options: WorkbenchHistoryMessageQuery = {},
+  ) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    return this.repository.listHistoryMessages(conversationId, {
+      cursor: options.cursor,
+      day: options.day,
+      limit: options.limit,
+      scope: options.scope,
+      senderId: options.senderId,
     });
   }
 

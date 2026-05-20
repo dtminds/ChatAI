@@ -183,6 +183,29 @@ export type WorkbenchMessagePageDto = {
   filteredCount: number;
 };
 
+export type WorkbenchHistoryMessageScope =
+  | "all"
+  | "file"
+  | "media"
+  | "h5"
+  | "mini-program";
+
+export type WorkbenchHistoryMessageQuery = {
+  cursor?: string;
+  day?: string;
+  limit?: number;
+  scope?: WorkbenchHistoryMessageScope;
+  senderId?: string;
+};
+
+export type WorkbenchHistoryMessagePageDto = {
+  messages: WorkbenchMessageDto[];
+  nextCursor?: string;
+  prevCursor?: string;
+  hasNext: boolean;
+  hasPrev: boolean;
+};
+
 export type WorkbenchSeatChangeDto = {
   seatId: string;
   unreadCount: number;

@@ -13,6 +13,11 @@ type FileMessageCardProps = {
   transferState?: "idle" | "transferring";
 };
 
+type FileExtensionBadgeProps = {
+  className?: string;
+  extension: string;
+};
+
 export function FileMessageCard({
   content,
   onDownloadClick,
@@ -30,14 +35,7 @@ export function FileMessageCard({
           </p>
         </div>
 
-        <div
-          className={cn(
-            "flex size-12 items-center justify-center rounded-[8px] text-[11px] font-semibold uppercase",
-            getFileBadgeTone(content.extension),
-          )}
-        >
-          {content.extension}
-        </div>
+        <FileExtensionBadge extension={content.extension} />
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-divider pt-2.5 text-[11px] text-muted-foreground">
@@ -76,7 +74,24 @@ export function FileMessageCard({
   );
 }
 
-function getFileBadgeTone(extension: string) {
+export function FileExtensionBadge({
+  className,
+  extension,
+}: FileExtensionBadgeProps) {
+  return (
+    <div
+      className={cn(
+        "flex size-12 items-center justify-center rounded-[8px] text-[11px] font-semibold uppercase",
+        getFileBadgeTone(extension),
+        className,
+      )}
+    >
+      {extension}
+    </div>
+  );
+}
+
+export function getFileBadgeTone(extension: string) {
   switch (extension.toLowerCase()) {
     case "pdf":
       return "bg-destructive text-destructive-foreground";

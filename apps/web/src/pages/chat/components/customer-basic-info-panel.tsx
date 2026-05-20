@@ -11,7 +11,7 @@ export function CustomerBasicInfoPanel({
   customer?: CustomerProfile;
 }) {
   return (
-    <ScrollArea className="h-full">
+    <ScrollArea className="h-full" data-testid="customer-basic-info-panel">
       <div className="space-y-4 px-4 py-4">
         <section className="space-y-2 border-b border-divider pb-4">
           <p className="text-xs leading-5 text-muted-foreground">

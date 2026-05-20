@@ -65,11 +65,13 @@ type ChatComposerProps = {
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isSending: boolean;
+  isHistoryPanelOpen: boolean;
   onClearQuotedMessage: () => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
+  onOpenHistory: () => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
   placeholder: string;
@@ -103,11 +105,13 @@ export function ChatComposer({
   isGroupConversation,
   isEmojiPickerOpen,
   isSending,
+  isHistoryPanelOpen,
   onClearQuotedMessage,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onFileSelect,
+  onOpenHistory,
   onSegmentsChange,
   onSendDraft,
   placeholder,
@@ -457,7 +461,13 @@ export function ChatComposer({
           />
           <Button
             aria-label="历史记录"
-            className={composerActionButtonClass}
+            aria-pressed={isHistoryPanelOpen}
+            className={cn(
+              composerActionButtonClass,
+              isHistoryPanelOpen &&
+                "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+            onClick={onOpenHistory}
             size="icon"
             type="button"
             variant="ghost"

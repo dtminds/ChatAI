@@ -8,6 +8,10 @@ import {
   type WorkbenchHistoryMessageQuery,
   type WorkbenchHistoryMessageScope,
   type WorkbenchMessagePageDto,
+  type WorkbenchSearchContactResultDto,
+  type WorkbenchSearchGroupResultDto,
+  type WorkbenchSearchResponseDto,
+  type WorkbenchConversationSummaryDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
@@ -1492,6 +1496,298 @@ export class WorkbenchRepository {
         ]),
       ),
     };
+  }
+
+  async searchContacts(
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+    keyword: string,
+  ): Promise<WorkbenchSearchContactResultDto[]> {
+    if (!keyword.trim()) {
+      return [];
+    }
+
+    const pattern = `%${keyword}%`;
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_contact as contact")
+      .leftJoin("xy_wap_embed_customer_bind_relation as rel", (join) =>
+        join
+          .onRef("rel.uid", "=", "contact.uid")
+          .onRef("rel.platform", "=", "contact.platform")
+          .onRef("rel.third_external_userid", "=", "contact.third_external_userid")
+          .on("rel.third_userid", "=", seatThirdUserId)
+          .on("rel.biz_status", "=", 1),
+      )
+      .leftJoin("xy_wap_embed_conversation as conv", (join) =>
+        join
+          .onRef("conv.uid", "=", "contact.uid")
+          .onRef("conv.platform", "=", "contact.platform")
+          .onRef("conv.third_external_userid", "=", "contact.third_external_userid")
+          .on("conv.third_userid", "=", seatThirdUserId)
+          .on("conv.chat_type", "=", CHAT_TYPE_SINGLE)
+          .on("conv.biz_status", "=", 1),
+      )
+      .select([
+        "contact.third_external_userid as thirdExternalUserId",
+        "contact.name as name",
+        "contact.real_name as realName",
+        "contact.avatar as avatar",
+        "rel.remark as remark",
+        "conv.id as conversationId",
+      ])
+      .where("contact.uid", "=", uid)
+      .where("contact.platform", "=", platform)
+      .where("contact.biz_status", "=", 1)
+      .where((eb) =>
+        eb.or([
+          eb("contact.name", "like", pattern),
+          eb("contact.real_name", "like", pattern),
+          eb("rel.remark", "like", pattern),
+        ]),
+      )
+      .limit(100)
+      .execute();
+
+    return rows.map((row) => ({
+      thirdExternalUserId: row.thirdExternalUserId,
+      name: row.name,
+      realName: row.realName,
+      avatar: row.avatar,
+      remark: row.remark ?? undefined,
+      conversationId: row.conversationId != null ? String(row.conversationId) : undefined,
+    }));
+  }
+
+  async searchGroups(
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+    keyword: string,
+  ): Promise<WorkbenchSearchGroupResultDto[]> {
+    if (!keyword.trim()) {
+      return [];
+    }
+
+    const pattern = `%${keyword}%`;
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_group_seat as gs")
+      .leftJoin("xy_wap_embed_conversation as conv", (join) =>
+        join
+          .onRef("conv.uid", "=", "gs.uid")
+          .onRef("conv.platform", "=", "gs.platform")
+          .onRef("conv.third_group_id", "=", "gs.third_group_id")
+          .on("conv.third_userid", "=", seatThirdUserId)
+          .on("conv.chat_type", "=", CHAT_TYPE_GROUP)
+          .on("conv.biz_status", "=", 1),
+      )
+      .select([
+        "gs.third_group_id as thirdGroupId",
+        "gs.name as name",
+        "gs.avatar as avatar",
+        "gs.remark as remark",
+        "conv.id as conversationId",
+      ])
+      .where("gs.uid", "=", uid)
+      .where("gs.platform", "=", platform)
+      .where("gs.third_userid", "=", seatThirdUserId)
+      .where("gs.biz_status", "=", 1)
+      .where((eb) =>
+        eb.or([
+          eb("gs.name", "like", pattern),
+          eb("gs.remark", "like", pattern),
+        ]),
+      )
+      .limit(100)
+      .execute();
+
+    return rows.map((row) => ({
+      thirdGroupId: row.thirdGroupId,
+      name: row.name ?? undefined,
+      avatar: row.avatar,
+      remark: row.remark ?? undefined,
+      conversationId: row.conversationId != null ? String(row.conversationId) : undefined,
+    }));
+  }
+
+  async getHydratedConversation(
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchConversationSummaryDto | null> {
+    const conversationNumericId = parseMySqlId(conversationId);
+
+    if (conversationNumericId == null) {
+      return null;
+    }
+
+    const seat = await this.db
+      .selectFrom("xy_wap_embed_user_seat")
+      .select("id")
+      .where("uid", "=", uid)
+      .where("platform", "=", platform)
+      .where("third_userid", "=", seatThirdUserId)
+      .where("biz_status", "=", 1)
+      .executeTakeFirst();
+
+    if (!seat) {
+      return null;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .select([
+        "conversation.id as id",
+        "conversation.chat_type as chat_type",
+        "conversation.create_time as create_time",
+        "conversation.last_audit_info_id as last_audit_info_id",
+        "conversation.third_userid as third_userid",
+        "conversation.third_external_userid as third_external_userid",
+        "conversation.third_group_id as third_group_id",
+        "conversation.unread_cnt as unread_cnt",
+        "conversation.last_msgtime as last_msgtime",
+        "conversation.pinned_time as pinned_time",
+        "conversation.verified as verified",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder.val(seat.id).as("seat_id"),
+      ])
+      .where("conversation.uid", "=", uid)
+      .where("conversation.platform", "=", platform)
+      .where("conversation.id", "=", conversationNumericId)
+      .executeTakeFirst();
+
+    if (!row) {
+      return null;
+    }
+
+    const conversationRow = row as ConversationPageRow;
+    const hydrationSources = await this.getConversationHydrationSources(
+      [conversationRow],
+      uid,
+      platform,
+      seatThirdUserId,
+    );
+
+    return this.mapHydratedConversationRow(conversationRow, hydrationSources);
+  }
+
+  async findConversationIdByTarget(
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+    chatType: number,
+    targetId: string,
+  ): Promise<string | undefined> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select("id")
+      .where("uid", "=", uid)
+      .where("platform", "=", platform)
+      .where("third_userid", "=", seatThirdUserId)
+      .where("chat_type", "=", chatType)
+      .where("biz_status", "=", 1);
+
+    if (chatType === CHAT_TYPE_GROUP) {
+      query = query.where("third_group_id", "=", targetId);
+    } else {
+      query = query.where("third_external_userid", "=", targetId);
+    }
+
+    const row = await query.executeTakeFirst();
+    return row?.id != null ? String(row.id) : undefined;
+  }
+
+  async createLocalConversation(
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+    chatType: number,
+    targetId: string,
+  ): Promise<string> {
+    const isGroup = chatType === CHAT_TYPE_GROUP;
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_conversation")
+      .values({
+        uid,
+        platform,
+        third_userid: seatThirdUserId,
+        chat_type: chatType,
+        third_external_userid: isGroup ? "" : targetId,
+        third_group_id: isGroup ? targetId : "",
+        last_msgtime: Date.now(),
+        biz_status: 1,
+      })
+      .executeTakeFirstOrThrow();
+
+    const insertId = "insertId" in inserted ? inserted.insertId : (inserted as { id?: number }).id;
+    if (insertId == null) {
+      throw new Error("Failed to insert local conversation");
+    }
+
+    return String(insertId);
+  }
+
+  async createConversationWithId(
+    conversationId: string,
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+    chatType: number,
+    thirdExternalUserId: string,
+    thirdGroupId: string,
+  ): Promise<string> {
+    const numericId = Number(conversationId);
+    const isGroup = chatType === CHAT_TYPE_GROUP;
+
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_conversation")
+      .values({
+        id: isNaN(numericId) ? undefined : numericId,
+        uid,
+        platform,
+        third_userid: seatThirdUserId,
+        chat_type: chatType,
+        third_external_userid: isGroup ? "" : thirdExternalUserId,
+        third_group_id: isGroup ? thirdGroupId : "",
+        last_msgtime: Date.now(),
+        biz_status: 1,
+      })
+      .executeTakeFirstOrThrow()
+      .catch(async (err: unknown) => {
+        // Only fall back to autoincrement on duplicate key (errno 1062 / ER_DUP_ENTRY).
+        // All other errors (SQL syntax, permission, constraint) should propagate.
+        const isDuplicateKey =
+          typeof err === "object" &&
+          err !== null &&
+          ((err as { errno?: number }).errno === 1062 ||
+            (err as { code?: string }).code === "ER_DUP_ENTRY");
+        if (!isDuplicateKey) {
+          throw err;
+        }
+        return this.db
+          .insertInto("xy_wap_embed_conversation")
+          .values({
+            uid,
+            platform,
+            third_userid: seatThirdUserId,
+            chat_type: chatType,
+            third_external_userid: isGroup ? "" : thirdExternalUserId,
+            third_group_id: isGroup ? thirdGroupId : "",
+            last_msgtime: Date.now(),
+            biz_status: 1,
+          })
+          .executeTakeFirstOrThrow();
+      });
+
+    const insertId = "insertId" in inserted ? inserted.insertId : (inserted as { id?: number }).id;
+    if (insertId == null) {
+      throw new Error("Failed to insert conversation");
+    }
+    return String(insertId);
   }
 }
 

@@ -987,10 +987,17 @@ function DateFilter({
   value?: string;
   onChange: (day?: string) => void;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
   const selectedDate = value ? new Date(`${value}T00:00:00`) : undefined;
+  const handleSelectDate = (date?: Date) => {
+    const nextDay = date ? formatDay(date) : undefined;
+
+    onChange(nextDay === value ? undefined : nextDay);
+    setIsOpen(false);
+  };
 
   return (
-    <Popover>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button
           aria-label="日期"
@@ -1010,20 +1017,10 @@ function DateFilter({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
-        <div className="mb-2 flex items-center justify-between gap-2 px-2">
-          <Button
-            className="h-7 px-2 text-[12px]"
-            onClick={() => onChange(undefined)}
-            size="sm"
-            variant="ghost"
-          >
-            清空
-          </Button>
-        </div>
         <Calendar
           mode="single"
           selected={selectedDate}
-          onSelect={(date) => onChange(date ? formatDay(date) : undefined)}
+          onSelect={handleSelectDate}
         />
       </PopoverContent>
     </Popover>

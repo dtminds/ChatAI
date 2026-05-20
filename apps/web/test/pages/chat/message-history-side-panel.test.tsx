@@ -180,6 +180,82 @@ describe("MessageHistorySidePanel", () => {
     expect(within(anotherMemberButton).getByText("睿")).toBeInTheDocument();
   });
 
+  it("closes the date picker after selecting a date", async () => {
+    const user = userEvent.setup();
+    const handleSetDay = vi.fn();
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={handleSetDay}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "日期" }));
+
+    expect(screen.queryByRole("button", { name: "清空" })).not.toBeInTheDocument();
+
+    await user.click(
+      within(screen.getByRole("gridcell", { name: "20" })).getByRole("button"),
+    );
+
+    expect(handleSetDay).toHaveBeenCalledWith("2026-05-20");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("clears the date filter by clicking the selected date", async () => {
+    const user = userEvent.setup();
+    const handleSetDay = vi.fn();
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [],
+        }}
+        activeHistoryFilters={{ day: "2026-05-20", scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={handleSetDay}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "日期" }));
+
+    expect(screen.queryByRole("button", { name: "清空" })).not.toBeInTheDocument();
+
+    await user.click(
+      within(screen.getByRole("gridcell", { name: "20", selected: true })).getByRole("button"),
+    );
+
+    expect(handleSetDay).toHaveBeenCalledWith(undefined);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("does not show empty state while loading history data", () => {
     render(
       <MessageHistorySidePanel

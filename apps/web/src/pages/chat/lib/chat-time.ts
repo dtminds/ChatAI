@@ -11,7 +11,7 @@ export function formatConversationTimestamp(value: string) {
     const diffMinutes = Math.floor((now.getTime() - date.getTime()) / 60000);
 
     if (diffMinutes >= 0 && diffMinutes < 60) {
-      return `${Math.max(diffMinutes, 1)}分钟前`;
+      return diffMinutes === 0 ? "刚刚" : `${diffMinutes}分钟前`;
     }
 
     return formatDatePart(date, {

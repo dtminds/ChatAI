@@ -30,6 +30,16 @@ describe("chat utility helpers", () => {
     vi.useRealTimers();
   });
 
+  it("formats conversation timestamps within one minute as just now", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 4, 6, 10, 30, 0));
+
+    expect(formatConversationTimestamp("2026-05-06 10:29:01")).toBe("刚刚");
+    expect(formatConversationTimestamp("2026-05-06 10:29:00")).toBe("1分钟前");
+
+    vi.useRealTimers();
+  });
+
   it("parses workbench timestamps and rejects invalid values", () => {
     const date = parseWorkbenchDate("2026-05-06 10:05:00");
 

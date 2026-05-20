@@ -58,6 +58,48 @@ describe("message feed row actions", () => {
     expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();
   });
 
+  it("keeps eligible message actions visible but disabled when actions are locked", async () => {
+    const user = userEvent.setup();
+    const onMentionMessage = vi.fn();
+    const onQuoteMessage = vi.fn();
+    const message = {
+      ...createTextMessage("未接管群消息"),
+      isGroupConversation: true,
+      isOwnMessage: false,
+      role: "customer" as const,
+      sender: {
+        groupMemberId: "member-001",
+        id: "member-001",
+        name: "成员甲",
+      },
+      senderDisplayName: "成员甲",
+    };
+
+    render(
+      <MessageRow
+        canUseMessageActions={false}
+        message={message}
+        onMentionMessage={onMentionMessage}
+        onQuoteMessage={onQuoteMessage}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "@Ta" })).toHaveAttribute(
+      "data-disabled",
+    );
+    expect(screen.getByRole("menuitem", { name: "引用消息" })).toHaveAttribute(
+      "data-disabled",
+    );
+
+    await user.click(screen.getByRole("menuitem", { name: "@Ta" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+
+    expect(onMentionMessage).not.toHaveBeenCalled();
+    expect(onQuoteMessage).not.toHaveBeenCalled();
+  });
+
   it("disables the quote action for revoked messages", async () => {
     const user = userEvent.setup();
     const onQuoteMessage = vi.fn();
@@ -65,6 +107,34 @@ describe("message feed row actions", () => {
     render(
       <MessageRow
         message={{ ...createTextMessage("已撤回原消息"), isRevoked: true }}
+        onQuoteMessage={onQuoteMessage}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "引用消息" })).toHaveAttribute(
+      "data-disabled",
+    );
+    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+
+    expect(onQuoteMessage).not.toHaveBeenCalled();
+  });
+
+  it("disables the quote action for contact card messages", async () => {
+    const user = userEvent.setup();
+    const onQuoteMessage = vi.fn();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("名片消息"),
+          content: {
+            avatarUrl: "https://example.com/avatar.png",
+            name: "客户甲",
+            type: "contact-card",
+          },
+        }}
         onQuoteMessage={onQuoteMessage}
       />,
     );

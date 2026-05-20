@@ -1184,6 +1184,47 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("returns history messages for the active user conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const getHistoryMessages = vi.spyOn(app.workbenchService, "getHistoryMessages");
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations/conv-001/history-messages?scope=file&day=2026-05-19&sender_id=member-1&limit=20",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      hasNext: false,
+      hasPrev: false,
+      messages: expect.any(Array),
+    });
+    expect(getHistoryMessages).toHaveBeenCalledWith("101", "conv-001", {
+      cursor: undefined,
+      day: "2026-05-19",
+      limit: 20,
+      scope: "file",
+      senderId: "member-1",
+    });
+
+    await app.close();
+  });
+
+  it("rejects invalid history message scope", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations/conv-001/history-messages?scope=voice",
+    });
+
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+
   it("proxies allowlisted media through the authenticated server API", async () => {
     const { app, authorization } = await createAuthenticatedApp();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

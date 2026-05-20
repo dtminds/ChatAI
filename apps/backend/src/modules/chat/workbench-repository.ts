@@ -4,12 +4,15 @@ import {
   type WorkbenchGroupMembersResponse,
   type WorkbenchConversationCursorDto,
   type WorkbenchConversationListResponse,
+  type WorkbenchHistoryMessagePageDto,
+  type WorkbenchHistoryMessageQuery,
+  type WorkbenchHistoryMessageScope,
   type WorkbenchMessagePageDto,
-  type WorkbenchMessageDto,
   type WorkbenchMessageUpdateEventDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
+import { BadRequestError } from "../../shared/errors.js";
 import {
   isRecord,
   normalizeMediaAssetUrl,
@@ -41,6 +44,8 @@ const DEFAULT_CONVERSATION_LIST_LIMIT = 500;
 const MAX_CONVERSATION_LIST_LIMIT = 1000;
 const DEFAULT_POLL_CONVERSATION_CHANGE_LIMIT = 200;
 const MAX_POLL_CONVERSATION_CHANGE_LIMIT = 500;
+const DEFAULT_HISTORY_MESSAGE_LIMIT = 30;
+const MAX_HISTORY_MESSAGE_LIMIT = 100;
 const GROUP_MEMBER_SORT_RANK = {
   [GROUP_MEMBER_TYPE.OWNER]: 0,
   [GROUP_MEMBER_TYPE.ADMIN]: 1,
@@ -82,6 +87,18 @@ export type MessageUpdateEventListResult = Array<
 >;
 
 const MESSAGE_UPDATE_OVERLAP_MS = 1_000;
+type HistoryMessageCursor = {
+  anchorId: string;
+  direction: "next" | "prev";
+  filters: HistoryMessageCursorFilters;
+};
+
+type HistoryMessageCursorFilters = {
+  conversationId: string;
+  day?: string;
+  scope: WorkbenchHistoryMessageScope;
+  senderId?: string;
+};
 
 type ConversationPageRow = Omit<
   ConversationRow,
@@ -261,23 +278,24 @@ export class WorkbenchRepository {
       .orderBy("event.id", "asc")
       .limit(options.limit)
       .execute();
-    const messageIds = rows
-      .map((row) => parseMessageUpdateEvent(String(row.content ?? "")))
-      .filter((event): event is ParsedMessageUpdateEvent => event !== undefined);
+    const parsedRows = rows.map((row) => ({
+      event: parseMessageUpdateEvent(String(row.content ?? "")),
+      eventTime: toTimestamp(row.create_time),
+      row,
+    }));
 
     const messageSeqs = uniqueNumbers(
-      messageIds
-        .map((event) => Number(event.messageId))
+      parsedRows
+        .map(({ event }) => Number(event?.messageId))
         .filter((value) => Number.isSafeInteger(value) && value > 0),
     );
 
     if (!messageSeqs.length) {
-      return rows.map((row) => {
-        const event = parseMessageUpdateEvent(String(row.content ?? ""));
+      return parsedRows.map(({ event, eventTime, row }) => {
         return {
           conversationId,
           eventId: Number(row.event_id),
-          eventTime: toTimestamp(row.create_time),
+          eventTime,
           messageId: event?.messageId ?? "",
         };
       });
@@ -307,14 +325,13 @@ export class WorkbenchRepository {
 
     const messagesBySeq = new Map(messages.map((row) => [Number(row.id), row] as const));
 
-    return rows.map((row) => {
-      const event = parseMessageUpdateEvent(String(row.content ?? ""));
+    return parsedRows.map(({ event, eventTime, row }) => {
       const messageRow = event ? messagesBySeq.get(Number(event.messageId)) : undefined;
 
       return {
         conversationId,
         eventId: Number(row.event_id),
-        eventTime: toTimestamp(row.create_time),
+        eventTime,
         message: messageRow ? mapMessageRow(messageRow as MessageRow) : undefined,
         messageId: event?.messageId ?? "",
       };
@@ -1029,6 +1046,205 @@ export class WorkbenchRepository {
     };
   }
 
+  async listHistoryMessages(
+    conversationId: string,
+    options: WorkbenchHistoryMessageQuery = {},
+  ): Promise<WorkbenchHistoryMessagePageDto> {
+    const conversationNumericId = parseMySqlId(conversationId);
+
+    if (conversationNumericId == null) {
+      return emptyHistoryMessagePage();
+    }
+
+    const limit = normalizeHistoryMessageLimit(options.limit);
+    const scope = options.scope ?? "all";
+    const filters: HistoryMessageCursorFilters = {
+      conversationId,
+      day: options.day,
+      scope,
+      senderId: options.senderId,
+    };
+    const hasCursor = options.cursor !== undefined;
+    const cursor = hasCursor
+      ? decodeHistoryMessageCursor(options.cursor ?? "")
+      : undefined;
+
+    if (hasCursor && (!cursor || !historyCursorFiltersEqual(cursor.filters, filters))) {
+      throw new BadRequestError("INVALID_HISTORY_CURSOR", "历史消息分页游标无效");
+    }
+
+    const dayBounds = getLocalDayBounds(options.day);
+
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.third_userid", "=", "conversation.third_userid")
+          .onRef("seat.uid", "=", "conversation.uid")
+          .onRef("seat.platform", "=", "conversation.platform"),
+      )
+      .select([
+        "conversation.id as conversation_id",
+        "conversation.uid as uid",
+        "conversation.platform as platform",
+        "conversation.chat_type as chat_type",
+        "conversation.third_external_userid as conversation_external_id",
+        "conversation.third_group_id as conversation_group_id",
+        "conversation.third_userid as third_userid",
+        "seat.id as seat_id",
+      ])
+      .where("conversation.id", "=", conversationNumericId)
+      .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .executeTakeFirst();
+
+    if (!conversation) {
+      return emptyHistoryMessagePage();
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.msgid as msgid",
+        "message.chat_type as chat_type",
+        "message.from_type as from_type",
+        "message.third_user_id as third_user_id",
+        "message.third_external_id as third_external_id",
+        "message.third_from_id as third_from_id",
+        "message.third_group_id as third_group_id",
+        "message.content as content",
+        "message.msgtype as msgtype",
+        "message.msgtime as msgtime",
+        "message.opt_no as opt_no",
+        "message.revoke_status as revoke_status",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder.val(conversation.conversation_id).as("conversation_id"),
+        expressionBuilder.val(conversation.seat_id).as("seat_id"),
+        expressionBuilder
+          .val(conversation.conversation_external_id)
+          .as("conversation_external_id"),
+        expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
+      ])
+      .where("message.uid", "=", conversation.uid)
+      .where("message.platform", "=", conversation.platform)
+      .where("message.third_user_id", "=", conversation.third_userid);
+
+    if (conversation.chat_type === CHAT_TYPE_GROUP) {
+      query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
+    } else {
+      query = query.where(
+        "message.third_external_id",
+        "=",
+        conversation.conversation_external_id,
+      );
+    }
+
+    const scopeMsgtypes = getHistoryScopeRawMsgtypes(scope);
+
+    if (scopeMsgtypes.length === 1) {
+      const msgtype = scopeMsgtypes[0] as string;
+      query = query.where("message.msgtype", "=", msgtype);
+    } else if (scopeMsgtypes.length > 1) {
+      query = query.where("message.msgtype", "in", scopeMsgtypes);
+    }
+
+    if (options.senderId) {
+      query = query.where("message.third_from_id", "=", options.senderId);
+    }
+
+    if (dayBounds) {
+      query = query
+        .where("message.msgtime", ">=", dayBounds.start)
+        .where("message.msgtime", "<=", dayBounds.end);
+    }
+
+    const initialRecentPage = !dayBounds && !cursor;
+    const orderDirection = initialRecentPage || cursor?.direction === "prev" ? "desc" : "asc";
+
+    if (cursor) {
+      query = query.where(
+        "message.id",
+        cursor.direction === "next" ? ">" : "<",
+        asSchemaBigIntId(cursor.anchorId),
+      );
+    }
+
+    const rows = await query
+      .orderBy("message.id", orderDirection)
+      .limit(limit + 1)
+      .execute();
+
+    const hasMoreInDirection = rows.length > limit;
+    const pageRows = rows.slice(0, limit) as MessageRow[];
+    const messageRows = orderDirection === "desc" ? pageRows.reverse() : pageRows;
+    const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
+    const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
+    const hydrationSources = await this.getMessageHydrationSources(
+      allRowsToHydrate,
+      conversation.uid,
+      conversation.platform,
+    );
+    const hydratedMessageRows = hydrateMessageRows(messageRows, hydrationSources);
+    const hydratedFetchedQuoteRows = hydrateMessageRows(
+      quotedRows.fetchedRows,
+      hydrationSources,
+    );
+    const currentQuoteRowsById = new Map(
+      hydratedMessageRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const fetchedQuoteRowsById = new Map(
+      hydratedFetchedQuoteRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const quotePreviewsByRowId = this.buildQuotePreviewsByRowId(
+      hydratedMessageRows,
+      currentQuoteRowsById,
+      fetchedQuoteRowsById,
+    );
+    const firstRow = hydratedMessageRows[0];
+    const lastRow = hydratedMessageRows.at(-1);
+    const firstAnchorId = String(firstRow?.id ?? "");
+    const lastAnchorId = String(lastRow?.id ?? "");
+    const hasRows = hydratedMessageRows.length > 0;
+    let hasNext = false;
+    let hasPrev = false;
+
+    if (cursor?.direction === "next") {
+      hasNext = hasMoreInDirection;
+      hasPrev = true;
+    } else if (cursor?.direction === "prev") {
+      hasNext = true;
+      hasPrev = hasMoreInDirection;
+    } else if (dayBounds) {
+      hasNext = hasMoreInDirection;
+    } else {
+      hasPrev = hasMoreInDirection;
+    }
+
+    return {
+      hasNext,
+      hasPrev,
+      messages: hydratedMessageRows.map((row) =>
+        mapMessageRow(row, quotePreviewsByRowId.get(toNumber(row.id))),
+      ),
+      nextCursor: hasRows
+        ? encodeHistoryMessageCursor({
+            anchorId: lastAnchorId,
+            direction: "next",
+            filters,
+          })
+        : undefined,
+      prevCursor: hasRows
+        ? encodeHistoryMessageCursor({
+            anchorId: firstAnchorId,
+            direction: "prev",
+            filters,
+          })
+        : undefined,
+    };
+  }
+
   private async getQuotedMessageRows(
     rows: MessageRow[],
     conversation: {
@@ -1445,7 +1661,13 @@ function toTimestamp(value: Date | number | string | null | undefined) {
 
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
-
+function emptyHistoryMessagePage(): WorkbenchHistoryMessagePageDto {
+  return {
+    hasNext: false,
+    hasPrev: false,
+    messages: [],
+  };
+}
 
 function readQuoteContentBase64(rawOriginData: string | null | undefined) {
   if (!rawOriginData) {
@@ -1561,6 +1783,14 @@ function normalizePollConversationChangeLimit(value: number | undefined) {
   return Math.min(value, MAX_POLL_CONVERSATION_CHANGE_LIMIT);
 }
 
+function normalizeHistoryMessageLimit(value: number | undefined) {
+  if (value == null || !Number.isSafeInteger(value) || value <= 0) {
+    return DEFAULT_HISTORY_MESSAGE_LIMIT;
+  }
+
+  return Math.min(value, MAX_HISTORY_MESSAGE_LIMIT);
+}
+
 function emptyConversationListPage(snapshotAt: number): WorkbenchConversationListResponse {
   return {
     hasMore: false,
@@ -1585,6 +1815,120 @@ export function decodeConversationListCursor(value: string): ConversationListCur
   } catch {
     return undefined;
   }
+}
+
+function encodeHistoryMessageCursor(cursor: HistoryMessageCursor) {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeHistoryMessageCursor(value: string): HistoryMessageCursor | undefined {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as unknown;
+
+    if (!isHistoryMessageCursor(parsed)) {
+      return undefined;
+    }
+
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function isHistoryMessageCursor(value: unknown): value is HistoryMessageCursor {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const { anchorId, direction, filters } = value;
+
+  return (
+    typeof anchorId === "string" &&
+    /^[1-9]\d*$/.test(anchorId) &&
+    (direction === "next" || direction === "prev") &&
+    isHistoryMessageCursorFilters(filters)
+  );
+}
+
+function isHistoryMessageCursorFilters(value: unknown): value is HistoryMessageCursorFilters {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const { conversationId, day, scope, senderId } = value;
+
+  return (
+    typeof conversationId === "string" &&
+    /^[1-9]\d*$/.test(conversationId) &&
+    (day == null || typeof day === "string") &&
+    isHistoryMessageScope(scope) &&
+    (senderId == null || typeof senderId === "string")
+  );
+}
+
+function isHistoryMessageScope(value: unknown): value is WorkbenchHistoryMessageScope {
+  return (
+    value === "all" ||
+    value === "file" ||
+    value === "media" ||
+    value === "h5" ||
+    value === "mini-program"
+  );
+}
+
+function historyCursorFiltersEqual(
+  left: HistoryMessageCursorFilters,
+  right: HistoryMessageCursorFilters,
+) {
+  return (
+    left.conversationId === right.conversationId &&
+    left.day === right.day &&
+    left.scope === right.scope &&
+    left.senderId === right.senderId
+  );
+}
+
+function getHistoryScopeRawMsgtypes(scope: WorkbenchHistoryMessageScope) {
+  switch (scope) {
+    case "file":
+      return ["file"];
+    case "media":
+      return ["image", "video"];
+    case "h5":
+      return ["link"];
+    case "mini-program":
+      return ["weapp"];
+    case "all":
+      return [];
+  }
+}
+
+function getLocalDayBounds(day: string | undefined) {
+  if (!day) {
+    return undefined;
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+
+  if (!match) {
+    throw new BadRequestError("INVALID_HISTORY_DAY", "历史消息日期无效");
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const date = Number(match[3]);
+  const startDate = new Date(year, month - 1, date, 0, 0, 0, 0);
+  const endDate = new Date(year, month - 1, date, 23, 59, 59, 999);
+  const isRoundTripValid =
+    startDate.getFullYear() === year &&
+    startDate.getMonth() === month - 1 &&
+    startDate.getDate() === date;
+
+  if (!isRoundTripValid || !Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime())) {
+    throw new BadRequestError("INVALID_HISTORY_DAY", "历史消息日期无效");
+  }
+
+  return { end: endDate.getTime(), start: startDate.getTime() };
 }
 
 function isConversationListCursor(value: unknown): value is ConversationListCursor {

@@ -144,6 +144,12 @@ function ChatWorkbenchContent({
     dismissReadReceiptError,
     hasMoreHistoryByConversationId,
     historyStatusByConversationId,
+    historyPanelByConversationId,
+    historyPanelErrorByConversationId,
+    historyPanelFiltersByConversationId,
+    historyPanelLoadingByConversationId,
+    historyPanelScrollModeByConversationId,
+    historyPanelOpenConversationId,
     initializeWorkbench,
     isConversationLoading,
     loadActiveGroupMembers,
@@ -159,6 +165,12 @@ function ChatWorkbenchContent({
     readReceiptError,
     pinConversation,
     retryFailedMessage,
+    closeHistoryPanel,
+    loadHistoryMessages,
+    openHistoryPanel,
+    setHistoryPanelDay,
+    setHistoryPanelScope,
+    setHistoryPanelSenderId,
     scopeTransitionError,
     sendAgentMessageSegments,
     setActiveAccount,
@@ -252,6 +264,8 @@ function ChatWorkbenchContent({
     visibleConversations.find(
       (conversation) => conversation.id === activeConversationId,
     ) ?? visibleConversations[0];
+  const isHistoryPanelOpen =
+    historyPanelOpenConversationId === activeConversation?.id;
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
     [];
@@ -513,9 +527,17 @@ function ChatWorkbenchContent({
         },
       });
 
+      if (!isMountedRef.current) {
+        return;
+      }
+
       if (!result.ok) {
         setSendFailureDialog(
-          getSendFailureDialogCopy(result.reason, result.errorCode),
+          getSendFailureDialogCopy(
+            result.reason,
+            result.errorCode,
+            result.errorMessage,
+          ),
         );
         composerRef.current?.focus();
         return;
@@ -630,7 +652,11 @@ function ChatWorkbenchContent({
 
           if (!result.ok) {
             setSendFailureDialog(
-              getSendFailureDialogCopy(result.reason, result.errorCode),
+              getSendFailureDialogCopy(
+                result.reason,
+                result.errorCode,
+                result.errorMessage,
+              ),
             );
             composerRef.current?.focus();
             return;
@@ -642,7 +668,11 @@ function ChatWorkbenchContent({
 
           if (fileUploadQueueRef.current.some((item) => item.id === uploadId)) {
             setSendFailureDialog(
-              getSendFailureDialogCopy("file-upload", getSendErrorCode(error)),
+              getSendFailureDialogCopy(
+                "file-upload",
+                getSendErrorCode(error),
+                getSendErrorMessage(error),
+              ),
             );
             composerRef.current?.focus();
           }
@@ -1064,6 +1094,7 @@ function ChatWorkbenchContent({
 
               <ChatPanel
                 accountName={activeAccount?.name}
+                accountAvatarUrl={activeAccount?.avatarUrl}
                 activeConversation={activeConversation}
                 activeHistoryStatus={activeHistoryStatus}
                 canSendMessage={canSendMessage}
@@ -1096,6 +1127,47 @@ function ChatWorkbenchContent({
                 onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                 onEnterBehaviorChange={setInputEnterBehavior}
                 onFileSelect={handleFileSelect}
+                onOpenHistory={() => {
+                  if (isHistoryPanelOpen) {
+                    closeHistoryPanel();
+                    return;
+                  }
+
+                  void openHistoryPanel(activeConversation?.id);
+                }}
+                onHistoryClose={() => closeHistoryPanel()}
+                onHistoryLoadMoreNext={() => {
+                  const nextCursor =
+                    activeConversation
+                      ? historyPanelByConversationId[activeConversation.id]?.nextCursor
+                      : undefined;
+                  void loadHistoryMessages({
+                    cursor: nextCursor,
+                    direction: "next",
+                  });
+                }}
+                onHistoryLoadMorePrev={() => {
+                  const prevCursor =
+                    activeConversation
+                      ? historyPanelByConversationId[activeConversation.id]?.prevCursor
+                      : undefined;
+                  void loadHistoryMessages({
+                    cursor: prevCursor,
+                    direction: "prev",
+                  });
+                }}
+                onHistoryRefresh={() => {
+                  void loadHistoryMessages({ direction: "next" });
+                }}
+                onHistorySetDay={(day) => {
+                  void setHistoryPanelDay(day);
+                }}
+                onHistorySetScope={(scope) => {
+                  void setHistoryPanelScope(scope);
+                }}
+                onHistorySetSenderId={(senderId) => {
+                  void setHistoryPanelSenderId(senderId);
+                }}
                 onRefreshGroupMembers={() => {
                   void loadActiveGroupMembers({ force: true });
                 }}
@@ -1113,6 +1185,28 @@ function ChatWorkbenchContent({
                 scopeTransitionError={
                   fileUploadTransitionError ?? scopeTransitionError
                 }
+                historyPanel={
+                  activeConversation
+                    ? {
+                        activeHistory:
+                          historyPanelByConversationId[activeConversation.id],
+                        activeHistoryError:
+                          historyPanelErrorByConversationId[activeConversation.id],
+                        activeHistoryFilters:
+                          historyPanelFiltersByConversationId[activeConversation.id] ??
+                          {
+                            scope: "all",
+                          },
+                        activeHistoryLoading:
+                          historyPanelLoadingByConversationId[activeConversation.id] ??
+                          false,
+                        scrollMode:
+                          historyPanelScrollModeByConversationId[activeConversation.id],
+                        isOpen: isHistoryPanelOpen,
+                      }
+                    : undefined
+                }
+                isHistoryPanelOpen={isHistoryPanelOpen}
                 composerRef={composerRef}
                 workbenchBodyRef={workbenchBodyRef}
               />
@@ -1217,31 +1311,34 @@ function ChatWorkbenchContent({
 function getSendFailureDialogCopy(
   reason: "file-upload" | "image-upload" | "send" | "unavailable",
   errorCode: string,
+  errorMessage?: string,
 ) {
+  const description = errorMessage?.trim() || `ErrorCode: ${errorCode}`;
+
   if (reason === "file-upload") {
     return {
       title: "文件上传失败，请稍后重试",
-      description: `ErrorCode: ${errorCode}`,
+      description,
     };
   }
 
   if (reason === "image-upload") {
     return {
       title: "图片上传失败，请稍后重试",
-      description: `ErrorCode: ${errorCode}`,
+      description,
     };
   }
 
   if (reason === "unavailable") {
     return {
       title: "当前无法发送消息，请稍后重试",
-      description: `ErrorCode: ${errorCode}`,
+      description,
     };
   }
 
   return {
     title: "发送失败，请稍后重试",
-    description: `ErrorCode: ${errorCode}`,
+    description,
   };
 }
 
@@ -1430,6 +1527,14 @@ function getSendErrorCode(error: unknown) {
   return "UNKNOWN";
 }
 
+function getSendErrorMessage(error: unknown) {
+  if (isErrorWithMessage(error)) {
+    return error.message;
+  }
+
+  return undefined;
+}
+
 function isErrorWithCode(error: unknown): error is { code: string } {
   return (
     typeof error === "object" &&
@@ -1445,6 +1550,15 @@ function isErrorWithStatus(error: unknown): error is { status: number } {
     error !== null &&
     "status" in error &&
     typeof (error as { status: unknown }).status === "number"
+  );
+}
+
+function isErrorWithMessage(error: unknown): error is { message: string } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message === "string"
   );
 }
 

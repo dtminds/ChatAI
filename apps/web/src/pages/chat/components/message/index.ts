@@ -18,6 +18,9 @@ export {
   SphFeedMark,
   SphFeedMessageCard,
 } from "@/pages/chat/components/message/sphfeed";
-export { TextMessageBubble } from "@/pages/chat/components/message/text";
+export {
+  TextMessageBubble,
+  WechatEmojiText,
+} from "@/pages/chat/components/message/text";
 export { VideoMessageCard } from "@/pages/chat/components/message/video";
 export { VoiceMessageCard } from "@/pages/chat/components/message/voice";

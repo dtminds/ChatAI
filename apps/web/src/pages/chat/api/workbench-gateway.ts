@@ -7,6 +7,8 @@ import {
 } from "@/pages/chat/api/workbench-adapter";
 import type {
   SettingsSidebarItem,
+  WorkbenchHistoryMessagePageDto,
+  WorkbenchHistoryMessageQuery,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
@@ -53,6 +55,14 @@ export type WorkbenchConversationPage = {
   messages: Message[];
   nextBeforeSeq?: number;
   skippedHiddenCount: number;
+};
+
+export type WorkbenchHistoryPage = {
+  hasNext: boolean;
+  hasPrev: boolean;
+  messages: Message[];
+  nextCursor?: string;
+  prevCursor?: string;
 };
 
 export type WorkbenchBootstrapResult = {
@@ -330,6 +340,16 @@ export async function loadConversationMessagesPage(
   };
 }
 
+export async function loadConversationHistoryMessagesPage(
+  context: GatewayContext,
+  conversationId: string,
+  options?: WorkbenchHistoryMessageQuery,
+): Promise<WorkbenchHistoryPage> {
+  const page = await getWorkbenchService().getHistoryMessages(conversationId, options);
+
+  return adaptHistoryMessagePage(page, context);
+}
+
 export async function loadGroupMembers(
   conversationId: string,
 ): Promise<GroupMember[]> {
@@ -475,6 +495,19 @@ function buildAccountMap(accounts: Account[]) {
     string,
     Account
   >;
+}
+
+function adaptHistoryMessagePage(
+  page: WorkbenchHistoryMessagePageDto,
+  context: GatewayContext,
+): WorkbenchHistoryPage {
+  return {
+    hasNext: page.hasNext,
+    hasPrev: page.hasPrev,
+    messages: adaptMessages(page.messages, context),
+    nextCursor: page.nextCursor,
+    prevCursor: page.prevCursor,
+  };
 }
 
 function adaptMessageStatus(status: WorkbenchMessageStatus): MessageStatus {

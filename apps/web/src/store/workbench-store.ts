@@ -8,6 +8,7 @@ import {
   getVisibleConversations,
   loadAccountConversationsByMode,
   loadAccountConversationsWithBaseline,
+  loadConversationHistoryMessagesPage,
   loadGroupMembers,
   loadAccountScope,
   loadConversationMessagesPage,
@@ -55,7 +56,7 @@ type SendMessageResult =
     }
   | {
       errorCode: string;
-      errorMessage: string;
+      errorMessage?: string;
       reason: "file-upload" | "image-upload" | "send" | "unavailable";
       ok: false;
     };
@@ -73,6 +74,34 @@ type PollState = {
   errorMessage?: string;
   lastSuccessAt?: number;
 };
+
+type HistoryPanelMode = "all" | "file" | "media" | "h5" | "mini-program";
+
+type HistoryPanelFilters = {
+  day?: string;
+  senderId?: string;
+  scope: HistoryPanelMode;
+};
+
+type HistoryPanelState = {
+  hasNext: boolean;
+  hasPrev: boolean;
+  messages: Message[];
+  nextCursor?: string;
+  prevCursor?: string;
+};
+
+type HistoryPanelScrollMode = "end";
+
+const emptyHistoryPanelState: HistoryPanelState = {
+  hasNext: false,
+  hasPrev: false,
+  messages: [],
+};
+
+function getHistoryPanelScrollMode(filters: HistoryPanelFilters) {
+  return filters.scope === "all" && !filters.day ? "end" : undefined;
+}
 
 type WorkbenchState = {
   me?: EmployeeProfile;
@@ -93,6 +122,12 @@ type WorkbenchState = {
   readReceiptError?: string;
   scopeTransitionError?: string;
   historyStatusByConversationId: Record<string, HistoryStatus>;
+  historyPanelByConversationId: Record<string, HistoryPanelState | undefined>;
+  historyPanelFiltersByConversationId: Record<string, HistoryPanelFilters | undefined>;
+  historyPanelLoadingByConversationId: Record<string, boolean>;
+  historyPanelErrorByConversationId: Record<string, string | undefined>;
+  historyPanelScrollModeByConversationId: Record<string, HistoryPanelScrollMode | undefined>;
+  historyPanelOpenConversationId?: string;
   groupMembersByConversationId: Record<string, GroupMember[]>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
   messagePaginationByConversationId: Record<string, MessagePaginationState>;
@@ -133,6 +168,12 @@ type WorkbenchState = {
   unpinConversation: (conversationId: string) => Promise<void>;
   retryFailedMessage: (messageId: string) => Promise<void>;
   loadOlderMessages: () => Promise<void>;
+  openHistoryPanel: (conversationId?: string) => Promise<void>;
+  closeHistoryPanel: () => void;
+  setHistoryPanelScope: (scope: HistoryPanelMode) => Promise<void>;
+  setHistoryPanelDay: (day?: string) => Promise<void>;
+  setHistoryPanelSenderId: (senderId?: string) => Promise<void>;
+  loadHistoryMessages: (options?: { cursor?: string; direction?: "next" | "prev" }) => Promise<void>;
   refreshSeatSummaries: () => Promise<void>;
   pollWorkbench: () => Promise<void>;
   updateMessageDownloadContent: (
@@ -172,6 +213,12 @@ function createInitialState(): Omit<
   | "unpinConversation"
   | "retryFailedMessage"
   | "loadOlderMessages"
+  | "openHistoryPanel"
+  | "closeHistoryPanel"
+  | "setHistoryPanelScope"
+  | "setHistoryPanelDay"
+  | "setHistoryPanelSenderId"
+  | "loadHistoryMessages"
   | "refreshSeatSummaries"
   | "pollWorkbench"
   | "updateMessageDownloadContent"
@@ -195,6 +242,12 @@ function createInitialState(): Omit<
     groupMembersByConversationId: {},
     hasMoreHistoryByConversationId: {},
     historyStatusByConversationId: {},
+    historyPanelByConversationId: {},
+    historyPanelFiltersByConversationId: {},
+    historyPanelLoadingByConversationId: {},
+    historyPanelErrorByConversationId: {},
+    historyPanelScrollModeByConversationId: {},
+    historyPanelOpenConversationId: undefined,
     isConversationLoading: false,
     me: undefined,
     messagePaginationByConversationId: {},
@@ -719,6 +772,26 @@ function clearConversationMessageState(
       state.historyStatusByConversationId,
       clearedConversationIds,
     ),
+    historyPanelByConversationId: omitByKeys(
+      state.historyPanelByConversationId,
+      clearedConversationIds,
+    ),
+    historyPanelFiltersByConversationId: omitByKeys(
+      state.historyPanelFiltersByConversationId,
+      clearedConversationIds,
+    ),
+    historyPanelLoadingByConversationId: omitByKeys(
+      state.historyPanelLoadingByConversationId,
+      clearedConversationIds,
+    ),
+    historyPanelErrorByConversationId: omitByKeys(
+      state.historyPanelErrorByConversationId,
+      clearedConversationIds,
+    ),
+    historyPanelScrollModeByConversationId: omitByKeys(
+      state.historyPanelScrollModeByConversationId,
+      clearedConversationIds,
+    ),
     messagePaginationByConversationId: omitByKeys(
       state.messagePaginationByConversationId,
       clearedConversationIds,
@@ -758,6 +831,11 @@ function getMessageStateConversationIds(state: WorkbenchStore) {
     ...Object.keys(state.messagePaginationByConversationId),
     ...Object.keys(state.hasMoreHistoryByConversationId),
     ...Object.keys(state.historyStatusByConversationId),
+    ...Object.keys(state.historyPanelByConversationId),
+    ...Object.keys(state.historyPanelFiltersByConversationId),
+    ...Object.keys(state.historyPanelLoadingByConversationId),
+    ...Object.keys(state.historyPanelErrorByConversationId),
+    ...Object.keys(state.historyPanelScrollModeByConversationId),
   ]);
 }
 
@@ -1909,7 +1987,7 @@ export function createWorkbenchStore() {
 
         return {
           errorCode: getRequestErrorCode(error),
-          errorMessage: getRequestErrorMessage(error, "消息发送失败"),
+          errorMessage: getRequestApiErrorMessage(error),
           reason: "send",
           ok: false,
         };
@@ -2040,6 +2118,280 @@ export function createWorkbenchStore() {
               : omitByKeys(currentState.historyStatusByConversationId, [
                   conversationId,
                 ]),
+        }));
+      }
+    },
+    async openHistoryPanel(conversationId) {
+      const state = get();
+      const nextConversationId = conversationId ?? state.activeConversationId;
+
+      if (!nextConversationId) {
+        return;
+      }
+
+      set((currentState) => {
+        const filters = currentState.historyPanelFiltersByConversationId[
+          nextConversationId
+        ] ?? { scope: "all" as const };
+
+        return {
+          historyPanelOpenConversationId: nextConversationId,
+          historyPanelErrorByConversationId: {
+            ...currentState.historyPanelErrorByConversationId,
+            [nextConversationId]: undefined,
+          },
+          historyPanelScrollModeByConversationId: {
+            ...currentState.historyPanelScrollModeByConversationId,
+            [nextConversationId]: getHistoryPanelScrollMode(filters),
+          },
+        };
+      });
+
+      await get().loadHistoryMessages({ direction: "next" });
+    },
+    closeHistoryPanel() {
+      set((currentState) => ({
+        historyPanelOpenConversationId: undefined,
+        historyPanelErrorByConversationId: currentState.historyPanelOpenConversationId
+          ? {
+              ...currentState.historyPanelErrorByConversationId,
+              [currentState.historyPanelOpenConversationId]: undefined,
+            }
+          : currentState.historyPanelErrorByConversationId,
+      }));
+    },
+    async setHistoryPanelScope(scope) {
+      const state = get();
+      const conversationId = state.historyPanelOpenConversationId;
+
+      if (!conversationId) {
+        return;
+      }
+
+      set((currentState) => {
+        const filters = {
+          ...(currentState.historyPanelFiltersByConversationId[conversationId] ?? {
+            scope: "all" as const,
+          }),
+          scope,
+        };
+
+        return {
+          historyPanelByConversationId: {
+            ...currentState.historyPanelByConversationId,
+            [conversationId]: emptyHistoryPanelState,
+          },
+          historyPanelErrorByConversationId: {
+            ...currentState.historyPanelErrorByConversationId,
+            [conversationId]: undefined,
+          },
+          historyPanelFiltersByConversationId: {
+            ...currentState.historyPanelFiltersByConversationId,
+            [conversationId]: filters,
+          },
+          historyPanelScrollModeByConversationId: {
+            ...currentState.historyPanelScrollModeByConversationId,
+            [conversationId]: getHistoryPanelScrollMode(filters),
+          },
+        };
+      });
+
+      await get().loadHistoryMessages({ direction: "next" });
+    },
+    async setHistoryPanelDay(day) {
+      const state = get();
+      const conversationId = state.historyPanelOpenConversationId;
+
+      if (!conversationId) {
+        return;
+      }
+
+      set((currentState) => {
+        const filters = {
+          ...(currentState.historyPanelFiltersByConversationId[conversationId] ?? {
+            scope: "all" as const,
+          }),
+          day,
+        };
+
+        return {
+          historyPanelByConversationId: {
+            ...currentState.historyPanelByConversationId,
+            [conversationId]: emptyHistoryPanelState,
+          },
+          historyPanelErrorByConversationId: {
+            ...currentState.historyPanelErrorByConversationId,
+            [conversationId]: undefined,
+          },
+          historyPanelFiltersByConversationId: {
+            ...currentState.historyPanelFiltersByConversationId,
+            [conversationId]: filters,
+          },
+          historyPanelScrollModeByConversationId: {
+            ...currentState.historyPanelScrollModeByConversationId,
+            [conversationId]: getHistoryPanelScrollMode(filters),
+          },
+        };
+      });
+
+      await get().loadHistoryMessages({ direction: "next" });
+    },
+    async setHistoryPanelSenderId(senderId) {
+      const state = get();
+      const conversationId = state.historyPanelOpenConversationId;
+
+      if (!conversationId) {
+        return;
+      }
+
+      set((currentState) => {
+        const filters = {
+          ...(currentState.historyPanelFiltersByConversationId[conversationId] ?? {
+            scope: "all" as const,
+          }),
+          senderId,
+        };
+
+        return {
+          historyPanelByConversationId: {
+            ...currentState.historyPanelByConversationId,
+            [conversationId]: emptyHistoryPanelState,
+          },
+          historyPanelErrorByConversationId: {
+            ...currentState.historyPanelErrorByConversationId,
+            [conversationId]: undefined,
+          },
+          historyPanelFiltersByConversationId: {
+            ...currentState.historyPanelFiltersByConversationId,
+            [conversationId]: filters,
+          },
+          historyPanelScrollModeByConversationId: {
+            ...currentState.historyPanelScrollModeByConversationId,
+            [conversationId]: getHistoryPanelScrollMode(filters),
+          },
+        };
+      });
+
+      await get().loadHistoryMessages({ direction: "next" });
+    },
+    async loadHistoryMessages(options) {
+      const state = get();
+      const conversationId = state.historyPanelOpenConversationId;
+
+      if (!conversationId) {
+        return;
+      }
+
+      const filters = state.historyPanelFiltersByConversationId[conversationId] ?? {
+        scope: "all",
+      };
+      const currentHistory = state.historyPanelByConversationId[conversationId];
+      const cursor = options?.cursor;
+      const direction = options?.direction ?? "next";
+
+      if (state.historyPanelLoadingByConversationId[conversationId]) {
+        return;
+      }
+
+      set((currentState) => ({
+        historyPanelLoadingByConversationId: {
+          ...currentState.historyPanelLoadingByConversationId,
+          [conversationId]: true,
+        },
+        historyPanelErrorByConversationId: {
+          ...currentState.historyPanelErrorByConversationId,
+          [conversationId]: undefined,
+        },
+      }));
+
+      try {
+        const page = await loadConversationHistoryMessagesPage(
+          {
+            accounts: state.accounts,
+            customerProfilesById: state.customerProfilesById,
+            me: state.me,
+          },
+          conversationId,
+          {
+            cursor,
+            day: filters.day,
+            scope: filters.scope,
+            senderId: filters.senderId,
+          },
+        );
+
+        set((currentState) => {
+          const currentConversationId = currentState.historyPanelOpenConversationId;
+          const currentScrollMode =
+            currentState.historyPanelScrollModeByConversationId[conversationId];
+
+          if (currentConversationId !== conversationId) {
+            return {
+              historyPanelLoadingByConversationId: omitByKeys(
+                currentState.historyPanelLoadingByConversationId,
+                [conversationId],
+              ),
+            };
+          }
+
+          const nextMessages =
+            cursor && direction === "prev" && currentHistory
+              ? [...page.messages, ...currentHistory.messages]
+              : cursor && direction === "next" && currentHistory
+                ? [...currentHistory.messages, ...page.messages]
+                : page.messages;
+          const nextHistoryState =
+            cursor && currentHistory
+              ? {
+                  hasNext:
+                    direction === "next" ? page.hasNext : currentHistory.hasNext,
+                  hasPrev:
+                    direction === "prev" ? page.hasPrev : currentHistory.hasPrev,
+                  messages: nextMessages,
+                  nextCursor:
+                    direction === "next"
+                      ? page.nextCursor
+                      : currentHistory.nextCursor,
+                  prevCursor:
+                    direction === "prev"
+                      ? page.prevCursor
+                      : currentHistory.prevCursor,
+                }
+              : {
+                  hasNext: page.hasNext,
+                  hasPrev: page.hasPrev,
+                  messages: nextMessages,
+                  nextCursor: page.nextCursor,
+                  prevCursor: page.prevCursor,
+                };
+
+          return {
+            historyPanelByConversationId: {
+              ...currentState.historyPanelByConversationId,
+              [conversationId]: nextHistoryState,
+            },
+            historyPanelLoadingByConversationId: {
+              ...currentState.historyPanelLoadingByConversationId,
+              [conversationId]: false,
+            },
+            historyPanelScrollModeByConversationId: {
+              ...currentState.historyPanelScrollModeByConversationId,
+              [conversationId]:
+                cursor == null && currentScrollMode === "end" ? "end" : undefined,
+            },
+          };
+        });
+      } catch (error) {
+        set((currentState) => ({
+          historyPanelLoadingByConversationId: {
+            ...currentState.historyPanelLoadingByConversationId,
+            [conversationId]: false,
+          },
+          historyPanelErrorByConversationId: {
+            ...currentState.historyPanelErrorByConversationId,
+            [conversationId]:
+              error instanceof Error ? error.message : "加载历史记录失败",
+          },
         }));
       }
     },
@@ -2247,6 +2599,7 @@ export function createWorkbenchStore() {
       set({
         activeConversationId: conversationId,
         isConversationLoading: true,
+        historyPanelOpenConversationId: undefined,
         scopeTransitionError: undefined,
         messageUpdateCursor: undefined,
       });
@@ -2355,6 +2708,7 @@ export function createWorkbenchStore() {
         set({
           activeMode: mode,
           isConversationLoading: true,
+          historyPanelOpenConversationId: undefined,
           scopeTransitionError: undefined,
         });
 
@@ -2440,6 +2794,7 @@ export function createWorkbenchStore() {
       );
 
       set({ activeMode: mode });
+      set({ historyPanelOpenConversationId: undefined });
 
       if (nextConversationId) {
         await get().setActiveConversation(nextConversationId);
@@ -2544,6 +2899,14 @@ function getRequestErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function getRequestApiErrorMessage(error: unknown) {
+  if (isErrorWithMessage(error)) {
+    return error.message;
+  }
+
+  return undefined;
 }
 
 function isErrorWithStatus(error: unknown): error is { status: number | string } {

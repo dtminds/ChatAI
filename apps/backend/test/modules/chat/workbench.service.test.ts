@@ -834,6 +834,120 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("returns message update events only for the active conversation", async () => {
+    const javaClient = createJavaClient();
+    const listMessageUpdateEvents = vi.fn().mockResolvedValue([
+      {
+        conversationId: "88",
+        eventTime: 1_778_840_003_000,
+        eventId: 4,
+        messageId: "829",
+      },
+    ]);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+        getSeat: vi.fn().mockResolvedValue(undefined),
+        listChangedConversations: vi.fn().mockResolvedValue({
+          hasMore: false,
+          items: [],
+          nextVersion: 1_778_840_002_000,
+        }),
+        listMessageUpdateEvents,
+        listMessages: vi.fn().mockResolvedValue({
+          filteredCount: 0,
+          hasMore: false,
+          messages: [],
+          scannedCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.poll("101", {
+      activeConversationId: "88",
+      activeMessageSeq: 5,
+      currentSeatId: "12",
+      sinceVersion: 1_778_840_000_000,
+    });
+
+    expect(listMessageUpdateEvents).toHaveBeenCalledWith("88", {
+      afterCreateTime: 1_778_840_000_000,
+      limit: 200,
+    });
+  });
+
+  it("keeps the message update cursor unchanged when no update events are returned", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeat: vi.fn().mockResolvedValue(undefined),
+        listChangedConversations: vi.fn().mockResolvedValue({
+          hasMore: false,
+          items: [],
+          nextVersion: 1_778_840_030_000,
+        }),
+        listMessageUpdateEvents: vi.fn().mockResolvedValue([]),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.poll("101", {
+        activeConversationId: "88",
+        currentSeatId: "12",
+        messageUpdateCursor: 1_778_840_000_000,
+        sinceVersion: 1_778_839_000_000,
+      }),
+    ).resolves.toMatchObject({
+      messageUpdateEvents: [],
+      nextMessageUpdateCursor: 1_778_840_000_000,
+    });
+  });
+
+  it("advances the message update cursor to the latest returned event time", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeat: vi.fn().mockResolvedValue(undefined),
+        listChangedConversations: vi.fn().mockResolvedValue({
+          hasMore: false,
+          items: [],
+          nextVersion: 1_778_840_030_000,
+        }),
+        listMessageUpdateEvents: vi.fn().mockResolvedValue([
+          {
+            conversationId: "88",
+            eventId: 4,
+            eventTime: 1_778_840_003_000,
+            messageId: "829",
+          },
+        ]),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.poll("101", {
+        activeConversationId: "88",
+        currentSeatId: "12",
+        messageUpdateCursor: 1_778_840_000_000,
+        sinceVersion: 1_778_839_000_000,
+      }),
+    ).resolves.toMatchObject({
+      nextMessageUpdateCursor: 1_778_840_003_000,
+    });
+  });
+
   it("does not overlap the first poll after a fresh conversation baseline", async () => {
     const javaClient = createJavaClient();
     const listChangedConversations = vi.fn().mockResolvedValue({

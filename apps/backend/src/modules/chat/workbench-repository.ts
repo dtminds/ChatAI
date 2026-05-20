@@ -7,7 +7,9 @@ import {
   type WorkbenchHistoryMessagePageDto,
   type WorkbenchHistoryMessageQuery,
   type WorkbenchHistoryMessageScope,
+  type WorkbenchMessageQueryByIdsResponse,
   type WorkbenchMessagePageDto,
+  type WorkbenchMessageUpdateEventDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
@@ -78,6 +80,12 @@ export type ChangedConversationListResult = {
   items: WorkbenchConversationListResponse["items"];
   nextVersion: number;
 };
+
+export type MessageUpdateEventListResult = Array<
+  WorkbenchMessageUpdateEventDto & {
+    eventTime: number;
+  }
+>;
 
 type HistoryMessageCursor = {
   anchorId: string;
@@ -218,6 +226,197 @@ export class WorkbenchRepository {
     }
 
     return readMessageFileDownloadStatus(row.content);
+  }
+
+  async listMessageUpdateEvents(
+    conversationId: string,
+    options: {
+      afterCreateTime?: number;
+      limit: number;
+    },
+  ): Promise<MessageUpdateEventListResult> {
+    const conversationNumericId = parseMySqlId(conversationId);
+
+    if (conversationNumericId == null || options.limit <= 0) {
+      return [];
+    }
+
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .select(["conversation.id as conversation_id", "conversation.uid as uid", "conversation.platform as platform", "conversation.third_userid as third_userid", "conversation.third_external_userid as conversation_external_id", "conversation.third_group_id as conversation_group_id", "conversation.chat_type as chat_type"])
+      .where("conversation.id", "=", conversationNumericId)
+      .where("conversation.biz_status", "=", 1)
+      .executeTakeFirst();
+
+    if (!conversation) {
+      return [];
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_broadcast_event as event")
+      .select([
+        "event.id as event_id",
+        "event.create_time as create_time",
+        "event.content as content",
+      ])
+      .where("event.uid", "=", conversation.uid)
+      .where("event.platform", "=", conversation.platform)
+      .where("event.category", "=", "conversation")
+      .where("event.category_bind_id", "=", String(conversation.conversation_id))
+      .where("event.event", "=", "message.update");
+
+    if (options.afterCreateTime != null) {
+      query = query.where(
+        "event.create_time",
+        ">",
+        new Date(Math.max(0, options.afterCreateTime)),
+      );
+    }
+
+    const rows = await query
+      .orderBy("event.create_time", "asc")
+      .orderBy("event.id", "asc")
+      .limit(options.limit)
+      .execute();
+    return rows
+      .map((row) => {
+        const event = parseMessageUpdateEvent(String(row.content ?? ""));
+
+        if (!event?.messageId) {
+          return undefined;
+        }
+
+        return {
+          conversationId,
+          eventId: Number(row.event_id),
+          eventTime: toTimestamp(row.create_time),
+          messageId: event.messageId,
+        };
+      })
+      .filter(
+        (event): event is WorkbenchMessageUpdateEventDto & { eventTime: number } =>
+          Boolean(event),
+      );
+  }
+
+  async listMessagesByIds(
+    conversationId: string,
+    messageIds: string[],
+  ): Promise<WorkbenchMessageQueryByIdsResponse> {
+    const conversationNumericId = parseMySqlId(conversationId);
+    const normalizedIds = uniqueNumbers(
+      messageIds
+        .map((value) => Number.parseInt(value, 10))
+        .filter((value) => Number.isSafeInteger(value) && value > 0),
+    );
+
+    if (conversationNumericId == null || !normalizedIds.length) {
+      return { messages: [] };
+    }
+
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.third_userid", "=", "conversation.third_userid")
+          .onRef("seat.uid", "=", "conversation.uid")
+          .onRef("seat.platform", "=", "conversation.platform"),
+      )
+      .select([
+        "conversation.id as conversation_id",
+        "conversation.chat_type as chat_type",
+        "conversation.third_external_userid as conversation_external_id",
+        "conversation.third_group_id as conversation_group_id",
+        "conversation.third_userid as third_userid",
+        "conversation.platform as platform",
+        "seat.id as seat_id",
+        "conversation.uid as uid",
+      ])
+      .where("conversation.id", "=", conversationNumericId)
+      .where("seat.biz_status", "=", 1)
+      .where("conversation.biz_status", "=", 1)
+      .executeTakeFirst();
+
+    if (!conversation) {
+      return { messages: [] };
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.msgid as msgid",
+        "message.chat_type as chat_type",
+        "message.from_type as from_type",
+        "message.third_user_id as third_user_id",
+        "message.third_external_id as third_external_id",
+        "message.third_from_id as third_from_id",
+        "message.third_group_id as third_group_id",
+        "message.content as content",
+        "message.msgtype as msgtype",
+        "message.msgtime as msgtime",
+        "message.opt_no as opt_no",
+        "message.revoke_status as revoke_status",
+      ])
+      .where("message.uid", "=", conversation.uid)
+      .where("message.platform", "=", conversation.platform)
+      .where("message.third_user_id", "=", conversation.third_userid)
+      .where("message.id", "in", normalizedIds);
+
+    if (conversation.chat_type === CHAT_TYPE_GROUP) {
+      query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
+    } else {
+      query = query.where(
+        "message.third_external_id",
+        "=",
+        conversation.conversation_external_id,
+      );
+    }
+
+    const rows = await query.execute();
+    const messageRows = rows as MessageRow[];
+    const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
+    const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
+    const hydrationSources = await this.getMessageHydrationSources(
+      allRowsToHydrate,
+      conversation.uid,
+      conversation.platform,
+    );
+    const hydratedRows = hydrateMessageRows(messageRows, hydrationSources);
+    const hydratedQuotedRows = hydrateMessageRows(
+      quotedRows.fetchedRows,
+      hydrationSources,
+    );
+    const currentQuoteRowsById = new Map(
+      hydratedRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const fetchedQuoteRowsById = new Map(
+      hydratedQuotedRows.map((row) => [toNumber(row.id), row] as const),
+    );
+    const quotePreviewsByRowId = this.buildQuotePreviewsByRowId(
+      hydratedRows,
+      currentQuoteRowsById,
+      fetchedQuoteRowsById,
+    );
+    const messages = hydratedRows.map((row) =>
+      mapMessageRow(
+        {
+          ...(row as MessageRow),
+          chat_type: conversation.chat_type,
+          conversation_external_id: conversation.conversation_external_id,
+          conversation_group_id: conversation.conversation_group_id,
+          conversation_id: conversation.conversation_id,
+          seat_id: conversation.seat_id,
+          third_external_id: row.third_external_id ?? undefined,
+          third_from_id: row.third_from_id ?? undefined,
+          third_group_id: row.third_group_id ?? undefined,
+          third_user_id: row.third_user_id ?? undefined,
+        },
+        quotePreviewsByRowId.get(toNumber(row.id)),
+      ),
+    );
+
+    return { messages };
   }
 
   async listSeats(subUserId: string) {
@@ -1504,6 +1703,45 @@ function emptyMessagePage(): WorkbenchMessagePageDto {
   };
 }
 
+type ParsedMessageUpdateEvent = {
+  messageId: string;
+};
+
+function parseMessageUpdateEvent(content: string): ParsedMessageUpdateEvent | undefined {
+  try {
+    const parsed: unknown = JSON.parse(content);
+
+    if (!isRecord(parsed)) {
+      return undefined;
+    }
+
+    const messageId = readRecordNumber(parsed, "messageId");
+
+    if (!messageId) {
+      return undefined;
+    }
+
+    return {
+      messageId: String(messageId),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function toTimestamp(value: Date | number | string | null | undefined) {
+  if (value == null) {
+    return 0;
+  }
+
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
 function emptyHistoryMessagePage(): WorkbenchHistoryMessagePageDto {
   return {
     hasNext: false,

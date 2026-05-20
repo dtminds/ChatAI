@@ -12,6 +12,8 @@ import type {
   WorkbenchMessageFileDownloadResponse,
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchMessagePageDto,
+  WorkbenchMessageQueryByIdsRequest,
+  WorkbenchMessageQueryByIdsResponse,
   WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
@@ -51,6 +53,7 @@ import {
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
+const POLL_MESSAGE_UPDATE_LIMIT = 200;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -75,6 +78,11 @@ export type WorkbenchService = {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ): Promise<WorkbenchMessagePageDto> | WorkbenchMessagePageDto;
+  getMessagesByIds(
+    subUserId: string,
+    conversationId: string,
+    messageIds: string[],
+  ): Promise<WorkbenchMessageQueryByIdsResponse> | WorkbenchMessageQueryByIdsResponse;
   getHistoryMessages(
     subUserId: string,
     conversationId: string,
@@ -260,6 +268,22 @@ export class MysqlWorkbenchService implements WorkbenchService {
       beforeSeq: options?.beforeSeq,
       limit: options?.limit ?? 30,
     });
+  }
+
+  async getMessagesByIds(
+    subUserId: string,
+    conversationId: string,
+    messageIds: string[],
+  ) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    return this.repository.listMessagesByIds(conversationId, messageIds);
   }
 
   async getHistoryMessages(
@@ -495,6 +519,15 @@ export class MysqlWorkbenchService implements WorkbenchService {
             page.messages.filter((message) => message.seq > (request.activeMessageSeq ?? 0)),
           )
         : [];
+    const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
+    const messageUpdateEvents =
+      request.activeConversationId &&
+      typeof this.repository.listMessageUpdateEvents === "function"
+        ? await this.repository.listMessageUpdateEvents(request.activeConversationId, {
+            afterCreateTime: messageUpdateCursor,
+            limit: POLL_MESSAGE_UPDATE_LIMIT,
+          })
+        : [];
     const sinceLastMsgTime = Math.max(
       0,
       request.sinceVersion -
@@ -554,7 +587,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
         type: "upsert" as const,
       })),
       messageStatusChanges: [],
+      messageUpdateEvents,
       nextVersion,
+      nextMessageUpdateCursor: getNextMessageUpdateCursor(
+        messageUpdateCursor,
+        messageUpdateEvents,
+      ),
       seatChanges: seatChange
         ? [
             {
@@ -717,6 +755,36 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     return conversation;
   }
+}
+
+function getNextMessageUpdateCursor(
+  currentCursor: number,
+  events: Array<{
+    eventTime?: number;
+  }>,
+) {
+  if (!Number.isFinite(currentCursor)) {
+    return undefined;
+  }
+
+  if (!events.length) {
+    return currentCursor;
+  }
+
+  const latestEventTime = events.reduce(
+    (latest, event) => {
+      const eventTime = event.eventTime;
+
+      if (eventTime == null) {
+        return latest;
+      }
+
+      return Math.max(latest, eventTime);
+    },
+    currentCursor,
+  );
+
+  return latestEventTime;
 }
 
 function getSingleSendSegment(

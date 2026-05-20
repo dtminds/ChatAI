@@ -1106,6 +1106,126 @@ describe("useWorkbenchStore", () => {
     expect(state.sinceVersion).toBeGreaterThan(0);
   });
 
+  it("reloads message details in batch for poll message update events", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedMessageIdBatches: Array<string[]> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          messageUpdateEvents: [
+            {
+              conversationId: request.activeConversationId ?? "conv-001",
+              eventId: 4,
+              messageId: "829",
+            },
+          ],
+          nextMessageUpdateCursor: 1_778_840_010_000,
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+      async getMessagesByIds(input) {
+        if (input.conversationId === "conv-001" && input.messageIds.includes("829")) {
+          observedMessageIdBatches.push(["829"]);
+          return {
+            messages: [
+              {
+                content: { text: "更新后的消息" },
+                contentType: "text",
+                conversationId: "conv-001",
+                createdAt: 1_778_840_010_000,
+                customerId: "cust-001",
+                messageId: "829",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 829,
+                status: "read",
+              },
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedMessageIdBatches).toEqual([["829"]]);
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
+        (message) => message.id === "829",
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores refreshed message details when the message is not already in store", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          messageUpdateEvents: [
+            {
+              conversationId: request.activeConversationId ?? "conv-001",
+              eventId: 6,
+              messageId: "999999",
+            },
+          ],
+          nextMessageUpdateCursor: 1_778_840_010_000,
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+      async getMessagesByIds(input) {
+        if (input.messageIds.includes("999999")) {
+          return {
+            messages: [
+              {
+                content: { text: "不会被插入" },
+                contentType: "text",
+                conversationId: input.conversationId,
+                createdAt: 1_778_410_200_000,
+                customerId: "cust-001",
+                messageId: "999999",
+                seatId: "drc",
+                senderAvatar: "",
+                senderName: "幽灵消息",
+                senderType: "customer",
+                seq: 999999,
+                status: "read",
+                thirdExternalUserId: "external-1",
+                thirdFromId: "sender-cust-001",
+                thirdUserId: "third-user-drc",
+              },
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const beforeLength = useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().messagesByConversationId["conv-001"]).toHaveLength(
+      beforeLength,
+    );
+  });
+
   it("preserves the current conversation and unrelated pending messages during cursor recovery", async () => {
     const baseService = createMockWorkbenchService();
     let shouldInvalidateCursor = true;

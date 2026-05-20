@@ -24,6 +24,8 @@ import {
   type WorkbenchGroupMembersResponse,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
+  type WorkbenchMessageQueryByIdsRequest,
+  type WorkbenchMessageQueryByIdsResponse,
   type WorkbenchMessageFileDownloadResponse,
   type WorkbenchMessageFileDownloadStatusResponse,
   type WorkbenchMessagePageDto,
@@ -31,6 +33,7 @@ import {
   type WorkbenchMessageStatusChangeDto,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
+  type WorkbenchMessageUpdateEventDto,
   type WorkbenchSendMessagePayload,
   type SettingsSidebarItemsResponse,
   type WorkbenchSidebarIframeParamsDto,
@@ -73,6 +76,9 @@ export type WorkbenchService = {
   ) => Promise<WorkbenchHistoryMessagePageDto>;
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
+  getMessagesByIds: (
+    input: WorkbenchMessageQueryByIdsRequest,
+  ) => Promise<WorkbenchMessageQueryByIdsResponse>;
   downloadMessageFile: (input: {
     conversationId: string;
     messageId: string;
@@ -111,10 +117,15 @@ type WorkbenchEvent =
       type: "message";
       payload: WorkbenchMessageDto;
     }
-  | {
+    | {
       version: number;
       type: "message-status";
       payload: WorkbenchMessageStatusChangeDto;
+    }
+  | {
+      version: number;
+      type: "message-update";
+      payload: WorkbenchMessageUpdateEventDto;
     };
 
 type MockState = {
@@ -250,6 +261,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         messages: clone(scannedMessages),
         nextBeforeSeq: scannedMessages[0]?.seq,
         scannedCount: scannedMessages.length,
+      };
+    },
+    async getMessagesByIds(input) {
+      const messages = state.messagesByConversationId[input.conversationId] ?? [];
+      const normalizedIds = new Set(input.messageIds);
+
+      return {
+        messages: clone(
+          messages.filter((message) => normalizedIds.has(message.messageId)),
+        ),
       };
     },
     async downloadMessageFile(input) {
@@ -430,11 +451,19 @@ export function createMockWorkbenchService(): WorkbenchService {
             event.type === "message-status",
         )
         .map((event) => event.payload);
+      const messageUpdateEvents = relevantEvents
+        .filter(
+          (event): event is Extract<WorkbenchEvent, { type: "message-update" }> =>
+            event.type === "message-update" &&
+            event.payload.conversationId === request.activeConversationId,
+        )
+        .map((event) => event.payload);
 
       return {
         seatChanges: clone(seatChanges),
         activeConversationMessages: clone(activeConversationMessages),
         conversationChanges: clone(conversationChanges),
+        messageUpdateEvents: clone(messageUpdateEvents),
         messageStatusChanges: clone(messageStatusChanges),
         nextVersion: state.version,
       };
@@ -589,6 +618,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
         },
       );
     },
+    getMessagesByIds(input) {
+      return http.post<WorkbenchMessageQueryByIdsResponse, WorkbenchMessageQueryByIdsRequest>(
+        "/server/messages/query-by-ids",
+        input,
+      );
+    },
     downloadMessageFile(input) {
       return http.post<
         WorkbenchMessageFileDownloadResponse,
@@ -642,6 +677,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
           active_message_seq: request.activeMessageSeq,
           current_seat_id: request.currentSeatId,
           fresh_baseline: request.freshBaseline ? "1" : undefined,
+          message_update_cursor: request.messageUpdateCursor,
           since_version: request.sinceVersion,
         },
       });
@@ -1266,11 +1302,14 @@ function pushMessageStatusEvent(
   });
 }
 
-function pushMessageEvent(state: MockState, message: WorkbenchMessageDto) {
-  state.version = Math.max(state.version + 1, Date.now(), message.createdAt ?? 0);
+function pushMessageUpdateEvent(
+  state: MockState,
+  event: WorkbenchMessageUpdateEventDto,
+) {
+  state.version = Math.max(state.version + 1, Date.now());
   state.events.push({
-    payload: message,
-    type: "message",
+    payload: event,
+    type: "message-update",
     version: state.version,
   });
 }
@@ -1287,26 +1326,20 @@ function revokeMessage(
     return;
   }
 
-  const revokeEventMessage = {
-    content: {
-      revokeMsgId: messageId,
-      revokeOriginMsgId: messageId,
-      type: "revoke",
-    },
-    contentType: "revoke",
+  const nextMessage = {
+    ...originalMessage,
+    isRevoked: true,
+  };
+
+  state.messagesByConversationId[conversationId] = messages.map((message) =>
+    message.messageId === messageId ? nextMessage : message,
+  );
+
+  pushMessageUpdateEvent(state, {
     conversationId,
-    createdAt: Math.max(Date.now(), (messages.at(-1)?.createdAt ?? 0) + 1),
-    customerId: originalMessage.customerId,
-    messageId: `revoke-${messageId}`,
-    seatId: originalMessage.seatId,
-    senderType: "system",
-    seq: getNextMessageSeq(state, conversationId),
-    status: "read",
-  } satisfies WorkbenchMessageDto;
-
-  state.messagesByConversationId[conversationId] = [...messages, revokeEventMessage];
-
-  pushMessageEvent(state, revokeEventMessage);
+    eventId: state.version + 1,
+    messageId,
+  });
 }
 
 function getNextMessageSeq(state: MockState, conversationId: string) {

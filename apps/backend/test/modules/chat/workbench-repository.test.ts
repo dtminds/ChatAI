@@ -54,7 +54,8 @@ function createHistoryMessagesDb(rows: MessageRow[], conversationOverrides: Reco
       if (
         table === "xy_wap_embed_group_member as member" ||
         table === "xy_wap_embed_user_seat" ||
-        table === "xy_wap_embed_contact"
+        table === "xy_wap_embed_contact" ||
+        table === "xy_wap_embed_customer_bind_relation"
       ) {
         return createQueryBuilder([]);
       }
@@ -103,7 +104,67 @@ function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
       if (
         table === "xy_wap_embed_group_member as member" ||
         table === "xy_wap_embed_user_seat" ||
-        table === "xy_wap_embed_contact"
+        table === "xy_wap_embed_contact" ||
+        table === "xy_wap_embed_customer_bind_relation"
+      ) {
+        return createQueryBuilder([]);
+      }
+
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+}
+
+function createMessagesByIdsDb(
+  rows: MessageRow[],
+  quoteRows: MessageRow[] = [],
+  conversationOverrides: Record<string, unknown> = {},
+) {
+  const messageQueries: Array<{
+    table: string;
+    wheres: Array<[string, string, unknown]>;
+  }> = [];
+
+  return {
+    messageQueries,
+    selectFrom(table: string) {
+      if (table === "xy_wap_embed_conversation as conversation") {
+        return createQueryBuilder({
+          chat_type: 1,
+          conversation_external_id: "external-1",
+          conversation_group_id: "",
+          conversation_id: 88,
+          platform: 5,
+          seat_id: 12,
+          third_userid: "seat-third-user-1",
+          uid: 9001,
+          ...conversationOverrides,
+        });
+      }
+
+      if (table === "xy_wap_embed_user_seat as seat") {
+        return createQueryBuilder({
+          id: 12,
+          third_userid: "seat-third-user-1",
+          uid: 9001,
+          platform: 5,
+        });
+      }
+
+      if (table === "xy_wap_embed_msg_audit_info as message") {
+        const queryIndex = messageQueries.filter((query) => query.table === table).length;
+        const query = createQueryBuilder(queryIndex === 0 ? rows : quoteRows);
+        messageQueries.push({
+          table,
+          wheres: query.wheres,
+        });
+        return query;
+      }
+
+      if (
+        table === "xy_wap_embed_contact" ||
+        table === "xy_wap_embed_customer_bind_relation" ||
+        table === "xy_wap_embed_group_member as member"
       ) {
         return createQueryBuilder([]);
       }
@@ -267,6 +328,29 @@ function createConversationRow(overrides: Partial<Record<string, unknown>> = {})
     third_userid: "seat-user-001",
     unread_cnt: 0,
     verified: 1,
+    ...overrides,
+  };
+}
+
+function createConversationMessageRow(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    chat_type: 1,
+    content: JSON.stringify({ text: "hello" }),
+    conversation_external_id: "external-1",
+    conversation_group_id: "",
+    conversation_id: 88,
+    from_type: 2,
+    id: 829,
+    msgid: "remote-msg-829",
+    msgtime: 1_778_840_010_000,
+    msgtype: "text",
+    opt_no: null,
+    revoke_status: 0,
+    seat_id: 12,
+    third_external_id: "external-1",
+    third_from_id: "external-1",
+    third_group_id: null,
+    third_user_id: "seat-user-001",
     ...overrides,
   };
 }
@@ -849,6 +933,143 @@ describe("WorkbenchRepository", () => {
       1_778_840_000_000,
     ]);
     expect(query.wheres).toContainEqual(["conversation.biz_status", "=", 1]);
+  });
+
+  it("lists messages by ids in the conversation tenant scope", async () => {
+    const messageRows = [
+      createConversationMessageRow({
+        id: 829,
+        msgid: "remote-msg-829",
+        msgtime: 1_778_840_010_000,
+        third_external_id: "external-1",
+        third_from_id: "external-1",
+        third_user_id: "seat-user-001",
+      }),
+    ];
+    const repository = new WorkbenchRepository(
+      createMessagesByIdsDb(messageRows) as never,
+    );
+
+    await expect(
+      repository.listMessagesByIds("88", ["829", "829", "0", "bad"]),
+    ).resolves.toMatchObject({
+      messages: [
+        expect.objectContaining({
+          messageId: "remote-msg-829",
+          senderAvatar: "",
+          senderName: "external-1",
+          seq: 829,
+        }),
+      ],
+    });
+  });
+
+  it("scopes message id lookup to the single conversation key", async () => {
+    const db = createMessagesByIdsDb([
+      createConversationMessageRow({
+        id: 829,
+        msgid: "remote-msg-829",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.listMessagesByIds("88", ["829"]);
+
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.uid", "=", 9001]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.platform", "=", 5]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "seat-third-user-1",
+    ]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_external_id",
+      "=",
+      "external-1",
+    ]);
+  });
+
+  it("scopes message id lookup to the group conversation key", async () => {
+    const db = createMessagesByIdsDb(
+      [
+        createConversationMessageRow({
+          chat_type: 2,
+          conversation_external_id: "",
+          conversation_group_id: "group-1",
+          id: 829,
+          msgid: "remote-msg-829",
+          third_external_id: null,
+          third_group_id: "group-1",
+        }),
+      ],
+      [],
+      {
+        chat_type: 2,
+        conversation_external_id: "",
+        conversation_group_id: "group-1",
+      },
+    );
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.listMessagesByIds("88", ["829"]);
+
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.uid", "=", 9001]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.platform", "=", 5]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "seat-third-user-1",
+    ]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_group_id",
+      "=",
+      "group-1",
+    ]);
+  });
+
+  it("hydrates quote previews when fetching messages by ids", async () => {
+    const db = createMessagesByIdsDb(
+      [
+        createConversationMessageRow({
+          content: JSON.stringify({
+            content: "正式引用消息",
+            quoteMsgId: 101,
+          }),
+          id: 102,
+          msgid: "remote-msg-102",
+          msgtype: "quote",
+        }),
+      ],
+      [
+        createConversationMessageRow({
+          content: JSON.stringify({ text: "测试被引用" }),
+          id: 101,
+          msgid: "remote-msg-101",
+          msgtype: "text",
+          third_user_id: "seat-third-user-1",
+        }),
+      ],
+    );
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(repository.listMessagesByIds("88", ["102"])).resolves.toMatchObject({
+      messages: [
+        {
+          content: {
+            quotedMessage: {
+              contentType: "text",
+              senderName: "external-1",
+              text: "测试被引用",
+            },
+            quoteMsgId: "101",
+            text: "正式引用消息",
+          },
+          contentType: "quote",
+          messageId: "remote-msg-102",
+        },
+      ],
+    });
+    expect(db.messageQueries).toHaveLength(2);
   });
 
   it("skips changed conversation hydration when the poll change limit is exceeded", async () => {

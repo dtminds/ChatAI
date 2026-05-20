@@ -1431,7 +1431,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
     });
 
     expect(read.statusCode).toBe(200);
@@ -1470,7 +1470,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
     });
 
     expect(unread.statusCode).toBe(200);
@@ -1509,7 +1509,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
     });
 
     expect(pin.statusCode).toBe(200);
@@ -1539,7 +1539,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
     });
 
     expect(unpin.statusCode).toBe(200);
@@ -1574,7 +1574,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
     });
 
     expect(response.statusCode).toBe(200);
@@ -1616,7 +1616,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
     });
 
     expect(send.statusCode).toBe(200);
@@ -1673,7 +1673,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
     });
     const messages = await app.inject({
       headers: { authorization },

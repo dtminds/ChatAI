@@ -12,6 +12,7 @@ import {
   loadGroupMembers,
   loadAccountScope,
   loadConversationMessagesPage,
+  loadMessagesByIds,
   loadSeats,
   markConversationRead,
   markConversationUnread,
@@ -135,6 +136,7 @@ type WorkbenchState = {
   takeoverStatusByAccountId: Record<string, TakeoverStatus>;
   pollState: PollState;
   sinceVersion: number;
+  messageUpdateCursor?: number;
   isPollBaselineFresh: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
@@ -261,6 +263,7 @@ function createInitialState(): Omit<
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
     sinceVersion: 0,
+    messageUpdateCursor: undefined,
     isPollBaselineFresh: false,
     sidebarItems: [],
     takeoverStatusByAccountId: {},
@@ -504,9 +507,27 @@ function upsertMessageList(
 
     if (existingIndex >= 0) {
       const currentMessage = merged[existingIndex];
+      if (currentMessage.role === "system" || nextMessage.role === "system") {
+        merged[existingIndex] = {
+          ...currentMessage,
+          ...nextMessage,
+        };
+        continue;
+      }
+
+      const nextSender = nextMessage.sender;
       merged[existingIndex] = {
         ...currentMessage,
         ...nextMessage,
+        sender: {
+          ...currentMessage.sender,
+          ...nextSender,
+          avatarUrl: nextSender.avatarUrl || currentMessage.sender.avatarUrl,
+          name: nextSender.name || currentMessage.sender.name,
+        },
+        senderDisplayName:
+          nextMessage.senderDisplayName ?? currentMessage.senderDisplayName,
+        author: nextMessage.author || currentMessage.author,
         clientMessageId: nextMessage.clientMessageId ?? currentMessage.clientMessageId,
       };
       continue;
@@ -516,6 +537,48 @@ function upsertMessageList(
   }
 
   return [...merged, ...sortMessagesForAppend(appendedMessages)];
+}
+
+function patchExistingMessageList(
+  currentMessages: Message[],
+  refreshedMessages: Message[],
+) {
+  if (!currentMessages.length || !refreshedMessages.length) {
+    return currentMessages;
+  }
+
+  const currentIndexById = new Map<string, number>();
+
+  currentMessages.forEach((message, index) => {
+    currentIndexById.set(message.id, index);
+  });
+
+  const merged = [...currentMessages];
+
+  for (const refreshedMessage of refreshedMessages) {
+    const existingIndex = currentIndexById.get(refreshedMessage.id);
+
+    if (existingIndex == null) {
+      continue;
+    }
+
+    const currentMessage = merged[existingIndex];
+
+    if (currentMessage.role === "system" || refreshedMessage.role === "system") {
+      merged[existingIndex] = {
+        ...currentMessage,
+        ...refreshedMessage,
+      };
+      continue;
+    }
+
+    merged[existingIndex] = {
+      ...currentMessage,
+      ...refreshedMessage,
+    };
+  }
+
+  return merged;
 }
 
 function isRevokeSignalMessage(message: Message) {
@@ -1434,10 +1497,10 @@ export function createWorkbenchStore() {
           seatOrder: conversationListCacheSeatOrder,
         });
 
-        set({
-          accounts: bootstrapResult.accounts,
-          activeAccountId: bootstrapResult.activeAccountId,
-          activeConversationId: bootstrapResult.activeConversationId,
+          set({
+            accounts: bootstrapResult.accounts,
+            activeAccountId: bootstrapResult.activeAccountId,
+            activeConversationId: bootstrapResult.activeConversationId,
           activeMessageSeq: getActiveMessageSeq(
             conversationPage
               ? {
@@ -1478,6 +1541,7 @@ export function createWorkbenchStore() {
             : {},
           sidebarItems: bootstrapResult.sidebarItems,
           isPollBaselineFresh: true,
+          messageUpdateCursor: undefined,
           sinceVersion: bootstrapResult.pollBaseline,
         });
 
@@ -1547,6 +1611,7 @@ export function createWorkbenchStore() {
           activeMessageSeq: state.activeMessageSeq,
           currentAccountId: state.activeAccountId,
           freshBaseline: state.isPollBaselineFresh,
+          messageUpdateCursor: state.messageUpdateCursor,
           sinceVersion: state.sinceVersion,
         };
         const response = await pollWorkbench(request, {
@@ -1554,6 +1619,39 @@ export function createWorkbenchStore() {
           customerProfilesById: state.customerProfilesById,
           me: state.me,
         });
+        const messageUpdateIdsByConversationId = (response.messageUpdateEvents ?? []).reduce(
+          (accumulator, event) => {
+            const currentIds = accumulator[event.conversationId];
+
+            if (currentIds) {
+              currentIds.push(event.messageId);
+            } else {
+              accumulator[event.conversationId] = [event.messageId];
+            }
+
+            return accumulator;
+          },
+          {} as Record<string, string[]>,
+        );
+
+        const refreshedMessagesByConversationId = Object.fromEntries(
+          await Promise.all(
+            Object.entries(messageUpdateIdsByConversationId).map(
+              async ([conversationId, messageIds]): Promise<[string, Message[]]> => [
+                conversationId,
+                await loadMessagesByIds(
+                  {
+                    accounts: state.accounts,
+                    customerProfilesById: state.customerProfilesById,
+                    me: state.me,
+                  },
+                  conversationId,
+                  messageIds,
+                ),
+              ],
+            ),
+          ),
+        ) as Record<string, Message[]>;
 
         set((currentState) => {
           const isStaleScope =
@@ -1626,6 +1724,20 @@ export function createWorkbenchStore() {
               upsertMessageList(currentMessages, response.activeConversationMessages);
           }
 
+          for (const [conversationId, refreshedMessages] of Object.entries(
+            refreshedMessagesByConversationId,
+          )) {
+            if (!refreshedMessages.length) {
+              continue;
+            }
+
+            const conversationMessages = nextMessagesByConversationId[conversationId] ?? [];
+            nextMessagesByConversationId[conversationId] = patchExistingMessageList(
+              conversationMessages,
+              refreshedMessages,
+            );
+          }
+
           for (const change of response.messageStatusChanges) {
             const conversationMessages = nextMessagesByConversationId[change.conversationId] ?? [];
 
@@ -1684,6 +1796,8 @@ export function createWorkbenchStore() {
               lastSuccessAt: Date.now(),
               status: "idle",
             },
+            messageUpdateCursor:
+              response.nextMessageUpdateCursor ?? currentState.messageUpdateCursor,
             sinceVersion: response.nextVersion,
           };
         });
@@ -1764,17 +1878,18 @@ export function createWorkbenchStore() {
                 ? currentState.activeConversationId
                 : scopeResult.nextConversationId;
 
-              return {
-                ...nextState,
-                activeConversationId: nextActiveConversationId,
-                activeMessageSeq: getActiveMessageSeq(
-                  nextMessagesByConversationId,
-                  nextActiveConversationId,
-                ),
-                pendingMessages: currentState.pendingMessages.filter(
-                  (message) => message.conversationId !== state.activeConversationId,
-                ),
-                isPollBaselineFresh: true,
+            return {
+              ...nextState,
+              activeConversationId: nextActiveConversationId,
+              activeMessageSeq: getActiveMessageSeq(
+                nextMessagesByConversationId,
+                nextActiveConversationId,
+              ),
+              messageUpdateCursor: undefined,
+              pendingMessages: currentState.pendingMessages.filter(
+                (message) => message.conversationId !== state.activeConversationId,
+              ),
+              isPollBaselineFresh: true,
                 sinceVersion: scopeResult.pollBaseline,
               };
             });
@@ -2534,6 +2649,7 @@ export function createWorkbenchStore() {
                   }
                 : nextGroupMembersLoadingByConversationId,
             isPollBaselineFresh: true,
+            messageUpdateCursor: undefined,
             sinceVersion: scopeResult.pollBaseline,
           };
         });
@@ -2581,6 +2697,7 @@ export function createWorkbenchStore() {
         isConversationLoading: true,
         historyPanelOpenConversationId: undefined,
         scopeTransitionError: undefined,
+        messageUpdateCursor: undefined,
       });
 
       if (currentConversation?.mode === "group") {
@@ -2646,6 +2763,7 @@ export function createWorkbenchStore() {
             },
             isConversationLoading: false,
             messagesByConversationId: nextMessagesByConversationId,
+            messageUpdateCursor: undefined,
             scopeTransitionError: undefined,
           };
         });

@@ -1,4 +1,5 @@
 import type {
+  WorkbenchMessageQueryByIdsRequest,
   WorkbenchPollRequest,
   WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
@@ -60,6 +61,11 @@ const MessageDownloadStatusBodySchema = Type.Object({
   messageSeq: Type.Number(),
 });
 
+const MessageQueryByIdsBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageIds: Type.Array(Type.String()),
+});
+
 const WorkbenchMessageContentTypeSchema = Type.Union([
   Type.Literal("system"),
   Type.Literal("revoke"),
@@ -84,6 +90,7 @@ const PollQuerySchema = Type.Object({
   active_message_seq: Type.Optional(NumericStringSchema),
   current_seat_id: Type.Optional(Type.String()),
   fresh_baseline: Type.Optional(Type.Union([Type.Literal("0"), Type.Literal("1")])),
+  message_update_cursor: Type.Optional(NumericStringSchema),
   since_version: Type.Optional(NumericStringSchema),
 });
 
@@ -189,6 +196,7 @@ type MediaProxyQuery = Static<typeof MediaProxyQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
+type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
@@ -300,6 +308,22 @@ export async function registerChatRoutes(app: FastifyInstance) {
         },
       );
     },
+  );
+
+  app.post<{ Body: MessageQueryByIdsBody }>(
+    "/api/server/messages/query-by-ids",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageQueryByIdsBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getMessagesByIds(
+        getSubUserId(request),
+        request.body.conversationId,
+        request.body.messageIds,
+      ),
   );
 
   app.get<{
@@ -443,6 +467,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
         activeMessageSeq: parseOptionalInteger(request.query.active_message_seq),
         currentSeatId: request.query.current_seat_id,
         freshBaseline: request.query.fresh_baseline === "1",
+        messageUpdateCursor: parseOptionalInteger(request.query.message_update_cursor),
         sinceVersion: parseOptionalInteger(request.query.since_version) ?? 0,
       } satisfies WorkbenchPollRequest;
 

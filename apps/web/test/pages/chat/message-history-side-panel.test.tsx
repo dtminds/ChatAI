@@ -117,8 +117,9 @@ describe("MessageHistorySidePanel", () => {
 
     expect(singleAccountButton).toBeInTheDocument();
     expect(singleCustomerButton).toBeInTheDocument();
-    expect(within(singleAccountButton).getByText("☐")).toBeInTheDocument();
-    expect(within(singleCustomerButton).getByText("☐")).toBeInTheDocument();
+    expect(screen.getByTestId("history-sender-selected-icon")).toBeInTheDocument();
+    expect(screen.queryByText("☑️")).not.toBeInTheDocument();
+    expect(screen.queryByText("☐")).not.toBeInTheDocument();
     expect(within(singleAccountButton).getByText("林")).toBeInTheDocument();
     expect(within(singleCustomerButton).getByText("测")).toBeInTheDocument();
   });
@@ -168,7 +169,9 @@ describe("MessageHistorySidePanel", () => {
 
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     expect(screen.queryByText("当前客服")).not.toBeInTheDocument();
-    expect(screen.getByText("☑️")).toBeInTheDocument();
+    expect(screen.getByTestId("history-sender-selected-icon")).toBeInTheDocument();
+    expect(screen.queryByText("☑️")).not.toBeInTheDocument();
+    expect(screen.queryByText("☐")).not.toBeInTheDocument();
     const groupDialog = screen.getByRole("dialog");
     const groupMemberButton = within(groupDialog).getByRole("button", { name: /小林/ });
     const anotherMemberButton = within(groupDialog).getByRole("button", { name: /睿白鸽/ });

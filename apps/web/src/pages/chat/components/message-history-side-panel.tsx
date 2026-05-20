@@ -4,6 +4,7 @@ import {
   Cancel01Icon,
   Loading03Icon,
   PlayIcon,
+  Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -1088,8 +1089,15 @@ function SenderFilter({
             }}
             type="button"
           >
-            <span className="w-4 shrink-0 text-[13px] leading-none">
-              {(value ?? "__all__") === "__all__" ? "☑️" : "☐"}
+            <span className="flex size-4 shrink-0 items-center justify-center">
+              {(value ?? "__all__") === "__all__" ? (
+                <HugeiconsIcon
+                  data-testid="history-sender-selected-icon"
+                  icon={Tick02Icon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              ) : null}
             </span>
             <span className="min-w-0 flex-1 truncate">全部</span>
           </button>
@@ -1110,10 +1118,17 @@ function SenderFilter({
                 }}
                 type="button"
               >
-                <span className="w-4 shrink-0 text-[13px] leading-none">
-                  {isSelected ? "☑️" : "☐"}
+                <span className="flex size-4 shrink-0 items-center justify-center">
+                  {isSelected ? (
+                    <HugeiconsIcon
+                      data-testid="history-sender-selected-icon"
+                      icon={Tick02Icon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                  ) : null}
                 </span>
-                <Avatar className="size-7 shrink-0">
+                <Avatar className="size-5 shrink-0">
                   <AvatarImage alt={option.label} src={option.avatarUrl} />
                   <AvatarFallback className="text-[11px]">
                     {getFirstGrapheme(option.label)}

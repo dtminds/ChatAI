@@ -1621,8 +1621,14 @@ export function createWorkbenchStore() {
         });
         const messageUpdateIdsByConversationId = (response.messageUpdateEvents ?? []).reduce(
           (accumulator, event) => {
-            const currentIds = accumulator[event.conversationId] ?? [];
-            accumulator[event.conversationId] = [...currentIds, event.messageId];
+            const currentIds = accumulator[event.conversationId];
+
+            if (currentIds) {
+              currentIds.push(event.messageId);
+            } else {
+              accumulator[event.conversationId] = [event.messageId];
+            }
+
             return accumulator;
           },
           {} as Record<string, string[]>,

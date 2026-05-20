@@ -527,7 +527,11 @@ function ChatWorkbenchContent({
 
       if (!result.ok) {
         setSendFailureDialog(
-          getSendFailureDialogCopy(result.reason, result.errorCode),
+          getSendFailureDialogCopy(
+            result.reason,
+            result.errorCode,
+            result.errorMessage,
+          ),
         );
         composerRef.current?.focus();
         return;
@@ -642,7 +646,11 @@ function ChatWorkbenchContent({
 
           if (!result.ok) {
             setSendFailureDialog(
-              getSendFailureDialogCopy(result.reason, result.errorCode),
+              getSendFailureDialogCopy(
+                result.reason,
+                result.errorCode,
+                result.errorMessage,
+              ),
             );
             composerRef.current?.focus();
             return;
@@ -654,7 +662,11 @@ function ChatWorkbenchContent({
 
           if (fileUploadQueueRef.current.some((item) => item.id === uploadId)) {
             setSendFailureDialog(
-              getSendFailureDialogCopy("file-upload", getSendErrorCode(error)),
+              getSendFailureDialogCopy(
+                "file-upload",
+                getSendErrorCode(error),
+                getSendErrorMessage(error),
+              ),
             );
             composerRef.current?.focus();
           }
@@ -1288,31 +1300,34 @@ function ChatWorkbenchContent({
 function getSendFailureDialogCopy(
   reason: "file-upload" | "image-upload" | "send" | "unavailable",
   errorCode: string,
+  errorMessage?: string,
 ) {
+  const description = errorMessage?.trim() || `ErrorCode: ${errorCode}`;
+
   if (reason === "file-upload") {
     return {
       title: "文件上传失败，请稍后重试",
-      description: `ErrorCode: ${errorCode}`,
+      description,
     };
   }
 
   if (reason === "image-upload") {
     return {
       title: "图片上传失败，请稍后重试",
-      description: `ErrorCode: ${errorCode}`,
+      description,
     };
   }
 
   if (reason === "unavailable") {
     return {
       title: "当前无法发送消息，请稍后重试",
-      description: `ErrorCode: ${errorCode}`,
+      description,
     };
   }
 
   return {
     title: "发送失败，请稍后重试",
-    description: `ErrorCode: ${errorCode}`,
+    description,
   };
 }
 
@@ -1501,6 +1516,14 @@ function getSendErrorCode(error: unknown) {
   return "UNKNOWN";
 }
 
+function getSendErrorMessage(error: unknown) {
+  if (isErrorWithMessage(error)) {
+    return error.message;
+  }
+
+  return undefined;
+}
+
 function isErrorWithCode(error: unknown): error is { code: string } {
   return (
     typeof error === "object" &&
@@ -1516,6 +1539,15 @@ function isErrorWithStatus(error: unknown): error is { status: number } {
     error !== null &&
     "status" in error &&
     typeof (error as { status: unknown }).status === "number"
+  );
+}
+
+function isErrorWithMessage(error: unknown): error is { message: string } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message === "string"
   );
 }
 

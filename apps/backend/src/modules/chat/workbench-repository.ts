@@ -1508,7 +1508,8 @@ export class WorkbenchRepository {
       return [];
     }
 
-    const pattern = `%${keyword}%`;
+    const escapedKeyword = keyword.replace(/[%_]/g, "\\$&");
+    const pattern = "%" + escapedKeyword + "%";
 
     const rows = await this.db
       .selectFrom("xy_wap_embed_contact as contact")
@@ -1570,7 +1571,8 @@ export class WorkbenchRepository {
       return [];
     }
 
-    const pattern = `%${keyword}%`;
+    const escapedKeyword = keyword.replace(/[%_]/g, "\\$&");
+    const pattern = "%" + escapedKeyword + "%";
 
     const rows = await this.db
       .selectFrom("xy_wap_embed_group_seat as gs")
@@ -1701,95 +1703,8 @@ export class WorkbenchRepository {
     return row?.id != null ? String(row.id) : undefined;
   }
 
-  async createLocalConversation(
-    uid: number,
-    platform: number,
-    seatThirdUserId: string,
-    chatType: number,
-    targetId: string,
-  ): Promise<string> {
-    const isGroup = chatType === CHAT_TYPE_GROUP;
-    const inserted = await this.db
-      .insertInto("xy_wap_embed_conversation")
-      .values({
-        uid,
-        platform,
-        third_userid: seatThirdUserId,
-        chat_type: chatType,
-        third_external_userid: isGroup ? "" : targetId,
-        third_group_id: isGroup ? targetId : "",
-        last_msgtime: Date.now(),
-        biz_status: 1,
-      })
-      .executeTakeFirstOrThrow();
-
-    const insertId = "insertId" in inserted ? inserted.insertId : (inserted as { id?: number }).id;
-    if (insertId == null) {
-      throw new Error("Failed to insert local conversation");
-    }
-
-    return String(insertId);
-  }
-
-  async createConversationWithId(
-    conversationId: string,
-    uid: number,
-    platform: number,
-    seatThirdUserId: string,
-    chatType: number,
-    thirdExternalUserId: string,
-    thirdGroupId: string,
-  ): Promise<string> {
-    const numericId = Number(conversationId);
-    const isGroup = chatType === CHAT_TYPE_GROUP;
-
-    const inserted = await this.db
-      .insertInto("xy_wap_embed_conversation")
-      .values({
-        id: isNaN(numericId) ? undefined : numericId,
-        uid,
-        platform,
-        third_userid: seatThirdUserId,
-        chat_type: chatType,
-        third_external_userid: isGroup ? "" : thirdExternalUserId,
-        third_group_id: isGroup ? thirdGroupId : "",
-        last_msgtime: Date.now(),
-        biz_status: 1,
-      })
-      .executeTakeFirstOrThrow()
-      .catch(async (err: unknown) => {
-        // Only fall back to autoincrement on duplicate key (errno 1062 / ER_DUP_ENTRY).
-        // All other errors (SQL syntax, permission, constraint) should propagate.
-        const isDuplicateKey =
-          typeof err === "object" &&
-          err !== null &&
-          ((err as { errno?: number }).errno === 1062 ||
-            (err as { code?: string }).code === "ER_DUP_ENTRY");
-        if (!isDuplicateKey) {
-          throw err;
-        }
-        return this.db
-          .insertInto("xy_wap_embed_conversation")
-          .values({
-            uid,
-            platform,
-            third_userid: seatThirdUserId,
-            chat_type: chatType,
-            third_external_userid: isGroup ? "" : thirdExternalUserId,
-            third_group_id: isGroup ? thirdGroupId : "",
-            last_msgtime: Date.now(),
-            biz_status: 1,
-          })
-          .executeTakeFirstOrThrow();
-      });
-
-    const insertId = "insertId" in inserted ? inserted.insertId : (inserted as { id?: number }).id;
-    if (insertId == null) {
-      throw new Error("Failed to insert conversation");
-    }
-    return String(insertId);
-  }
 }
+
 
 function emptyMessagePage(): WorkbenchMessagePageDto {
   return {

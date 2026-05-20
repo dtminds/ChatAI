@@ -148,7 +148,7 @@ export function createWorkbenchJavaClient(
         .catch((error) => {
           logger.warn(
             { error, input },
-            "调用 Java 创建会话接口失败，将使用本地 fallback 创建",
+            "调用 Java 创建会话接口失败",
           );
           return undefined;
         });

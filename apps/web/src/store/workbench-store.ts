@@ -1261,17 +1261,18 @@ export function createWorkbenchStore() {
               seatId,
               chatType: isGroup ? 2 : 1,
               thirdExternalUserId: isGroup ? undefined : item.thirdExternalUserId,
-              thirdGroupId: isGroup ? (item as any).thirdGroupId : undefined,
+              thirdGroupId: isGroup ? item.thirdGroupId : undefined,
             };
             const summaryDto = await service.getOrCreateConversation(payload);
             const newConversation = adaptConversation(summaryDto);
 
             set((currentState) => {
               const currentList = currentState.conversationListsByScope[seatId] ?? [];
-              const alreadyExists = currentList.some((c) => c.id === newConversation.id);
-              const nextList = alreadyExists
-                ? currentList
-                : sortConversations([newConversation, ...currentList]);
+              // 始终用服务端最新数据替换列表中的旧条目，保证时间戳和排序正确
+              const nextList = sortConversations([
+                newConversation,
+                ...currentList.filter((c) => c.id !== newConversation.id),
+              ]);
               return {
                 conversationListsByScope: {
                   ...currentState.conversationListsByScope,
@@ -1285,7 +1286,7 @@ export function createWorkbenchStore() {
           } catch (error) {
             set({
               conversationOpenError:
-                error instanceof Error ? error.message : "获取/开启会话失败，请稍后重试",
+                getRequestApiErrorMessage(error) ?? "获取/开启会话失败，请稍后重试",
             });
           } finally {
             set({ isConversationLoading: false });

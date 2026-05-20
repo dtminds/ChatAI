@@ -304,4 +304,30 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getAllByText("这是最新的权益清单截图，你帮我确认下。").length).toBeGreaterThan(0);
   });
 
+  it("keeps the right side blank when no conversation is active", async () => {
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    const state = useWorkbenchStore.getState();
+    useWorkbenchStore.setState(
+      {
+        activeConversationId: "",
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          [state.activeAccountId]: [],
+        },
+      },
+      false,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("请选择会话")).toBeInTheDocument();
+      expect(screen.queryByTestId("chat-composer-editor")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "历史记录" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("complementary", { name: "聊天记录" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
 });

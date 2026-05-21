@@ -917,6 +917,134 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.getByRole("button", { name: "加载更早的对话" })).toBeInTheDocument();
   });
 
+  it("opens history videos when clicking the centered play button", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createVideoMessage("video-ready", {
+              alt: "演示视频",
+              coverImageUrl: "https://example.com/video-cover.png",
+              sentAt: "2026-05-19 10:00:00",
+              videoUrl: "https://example.com/video.mp4",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放视频：演示视频" }));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://example.com/video.mp4",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    openSpy.mockRestore();
+  });
+
+  it("shows download action for unfinished history videos", async () => {
+    const user = userEvent.setup();
+    const handleDownloadMessageFile = vi.fn();
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createVideoMessage("video-pending", {
+              alt: "待下载视频",
+              coverImageUrl: "https://example.com/video-cover.png",
+              downloadStatus: "failed",
+              fileSerialNo: "serial-video-1",
+              sentAt: "2026-05-19 10:00:00",
+              videoUrl: "",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={handleDownloadMessageFile}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "下载视频：待下载视频" }));
+
+    expect(handleDownloadMessageFile).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "video-pending" }),
+    );
+    expect(screen.queryByRole("button", { name: "播放视频：待下载视频" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("renders in-progress history videos as downloading", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createVideoMessage("video-ing", {
+              alt: "转存中视频",
+              coverImageUrl: "https://example.com/video-cover.png",
+              downloadStatus: "ing",
+              fileSerialNo: "serial-video-1",
+              sentAt: "2026-05-19 10:00:00",
+              videoUrl: "",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "播放视频：转存中视频" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下载视频：转存中视频" }))
+      .not.toBeInTheDocument();
+  });
+
   it("keeps long file names inside the history panel width", () => {
     render(
       <MessageHistorySidePanel
@@ -1320,6 +1448,42 @@ function createImageMessage(
       alt: overrides.alt,
       imageUrl: overrides.imageUrl,
       type: "image",
+    },
+    conversationId: "conversation-1",
+    id,
+    role: "customer",
+    sender: {
+      id: "customer-1",
+      name: "客户",
+    },
+    sentAt: overrides.sentAt,
+    status: "read",
+  };
+}
+
+function createVideoMessage(
+  id: string,
+  overrides: {
+    alt: string;
+    coverImageUrl: string;
+    downloadStatus?: "ing" | "finished" | "failed";
+    fileSerialNo?: string;
+    fileUrlExpireTime?: number;
+    sentAt: string;
+    videoUrl: string;
+  },
+): ChatMessage {
+  return {
+    author: "客户",
+    content: {
+      alt: overrides.alt,
+      coverImageUrl: overrides.coverImageUrl,
+      downloadStatus: overrides.downloadStatus,
+      durationLabel: "00:15",
+      fileSerialNo: overrides.fileSerialNo,
+      fileUrlExpireTime: overrides.fileUrlExpireTime,
+      type: "video",
+      videoUrl: overrides.videoUrl,
     },
     conversationId: "conversation-1",
     id,

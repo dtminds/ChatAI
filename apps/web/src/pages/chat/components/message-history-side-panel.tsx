@@ -3,6 +3,7 @@ import { format, isValid, parseISO } from "date-fns";
 import {
   ArrowDown01Icon,
   Cancel01Icon,
+  Download01Icon,
   Loading03Icon,
   PlayIcon,
   Tick02Icon,
@@ -33,6 +34,10 @@ import {
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 import { getSafeMessageUrl } from "@/pages/chat/components/message/url";
+import {
+  canUseExpiringUrl,
+  isExpiringUrlExpired,
+} from "@/pages/chat/lib/message-url-expiry";
 import type {
   ChatMessage,
   Conversation,
@@ -254,6 +259,7 @@ export function MessageHistorySidePanel({
                     activeHistory?.messages ?? [],
                     activeHistoryFilters.scope,
                   )}
+                  onDownloadMessageFile={onDownloadMessageFile}
                 />
               </HistoryMessageViewport>
             </TabsContent>
@@ -779,7 +785,13 @@ function HistoryMiniProgramThumb({
   return <HistoryResourceThumbFallback />;
 }
 
-function HistoryMediaWall({ messages }: { messages: Message[] }) {
+function HistoryMediaWall({
+  messages,
+  onDownloadMessageFile,
+}: {
+  messages: Message[];
+  onDownloadMessageFile?: (message: ChatMessage) => void;
+}) {
   const mediaMessages = messages.filter(isMediaMessage);
   const groupedMediaMessages = groupMediaMessagesByDate(mediaMessages);
 
@@ -790,7 +802,11 @@ function HistoryMediaWall({ messages }: { messages: Message[] }) {
           <HistoryDateDivider label={group.label} />
           <div className="grid grid-cols-3 gap-2">
             {group.messages.map((message) => (
-              <HistoryMediaTile key={message.id} message={message} />
+              <HistoryMediaTile
+                key={message.id}
+                message={message}
+                onDownloadMessageFile={onDownloadMessageFile}
+              />
             ))}
           </div>
         </div>
@@ -820,12 +836,30 @@ type MiniProgramHistoryMessage = ChatMessage & {
   content: MiniProgramMessageContent;
 };
 
-function HistoryMediaTile({ message }: { message: MediaHistoryMessage }) {
+function HistoryMediaTile({
+  message,
+  onDownloadMessageFile,
+}: {
+  message: MediaHistoryMessage;
+  onDownloadMessageFile?: (message: ChatMessage) => void;
+}) {
   const content = message.content;
   const imageUrl =
     content.type === "image"
       ? content.imageUrl.trim()
       : content.coverImageUrl.trim();
+  const videoUrl =
+    content.type === "video" ? content.videoUrl.trim() : "";
+  const isVideoDownloading =
+    content.type === "video" && content.downloadStatus === "ing";
+  const needsVideoTransfer =
+    content.type === "video" &&
+    Boolean(
+      content.fileSerialNo &&
+        (isExpiringUrlExpired(content.fileUrlExpireTime) ||
+          (content.downloadStatus !== "finished" &&
+            !canUseExpiringUrl(videoUrl, content.fileUrlExpireTime))),
+    );
   const optimizedImageUrl = imageUrl
     ? getOptimizedMessageImageUrl(imageUrl)
     : "";
@@ -859,12 +893,15 @@ function HistoryMediaTile({ message }: { message: MediaHistoryMessage }) {
         >
           {tileContent}
         </ImagePreviewDialog>
-      ) : content.type === "video" && content.videoUrl ? (
+      ) : content.type === "video" &&
+        !isVideoDownloading &&
+        !needsVideoTransfer &&
+        canUseExpiringUrl(videoUrl, content.fileUrlExpireTime) ? (
         <button
           aria-label={`播放视频：${content.alt}`}
           className="block h-full w-full p-0 text-left outline-none focus-visible:ring-4 focus-visible:ring-ring/25"
           onClick={() =>
-            window.open(content.videoUrl, "_blank", "noopener,noreferrer")
+            window.open(videoUrl, "_blank", "noopener,noreferrer")
           }
           type="button"
         >
@@ -874,14 +911,38 @@ function HistoryMediaTile({ message }: { message: MediaHistoryMessage }) {
         tileContent
       )}
       {content.type === "video" ? (
-        <span className="absolute left-1/2 top-1/2 z-1 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-black/25 text-white shadow-sm backdrop-blur-[1px]">
-          <HugeiconsIcon
-            className="translate-x-[1px]"
-            icon={PlayIcon}
-            size={21}
-            strokeWidth={2.1}
-          />
-        </span>
+        isVideoDownloading ? (
+          <span
+            aria-label="视频下载中"
+            className="absolute left-1/2 top-1/2 z-1 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-black/25 text-white shadow-sm backdrop-blur-[1px]"
+            role="status"
+          >
+            <HugeiconsIcon
+              className="animate-spin"
+              icon={Loading03Icon}
+              size={21}
+              strokeWidth={2.1}
+            />
+          </span>
+        ) : needsVideoTransfer && onDownloadMessageFile ? (
+          <button
+            aria-label={`下载视频：${content.alt}`}
+            className="absolute left-1/2 top-1/2 z-1 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-black/25 text-white shadow-sm outline-none backdrop-blur-[1px] transition-colors hover:bg-black/35 focus-visible:ring-4 focus-visible:ring-white/35"
+            onClick={() => onDownloadMessageFile(message)}
+            type="button"
+          >
+            <HugeiconsIcon icon={Download01Icon} size={21} strokeWidth={2.1} />
+          </button>
+        ) : (
+          <span className="pointer-events-none absolute left-1/2 top-1/2 z-1 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-black/25 text-white shadow-sm backdrop-blur-[1px]">
+            <HugeiconsIcon
+              className="translate-x-[1px]"
+              icon={PlayIcon}
+              size={21}
+              strokeWidth={2.1}
+            />
+          </span>
+        )
       ) : null}
     </div>
   );

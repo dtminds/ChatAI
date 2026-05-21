@@ -14,10 +14,10 @@ import {
 } from "../../shared/logger.js";
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
-const JAVA_INTERNAL_API_USER_MESSAGE = "工作台服务繁忙，请稍后重试";
-const WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE =
+export const JAVA_INTERNAL_API_USER_MESSAGE = "工作台服务繁忙，请稍后重试";
+export const WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE =
   "WORKBENCH_INTERNAL_API_NOT_CONFIGURED";
-const WORKBENCH_INTERNAL_API_FAILED_CODE = "WORKBENCH_INTERNAL_API_FAILED";
+export const WORKBENCH_INTERNAL_API_FAILED_CODE = "WORKBENCH_INTERNAL_API_FAILED";
 
 export const JAVA_MSG_TYPE = {
   FILE: 2010,
@@ -277,7 +277,6 @@ async function postJava<T>(
     throw new ServiceUnavailableError(
       WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE,
       JAVA_INTERNAL_API_USER_MESSAGE,
-      { path },
     );
   }
 
@@ -312,7 +311,6 @@ async function postJava<T>(
       WORKBENCH_INTERNAL_API_FAILED_CODE,
       JAVA_INTERNAL_API_USER_MESSAGE,
       {
-        path,
         reason: error instanceof Error ? error.name : "unknown",
       },
     );
@@ -335,7 +333,6 @@ async function postJava<T>(
       WORKBENCH_INTERNAL_API_FAILED_CODE,
       JAVA_INTERNAL_API_USER_MESSAGE,
       {
-        path,
         status: response.status,
       },
     );
@@ -377,7 +374,6 @@ async function postJavaEnvelope<T>(
       JAVA_INTERNAL_API_USER_MESSAGE,
       {
         error: response.error,
-        path,
       },
     );
   }

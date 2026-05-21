@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { MysqlWorkbenchService } from "../../../src/modules/chat/workbench.service.js";
+import {
+  JAVA_INTERNAL_API_USER_MESSAGE,
+  WORKBENCH_INTERNAL_API_FAILED_CODE,
+} from "../../../src/modules/chat/workbench-java-client.js";
 import type { WorkbenchJavaClient } from "../../../src/modules/chat/workbench-java-client.js";
+import { MysqlWorkbenchService } from "../../../src/modules/chat/workbench.service.js";
 import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
 import { BadGatewayError } from "../../../src/shared/errors.js";
 
@@ -534,8 +538,8 @@ describe("MysqlWorkbenchService", () => {
     const logger = createLoggerMock();
     vi.mocked(javaClient.getUploadCredential).mockRejectedValue(
       new BadGatewayError(
-        "WORKBENCH_INTERNAL_API_FAILED",
-        "工作台服务繁忙，请稍后重试",
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
       ),
     );
     const service = new MysqlWorkbenchService(
@@ -554,8 +558,8 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(service.getUploadCredential("101", "88")).rejects.toMatchObject({
-      code: "WORKBENCH_INTERNAL_API_FAILED",
-      message: "工作台服务繁忙，请稍后重试",
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
       statusCode: 502,
     });
 

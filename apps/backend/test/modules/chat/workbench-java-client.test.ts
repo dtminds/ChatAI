@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkbenchJavaClient } from "../../../src/modules/chat/workbench-java-client.js";
+import {
+  JAVA_INTERNAL_API_USER_MESSAGE,
+  WORKBENCH_INTERNAL_API_FAILED_CODE,
+  createWorkbenchJavaClient,
+} from "../../../src/modules/chat/workbench-java-client.js";
 
 describe("createWorkbenchJavaClient", () => {
   afterEach(() => {
@@ -20,8 +24,8 @@ describe("createWorkbenchJavaClient", () => {
         uid: 9001,
       }),
     ).rejects.toMatchObject({
-      code: "WORKBENCH_INTERNAL_API_FAILED",
-      message: "工作台服务繁忙，请稍后重试",
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
       statusCode: 502,
     });
 
@@ -57,11 +61,10 @@ describe("createWorkbenchJavaClient", () => {
     await expect(
       createWorkbenchJavaClient().getUploadCredential({ uid: 9001 }),
     ).rejects.toMatchObject({
-      code: "WORKBENCH_INTERNAL_API_FAILED",
-      message: "工作台服务繁忙，请稍后重试",
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
       details: {
         error: 123,
-        path: "/third-internal/file/get-upload-credential",
       },
     });
 
@@ -136,8 +139,8 @@ describe("createWorkbenchJavaClient", () => {
         uid: 9001,
       }),
     ).rejects.toMatchObject({
-      code: "WORKBENCH_INTERNAL_API_FAILED",
-      message: "工作台服务繁忙，请稍后重试",
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
     });
 
     expect(logger.error).toHaveBeenCalledWith(

@@ -3,6 +3,7 @@ import { format, isValid, parseISO } from "date-fns";
 import {
   ArrowDown01Icon,
   Cancel01Icon,
+  ExclamationMarkIcon,
   Download01Icon,
   Loading03Icon,
   PlayIcon,
@@ -484,13 +485,23 @@ function HistoryCompactMessageList({
           data-testid="history-message-item"
           key={message.clientMessageId ?? message.optNo ?? message.id}
         >
-          <div className="flex w-full max-w-full min-w-0 items-baseline gap-2">
-            <span className="min-w-0 truncate text-[13px] font-medium leading-5 text-muted-foreground/80">
+          <div
+            className="flex w-full max-w-full min-w-0 items-center gap-2"
+            data-testid="history-message-meta-row"
+          >
+            <span
+              className="min-w-0 max-w-[min(18rem,calc(100%-7rem))] shrink truncate text-[13px] font-medium leading-5 text-muted-foreground/80"
+              data-testid="history-message-author"
+            >
               {getHistoryMessageAuthor(message)}
             </span>
-            <span className="shrink-0 text-xs leading-5 text-muted-foreground/70">
+            <span
+              className="shrink-0 text-xs leading-5 text-muted-foreground/70"
+              data-testid="history-message-time"
+            >
               {formatHistoryMessageTime(message.sentAt)}
             </span>
+            {message.status === "failed" ? <HistoryCompactDeliveryState /> : null}
           </div>
           <HistoryCompactMessageContent
             message={message}
@@ -539,6 +550,19 @@ function HistoryCompactMessageContent({
         onDownloadMessageFile={onDownloadMessageFile}
       />
     </div>
+  );
+}
+
+function HistoryCompactDeliveryState() {
+  return (
+    <span
+      aria-label="发送失败"
+      className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+      data-testid="history-message-delivery-state"
+      role="status"
+    >
+      <HugeiconsIcon icon={ExclamationMarkIcon} size={10} strokeWidth={2.4} />
+    </span>
   );
 }
 

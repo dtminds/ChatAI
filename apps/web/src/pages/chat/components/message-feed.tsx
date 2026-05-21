@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
+import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
+import { TextMessageBubble } from "@/pages/chat/components/message/text";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
   isSameCalendarDay,
@@ -176,7 +178,7 @@ export function MessageRow({
               isAgent ? "flex-row" : "flex-row-reverse",
             )}
           >
-            {isAgent ? (
+            {isAgent && message.content.type !== "quote" ? (
               <MessageInlineStatusSlot
                 message={message}
                 onRetryMessage={onRetryMessage}
@@ -195,12 +197,23 @@ export function MessageRow({
                   {message.senderDisplayName}
                 </p>
               ) : null}
-              <MessageContentRenderer
-                isAgent={isAgent}
-                message={message}
-                onDownloadMessageFile={onDownloadMessageFile}
-                onOpenQuotedMessage={onOpenQuotedMessage}
-              />
+              {message.content.type === "quote" ? (
+                <QuoteMessageContentWithDelivery
+                  content={message.content}
+                  inlineDeliveryState={inlineDeliveryState}
+                  isAgent={isAgent}
+                  message={message}
+                  onOpenQuotedMessage={onOpenQuotedMessage}
+                  onRetryMessage={onRetryMessage}
+                />
+              ) : (
+                <MessageContentRenderer
+                  isAgent={isAgent}
+                  message={message}
+                  onDownloadMessageFile={onDownloadMessageFile}
+                  onOpenQuotedMessage={onOpenQuotedMessage}
+                />
+              )}
               {message.isRevoked ? <MessageRevokedState /> : null}
               {showTimestamp ? (
                 <p className="px-1 text-[11px] leading-4 text-muted-foreground/80">
@@ -216,6 +229,51 @@ export function MessageRow({
 
         {isAgent ? messageActions : null}
       </div>
+    </div>
+  );
+}
+
+function QuoteMessageContentWithDelivery({
+  content,
+  inlineDeliveryState,
+  isAgent,
+  message,
+  onOpenQuotedMessage,
+  onRetryMessage,
+}: {
+  content: Extract<ChatMessage["content"], { type: "quote" }>;
+  inlineDeliveryState: InlineDeliveryState | null;
+  isAgent: boolean;
+  message: ChatMessage;
+  onOpenQuotedMessage?: (quoteMsgId: string) => void;
+  onRetryMessage?: (messageId: string) => void;
+}) {
+  return (
+    <div className={cn("flex max-w-full flex-col gap-1.5", isAgent ? "items-end" : "items-start")}>
+      <div
+        className={cn(
+          "flex max-w-full items-end gap-2",
+          isAgent ? "flex-row" : "flex-row-reverse",
+        )}
+      >
+        {isAgent ? (
+          <MessageInlineStatusSlot
+            message={message}
+            onRetryMessage={onRetryMessage}
+            state={inlineDeliveryState}
+          />
+        ) : null}
+        <TextMessageBubble
+          isAgent={isAgent}
+          isOwnMessage={message.isOwnMessage}
+          text={content.text}
+        />
+      </div>
+      <QuoteMessagePreview
+        onOpenQuotedMessage={onOpenQuotedMessage}
+        quoteMsgId={content.quoteMsgId}
+        quotedMessage={content.quotedMessage}
+      />
     </div>
   );
 }

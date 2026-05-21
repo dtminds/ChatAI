@@ -71,7 +71,7 @@ function createHistoryMessageDto(
     seatId: "drc",
     senderType: seq % 2 === 0 ? "agent" : "customer",
     seq,
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -104,7 +104,7 @@ function createDownloadFileMessageDto({
     seatId: "drc",
     senderType: "customer",
     seq,
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1177,7 +1177,7 @@ describe("useWorkbenchStore", () => {
                 seatId: "drc",
                 senderType: "customer",
                 seq: 829,
-                status: "read",
+                status: "sent",
               },
             ],
           };
@@ -1310,7 +1310,7 @@ describe("useWorkbenchStore", () => {
               name: "客户",
             },
             sentAt: "2026-05-21 12:00",
-            status: "read",
+            status: "sent",
           },
         ],
       },
@@ -1375,7 +1375,7 @@ describe("useWorkbenchStore", () => {
                 senderName: "幽灵消息",
                 senderType: "customer",
                 seq: 999999,
-                status: "read",
+                status: "sent",
                 thirdExternalUserId: "external-1",
                 thirdFromId: "sender-cust-001",
                 thirdUserId: "third-user-drc",
@@ -1523,7 +1523,7 @@ describe("useWorkbenchStore", () => {
               seatId: "drc",
               senderType: "system" as const,
               seq: beforeSeq - index - 1,
-              status: "read",
+              status: "sent",
             })),
             nextBeforeSeq: Math.max(beforeSeq - 50, 1),
             scannedCount: 50,

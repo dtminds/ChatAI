@@ -1558,7 +1558,7 @@ function createTextMessage(
       name: "客户",
     },
     sentAt: overrides.sentAt ?? "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1585,7 +1585,7 @@ function createImageMessage(
       name: "客户",
     },
     sentAt: overrides.sentAt,
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1621,7 +1621,7 @@ function createVideoMessage(
       name: "客户",
     },
     sentAt: overrides.sentAt,
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1651,7 +1651,7 @@ function createFileMessage(
       name: content.sourceLabel ?? "客户",
     },
     sentAt: content.sentAt ?? "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1678,7 +1678,7 @@ function createH5Message(
       name: "客户",
     },
     sentAt: "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1704,7 +1704,7 @@ function createMiniProgramMessage(
       name: "客户",
     },
     sentAt: "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1733,6 +1733,6 @@ function createQuoteMessage({
       name: author,
     },
     sentAt: "2026-05-19 10:12:00",
-    status: "read",
+    status: "sent",
   };
 }

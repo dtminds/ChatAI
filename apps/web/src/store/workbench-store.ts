@@ -1843,6 +1843,9 @@ export function createWorkbenchStore() {
             (pendingMessage) =>
               !response.messageStatusChanges.some(
                 (change) => change.clientMessageId === pendingMessage.clientMessageId,
+              ) &&
+              !response.activeConversationMessages.some((message) =>
+                isSameMessage(pendingMessage, message),
               ),
           );
 

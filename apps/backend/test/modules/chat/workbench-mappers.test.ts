@@ -154,10 +154,24 @@ describe("workbench MySQL mappers", () => {
       senderName: undefined,
       senderType: "customer",
       seq: 101,
-      status: "read",
+      status: "sent",
       thirdExternalUserId: "external-1",
       thirdGroupId: undefined,
       thirdUserId: "third-user-1",
+    });
+  });
+
+  it("maps failed audit message status from database rows", () => {
+    expect(
+      mapMessageRow(messageRow({
+        msgid: "remote-msg-failed-001",
+        opt_no: "opt-failed-001",
+        status: 0,
+      })),
+    ).toMatchObject({
+      messageId: "remote-msg-failed-001",
+      optNo: "opt-failed-001",
+      status: "failed",
     });
   });
 

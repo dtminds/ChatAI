@@ -597,7 +597,7 @@ const messageDto = {
   senderName: "",
   senderType: "customer" as const,
   seq: 1,
-  status: "read" as const,
+  status: "sent" as const,
   thirdExternalUserId: undefined,
   thirdFromId: undefined,
   thirdGroupId: undefined,

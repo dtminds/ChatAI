@@ -162,7 +162,7 @@ describe("message feed row actions", () => {
       ...optimisticMessage,
       id: "remote-001",
       remoteMessageId: "remote-001",
-      status: "read",
+      status: "sent",
     } satisfies ChatMessage;
 
     expect(getMessageFeedItemKey(optimisticMessage)).toBe(
@@ -186,6 +186,6 @@ function createTextMessage(text: string) {
       name: "客服",
     },
     sentAt: "2026-05-08 09:54:00",
-    status: "read" as const,
+    status: "sent" as const,
   } satisfies ChatMessage;
 }

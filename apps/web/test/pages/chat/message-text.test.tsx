@@ -93,7 +93,7 @@ describe("text message bubble layout", () => {
           ...createTextMessage("已确认消息"),
           optNo: "opt-001",
           remoteMessageId: "remote-001",
-          status: "read",
+          status: "sent",
         }}
       />,
     );
@@ -155,7 +155,7 @@ describe("text message bubble layout", () => {
           id: "sys-layout",
           role: "system",
           sentAt: "2026-05-08 09:54:00",
-          status: "read",
+          status: "sent",
         }}
       />,
     );
@@ -193,6 +193,6 @@ function createTextMessage(text: string) {
       text,
     },
     sentAt: "2026-05-08 09:54:00",
-    status: "read" as const,
+    status: "sent" as const,
   };
 }

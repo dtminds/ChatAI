@@ -78,7 +78,7 @@ describe("ChatWorkbenchPage download flows", () => {
                 seatId: "drc",
                 senderType: "customer",
                 seq: 539,
-                status: "read",
+                status: "sent",
               },
             ],
             scannedCount: 1,
@@ -135,7 +135,7 @@ describe("ChatWorkbenchPage download flows", () => {
                 seatId: "drc",
                 senderType: "customer",
                 seq: 539,
-                status: "read",
+                status: "sent",
               },
             ],
             scannedCount: 1,
@@ -199,7 +199,7 @@ describe("ChatWorkbenchPage download flows", () => {
                 seatId: "drc",
                 senderType: "customer",
                 seq: 539,
-                status: "read",
+                status: "sent",
               },
             ],
             scannedCount: 1,
@@ -442,7 +442,7 @@ function createInProgressVideoDto({
     seatId: "drc",
     senderType: "customer" as const,
     seq,
-    status: "read" as const,
+    status: "sent" as const,
   };
 }
 
@@ -474,6 +474,6 @@ function createInProgressFileDto({
     seatId: "drc",
     senderType: "customer" as const,
     seq,
-    status: "read" as const,
+    status: "sent" as const,
   };
 }

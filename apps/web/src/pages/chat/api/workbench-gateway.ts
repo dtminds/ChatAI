@@ -518,8 +518,6 @@ function adaptMessageStatus(status: WorkbenchMessageStatus): MessageStatus {
   switch (status) {
     case "failed":
       return "failed";
-    case "read":
-      return "read";
     case "queued":
     case "sending":
       return "sending";

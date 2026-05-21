@@ -129,6 +129,6 @@ function createMessage(id: string, text: string, sentAt: string): ChatMessage {
       name: "客户",
     },
     sentAt,
-    status: "read",
+    status: "sent",
   };
 }

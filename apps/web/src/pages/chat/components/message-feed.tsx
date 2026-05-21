@@ -389,8 +389,7 @@ function getInlineDeliveryState(
 function MessageDeliveryState({ message }: { message: ChatMessage }) {
   if (
     message.status === "accepted" ||
-    message.status === "sent" ||
-    message.status === "read"
+    message.status === "sent"
   ) {
     return null;
   }

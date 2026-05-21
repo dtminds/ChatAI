@@ -1615,6 +1615,7 @@ describe("WorkbenchRepository", () => {
           chat_type: 2,
           conversation_external_id: "",
           conversation_group_id: "group-1",
+          conversation_group_seat_id: 7788,
           from_type: 2,
           id: 101,
           msgid: "remote-msg-101",

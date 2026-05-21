@@ -1116,10 +1116,7 @@ export class WorkbenchRepository {
       .limit(options.limit + 1)
       .execute();
 
-    const rawRows = (rows.slice(0, options.limit) as MessageRow[]).map((row) => ({
-      ...row,
-      conversation_group_seat_id: conversation.group_seat_id,
-    }));
+    const rawRows = rows.slice(0, options.limit) as MessageRow[];
     const messageRows = [...rawRows].reverse();
     const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
     const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
@@ -1299,10 +1296,7 @@ export class WorkbenchRepository {
       .execute();
 
     const hasMoreInDirection = rows.length > limit;
-    const pageRows = (rows.slice(0, limit) as MessageRow[]).map((row) => ({
-      ...row,
-      conversation_group_seat_id: conversation.group_seat_id,
-    }));
+    const pageRows = rows.slice(0, limit) as MessageRow[];
     const messageRows = orderDirection === "desc" ? pageRows.reverse() : pageRows;
     const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
     const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];

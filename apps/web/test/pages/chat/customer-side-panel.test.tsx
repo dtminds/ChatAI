@@ -67,7 +67,7 @@ describe("CustomerSidePanel", () => {
     expect(within(sidePanel).getByRole("tab", { name: "仅群聊" })).toBeInTheDocument();
   });
 
-  it("shows an empty state for single conversations without custom sidebar items", () => {
+  it("links single-conversation empty state to sidebar settings", () => {
     render(
       <CustomerSidePanel
         {...defaultProps}
@@ -81,8 +81,12 @@ describe("CustomerSidePanel", () => {
     expect(within(sidePanel).queryByRole("tab", { name: "基础信息" })).not.toBeInTheDocument();
     expect(within(sidePanel).queryByRole("tab")).not.toBeInTheDocument();
     expect(
-      within(sidePanel).getByRole("status", { name: "暂未配置侧边栏" }),
+      within(sidePanel).getByRole("status", { name: "请前往设置页配置聊天侧边栏" }),
     ).toBeInTheDocument();
+    expect(within(sidePanel).getByRole("link", { name: "设置" })).toHaveAttribute(
+      "href",
+      "/chat/settings/sidebar",
+    );
     expect(sidePanel.querySelector("img")).toHaveAttribute(
       "src",
       "https://b5.bokr.com.cn/dist/no_result.png",

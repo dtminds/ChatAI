@@ -10,6 +10,8 @@ import type {
   WorkbenchConversationUnreadResponse,
   WorkbenchConversationSummaryDto,
   WorkbenchGroupMembersResponse,
+  WorkbenchHistoryMessagePageDto,
+  WorkbenchHistoryMessageQuery,
   WorkbenchSubUserDto,
   WorkbenchMessageDto,
   WorkbenchMessagePageDto,
@@ -151,6 +153,22 @@ export function createMemoryWorkbenchService() {
         nextBeforeSeq: scannedMessages[0]?.seq,
         scannedCount: scannedMessages.length,
       } satisfies WorkbenchMessagePageDto;
+    },
+    async getHistoryMessages(
+      subUserId: string,
+      conversationId: string,
+      options?: WorkbenchHistoryMessageQuery,
+    ): Promise<WorkbenchHistoryMessagePageDto> {
+      const page = this.getMessages(subUserId, conversationId, {
+        beforeSeq: undefined,
+        limit: options?.limit ?? 30,
+      });
+
+      return {
+        hasNext: false,
+        hasPrev: false,
+        messages: page.messages,
+      };
     },
     getGroupMembers(
       _subUserId: string,

@@ -13,6 +13,58 @@ function createFailingDb() {
   };
 }
 
+function createHistoryMessagesDb(rows: MessageRow[], conversationOverrides: Record<string, unknown> = {}) {
+  const messageQueries: Array<{
+    limits: number[];
+    orderBys: Array<[string, string | undefined]>;
+    table: string;
+    whereExpressions: unknown[];
+    wheres: Array<[string, string, unknown]>;
+  }> = [];
+
+  return {
+    messageQueries,
+    selectFrom(table: string) {
+      if (table === "xy_wap_embed_conversation as conversation") {
+        return createQueryBuilder({
+          conversation_external_id: "external-1",
+          conversation_group_id: "",
+          conversation_id: 88,
+          chat_type: 1,
+          platform: 5,
+          seat_id: 12,
+          third_userid: "seat-third-user-1",
+          uid: 9001,
+          ...conversationOverrides,
+        });
+      }
+
+      if (table === "xy_wap_embed_msg_audit_info as message") {
+        const query = createQueryBuilder(rows);
+        messageQueries.push({
+          limits: query.limits,
+          orderBys: query.orderBys,
+          table,
+          whereExpressions: query.whereExpressions,
+          wheres: query.wheres,
+        });
+        return query;
+      }
+
+      if (
+        table === "xy_wap_embed_group_member as member" ||
+        table === "xy_wap_embed_user_seat" ||
+        table === "xy_wap_embed_contact" ||
+        table === "xy_wap_embed_customer_bind_relation"
+      ) {
+        return createQueryBuilder([]);
+      }
+
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+}
+
 function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
   const messageQueries: Array<{
     limits: number[];
@@ -52,7 +104,67 @@ function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
       if (
         table === "xy_wap_embed_group_member as member" ||
         table === "xy_wap_embed_user_seat" ||
-        table === "xy_wap_embed_contact"
+        table === "xy_wap_embed_contact" ||
+        table === "xy_wap_embed_customer_bind_relation"
+      ) {
+        return createQueryBuilder([]);
+      }
+
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+}
+
+function createMessagesByIdsDb(
+  rows: MessageRow[],
+  quoteRows: MessageRow[] = [],
+  conversationOverrides: Record<string, unknown> = {},
+) {
+  const messageQueries: Array<{
+    table: string;
+    wheres: Array<[string, string, unknown]>;
+  }> = [];
+
+  return {
+    messageQueries,
+    selectFrom(table: string) {
+      if (table === "xy_wap_embed_conversation as conversation") {
+        return createQueryBuilder({
+          chat_type: 1,
+          conversation_external_id: "external-1",
+          conversation_group_id: "",
+          conversation_id: 88,
+          platform: 5,
+          seat_id: 12,
+          third_userid: "seat-third-user-1",
+          uid: 9001,
+          ...conversationOverrides,
+        });
+      }
+
+      if (table === "xy_wap_embed_user_seat as seat") {
+        return createQueryBuilder({
+          id: 12,
+          third_userid: "seat-third-user-1",
+          uid: 9001,
+          platform: 5,
+        });
+      }
+
+      if (table === "xy_wap_embed_msg_audit_info as message") {
+        const queryIndex = messageQueries.filter((query) => query.table === table).length;
+        const query = createQueryBuilder(queryIndex === 0 ? rows : quoteRows);
+        messageQueries.push({
+          table,
+          wheres: query.wheres,
+        });
+        return query;
+      }
+
+      if (
+        table === "xy_wap_embed_contact" ||
+        table === "xy_wap_embed_customer_bind_relation" ||
+        table === "xy_wap_embed_group_member as member"
       ) {
         return createQueryBuilder([]);
       }
@@ -220,6 +332,29 @@ function createConversationRow(overrides: Partial<Record<string, unknown>> = {})
   };
 }
 
+function createConversationMessageRow(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    chat_type: 1,
+    content: JSON.stringify({ text: "hello" }),
+    conversation_external_id: "external-1",
+    conversation_group_id: "",
+    conversation_id: 88,
+    from_type: 2,
+    id: 829,
+    msgid: "remote-msg-829",
+    msgtime: 1_778_840_010_000,
+    msgtype: "text",
+    opt_no: null,
+    revoke_status: 0,
+    seat_id: 12,
+    third_external_id: "external-1",
+    third_from_id: "external-1",
+    third_group_id: null,
+    third_user_id: "seat-user-001",
+    ...overrides,
+  };
+}
+
 describe("WorkbenchRepository", () => {
   it("does not send NaN to MySQL when subUserId is invalid", async () => {
     const repository = new WorkbenchRepository(createFailingDb() as never);
@@ -253,6 +388,13 @@ describe("WorkbenchRepository", () => {
       scannedCount: 0,
     });
     await expect(repository.listGroupMembers("not-a-conversation")).resolves.toBeUndefined();
+    await expect(
+      repository.listHistoryMessages("not-a-conversation", { limit: 30 }),
+    ).resolves.toEqual({
+      hasNext: false,
+      hasPrev: false,
+      messages: [],
+    });
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
   });
 
@@ -791,6 +933,143 @@ describe("WorkbenchRepository", () => {
       1_778_840_000_000,
     ]);
     expect(query.wheres).toContainEqual(["conversation.biz_status", "=", 1]);
+  });
+
+  it("lists messages by ids in the conversation tenant scope", async () => {
+    const messageRows = [
+      createConversationMessageRow({
+        id: 829,
+        msgid: "remote-msg-829",
+        msgtime: 1_778_840_010_000,
+        third_external_id: "external-1",
+        third_from_id: "external-1",
+        third_user_id: "seat-user-001",
+      }),
+    ];
+    const repository = new WorkbenchRepository(
+      createMessagesByIdsDb(messageRows) as never,
+    );
+
+    await expect(
+      repository.listMessagesByIds("88", ["829", "829", "0", "bad"]),
+    ).resolves.toMatchObject({
+      messages: [
+        expect.objectContaining({
+          messageId: "remote-msg-829",
+          senderAvatar: "",
+          senderName: "external-1",
+          seq: 829,
+        }),
+      ],
+    });
+  });
+
+  it("scopes message id lookup to the single conversation key", async () => {
+    const db = createMessagesByIdsDb([
+      createConversationMessageRow({
+        id: 829,
+        msgid: "remote-msg-829",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.listMessagesByIds("88", ["829"]);
+
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.uid", "=", 9001]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.platform", "=", 5]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "seat-third-user-1",
+    ]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_external_id",
+      "=",
+      "external-1",
+    ]);
+  });
+
+  it("scopes message id lookup to the group conversation key", async () => {
+    const db = createMessagesByIdsDb(
+      [
+        createConversationMessageRow({
+          chat_type: 2,
+          conversation_external_id: "",
+          conversation_group_id: "group-1",
+          id: 829,
+          msgid: "remote-msg-829",
+          third_external_id: null,
+          third_group_id: "group-1",
+        }),
+      ],
+      [],
+      {
+        chat_type: 2,
+        conversation_external_id: "",
+        conversation_group_id: "group-1",
+      },
+    );
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.listMessagesByIds("88", ["829"]);
+
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.uid", "=", 9001]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.platform", "=", 5]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_user_id",
+      "=",
+      "seat-third-user-1",
+    ]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_group_id",
+      "=",
+      "group-1",
+    ]);
+  });
+
+  it("hydrates quote previews when fetching messages by ids", async () => {
+    const db = createMessagesByIdsDb(
+      [
+        createConversationMessageRow({
+          content: JSON.stringify({
+            content: "正式引用消息",
+            quoteMsgId: 101,
+          }),
+          id: 102,
+          msgid: "remote-msg-102",
+          msgtype: "quote",
+        }),
+      ],
+      [
+        createConversationMessageRow({
+          content: JSON.stringify({ text: "测试被引用" }),
+          id: 101,
+          msgid: "remote-msg-101",
+          msgtype: "text",
+          third_user_id: "seat-third-user-1",
+        }),
+      ],
+    );
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(repository.listMessagesByIds("88", ["102"])).resolves.toMatchObject({
+      messages: [
+        {
+          content: {
+            quotedMessage: {
+              contentType: "text",
+              senderName: "external-1",
+              text: "测试被引用",
+            },
+            quoteMsgId: "101",
+            text: "正式引用消息",
+          },
+          contentType: "quote",
+          messageId: "remote-msg-102",
+        },
+      ],
+    });
+    expect(db.messageQueries).toHaveLength(2);
   });
 
   it("skips changed conversation hydration when the poll change limit is exceeded", async () => {
@@ -1426,6 +1705,228 @@ describe("WorkbenchRepository", () => {
       "=",
       "external-1",
     ]);
+  });
+
+  it("returns the latest history page ascending while querying newest rows first", async () => {
+    const db = createHistoryMessagesDb([
+      messageRow({
+        content: JSON.stringify({ text: "newer" }),
+        id: 103,
+        msgid: "remote-msg-103",
+        msgtime: 1_778_240_300_000,
+      }),
+      messageRow({
+        content: JSON.stringify({ text: "middle" }),
+        id: 102,
+        msgid: "remote-msg-102",
+        msgtime: 1_778_240_200_000,
+      }),
+      messageRow({
+        content: JSON.stringify({ text: "older" }),
+        id: 101,
+        msgid: "remote-msg-101",
+        msgtime: 1_778_240_100_000,
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    const page = await repository.listHistoryMessages("88", { limit: 2 });
+
+    expect(db.messageQueries[0]?.orderBys).toEqual([["message.id", "desc"]]);
+    expect(db.messageQueries[0]?.limits).toEqual([3]);
+    expect(page).toMatchObject({
+      hasNext: false,
+      hasPrev: true,
+      messages: [
+        { messageId: "remote-msg-102", seq: 102 },
+        { messageId: "remote-msg-103", seq: 103 },
+      ],
+    });
+    expect(page.prevCursor).toBeDefined();
+    expect(page.nextCursor).toBeDefined();
+  });
+
+  it("hydrates quote previews in history messages", async () => {
+    const db = createHistoryMessagesDb([
+      messageRow({
+        content: JSON.stringify({
+          content: "正式引用消息",
+          quoteMsgId: 101,
+        }),
+        from_type: 1,
+        id: 102,
+        msgid: "remote-msg-102",
+        msgtype: "quote",
+      }),
+      messageRow({
+        content: JSON.stringify({ text: "测试被引用" }),
+        from_type: 2,
+        id: 101,
+        msgid: "remote-msg-101",
+        msgtype: "text",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    const page = await repository.listHistoryMessages("88", { limit: 2 });
+
+    expect(page.messages).toMatchObject([
+      {
+        content: { text: "测试被引用" },
+        messageId: "remote-msg-101",
+      },
+      {
+        content: {
+          quotedMessage: {
+            contentType: "text",
+            senderName: "external-1",
+            text: "测试被引用",
+          },
+          quoteMsgId: "101",
+          text: "正式引用消息",
+        },
+        contentType: "quote",
+        messageId: "remote-msg-102",
+      },
+    ]);
+    expect(db.messageQueries).toHaveLength(1);
+  });
+
+  it("applies media scope with day and sender filters in history queries", async () => {
+    const db = createHistoryMessagesDb([
+      messageRow({
+        content: JSON.stringify({ fileUrl: "media/image.jpg" }),
+        id: 101,
+        msgid: "remote-msg-101",
+        msgtype: "image",
+      }),
+      messageRow({
+        content: JSON.stringify({ fileUrl: "media/video.mp4" }),
+        id: 102,
+        msgid: "remote-msg-102",
+        msgtype: "video",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    const page = await repository.listHistoryMessages("88", {
+      day: "2026-05-19",
+      limit: 30,
+      scope: "media",
+      senderId: "sender-1",
+    });
+
+    expect(db.messageQueries[0]?.orderBys).toEqual([["message.id", "asc"]]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.third_from_id",
+      "=",
+      "sender-1",
+    ]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.msgtime",
+      ">=",
+      new Date(2026, 4, 19, 0, 0, 0, 0).getTime(),
+    ]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.msgtime",
+      "<=",
+      new Date(2026, 4, 19, 23, 59, 59, 999).getTime(),
+    ]);
+    expect(db.messageQueries[0]?.wheres).toContainEqual([
+      "message.msgtype",
+      "in",
+      ["image", "video"],
+    ]);
+    expect(page.messages.map((message) => message.contentType)).toEqual(["image", "video"]);
+  });
+
+  it("filters history file, h5 and mini-program scopes by raw database msgtype", async () => {
+    const fileDb = createHistoryMessagesDb([]);
+    const h5Db = createHistoryMessagesDb([]);
+    const miniProgramDb = createHistoryMessagesDb([]);
+
+    await new WorkbenchRepository(fileDb as never).listHistoryMessages("88", {
+      scope: "file",
+    });
+    await new WorkbenchRepository(h5Db as never).listHistoryMessages("88", {
+      scope: "h5",
+    });
+    await new WorkbenchRepository(miniProgramDb as never).listHistoryMessages("88", {
+      scope: "mini-program",
+    });
+
+    expect(fileDb.messageQueries[0]?.wheres).toContainEqual([
+      "message.msgtype",
+      "=",
+      "file",
+    ]);
+    expect(h5Db.messageQueries[0]?.wheres).toContainEqual([
+      "message.msgtype",
+      "=",
+      "link",
+    ]);
+    expect(miniProgramDb.messageQueries[0]?.wheres).toContainEqual([
+      "message.msgtype",
+      "=",
+      "weapp",
+    ]);
+  });
+
+  it("rejects history cursors when the filter snapshot does not match", async () => {
+    const db = createHistoryMessagesDb([
+      messageRow({
+        id: 101,
+        msgid: "remote-msg-101",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+    const firstPage = await repository.listHistoryMessages("88", {
+      limit: 1,
+      scope: "file",
+    });
+
+    await expect(
+      repository.listHistoryMessages("88", {
+        cursor: firstPage.prevCursor,
+        limit: 1,
+        scope: "h5",
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_HISTORY_CURSOR",
+      message: "历史消息分页游标无效",
+    });
+  });
+
+  it("rejects an empty history cursor instead of treating it as an initial page", async () => {
+    const db = createHistoryMessagesDb([]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.listHistoryMessages("88", {
+        cursor: "",
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_HISTORY_CURSOR",
+      message: "历史消息分页游标无效",
+    });
+    expect(db.messageQueries).toHaveLength(0);
+  });
+
+  it("rejects calendar-invalid history days", async () => {
+    const db = createHistoryMessagesDb([]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.listHistoryMessages("88", {
+        day: "2026-02-31",
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_HISTORY_DAY",
+      message: "历史消息日期无效",
+    });
+    expect(db.messageQueries).toHaveLength(0);
   });
 });
 

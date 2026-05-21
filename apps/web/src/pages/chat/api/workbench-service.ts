@@ -18,9 +18,14 @@ import {
   type WorkbenchConversationUnpinResponse,
   type WorkbenchConversationUnreadResponse,
   type WorkbenchConversationSummaryDto,
+  type WorkbenchHistoryMessagePageDto,
+  type WorkbenchHistoryMessageQuery,
+  type WorkbenchHistoryMessageScope,
   type WorkbenchGroupMembersResponse,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
+  type WorkbenchMessageQueryByIdsRequest,
+  type WorkbenchMessageQueryByIdsResponse,
   type WorkbenchMessageFileDownloadResponse,
   type WorkbenchMessageFileDownloadStatusResponse,
   type WorkbenchMessagePageDto,
@@ -28,6 +33,7 @@ import {
   type WorkbenchMessageStatusChangeDto,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
+  type WorkbenchMessageUpdateEventDto,
   type WorkbenchSendMessagePayload,
   type SettingsSidebarItemsResponse,
   type WorkbenchSidebarIframeParamsDto,
@@ -64,8 +70,15 @@ export type WorkbenchService = {
     conversationId: string;
     seatId: string;
   }) => Promise<WorkbenchSidebarIframeParamsDto | null>;
+  getHistoryMessages: (
+    conversationId: string,
+    options?: WorkbenchHistoryMessageQuery,
+  ) => Promise<WorkbenchHistoryMessagePageDto>;
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
+  getMessagesByIds: (
+    input: WorkbenchMessageQueryByIdsRequest,
+  ) => Promise<WorkbenchMessageQueryByIdsResponse>;
   downloadMessageFile: (input: {
     conversationId: string;
     messageId: string;
@@ -104,10 +117,15 @@ type WorkbenchEvent =
       type: "message";
       payload: WorkbenchMessageDto;
     }
-  | {
+    | {
       version: number;
       type: "message-status";
       payload: WorkbenchMessageStatusChangeDto;
+    }
+  | {
+      version: number;
+      type: "message-update";
+      payload: WorkbenchMessageUpdateEventDto;
     };
 
 type MockState = {
@@ -183,6 +201,35 @@ export function createMockWorkbenchService(): WorkbenchService {
     async getSidebarIframeParams() {
       return null;
     },
+    async getHistoryMessages(conversationId, options) {
+      const messages = [...(state.messagesByConversationId[conversationId] ?? [])].sort(
+        (left, right) => left.seq - right.seq || (left.createdAt ?? 0) - (right.createdAt ?? 0),
+      );
+      const filteredMessages = filterMockHistoryMessages(state, conversationId, messages, options);
+      const limit = normalizeHistoryLimit(options?.limit);
+
+      if (limit <= 0) {
+        return {
+          hasNext: false,
+          hasPrev: false,
+          messages: [],
+        };
+      }
+
+      const page = sliceMockHistoryMessages(filteredMessages, {
+        cursor: decodeMockHistoryCursor(options?.cursor),
+        day: options?.day,
+        limit,
+      });
+
+      return {
+        hasNext: page.hasNext,
+        hasPrev: page.hasPrev,
+        messages: clone(page.messages),
+        nextCursor: page.nextCursor,
+        prevCursor: page.prevCursor,
+      };
+    },
     async getSidebarItems() {
       return {
         items: [],
@@ -214,6 +261,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         messages: clone(scannedMessages),
         nextBeforeSeq: scannedMessages[0]?.seq,
         scannedCount: scannedMessages.length,
+      };
+    },
+    async getMessagesByIds(input) {
+      const messages = state.messagesByConversationId[input.conversationId] ?? [];
+      const normalizedIds = new Set(input.messageIds);
+
+      return {
+        messages: clone(
+          messages.filter((message) => normalizedIds.has(message.messageId)),
+        ),
       };
     },
     async downloadMessageFile(input) {
@@ -394,11 +451,19 @@ export function createMockWorkbenchService(): WorkbenchService {
             event.type === "message-status",
         )
         .map((event) => event.payload);
+      const messageUpdateEvents = relevantEvents
+        .filter(
+          (event): event is Extract<WorkbenchEvent, { type: "message-update" }> =>
+            event.type === "message-update" &&
+            event.payload.conversationId === request.activeConversationId,
+        )
+        .map((event) => event.payload);
 
       return {
         seatChanges: clone(seatChanges),
         activeConversationMessages: clone(activeConversationMessages),
         conversationChanges: clone(conversationChanges),
+        messageUpdateEvents: clone(messageUpdateEvents),
         messageStatusChanges: clone(messageStatusChanges),
         nextVersion: state.version,
       };
@@ -521,6 +586,20 @@ export function createHttpWorkbenchService(): WorkbenchService {
     getSidebarIframeParams(input) {
       return fetchWorkbenchSidebarIframeParams(input);
     },
+    getHistoryMessages(conversationId, options) {
+      return http.get<WorkbenchHistoryMessagePageDto>(
+        `/server/conversations/${conversationId}/history-messages`,
+        {
+          params: {
+            cursor: options?.cursor,
+            day: options?.day,
+            limit: options?.limit,
+            scope: options?.scope,
+            sender_id: options?.senderId,
+          },
+        },
+      );
+    },
     async getSidebarItems() {
       const response = await http.get<ApiSuccessEnvelope<SettingsSidebarItemsResponse>>(
         "/server/settings/sidebar-items",
@@ -537,6 +616,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
             limit: options?.limit ?? 30,
           },
         },
+      );
+    },
+    getMessagesByIds(input) {
+      return http.post<WorkbenchMessageQueryByIdsResponse, WorkbenchMessageQueryByIdsRequest>(
+        "/server/messages/query-by-ids",
+        input,
       );
     },
     downloadMessageFile(input) {
@@ -592,6 +677,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
           active_message_seq: request.activeMessageSeq,
           current_seat_id: request.currentSeatId,
           fresh_baseline: request.freshBaseline ? "1" : undefined,
+          message_update_cursor: request.messageUpdateCursor,
           since_version: request.sinceVersion,
         },
       });
@@ -612,6 +698,171 @@ export function createHttpWorkbenchService(): WorkbenchService {
         `/server/conversations/${conversationId}/unpin`,
       );
     },
+  };
+}
+
+type MockHistoryCursor = {
+  anchorSeq?: number;
+  direction?: "next" | "prev";
+};
+
+function filterMockHistoryMessages(
+  state: MockState,
+  conversationId: string,
+  messages: WorkbenchMessageDto[],
+  options?: WorkbenchHistoryMessageQuery,
+) {
+  const conversation = findConversation(state, conversationId);
+
+  return messages.filter((message) => {
+    if (!matchesMockHistoryScope(message, options?.scope)) {
+      return false;
+    }
+
+    if (options?.day && !matchesMockHistoryDay(message, options.day)) {
+      return false;
+    }
+
+    if (options?.senderId && !matchesMockHistorySender(conversation, message, options.senderId)) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function matchesMockHistoryScope(
+  message: WorkbenchMessageDto,
+  scope: WorkbenchHistoryMessageScope | undefined,
+) {
+  if (!scope || scope === "all") {
+    return true;
+  }
+
+  if (scope === "file") {
+    return message.contentType === "file";
+  }
+
+  if (scope === "media") {
+    return message.contentType === "image" || message.contentType === "video";
+  }
+
+  if (scope === "h5") {
+    return message.contentType === "h5";
+  }
+
+  return message.contentType === "mini-program";
+}
+
+function matchesMockHistoryDay(message: WorkbenchMessageDto, day: string) {
+  const createdAt = message.createdAt ?? 0;
+
+  if (createdAt <= 0) {
+    return false;
+  }
+
+  const date = new Date(createdAt);
+  const localDay = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+
+  return localDay === day;
+}
+
+function matchesMockHistorySender(
+  conversation: WorkbenchConversationSummaryDto | undefined,
+  message: WorkbenchMessageDto,
+  senderId: string,
+) {
+  const candidateSenderIds = new Set<string>([
+    message.thirdFromId ?? "",
+    message.thirdUserId ?? "",
+    message.thirdExternalUserId ?? "",
+  ]);
+
+  if (conversation?.mode === "single") {
+    if (message.senderType === "customer") {
+      candidateSenderIds.add(conversation.thirdExternalUserId ?? "");
+    }
+
+    if (message.senderType === "agent") {
+      candidateSenderIds.add(conversation.thirdUserId ?? "");
+    }
+  }
+
+  return candidateSenderIds.has(senderId);
+}
+
+function normalizeHistoryLimit(limit?: number) {
+  if (limit == null || !Number.isFinite(limit) || limit <= 0) {
+    return 30;
+  }
+
+  return Math.min(100, Math.floor(limit));
+}
+
+function decodeMockHistoryCursor(cursor?: string): MockHistoryCursor | undefined {
+  if (!cursor) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as MockHistoryCursor;
+  } catch {
+    return undefined;
+  }
+}
+
+function encodeMockHistoryCursor(cursor: MockHistoryCursor) {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function sliceMockHistoryMessages(
+  messages: WorkbenchMessageDto[],
+  input: {
+    cursor?: MockHistoryCursor;
+    day?: string;
+    limit: number;
+  },
+) {
+  const { cursor, day, limit } = input;
+  const direction = cursor?.direction ?? (day ? "next" : "prev");
+  const anchorSeq = cursor?.anchorSeq;
+  const anchorIndex =
+    anchorSeq == null ? -1 : messages.findIndex((message) => message.seq === anchorSeq);
+
+  let startIndex: number;
+
+  if (anchorSeq == null) {
+    startIndex = direction === "next" ? 0 : Math.max(0, messages.length - limit);
+  } else if (direction === "next") {
+    startIndex = Math.max(0, anchorIndex + 1);
+  } else {
+    startIndex = Math.max(0, anchorIndex - limit);
+  }
+
+  const pageMessages = messages.slice(startIndex, startIndex + limit);
+  const hasPrev = startIndex > 0;
+  const hasNext = startIndex + pageMessages.length < messages.length;
+
+  return {
+    hasNext,
+    hasPrev,
+    messages: pageMessages,
+    nextCursor: hasNext
+      ? encodeMockHistoryCursor({
+          anchorSeq: pageMessages.at(-1)?.seq,
+          direction: "next",
+        })
+      : undefined,
+    prevCursor: hasPrev
+      ? encodeMockHistoryCursor({
+          anchorSeq: pageMessages[0]?.seq,
+          direction: "prev",
+        })
+      : undefined,
   };
 }
 
@@ -1052,11 +1303,14 @@ function pushMessageStatusEvent(
   });
 }
 
-function pushMessageEvent(state: MockState, message: WorkbenchMessageDto) {
-  state.version = Math.max(state.version + 1, Date.now(), message.createdAt ?? 0);
+function pushMessageUpdateEvent(
+  state: MockState,
+  event: WorkbenchMessageUpdateEventDto,
+) {
+  state.version = Math.max(state.version + 1, Date.now());
   state.events.push({
-    payload: message,
-    type: "message",
+    payload: event,
+    type: "message-update",
     version: state.version,
   });
 }
@@ -1073,26 +1327,20 @@ function revokeMessage(
     return;
   }
 
-  const revokeEventMessage = {
-    content: {
-      revokeMsgId: messageId,
-      revokeOriginMsgId: messageId,
-      type: "revoke",
-    },
-    contentType: "revoke",
+  const nextMessage = {
+    ...originalMessage,
+    isRevoked: true,
+  };
+
+  state.messagesByConversationId[conversationId] = messages.map((message) =>
+    message.messageId === messageId ? nextMessage : message,
+  );
+
+  pushMessageUpdateEvent(state, {
     conversationId,
-    createdAt: Math.max(Date.now(), (messages.at(-1)?.createdAt ?? 0) + 1),
-    customerId: originalMessage.customerId,
-    messageId: `revoke-${messageId}`,
-    seatId: originalMessage.seatId,
-    senderType: "system",
-    seq: getNextMessageSeq(state, conversationId),
-    status: "read",
-  } satisfies WorkbenchMessageDto;
-
-  state.messagesByConversationId[conversationId] = [...messages, revokeEventMessage];
-
-  pushMessageEvent(state, revokeEventMessage);
+    eventId: state.version + 1,
+    messageId,
+  });
 }
 
 function getNextMessageSeq(state: MockState, conversationId: string) {

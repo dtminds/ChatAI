@@ -6,14 +6,19 @@ export const Popover = PopoverPrimitive.Root;
 export const PopoverTrigger = PopoverPrimitive.Trigger;
 export const PopoverAnchor = PopoverPrimitive.Anchor;
 
+type PopoverContentProps = ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> & {
+  portalContainer?: ComponentPropsWithoutRef<typeof PopoverPrimitive.Portal>["container"];
+};
+
 export function PopoverContent({
   className,
   align = "center",
+  portalContainer,
   sideOffset = 6,
   ...props
-}: ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>) {
+}: PopoverContentProps) {
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={portalContainer}>
       <PopoverPrimitive.Content
         align={align}
         className={cn(

@@ -869,7 +869,7 @@ function SidebarItemDialog({
                     setBindSingle(checked === true);
                   }}
                 />
-                <span className={cn(isSubmitting ? "opacity-50" : undefined)}>私聊侧边栏</span>
+                <span className={cn(isSubmitting ? "opacity-50" : undefined)}>单聊</span>
               </label>
               <label className="flex cursor-pointer items-center gap-2.5 text-sm leading-none">
                 <Checkbox
@@ -880,7 +880,7 @@ function SidebarItemDialog({
                     setBindGroup(checked === true);
                   }}
                 />
-                <span className={cn(isSubmitting ? "opacity-50" : undefined)}>群聊侧边栏</span>
+                <span className={cn(isSubmitting ? "opacity-50" : undefined)}>群聊</span>
               </label>
             </div>
           </Field>

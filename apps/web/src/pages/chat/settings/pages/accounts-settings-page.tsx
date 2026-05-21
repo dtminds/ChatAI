@@ -412,6 +412,7 @@ function SubAccountRelationDialog({
 }) {
   const [query, setQuery] = useState("");
   const [selectedSubAccountIds, setSelectedSubAccountIds] = useState<string[]>([]);
+  const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const managedAccount = state?.managedAccount;
 
   useEffect(() => {
@@ -438,6 +439,7 @@ function SubAccountRelationDialog({
       <DialogContent
         className="sm:max-w-[34rem]"
         onOpenAutoFocus={(event) => event.preventDefault()}
+        ref={setContentElement}
       >
         <DialogHeader>
           <DialogTitle>关联子账号</DialogTitle>
@@ -457,6 +459,7 @@ function SubAccountRelationDialog({
           >
             <SubAccountSelectionList
               onQueryChange={setQuery}
+              pickerPortalContainer={contentElement}
               onToggleSubAccount={toggleSubAccount}
               query={query}
               selectedSubAccountIds={selectedSubAccountIds}
@@ -483,12 +486,14 @@ function SubAccountRelationDialog({
 function SubAccountSelectionList({
   onQueryChange,
   onToggleSubAccount,
+  pickerPortalContainer,
   query,
   selectedSubAccountIds,
   subAccounts,
 }: {
   onQueryChange: (query: string) => void;
   onToggleSubAccount: (subAccountId: string) => void;
+  pickerPortalContainer?: HTMLElement | null;
   query: string;
   selectedSubAccountIds: string[];
   subAccounts: SettingsManagedAccountSubAccount[];
@@ -546,6 +551,7 @@ function SubAccountSelectionList({
             }
           }}
           onOpenAutoFocus={(event) => event.preventDefault()}
+          portalContainer={pickerPortalContainer}
           sideOffset={8}
         >
           {subAccounts.length > 0 ? (

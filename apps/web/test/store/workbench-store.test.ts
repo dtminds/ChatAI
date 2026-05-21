@@ -11,6 +11,10 @@ import {
   useWorkbenchStore,
 } from "@/store/workbench-store";
 import type { Conversation } from "@/pages/chat/chat-types";
+import type {
+  WorkbenchHistoryMessagePageDto,
+  WorkbenchMessageDto,
+} from "@chatai/contracts";
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
 
 vi.mock("@/pages/chat/api/media-upload-service", () => ({
@@ -50,6 +54,25 @@ function createCachedConversation(accountId: string): Conversation {
     quietFor: "刚刚",
     unread: 0,
     updatedAt: "刚刚",
+  };
+}
+
+function createHistoryMessageDto(
+  id: string,
+  seq: number,
+  text: string,
+): WorkbenchMessageDto {
+  return {
+    content: { text },
+    contentType: "text",
+    conversationId: "conv-001",
+    createdAt: 1_778_400_000_000 + seq * 1_000,
+    customerId: "cust-001",
+    messageId: id,
+    seatId: "drc",
+    senderType: seq % 2 === 0 ? "agent" : "customer",
+    seq,
+    status: "read",
   };
 }
 
@@ -98,6 +121,153 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveConversation("conv-002");
 
     expect(observedLimits).toEqual([50, 50]);
+  });
+
+  it("keeps the opposite history cursor when prepending older pages", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedHistoryCursors: Array<string | undefined> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getHistoryMessages(conversationId, options) {
+        observedHistoryCursors.push(options?.cursor);
+
+        if (conversationId !== "conv-001") {
+          return baseService.getHistoryMessages(conversationId, options);
+        }
+
+        if (options?.cursor === "before-2") {
+          return {
+            hasNext: true,
+            hasPrev: false,
+            messages: [
+              createHistoryMessageDto("history-0", 0, "更早 0"),
+              createHistoryMessageDto("history-1", 1, "更早 1"),
+            ],
+            nextCursor: "after-1",
+            prevCursor: undefined,
+          };
+        }
+
+        if (options?.cursor === "after-3") {
+          return {
+            hasNext: false,
+            hasPrev: true,
+            messages: [createHistoryMessageDto("history-4", 4, "更新 4")],
+            nextCursor: undefined,
+            prevCursor: "before-4",
+          };
+        }
+
+        return {
+          hasNext: true,
+          hasPrev: true,
+          messages: [
+            createHistoryMessageDto("history-2", 2, "当前 2"),
+            createHistoryMessageDto("history-3", 3, "当前 3"),
+          ],
+          nextCursor: "after-3",
+          prevCursor: "before-2",
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
+    await useWorkbenchStore.getState().loadHistoryMessages({
+      cursor:
+        useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]
+          ?.prevCursor,
+      direction: "prev",
+    });
+    await useWorkbenchStore.getState().loadHistoryMessages({
+      cursor:
+        useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]
+          ?.nextCursor,
+      direction: "next",
+    });
+
+    expect(observedHistoryCursors).toEqual([undefined, "before-2", "after-3"]);
+    expect(
+      useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]
+        ?.messages.map((message) => message.id),
+    ).toEqual(["history-0", "history-1", "history-2", "history-3", "history-4"]);
+  });
+
+  it("clears history panel messages immediately when changing scope", async () => {
+    const baseService = createMockWorkbenchService();
+    const pendingHistoryPage = createDeferred<WorkbenchHistoryMessagePageDto>();
+
+    setWorkbenchService({
+      ...baseService,
+      async getHistoryMessages(conversationId, options) {
+        if (options?.scope === "file") {
+          return pendingHistoryPage.promise;
+        }
+
+        return {
+          hasNext: false,
+          hasPrev: false,
+          messages: [createHistoryMessageDto("history-text", 1, "旧文本")],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
+
+    const switchScopePromise = useWorkbenchStore.getState().setHistoryPanelScope("file");
+    const stateWhileLoading = useWorkbenchStore.getState();
+
+    expect(
+      stateWhileLoading.historyPanelByConversationId["conv-001"]?.messages,
+    ).toEqual([]);
+    expect(stateWhileLoading.historyPanelLoadingByConversationId["conv-001"]).toBe(true);
+
+    pendingHistoryPage.resolve({
+      hasNext: false,
+      hasPrev: false,
+      messages: [createHistoryMessageDto("history-file", 2, "文件")],
+    });
+    await switchScopePromise;
+
+    expect(
+      useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]
+        ?.messages.map((message) => message.id),
+    ).toEqual(["history-file"]);
+  });
+
+  it("keeps history scroll pinned to the end only for all-scope filters without a day", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
+
+    expect(
+      useWorkbenchStore.getState().historyPanelScrollModeByConversationId["conv-001"],
+    ).toBe("end");
+
+    await useWorkbenchStore.getState().setHistoryPanelSenderId("customer-1");
+
+    expect(
+      useWorkbenchStore.getState().historyPanelScrollModeByConversationId["conv-001"],
+    ).toBe("end");
+
+    await useWorkbenchStore.getState().setHistoryPanelDay("2026-05-20");
+
+    expect(
+      useWorkbenchStore.getState().historyPanelScrollModeByConversationId["conv-001"],
+    ).toBeUndefined();
+
+    await useWorkbenchStore.getState().setHistoryPanelDay(undefined);
+
+    expect(
+      useWorkbenchStore.getState().historyPanelScrollModeByConversationId["conv-001"],
+    ).toBe("end");
+
+    await useWorkbenchStore.getState().setHistoryPanelScope("file");
+
+    expect(
+      useWorkbenchStore.getState().historyPanelScrollModeByConversationId["conv-001"],
+    ).toBeUndefined();
   });
 
   it("starts polling from the conversation snapshot baseline after bootstrap", async () => {
@@ -935,6 +1105,126 @@ describe("useWorkbenchStore", () => {
     expect(state.activeConversationId).toBe("conv-001");
     expect(state.messagesByConversationId["conv-001"].length).toBeGreaterThan(0);
     expect(state.sinceVersion).toBeGreaterThan(0);
+  });
+
+  it("reloads message details in batch for poll message update events", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedMessageIdBatches: Array<string[]> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          messageUpdateEvents: [
+            {
+              conversationId: request.activeConversationId ?? "conv-001",
+              eventId: 4,
+              messageId: "829",
+            },
+          ],
+          nextMessageUpdateCursor: 1_778_840_010_000,
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+      async getMessagesByIds(input) {
+        if (input.conversationId === "conv-001" && input.messageIds.includes("829")) {
+          observedMessageIdBatches.push(["829"]);
+          return {
+            messages: [
+              {
+                content: { text: "更新后的消息" },
+                contentType: "text",
+                conversationId: "conv-001",
+                createdAt: 1_778_840_010_000,
+                customerId: "cust-001",
+                messageId: "829",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 829,
+                status: "read",
+              },
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedMessageIdBatches).toEqual([["829"]]);
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
+        (message) => message.id === "829",
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores refreshed message details when the message is not already in store", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          messageUpdateEvents: [
+            {
+              conversationId: request.activeConversationId ?? "conv-001",
+              eventId: 6,
+              messageId: "999999",
+            },
+          ],
+          nextMessageUpdateCursor: 1_778_840_010_000,
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+      async getMessagesByIds(input) {
+        if (input.messageIds.includes("999999")) {
+          return {
+            messages: [
+              {
+                content: { text: "不会被插入" },
+                contentType: "text",
+                conversationId: input.conversationId,
+                createdAt: 1_778_410_200_000,
+                customerId: "cust-001",
+                messageId: "999999",
+                seatId: "drc",
+                senderAvatar: "",
+                senderName: "幽灵消息",
+                senderType: "customer",
+                seq: 999999,
+                status: "read",
+                thirdExternalUserId: "external-1",
+                thirdFromId: "sender-cust-001",
+                thirdUserId: "third-user-drc",
+              },
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const beforeLength = useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().messagesByConversationId["conv-001"]).toHaveLength(
+      beforeLength,
+    );
   });
 
   it("preserves the current conversation and unrelated pending messages during cursor recovery", async () => {

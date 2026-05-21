@@ -7,6 +7,8 @@ import {
 } from "@/pages/chat/api/workbench-adapter";
 import type {
   SettingsSidebarItem,
+  WorkbenchHistoryMessagePageDto,
+  WorkbenchHistoryMessageQuery,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
@@ -18,6 +20,8 @@ import type {
   WorkbenchSendMessageResponse,
   WorkbenchSeatChangeDto,
   WorkbenchUploadCredentialResponse,
+  WorkbenchMessageQueryByIdsRequest,
+  WorkbenchMessageUpdateEventDto,
 } from "@chatai/contracts";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import type {
@@ -43,6 +47,7 @@ export type WorkbenchScopeRequest = {
   activeMessageSeq: number;
   currentAccountId: string;
   freshBaseline?: boolean;
+  messageUpdateCursor?: number;
   sinceVersion: number;
 };
 
@@ -52,6 +57,14 @@ export type WorkbenchConversationPage = {
   messages: Message[];
   nextBeforeSeq?: number;
   skippedHiddenCount: number;
+};
+
+export type WorkbenchHistoryPage = {
+  hasNext: boolean;
+  hasPrev: boolean;
+  messages: Message[];
+  nextCursor?: string;
+  prevCursor?: string;
 };
 
 export type WorkbenchBootstrapResult = {
@@ -104,7 +117,9 @@ export type WorkbenchPollResult = {
   accountChanges: Array<WorkbenchSeatChangeDto & { accountId: string }>;
   activeConversationMessages: Message[];
   conversationChanges: WorkbenchConversationChange[];
+  messageUpdateEvents: WorkbenchMessageUpdateEventDto[];
   messageStatusChanges: WorkbenchMessageStatusChange[];
+  nextMessageUpdateCursor?: number;
   nextVersion: number;
   request: WorkbenchScopeRequest;
 };
@@ -320,6 +335,33 @@ export async function loadConversationMessagesPage(
   };
 }
 
+export async function loadMessagesByIds(
+  context: GatewayContext,
+  conversationId: string,
+  messageIds: string[],
+): Promise<Message[]> {
+  if (!messageIds.length) {
+    return [];
+  }
+
+  const response = await getWorkbenchService().getMessagesByIds({
+    conversationId,
+    messageIds,
+  } satisfies WorkbenchMessageQueryByIdsRequest);
+
+  return adaptMessages(response.messages, context);
+}
+
+export async function loadConversationHistoryMessagesPage(
+  context: GatewayContext,
+  conversationId: string,
+  options?: WorkbenchHistoryMessageQuery,
+): Promise<WorkbenchHistoryPage> {
+  const page = await getWorkbenchService().getHistoryMessages(conversationId, options);
+
+  return adaptHistoryMessagePage(page, context);
+}
+
 export async function loadGroupMembers(
   conversationId: string,
 ): Promise<GroupMember[]> {
@@ -399,6 +441,7 @@ export async function pollWorkbench(
     activeMessageSeq: request.activeMessageSeq,
     currentSeatId: request.currentAccountId,
     freshBaseline: request.freshBaseline,
+    messageUpdateCursor: request.messageUpdateCursor,
     sinceVersion: request.sinceVersion,
   });
 
@@ -419,8 +462,9 @@ export async function pollWorkbench(
             accountId: change.seatId,
             conversation: adaptConversation(change),
             type: "upsert" as const,
-          },
+        },
     ),
+    messageUpdateEvents: response.messageUpdateEvents ?? [],
     messageStatusChanges: response.messageStatusChanges.map((change) => ({
       clientMessageId: change.clientMessageId,
       conversationId: change.conversationId,
@@ -428,6 +472,7 @@ export async function pollWorkbench(
       remoteMessageId: change.messageId,
       status: adaptMessageStatus(change.status),
     })),
+    nextMessageUpdateCursor: response.nextMessageUpdateCursor,
     nextVersion: response.nextVersion,
     request,
   };
@@ -437,9 +482,7 @@ function adaptMessages(
   messageDtos: Parameters<typeof adaptMessage>[0][],
   context: GatewayContext,
 ) {
-  const accountMap = Object.fromEntries(
-    context.accounts.map((account) => [account.id, account]),
-  ) as Record<string, Account>;
+  const accountMap = buildAccountMap(context.accounts);
 
   return messageDtos.map((message) =>
     adaptMessage(
@@ -449,6 +492,26 @@ function adaptMessages(
       context.me,
     ),
   );
+}
+
+function buildAccountMap(accounts: Account[]) {
+  return Object.fromEntries(accounts.map((account) => [account.id, account])) as Record<
+    string,
+    Account
+  >;
+}
+
+function adaptHistoryMessagePage(
+  page: WorkbenchHistoryMessagePageDto,
+  context: GatewayContext,
+): WorkbenchHistoryPage {
+  return {
+    hasNext: page.hasNext,
+    hasPrev: page.hasPrev,
+    messages: adaptMessages(page.messages, context),
+    nextCursor: page.nextCursor,
+    prevCursor: page.prevCursor,
+  };
 }
 
 function adaptMessageStatus(status: WorkbenchMessageStatus): MessageStatus {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -45,11 +45,30 @@ describe("ChatWorkbenchPage session flows", () => {
         screen.getByRole("textbox", { name: "当前账号未接管，暂时无法发送消息" }),
       ).toHaveAttribute("aria-readonly", "true");
       expect(screen.getAllByText("当前账号未接管，暂时无法发送消息")).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "微信表情" })).toBeDisabled();
       expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
       expect(
         screen.queryByText("当前账号未接管，暂时无法发送消息。"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("disables message avatar menu actions when the active account is not taken over", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
+
+    await screen.findByRole("textbox", {
+      name: "当前账号未接管，暂时无法发送消息",
+    });
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "引用消息" })).toHaveAttribute(
+      "data-disabled",
+    );
   });
 
   it("disables conversation card actions when the active account is not taken over", async () => {
@@ -92,6 +111,12 @@ describe("ChatWorkbenchPage session flows", () => {
     });
     await user.hover(screen.getByRole("button", { name: "选择 念都堂" }));
     await user.click(screen.getByRole("button", { name: "接管账号" }));
+    const confirmDialog = await screen.findByRole("alertdialog", {
+      name: "是否确认接管：念都堂",
+    });
+    await user.click(
+      within(confirmDialog).getByRole("button", { name: "确认接管" }),
+    );
 
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "请输入消息……" })).not.toHaveAttribute(

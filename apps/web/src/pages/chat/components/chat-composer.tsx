@@ -65,11 +65,13 @@ type ChatComposerProps = {
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isSending: boolean;
+  isHistoryPanelOpen: boolean;
   onClearQuotedMessage: () => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
+  onOpenHistory: () => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
   placeholder: string;
@@ -103,11 +105,13 @@ export function ChatComposer({
   isGroupConversation,
   isEmojiPickerOpen,
   isSending,
+  isHistoryPanelOpen,
   onClearQuotedMessage,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onFileSelect,
+  onOpenHistory,
   onSegmentsChange,
   onSendDraft,
   placeholder,
@@ -301,7 +305,7 @@ export function ChatComposer({
   ]);
 
   const handleImageFiles = async (fileList: FileList | File[] | null) => {
-    if (isSending) {
+    if (isSending || !canSendMessage) {
       return;
     }
 
@@ -350,7 +354,7 @@ export function ChatComposer({
   };
 
   const handleEmojiSelect = (name: WechatEmojiName) => {
-    if (isSending) {
+    if (isSending || !canSendMessage) {
       return;
     }
 
@@ -393,7 +397,7 @@ export function ChatComposer({
                 composerActionButtonClass,
                 isEmojiPickerOpen && "bg-primary/10 text-primary",
               )}
-              disabled={isSending}
+              disabled={isSending || !canSendMessage}
               onClick={() => onEmojiPickerOpenChange(!isEmojiPickerOpen)}
               size="icon"
               type="button"
@@ -457,7 +461,13 @@ export function ChatComposer({
           />
           <Button
             aria-label="历史记录"
-            className={composerActionButtonClass}
+            aria-pressed={isHistoryPanelOpen}
+            className={cn(
+              composerActionButtonClass,
+              isHistoryPanelOpen &&
+                "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+            onClick={onOpenHistory}
             size="icon"
             type="button"
             variant="ghost"

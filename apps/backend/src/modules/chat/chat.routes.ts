@@ -1,4 +1,5 @@
 import type {
+  WorkbenchMessageQueryByIdsRequest,
   WorkbenchPollRequest,
   WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
@@ -27,6 +28,22 @@ const ConversationMessagesQuerySchema = Type.Object({
   limit: Type.Optional(NumericStringSchema),
 });
 
+const HistoryMessagesQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String()),
+  day: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+  limit: Type.Optional(NumericStringSchema),
+  scope: Type.Optional(
+    Type.Union([
+      Type.Literal("all"),
+      Type.Literal("file"),
+      Type.Literal("media"),
+      Type.Literal("h5"),
+      Type.Literal("mini-program"),
+    ]),
+  ),
+  sender_id: Type.Optional(Type.String()),
+});
+
 const MediaProxyQuerySchema = Type.Object({
   url: Type.String({ minLength: 1 }),
 });
@@ -42,6 +59,11 @@ const MessageDownloadParamsSchema = Type.Object({
 const MessageDownloadStatusBodySchema = Type.Object({
   conversationId: Type.String(),
   messageSeq: Type.Number(),
+});
+
+const MessageQueryByIdsBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageIds: Type.Array(Type.String()),
 });
 
 const WorkbenchMessageContentTypeSchema = Type.Union([
@@ -68,6 +90,7 @@ const PollQuerySchema = Type.Object({
   active_message_seq: Type.Optional(NumericStringSchema),
   current_seat_id: Type.Optional(Type.String()),
   fresh_baseline: Type.Optional(Type.Union([Type.Literal("0"), Type.Literal("1")])),
+  message_update_cursor: Type.Optional(NumericStringSchema),
   since_version: Type.Optional(NumericStringSchema),
 });
 
@@ -168,10 +191,12 @@ const SidebarIframeParamsBodySchema = Type.Object({
 type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
 type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
+type HistoryMessagesQuery = Static<typeof HistoryMessagesQuerySchema>;
 type MediaProxyQuery = Static<typeof MediaProxyQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
+type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
@@ -280,6 +305,49 @@ export async function registerChatRoutes(app: FastifyInstance) {
         {
           beforeSeq: parseOptionalInteger(request.query.before_seq),
           limit: parseOptionalInteger(request.query.limit),
+        },
+      );
+    },
+  );
+
+  app.post<{ Body: MessageQueryByIdsBody }>(
+    "/api/server/messages/query-by-ids",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageQueryByIdsBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getMessagesByIds(
+        getSubUserId(request),
+        request.body.conversationId,
+        request.body.messageIds,
+      ),
+  );
+
+  app.get<{
+    Params: ConversationParams;
+    Querystring: HistoryMessagesQuery;
+  }>(
+    "/api/server/conversations/:conversationId/history-messages",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConversationParamsSchema,
+        querystring: HistoryMessagesQuerySchema,
+      },
+    },
+    async (request) => {
+      return getWorkbenchService(app, request).getHistoryMessages(
+        getSubUserId(request),
+        request.params.conversationId,
+        {
+          cursor: request.query.cursor,
+          day: request.query.day,
+          limit: parseOptionalInteger(request.query.limit),
+          scope: request.query.scope,
+          senderId: request.query.sender_id,
         },
       );
     },
@@ -399,6 +467,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
         activeMessageSeq: parseOptionalInteger(request.query.active_message_seq),
         currentSeatId: request.query.current_seat_id,
         freshBaseline: request.query.fresh_baseline === "1",
+        messageUpdateCursor: parseOptionalInteger(request.query.message_update_cursor),
         sinceVersion: parseOptionalInteger(request.query.since_version) ?? 0,
       } satisfies WorkbenchPollRequest;
 

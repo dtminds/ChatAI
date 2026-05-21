@@ -191,4 +191,135 @@ describe("workbench revoke state", () => {
       state.messagesByConversationId["conv-001"].some((message) => message.id === "revoke-seq-5"),
     ).toBe(false);
   });
+
+  it("applies media-ready update events by replacing the message content", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          messageUpdateEvents: [
+            {
+              conversationId: "conv-001",
+              eventId: 11,
+              messageId: "msg-010",
+            },
+          ],
+          nextMessageUpdateCursor: 11,
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+      async getMessagesByIds(input) {
+        if (input.conversationId === "conv-001" && input.messageIds.includes("msg-010")) {
+          return {
+            messages: [
+              {
+                content: {
+                  appName: "小程序",
+                  coverImageUrl: "https://cdn.example.com/ready-cover.jpg",
+                  title: "更新后封面",
+                },
+                contentType: "mini-program",
+                conversationId: "conv-001",
+                createdAt: Date.now(),
+                customerId: "cust-001",
+                messageId: "msg-010",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 10,
+                status: "read",
+              },
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.messagesByConversationId["conv-001"].find((message) => message.id === "msg-010")).toMatchObject(
+      {
+        content: {
+          coverImageUrl: "https://cdn.example.com/ready-cover.jpg",
+          type: "mini-program",
+        },
+        id: "msg-010",
+      },
+    );
+    expect(state.messageUpdateCursor).toBe(11);
+  });
+
+  it("applies revoke update events by flagging the original message", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          messageUpdateEvents: [
+            {
+              conversationId: "conv-001",
+              eventId: 12,
+              messageId: "msg-006",
+            },
+          ],
+          nextMessageUpdateCursor: 12,
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+      async getMessagesByIds(input) {
+        if (input.conversationId === "conv-001" && input.messageIds.includes("msg-006")) {
+          return {
+            messages: [
+              {
+                content: {
+                  text: "已撤回消息",
+                },
+                contentType: "text",
+                conversationId: "conv-001",
+                createdAt: Date.now(),
+                customerId: "cust-001",
+                isRevoked: true,
+                messageId: "msg-006",
+                seatId: "drc",
+                senderType: "customer",
+                seq: 6,
+                status: "read",
+              },
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    const revokedLoadedMessage = state.messagesByConversationId["conv-001"].find(
+      (message) => message.id === "msg-006",
+    );
+
+    expect(revokedLoadedMessage).toMatchObject({
+      id: "msg-006",
+      isRevoked: true,
+    });
+    expect(state.messagesByConversationId["conv-001"].some((message) => message.id === "revoke-msg-006")).toBe(false);
+    expect(state.messageUpdateCursor).toBe(12);
+  });
 });

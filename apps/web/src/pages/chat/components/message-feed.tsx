@@ -5,6 +5,7 @@ import {
   QuoteUpIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,12 +22,19 @@ import {
   type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
+import {
+  isSameCalendarDay,
+  parseWorkbenchDate,
+} from "@/pages/chat/lib/chat-time";
 
-const TIMESTAMP_BREAK_MS = 30 * 60 * 1000;
+const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 
 type ChatMessageListProps = {
+  canUseMessageActions?: boolean;
   downloadTransferStates?: Record<string, "idle" | "transferring">;
   messages: Message[];
+  showTimeDividers?: boolean;
+  showTimestamps?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
@@ -47,8 +55,11 @@ type FeedItem =
     };
 
 export function ChatMessageList({
+  canUseMessageActions = true,
   downloadTransferStates = {},
   messages,
+  showTimeDividers = true,
+  showTimestamps = false,
   onDownloadMessageFile,
   onMentionMessage,
   onOpenQuotedMessage,
@@ -56,7 +67,10 @@ export function ChatMessageList({
   onRetryMessage,
   smartReplyByMessageId,
 }: ChatMessageListProps) {
-  const items = buildFeedItems(messages);
+  const items = useMemo(
+    () => buildFeedItems(messages, showTimeDividers),
+    [messages, showTimeDividers],
+  );
 
   return (
     <div className="space-y-3">
@@ -72,7 +86,9 @@ export function ChatMessageList({
           >
             <MessageRow
               message={item.message}
+              canUseMessageActions={canUseMessageActions}
               downloadTransferState={downloadTransferStates[item.message.id]}
+              showTimestamp={showTimestamps}
               onDownloadMessageFile={onDownloadMessageFile}
               onMentionMessage={onMentionMessage}
               onOpenQuotedMessage={onOpenQuotedMessage}
@@ -116,7 +132,9 @@ function SystemMessageNotice({ text }: { text: string }) {
 
 export function MessageRow({
   message,
+  canUseMessageActions = true,
   downloadTransferState,
+  showTimestamp = false,
   onDownloadMessageFile,
   onMentionMessage,
   onOpenQuotedMessage,
@@ -125,7 +143,9 @@ export function MessageRow({
   smartReply,
 }: {
   message: Message;
+  canUseMessageActions?: boolean;
   downloadTransferState?: "idle" | "transferring";
+  showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
@@ -144,6 +164,7 @@ export function MessageRow({
   const messageActions = (
     <MessageActionAvatar
       message={message}
+      canUseMessageActions={canUseMessageActions}
       onMentionMessage={onMentionMessage}
       onQuoteMessage={onQuoteMessage}
     />
@@ -207,6 +228,11 @@ export function MessageRow({
               {!isAgent && !message.isRevoked ? (
                 <SmartReplyMessageAnchor message={message} suggestion={smartReply} />
               ) : null}
+              {showTimestamp ? (
+                <p className="px-1 text-[11px] leading-4 text-muted-foreground/80">
+                  {message.sentAt}
+                </p>
+              ) : null}
             </div>
           </div>
           {isAgent && !inlineDeliveryState ? (
@@ -222,10 +248,12 @@ export function MessageRow({
 
 function MessageActionAvatar({
   message,
+  canUseMessageActions,
   onMentionMessage,
   onQuoteMessage,
 }: {
   message: ChatMessage;
+  canUseMessageActions: boolean;
   onMentionMessage?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
 }) {
@@ -235,8 +263,12 @@ function MessageActionAvatar({
     !message.isOwnMessage &&
     message.sender.groupMemberId,
   );
+  const canSelectMentionMessage = canUseMessageActions;
   const canQuoteMessage = Boolean(onQuoteMessage);
-  const canSelectQuoteMessage = !message.isRevoked;
+  const canSelectQuoteMessage =
+    canUseMessageActions &&
+    !message.isRevoked &&
+    message.content.type !== "contact-card";
 
   return (
     <div className="relative shrink-0">
@@ -260,7 +292,17 @@ function MessageActionAvatar({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center" side="bottom">
           {canMentionMessage ? (
-            <DropdownMenuItem onSelect={() => onMentionMessage?.(message)}>
+            <DropdownMenuItem
+              disabled={!canSelectMentionMessage}
+              onSelect={(event) => {
+                if (!canSelectMentionMessage) {
+                  event.preventDefault();
+                  return;
+                }
+
+                onMentionMessage?.(message);
+              }}
+            >
               <HugeiconsIcon
                 aria-hidden="true"
                 icon={AtIcon}
@@ -417,14 +459,18 @@ export function MessageAvatar({ message }: { message: ChatMessage }) {
   );
 }
 
-function buildFeedItems(messages: Message[]): FeedItem[] {
+function buildFeedItems(messages: Message[], showTimeDividers: boolean): FeedItem[] {
   const items: FeedItem[] = [];
   let previousTimestampedMessage: Message | undefined;
 
   messages.forEach((message) => {
     const hasValidTimestamp = parseWorkbenchDate(message.sentAt) !== null;
 
-    if (hasValidTimestamp && shouldInsertDivider(previousTimestampedMessage, message)) {
+    if (
+      showTimeDividers &&
+      hasValidTimestamp &&
+      shouldInsertDivider(previousTimestampedMessage, message)
+    ) {
       items.push({
         id: `divider-${message.id}`,
         label: formatMessageDividerLabel(message.sentAt),
@@ -490,25 +536,6 @@ export function formatMessageDividerLabel(value: string) {
   }
 
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
-}
-
-function parseWorkbenchDate(value: string) {
-  const normalized = value.trim().replace(" ", "T");
-  const date = new Date(normalized);
-
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return date;
-}
-
-function isSameCalendarDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
 }
 
 function isSameWeekMondayToSunday(a: Date, b: Date) {

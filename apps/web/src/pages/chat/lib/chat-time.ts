@@ -11,7 +11,7 @@ export function formatConversationTimestamp(value: string) {
     const diffMinutes = Math.floor((now.getTime() - date.getTime()) / 60000);
 
     if (diffMinutes >= 0 && diffMinutes < 60) {
-      return `${Math.max(diffMinutes, 1)}分钟前`;
+      return diffMinutes === 0 ? "刚刚" : `${diffMinutes}分钟前`;
     }
 
     return formatDatePart(date, {
@@ -35,7 +35,7 @@ export function formatConversationTimestamp(value: string) {
   ].join("/");
 }
 
-function parseWorkbenchDate(value: string) {
+export function parseWorkbenchDate(value: string) {
   const normalized = value.trim().replace(" ", "T");
   const date = new Date(normalized);
 
@@ -46,7 +46,7 @@ function parseWorkbenchDate(value: string) {
   return date;
 }
 
-function isSameCalendarDay(a: Date, b: Date) {
+export function isSameCalendarDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&

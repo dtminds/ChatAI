@@ -180,15 +180,17 @@ type WorkbenchState = {
   updateMessageDownloadContent: (
     conversationId: string,
     messageId: string,
-    contentPatch: {
-      downloadStatus?: "ing" | "finished" | "failed";
-      fileUrlExpireTime?: number;
-      fileUrl?: string;
-    },
+    contentPatch: DownloadContentPatch,
   ) => void;
 };
 
 type WorkbenchStore = WorkbenchState;
+
+type DownloadContentPatch = {
+  downloadStatus?: "ing" | "finished" | "failed";
+  fileUrlExpireTime?: number;
+  fileUrl?: string;
+};
 
 const defaultCustomerProfiles = seedCustomerProfiles;
 const MESSAGE_PAGE_SIZE = 50;
@@ -579,6 +581,55 @@ function patchExistingMessageList(
   }
 
   return merged;
+}
+
+function patchDownloadMessageList(
+  currentMessages: Message[],
+  messageId: string,
+  contentPatch: DownloadContentPatch,
+) {
+  return currentMessages.map((message) =>
+    patchDownloadMessage(message, messageId, contentPatch),
+  );
+}
+
+function patchDownloadMessage(
+  message: Message,
+  messageId: string,
+  contentPatch: DownloadContentPatch,
+): Message {
+  if (message.id !== messageId || !isDownloadableMessage(message)) {
+    return message;
+  }
+
+  if (message.content.type === "video") {
+    return {
+      ...message,
+      content: {
+        ...message.content,
+        ...(contentPatch.downloadStatus === undefined
+          ? {}
+          : { downloadStatus: contentPatch.downloadStatus }),
+        ...(contentPatch.fileUrlExpireTime === undefined
+          ? {}
+          : { fileUrlExpireTime: contentPatch.fileUrlExpireTime }),
+        ...(contentPatch.fileUrl === undefined
+          ? {}
+          : { videoUrl: contentPatch.fileUrl }),
+      },
+    };
+  }
+
+  return {
+    ...message,
+    content: {
+      ...message.content,
+      ...(contentPatch.downloadStatus === undefined
+        ? {}
+        : { downloadStatus: contentPatch.downloadStatus }),
+      ...(contentPatch.fileUrl === undefined ? {} : { fileUrl: contentPatch.fileUrl }),
+    },
+  };
 }
 
 function isRevokeSignalMessage(message: Message) {
@@ -1738,6 +1789,32 @@ export function createWorkbenchStore() {
             );
           }
 
+          const nextHistoryPanelByConversationId = {
+            ...clearedResourceState.historyPanelByConversationId,
+          };
+
+          for (const [conversationId, refreshedMessages] of Object.entries(
+            refreshedMessagesByConversationId,
+          )) {
+            if (!refreshedMessages.length) {
+              continue;
+            }
+
+            const historyPanel = nextHistoryPanelByConversationId[conversationId];
+
+            if (!historyPanel) {
+              continue;
+            }
+
+            nextHistoryPanelByConversationId[conversationId] = {
+              ...historyPanel,
+              messages: patchExistingMessageList(
+                historyPanel.messages,
+                refreshedMessages,
+              ),
+            };
+          }
+
           for (const change of response.messageStatusChanges) {
             const conversationMessages = nextMessagesByConversationId[change.conversationId] ?? [];
 
@@ -1787,6 +1864,7 @@ export function createWorkbenchStore() {
               clearedResourceState.groupMembersByConversationId,
             groupMembersLoadingByConversationId:
               clearedResourceState.groupMembersLoadingByConversationId,
+            historyPanelByConversationId: nextHistoryPanelByConversationId,
             messagePaginationByConversationId:
               clearedResourceState.messagePaginationByConversationId,
             messagesByConversationId: nextMessagesByConversationId,
@@ -2904,37 +2982,29 @@ export function createWorkbenchStore() {
       updateMessageDownloadContent(conversationId, messageId, contentPatch) {
         set((currentState) => {
           const messages = currentState.messagesByConversationId[conversationId] ?? [];
+          const historyPanel = currentState.historyPanelByConversationId[conversationId];
 
           return {
+            historyPanelByConversationId: historyPanel
+              ? {
+                  ...currentState.historyPanelByConversationId,
+                  [conversationId]: {
+                    ...historyPanel,
+                    messages: patchDownloadMessageList(
+                      historyPanel.messages,
+                      messageId,
+                      contentPatch,
+                    ),
+                  },
+                }
+              : currentState.historyPanelByConversationId,
             messagesByConversationId: {
               ...currentState.messagesByConversationId,
-              [conversationId]: messages.map((message) => {
-                if (message.id !== messageId || !isDownloadableMessage(message)) {
-                  return message;
-                }
-
-                if (message.content.type === "video") {
-                  return {
-                    ...message,
-                    content: {
-                      ...message.content,
-                      downloadStatus: contentPatch.downloadStatus,
-                      ...(contentPatch.fileUrlExpireTime === undefined
-                        ? {}
-                        : { fileUrlExpireTime: contentPatch.fileUrlExpireTime }),
-                      videoUrl: contentPatch.fileUrl ?? message.content.videoUrl,
-                    },
-                  };
-                }
-
-                return {
-                  ...message,
-                  content: {
-                    ...message.content,
-                    ...contentPatch,
-                  },
-                };
-              }),
+              [conversationId]: patchDownloadMessageList(
+                messages,
+                messageId,
+                contentPatch,
+              ),
             },
           };
         });

@@ -42,7 +42,6 @@ type ChatPanelProps = {
   isSendingDraft: boolean;
   isResizingCustomerPanel: boolean;
   messages: Message[];
-  downloadTransferStates?: Record<string, "idle" | "transferring">;
   quotedMessage: QuotedMessagePreviewContent | null;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
@@ -118,7 +117,6 @@ export function ChatPanel({
   isSendingDraft,
   isResizingCustomerPanel,
   messages,
-  downloadTransferStates,
   quotedMessage,
   hasMoreHistory,
   historyLoadLabel,
@@ -186,7 +184,6 @@ export function ChatPanel({
                 historyLoadLabel={historyLoadLabel}
                 isConversationLoading={isConversationLoading}
                 messages={messages}
-                downloadTransferStates={downloadTransferStates}
                 messageViewportRef={messageViewportRef}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}

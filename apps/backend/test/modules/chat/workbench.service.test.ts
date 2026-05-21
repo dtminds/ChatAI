@@ -595,6 +595,35 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("starts message file transfer without requiring the current sub-user to host the seat", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "202",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.downloadMessageFile("101", "88", "remote-msg-file-001"),
+    ).resolves.toEqual({
+      messageId: "remote-msg-file-001",
+      status: "accepted",
+    });
+    expect(javaClient.downloadMsgFile).toHaveBeenCalledWith({
+      msgid: "remote-msg-file-001",
+      platform: 5,
+      uid: 9001,
+    });
+  });
+
   it("rejects message file transfer when msgid is empty", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(

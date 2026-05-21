@@ -87,14 +87,11 @@ describe("formatMessageDividerLabel", () => {
     expect(screen.getByText("14:09")).toBeInTheDocument();
   });
 
-  it("passes download transfer state and handler to file messages", async () => {
+  it("renders file download state from message content", async () => {
     const handleDownloadMessageFile = vi.fn();
 
     render(
       createElement(ChatMessageList, {
-        downloadTransferStates: {
-          "message-file": "transferring",
-        },
         messages: [
           {
             ...createMessage("message-file", "", "2026-05-09 14:00:00"),

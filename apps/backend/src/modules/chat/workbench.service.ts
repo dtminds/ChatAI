@@ -361,8 +361,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     messageId: string,
   ) {
-    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const conversation = await this.repository.getConversationLookup(conversationId);
     const normalizedMessageId = messageId.trim();
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
 
     if (!normalizedMessageId) {
       throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");

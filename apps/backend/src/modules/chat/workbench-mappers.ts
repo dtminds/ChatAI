@@ -452,24 +452,14 @@ function parseMessageContent(
 }
 
 function formatMessagePreview(msgtype: string | null, rawContent: string | null) {
-  const parsed = parseContent(rawContent);
-
-  if (typeof parsed === "string") {
-    return parsed;
+  if (!msgtype && !rawContent) {
+    return "";
   }
 
-  if (parsed && typeof parsed === "object") {
-    if ("unsupportedDisplayText" in parsed) {
-      return String(parsed.unsupportedDisplayText ?? "");
-    }
+  const parsed = parseContent(rawContent);
 
-    if ("text" in parsed) {
-      return String(parsed.text ?? "");
-    }
-
-    if ("title" in parsed) {
-      return String(parsed.title ?? "");
-    }
+  if (msgtype === "text" || msgtype === "system") {
+    return readSystemMessageText(parsed, rawContent);
   }
 
   switch (msgtype) {
@@ -504,7 +494,7 @@ function formatMessagePreview(msgtype: string | null, rawContent: string | null)
     case "quote":
       return "[引用消息]";
     default:
-      return rawContent ?? "";
+      return "[新消息]";
   }
 }
 

@@ -480,6 +480,7 @@ function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
             </span>
           </div>
           <HistoryCompactMessageContent message={message} />
+          {message.isRevoked ? <HistoryCompactRevokedState /> : null}
         </div>
       ))}
       {chatMessages.length === 0 ? (
@@ -525,6 +526,14 @@ function HistoryCompactText({ text }: { text: string }) {
       data-testid="history-message-text"
     >
       <WechatEmojiText text={normalizeHistoryText(text)} />
+    </div>
+  );
+}
+
+function HistoryCompactRevokedState() {
+  return (
+    <div className="text-[12px] leading-5 text-muted-foreground">
+      已撤回
     </div>
   );
 }

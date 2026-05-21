@@ -75,6 +75,39 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.getByRole("button", { name: "日期" })).toHaveClass("h-8", "py-0", "text-[12px]");
   });
 
+  it("shows revoked state in the all history tab", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            {
+              ...createTextMessage("message-1", "原始消息"),
+              isRevoked: true,
+            },
+          ],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        scrollMode="end"
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("原始消息")).toBeInTheDocument();
+    expect(screen.getByText("已撤回")).toBeInTheDocument();
+  });
+
   it("renders sender options with avatars and the real account name in single conversations", async () => {
     const user = userEvent.setup();
 

@@ -17,6 +17,7 @@ describe("settings sub-account routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(db.joinCalls).toEqual([]);
     expect(response.json()).toEqual({
       data: {
         seats: [
@@ -92,6 +93,7 @@ describe("settings sub-account routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(db.joinCalls).toEqual([]);
     expect(response.json()).toEqual({
       data: {
         account: "agent003",
@@ -381,6 +383,7 @@ function createSettingsDbMock() {
     insertedRelations: [] as Array<Record<string, unknown>>,
     insertedSubAccount: undefined as Record<string, unknown> | undefined,
     expiredAccessTokenSubUserIds: [] as number[],
+    joinCalls: [] as Array<{ method: string; table: unknown }>,
     statusUpdates: [] as number[],
     subAccountListWheres: [] as Array<[string, string, unknown]>,
     updatedSubAccount: undefined as Record<string, unknown> | undefined,
@@ -404,16 +407,10 @@ function createSettingsDbMock() {
 
             return [...relations, ...state.insertedRelations]
               .filter((relation) => subId === undefined || relation.sub_id === subId)
-              .map((relation) => {
-                const seat = seats.find((item) => item.id === relation.user_seat_id);
-
-                return {
-                  avatarUrl: seat?.third_avatar,
-                  name: seat?.third_user_name,
-                  seat_id: relation.user_seat_id,
-                  sub_id: relation.sub_id,
-                };
-              });
+              .map((relation) => ({
+                seat_id: relation.user_seat_id,
+                sub_id: relation.sub_id,
+              }));
           }
 
           if (table === "xy_wap_embed_sub_user as sub_user") {
@@ -493,8 +490,14 @@ function createSettingsDbMock() {
           throw new Error(`Unexpected executeTakeFirst table: ${table}`);
         },
         groupBy: () => builder,
-        innerJoin: () => builder,
-        leftJoin: () => builder,
+        innerJoin: (table: unknown) => {
+          state.joinCalls.push({ method: "innerJoin", table });
+          return builder;
+        },
+        leftJoin: (table: unknown) => {
+          state.joinCalls.push({ method: "leftJoin", table });
+          return builder;
+        },
         orderBy: () => builder,
         select: () => builder,
         where: (column: string, operator: string, value: unknown) => {

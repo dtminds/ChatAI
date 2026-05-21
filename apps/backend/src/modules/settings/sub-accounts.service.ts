@@ -43,6 +43,11 @@ type RelationRow = {
   sub_id: number;
 };
 
+type RelationLinkRow = {
+  seat_id: number;
+  sub_id: number;
+};
+
 const dbSubAccountStatus = {
   active: 1,
   deleted: 0,
@@ -59,12 +64,15 @@ export class SubAccountSettingsService {
 
   async list(currentSubUserId: string): Promise<SettingsSubAccountsResponse> {
     const scope = await this.getTenantScope(currentSubUserId);
-    const [subAccounts, seats, relations] = await Promise.all([
+    const [subAccounts, seats, relationLinks] = await Promise.all([
       this.listSubAccountRows(scope),
       this.listSeatRows(scope),
-      this.listRelationRows(scope),
+      this.listRelationLinkRows(scope),
     ]);
-    const relationsBySubAccountId = groupRelationsBySubAccountId(relations);
+    const seatsById = new Map(seats.map((seat) => [seat.id, seat] as const));
+    const relationsBySubAccountId = groupRelationsBySubAccountId(
+      hydrateRelationRows(relationLinks, seatsById),
+    );
 
     return {
       seats: seats.map(mapSeat),
@@ -300,30 +308,21 @@ export class SubAccountSettingsService {
       .execute() as Promise<SeatRow[]>;
   }
 
-  private listRelationRows(scope: TenantScope, subAccountId?: number) {
+  private listRelationLinkRows(scope: TenantScope, subAccountId?: number) {
     let query = this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
-        join
-          .onRef("seat.id", "=", "relation.user_seat_id")
-          .onRef("seat.uid", "=", "relation.uid")
-          .onRef("seat.platform", "=", "relation.platform"),
-      )
       .select([
         "relation.sub_id as sub_id",
-        "seat.third_avatar as avatarUrl",
-        "seat.id as seat_id",
-        "seat.third_user_name as name",
+        "relation.user_seat_id as seat_id",
       ])
       .where("relation.uid", "=", scope.uid)
-      .where("relation.platform", "=", scope.platform)
-      .where("seat.biz_status", "=", 1);
+      .where("relation.platform", "=", scope.platform);
 
     if (subAccountId !== undefined) {
       query = query.where("relation.sub_id", "=", subAccountId);
     }
 
-    return query.execute() as Promise<RelationRow[]>;
+    return query.execute() as Promise<RelationLinkRow[]>;
   }
 
   private async assertAccountAvailable(account: string) {
@@ -438,14 +437,18 @@ export class SubAccountSettingsService {
   }
 
   private async getSubAccountOrThrow(scope: TenantScope, subAccountId: number) {
-    const [subAccount, relations] = await Promise.all([
+    const [subAccount, relationLinks, seats] = await Promise.all([
       this.getSubAccountRow(scope, subAccountId),
-      this.listRelationRows(scope, subAccountId),
+      this.listRelationLinkRows(scope, subAccountId),
+      this.listSeatRows(scope),
     ]);
 
     if (!subAccount) {
       throw new NotFoundError("SUB_ACCOUNT_NOT_FOUND", "子账号不存在");
     }
+
+    const seatsById = new Map(seats.map((seat) => [seat.id, seat] as const));
+    const relations = hydrateRelationRows(relationLinks, seatsById);
 
     return mapSubAccount(
       subAccount,
@@ -507,6 +510,28 @@ function groupRelationsBySubAccountId(relations: RelationRow[]) {
   }
 
   return relationsBySubAccountId;
+}
+
+function hydrateRelationRows(
+  relations: RelationLinkRow[],
+  seatsById: Map<number, SeatRow>,
+): RelationRow[] {
+  return relations
+    .map((relation): RelationRow | undefined => {
+      const seat = seatsById.get(relation.seat_id);
+
+      if (!seat) {
+        return undefined;
+      }
+
+      return {
+        avatarUrl: seat.avatarUrl,
+        name: seat.third_user_name,
+        seat_id: relation.seat_id,
+        sub_id: relation.sub_id,
+      };
+    })
+    .filter((relation): relation is RelationRow => relation !== undefined);
 }
 
 function mapSeat(row: SeatRow): SettingsWeComSeat {

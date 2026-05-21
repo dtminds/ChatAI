@@ -86,6 +86,13 @@ function createMessagesDb(
     table: string;
     wheres: Array<[string, string, unknown]>;
   }> = [];
+  const supportTables = new Set([
+    "xy_wap_embed_group_member as member",
+    "xy_wap_embed_user_seat",
+    "xy_wap_embed_contact",
+    "xy_wap_embed_customer_bind_relation",
+    "xy_wap_embed_group_seat",
+  ]);
 
   return {
     hydrationQueries,
@@ -148,6 +155,10 @@ function createMessagesDb(
       }
 
       if (table === "xy_wap_embed_customer_bind_relation") {
+        return createQueryBuilder([]);
+      }
+
+      if (supportTables.has(table)) {
         return createQueryBuilder([]);
       }
 
@@ -437,6 +448,190 @@ describe("WorkbenchRepository", () => {
       messages: [],
     });
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
+  });
+
+  it("loads seats without join-based aggregation", async () => {
+    const queryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createQueryBuilder([
+              {
+                platform: 5,
+                sub_id: 11,
+                uid: 9001,
+                user_seat_id: 101,
+              },
+              {
+                platform: 5,
+                sub_id: 12,
+                uid: 9001,
+                user_seat_id: 101,
+              },
+              {
+                platform: 5,
+                sub_id: 11,
+                uid: 9001,
+                user_seat_id: 102,
+              },
+            ]);
+            queryBuilders.push(query);
+            return query;
+          }
+
+          if (table === "xy_wap_embed_user_seat") {
+            const query = createQueryBuilder([
+              {
+                avatarUrl: "https://example.com/drc.png",
+                host_sub_id: 11,
+                id: 101,
+                is_online: 0,
+                platform: 5,
+                third_user_name: "德瑞可",
+                third_userid: "seat-user-001",
+                uid: 9001,
+              },
+              {
+                avatarUrl: "https://example.com/ndt.png",
+                host_sub_id: 0,
+                id: 102,
+                is_online: 1,
+                platform: 5,
+                third_user_name: "念都堂",
+                third_userid: "seat-user-002",
+                uid: 9001,
+              },
+            ]);
+            queryBuilders.push(query);
+            return query;
+          }
+
+          if (table === "xy_wap_embed_conversation") {
+            const query = createQueryBuilder([
+              {
+                last_msgtime: 1_778_839_950_000,
+                platform: 5,
+                third_userid: "seat-user-001",
+                uid: 9001,
+                unread_cnt: 3,
+              },
+              {
+                last_msgtime: 1_778_839_800_000,
+                platform: 5,
+                third_userid: "seat-user-001",
+                uid: 9001,
+                unread_cnt: 1,
+              },
+              {
+                last_msgtime: 1_778_839_900_000,
+                platform: 5,
+                third_userid: "seat-user-002",
+                uid: 9001,
+                unread_cnt: 9,
+              },
+              {
+                last_msgtime: 1_778_840_100_000,
+                platform: 5,
+                third_userid: "seat-user-001",
+                uid: 9002,
+                unread_cnt: 99,
+              },
+            ]);
+            queryBuilders.push(query);
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.listSeats("11")).resolves.toEqual([
+      expect.objectContaining({
+        seatId: "101",
+        unreadCount: 4,
+      }),
+      expect.objectContaining({
+        seatId: "102",
+        unreadCount: 9,
+      }),
+    ]);
+
+    expect(queryBuilders[0]?.joins).toEqual([]);
+    expect(queryBuilders[1]?.joins).toEqual([]);
+    expect(queryBuilders[2]?.joins).toEqual([]);
+  });
+
+  it("loads seat details without joining conversations", async () => {
+    const queryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            const query = createQueryBuilder([
+              {
+                avatarUrl: "https://example.com/drc.png",
+                host_sub_id: 11,
+                id: 101,
+                is_online: 0,
+                platform: 5,
+                third_user_name: "德瑞可",
+                third_userid: "seat-user-001",
+                uid: 9001,
+              },
+            ]);
+            queryBuilders.push(query);
+            return query;
+          }
+
+          if (table === "xy_wap_embed_conversation") {
+            const query = createQueryBuilder([
+              {
+                last_msgtime: 1_778_839_950_000,
+                platform: 5,
+                third_userid: "seat-user-001",
+                uid: 9001,
+                unread_cnt: 3,
+              },
+            ]);
+            queryBuilders.push(query);
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.getSeat("101")).resolves.toMatchObject({
+      seatId: "101",
+      unreadCount: 3,
+    });
+
+    expect(queryBuilders[0]?.joins).toEqual([]);
+    expect(queryBuilders[1]?.joins).toEqual([]);
+  });
+
+  it("checks seat access without joining sub-users and seats", async () => {
+    const queryBuilders: Array<{ joins: string[]; table: string }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          const query = createQueryBuilder(table === "xy_wap_embed_user_seat_sub_relation as relation" ? [{ id: 1 }] : [{ id: 11 }]);
+          queryBuilders.push({ joins: query.joins, table });
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(repository.canAccessSeat("11", "101")).resolves.toBe(true);
+
+    expect(queryBuilders).toEqual([
+      { joins: [], table: "xy_wap_embed_user_seat_sub_relation as relation" },
+      { joins: [], table: "xy_wap_embed_sub_user" },
+      { joins: [], table: "xy_wap_embed_user_seat" },
+    ]);
   });
 
   it("filters and limits conversation lists by requested chat mode", async () => {
@@ -1436,23 +1631,45 @@ describe("WorkbenchRepository", () => {
   });
 
   it("returns conversation tenant scope and takeover sub-user for Java write operations", async () => {
+    const queryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const observedTables: string[] = [];
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
-          expect(table).toBe("xy_wap_embed_conversation as conversation");
+          observedTables.push(table);
 
-          return createQueryBuilder({
-            id: 88,
-            platform: 5,
-            seat_host_sub_id: 101,
-            seat_id: 12,
-            seat_unread_count: 6,
-            third_external_userid: "external-001",
-            third_group_id: null,
-            third_userid: "seat-user-001",
-            uid: 9001,
-            unread_cnt: 2,
-          });
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder({
+              id: 88,
+              platform: 5,
+              third_external_userid: "external-001",
+              third_group_id: null,
+              third_userid: "seat-user-001",
+              uid: 9001,
+              unread_cnt: 2,
+            });
+            queryBuilders.push(query);
+            return query;
+          }
+
+          if (table === "xy_wap_embed_user_seat") {
+            const query = createQueryBuilder({
+              host_sub_id: 101,
+              id: 12,
+            });
+            queryBuilders.push(query);
+            return query;
+          }
+
+          if (table === "xy_wap_embed_conversation") {
+            const query = createQueryBuilder({
+              seat_unread_count: 6,
+            });
+            queryBuilders.push(query);
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
         },
       } as never,
     );
@@ -1469,6 +1686,12 @@ describe("WorkbenchRepository", () => {
       uid: 9001,
       unreadCount: 2,
     });
+    expect(observedTables).toEqual([
+      "xy_wap_embed_conversation as conversation",
+      "xy_wap_embed_user_seat",
+      "xy_wap_embed_conversation",
+    ]);
+    expect(queryBuilders.flatMap((query) => query.joins)).toEqual([]);
   });
 
   it("reads quote content base64 from audit extend origin data", async () => {

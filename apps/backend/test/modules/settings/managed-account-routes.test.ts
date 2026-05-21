@@ -12,6 +12,7 @@ describe("settings managed-account routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(db.joinCalls).toEqual([]);
     expect(response.json()).toEqual({
       data: {
         managedAccounts: [
@@ -100,6 +101,7 @@ describe("settings managed-account routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(db.joinCalls).toEqual([]);
     expect(db.subAccountValidationWheres).toContainEqual(["sub_user.id", "in", [12]]);
     expect(db.deletedRelationSeatIds).toEqual([101]);
     expect(db.insertedRelations).toEqual([
@@ -220,6 +222,7 @@ function createSettingsDbMock() {
   const state = {
     deletedRelationSeatIds: [] as number[],
     insertedRelations: [] as Array<Record<string, unknown>>,
+    joinCalls: [] as Array<{ method: string; table: unknown }>,
     subAccountValidationWheres: [] as Array<[string, string, unknown]>,
     selectFrom(table: string) {
       const wheres: Array<[string, string, unknown]> = [];
@@ -281,24 +284,10 @@ function createSettingsDbMock() {
               ...state.insertedRelations,
             ]
               .filter((relation) => seatId === undefined || relation.user_seat_id === seatId)
-              .map((relation) => {
-                const subUser = subUsers.find((item) => item.id === relation.sub_id);
-                const typeFilter = wheres.find(([column]) => column === "sub_user.type")?.[2];
-
-                if (typeFilter !== undefined && subUser?.type !== typeFilter) {
-                  return undefined;
-                }
-
-                return {
-                  account: subUser?.account,
-                  name: subUser?.name,
-                  seat_id: relation.user_seat_id,
-                  status: subUser?.status,
-                  sub_id: relation.sub_id,
-                  type: subUser?.type,
-                };
-              })
-              .filter((relation): relation is NonNullable<typeof relation> => !!relation);
+              .map((relation) => ({
+                seat_id: relation.user_seat_id,
+                sub_id: relation.sub_id,
+              }));
           }
 
           throw new Error(`Unexpected execute table: ${table}`);
@@ -341,7 +330,10 @@ function createSettingsDbMock() {
           throw new Error(`Unexpected executeTakeFirst table: ${table}`);
         },
         groupBy: () => builder,
-        innerJoin: () => builder,
+        innerJoin: (table: unknown) => {
+          state.joinCalls.push({ method: "innerJoin", table });
+          return builder;
+        },
         orderBy: () => builder,
         select: () => builder,
         where: (column: string, operator: string, value: unknown) => {

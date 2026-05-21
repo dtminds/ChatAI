@@ -38,6 +38,11 @@ type RelationRow = {
   type: number | null;
 };
 
+type RelationLinkRow = {
+  seat_id: number;
+  sub_id: number;
+};
+
 const dbSubAccountStatus = {
   active: 1,
   deleted: 0,
@@ -54,12 +59,17 @@ export class ManagedAccountSettingsService {
 
   async list(currentSubUserId: string): Promise<SettingsManagedAccountsResponse> {
     const scope = await this.getTenantScope(currentSubUserId);
-    const [managedAccounts, subAccounts, relations] = await Promise.all([
+    const [managedAccounts, subAccounts, relationLinks] = await Promise.all([
       this.listManagedAccountRows(scope),
       this.listAssignableSubAccountRows(scope),
-      this.listRelationRows(scope),
+      this.listRelationLinkRows(scope),
     ]);
-    const relationsBySeatId = groupRelationsBySeatId(relations);
+    const subAccountsById = new Map(
+      subAccounts.map((subAccount) => [subAccount.id, subAccount] as const),
+    );
+    const relationsBySeatId = groupRelationsBySeatId(
+      hydrateRelationRows(relationLinks, subAccountsById),
+    );
 
     return {
       managedAccounts: managedAccounts.map((account) =>
@@ -154,32 +164,21 @@ export class ManagedAccountSettingsService {
       .execute() as Promise<SubAccountRow[]>;
   }
 
-  private listRelationRows(scope: TenantScope, managedAccountId?: number) {
+  private listRelationLinkRows(scope: TenantScope, managedAccountId?: number) {
     let query = this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .innerJoin("xy_wap_embed_sub_user as sub_user", (join) =>
-        join
-          .onRef("sub_user.id", "=", "relation.sub_id")
-          .onRef("sub_user.uid", "=", "relation.uid")
-          .onRef("sub_user.platform", "=", "relation.platform"),
-      )
       .select([
-        "sub_user.account",
-        "sub_user.name",
         "relation.user_seat_id as seat_id",
-        "sub_user.status",
         "relation.sub_id as sub_id",
-        "sub_user.type",
       ])
       .where("relation.uid", "=", scope.uid)
-      .where("relation.platform", "=", scope.platform)
-      .where("sub_user.status", "!=", dbSubAccountStatus.deleted);
+      .where("relation.platform", "=", scope.platform);
 
     if (managedAccountId !== undefined) {
       query = query.where("relation.user_seat_id", "=", managedAccountId);
     }
 
-    return query.execute() as Promise<RelationRow[]>;
+    return query.execute() as Promise<RelationLinkRow[]>;
   }
 
   private async assertManagedAccountInScope(scope: TenantScope, managedAccountId: number) {
@@ -250,7 +249,7 @@ export class ManagedAccountSettingsService {
   }
 
   private async getManagedAccountOrThrow(scope: TenantScope, managedAccountId: number) {
-    const [managedAccount, relations] = await Promise.all([
+    const [managedAccount, relationLinks] = await Promise.all([
       this.db
         .selectFrom("xy_wap_embed_user_seat as seat")
         .select([
@@ -265,14 +264,26 @@ export class ManagedAccountSettingsService {
         .where("seat.platform", "=", scope.platform)
         .where("seat.biz_status", "=", 1)
         .executeTakeFirst() as Promise<ManagedAccountRow | undefined>,
-      this.listRelationRows(scope, managedAccountId),
+      this.listRelationLinkRows(scope, managedAccountId),
     ]);
 
     if (!managedAccount) {
       throw new NotFoundError("MANAGED_ACCOUNT_NOT_FOUND", "托管账号不存在");
     }
 
-    return mapManagedAccount(managedAccount, relations);
+    const subAccountIds = uniquePositiveNumbers(relationLinks.map((relation) => relation.sub_id));
+    const subAccountsById = new Map(
+      (
+        subAccountIds.length
+          ? await this.listAssignableSubAccountRows(scope, subAccountIds)
+          : []
+      ).map((subAccount) => [subAccount.id, subAccount] as const),
+    );
+
+    return mapManagedAccount(
+      managedAccount,
+      hydrateRelationRows(relationLinks, subAccountsById),
+    );
   }
 }
 
@@ -291,6 +302,40 @@ function groupRelationsBySeatId(relations: RelationRow[]) {
   }
 
   return relationsBySeatId;
+}
+
+function hydrateRelationRows(
+  relations: RelationLinkRow[],
+  subAccountsById: Map<number, SubAccountRow>,
+): RelationRow[] {
+  return relations
+    .map((relation): RelationRow | undefined => {
+      const subAccount = subAccountsById.get(relation.sub_id);
+
+      if (!subAccount) {
+        return undefined;
+      }
+
+      return {
+        account: subAccount.account,
+        name: subAccount.name,
+        seat_id: relation.seat_id,
+        status: subAccount.status,
+        sub_id: relation.sub_id,
+        type: subAccount.type,
+      };
+    })
+    .filter((relation): relation is RelationRow => relation !== undefined);
+}
+
+function uniquePositiveNumbers(values: Array<number | undefined>) {
+  return Array.from(
+    new Set(
+      values.filter((value): value is number =>
+        typeof value === "number" && Number.isSafeInteger(value) && value > 0,
+      ),
+    ),
+  );
 }
 
 function mapManagedAccount(

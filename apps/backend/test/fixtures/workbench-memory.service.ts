@@ -14,6 +14,7 @@ import type {
   WorkbenchHistoryMessageQuery,
   WorkbenchSubUserDto,
   WorkbenchMessageDto,
+  WorkbenchMessageFileDownloadResponse,
   WorkbenchMessagePageDto,
   WorkbenchMessageStatus,
   WorkbenchMessageStatusChangeDto,
@@ -206,6 +207,22 @@ export function createMemoryWorkbenchService() {
         region: "ap-guangzhou",
         requestId: "mock-upload-credential-request",
         startTime: 1778670000,
+      };
+    },
+    downloadMessageFile(
+      _subUserId: string,
+      conversationId: string,
+      messageId: string,
+    ): WorkbenchMessageFileDownloadResponse {
+      const conversation = findConversation(state, conversationId);
+
+      if (!conversation) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      return {
+        messageId,
+        status: "accepted",
       };
     },
     markConversationRead(

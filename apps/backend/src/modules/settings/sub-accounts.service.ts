@@ -169,7 +169,7 @@ export class SubAccountSettingsService {
       }
 
       updateValues.role = nextRole;
-      shouldExpireAccessTokens =
+      shouldExpireAccessTokens ||=
         nextRole !== deriveAccountRole({
           role: currentSubAccount?.role,
           type: currentSubAccount?.type,

@@ -533,7 +533,10 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     const logger = createLoggerMock();
     vi.mocked(javaClient.getUploadCredential).mockRejectedValue(
-      new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败"),
+      new BadGatewayError(
+        "WORKBENCH_INTERNAL_API_FAILED",
+        "工作台服务繁忙，请稍后重试",
+      ),
     );
     const service = new MysqlWorkbenchService(
       {
@@ -551,7 +554,8 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(service.getUploadCredential("101", "88")).rejects.toMatchObject({
-      code: "JAVA_INTERNAL_API_FAILED",
+      code: "WORKBENCH_INTERNAL_API_FAILED",
+      message: "工作台服务繁忙，请稍后重试",
       statusCode: 502,
     });
 

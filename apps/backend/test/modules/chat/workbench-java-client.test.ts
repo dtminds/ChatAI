@@ -20,7 +20,8 @@ describe("createWorkbenchJavaClient", () => {
         uid: 9001,
       }),
     ).rejects.toMatchObject({
-      code: "JAVA_INTERNAL_API_FAILED",
+      code: "WORKBENCH_INTERNAL_API_FAILED",
+      message: "工作台服务繁忙，请稍后重试",
       statusCode: 502,
     });
 
@@ -56,7 +57,8 @@ describe("createWorkbenchJavaClient", () => {
     await expect(
       createWorkbenchJavaClient().getUploadCredential({ uid: 9001 }),
     ).rejects.toMatchObject({
-      code: "JAVA_INTERNAL_API_FAILED",
+      code: "WORKBENCH_INTERNAL_API_FAILED",
+      message: "工作台服务繁忙，请稍后重试",
       details: {
         error: 123,
         path: "/third-internal/file/get-upload-credential",
@@ -134,7 +136,8 @@ describe("createWorkbenchJavaClient", () => {
         uid: 9001,
       }),
     ).rejects.toMatchObject({
-      code: "JAVA_INTERNAL_API_FAILED",
+      code: "WORKBENCH_INTERNAL_API_FAILED",
+      message: "工作台服务繁忙，请稍后重试",
     });
 
     expect(logger.error).toHaveBeenCalledWith(

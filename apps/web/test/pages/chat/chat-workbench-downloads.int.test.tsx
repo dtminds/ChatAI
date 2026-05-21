@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
@@ -158,7 +158,7 @@ describe("ChatWorkbenchPage download flows", () => {
     expect(toast.warning).not.toHaveBeenCalledWith("下载失败，请稍后重试");
   });
 
-  it("keeps clicked video downloads in loading state and starts polling after StrictMode remount", async () => {
+  it("keeps clicked video downloads in loading state without polling download status", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const downloadMessageFile = vi.fn(async () => ({
@@ -218,6 +218,7 @@ describe("ChatWorkbenchPage download flows", () => {
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "下载视频：待转存视频" }));
+    vi.useFakeTimers();
 
     expect(downloadMessageFile).toHaveBeenCalledWith({
       conversationId: "conv-001",
@@ -226,16 +227,12 @@ describe("ChatWorkbenchPage download flows", () => {
     });
     expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
-        conversationId: "conv-001",
-        messageSeq: 539,
-      });
-    }, { timeout: 3500 });
+    await vi.advanceTimersByTimeAsync(3500);
+
+    expect(getMessageFileDownloadStatus).not.toHaveBeenCalled();
   });
 
-  it("restores polling for the latest three in-progress downloads", async () => {
-    const user = userEvent.setup();
+  it("keeps loaded in-progress downloads in loading state without polling download status", async () => {
     const baseService = createMockWorkbenchService();
     const getMessageFileDownloadStatus = vi.fn(
       async (input: { conversationId: string; messageSeq: number }) => ({
@@ -289,37 +286,16 @@ describe("ChatWorkbenchPage download flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    expect(screen.getByRole("button", { name: "下载视频：最旧视频" }))
-      .toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
+    expect(screen.getAllByRole("status", { name: "视频下载中" })).toHaveLength(2);
     expect(screen.getAllByRole("status", { name: "文件下载中" })).toHaveLength(2);
+    vi.useFakeTimers();
 
-    await waitFor(() => {
-      expect(getMessageFileDownloadStatus).toHaveBeenCalledTimes(3);
-    }, { timeout: 3500 });
-    expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
-      conversationId: "conv-001",
-      messageSeq: 537,
-    });
-    expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
-      conversationId: "conv-001",
-      messageSeq: 538,
-    });
-    expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
-      conversationId: "conv-001",
-      messageSeq: 539,
-    });
-    expect(getMessageFileDownloadStatus).not.toHaveBeenCalledWith({
-      conversationId: "conv-001",
-      messageSeq: 536,
-    });
+    await vi.advanceTimersByTimeAsync(3500);
 
-    await user.click(screen.getByRole("button", { name: "下载视频：最旧视频" }));
-
-    expect(toast.warning).toHaveBeenCalledWith("下载队列已满，请稍后");
+    expect(getMessageFileDownloadStatus).not.toHaveBeenCalled();
   });
 
-  it("restores in-progress download polling after StrictMode remount", async () => {
+  it("does not restore download-status polling for in-progress downloads after StrictMode remount", async () => {
     const baseService = createMockWorkbenchService();
     const getMessageFileDownloadStatus = vi.fn(
       async (input: { conversationId: string; messageSeq: number }) => ({
@@ -360,13 +336,11 @@ describe("ChatWorkbenchPage download flows", () => {
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
+    vi.useFakeTimers();
 
-    await waitFor(() => {
-      expect(getMessageFileDownloadStatus).toHaveBeenCalledWith({
-        conversationId: "conv-001",
-        messageSeq: 539,
-      });
-    }, { timeout: 3500 });
+    await vi.advanceTimersByTimeAsync(3500);
+
+    expect(getMessageFileDownloadStatus).not.toHaveBeenCalled();
   });
 });
 

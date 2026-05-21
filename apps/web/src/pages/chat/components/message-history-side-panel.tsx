@@ -208,6 +208,7 @@ export function MessageHistorySidePanel({
               >
                 <HistoryCompactMessageList
                   messages={activeHistory?.messages ?? []}
+                  onDownloadMessageFile={onDownloadMessageFile}
                 />
               </HistoryMessageViewport>
             </TabsContent>
@@ -459,7 +460,13 @@ function HistoryEdgeLoader({
   );
 }
 
-function HistoryCompactMessageList({ messages }: { messages: Message[] }) {
+function HistoryCompactMessageList({
+  messages,
+  onDownloadMessageFile,
+}: {
+  messages: Message[];
+  onDownloadMessageFile?: (message: ChatMessage) => void;
+}) {
   const chatMessages = messages.filter(isChatMessage);
 
   return (

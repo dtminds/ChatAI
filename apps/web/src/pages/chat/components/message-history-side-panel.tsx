@@ -492,7 +492,10 @@ function HistoryCompactMessageList({
               {formatHistoryMessageTime(message.sentAt)}
             </span>
           </div>
-          <HistoryCompactMessageContent message={message} />
+          <HistoryCompactMessageContent
+            message={message}
+            onDownloadMessageFile={onDownloadMessageFile}
+          />
           {message.isRevoked ? <HistoryCompactRevokedState /> : null}
         </div>
       ))}
@@ -505,7 +508,13 @@ function HistoryCompactMessageList({
   );
 }
 
-function HistoryCompactMessageContent({ message }: { message: ChatMessage }) {
+function HistoryCompactMessageContent({
+  message,
+  onDownloadMessageFile,
+}: {
+  message: ChatMessage;
+  onDownloadMessageFile?: (message: ChatMessage) => void;
+}) {
   if (message.content.type === "text") {
     return <HistoryCompactText text={message.content.text} />;
   }
@@ -527,6 +536,7 @@ function HistoryCompactMessageContent({ message }: { message: ChatMessage }) {
       <MessageContentRenderer
         isAgent={message.role === "agent"}
         message={message}
+        onDownloadMessageFile={onDownloadMessageFile}
       />
     </div>
   );
@@ -846,10 +856,10 @@ function HistoryMediaTile({
   const content = message.content;
   const imageUrl =
     content.type === "image"
-      ? content.imageUrl.trim()
-      : content.coverImageUrl.trim();
+      ? content.imageUrl?.trim() ?? ""
+      : content.coverImageUrl?.trim() ?? "";
   const videoUrl =
-    content.type === "video" ? content.videoUrl.trim() : "";
+    content.type === "video" ? content.videoUrl?.trim() ?? "" : "";
   const isVideoDownloading =
     content.type === "video" && content.downloadStatus === "ing";
   const needsVideoTransfer =
@@ -860,6 +870,11 @@ function HistoryMediaTile({
           (content.downloadStatus !== "finished" &&
             !canUseExpiringUrl(videoUrl, content.fileUrlExpireTime))),
     );
+  const isVideoPlayable =
+    content.type === "video" &&
+    !isVideoDownloading &&
+    !needsVideoTransfer &&
+    canUseExpiringUrl(videoUrl, content.fileUrlExpireTime);
   const optimizedImageUrl = imageUrl
     ? getOptimizedMessageImageUrl(imageUrl)
     : "";
@@ -884,7 +899,10 @@ function HistoryMediaTile({
   );
 
   return (
-    <div className="group/media relative isolate aspect-square overflow-hidden rounded-[8px] border border-border bg-muted">
+    <div
+      className="group/media relative isolate aspect-square overflow-hidden rounded-[8px] border border-border bg-muted"
+      data-testid={`history-media-tile-${message.id}`}
+    >
       {content.type === "image" && imageUrl ? (
         <ImagePreviewDialog
           alt={content.alt}
@@ -893,10 +911,7 @@ function HistoryMediaTile({
         >
           {tileContent}
         </ImagePreviewDialog>
-      ) : content.type === "video" &&
-        !isVideoDownloading &&
-        !needsVideoTransfer &&
-        canUseExpiringUrl(videoUrl, content.fileUrlExpireTime) ? (
+      ) : isVideoPlayable ? (
         <button
           aria-label={`播放视频：${content.alt}`}
           className="block h-full w-full p-0 text-left outline-none focus-visible:ring-4 focus-visible:ring-ring/25"
@@ -924,16 +939,18 @@ function HistoryMediaTile({
               strokeWidth={2.1}
             />
           </span>
-        ) : needsVideoTransfer && onDownloadMessageFile ? (
-          <button
-            aria-label={`下载视频：${content.alt}`}
-            className="absolute left-1/2 top-1/2 z-1 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-black/25 text-white shadow-sm outline-none backdrop-blur-[1px] transition-colors hover:bg-black/35 focus-visible:ring-4 focus-visible:ring-white/35"
-            onClick={() => onDownloadMessageFile(message)}
-            type="button"
-          >
-            <HugeiconsIcon icon={Download01Icon} size={21} strokeWidth={2.1} />
-          </button>
-        ) : (
+        ) : needsVideoTransfer ? (
+          onDownloadMessageFile ? (
+            <button
+              aria-label={`下载视频：${content.alt}`}
+              className="absolute left-1/2 top-1/2 z-1 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-black/25 text-white shadow-sm outline-none backdrop-blur-[1px] transition-colors hover:bg-black/35 focus-visible:ring-4 focus-visible:ring-white/35"
+              onClick={() => onDownloadMessageFile(message)}
+              type="button"
+            >
+              <HugeiconsIcon icon={Download01Icon} size={21} strokeWidth={2.1} />
+            </button>
+          ) : null
+        ) : isVideoPlayable ? (
           <span className="pointer-events-none absolute left-1/2 top-1/2 z-1 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-black/25 text-white shadow-sm backdrop-blur-[1px]">
             <HugeiconsIcon
               className="translate-x-[1px]"
@@ -942,7 +959,7 @@ function HistoryMediaTile({
               strokeWidth={2.1}
             />
           </span>
-        )
+        ) : null
       ) : null}
     </div>
   );

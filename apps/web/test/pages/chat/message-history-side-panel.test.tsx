@@ -108,6 +108,46 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.getByText("已撤回")).toBeInTheDocument();
   });
 
+  it("passes download actions through compact all-tab history messages", async () => {
+    const user = userEvent.setup();
+    const handleDownloadMessageFile = vi.fn();
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createFileMessage("file-all", {
+              extension: "pdf",
+              fileName: "全部记录文件.pdf",
+              fileSizeLabel: "16K",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={handleDownloadMessageFile}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "下载文件：全部记录文件.pdf" }));
+
+    expect(handleDownloadMessageFile).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "file-all" }),
+    );
+  });
+
   it("renders sender options with avatars and the real account name in single conversations", async () => {
     const user = userEvent.setup();
 
@@ -1043,6 +1083,94 @@ describe("MessageHistorySidePanel", () => {
       .not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "下载视频：转存中视频" }))
       .not.toBeInTheDocument();
+  });
+
+  it("handles history media messages with missing URLs", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            ({
+              ...createVideoMessage("video-missing-cover", {
+                alt: "缺少地址视频",
+                coverImageUrl: "",
+                downloadStatus: "failed",
+                fileSerialNo: "serial-video-missing",
+                sentAt: "2026-05-19 10:00:00",
+                videoUrl: "",
+              }),
+              content: {
+                alt: "缺少地址视频",
+                coverImageUrl: undefined,
+                downloadStatus: "failed",
+                durationLabel: "00:15",
+                fileSerialNo: "serial-video-missing",
+                type: "video",
+                videoUrl: undefined,
+              },
+            } as unknown as ChatMessage),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("视频封面不可用")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载视频：缺少地址视频" }))
+      .toBeInTheDocument();
+  });
+
+  it("does not show a play overlay for history videos that need download without a handler", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createVideoMessage("video-no-handler", {
+              alt: "缺少下载处理视频",
+              coverImageUrl: "https://example.com/video-cover.png",
+              downloadStatus: "failed",
+              fileSerialNo: "serial-video-1",
+              sentAt: "2026-05-19 10:00:00",
+              videoUrl: "",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "播放视频：缺少下载处理视频" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下载视频：缺少下载处理视频" }))
+      .not.toBeInTheDocument();
+    expect(screen.getByTestId("history-media-tile-video-no-handler")).toHaveTextContent("");
   });
 
   it("keeps long file names inside the history panel width", () => {

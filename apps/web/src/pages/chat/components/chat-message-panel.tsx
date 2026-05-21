@@ -8,7 +8,6 @@ type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
   bottomOverlay?: ReactNode;
   canUseMessageActions?: boolean;
-  downloadTransferStates?: Record<string, "idle" | "transferring">;
   hasBottomOverlay?: boolean;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
@@ -28,7 +27,6 @@ export function ChatMessagePanel({
   activeHistoryStatus,
   bottomOverlay,
   canUseMessageActions = true,
-  downloadTransferStates,
   hasBottomOverlay = false,
   hasMoreHistory,
   historyLoadLabel,
@@ -83,7 +81,6 @@ export function ChatMessagePanel({
               ) : null}
               <ChatMessageList
                 canUseMessageActions={canUseMessageActions}
-                downloadTransferStates={downloadTransferStates}
                 messages={messages}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}

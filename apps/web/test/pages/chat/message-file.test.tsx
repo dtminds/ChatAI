@@ -17,7 +17,6 @@ describe("FileMessageCard", () => {
           fileSerialNo: "serial-file-001",
           fileUrl: "",
         }}
-        transferState="idle"
         onDownloadClick={handleDownloadClick}
       />,
     );
@@ -36,7 +35,6 @@ describe("FileMessageCard", () => {
           fileSerialNo: "serial-file-001",
           fileUrl: "",
         }}
-        transferState="transferring"
       />,
     );
 
@@ -45,10 +43,7 @@ describe("FileMessageCard", () => {
       .not.toBeInTheDocument();
   });
 
-  it("keeps an initial server-side in-progress file downloadable until local polling starts", async () => {
-    const user = userEvent.setup();
-    const handleDownloadClick = vi.fn();
-
+  it("renders initial server-side in-progress files as downloading", () => {
     render(
       <FileMessageCard
         content={{
@@ -57,15 +52,12 @@ describe("FileMessageCard", () => {
           fileSerialNo: "serial-file-001",
           fileUrl: "",
         }}
-        transferState="idle"
-        onDownloadClick={handleDownloadClick}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "下载文件：报价单.pdf" }));
-
-    expect(handleDownloadClick).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("status", { name: "文件下载中" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "文件下载中" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下载文件：报价单.pdf" }))
+      .not.toBeInTheDocument();
   });
 
   it("uses the direct file download handler when the file is already stored in COS", async () => {
@@ -80,7 +72,6 @@ describe("FileMessageCard", () => {
           fileSerialNo: "serial-file-001",
           fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
         }}
-        transferState="idle"
         onDownloadClick={handleDownloadClick}
       />,
     );

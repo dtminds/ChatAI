@@ -26,7 +26,6 @@ const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 
 type ChatMessageListProps = {
   canUseMessageActions?: boolean;
-  downloadTransferStates?: Record<string, "idle" | "transferring">;
   messages: Message[];
   showTimeDividers?: boolean;
   showTimestamps?: boolean;
@@ -50,7 +49,6 @@ type FeedItem =
 
 export function ChatMessageList({
   canUseMessageActions = true,
-  downloadTransferStates = {},
   messages,
   showTimeDividers = true,
   showTimestamps = false,
@@ -80,7 +78,6 @@ export function ChatMessageList({
             <MessageRow
               message={item.message}
               canUseMessageActions={canUseMessageActions}
-              downloadTransferState={downloadTransferStates[item.message.id]}
               showTimestamp={showTimestamps}
               onDownloadMessageFile={onDownloadMessageFile}
               onMentionMessage={onMentionMessage}
@@ -125,7 +122,6 @@ function SystemMessageNotice({ text }: { text: string }) {
 export function MessageRow({
   message,
   canUseMessageActions = true,
-  downloadTransferState,
   showTimestamp = false,
   onDownloadMessageFile,
   onMentionMessage,
@@ -135,7 +131,6 @@ export function MessageRow({
 }: {
   message: Message;
   canUseMessageActions?: boolean;
-  downloadTransferState?: "idle" | "transferring";
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
@@ -201,7 +196,6 @@ export function MessageRow({
                 </p>
               ) : null}
               <MessageContentRenderer
-                downloadTransferState={downloadTransferState}
                 isAgent={isAgent}
                 message={message}
                 onDownloadMessageFile={onDownloadMessageFile}

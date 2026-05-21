@@ -1629,8 +1629,8 @@ export class WorkbenchRepository {
       ...row,
       biz_status:
         row.chat_type === CHAT_TYPE_GROUP
-          ? (group?.bizStatus ?? null)
-          : (contact?.bizStatus ?? null),
+          ? (group?.bizStatus ?? BIZ_STATUS_HIDDEN)
+          : (contact?.bizStatus ?? BIZ_STATUS_HIDDEN),
       customer_avatar: contact?.avatar ?? null,
       customer_name: bind?.remark ?? contact?.realName ?? contact?.name ?? null,
       group_avatar: group?.avatar ?? null,

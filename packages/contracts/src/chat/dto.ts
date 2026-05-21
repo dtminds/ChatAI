@@ -119,6 +119,8 @@ export type WorkbenchSeatDto = {
 };
 
 export type WorkbenchConversationSummaryDto = {
+  /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */
+  bizStatus?: number;
   conversationId: string;
   seatId: string;
   thirdUserId?: string;

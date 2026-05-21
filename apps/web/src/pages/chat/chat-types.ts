@@ -51,6 +51,8 @@ export type Account = {
 export type Conversation = {
   id: string;
   accountId: string;
+  /** 关联联系人或群席位业务状态；0 表示会话对象已失效 */
+  bizStatus?: number;
   customerId: string;
   customerName: string;
   customerAvatarUrl: string;

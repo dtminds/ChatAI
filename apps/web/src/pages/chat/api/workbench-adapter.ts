@@ -53,6 +53,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
 
   return {
     accountId: dto.seatId,
+    bizStatus: dto.bizStatus,
     createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,
     customerId: dto.customerId,

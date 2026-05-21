@@ -116,9 +116,17 @@ type ConversationHydrationSources = {
   bindsByThirdExternalId: Map<string, { remark: string | null }>;
   contactsByThirdExternalId: Map<
     string,
-    { avatar: string | null; name: string | null; realName: string | null }
+    {
+      avatar: string | null;
+      bizStatus: number | null;
+      name: string | null;
+      realName: string | null;
+    }
   >;
-  groupsByThirdGroupId: Map<string, { avatar: string | null; name: string | null }>;
+  groupsByThirdGroupId: Map<
+    string,
+    { avatar: string | null; bizStatus: number | null; name: string | null }
+  >;
   lastMessagesById: Map<string, { content: string | null; msgtype: string | null }>;
 };
 
@@ -1527,11 +1535,10 @@ export class WorkbenchRepository {
       contactThirdExternalIds.length
         ? this.db
             .selectFrom("xy_wap_embed_contact")
-            .select(["third_external_userid", "avatar", "name", "real_name"])
+            .select(["third_external_userid", "avatar", "name", "real_name", "biz_status"])
             .where("uid", "=", uid)
             .where("platform", "=", platform)
             .where("third_external_userid", "in", contactThirdExternalIds)
-            .where("biz_status", "=", 1)
             .execute()
         : [],
       contactThirdExternalIds.length
@@ -1548,12 +1555,11 @@ export class WorkbenchRepository {
       groupIds.length
         ? this.db
             .selectFrom("xy_wap_embed_group_seat")
-            .select(["third_group_id", "avatar", "name"])
+            .select(["third_group_id", "avatar", "name", "biz_status"])
             .where("uid", "=", uid)
             .where("platform", "=", platform)
             .where("third_userid", "=", seatThirdUserId)
             .where("third_group_id", "in", groupIds)
-            .where("biz_status", "=", 1)
             .execute()
         : [],
     ]);
@@ -1572,6 +1578,7 @@ export class WorkbenchRepository {
           contact.third_external_userid,
           {
             avatar: contact.avatar,
+            bizStatus: contact.biz_status,
             name: contact.name,
             realName: contact.real_name,
           },
@@ -1582,6 +1589,7 @@ export class WorkbenchRepository {
           group.third_group_id,
           {
             avatar: group.avatar,
+            bizStatus: group.biz_status,
             name: group.name,
           },
         ]),
@@ -1619,6 +1627,10 @@ export class WorkbenchRepository {
 
     return mapConversationRow({
       ...row,
+      biz_status:
+        row.chat_type === CHAT_TYPE_GROUP
+          ? (group?.bizStatus ?? null)
+          : (contact?.bizStatus ?? null),
       customer_avatar: contact?.avatar ?? null,
       customer_name: bind?.remark ?? contact?.realName ?? contact?.name ?? null,
       group_avatar: group?.avatar ?? null,

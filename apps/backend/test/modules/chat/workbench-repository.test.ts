@@ -839,6 +839,141 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("hydrates inactive single contact conversations and exposes contact biz status", async () => {
+    const observedContactQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder([
+              createConversationRow({
+                id: 88,
+                third_external_userid: "external-001",
+              }),
+            ]);
+          }
+
+          if (table === "xy_wap_embed_contact") {
+            const query = createQueryBuilder({
+              avatar: "https://example.com/inactive-contact.png",
+              biz_status: 0,
+              name: "失效客户",
+              real_name: "失效客户实名",
+              third_external_userid: "external-001",
+            });
+            observedContactQueries.push(query);
+
+            return query;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_customer_bind_relation" ||
+            table === "xy_wap_embed_group_seat"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+      mode: "single",
+    });
+
+    expect(observedContactQueries[0]?.wheres).not.toContainEqual([
+      "biz_status",
+      "=",
+      1,
+    ]);
+    expect(page.items[0]).toMatchObject({
+      bizStatus: 0,
+      conversationId: "88",
+      customerAvatar: "https://example.com/inactive-contact.png",
+      customerName: "失效客户实名",
+    });
+  });
+
+  it("hydrates inactive group conversations and exposes group seat biz status", async () => {
+    const observedGroupSeatQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder([
+              createConversationRow({
+                chat_type: 2,
+                id: 89,
+                third_external_userid: "",
+                third_group_id: "group-001",
+              }),
+            ]);
+          }
+
+          if (table === "xy_wap_embed_group_seat") {
+            const query = createQueryBuilder({
+              avatar: "https://example.com/inactive-group.png",
+              biz_status: 0,
+              name: "失效群聊",
+              third_group_id: "group-001",
+            });
+            observedGroupSeatQueries.push(query);
+
+            return query;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_contact" ||
+            table === "xy_wap_embed_customer_bind_relation"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+      mode: "group",
+    });
+
+    expect(observedGroupSeatQueries[0]?.wheres).not.toContainEqual([
+      "biz_status",
+      "=",
+      1,
+    ]);
+    expect(page.items[0]).toMatchObject({
+      bizStatus: 0,
+      conversationId: "89",
+      customerAvatar: "https://example.com/inactive-group.png",
+      customerName: "失效群聊",
+    });
+  });
+
   it("hydrates last messages and cursors without losing bigint id precision", async () => {
     const observedAuditInfoQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
     const repository = new WorkbenchRepository(

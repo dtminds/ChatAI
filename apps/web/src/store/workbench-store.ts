@@ -596,25 +596,37 @@ function patchDownloadContent(
     }
 
     if (message.content.type === "video") {
+      const nextContent = {
+        ...message.content,
+        ...(contentPatch.downloadStatus === undefined
+          ? {}
+          : { downloadStatus: contentPatch.downloadStatus }),
+        ...(contentPatch.fileUrlExpireTime === undefined
+          ? {}
+          : { fileUrlExpireTime: contentPatch.fileUrlExpireTime }),
+        ...(contentPatch.fileUrl === undefined ? {} : { videoUrl: contentPatch.fileUrl }),
+      };
+
       return {
         ...message,
-        content: {
-          ...message.content,
-          downloadStatus: contentPatch.downloadStatus,
-          ...(contentPatch.fileUrlExpireTime === undefined
-            ? {}
-            : { fileUrlExpireTime: contentPatch.fileUrlExpireTime }),
-          videoUrl: contentPatch.fileUrl ?? message.content.videoUrl,
-        },
+        content: nextContent,
       };
     }
 
+    const nextContent = {
+      ...message.content,
+      ...(contentPatch.downloadStatus === undefined
+        ? {}
+        : { downloadStatus: contentPatch.downloadStatus }),
+      ...(contentPatch.fileUrlExpireTime === undefined
+        ? {}
+        : { fileUrlExpireTime: contentPatch.fileUrlExpireTime }),
+      ...(contentPatch.fileUrl === undefined ? {} : { fileUrl: contentPatch.fileUrl }),
+    };
+
     return {
       ...message,
-      content: {
-        ...message.content,
-        ...contentPatch,
-      },
+      content: nextContent,
     };
   });
 }

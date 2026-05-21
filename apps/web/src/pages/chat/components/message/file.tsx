@@ -10,6 +10,7 @@ import type { FileMessageContent } from "@/pages/chat/chat-types";
 type FileMessageCardProps = {
   content: FileMessageContent;
   onDownloadClick?: () => void;
+  transferState?: "idle" | "transferring";
 };
 
 type FileExtensionBadgeProps = {
@@ -20,9 +21,8 @@ type FileExtensionBadgeProps = {
 export function FileMessageCard({
   content,
   onDownloadClick,
+  transferState = "idle",
 }: FileMessageCardProps) {
-  const isDownloading = content.downloadStatus === "ing";
-
   return (
     <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 pb-2">
       <div className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-2.5">
@@ -44,7 +44,7 @@ export function FileMessageCard({
           <span>{content.sourceLabel ?? "文件"}</span>
         </span>
 
-        {isDownloading ? (
+        {transferState === "transferring" ? (
           <span
             aria-label="文件下载中"
             className="inline-flex items-center gap-1 font-medium text-muted-foreground"

@@ -14,6 +14,7 @@ import { VideoMessageCard } from "@/pages/chat/components/message/video";
 import { VoiceMessageCard } from "@/pages/chat/components/message/voice";
 
 type MessageContentRendererProps = {
+  downloadTransferState?: "idle" | "transferring";
   isAgent: boolean;
   message: ChatMessage;
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -21,6 +22,7 @@ type MessageContentRendererProps = {
 };
 
 export function MessageContentRenderer({
+  downloadTransferState,
   isAgent,
   message,
   onDownloadMessageFile,
@@ -44,6 +46,7 @@ export function MessageContentRenderer({
         <VideoMessageCard
           content={message.content}
           onDownloadClick={() => onDownloadMessageFile?.(message)}
+          transferState={downloadTransferState}
         />
       );
     case "file":
@@ -51,6 +54,7 @@ export function MessageContentRenderer({
         <FileMessageCard
           content={message.content}
           onDownloadClick={() => onDownloadMessageFile?.(message)}
+          transferState={downloadTransferState}
         />
       );
     case "h5":

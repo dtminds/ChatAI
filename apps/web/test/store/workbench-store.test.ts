@@ -1165,40 +1165,11 @@ describe("useWorkbenchStore", () => {
     ).toBe(false);
   });
 
-  it("patches download updates into the history panel as well as the active message list", async () => {
+  it("ignores refreshed message details when the message is not already in store", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
       ...baseService,
-      async getMessagesByIds(input) {
-        if (input.conversationId === "conv-001" && input.messageIds.includes("msg-004")) {
-          return {
-            messages: [
-              {
-                content: {
-                  downloadStatus: "finished",
-                  extension: "pdf",
-                  fileName: "求未 AI 智能营销系统.pdf",
-                  fileSerialNo: "serial-file-004",
-                  fileSizeLabel: "6.10M",
-                  fileUrl: "https://b5.bokr.com.cn/chat-files/system.pdf",
-                },
-                contentType: "file",
-                conversationId: "conv-001",
-                createdAt: 1_778_840_010_000,
-                customerId: "cust-001",
-                messageId: "msg-004",
-                seatId: "drc",
-                senderType: "agent",
-                seq: 4,
-                status: "read",
-              },
-            ],
-          };
-        }
-
-        return baseService.getMessagesByIds(input);
-      },
       async poll(request) {
         return {
           activeConversationMessages: [],
@@ -1207,8 +1178,8 @@ describe("useWorkbenchStore", () => {
           messageUpdateEvents: [
             {
               conversationId: request.activeConversationId ?? "conv-001",
-              eventId: 4,
-              messageId: "msg-004",
+              eventId: 6,
+              messageId: "999999",
             },
           ],
           nextMessageUpdateCursor: 1_778_840_010_000,
@@ -1216,110 +1187,6 @@ describe("useWorkbenchStore", () => {
           seatChanges: [],
         };
       },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
-    await useWorkbenchStore.getState().loadHistoryMessages({ direction: "next" });
-    await useWorkbenchStore.getState().pollWorkbench();
-
-    const activeMessages =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"];
-    const historyMessages =
-      useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]?.messages ??
-      [];
-
-    const activeMessage = activeMessages.find((message) => message.id === "msg-004");
-    const historyMessage = historyMessages.find((message) => message.id === "msg-004");
-
-    expect(activeMessage?.content.type).toBe("file");
-    expect(historyMessage?.content.type).toBe("file");
-    if (activeMessage?.content.type === "file") {
-      expect(activeMessage.content.downloadStatus).toBe("finished");
-    }
-    if (historyMessage?.content.type === "file") {
-      expect(historyMessage.content.downloadStatus).toBe("finished");
-    }
-  });
-
-  it("preserves existing download content when a refresh omits optional fields", async () => {
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
-      async getMessagesByIds(input) {
-        if (input.conversationId === "conv-002" && input.messageIds.includes("msg-011-video-horizontal")) {
-          return {
-            messages: [
-              {
-                content: {
-                  alt: "舞台活动视频",
-                  coverImageUrl: "/mock/image/stage-recital-cover.jpg",
-                  downloadStatus: "finished",
-                  durationLabel: "1:01",
-                  fileUrl: "https://b5.bokr.com.cn/chat-videos/stage-recital.mp4",
-                  fileUrlExpireTime: 1_778_840_010_000,
-                  height: 360,
-                  videoUrl: "https://b5.bokr.com.cn/chat-videos/stage-recital.mp4",
-                  width: 640,
-                },
-                contentType: "video",
-                conversationId: "conv-002",
-                createdAt: 1_778_840_010_000,
-                customerId: "cust-002",
-                messageId: "msg-011-video-horizontal",
-                seatId: "drc",
-                senderType: "customer",
-                seq: 11,
-                status: "read",
-              },
-            ],
-          };
-        }
-
-        return baseService.getMessagesByIds(input);
-      },
-      async poll(request) {
-        return {
-          activeConversationMessages: [],
-          conversationChanges: [],
-          messageStatusChanges: [],
-          messageUpdateEvents: [
-            {
-              conversationId: request.activeConversationId ?? "conv-002",
-              eventId: 5,
-              messageId: "msg-011-video-horizontal",
-            },
-          ],
-          nextMessageUpdateCursor: 1_778_840_010_000,
-          nextVersion: request.sinceVersion + 1,
-          seatChanges: [],
-        };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-    await useWorkbenchStore.getState().setActiveConversation("conv-002");
-    await useWorkbenchStore.getState().pollWorkbench();
-
-    const message =
-      useWorkbenchStore.getState().messagesByConversationId["conv-002"].find(
-        (item) => item.id === "msg-011-video-horizontal",
-      );
-
-    expect(message?.content.type).toBe("video");
-    if (message?.content.type === "video") {
-      expect(message.content.downloadStatus).toBe("finished");
-      expect(message.content.fileUrlExpireTime).toBe(1_778_840_010_000);
-      expect(message.content.videoUrl).toBe("https://b5.bokr.com.cn/chat-videos/stage-recital.mp4");
-    }
-  });
-
-  it("ignores refreshed message details when the message is not already in store", async () => {
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
       async getMessagesByIds(input) {
         if (input.messageIds.includes("999999")) {
           return {
@@ -1347,35 +1214,7 @@ describe("useWorkbenchStore", () => {
 
         return baseService.getMessagesByIds(input);
       },
-      async poll(request) {
-        return {
-          activeConversationMessages: [],
-          conversationChanges: [],
-          messageStatusChanges: [],
-          messageUpdateEvents: [
-            {
-              conversationId: request.activeConversationId ?? "conv-001",
-              eventId: 6,
-              messageId: "999999",
-            },
-          ],
-          nextMessageUpdateCursor: 1_778_840_010_000,
-          nextVersion: request.sinceVersion + 1,
-          seatChanges: [],
-        };
-      },
     });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
-    await useWorkbenchStore.getState().loadHistoryMessages({ direction: "next" });
-    await useWorkbenchStore.getState().pollWorkbench();
-
-    expect(
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].find(
-        (message) => message.id === "999999",
-      ),
-    ).toBeUndefined();
 
     await useWorkbenchStore.getState().initializeWorkbench();
     const beforeLength = useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;

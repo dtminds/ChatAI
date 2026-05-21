@@ -124,6 +124,7 @@ describe("MessageContentRenderer video messages", () => {
           fileSerialNo: "serial-video-001",
           videoUrl: "",
         }}
+        transferState="idle"
         onDownloadClick={handleDownloadClick}
       />,
     );
@@ -135,7 +136,8 @@ describe("MessageContentRenderer video messages", () => {
       .not.toBeInTheDocument();
   });
 
-  it("renders in-progress video download state from the message content", async () => {
+  it("keeps an initial server-side in-progress video downloadable until local polling starts", async () => {
+    const user = userEvent.setup();
     const handleDownloadClick = vi.fn();
 
     render(
@@ -151,13 +153,15 @@ describe("MessageContentRenderer video messages", () => {
           fileSerialNo: "serial-video-001",
           videoUrl: "",
         }}
+        transferState="idle"
         onDownloadClick={handleDownloadClick}
       />,
     );
 
-    expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "下载视频：服务端转存中视频" }))
-      .not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "下载视频：服务端转存中视频" }));
+
+    expect(handleDownloadClick).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("status", { name: "视频下载中" })).not.toBeInTheDocument();
   });
 
   it("renders a transfer download button when the stored video URL has expired", async () => {
@@ -178,6 +182,7 @@ describe("MessageContentRenderer video messages", () => {
           fileUrlExpireTime: Date.now() - 1000,
           videoUrl: "https://b5.bokr.com.cn/chat-videos/expired.mp4",
         }}
+        transferState="idle"
         onDownloadClick={handleDownloadClick}
       />,
     );
@@ -204,6 +209,7 @@ describe("MessageContentRenderer video messages", () => {
           fileUrlExpireTime: 0,
           videoUrl: "https://b5.bokr.com.cn/chat-videos/demo.mp4",
         }}
+        transferState="idle"
       />,
     );
 
@@ -227,6 +233,7 @@ describe("MessageContentRenderer video messages", () => {
           fileSerialNo: "serial-video-001",
           videoUrl: "",
         }}
+        transferState="transferring"
       />,
     );
 

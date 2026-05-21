@@ -15,6 +15,7 @@ import type {
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
   WorkbenchMessageStatus,
+  WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSeatChangeDto,
@@ -417,6 +418,13 @@ export async function downloadMessageFile(input: {
   messageSeq: number;
 }) {
   return getWorkbenchService().downloadMessageFile(input);
+}
+
+export async function getMessageFileDownloadStatus(input: {
+  conversationId: string;
+  messageSeq: number;
+}): Promise<WorkbenchMessageFileDownloadStatusResponse | undefined> {
+  return getWorkbenchService().getMessageFileDownloadStatus(input);
 }
 
 export async function takeOverAccount(accountId: string): Promise<Account> {

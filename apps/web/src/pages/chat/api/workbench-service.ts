@@ -27,6 +27,7 @@ import {
   type WorkbenchMessageQueryByIdsRequest,
   type WorkbenchMessageQueryByIdsResponse,
   type WorkbenchMessageFileDownloadResponse,
+  type WorkbenchMessageFileDownloadStatusResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchMessageStatus,
   type WorkbenchMessageStatusChangeDto,
@@ -83,6 +84,10 @@ export type WorkbenchService = {
     messageId: string;
     messageSeq: number;
   }) => Promise<WorkbenchMessageFileDownloadResponse>;
+  getMessageFileDownloadStatus: (input: {
+    conversationId: string;
+    messageSeq: number;
+  }) => Promise<WorkbenchMessageFileDownloadStatusResponse | undefined>;
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
   getUploadCredential: (conversationId: string) => Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
@@ -283,15 +288,35 @@ export function createMockWorkbenchService(): WorkbenchService {
       updateMessageDownloadContent(state, input.conversationId, input.messageId, {
         downloadStatus: "ing",
       });
-      pushMessageUpdateEvent(state, {
-        conversationId: input.conversationId,
-        eventId: state.version + 1,
-        messageId: message.messageId,
-      });
 
       return {
         messageId: input.messageId,
         status: "accepted",
+      };
+    },
+    async getMessageFileDownloadStatus(input) {
+      const message = findMessageByIdOrSeq(
+        state,
+        input.conversationId,
+        undefined,
+        input.messageSeq,
+      );
+
+      if (!message) {
+        return undefined;
+      }
+
+      const content = message.content;
+
+      if (!isFileDownloadContent(content)) {
+        return undefined;
+      }
+
+      return {
+        downloadStatus: content.downloadStatus,
+        fileUrlExpireTime: content.type === "video" ? content.fileUrlExpireTime : undefined,
+        fileSerialNo: content.fileSerialNo,
+        fileUrl: content.type === "file" ? content.fileUrl : content.videoUrl,
       };
     },
     async getGroupMembers(conversationId) {
@@ -433,32 +458,6 @@ export function createMockWorkbenchService(): WorkbenchService {
             event.payload.conversationId === request.activeConversationId,
         )
         .map((event) => event.payload);
-
-      for (const event of messageUpdateEvents) {
-        const target = findMessageByIdOrSeq(
-          state,
-          event.conversationId,
-          event.messageId,
-          0,
-        );
-
-        if (!target || !isFileDownloadContent(target.content)) {
-          continue;
-        }
-
-        const patch = getMockDownloadFinishedPatch(target);
-
-        if (!patch) {
-          continue;
-        }
-
-        updateMessageDownloadContent(
-          state,
-          event.conversationId,
-          event.messageId,
-          patch,
-        );
-      }
 
       return {
         seatChanges: clone(seatChanges),
@@ -630,6 +629,15 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchMessageFileDownloadResponse,
         { conversationId: string; messageSeq: number }
       >(`/server/messages/${input.messageId}/download`, {
+        conversationId: input.conversationId,
+        messageSeq: input.messageSeq,
+      });
+    },
+    getMessageFileDownloadStatus(input) {
+      return http.post<
+        WorkbenchMessageFileDownloadStatusResponse | undefined,
+        { conversationId: string; messageSeq: number }
+      >("/server/messages/download-status", {
         conversationId: input.conversationId,
         messageSeq: input.messageSeq,
       });
@@ -1433,35 +1441,6 @@ function updateMessageDownloadContent(
       },
     };
   });
-}
-
-function getMockDownloadFinishedPatch(message: WorkbenchMessageDto) {
-  if (message.contentType === "video") {
-    const fileUrl =
-      typeof message.content.videoUrl === "string" && message.content.videoUrl.length > 0
-        ? message.content.videoUrl
-        : "/mock/video/stage-recital.mp4";
-
-    return {
-      downloadStatus: "finished" as const,
-      fileUrl,
-      fileUrlExpireTime: Date.now() + 30 * 60 * 1000,
-    };
-  }
-
-  if (message.contentType === "file") {
-    const fileUrl =
-      typeof message.content.fileUrl === "string" && message.content.fileUrl.length > 0
-        ? message.content.fileUrl
-        : "/mock/file/quote.pdf";
-
-    return {
-      downloadStatus: "finished" as const,
-      fileUrl,
-    };
-  }
-
-  return undefined;
 }
 
 function stripUndefinedFields<T extends Record<string, unknown>>(value: T) {

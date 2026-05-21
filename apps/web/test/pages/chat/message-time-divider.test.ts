@@ -87,6 +87,34 @@ describe("formatMessageDividerLabel", () => {
     expect(screen.getByText("14:09")).toBeInTheDocument();
   });
 
+  it("passes download transfer state and handler to file messages", async () => {
+    const handleDownloadMessageFile = vi.fn();
+
+    render(
+      createElement(ChatMessageList, {
+        downloadTransferStates: {
+          "message-file": "transferring",
+        },
+        messages: [
+          {
+            ...createMessage("message-file", "", "2026-05-09 14:00:00"),
+            content: {
+              downloadStatus: "ing",
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSerialNo: "serial-file-001",
+              fileSizeLabel: "2 KB",
+              type: "file",
+            },
+          },
+        ],
+        onDownloadMessageFile: handleDownloadMessageFile,
+      }),
+    );
+
+    expect(screen.getByRole("status", { name: "文件下载中" })).toBeInTheDocument();
+    expect(handleDownloadMessageFile).not.toHaveBeenCalled();
+  });
 });
 
 function createMessage(id: string, text: string, sentAt: string): ChatMessage {

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { MysqlWorkbenchService } from "../../../src/modules/chat/workbench.service.js";
+import {
+  JAVA_INTERNAL_API_USER_MESSAGE,
+  WORKBENCH_INTERNAL_API_FAILED_CODE,
+} from "../../../src/modules/chat/workbench-java-client.js";
 import type { WorkbenchJavaClient } from "../../../src/modules/chat/workbench-java-client.js";
+import { MysqlWorkbenchService } from "../../../src/modules/chat/workbench.service.js";
 import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
 import { BadGatewayError } from "../../../src/shared/errors.js";
 
@@ -533,7 +537,10 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     const logger = createLoggerMock();
     vi.mocked(javaClient.getUploadCredential).mockRejectedValue(
-      new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败"),
+      new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+      ),
     );
     const service = new MysqlWorkbenchService(
       {
@@ -551,7 +558,8 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(service.getUploadCredential("101", "88")).rejects.toMatchObject({
-      code: "JAVA_INTERNAL_API_FAILED",
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
       statusCode: 502,
     });
 

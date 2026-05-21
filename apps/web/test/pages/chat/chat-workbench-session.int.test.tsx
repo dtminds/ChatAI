@@ -53,6 +53,39 @@ describe("ChatWorkbenchPage session flows", () => {
     });
   });
 
+  it("disables the composer when the active conversation biz status is inactive", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
+
+        return {
+          ...response,
+          items: response.items.map((item, index) =>
+            index === 0
+              ? {
+                  ...item,
+                  bizStatus: 0,
+                }
+              : item,
+          ),
+        };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("textbox", { name: "当前会话已失效，暂时无法发送消息" }),
+      ).toHaveAttribute("aria-readonly", "true");
+      expect(screen.getByRole("button", { name: "微信表情" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+    });
+  });
+
   it("disables message avatar menu actions when the active account is not taken over", async () => {
     const user = userEvent.setup();
 

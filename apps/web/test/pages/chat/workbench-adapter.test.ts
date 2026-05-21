@@ -30,6 +30,17 @@ describe("workbench adapter", () => {
     expect(conversation.createdAtMs).toBe(1778832000000);
     expect(conversation.isVerified).toBe(false);
   });
+
+  it("adapts conversation biz status for send availability", () => {
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        bizStatus: 0,
+      }),
+    ).toMatchObject({
+      bizStatus: 0,
+    });
+  });
 });
 
 describe("adaptMessage", () => {

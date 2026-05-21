@@ -25,6 +25,7 @@ export type SeatRow = {
 };
 
 export type ConversationRow = {
+  biz_status?: number | string | null;
   chat_type: number;
   create_time?: Date | number | string | null;
   customer_avatar: string | null;
@@ -129,6 +130,7 @@ export function mapConversationRow(
     mode === "group" ? row.group_avatar ?? "" : row.customer_avatar ?? "";
 
   return {
+    bizStatus: row.biz_status == null ? undefined : toNumber(row.biz_status),
     conversationId: String(row.id),
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,

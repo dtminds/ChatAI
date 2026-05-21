@@ -309,10 +309,12 @@ function ChatWorkbenchContent({
   const isActiveAccountTakenOver =
     !!activeAccount?.takenOverEmployeeId &&
     activeAccount.takenOverEmployeeId === me?.id;
+  const isActiveConversationBizInactive = activeConversation?.bizStatus === 0;
   const canSendMessage =
     !!activeConversation &&
     !isActiveAccountOffline &&
-    isActiveAccountTakenOver;
+    isActiveAccountTakenOver &&
+    !isActiveConversationBizInactive;
   const sidebarIframeTos: "0" | "1" =
     !!activeAccount?.takenOverEmployeeId &&
     activeAccount.takenOverEmployeeId === me?.id
@@ -328,6 +330,8 @@ function ChatWorkbenchContent({
         ? "当前账号离线，暂时无法发送消息"
         : !isActiveAccountTakenOver
           ? "当前账号未接管，暂时无法发送消息"
+          : isActiveConversationBizInactive
+            ? "当前会话已失效，暂时无法发送消息"
           : !activeConversation
             ? "当前列表暂无可发送会话"
             : "当前会话暂不可发送消息";

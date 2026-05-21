@@ -490,7 +490,7 @@ function HistoryCompactMessageList({
             data-testid="history-message-meta-row"
           >
             <span
-              className="min-w-0 max-w-[min(18rem,calc(100%-7rem))] shrink truncate text-[13px] font-medium leading-5 text-muted-foreground/80"
+              className="min-w-0 max-w-[min(18rem,calc(100%_-_7rem))] shrink truncate text-[13px] font-medium leading-5 text-muted-foreground/80"
               data-testid="history-message-author"
             >
               {getHistoryMessageAuthor(message)}

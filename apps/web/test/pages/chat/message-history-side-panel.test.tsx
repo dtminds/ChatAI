@@ -595,7 +595,7 @@ describe("MessageHistorySidePanel", () => {
     );
 
     expect(screen.getByTestId("history-message-meta-row")).toBeInTheDocument();
-    expect(screen.getByTestId("history-message-author")).toHaveClass("max-w-[min(18rem,calc(100%-7rem))]", "truncate");
+    expect(screen.getByTestId("history-message-author")).toHaveClass("max-w-[min(18rem,calc(100%_-_7rem))]", "truncate");
     expect(screen.getByTestId("history-message-time")).toBeInTheDocument();
     expect(screen.getByTestId("history-message-delivery-state")).toBeInTheDocument();
     expect(screen.getByTestId("history-message-delivery-state")).toHaveClass(

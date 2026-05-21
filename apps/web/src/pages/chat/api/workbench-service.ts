@@ -883,6 +883,10 @@ function buildInitialState(): MockState {
           mode: conversation.mode,
           priority: conversation.priority,
           unreadCount: conversation.unread,
+          thirdUserId: `third-user-${seatId}`,
+          ...(conversation.mode === "group"
+            ? { thirdGroupId: `third-group-${conversation.id}` }
+            : {}),
         })),
       ),
     ]),

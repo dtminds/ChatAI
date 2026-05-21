@@ -225,6 +225,7 @@ export function ChatPanel({
                     canSendMessage={canSendMessage}
                     draft={draft}
                     hasActiveFileUpload={hasActiveFileUpload}
+                    currentSeatThirdUserId={activeConversation.thirdUserId}
                     groupMembers={groupMembers}
                     isGroupConversation={activeConversation.mode === "group"}
                     inputEnterBehavior={inputEnterBehavior}

@@ -332,6 +332,16 @@ export class WorkbenchRepository {
         "seat.id as seat_id",
         "conversation.uid as uid",
       ])
+      .select((expressionBuilder) => [
+        expressionBuilder
+          .selectFrom("xy_wap_embed_group_seat as group_seat")
+          .select("group_seat.id")
+          .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
+          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .whereRef("group_seat.uid", "=", "conversation.uid")
+          .whereRef("group_seat.platform", "=", "conversation.platform")
+          .as("group_seat_id"),
+      ])
       .where("conversation.id", "=", conversationNumericId)
       .where("seat.biz_status", "=", 1)
       .where("conversation.biz_status", "=", 1)
@@ -374,13 +384,17 @@ export class WorkbenchRepository {
     }
 
     const rows = await query.execute();
-    const messageRows = rows as MessageRow[];
+    const messageRows = (rows as MessageRow[]).map((row) => ({
+      ...row,
+      conversation_group_seat_id: conversation.group_seat_id,
+    }));
     const quotedRows = await this.getQuotedMessageRows(messageRows, conversation);
     const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
     const hydrationSources = await this.getMessageHydrationSources(
       allRowsToHydrate,
       conversation.uid,
       conversation.platform,
+      toNumber(conversation.group_seat_id),
     );
     const hydratedRows = hydrateMessageRows(messageRows, hydrationSources);
     const hydratedQuotedRows = hydrateMessageRows(
@@ -404,6 +418,7 @@ export class WorkbenchRepository {
           ...(row as MessageRow),
           chat_type: conversation.chat_type,
           conversation_external_id: conversation.conversation_external_id,
+          conversation_group_seat_id: conversation.group_seat_id,
           conversation_group_id: conversation.conversation_group_id,
           conversation_id: conversation.conversation_id,
           seat_id: conversation.seat_id,
@@ -1034,6 +1049,16 @@ export class WorkbenchRepository {
         "conversation.third_userid as third_userid",
         "seat.id as seat_id",
       ])
+      .select((expressionBuilder) => [
+        expressionBuilder
+          .selectFrom("xy_wap_embed_group_seat as group_seat")
+          .select("group_seat.id")
+          .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
+          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .whereRef("group_seat.uid", "=", "conversation.uid")
+          .whereRef("group_seat.platform", "=", "conversation.platform")
+          .as("group_seat_id"),
+      ])
       .where("conversation.id", "=", conversationNumericId)
       .where("conversation.biz_status", "=", 1)
       .executeTakeFirst();
@@ -1066,6 +1091,7 @@ export class WorkbenchRepository {
           .val(conversation.conversation_external_id)
           .as("conversation_external_id"),
         expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
+        expressionBuilder.val(conversation.group_seat_id).as("conversation_group_seat_id"),
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
@@ -1098,6 +1124,7 @@ export class WorkbenchRepository {
       allRowsToHydrate,
       conversation.uid,
       conversation.platform,
+      toNumber(conversation.group_seat_id),
     );
     const hydratedMessageRows = hydrateMessageRows(messageRows, hydrationSources);
     const hydratedFetchedQuoteRows = hydrateMessageRows(
@@ -1174,6 +1201,16 @@ export class WorkbenchRepository {
         "conversation.third_userid as third_userid",
         "seat.id as seat_id",
       ])
+      .select((expressionBuilder) => [
+        expressionBuilder
+          .selectFrom("xy_wap_embed_group_seat as group_seat")
+          .select("group_seat.id")
+          .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
+          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .whereRef("group_seat.uid", "=", "conversation.uid")
+          .whereRef("group_seat.platform", "=", "conversation.platform")
+          .as("group_seat_id"),
+      ])
       .where("conversation.id", "=", conversationNumericId)
       .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
       .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
@@ -1207,6 +1244,7 @@ export class WorkbenchRepository {
           .val(conversation.conversation_external_id)
           .as("conversation_external_id"),
         expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
+        expressionBuilder.val(conversation.group_seat_id).as("conversation_group_seat_id"),
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
@@ -1266,6 +1304,7 @@ export class WorkbenchRepository {
       allRowsToHydrate,
       conversation.uid,
       conversation.platform,
+      toNumber(conversation.group_seat_id),
     );
     const hydratedMessageRows = hydrateMessageRows(messageRows, hydrationSources);
     const hydratedFetchedQuoteRows = hydrateMessageRows(
@@ -1332,6 +1371,7 @@ export class WorkbenchRepository {
       chat_type: number;
       conversation_external_id: string;
       conversation_group_id: string;
+      group_seat_id?: number | string | null;
       platform: number;
       third_userid: string;
       uid: number;
@@ -1368,6 +1408,7 @@ export class WorkbenchRepository {
           .val(conversation.conversation_external_id)
           .as("conversation_external_id"),
         expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
+        expressionBuilder.val(conversation.group_seat_id ?? null).as("conversation_group_seat_id"),
       ])
       .where("message.id", "in", missingQuoteIds)
       .where("message.uid", "=", conversation.uid)
@@ -1591,16 +1632,12 @@ export class WorkbenchRepository {
     rows: MessageRow[],
     uid: number,
     platform: number,
+    groupSeatId?: number,
   ): Promise<MessageHydrationSources> {
     const groupMemberIds = uniqueNonEmpty(
       rows
         .filter((row) => row.chat_type === 2)
         .map((row) => row.third_from_id || row.third_user_id),
-    );
-    const groupIds = uniqueNonEmpty(
-      rows
-        .filter((row) => row.chat_type === 2)
-        .map((row) => row.third_group_id || row.conversation_group_id),
     );
     const seatThirdUserIds = uniqueNonEmpty(
       rows
@@ -1614,28 +1651,19 @@ export class WorkbenchRepository {
     );
 
     const [groupMembers, seats, contacts] = await Promise.all([
-      groupMemberIds.length
+      groupMemberIds.length && groupSeatId != null
         ? this.db
             .selectFrom("xy_wap_embed_group_member as member")
-            .innerJoin("xy_wap_embed_group_seat as group_seat", (join) =>
-              join
-                .onRef("group_seat.id", "=", "member.group_seat_id")
-                .onRef("group_seat.uid", "=", "member.uid")
-                .onRef("group_seat.platform", "=", "member.platform"),
-            )
             .select([
               "member.third_userid as third_userid",
               "member.avatar as avatar",
               "member.name as name",
               "member.nickname as nickname",
-              "group_seat.third_group_id as third_group_id",
             ])
+            .where("member.group_seat_id", "=", groupSeatId)
             .where("member.uid", "=", uid)
             .where("member.platform", "=", platform)
             .where("member.third_userid", "in", groupMemberIds)
-            .where("member.biz_status", "=", 1)
-            .where("group_seat.third_group_id", "in", groupIds)
-            .where("group_seat.biz_status", "=", 1)
             .execute()
         : [],
       seatThirdUserIds.length
@@ -1673,7 +1701,7 @@ export class WorkbenchRepository {
       ),
       groupMembersByGroupAndThirdUserId: new Map(
         groupMembers.map((member) => [
-          getGroupMemberHydrationKey(member.third_group_id, member.third_userid),
+          getGroupMemberHydrationKey(String(groupSeatId), member.third_userid),
           {
             avatar: member.avatar,
             name: member.name,

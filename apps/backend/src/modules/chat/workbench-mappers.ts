@@ -49,6 +49,7 @@ export type MessageRow = {
   content: string | null;
   conversation_external_id: string;
   conversation_group_id: string;
+  conversation_group_seat_id?: number | string | null;
   conversation_id: number | string;
   from_type: number | null;
   id: number | string;
@@ -188,7 +189,10 @@ export function hydrateMessageRows(
   return rows.map((row) => {
     if (row.chat_type === 2) {
       const thirdFromId = row.third_from_id || row.third_user_id || undefined;
-      const thirdGroupId = row.third_group_id || row.conversation_group_id;
+      const thirdGroupId =
+        row.conversation_group_seat_id == null
+          ? row.third_group_id || row.conversation_group_id
+          : String(row.conversation_group_seat_id);
       const member = thirdFromId
         ? sources.groupMembersByGroupAndThirdUserId.get(
           getGroupMemberHydrationKey(thirdGroupId, thirdFromId),

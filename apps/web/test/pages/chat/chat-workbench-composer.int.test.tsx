@@ -126,6 +126,176 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(screen.queryByTestId("composer-quote-preview")).not.toBeInTheDocument();
   });
 
+  it("opens a retry dialog when mentioning a stale group member and inserts the mention after refresh", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const firstGroupMembers = [
+      {
+        avatarUrl: "https://example.com/avatar-1.png",
+        displayName: "成员甲",
+        thirdUserId: "member-001",
+        type: 0 as const,
+      },
+    ];
+    const refreshedGroupMembers = [
+      {
+        avatarUrl: "https://example.com/avatar-1.png",
+        displayName: "成员甲",
+        thirdUserId: "member-001",
+        type: 0 as const,
+      },
+      {
+        avatarUrl: "https://example.com/avatar-2.png",
+        displayName: "缪勇飞 群昵称111",
+        thirdUserId: "member-006",
+        type: 0 as const,
+      },
+    ];
+    let groupMemberRequestCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        if (conversationId !== "conv-004") {
+          return baseService.getGroupMembers(conversationId);
+        }
+
+        groupMemberRequestCount += 1;
+        return {
+          conversationId: "conv-004",
+          groupSeatId: "group-seat-conv-004",
+          items:
+            groupMemberRequestCount === 1
+              ? firstGroupMembers
+              : refreshedGroupMembers,
+          thirdGroupId: "third-group-conv-004",
+        };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await user.click(await screen.findByRole("tab", { name: "群聊" }));
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
+    });
+
+    await waitFor(() => {
+      expect(
+        useWorkbenchStore.getState().groupMembersByConversationId["conv-004"],
+      ).toEqual([
+        expect.objectContaining({
+          displayName: "成员甲",
+          id: "member-001",
+        }),
+      ]);
+    });
+
+    useWorkbenchStore.setState((state) => ({
+      ...state,
+      groupMembersByConversationId: {
+        ...state.groupMembersByConversationId,
+        "conv-004": [
+          {
+            avatarUrl: "https://example.com/avatar-1.png",
+            displayName: "成员甲",
+            id: "member-001",
+            type: 0,
+          },
+        ],
+      },
+    }));
+    expect(
+      useWorkbenchStore
+        .getState()
+        .groupMembersByConversationId["conv-004"]?.some(
+          (member) => member.id === "member-006",
+        ),
+    ).toBe(false);
+
+    const targetRow = await waitFor(() => {
+      const row = screen.getAllByTestId("message-row").find((item) =>
+        item.textContent?.includes("缪勇飞 群昵称111"),
+      );
+
+      expect(row).toBeDefined();
+      return row as HTMLElement;
+    });
+
+    await user.click(within(targetRow).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "@Ta" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("该成员已退群或群成员数据未更新"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/暂不支持 @Ta/)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "刷新群成员并重试" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveTextContent(
+        "@缪勇飞 群昵称111",
+      );
+    });
+  });
+
+  it("keeps the retry dialog open when refreshed group members still do not contain the mention target", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        if (conversationId !== "conv-004") {
+          return baseService.getGroupMembers(conversationId);
+        }
+
+        return {
+          conversationId: "conv-004",
+          groupSeatId: "group-seat-conv-004",
+          items: [
+            {
+              avatarUrl: "https://example.com/avatar-1.png",
+              displayName: "成员甲",
+              thirdUserId: "member-001",
+              type: 0,
+            },
+          ],
+          thirdGroupId: "third-group-conv-004",
+        };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await user.click(await screen.findByRole("tab", { name: "群聊" }));
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
+    });
+
+    const targetRow = await waitFor(() => {
+      const row = screen.getAllByTestId("message-row").find((item) =>
+        item.textContent?.includes("缪勇飞 群昵称111"),
+      );
+
+      expect(row).toBeDefined();
+      return row as HTMLElement;
+    });
+
+    await user.click(within(targetRow).getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "@Ta" }));
+
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "刷新群成员并重试" }));
+
+    expect(
+      await within(dialog).findByText("刷新后仍未找到该成员"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("@缪勇飞 群昵称111")).not.toBeInTheDocument();
+  });
+
   it("renders pasted WeChat emoji tokens as images while sending the original token", async () => {
     const user = userEvent.setup();
 

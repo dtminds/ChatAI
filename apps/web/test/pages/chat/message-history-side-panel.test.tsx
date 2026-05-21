@@ -558,6 +558,59 @@ describe("MessageHistorySidePanel", () => {
     expect(quoteIcon).toHaveAttribute("data-icon-name", "file-empty-01");
   });
 
+  it("shows failed quote delivery state in the all history tab", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            {
+              ...createQuoteMessage({
+                author: "余圆圆",
+                quotedMessage: {
+                  contentType: "video",
+                  senderName: "余圆圆",
+                  title: "报价视频",
+                },
+                text: "请看失败的引用",
+              }),
+              status: "failed" as const,
+            },
+          ],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("history-message-meta-row")).toBeInTheDocument();
+    expect(screen.getByTestId("history-message-author")).toHaveClass("max-w-[min(18rem,calc(100%_-_7rem))]", "truncate");
+    expect(screen.getByTestId("history-message-time")).toBeInTheDocument();
+    expect(screen.getByTestId("history-message-delivery-state")).toBeInTheDocument();
+    expect(screen.getByTestId("history-message-delivery-state")).toHaveClass(
+      "size-4",
+      "rounded-full",
+      "bg-destructive",
+      "text-destructive-foreground",
+    );
+    expect(screen.getByTestId("history-message-meta-row")).toContainElement(
+      screen.getByTestId("history-message-delivery-state"),
+    );
+    expect(screen.getByTestId("quote-generic-preview")).toBeInTheDocument();
+    expect(screen.getByTestId("history-message-text")).toHaveTextContent("请看失败的引用");
+  });
+
   it("renders the file tab as a compact list row layout", async () => {
     const user = userEvent.setup();
     const handleDownloadMessageFile = vi.fn();
@@ -1558,7 +1611,7 @@ function createTextMessage(
       name: "客户",
     },
     sentAt: overrides.sentAt ?? "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1585,7 +1638,7 @@ function createImageMessage(
       name: "客户",
     },
     sentAt: overrides.sentAt,
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1621,7 +1674,7 @@ function createVideoMessage(
       name: "客户",
     },
     sentAt: overrides.sentAt,
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1651,7 +1704,7 @@ function createFileMessage(
       name: content.sourceLabel ?? "客户",
     },
     sentAt: content.sentAt ?? "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1678,7 +1731,7 @@ function createH5Message(
       name: "客户",
     },
     sentAt: "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1704,7 +1757,7 @@ function createMiniProgramMessage(
       name: "客户",
     },
     sentAt: "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1733,6 +1786,6 @@ function createQuoteMessage({
       name: author,
     },
     sentAt: "2026-05-19 10:12:00",
-    status: "read",
+    status: "sent",
   };
 }

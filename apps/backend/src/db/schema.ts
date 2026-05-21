@@ -285,7 +285,7 @@ export interface XyWapEmbedGroupSeat {
   /**
    * 第三方群头像
    */
-  avatar: string;
+  avatar: Generated<string>;
   /**
    * 席位状态： 1、已绑定 0、已注销
    */
@@ -309,7 +309,7 @@ export interface XyWapEmbedGroupSeat {
   /**
    * 第三方群主id
    */
-  owner_third_userid: string;
+  owner_third_userid: Generated<string>;
   /**
    * 接入平台 5、比邻
    */
@@ -406,6 +406,14 @@ export interface XyWapEmbedMsgAuditInfo {
    * 情感分析结果 -1: 未分析 0: 无情感 1: 正面 2: 负面
    */
   sentiment: Generated<number>;
+  /**
+   * 消息来源：0、默认，1、客服工作台，2、企微侧边栏
+   */
+  source: Generated<number>;
+  /**
+   * 消息状态：0、发送失败，1、发送成功
+   */
+  status: Generated<number>;
   /**
    * 第三方客户id
    */

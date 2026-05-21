@@ -367,6 +367,7 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
+        "message.status as status",
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
@@ -1083,6 +1084,7 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
+        "message.status as status",
       ])
       .select((expressionBuilder) => [
         expressionBuilder.val(conversation.conversation_id).as("conversation_id"),
@@ -1236,6 +1238,7 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
+        "message.status as status",
       ])
       .select((expressionBuilder) => [
         expressionBuilder.val(conversation.conversation_id).as("conversation_id"),
@@ -1400,6 +1403,7 @@ export class WorkbenchRepository {
         "message.msgtype as msgtype",
         "message.msgtime as msgtime",
         "message.revoke_status as revoke_status",
+        "message.status as status",
       ])
       .select((expressionBuilder) => [
         expressionBuilder.val(0).as("conversation_id"),

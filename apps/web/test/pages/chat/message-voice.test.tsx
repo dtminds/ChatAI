@@ -414,6 +414,6 @@ function createVoiceDto(): WorkbenchMessageDto {
     seatId: "seat-voice",
     senderType: "customer",
     seq: 1,
-    status: "read",
+    status: "sent",
   };
 }

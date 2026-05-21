@@ -806,7 +806,7 @@ describe("MysqlWorkbenchService", () => {
           seatId: "12",
           senderType: "customer",
           seq: 101,
-          status: "read",
+          status: "sent",
         },
         {
           content: {
@@ -820,7 +820,7 @@ describe("MysqlWorkbenchService", () => {
           seatId: "12",
           senderType: "system",
           seq: 103,
-          status: "read",
+          status: "sent",
         },
       ],
       scannedCount: 2,

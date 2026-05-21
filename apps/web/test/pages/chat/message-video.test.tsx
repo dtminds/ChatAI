@@ -407,7 +407,7 @@ function createVideoMessage({
       width,
     }),
     sentAt: "2026-04-19 10:12:00",
-    status: "read",
+    status: "sent",
   };
 }
 

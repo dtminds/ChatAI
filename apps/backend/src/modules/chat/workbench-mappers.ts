@@ -61,6 +61,7 @@ export type MessageRow = {
   seat_id: number | string;
   sender_avatar?: string;
   sender_name?: string;
+  status?: number | string | null;
   third_external_id: string | null | undefined;
   third_from_id: string | null | undefined;
   third_group_id: string | null | undefined;
@@ -174,7 +175,7 @@ export function mapMessageRow(
     senderName: row.sender_name,
     senderType: mapSenderType(row),
     seq: toNumber(row.id),
-    status: "read",
+    status: mapMessageStatus(row.status),
     thirdExternalUserId,
     thirdFromId: row.third_from_id || undefined,
     thirdGroupId,
@@ -525,6 +526,10 @@ function readSystemMessageText(parsed: unknown, rawContent: string | null) {
   }
 
   return rawContent ?? "";
+}
+
+function mapMessageStatus(status: number | string | null | undefined) {
+  return toNumber(status ?? 1) === 0 ? "failed" : "sent";
 }
 
 function readRevokeMessageContent(parsed: unknown, rawContent: string | null) {

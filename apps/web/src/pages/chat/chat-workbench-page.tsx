@@ -54,7 +54,6 @@ import type {
   ChatMessage,
   ChatMode,
   FileUploadQueueItem,
-  Message,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
@@ -77,7 +76,6 @@ import {
 } from "@/pages/chat/lib/panel-width";
 
 const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
-const MAX_ACTIVE_DOWNLOAD_TRANSFERS = 3;
 
 type PendingComposerDiscardSwitch =
   | {
@@ -648,11 +646,6 @@ function ChatWorkbenchContent({
     }
 
     if (!message.content.fileSerialNo || !message.seq || !activeConversation) {
-      return;
-    }
-
-    if (getActiveDownloadTransferCount(activeMessages) >= MAX_ACTIVE_DOWNLOAD_TRANSFERS) {
-      toast.warning("下载队列已满，请稍后");
       return;
     }
 
@@ -1334,20 +1327,6 @@ function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
     message.content.downloadStatus === "finished" &&
     url
   );
-}
-
-function getActiveDownloadTransferCount(messages: Message[]) {
-  return messages.filter((message) => {
-    if (message.role === "system") {
-      return false;
-    }
-
-    if (message.content.type !== "file" && message.content.type !== "video") {
-      return false;
-    }
-
-    return message.content.downloadStatus === "ing";
-  }).length;
 }
 
 function buildQuotedMessagePreview(

@@ -295,6 +295,70 @@ describe("ChatWorkbenchPage download flows", () => {
     expect(getMessageFileDownloadStatus).not.toHaveBeenCalled();
   });
 
+  it("starts another download when existing messages are already in progress", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const downloadMessageFile = vi.fn(async () => ({
+      messageId: "remote-new-video",
+      status: "accepted" as const,
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      downloadMessageFile,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              createInProgressVideoDto({
+                alt: "转存中视频",
+                createdAt: 1778240000000,
+                messageId: "remote-ing-video",
+                seq: 536,
+              }),
+              createInProgressFileDto({
+                createdAt: 1778240100000,
+                fileName: "转存中文件一.pdf",
+                messageId: "remote-ing-file-1",
+                seq: 537,
+              }),
+              createInProgressFileDto({
+                createdAt: 1778240200000,
+                fileName: "转存中文件二.pdf",
+                messageId: "remote-ing-file-2",
+                seq: 538,
+              }),
+              createInProgressVideoDto({
+                alt: "新视频",
+                createdAt: 1778240300000,
+                downloadStatus: "failed",
+                messageId: "remote-new-video",
+                seq: 539,
+              }),
+            ],
+            scannedCount: 4,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "下载视频：新视频" }));
+
+    expect(downloadMessageFile).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageId: "remote-new-video",
+      messageSeq: 539,
+    });
+    expect(toast.warning).not.toHaveBeenCalledWith("下载队列已满，请稍后");
+  });
+
   it("does not restore download-status polling for in-progress downloads after StrictMode remount", async () => {
     const baseService = createMockWorkbenchService();
     const getMessageFileDownloadStatus = vi.fn(

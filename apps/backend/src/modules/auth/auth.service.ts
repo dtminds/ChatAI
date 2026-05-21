@@ -23,11 +23,18 @@ const REFRESH_TOKEN_EXPIRES_IN_DAYS = 14;
 export const REFRESH_TOKEN_EXPIRES_IN_SECONDS =
   REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60;
 
+const SUB_USER_STATUS = {
+  deleted: 0,
+  active: 1,
+  disabled: 2,
+} as const;
+
 type SubUserCredentialRow = {
   id: number;
   name: string;
   password_hash: string;
   role: string;
+  status: number;
   type: number;
 };
 
@@ -51,6 +58,12 @@ export class InvalidCredentialsError extends AppError {
   }
 }
 
+export class DisabledSubUserError extends AppError {
+  constructor() {
+    super("INVALID_CREDENTIALS", "该子账号已停用，请联系管理员", 401);
+  }
+}
+
 export type AuthSessionTokens = {
   accessToken: string;
   expiresIn: number;
@@ -71,9 +84,17 @@ export async function loginWithPassword(
     throw new InvalidCredentialsError();
   }
 
-  const subUser = await findActiveSubUserCredential(app.db, payload.account);
+  const subUser = await findSubUserCredential(app.db, payload.account);
 
   if (!subUser) {
+    throw new InvalidCredentialsError();
+  }
+
+  if (subUser.status === SUB_USER_STATUS.disabled) {
+    throw new DisabledSubUserError();
+  }
+
+  if (subUser.status !== SUB_USER_STATUS.active) {
     throw new InvalidCredentialsError();
   }
 
@@ -143,7 +164,7 @@ export async function getCurrentSession(
     .selectFrom("xy_wap_embed_sub_user")
     .select(["id", "name", "role", "type"])
     .where("id", "=", subUserId)
-    .where("status", "=", 1)
+    .where("status", "=", SUB_USER_STATUS.active)
     .executeTakeFirst();
 
   if (!subUser) {
@@ -196,7 +217,7 @@ export async function verifyAccessSession(
   return Boolean(session);
 }
 
-async function findActiveSubUserCredential(
+async function findSubUserCredential(
   db: Kysely<Database>,
   account: string,
 ): Promise<SubUserCredentialRow | undefined> {
@@ -208,9 +229,8 @@ async function findActiveSubUserCredential(
 
   return db
     .selectFrom("xy_wap_embed_sub_user")
-    .select(["id", "name", "password_hash", "role", "type"])
+    .select(["id", "name", "password_hash", "role", "status", "type"])
     .where("account", "=", normalizedAccount)
-    .where("status", "=", 1)
     .executeTakeFirst();
 }
 

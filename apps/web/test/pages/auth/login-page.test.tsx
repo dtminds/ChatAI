@@ -216,6 +216,35 @@ describe("LoginPage", () => {
     expect(window.localStorage.getItem("chatai.accessToken")).toBeNull();
     expect(router.state.location.pathname).toBe("/login");
   });
+
+  it("shows a disabled-account message from the login API", async () => {
+    const user = userEvent.setup();
+    setSecureContext(false);
+    mock.onGet("/auth/altcha/challenge").reply(200, {
+      parameters: {
+        algorithm: "SCRYPT",
+        challenge: "challenge-001",
+      },
+      signature: "signature-001",
+    });
+    mock.onPost("/auth/login").reply(401, {
+      error: {
+        code: "INVALID_CREDENTIALS",
+        message: "该子账号已停用，请联系管理员",
+      },
+      success: false,
+    });
+
+    renderLoginRoute();
+
+    await user.type(await screen.findByLabelText("用户名"), "agent001");
+    await user.type(screen.getByLabelText("密码"), "correct-password");
+    await user.click(screen.getByRole("button", { name: "验证" }));
+    await screen.findByText("人机验证已通过");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(await screen.findByText("该子账号已停用，请联系管理员")).toBeInTheDocument();
+  });
 });
 
 function renderLoginRoute() {

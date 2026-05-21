@@ -39,9 +39,9 @@ import type {
   WorkbenchJavaClient,
 } from "./workbench-java-client.js";
 import {
+  JAVA_MESSAGE_SOURCE,
   JAVA_MENTION_HIT_TYPE,
   JAVA_MENTION_LOCATION,
-  JAVA_MSG_TYPE,
   JAVA_SEND_TYPE,
 } from "./workbench-java-client.js";
 import { buildSidebarIframeTuseCipherTexts } from "../../lib/tuse-crypto.js";
@@ -613,16 +613,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const segment = getSingleSendSegment(payload);
-    const quoteContentBase64 = await this.getQuoteContentBase64(payload, segment, {
-      platform: conversation.platform,
-      uid: conversation.uid,
-    });
-
     const response = await this.javaClient.sendMessage({
       clientMessageId: payload.clientMessageId,
-      message: buildJavaSendMessageData(payload, segment, quoteContentBase64),
+      msgData: buildJavaSendMessageData(payload, segment),
       platform: conversation.platform,
       sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
+      source: JAVA_MESSAGE_SOURCE.WORKBENCH,
       ...(conversation.thirdExternalUserId
         ? { thirdExternalUserid: conversation.thirdExternalUserId }
         : {}),
@@ -649,28 +645,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return response;
-  }
-
-  private async getQuoteContentBase64(
-    payload: WorkbenchSendMessagePayload,
-    segment: WorkbenchOutgoingMessageSegment,
-    scope: { platform: number; uid: number },
-  ) {
-    if (segment.type !== "text") {
-      return undefined;
-    }
-
-    const messageId = payload.quote?.quotedMessageId?.trim();
-
-    if (!messageId) {
-      return undefined;
-    }
-
-    return this.repository.getQuoteContentBase64({
-      messageId,
-      platform: scope.platform,
-      uid: scope.uid,
-    });
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {
@@ -794,6 +768,10 @@ function getSingleSendSegment(
     return payload.segment;
   }
 
+  if (payload.segments && payload.segments.length > 1) {
+    throw new BadRequestError("UNSUPPORTED_SEND_MESSAGE", "当前仅支持单条消息发送");
+  }
+
   if (payload.segments?.[0]) {
     return payload.segments[0];
   }
@@ -807,14 +785,7 @@ function getSingleSendSegment(
 function buildJavaSendMessageData(
   payload: WorkbenchSendMessagePayload,
   segment: WorkbenchOutgoingMessageSegment,
-  quoteContentBase64?: string,
 ): JavaSendMessageData {
-  const normalizedQuoteContentBase64 = quoteContentBase64?.trim();
-  const withQuoteContentBase64 = (message: JavaSendMessageData): JavaSendMessageData =>
-    normalizedQuoteContentBase64
-      ? { ...message, quoteContentBase64: normalizedQuoteContentBase64 }
-      : message;
-
   if (segment.type === "image") {
     const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
 
@@ -822,11 +793,10 @@ function buildJavaSendMessageData(
       throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片消息缺少可发送地址");
     }
 
-    return withQuoteContentBase64({
-      msgContent: imageUrl,
-      msgNum: 1,
-      msgType: JAVA_MSG_TYPE.IMAGE,
-    });
+    return {
+      fileUrl: imageUrl,
+      msgtype: "image",
+    };
   }
 
   if (segment.type === "file") {
@@ -841,25 +811,26 @@ function buildJavaSendMessageData(
       throw new BadRequestError("INVALID_FILE_MESSAGE", "文件消息缺少可发送地址");
     }
 
-    return withQuoteContentBase64({
-      msgContent: fileName,
-      msgNum: 1,
-      msgType: JAVA_MSG_TYPE.FILE,
-      vcHref: fileUrl,
-      vcTitle: fileName,
-    });
+    return {
+      fileName,
+      fileUrl,
+      msgtype: "file",
+    };
   }
 
-  const message: JavaSendMessageData = {
-    msgContent: segment.text,
-    msgNum: 1,
-    msgType: normalizedQuoteContentBase64
-      ? JAVA_MSG_TYPE.QUOTE_TEXT
-      : JAVA_MSG_TYPE.TEXT,
-  };
-  if (normalizedQuoteContentBase64) {
-    message.quoteContentBase64 = normalizedQuoteContentBase64;
-  }
+  const quoteMsgId = payload.quote?.quoteMsgId
+    ? parseMySqlId(payload.quote.quoteMsgId)
+    : undefined;
+  const message: JavaSendMessageData = quoteMsgId == null
+    ? {
+        msgtype: "text",
+        text: segment.text,
+      }
+    : {
+        msgtype: "quote",
+        quoteMsgId,
+        text: segment.text,
+      };
 
   const mentionMemberIds = payload.mention?.memberIds.filter(Boolean) ?? [];
 

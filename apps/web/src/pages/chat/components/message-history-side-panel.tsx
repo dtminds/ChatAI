@@ -567,7 +567,21 @@ function HistoryFileList({
               <div className="block min-w-0 flex-1 truncate text-[14px] font-semibold leading-5 text-foreground">
                 {message.content.fileName}
               </div>
-              {onDownloadMessageFile ? (
+              {message.content.downloadStatus === "ing" ? (
+                <span
+                  aria-label="文件下载中"
+                  className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-muted-foreground"
+                  role="status"
+                >
+                  <HugeiconsIcon
+                    className="animate-spin"
+                    icon={Loading03Icon}
+                    size={14}
+                    strokeWidth={1.8}
+                  />
+                  下载中
+                </span>
+              ) : onDownloadMessageFile ? (
                 <button
                   aria-label={`下载文件：${message.content.fileName}`}
                   className="inline-flex shrink-0 items-center gap-1 rounded-[4px] text-[12px] font-medium text-foreground outline-none transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/35"

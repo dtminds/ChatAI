@@ -565,6 +565,44 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.queryByTestId("text-message-bubble")).not.toBeInTheDocument();
   });
 
+  it("renders in-progress files in the file tab as downloading", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createFileMessage("file-1", {
+              downloadStatus: "ing",
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSerialNo: "serial-file-1",
+              fileSizeLabel: "16K",
+              sourceLabel: "范双飞（饭饭）",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "file" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "文件下载中" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下载文件：报价单.pdf" }))
+      .not.toBeInTheDocument();
+  });
+
   it("renders link history rows with preview images and opens the link", async () => {
     render(
       <MessageHistorySidePanel
@@ -1298,7 +1336,9 @@ function createImageMessage(
 function createFileMessage(
   id: string,
   content: {
+    downloadStatus?: "ing" | "finished" | "failed";
     extension: string;
+    fileSerialNo?: string;
     fileName: string;
     fileSizeLabel: string;
     sourceLabel?: string;

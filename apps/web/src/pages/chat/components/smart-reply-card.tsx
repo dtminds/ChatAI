@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   ArrowRight01Icon,
-  Cancel01Icon,
+  ArrowDown01Icon,
   Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -91,7 +91,10 @@ export function SmartReplyCard({
               <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={2}  color="#267FF0"/>
             </>
           ) : (
-            <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={2} />
+            <>
+            <span className="text-[12px] leading-4 text-[#267FF0]">收起</span>
+            <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={2}  color="#267FF0"/>
+            </>
           )}
         </button>
       </header>

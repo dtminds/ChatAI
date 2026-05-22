@@ -298,15 +298,19 @@ export class SubAccountSettingsService {
       .execute() as Promise<SubAccountRow[]>;
   }
 
-  private listSeatRows(scope: TenantScope) {
-    return this.db
+  private listSeatRows(scope: TenantScope, seatIds?: number[]) {
+    let query = this.db
       .selectFrom("xy_wap_embed_user_seat")
       .select(["third_avatar as avatarUrl", "id", "third_user_name"])
       .where("uid", "=", scope.uid)
       .where("platform", "=", scope.platform)
-      .where("biz_status", "=", 1)
-      .orderBy("id", "desc")
-      .execute() as Promise<SeatRow[]>;
+      .where("biz_status", "=", 1);
+
+    if (seatIds !== undefined) {
+      query = query.where("id", "in", seatIds);
+    }
+
+    return query.orderBy("id", "desc").execute() as Promise<SeatRow[]>;
   }
 
   private listRelationLinkRows(scope: TenantScope, subAccountId?: number) {
@@ -436,16 +440,17 @@ export class SubAccountSettingsService {
   }
 
   private async getSubAccountOrThrow(scope: TenantScope, subAccountId: number) {
-    const [subAccount, relationLinks, seats] = await Promise.all([
+    const [subAccount, relationLinks] = await Promise.all([
       this.getSubAccountRow(scope, subAccountId),
       this.listRelationLinkRows(scope, subAccountId),
-      this.listSeatRows(scope),
     ]);
 
     if (!subAccount) {
       throw new NotFoundError("SUB_ACCOUNT_NOT_FOUND", "子账号不存在");
     }
 
+    const seatIds = uniquePositiveNumbers(relationLinks.map((relation) => relation.seat_id));
+    const seats = seatIds.length === 0 ? [] : await this.listSeatRows(scope, seatIds);
     const seatsById = new Map(seats.map((seat) => [seat.id, seat] as const));
     const relations = hydrateRelationRows(relationLinks, seatsById);
 

@@ -86,6 +86,69 @@ describe("text message bubble layout", () => {
     expect(screen.getByTestId("message-inline-status-slot")).toContainElement(sendingState);
   });
 
+  it("anchors quote sending state to the quote text bubble instead of quoted preview", () => {
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("看看"),
+          content: {
+            quoteMsgId: "quote-video-001",
+            quotedMessage: {
+              contentType: "video",
+              imageUrl: "https://cdn.example.com/cover.jpg",
+              senderName: "lsave",
+              title: "[视频]",
+            },
+            text: "看看",
+            type: "quote",
+          },
+          optNo: "opt-quote-001",
+          remoteMessageId: "opt-quote-001",
+          status: "accepted",
+        }}
+      />,
+    );
+
+    const textBubble = screen.getByTestId("text-message-bubble");
+    const sendingSlot = screen.getByTestId("message-inline-status-slot");
+    const quotePreview = screen.getByTestId("quote-generic-preview");
+
+    expect(screen.getByRole("status", { name: "发送中" })).toBeInTheDocument();
+    expect(textBubble.parentElement).toContainElement(sendingSlot);
+    expect(textBubble.parentElement).not.toContainElement(quotePreview);
+  });
+
+  it("anchors quote retry icon to the quote text bubble instead of quoted preview", () => {
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("看看"),
+          content: {
+            quoteMsgId: "quote-video-001",
+            quotedMessage: {
+              contentType: "video",
+              imageUrl: "https://cdn.example.com/cover.jpg",
+              senderName: "lsave",
+              title: "[视频]",
+            },
+            text: "看看",
+            type: "quote",
+          },
+          status: "failed",
+        }}
+        onRetryMessage={() => undefined}
+      />,
+    );
+
+    const textBubble = screen.getByTestId("text-message-bubble");
+    const retrySlot = screen.getByTestId("message-inline-status-slot");
+    const quotePreview = screen.getByTestId("quote-generic-preview");
+
+    expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+    expect(textBubble.parentElement).toContainElement(retrySlot);
+    expect(textBubble.parentElement).not.toContainElement(quotePreview);
+  });
+
   it("does not show sending state after optimistic messages are reconciled", () => {
     render(
       <MessageRow
@@ -93,7 +156,7 @@ describe("text message bubble layout", () => {
           ...createTextMessage("已确认消息"),
           optNo: "opt-001",
           remoteMessageId: "remote-001",
-          status: "read",
+          status: "sent",
         }}
       />,
     );
@@ -155,7 +218,7 @@ describe("text message bubble layout", () => {
           id: "sys-layout",
           role: "system",
           sentAt: "2026-05-08 09:54:00",
-          status: "read",
+          status: "sent",
         }}
       />,
     );
@@ -193,6 +256,6 @@ function createTextMessage(text: string) {
       text,
     },
     sentAt: "2026-05-08 09:54:00",
-    status: "read" as const,
+    status: "sent" as const,
   };
 }

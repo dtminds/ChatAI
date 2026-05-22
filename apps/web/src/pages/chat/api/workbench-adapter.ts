@@ -53,6 +53,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
 
   return {
     accountId: dto.seatId,
+    bizStatus: dto.bizStatus,
     custodyMode: dto.custodyMode,
     createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,
@@ -414,8 +415,6 @@ function adaptMessageStatus(status: WorkbenchMessageDto["status"]): MessageStatu
       return "sending";
     case "failed":
       return "failed";
-    case "read":
-      return "read";
     case "sent":
     default:
       return "sent";

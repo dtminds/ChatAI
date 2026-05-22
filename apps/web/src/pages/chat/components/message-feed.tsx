@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
+import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
+import { TextMessageBubble } from "@/pages/chat/components/message/text";
 import {
   SmartReplyMessageAnchor,
   SmartReplyTriggerIcon,
@@ -31,7 +33,6 @@ const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 
 type ChatMessageListProps = {
   canUseMessageActions?: boolean;
-  downloadTransferStates?: Record<string, "idle" | "transferring">;
   messages: Message[];
   showTimeDividers?: boolean;
   showTimestamps?: boolean;
@@ -56,7 +57,6 @@ type FeedItem =
 
 export function ChatMessageList({
   canUseMessageActions = true,
-  downloadTransferStates = {},
   messages,
   showTimeDividers = true,
   showTimestamps = false,
@@ -87,7 +87,6 @@ export function ChatMessageList({
             <MessageRow
               message={item.message}
               canUseMessageActions={canUseMessageActions}
-              downloadTransferState={downloadTransferStates[item.message.id]}
               showTimestamp={showTimestamps}
               onDownloadMessageFile={onDownloadMessageFile}
               onMentionMessage={onMentionMessage}
@@ -133,7 +132,6 @@ function SystemMessageNotice({ text }: { text: string }) {
 export function MessageRow({
   message,
   canUseMessageActions = true,
-  downloadTransferState,
   showTimestamp = false,
   onDownloadMessageFile,
   onMentionMessage,
@@ -144,7 +142,6 @@ export function MessageRow({
 }: {
   message: Message;
   canUseMessageActions?: boolean;
-  downloadTransferState?: "idle" | "transferring";
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
@@ -191,7 +188,7 @@ export function MessageRow({
               isAgent ? "flex-row" : "flex-row-reverse",
             )}
           >
-            {isAgent ? (
+            {isAgent && message.content.type !== "quote" ? (
               <MessageInlineStatusSlot
                 message={message}
                 onRetryMessage={onRetryMessage}
@@ -210,20 +207,30 @@ export function MessageRow({
                   {message.senderDisplayName}
                 </p>
               ) : null}
-              <div className="flex items-center gap-1">
-                <MessageContentRenderer
-                  downloadTransferState={downloadTransferState}
+              {message.content.type === "quote" ? (
+                <QuoteMessageContentWithDelivery
+                  content={message.content}
+                  inlineDeliveryState={inlineDeliveryState}
                   isAgent={isAgent}
                   message={message}
-                  onDownloadMessageFile={onDownloadMessageFile}
                   onOpenQuotedMessage={onOpenQuotedMessage}
+                  onRetryMessage={onRetryMessage}
                 />
-                {!isAgent && !message.isRevoked ? (
-                  <div className="ml-[16px] cursor-pointer">
-                    <SmartReplyTriggerIcon/>
-                  </div>
-                ) : null}
-              </div>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <MessageContentRenderer
+                    isAgent={isAgent}
+                    message={message}
+                    onDownloadMessageFile={onDownloadMessageFile}
+                    onOpenQuotedMessage={onOpenQuotedMessage}
+                  />
+                  {!isAgent && !message.isRevoked ? (
+                    <div className="ml-[16px] cursor-pointer">
+                      <SmartReplyTriggerIcon/>
+                    </div>
+                  ) : null}
+                </div>
+              )}
               {message.isRevoked ? <MessageRevokedState /> : null}
               {!isAgent && !message.isRevoked ? (
                 <SmartReplyMessageAnchor message={message} suggestion={smartReply} />
@@ -242,6 +249,51 @@ export function MessageRow({
 
         {isAgent ? messageActions : null}
       </div>
+    </div>
+  );
+}
+
+function QuoteMessageContentWithDelivery({
+  content,
+  inlineDeliveryState,
+  isAgent,
+  message,
+  onOpenQuotedMessage,
+  onRetryMessage,
+}: {
+  content: Extract<ChatMessage["content"], { type: "quote" }>;
+  inlineDeliveryState: InlineDeliveryState | null;
+  isAgent: boolean;
+  message: ChatMessage;
+  onOpenQuotedMessage?: (quoteMsgId: string) => void;
+  onRetryMessage?: (messageId: string) => void;
+}) {
+  return (
+    <div className={cn("flex max-w-full flex-col gap-1.5", isAgent ? "items-end" : "items-start")}>
+      <div
+        className={cn(
+          "flex max-w-full items-end gap-2",
+          isAgent ? "flex-row" : "flex-row-reverse",
+        )}
+      >
+        {isAgent ? (
+          <MessageInlineStatusSlot
+            message={message}
+            onRetryMessage={onRetryMessage}
+            state={inlineDeliveryState}
+          />
+        ) : null}
+        <TextMessageBubble
+          isAgent={isAgent}
+          isOwnMessage={message.isOwnMessage}
+          text={content.text}
+        />
+      </div>
+      <QuoteMessagePreview
+        onOpenQuotedMessage={onOpenQuotedMessage}
+        quoteMsgId={content.quoteMsgId}
+        quotedMessage={content.quotedMessage}
+      />
     </div>
   );
 }
@@ -415,8 +467,7 @@ function getInlineDeliveryState(
 function MessageDeliveryState({ message }: { message: ChatMessage }) {
   if (
     message.status === "accepted" ||
-    message.status === "sent" ||
-    message.status === "read"
+    message.status === "sent"
   ) {
     return null;
   }

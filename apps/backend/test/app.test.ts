@@ -1803,6 +1803,15 @@ describe("backend app", () => {
       },
       url: "/api/server/media/upload-credential",
     });
+    const download = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 1,
+      },
+      url: "/api/server/messages/remote-msg-file-001/download",
+    });
 
     for (const response of [send, takeOver, markRead, uploadCredential]) {
       expect(response.statusCode).toBe(403);
@@ -1814,6 +1823,11 @@ describe("backend app", () => {
         success: false,
       });
     }
+    expect(download.statusCode).toBe(200);
+    expect(download.json()).toEqual({
+      messageId: "remote-msg-file-001",
+      status: "accepted",
+    });
 
     await app.close();
   });

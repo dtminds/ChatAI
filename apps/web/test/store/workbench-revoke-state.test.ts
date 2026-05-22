@@ -32,7 +32,7 @@ function createRevokeSignalDto(input: {
     seatId: "drc",
     senderType: "system",
     seq: input.seq,
-    status: "read",
+    status: "sent",
   } satisfies WorkbenchMessageDto;
 }
 
@@ -116,7 +116,7 @@ describe("workbench revoke state", () => {
               seatId: "drc",
               senderType: "customer",
               seq: 7,
-              status: "read",
+              status: "sent",
             },
             createRevokeSignalDto({
               messageId: "revoke-msg-new-001",
@@ -232,7 +232,7 @@ describe("workbench revoke state", () => {
                 seatId: "drc",
                 senderType: "customer",
                 seq: 10,
-                status: "read",
+                status: "sent",
               },
             ],
           };
@@ -297,7 +297,7 @@ describe("workbench revoke state", () => {
                 seatId: "drc",
                 senderType: "customer",
                 seq: 6,
-                status: "read",
+                status: "sent",
               },
             ],
           };

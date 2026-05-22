@@ -62,7 +62,7 @@ export type WorkbenchQuotedMessagePreviewDto = {
   title?: string;
 };
 
-export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed" | "read";
+export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed";
 export type WorkbenchMessageFileDownloadStatus = "ing" | "finished" | "failed";
 
 export type WorkbenchMessageFileDownloadResponse = {
@@ -120,6 +120,8 @@ export type WorkbenchSeatDto = {
 };
 
 export type WorkbenchConversationSummaryDto = {
+  /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */
+  bizStatus?: number;
   conversationId: string;
   /** 会话托管模式：full 全托管，semi 半托管 */
   custodyMode: ConversationCustodyMode;

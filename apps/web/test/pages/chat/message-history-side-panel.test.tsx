@@ -108,6 +108,46 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.getByText("已撤回")).toBeInTheDocument();
   });
 
+  it("passes download actions through compact all-tab history messages", async () => {
+    const user = userEvent.setup();
+    const handleDownloadMessageFile = vi.fn();
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createFileMessage("file-all", {
+              extension: "pdf",
+              fileName: "全部记录文件.pdf",
+              fileSizeLabel: "16K",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={handleDownloadMessageFile}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "下载文件：全部记录文件.pdf" }));
+
+    expect(handleDownloadMessageFile).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "file-all" }),
+    );
+  });
+
   it("renders sender options with avatars and the real account name in single conversations", async () => {
     const user = userEvent.setup();
 
@@ -518,6 +558,59 @@ describe("MessageHistorySidePanel", () => {
     expect(quoteIcon).toHaveAttribute("data-icon-name", "file-empty-01");
   });
 
+  it("shows failed quote delivery state in the all history tab", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            {
+              ...createQuoteMessage({
+                author: "余圆圆",
+                quotedMessage: {
+                  contentType: "video",
+                  senderName: "余圆圆",
+                  title: "报价视频",
+                },
+                text: "请看失败的引用",
+              }),
+              status: "failed" as const,
+            },
+          ],
+        }}
+        activeHistoryFilters={{ scope: "all" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("history-message-meta-row")).toBeInTheDocument();
+    expect(screen.getByTestId("history-message-author")).toHaveClass("max-w-[min(18rem,calc(100%_-_7rem))]", "truncate");
+    expect(screen.getByTestId("history-message-time")).toBeInTheDocument();
+    expect(screen.getByTestId("history-message-delivery-state")).toBeInTheDocument();
+    expect(screen.getByTestId("history-message-delivery-state")).toHaveClass(
+      "size-4",
+      "rounded-full",
+      "bg-destructive",
+      "text-destructive-foreground",
+    );
+    expect(screen.getByTestId("history-message-meta-row")).toContainElement(
+      screen.getByTestId("history-message-delivery-state"),
+    );
+    expect(screen.getByTestId("quote-generic-preview")).toBeInTheDocument();
+    expect(screen.getByTestId("history-message-text")).toHaveTextContent("请看失败的引用");
+  });
+
   it("renders the file tab as a compact list row layout", async () => {
     const user = userEvent.setup();
     const handleDownloadMessageFile = vi.fn();
@@ -563,6 +656,44 @@ describe("MessageHistorySidePanel", () => {
     await user.click(screen.getByRole("button", { name: "下载文件：2026年五一值班表.xlsx" }));
     expect(handleDownloadMessageFile).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId("text-message-bubble")).not.toBeInTheDocument();
+  });
+
+  it("renders in-progress files in the file tab as downloading", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createFileMessage("file-1", {
+              downloadStatus: "ing",
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSerialNo: "serial-file-1",
+              fileSizeLabel: "16K",
+              sourceLabel: "范双飞（饭饭）",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "file" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "文件下载中" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下载文件：报价单.pdf" }))
+      .not.toBeInTheDocument();
   });
 
   it("renders link history rows with preview images and opens the link", async () => {
@@ -877,6 +1008,222 @@ describe("MessageHistorySidePanel", () => {
 
     expect(screen.getByRole("button", { name: "加载更多对话" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "加载更早的对话" })).toBeInTheDocument();
+  });
+
+  it("opens history videos when clicking the centered play button", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createVideoMessage("video-ready", {
+              alt: "演示视频",
+              coverImageUrl: "https://example.com/video-cover.png",
+              sentAt: "2026-05-19 10:00:00",
+              videoUrl: "https://example.com/video.mp4",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放视频：演示视频" }));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://example.com/video.mp4",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    openSpy.mockRestore();
+  });
+
+  it("shows download action for unfinished history videos", async () => {
+    const user = userEvent.setup();
+    const handleDownloadMessageFile = vi.fn();
+
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createVideoMessage("video-pending", {
+              alt: "待下载视频",
+              coverImageUrl: "https://example.com/video-cover.png",
+              downloadStatus: "failed",
+              fileSerialNo: "serial-video-1",
+              sentAt: "2026-05-19 10:00:00",
+              videoUrl: "",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={handleDownloadMessageFile}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "下载视频：待下载视频" }));
+
+    expect(handleDownloadMessageFile).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "video-pending" }),
+    );
+    expect(screen.queryByRole("button", { name: "播放视频：待下载视频" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("renders in-progress history videos as downloading", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createVideoMessage("video-ing", {
+              alt: "转存中视频",
+              coverImageUrl: "https://example.com/video-cover.png",
+              downloadStatus: "ing",
+              fileSerialNo: "serial-video-1",
+              sentAt: "2026-05-19 10:00:00",
+              videoUrl: "",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "播放视频：转存中视频" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下载视频：转存中视频" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("handles history media messages with missing URLs", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            ({
+              ...createVideoMessage("video-missing-cover", {
+                alt: "缺少地址视频",
+                coverImageUrl: "",
+                downloadStatus: "failed",
+                fileSerialNo: "serial-video-missing",
+                sentAt: "2026-05-19 10:00:00",
+                videoUrl: "",
+              }),
+              content: {
+                alt: "缺少地址视频",
+                coverImageUrl: undefined,
+                downloadStatus: "failed",
+                durationLabel: "00:15",
+                fileSerialNo: "serial-video-missing",
+                type: "video",
+                videoUrl: undefined,
+              },
+            } as unknown as ChatMessage),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onDownloadMessageFile={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("视频封面不可用")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载视频：缺少地址视频" }))
+      .toBeInTheDocument();
+  });
+
+  it("does not show a play overlay for history videos that need download without a handler", () => {
+    render(
+      <MessageHistorySidePanel
+        activeConversation={createConversation()}
+        activeHistory={{
+          hasNext: false,
+          hasPrev: false,
+          messages: [
+            createVideoMessage("video-no-handler", {
+              alt: "缺少下载处理视频",
+              coverImageUrl: "https://example.com/video-cover.png",
+              downloadStatus: "failed",
+              fileSerialNo: "serial-video-1",
+              sentAt: "2026-05-19 10:00:00",
+              videoUrl: "",
+            }),
+          ],
+        }}
+        activeHistoryFilters={{ scope: "media" }}
+        activeHistoryLoading={false}
+        groupMembers={[]}
+        isOpen
+        onClose={vi.fn()}
+        onLoadMoreNext={vi.fn()}
+        onLoadMorePrev={vi.fn()}
+        onRefresh={vi.fn()}
+        onSetDay={vi.fn()}
+        onSetScope={vi.fn()}
+        onSetSenderId={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "播放视频：缺少下载处理视频" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下载视频：缺少下载处理视频" }))
+      .not.toBeInTheDocument();
+    expect(screen.getByTestId("history-media-tile-video-no-handler")).toHaveTextContent("");
   });
 
   it("keeps long file names inside the history panel width", () => {
@@ -1264,7 +1611,7 @@ function createTextMessage(
       name: "客户",
     },
     sentAt: overrides.sentAt ?? "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1291,14 +1638,52 @@ function createImageMessage(
       name: "客户",
     },
     sentAt: overrides.sentAt,
-    status: "read",
+    status: "sent",
+  };
+}
+
+function createVideoMessage(
+  id: string,
+  overrides: {
+    alt: string;
+    coverImageUrl: string;
+    downloadStatus?: "ing" | "finished" | "failed";
+    fileSerialNo?: string;
+    fileUrlExpireTime?: number;
+    sentAt: string;
+    videoUrl: string;
+  },
+): ChatMessage {
+  return {
+    author: "客户",
+    content: {
+      alt: overrides.alt,
+      coverImageUrl: overrides.coverImageUrl,
+      downloadStatus: overrides.downloadStatus,
+      durationLabel: "00:15",
+      fileSerialNo: overrides.fileSerialNo,
+      fileUrlExpireTime: overrides.fileUrlExpireTime,
+      type: "video",
+      videoUrl: overrides.videoUrl,
+    },
+    conversationId: "conversation-1",
+    id,
+    role: "customer",
+    sender: {
+      id: "customer-1",
+      name: "客户",
+    },
+    sentAt: overrides.sentAt,
+    status: "sent",
   };
 }
 
 function createFileMessage(
   id: string,
   content: {
+    downloadStatus?: "ing" | "finished" | "failed";
     extension: string;
+    fileSerialNo?: string;
     fileName: string;
     fileSizeLabel: string;
     sourceLabel?: string;
@@ -1319,7 +1704,7 @@ function createFileMessage(
       name: content.sourceLabel ?? "客户",
     },
     sentAt: content.sentAt ?? "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1346,7 +1731,7 @@ function createH5Message(
       name: "客户",
     },
     sentAt: "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1372,7 +1757,7 @@ function createMiniProgramMessage(
       name: "客户",
     },
     sentAt: "2026-05-19 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }
 
@@ -1401,6 +1786,6 @@ function createQuoteMessage({
       name: author,
     },
     sentAt: "2026-05-19 10:12:00",
-    status: "read",
+    status: "sent",
   };
 }

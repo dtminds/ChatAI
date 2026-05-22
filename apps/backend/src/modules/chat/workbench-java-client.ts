@@ -14,17 +14,19 @@ import {
 } from "../../shared/logger.js";
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
-
-export const JAVA_MSG_TYPE = {
-  FILE: 2010,
-  IMAGE: 2002,
-  QUOTE_TEXT: 2033,
-  TEXT: 2001,
-} as const;
+export const JAVA_INTERNAL_API_USER_MESSAGE = "工作台服务繁忙，请稍后重试";
+export const WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE =
+  "WORKBENCH_INTERNAL_API_NOT_CONFIGURED";
+export const WORKBENCH_INTERNAL_API_FAILED_CODE = "WORKBENCH_INTERNAL_API_FAILED";
 
 export const JAVA_SEND_TYPE = {
   GROUP: 2,
   SINGLE: 1,
+} as const;
+
+export const JAVA_MESSAGE_SOURCE = {
+  WORKBENCH: 1,
+  WX_SIDEBAR: 2,
 } as const;
 
 export const JAVA_MENTION_LOCATION = {
@@ -43,23 +45,38 @@ type JavaApiResponse<T> = {
   success?: boolean;
 };
 
-export type JavaSendMessageData = {
+type JavaMentionFields = {
   atLocation?: number;
   atWxSerialNos?: string[];
   isHit?: number;
-  msgContent: string;
-  msgNum: number;
-  msgType: (typeof JAVA_MSG_TYPE)[keyof typeof JAVA_MSG_TYPE];
-  quoteContentBase64?: string;
-  vcHref?: string;
-  vcTitle?: string;
 };
+
+export type JavaSendMessageData =
+  | ({
+      msgtype: "text";
+      text: string;
+    } & JavaMentionFields)
+  | {
+      fileUrl: string;
+      msgtype: "image";
+    }
+  | {
+      fileName: string;
+      fileUrl: string;
+      msgtype: "file";
+    }
+  | ({
+      msgtype: "quote";
+      quoteMsgId: number;
+      text: string;
+    } & JavaMentionFields);
 
 export type JavaSendMessageInput = {
   clientMessageId: string;
-  message: JavaSendMessageData;
+  msgData: JavaSendMessageData;
   platform: number;
   sendType: (typeof JAVA_SEND_TYPE)[keyof typeof JAVA_SEND_TYPE];
+  source: (typeof JAVA_MESSAGE_SOURCE)[keyof typeof JAVA_MESSAGE_SOURCE];
   thirdExternalUserid?: string;
   thirdGroupId?: string;
   thirdUserId: string;
@@ -242,9 +259,10 @@ async function postConversationOperate(
 
 function buildJavaSendMessageBody(input: JavaSendMessageInput) {
   return {
-    msgDatas: [input.message],
+    msgData: input.msgData,
     platform: input.platform,
     sendType: input.sendType,
+    source: input.source,
     ...(input.thirdExternalUserid
       ? { thirdExternalUserid: input.thirdExternalUserid }
       : {}),
@@ -271,9 +289,8 @@ async function postJava<T>(
       "Java 内部工作台接口未配置",
     );
     throw new ServiceUnavailableError(
-      "JAVA_INTERNAL_API_NOT_CONFIGURED",
-      "Java 内部工作台接口尚未配置",
-      { path },
+      WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
     );
   }
 
@@ -305,10 +322,9 @@ async function postJava<T>(
       "Java 内部工作台接口调用失败",
     );
     throw new BadGatewayError(
-      "JAVA_INTERNAL_API_FAILED",
-      "Java 内部工作台接口调用失败",
+      WORKBENCH_INTERNAL_API_FAILED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
       {
-        path,
         reason: error instanceof Error ? error.name : "unknown",
       },
     );
@@ -327,10 +343,13 @@ async function postJava<T>(
       },
       "Java 内部工作台接口返回异常状态",
     );
-    throw new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败", {
-      path,
-      status: response.status,
-    });
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_FAILED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+      {
+        status: response.status,
+      },
+    );
   }
 
   return (await response.json()) as T;
@@ -364,10 +383,13 @@ async function postJavaEnvelope<T>(
       },
       "Java 内部工作台接口业务失败",
     );
-    throw new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败", {
-      error: response.error,
-      path,
-    });
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_FAILED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+      {
+        error: response.error,
+      },
+    );
   }
 
   return response.data as T;
@@ -396,12 +418,9 @@ function buildJavaLogContext(body: unknown) {
     }
   }
 
-  const msgDatas = body["msgDatas"];
-  if (Array.isArray(msgDatas)) {
-    context.messageCount = msgDatas.length;
-    context.messageTypes = msgDatas
-      .map((item) => (isRecord(item) ? item["msgType"] : undefined))
-      .filter((value) => value != null);
+  const msgData = body["msgData"];
+  if (isRecord(msgData)) {
+    context.messageType = msgData["msgtype"];
   }
 
   return context;

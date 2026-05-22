@@ -14,6 +14,7 @@ import type {
   WorkbenchHistoryMessageQuery,
   WorkbenchSubUserDto,
   WorkbenchMessageDto,
+  WorkbenchMessageFileDownloadResponse,
   WorkbenchMessagePageDto,
   WorkbenchMessageStatus,
   WorkbenchMessageStatusChangeDto,
@@ -206,6 +207,22 @@ export function createMemoryWorkbenchService() {
         region: "ap-guangzhou",
         requestId: "mock-upload-credential-request",
         startTime: 1778670000,
+      };
+    },
+    downloadMessageFile(
+      _subUserId: string,
+      conversationId: string,
+      messageId: string,
+    ): WorkbenchMessageFileDownloadResponse {
+      const conversation = findConversation(state, conversationId);
+
+      if (!conversation) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      return {
+        messageId,
+        status: "accepted",
       };
     },
     markConversationRead(
@@ -490,34 +507,34 @@ function buildInitialState(): MemoryWorkbenchState {
     events: [],
     messagesByConversationId: {
       "conv-001": [
-        message("msg-002", "conv-001", "drc", "cust-001", "customer", "mini-program", { appName: "学好惊喜社", title: "预约直播抽秋天的第一杯奶茶", coverImageUrl: imagePlaceholder("mini-program"), sourceLabel: "小程序" }, "2026-04-11 15:32:40", 1, "read"),
+        message("msg-002", "conv-001", "drc", "cust-001", "customer", "mini-program", { appName: "学好惊喜社", title: "预约直播抽秋天的第一杯奶茶", coverImageUrl: imagePlaceholder("mini-program"), sourceLabel: "小程序" }, "2026-04-11 15:32:40", 1, "sent"),
         message("msg-003", "conv-001", "drc", "cust-001", "agent", "h5", { title: "5.0 版本新功能介绍", description: "智能搜索、智能总结、智能机器人全新发布", previewImageUrl: imagePlaceholder("h5"), sourceLabel: "H5 卡片" }, "2026-04-12 21:12:00", 2, "sent"),
         message("msg-004", "conv-001", "drc", "cust-001", "agent", "file", { fileName: "求未 AI 智能营销系统.pdf", fileSizeLabel: "6.10M", extension: "pdf", sourceLabel: "企业微信文件" }, "2026-04-13 09:10:00", 3, "sent"),
-        message("msg-005", "conv-001", "drc", "cust-001", "customer", "text", { text: "Seedream 4.0 这张活动卡片我准备转给群里，你看标题会不会太满？" }, "2026-04-14 18:37:00", 4, "read"),
-        message("msg-006", "conv-001", "drc", "cust-001", "customer", "text", { text: "我先截了个竖图版本给你看。" }, "2026-04-14 18:37:18", 5, "read"),
-        message("msg-007", "conv-001", "drc", "cust-001", "customer", "image", { imageUrl: imagePlaceholder("phone"), alt: "手机截图", width: 300, height: 620 }, "2026-04-14 18:37:24", 6, "read"),
-        message("msg-008", "conv-001", "drc", "cust-001", "customer", "voice", { durationLabel: "11\"" }, "2026-04-14 18:38:12", 7, "read"),
-        message("msg-009", "conv-001", "drc", "cust-001", "customer", "text", { text: "这是最新的权益清单截图，你帮我确认下。" }, "2026-04-14 19:18:18", 8, "read"),
-        message("msg-010", "conv-001", "drc", "cust-001", "customer", "image", { imageUrl: imagePlaceholder("sheet"), alt: "权益清单截图", width: 1180, height: 540 }, "2026-04-14 19:18:32", 9, "read"),
+        message("msg-005", "conv-001", "drc", "cust-001", "customer", "text", { text: "Seedream 4.0 这张活动卡片我准备转给群里，你看标题会不会太满？" }, "2026-04-14 18:37:00", 4, "sent"),
+        message("msg-006", "conv-001", "drc", "cust-001", "customer", "text", { text: "我先截了个竖图版本给你看。" }, "2026-04-14 18:37:18", 5, "sent"),
+        message("msg-007", "conv-001", "drc", "cust-001", "customer", "image", { imageUrl: imagePlaceholder("phone"), alt: "手机截图", width: 300, height: 620 }, "2026-04-14 18:37:24", 6, "sent"),
+        message("msg-008", "conv-001", "drc", "cust-001", "customer", "voice", { durationLabel: "11\"" }, "2026-04-14 18:38:12", 7, "sent"),
+        message("msg-009", "conv-001", "drc", "cust-001", "customer", "text", { text: "这是最新的权益清单截图，你帮我确认下。" }, "2026-04-14 19:18:18", 8, "sent"),
+        message("msg-010", "conv-001", "drc", "cust-001", "customer", "image", { imageUrl: imagePlaceholder("sheet"), alt: "权益清单截图", width: 1180, height: 540 }, "2026-04-14 19:18:32", 9, "sent"),
       ],
       "conv-002": [
-        message("msg-011", "conv-002", "drc", "cust-002", "customer", "text", { text: "早餐能不能换成酸奶和坚果？" }, "2026-04-13 15:04:16", 1, "read"),
-        message("msg-011-video-horizontal", "conv-002", "drc", "cust-002", "customer", "video", { videoUrl: "/mock/video/stage-recital.mp4", coverImageUrl: imagePlaceholder("video-horizontal"), alt: "舞台活动视频", durationLabel: "1:01", width: 640, height: 360 }, "2026-04-13 15:04:28", 2, "read"),
-        message("msg-011-video-vertical", "conv-002", "drc", "cust-002", "customer", "video", { videoUrl: "/mock/video/lake-check.mp4", coverImageUrl: imagePlaceholder("video-vertical"), alt: "湖面竖版视频", durationLabel: "0:11", width: 360, height: 640 }, "2026-04-13 15:04:36", 3, "read"),
+        message("msg-011", "conv-002", "drc", "cust-002", "customer", "text", { text: "早餐能不能换成酸奶和坚果？" }, "2026-04-13 15:04:16", 1, "sent"),
+        message("msg-011-video-horizontal", "conv-002", "drc", "cust-002", "customer", "video", { videoUrl: "/mock/video/stage-recital.mp4", coverImageUrl: imagePlaceholder("video-horizontal"), alt: "舞台活动视频", durationLabel: "1:01", width: 640, height: 360 }, "2026-04-13 15:04:28", 2, "sent"),
+        message("msg-011-video-vertical", "conv-002", "drc", "cust-002", "customer", "video", { videoUrl: "/mock/video/lake-check.mp4", coverImageUrl: imagePlaceholder("video-vertical"), alt: "湖面竖版视频", durationLabel: "0:11", width: 360, height: 640 }, "2026-04-13 15:04:36", 3, "sent"),
       ],
       "conv-003": [
-        message("msg-012", "conv-003", "drc", "cust-003", "customer", "text", { text: "体重平台期了，今天想加一次有氧。" }, "2026-04-13 05:09:59", 1, "read"),
+        message("msg-012", "conv-003", "drc", "cust-003", "customer", "text", { text: "体重平台期了，今天想加一次有氧。" }, "2026-04-13 05:09:59", 1, "sent"),
       ],
       "conv-004": [
-        message("msg-013", "conv-004", "drc", "cust-004", "system", "system", { text: "群聊占位数据，后续可在轮询模型稳定后单独扩展。" }, "2026-04-11 09:44:38", 1, "read"),
+        message("msg-013", "conv-004", "drc", "cust-004", "system", "system", { text: "群聊占位数据，后续可在轮询模型稳定后单独扩展。" }, "2026-04-11 09:44:38", 1, "sent"),
       ],
       "conv-revoke-only": [
-        message("msg-revoke-009", "conv-revoke-only", "drc", "cust-revoke-only", "system", "revoke", { revokeMsgId: "516", revokeOriginMsgId: "1022531", type: "revoke" }, "2026-04-10 10:00:00", 9, "read"),
-        message("msg-revoke-010", "conv-revoke-only", "drc", "cust-revoke-only", "system", "revoke", { revokeMsgId: "517", revokeOriginMsgId: "1022532", type: "revoke" }, "2026-04-10 10:01:00", 10, "read"),
-        message("msg-revoke-older", "conv-revoke-only", "drc", "cust-revoke-only", "customer", "text", { text: "更早的可展示消息" }, "2026-04-10 09:59:00", 8, "read"),
+        message("msg-revoke-009", "conv-revoke-only", "drc", "cust-revoke-only", "system", "revoke", { revokeMsgId: "516", revokeOriginMsgId: "1022531", type: "revoke" }, "2026-04-10 10:00:00", 9, "sent"),
+        message("msg-revoke-010", "conv-revoke-only", "drc", "cust-revoke-only", "system", "revoke", { revokeMsgId: "517", revokeOriginMsgId: "1022532", type: "revoke" }, "2026-04-10 10:01:00", 10, "sent"),
+        message("msg-revoke-older", "conv-revoke-only", "drc", "cust-revoke-only", "customer", "text", { text: "更早的可展示消息" }, "2026-04-10 09:59:00", 8, "sent"),
       ],
       "conv-005": [
-        message("msg-014", "conv-005", "ndt", "cust-005", "customer", "text", { text: "好，那我今天先从晚餐控碳开始。" }, "2026-04-14 10:39:38", 1, "read"),
+        message("msg-014", "conv-005", "ndt", "cust-005", "customer", "text", { text: "好，那我今天先从晚餐控碳开始。" }, "2026-04-14 10:39:38", 1, "sent"),
       ],
       "conv-006": [
         message("msg-015", "conv-006", "ndt", "cust-006", "agent", "text", { text: "多喝水，明天继续打卡。" }, "2026-04-09 16:04:45", 1, "sent"),

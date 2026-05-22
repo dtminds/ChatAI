@@ -1099,8 +1099,6 @@ function normalizeBackendStatus(status: Message["status"]): WorkbenchMessageStat
       return "sending";
     case "failed":
       return "failed";
-    case "read":
-      return "read";
     case "sent":
     default:
       return "sent";

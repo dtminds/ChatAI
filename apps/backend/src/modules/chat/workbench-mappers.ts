@@ -26,6 +26,7 @@ export type SeatRow = {
 };
 
 export type ConversationRow = {
+  biz_status?: number | string | null;
   chat_type: number;
   create_time?: Date | number | string | null;
   customer_avatar: string | null;
@@ -50,6 +51,7 @@ export type MessageRow = {
   content: string | null;
   conversation_external_id: string;
   conversation_group_id: string;
+  conversation_group_seat_id?: number | string | null;
   conversation_id: number | string;
   from_type: number | null;
   id: number | string;
@@ -61,6 +63,7 @@ export type MessageRow = {
   seat_id: number | string;
   sender_avatar?: string;
   sender_name?: string;
+  status?: number | string | null;
   third_external_id: string | null | undefined;
   third_from_id: string | null | undefined;
   third_group_id: string | null | undefined;
@@ -128,6 +131,7 @@ export function mapConversationRow(
     mode === "group" ? row.group_avatar ?? "" : row.customer_avatar ?? "";
 
   return {
+    bizStatus: row.biz_status == null ? undefined : toNumber(row.biz_status),
     conversationId: String(row.id),
     custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
     createdAt: toOptionalTimestamp(row.create_time),
@@ -175,7 +179,7 @@ export function mapMessageRow(
     senderName: row.sender_name,
     senderType: mapSenderType(row),
     seq: toNumber(row.id),
-    status: "read",
+    status: mapMessageStatus(row.status),
     thirdExternalUserId,
     thirdFromId: row.third_from_id || undefined,
     thirdGroupId,
@@ -190,7 +194,10 @@ export function hydrateMessageRows(
   return rows.map((row) => {
     if (row.chat_type === 2) {
       const thirdFromId = row.third_from_id || row.third_user_id || undefined;
-      const thirdGroupId = row.third_group_id || row.conversation_group_id;
+      const thirdGroupId =
+        row.conversation_group_seat_id == null
+          ? row.third_group_id || row.conversation_group_id
+          : String(row.conversation_group_seat_id);
       const member = thirdFromId
         ? sources.groupMembersByGroupAndThirdUserId.get(
           getGroupMemberHydrationKey(thirdGroupId, thirdFromId),
@@ -447,24 +454,14 @@ function parseMessageContent(
 }
 
 function formatMessagePreview(msgtype: string | null, rawContent: string | null) {
-  const parsed = parseContent(rawContent);
-
-  if (typeof parsed === "string") {
-    return parsed;
+  if (!msgtype && !rawContent) {
+    return "";
   }
 
-  if (parsed && typeof parsed === "object") {
-    if ("unsupportedDisplayText" in parsed) {
-      return String(parsed.unsupportedDisplayText ?? "");
-    }
+  const parsed = parseContent(rawContent);
 
-    if ("text" in parsed) {
-      return String(parsed.text ?? "");
-    }
-
-    if ("title" in parsed) {
-      return String(parsed.title ?? "");
-    }
+  if (msgtype === "text" || msgtype === "system") {
+    return readSystemMessageText(parsed, rawContent);
   }
 
   switch (msgtype) {
@@ -499,7 +496,7 @@ function formatMessagePreview(msgtype: string | null, rawContent: string | null)
     case "quote":
       return "[引用消息]";
     default:
-      return rawContent ?? "";
+      return "[新消息]";
   }
 }
 
@@ -523,6 +520,10 @@ function readSystemMessageText(parsed: unknown, rawContent: string | null) {
   }
 
   return rawContent ?? "";
+}
+
+function mapMessageStatus(status: number | string | null | undefined) {
+  return toNumber(status ?? 1) === 0 ? "failed" : "sent";
 }
 
 function readRevokeMessageContent(parsed: unknown, rawContent: string | null) {

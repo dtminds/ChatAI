@@ -65,15 +65,30 @@ function createHistoryMessagesDb(rows: MessageRow[], conversationOverrides: Reco
   };
 }
 
-function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
+function createMessagesDb(
+  rows: MessageRow[],
+  quoteRows: MessageRow[] = [],
+  conversationOverrides: Record<string, unknown> = {},
+  hydrationRows: {
+    contacts?: unknown[];
+    groupMembers?: unknown[];
+    seats?: unknown[];
+  } = {},
+) {
   const messageQueries: Array<{
     limits: number[];
     orderBys: Array<[string, string | undefined]>;
     table: string;
     wheres: Array<[string, string, unknown]>;
   }> = [];
+  const hydrationQueries: Array<{
+    joins: string[];
+    table: string;
+    wheres: Array<[string, string, unknown]>;
+  }> = [];
 
   return {
+    hydrationQueries,
     messageQueries,
     selectFrom(table: string) {
       if (table === "xy_wap_embed_conversation as conversation") {
@@ -86,6 +101,7 @@ function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
           seat_id: 12,
           third_userid: "seat-third-user-1",
           uid: 9001,
+          ...conversationOverrides,
         });
       }
 
@@ -101,12 +117,37 @@ function createMessagesDb(rows: MessageRow[], quoteRows: MessageRow[] = []) {
         return query;
       }
 
-      if (
-        table === "xy_wap_embed_group_member as member" ||
-        table === "xy_wap_embed_user_seat" ||
-        table === "xy_wap_embed_contact" ||
-        table === "xy_wap_embed_customer_bind_relation"
-      ) {
+      if (table === "xy_wap_embed_group_member as member") {
+        const query = createQueryBuilder(hydrationRows.groupMembers ?? []);
+        hydrationQueries.push({
+          joins: query.joins,
+          table,
+          wheres: query.wheres,
+        });
+        return query;
+      }
+
+      if (table === "xy_wap_embed_user_seat") {
+        const query = createQueryBuilder(hydrationRows.seats ?? []);
+        hydrationQueries.push({
+          joins: query.joins,
+          table,
+          wheres: query.wheres,
+        });
+        return query;
+      }
+
+      if (table === "xy_wap_embed_contact") {
+        const query = createQueryBuilder(hydrationRows.contacts ?? []);
+        hydrationQueries.push({
+          joins: query.joins,
+          table,
+          wheres: query.wheres,
+        });
+        return query;
+      }
+
+      if (table === "xy_wap_embed_customer_bind_relation") {
         return createQueryBuilder([]);
       }
 
@@ -796,6 +837,199 @@ describe("WorkbenchRepository", () => {
       customerName: "客户备注",
       lastMessage: "hello",
     });
+  });
+
+  it("hydrates inactive single contact conversations and exposes contact biz status", async () => {
+    const observedContactQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder([
+              createConversationRow({
+                id: 88,
+                third_external_userid: "external-001",
+              }),
+            ]);
+          }
+
+          if (table === "xy_wap_embed_contact") {
+            const query = createQueryBuilder({
+              avatar: "https://example.com/inactive-contact.png",
+              biz_status: 0,
+              name: "失效客户",
+              real_name: "失效客户实名",
+              third_external_userid: "external-001",
+            });
+            observedContactQueries.push(query);
+
+            return query;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_customer_bind_relation" ||
+            table === "xy_wap_embed_group_seat"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+      mode: "single",
+    });
+
+    expect(observedContactQueries[0]?.wheres).not.toContainEqual([
+      "biz_status",
+      "=",
+      1,
+    ]);
+    expect(page.items[0]).toMatchObject({
+      bizStatus: 0,
+      conversationId: "88",
+      customerAvatar: "https://example.com/inactive-contact.png",
+      customerName: "失效客户实名",
+    });
+  });
+
+  it("hydrates inactive group conversations and exposes group seat biz status", async () => {
+    const observedGroupSeatQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder([
+              createConversationRow({
+                chat_type: 2,
+                id: 89,
+                third_external_userid: "",
+                third_group_id: "group-001",
+              }),
+            ]);
+          }
+
+          if (table === "xy_wap_embed_group_seat") {
+            const query = createQueryBuilder({
+              avatar: "https://example.com/inactive-group.png",
+              biz_status: 0,
+              name: "失效群聊",
+              third_group_id: "group-001",
+            });
+            observedGroupSeatQueries.push(query);
+
+            return query;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_contact" ||
+            table === "xy_wap_embed_customer_bind_relation"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+      mode: "group",
+    });
+
+    expect(observedGroupSeatQueries[0]?.wheres).not.toContainEqual([
+      "biz_status",
+      "=",
+      1,
+    ]);
+    expect(page.items[0]).toMatchObject({
+      bizStatus: 0,
+      conversationId: "89",
+      customerAvatar: "https://example.com/inactive-group.png",
+      customerName: "失效群聊",
+    });
+  });
+
+  it("defaults conversation biz status to inactive when display metadata is missing", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder([
+              createConversationRow({
+                id: 88,
+                third_external_userid: "missing-external-001",
+              }),
+              createConversationRow({
+                chat_type: 2,
+                id: 89,
+                third_external_userid: "",
+                third_group_id: "missing-group-001",
+              }),
+            ]);
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_contact" ||
+            table === "xy_wap_embed_customer_bind_relation" ||
+            table === "xy_wap_embed_group_seat"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+    });
+
+    expect(page.items).toEqual([
+      expect.objectContaining({
+        bizStatus: 0,
+        conversationId: "88",
+      }),
+      expect.objectContaining({
+        bizStatus: 0,
+        conversationId: "89",
+      }),
+    ]);
   });
 
   it("hydrates last messages and cursors without losing bigint id precision", async () => {
@@ -1565,6 +1799,70 @@ describe("WorkbenchRepository", () => {
       nextBeforeSeq: 101,
       scannedCount: 3,
     });
+  });
+
+  it("hydrates group message senders from the conversation group seat without active-status filters", async () => {
+    const db = createMessagesDb(
+      [
+        messageRow({
+          chat_type: 2,
+          conversation_external_id: "",
+          conversation_group_id: "group-1",
+          conversation_group_seat_id: 7788,
+          from_type: 2,
+          id: 101,
+          msgid: "remote-msg-101",
+          third_external_id: null,
+          third_from_id: "member-1",
+          third_group_id: "group-1",
+          third_user_id: "seat-third-user-1",
+        }),
+      ],
+      [],
+      {
+        chat_type: 2,
+        conversation_external_id: "",
+        conversation_group_id: "group-1",
+        group_seat_id: 7788,
+      },
+      {
+        groupMembers: [
+          {
+            avatar: "https://example.com/member-1.png",
+            name: "成员一",
+            nickname: "群内成员一",
+            third_userid: "member-1",
+          },
+        ],
+      },
+    );
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(repository.listMessages("88", { limit: 1 })).resolves.toMatchObject({
+      messages: [
+        {
+          messageId: "remote-msg-101",
+          senderAvatar: "https://example.com/member-1.png",
+          senderName: "群内成员一",
+        },
+      ],
+    });
+
+    const groupMemberQuery = db.hydrationQueries.find(
+      (query) => query.table === "xy_wap_embed_group_member as member",
+    );
+
+    expect(groupMemberQuery?.joins).toEqual([]);
+    expect(groupMemberQuery?.wheres).toContainEqual(["member.group_seat_id", "=", 7788]);
+    expect(groupMemberQuery?.wheres).toContainEqual(["member.uid", "=", 9001]);
+    expect(groupMemberQuery?.wheres).toContainEqual(["member.platform", "=", 5]);
+    expect(groupMemberQuery?.wheres).toContainEqual([
+      "member.third_userid",
+      "in",
+      ["member-1"],
+    ]);
+    expect(groupMemberQuery?.wheres).not.toContainEqual(["member.biz_status", "=", 1]);
+    expect(groupMemberQuery?.wheres).not.toContainEqual(["group_seat.biz_status", "=", 1]);
   });
 
   it("hydrates quote previews from current page rows without an extra quote query", async () => {

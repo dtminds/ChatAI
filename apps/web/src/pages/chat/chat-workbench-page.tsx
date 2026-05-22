@@ -54,15 +54,11 @@ import type {
   ChatMessage,
   ChatMode,
   FileUploadQueueItem,
-  Message,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
-import {
-  downloadMessageFile,
-  getMessageFileDownloadStatus,
-} from "@/pages/chat/api/workbench-gateway";
+import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -80,9 +76,6 @@ import {
 } from "@/pages/chat/lib/panel-width";
 
 const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
-const MAX_ACTIVE_DOWNLOAD_TRANSFERS = 3;
-const DOWNLOAD_STATUS_POLL_INTERVAL_MS = 3000;
-const MAX_DOWNLOAD_STATUS_POLL_COUNT = 40;
 
 type PendingComposerDiscardSwitch =
   | {
@@ -243,12 +236,6 @@ function ChatWorkbenchContent({
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
   );
-  const [downloadTransferStates, setDownloadTransferStates] = useState<
-    Record<string, "idle" | "transferring">
-  >({});
-  const downloadPollingTimeoutsRef = useRef(new Map<string, number>());
-  const downloadPollingMessageIdsRef = useRef(new Set<string>());
-  const downloadPollingConversationRef = useRef<string | undefined>(undefined);
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
@@ -322,10 +309,12 @@ function ChatWorkbenchContent({
   const isActiveAccountTakenOver =
     !!activeAccount?.takenOverEmployeeId &&
     activeAccount.takenOverEmployeeId === me?.id;
+  const isActiveConversationBizInactive = activeConversation?.bizStatus === 0;
   const canSendMessage =
     !!activeConversation &&
     !isActiveAccountOffline &&
-    isActiveAccountTakenOver;
+    isActiveAccountTakenOver &&
+    !isActiveConversationBizInactive;
   const sidebarIframeTos: "0" | "1" =
     !!activeAccount?.takenOverEmployeeId &&
     activeAccount.takenOverEmployeeId === me?.id
@@ -341,6 +330,8 @@ function ChatWorkbenchContent({
         ? "当前账号离线，暂时无法发送消息"
         : !isActiveAccountTakenOver
           ? "当前账号未接管，暂时无法发送消息"
+          : isActiveConversationBizInactive
+            ? "当前会话已失效，暂时无法发送消息"
           : !activeConversation
             ? "当前列表暂无可发送会话"
             : "当前会话暂不可发送消息";
@@ -358,35 +349,6 @@ function ChatWorkbenchContent({
       const nextQueue = updater(currentQueue);
       fileUploadQueueRef.current = nextQueue;
       return nextQueue;
-    });
-  };
-
-  const clearDownloadPollingTimers = () => {
-    downloadPollingTimeoutsRef.current.forEach((timeoutId) => {
-      window.clearTimeout(timeoutId);
-    });
-    downloadPollingTimeoutsRef.current.clear();
-    downloadPollingMessageIdsRef.current.clear();
-  };
-
-  const updateDownloadTransferState = (
-    messageId: string,
-    state: "idle" | "transferring",
-  ) => {
-    if (!isMountedRef.current) {
-      return;
-    }
-
-    setDownloadTransferStates((currentStates) => {
-      if (state === "idle") {
-        const { [messageId]: _ignored, ...nextStates } = currentStates;
-        return nextStates;
-      }
-
-      return {
-        ...currentStates,
-        [messageId]: state,
-      };
     });
   };
 
@@ -416,45 +378,10 @@ function ChatWorkbenchContent({
         });
         fileUploadAbortControllersRef.current.clear();
         fileUploadQueueRef.current = [];
-        clearDownloadPollingTimers();
       };
     },
     [],
   );
-
-  useEffect(() => {
-    if (downloadPollingConversationRef.current === activeConversation?.id) {
-      return;
-    }
-
-    clearDownloadPollingTimers();
-    downloadPollingConversationRef.current = activeConversation?.id;
-    setDownloadTransferStates({});
-  }, [activeConversation?.id]);
-
-  useEffect(() => {
-    if (!activeConversation) {
-      return;
-    }
-
-    const restorableMessages = getRestorableDownloadMessages(activeMessages);
-    const restorableIds = new Set(restorableMessages.map((message) => message.id));
-
-    downloadPollingMessageIdsRef.current.forEach((messageId) => {
-      if (!restorableIds.has(messageId)) {
-        stopMessageDownloadPolling(messageId);
-      }
-    });
-
-    restorableMessages.forEach((message) => {
-      if (downloadPollingMessageIdsRef.current.has(message.id)) {
-        return;
-      }
-
-      updateDownloadTransferState(message.id, "transferring");
-      startMessageDownloadPolling(message);
-    });
-  }, [activeConversation?.id, activeMessages]);
 
   useEffect(() => {
     if (!readReceiptError) {
@@ -726,20 +653,10 @@ function ChatWorkbenchContent({
       return;
     }
 
-    if (
-      downloadPollingMessageIdsRef.current.size >=
-      MAX_ACTIVE_DOWNLOAD_TRANSFERS
-    ) {
-      toast.warning("下载队列已满，请稍后");
-      return;
-    }
-
     if (message.conversationId !== activeConversation.id) {
       return;
     }
 
-    updateDownloadTransferState(message.id, "transferring");
-    downloadPollingMessageIdsRef.current.add(message.id);
     updateMessageDownloadContent(message.conversationId, message.id, {
       downloadStatus: "ing",
     });
@@ -754,133 +671,17 @@ function ChatWorkbenchContent({
           return;
         }
 
-        startMessageDownloadPolling(message);
       })
       .catch(() => {
         if (!isMountedRef.current) {
           return;
         }
 
-        stopMessageDownloadPolling(message.id);
         updateMessageDownloadContent(message.conversationId, message.id, {
           downloadStatus: "failed",
         });
         toast.warning("下载失败，请稍后重试");
       });
-  };
-
-  const startMessageDownloadPolling = (message: ChatMessage) => {
-    downloadPollingMessageIdsRef.current.add(message.id);
-
-    if (downloadPollingTimeoutsRef.current.has(message.id)) {
-      return;
-    }
-
-    pollMessageDownloadStatus(message, 0);
-  };
-
-  const stopMessageDownloadPolling = (messageId: string) => {
-    const timeoutId = downloadPollingTimeoutsRef.current.get(messageId);
-
-    if (timeoutId !== undefined) {
-      window.clearTimeout(timeoutId);
-      downloadPollingTimeoutsRef.current.delete(messageId);
-    }
-
-    downloadPollingMessageIdsRef.current.delete(messageId);
-    updateDownloadTransferState(messageId, "idle");
-  };
-
-  const pollMessageDownloadStatus = (message: ChatMessage, attempt: number) => {
-    if (!isMountedRef.current || !message.seq) {
-      stopMessageDownloadPolling(message.id);
-      return;
-    }
-
-    if (attempt >= MAX_DOWNLOAD_STATUS_POLL_COUNT) {
-      stopMessageDownloadPolling(message.id);
-      updateMessageDownloadContent(message.conversationId, message.id, {
-        downloadStatus: "failed",
-      });
-      toast.warning("文件下载超时，请稍后重试");
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      downloadPollingTimeoutsRef.current.delete(message.id);
-
-      if (
-        !isMountedRef.current ||
-        downloadPollingConversationRef.current !== message.conversationId
-      ) {
-        downloadPollingMessageIdsRef.current.delete(message.id);
-        return;
-      }
-
-      void getMessageFileDownloadStatus({
-        conversationId: message.conversationId,
-        messageSeq: message.seq ?? 0,
-      })
-        .then((status) => {
-          if (
-            !isMountedRef.current ||
-            downloadPollingConversationRef.current !== message.conversationId
-          ) {
-            return;
-          }
-
-          if (status?.downloadStatus === "finished") {
-            stopMessageDownloadPolling(message.id);
-            updateMessageDownloadContent(message.conversationId, message.id, {
-              downloadStatus: "finished",
-              fileUrlExpireTime: status.fileUrlExpireTime,
-              fileUrl: status.fileUrl,
-            });
-
-            if (message.content.type === "file" && status.fileUrl) {
-              openMessageDownloadUrl(message, status.fileUrl);
-            }
-            return;
-          }
-
-          if (status?.downloadStatus === "failed") {
-            stopMessageDownloadPolling(message.id);
-            updateMessageDownloadContent(message.conversationId, message.id, {
-              downloadStatus: "failed",
-            });
-            toast.warning("下载失败，请稍后重试");
-            return;
-          }
-
-          pollMessageDownloadStatus(message, attempt + 1);
-        })
-        .catch(() => {
-          if (!isMountedRef.current) {
-            return;
-          }
-
-          if (downloadPollingConversationRef.current !== message.conversationId) {
-            return;
-          }
-
-          stopMessageDownloadPolling(message.id);
-          updateMessageDownloadContent(message.conversationId, message.id, {
-            downloadStatus: "failed",
-          });
-          window.setTimeout(() => {
-            if (
-              !isMountedRef.current ||
-              downloadPollingConversationRef.current !== message.conversationId
-            ) {
-              return;
-            }
-
-            toast.warning("下载失败，请稍后重试");
-          }, 0);
-        });
-    }, DOWNLOAD_STATUS_POLL_INTERVAL_MS);
-
-    downloadPollingTimeoutsRef.current.set(message.id, timeoutId);
   };
 
   const handleDraftChange = (nextDraft: string) => {
@@ -1216,7 +1017,6 @@ function ChatWorkbenchContent({
                 isSendingDraft={isSendingDraft}
                 isResizingCustomerPanel={isResizingCustomerPanel}
                 fileUploadQueue={fileUploadQueue}
-                downloadTransferStates={downloadTransferStates}
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
@@ -1531,33 +1331,6 @@ function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
     message.content.downloadStatus === "finished" &&
     url
   );
-}
-
-function getRestorableDownloadMessages(messages: Message[]) {
-  return messages
-    .filter((message): message is ChatMessage => {
-      if (message.role === "system") {
-        return false;
-      }
-
-      if (message.content.type !== "file" && message.content.type !== "video") {
-        return false;
-      }
-
-      return (
-        message.content.downloadStatus === "ing" &&
-        Boolean(message.seq)
-      );
-    })
-    .sort(
-      (left, right) =>
-        getMessageDownloadOrderValue(right) - getMessageDownloadOrderValue(left),
-    )
-    .slice(0, MAX_ACTIVE_DOWNLOAD_TRANSFERS);
-}
-
-function getMessageDownloadOrderValue(message: ChatMessage) {
-  return message.seq ?? 0;
 }
 
 function buildQuotedMessagePreview(

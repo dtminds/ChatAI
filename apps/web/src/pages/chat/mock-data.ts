@@ -298,7 +298,7 @@ export const seedMessages: Record<string, Message[]> = {
         sourceLabel: "小程序",
       },
       sentAt: "2026-04-11 15:32:40",
-      status: "read",
+      status: "sent",
     },
     {
       id: "msg-003",
@@ -355,7 +355,7 @@ export const seedMessages: Record<string, Message[]> = {
         text: "Seedream 4.0 这张活动卡片我准备转给群里，你看标题会不会太满？",
       },
       sentAt: "2026-04-14 18:37:00",
-      status: "read",
+      status: "sent",
     },
     {
       id: "msg-006",
@@ -372,7 +372,7 @@ export const seedMessages: Record<string, Message[]> = {
         text: "我先截了个竖图版本给你看。",
       },
       sentAt: "2026-04-14 18:37:18",
-      status: "read",
+      status: "sent",
     },
     {
       id: "msg-007",
@@ -392,7 +392,7 @@ export const seedMessages: Record<string, Message[]> = {
         height: 620,
       },
       sentAt: "2026-04-14 18:37:24",
-      status: "read",
+      status: "sent",
     },
     {
       id: "msg-008",
@@ -409,7 +409,7 @@ export const seedMessages: Record<string, Message[]> = {
         durationLabel: "11\"",
       },
       sentAt: "2026-04-14 18:38:12",
-      status: "read",
+      status: "sent",
     },
     {
       id: "msg-009",
@@ -426,7 +426,7 @@ export const seedMessages: Record<string, Message[]> = {
         text: "这是最新的权益清单截图，你帮我确认下。",
       },
       sentAt: "2026-04-14 19:18:18",
-      status: "read",
+      status: "sent",
     },
     {
       id: "msg-010",
@@ -446,7 +446,7 @@ export const seedMessages: Record<string, Message[]> = {
         height: 540,
       },
       sentAt: "2026-04-14 19:18:32",
-      status: "read",
+      status: "sent",
     },
   ],
   "conv-002": [
@@ -465,7 +465,7 @@ export const seedMessages: Record<string, Message[]> = {
         text: "早餐能不能换成酸奶和坚果？",
       },
       sentAt: "2026-04-13 15:04:16",
-      status: "read",
+      status: "sent",
     },
     {
       id: "msg-011-video-horizontal",
@@ -487,7 +487,7 @@ export const seedMessages: Record<string, Message[]> = {
         height: 360,
       },
       sentAt: "2026-04-13 15:04:28",
-      status: "read",
+      status: "sent",
     },
     {
       id: "msg-011-video-vertical",
@@ -509,7 +509,7 @@ export const seedMessages: Record<string, Message[]> = {
         height: 640,
       },
       sentAt: "2026-04-13 15:04:36",
-      status: "read",
+      status: "sent",
     },
   ],
   "conv-003": [
@@ -528,7 +528,7 @@ export const seedMessages: Record<string, Message[]> = {
         text: "体重平台期了，今天想加一次有氧。",
       },
       sentAt: "2026-04-13 05:09:59",
-      status: "read",
+      status: "sent",
     },
   ],
   "conv-004": [
@@ -542,7 +542,7 @@ export const seedMessages: Record<string, Message[]> = {
         text: "群聊占位数据，后续可在轮询模型稳定后单独扩展。",
       },
       sentAt: "2026-04-11 09:44:38",
-      status: "read",
+      status: "sent",
     },
     {
       id: "msg-013-solitaire",
@@ -575,7 +575,7 @@ export const seedMessages: Record<string, Message[]> = {
         title: "#接龙\n哈哈哈",
       },
       sentAt: "2026-05-11 16:31:00",
-      status: "read",
+      status: "sent",
     },
   ],
   "conv-005": [
@@ -594,7 +594,7 @@ export const seedMessages: Record<string, Message[]> = {
         text: "好，那我今天先从晚餐控碳开始。",
       },
       sentAt: "2026-04-14 10:39:38",
-      status: "read",
+      status: "sent",
     },
   ],
   "conv-006": [

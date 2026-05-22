@@ -271,7 +271,7 @@ function createImageMessage(content: ImageMessageContent): ChatMessage {
     },
     content,
     sentAt: "2026-04-19 10:12:00",
-    status: "read",
+    status: "sent",
   };
 }
 

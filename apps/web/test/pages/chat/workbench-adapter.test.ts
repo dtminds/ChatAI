@@ -40,6 +40,17 @@ describe("workbench adapter", () => {
       }).custodyMode,
     ).toBe("full");
   });
+
+  it("adapts conversation biz status for send availability", () => {
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        bizStatus: 0,
+      }),
+    ).toMatchObject({
+      bizStatus: 0,
+    });
+  });
 });
 
 describe("adaptMessage", () => {
@@ -608,7 +619,7 @@ const messageDto = {
   senderName: "",
   senderType: "customer" as const,
   seq: 1,
-  status: "read" as const,
+  status: "sent" as const,
   thirdExternalUserId: undefined,
   thirdFromId: undefined,
   thirdGroupId: undefined,

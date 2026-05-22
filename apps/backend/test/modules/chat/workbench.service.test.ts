@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { MysqlWorkbenchService } from "../../../src/modules/chat/workbench.service.js";
+import {
+  JAVA_INTERNAL_API_USER_MESSAGE,
+  WORKBENCH_INTERNAL_API_FAILED_CODE,
+} from "../../../src/modules/chat/workbench-java-client.js";
 import type { WorkbenchJavaClient } from "../../../src/modules/chat/workbench-java-client.js";
+import { MysqlWorkbenchService } from "../../../src/modules/chat/workbench.service.js";
 import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
 import { BadGatewayError } from "../../../src/shared/errors.js";
 
@@ -533,7 +537,10 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     const logger = createLoggerMock();
     vi.mocked(javaClient.getUploadCredential).mockRejectedValue(
-      new BadGatewayError("JAVA_INTERNAL_API_FAILED", "Java 内部工作台接口调用失败"),
+      new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+      ),
     );
     const service = new MysqlWorkbenchService(
       {
@@ -551,7 +558,8 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(service.getUploadCredential("101", "88")).rejects.toMatchObject({
-      code: "JAVA_INTERNAL_API_FAILED",
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
       statusCode: 502,
     });
 
@@ -568,6 +576,35 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.downloadMessageFile("101", "88", "remote-msg-file-001"),
+    ).resolves.toEqual({
+      messageId: "remote-msg-file-001",
+      status: "accepted",
+    });
+    expect(javaClient.downloadMsgFile).toHaveBeenCalledWith({
+      msgid: "remote-msg-file-001",
+      platform: 5,
+      uid: 9001,
+    });
+  });
+
+  it("starts message file transfer without requiring the current sub-user to host the seat", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "202",
           uid: 9001,
         }),
       } as unknown as WorkbenchRepository,
@@ -769,7 +806,7 @@ describe("MysqlWorkbenchService", () => {
           seatId: "12",
           senderType: "customer",
           seq: 101,
-          status: "read",
+          status: "sent",
         },
         {
           content: {
@@ -783,7 +820,7 @@ describe("MysqlWorkbenchService", () => {
           seatId: "12",
           senderType: "system",
           seq: 103,
-          status: "read",
+          status: "sent",
         },
       ],
       scannedCount: 2,
@@ -1171,16 +1208,16 @@ describe("MysqlWorkbenchService", () => {
     });
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
       clientMessageId: "local-001",
-      message: {
+      msgData: {
         atLocation: 1,
         atWxSerialNos: ["member-user", "member-rui"],
         isHit: 2,
-        msgContent: "今天统一看群公告",
-        msgNum: 1,
-        msgType: 2001,
+        msgtype: "text",
+        text: "今天统一看群公告",
       },
       platform: 5,
       sendType: 2,
+      source: 1,
       thirdGroupId: "group-001",
       thirdUserId: "seat-user-001",
       uid: 9001,
@@ -1230,24 +1267,24 @@ describe("MysqlWorkbenchService", () => {
 
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
       clientMessageId: "local-all-001",
-      message: {
+      msgData: {
         atLocation: 0,
         isHit: 1,
-        msgContent: "大家看一下",
-        msgNum: 1,
-        msgType: 2001,
+        msgtype: "text",
+        text: "大家看一下",
       },
       platform: 5,
       sendType: 2,
+      source: 1,
       thirdGroupId: "group-001",
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
   });
 
-  it("maps a quoted text send to the Java quote payload from audit extend data", async () => {
+  it("maps a quoted text send to the Java local quote payload", async () => {
     const javaClient = createJavaClient();
-    const getQuoteContentBase64 = vi.fn().mockResolvedValue("base64-quote-content");
+    const getQuoteContentBase64 = vi.fn();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-quote-001",
       messageId: "opt-quote-001",
@@ -1287,21 +1324,17 @@ describe("MysqlWorkbenchService", () => {
       },
     });
 
-    expect(getQuoteContentBase64).toHaveBeenCalledWith({
-      messageId: "remote-msg-538",
-      platform: 5,
-      uid: 9001,
-    });
+    expect(getQuoteContentBase64).not.toHaveBeenCalled();
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
       clientMessageId: "local-quote-001",
-      message: {
-        msgContent: "正式引用消息",
-        msgNum: 1,
-        msgType: 2033,
-        quoteContentBase64: "base64-quote-content",
+      msgData: {
+        msgtype: "quote",
+        quoteMsgId: 538,
+        text: "正式引用消息",
       },
       platform: 5,
       sendType: 1,
+      source: 1,
       thirdExternalUserid: "external-001",
       thirdUserId: "seat-user-001",
       uid: 9001,
@@ -1347,13 +1380,13 @@ describe("MysqlWorkbenchService", () => {
 
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
       clientMessageId: "local-image-001",
-      message: {
-        msgContent: "https://b5.bokr.com.cn/s5/upload/a.png",
-        msgNum: 1,
-        msgType: 2002,
+      msgData: {
+        fileUrl: "https://b5.bokr.com.cn/s5/upload/a.png",
+        msgtype: "image",
       },
       platform: 5,
       sendType: 1,
+      source: 1,
       thirdExternalUserid: "external-001",
       thirdUserId: "seat-user-001",
       uid: 9001,
@@ -1406,10 +1439,9 @@ describe("MysqlWorkbenchService", () => {
     expect(getQuoteContentBase64).not.toHaveBeenCalled();
     expect(javaClient.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: {
-          msgContent: "https://b5.bokr.com.cn/s5/upload/a.png",
-          msgNum: 1,
-          msgType: 2002,
+        msgData: {
+          fileUrl: "https://b5.bokr.com.cn/s5/upload/a.png",
+          msgtype: "image",
         },
       }),
     );
@@ -1458,15 +1490,14 @@ describe("MysqlWorkbenchService", () => {
 
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
       clientMessageId: "local-file-001",
-      message: {
-        msgContent: "报价单.pdf",
-        msgNum: 1,
-        msgType: 2010,
-        vcHref: "https://b5.bokr.com.cn/chat-files/quote.pdf",
-        vcTitle: "报价单.pdf",
+      msgData: {
+        fileName: "报价单.pdf",
+        fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+        msgtype: "file",
       },
       platform: 5,
       sendType: 1,
+      source: 1,
       thirdExternalUserid: "external-001",
       thirdUserId: "seat-user-001",
       uid: 9001,
@@ -1521,12 +1552,10 @@ describe("MysqlWorkbenchService", () => {
     expect(getQuoteContentBase64).not.toHaveBeenCalled();
     expect(javaClient.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: {
-          msgContent: "报价单.pdf",
-          msgNum: 1,
-          msgType: 2010,
-          vcHref: "https://b5.bokr.com.cn/chat-files/quote.pdf",
-          vcTitle: "报价单.pdf",
+        msgData: {
+          fileName: "报价单.pdf",
+          fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+          msgtype: "file",
         },
       }),
     );
@@ -1564,6 +1593,49 @@ describe("MysqlWorkbenchService", () => {
       }),
     ).rejects.toMatchObject({
       code: "INVALID_IMAGE_MESSAGE",
+      statusCode: 400,
+    });
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("rejects multi-segment payloads before calling Java", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.sendMessage("101", {
+        clientMessageId: "local-multi-001",
+        conversationId: "88",
+        seatId: "12",
+        segments: [
+          {
+            text: "第一段",
+            type: "text",
+          },
+          {
+            text: "第二段",
+            type: "text",
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "UNSUPPORTED_SEND_MESSAGE",
       statusCode: 400,
     });
     expect(javaClient.sendMessage).not.toHaveBeenCalled();

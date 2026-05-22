@@ -72,7 +72,40 @@ function createHistoryMessageDto(
     seatId: "drc",
     senderType: seq % 2 === 0 ? "agent" : "customer",
     seq,
-    status: "read",
+    status: "sent",
+  };
+}
+
+function createDownloadFileMessageDto({
+  downloadStatus,
+  fileUrl,
+  id,
+  seq,
+}: {
+  downloadStatus: "ing" | "finished" | "failed";
+  fileUrl: string;
+  id: string;
+  seq: number;
+}): WorkbenchMessageDto {
+  return {
+    content: {
+      downloadStatus,
+      extension: "pdf",
+      fileName: "报价单.pdf",
+      fileSerialNo: `serial-${id}`,
+      fileSizeLabel: "2 KB",
+      fileUrl,
+      sourceLabel: "文件",
+    },
+    contentType: "file",
+    conversationId: "conv-001",
+    createdAt: 1_778_400_000_000 + seq * 1_000,
+    customerId: "cust-001",
+    messageId: id,
+    seatId: "drc",
+    senderType: "customer",
+    seq,
+    status: "sent",
   };
 }
 
@@ -1145,7 +1178,7 @@ describe("useWorkbenchStore", () => {
                 seatId: "drc",
                 senderType: "customer",
                 seq: 829,
-                status: "read",
+                status: "sent",
               },
             ],
           };
@@ -1164,6 +1197,145 @@ describe("useWorkbenchStore", () => {
         (message) => message.id === "829",
       ),
     ).toBe(false);
+  });
+
+  it("patches poll media updates into the history panel without inserting missing messages", async () => {
+    const baseService = createMockWorkbenchService();
+    const originalMessage = createDownloadFileMessageDto({
+      downloadStatus: "ing",
+      fileUrl: "https://b5.bokr.com.cn/chat-files/old.pdf",
+      id: "history-file-1",
+      seq: 901,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      async getHistoryMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.scope === "file") {
+          return {
+            hasNext: false,
+            hasPrev: false,
+            messages: [originalMessage],
+          };
+        }
+
+        return baseService.getHistoryMessages(conversationId, options);
+      },
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          messageUpdateEvents: [
+            {
+              conversationId: "conv-001",
+              eventId: 8,
+              messageId: "history-file-1",
+            },
+          ],
+          nextMessageUpdateCursor: 1_778_840_010_000,
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+      async getMessagesByIds(input) {
+        if (input.messageIds.includes("history-file-1")) {
+          return {
+            messages: [
+              createDownloadFileMessageDto({
+                downloadStatus: "finished",
+                fileUrl: "https://b5.bokr.com.cn/chat-files/new.pdf",
+                id: "history-file-1",
+                seq: 901,
+              }),
+            ],
+          };
+        }
+
+        return baseService.getMessagesByIds(input);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
+    await useWorkbenchStore.getState().setHistoryPanelScope("file");
+
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
+        (message) => message.id === "history-file-1",
+      ),
+    ).toBe(false);
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const historyMessage =
+      useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]
+        ?.messages[0];
+
+    expect(historyMessage?.content).toMatchObject({
+      downloadStatus: "finished",
+      fileUrl: "https://b5.bokr.com.cn/chat-files/new.pdf",
+      type: "file",
+    });
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
+        (message) => message.id === "history-file-1",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not clear existing download fields when a partial patch omits them", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...state.messagesByConversationId["conv-001"],
+          {
+            author: "客户",
+            content: {
+              downloadStatus: "finished",
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSerialNo: "serial-file-1",
+              fileSizeLabel: "2 KB",
+              fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+              type: "file",
+            },
+            conversationId: "conv-001",
+            id: "local-file-1",
+            remoteMessageId: "local-file-1",
+            role: "customer",
+            sender: {
+              id: "cust-001",
+              name: "客户",
+            },
+            sentAt: "2026-05-21 12:00",
+            status: "sent",
+          },
+        ],
+      },
+    }));
+
+    useWorkbenchStore.getState().updateMessageDownloadContent(
+      "conv-001",
+      "local-file-1",
+      {
+        downloadStatus: "ing",
+      },
+    );
+
+    const patchedMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (message) => message.id === "local-file-1",
+      );
+
+    expect(patchedMessage?.content).toMatchObject({
+      downloadStatus: "ing",
+      fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+      type: "file",
+    });
   });
 
   it("ignores refreshed message details when the message is not already in store", async () => {
@@ -1204,7 +1376,7 @@ describe("useWorkbenchStore", () => {
                 senderName: "幽灵消息",
                 senderType: "customer",
                 seq: 999999,
-                status: "read",
+                status: "sent",
                 thirdExternalUserId: "external-1",
                 thirdFromId: "sender-cust-001",
                 thirdUserId: "third-user-drc",
@@ -1352,7 +1524,7 @@ describe("useWorkbenchStore", () => {
               seatId: "drc",
               senderType: "system" as const,
               seq: beforeSeq - index - 1,
-              status: "read",
+              status: "sent",
             })),
             nextBeforeSeq: Math.max(beforeSeq - 50, 1),
             scannedCount: 50,

@@ -21,6 +21,17 @@ type ApiErrorEnvelope = {
   success?: false;
 };
 
+class ApiEnvelopeError extends Error {
+  readonly code?: string;
+  readonly status?: number;
+
+  constructor(envelope: ApiErrorEnvelope, status?: number) {
+    super(envelope.error?.message ?? "Request failed");
+    this.code = envelope.error?.code;
+    this.status = status;
+  }
+}
+
 export const requestInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
   timeout: 15000,
@@ -61,6 +72,14 @@ function normalizeError(error: unknown): RequestError {
     };
   }
 
+  if (error instanceof ApiEnvelopeError) {
+    return {
+      message: error.message,
+      status: error.status,
+      code: error.code,
+    };
+  }
+
   if (isRequestError(error)) {
     return error;
   }
@@ -78,6 +97,14 @@ export function isRequestError(error: unknown): error is RequestError {
   }
 
   return typeof (error as RequestError).message === "string";
+}
+
+function isApiErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  return (value as ApiErrorEnvelope).success === false;
 }
 
 async function refreshAuth() {
@@ -104,6 +131,10 @@ export async function request<TResponse = unknown, TPayload = unknown>(
       TPayload
     >(config);
 
+    if (isApiErrorEnvelope(response.data)) {
+      throw new ApiEnvelopeError(response.data, response.status);
+    }
+
     return response.data;
   } catch (error) {
     if (shouldRefreshAuth(error, config)) {
@@ -120,6 +151,10 @@ export async function request<TResponse = unknown, TPayload = unknown>(
           AxiosResponse<TResponse>,
           TPayload
         >(retryConfig);
+
+        if (isApiErrorEnvelope(retryResponse.data)) {
+          throw new ApiEnvelopeError(retryResponse.data, retryResponse.status);
+        }
 
         return retryResponse.data;
       } catch (refreshError) {

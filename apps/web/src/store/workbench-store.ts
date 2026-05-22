@@ -62,6 +62,15 @@ type SendMessageResult =
       ok: false;
     };
 
+type TakeoverResult =
+  | {
+      ok: true;
+    }
+  | {
+      errorMessage: string;
+      ok: false;
+    };
+
 type MessagePaginationState = {
   hasMore: boolean;
   nextBeforeSeq?: number;
@@ -165,7 +174,7 @@ type WorkbenchState = {
   ) => Promise<SendMessageResult>;
   sendAgentTextMessage: (text: string) => Promise<SendMessageResult>;
   setSidebarItems: (items: SettingsSidebarItem[]) => void;
-  takeOverAccount: (accountId: string) => Promise<void>;
+  takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
   retryFailedMessage: (messageId: string) => Promise<void>;
   loadOlderMessages: () => Promise<void>;
@@ -1443,63 +1452,68 @@ export function createWorkbenchStore() {
         );
       },
       async takeOverAccount(accountId) {
-      const state = get();
-      const { me } = state;
+        const state = get();
+        const { me } = state;
 
-      if (!accountId || !me) {
-        return;
-      }
-
-      const account = state.accounts.find((item) => item.id === accountId);
-
-      if (
-        !account ||
-        account.loginStatus === "offline" ||
-        account.takenOverEmployeeId === me.id
-      ) {
-        return;
-      }
-
-      const requestId = issueTakeoverRequestId(accountId);
-
-      set((currentState) => ({
-        takeoverStatusByAccountId: {
-          ...currentState.takeoverStatusByAccountId,
-          [accountId]: "taking-over",
-        },
-      }));
-
-      try {
-        const nextAccount = await takeOverAccountRequest(accountId);
-
-        if (!isCurrentTakeoverRequest(accountId, requestId)) {
-          return;
+        if (!accountId || !me) {
+          return { ok: true };
         }
 
-        set((currentState) => ({
-          accounts: currentState.accounts.map((item) =>
-            item.id === accountId ? nextAccount : item,
-          ),
-          takeoverStatusByAccountId: omitTakeoverStatus(
-            currentState.takeoverStatusByAccountId,
-            accountId,
-          ),
-        }));
-        clearTakeoverRequest(accountId);
-      } catch {
-        if (!isCurrentTakeoverRequest(accountId, requestId)) {
-          return;
+        const account = state.accounts.find((item) => item.id === accountId);
+
+        if (
+          !account ||
+          account.loginStatus === "offline" ||
+          account.takenOverEmployeeId === me.id
+        ) {
+          return { ok: true };
         }
 
+        const requestId = issueTakeoverRequestId(accountId);
+
         set((currentState) => ({
-          takeoverStatusByAccountId: omitTakeoverStatus(
-            currentState.takeoverStatusByAccountId,
-            accountId,
-          ),
+          takeoverStatusByAccountId: {
+            ...currentState.takeoverStatusByAccountId,
+            [accountId]: "taking-over",
+          },
         }));
-        clearTakeoverRequest(accountId);
-      }
-    },
+
+        try {
+          const nextAccount = await takeOverAccountRequest(accountId);
+
+          if (!isCurrentTakeoverRequest(accountId, requestId)) {
+            return { ok: true };
+          }
+
+          set((currentState) => ({
+            accounts: currentState.accounts.map((item) =>
+              item.id === accountId ? nextAccount : item,
+            ),
+            takeoverStatusByAccountId: omitTakeoverStatus(
+              currentState.takeoverStatusByAccountId,
+              accountId,
+            ),
+          }));
+          clearTakeoverRequest(accountId);
+          return { ok: true };
+        } catch (error) {
+          if (!isCurrentTakeoverRequest(accountId, requestId)) {
+            return { ok: true };
+          }
+
+          set((currentState) => ({
+            takeoverStatusByAccountId: omitTakeoverStatus(
+              currentState.takeoverStatusByAccountId,
+              accountId,
+            ),
+          }));
+          clearTakeoverRequest(accountId);
+          return {
+            errorMessage: getRequestErrorMessage(error, "接管失败，请稍后重试"),
+            ok: false,
+          };
+        }
+      },
     async unpinConversation(conversationId) {
       await setConversationPinned(conversationId, false);
     },

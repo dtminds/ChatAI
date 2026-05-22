@@ -265,9 +265,9 @@ export function ChatComposer({
   }, [isEmojiPickerOpen, onEmojiPickerOpenChange]);
 
   const handleDraftTextChange = useCallback(
-    (nextDraftText: string) => {
+    (nextDraftText: string, nextCursorPosition: number) => {
       setDraftText(nextDraftText);
-      setCursorPosition(nextDraftText.length);
+      setCursorPosition(nextCursorPosition);
       onDraftChange(nextDraftText);
     },
     [onDraftChange],
@@ -297,6 +297,9 @@ export function ChatComposer({
 
     composerRef.current?.update(() => {
       $removeComposerTextRange(mentionTrigger.start, mentionTrigger.end);
+      if (shouldPadMentionPrefix(draftText, mentionTrigger.start)) {
+        $insertComposerText(" ");
+      }
       $insertComposerMention({
         displayName: selectedMember.isAll ? "所有人" : selectedMember.displayName,
         isAll: selectedMember.isAll,
@@ -569,6 +572,9 @@ export function ChatComposer({
                 onClick={() => {
                   composerRef.current?.update(() => {
                     $removeComposerTextRange(mentionTrigger.start, mentionTrigger.end);
+                    if (shouldPadMentionPrefix(draftText, mentionTrigger.start)) {
+                      $insertComposerText(" ");
+                    }
                     $insertComposerMention({
                       displayName: member.isAll ? "所有人" : member.displayName,
                       isAll: member.isAll,
@@ -664,19 +670,25 @@ function MentionMemberAvatar({
 function getMentionTrigger(draft: string, cursorPosition: number) {
   const safeCursorPosition = Math.max(0, Math.min(cursorPosition, draft.length));
   const beforeCursor = draft.slice(0, safeCursorPosition);
-  const match = /(^|\s)@([^\s@]*)$/.exec(beforeCursor);
+  const match = /@([^\s@]*)$/.exec(beforeCursor);
 
   if (!match) {
     return null;
   }
 
-  const atIndex = match.index + match[1].length;
-
   return {
     end: safeCursorPosition,
-    query: match[2],
-    start: atIndex,
+    query: match[1],
+    start: match.index,
   };
+}
+
+function shouldPadMentionPrefix(draft: string, mentionStart: number) {
+  if (mentionStart <= 0) {
+    return false;
+  }
+
+  return !/\s/.test(draft[mentionStart - 1] ?? "");
 }
 
 function readImageFileAsDataUrl(file: File) {

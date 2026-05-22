@@ -61,6 +61,7 @@ type ChatComposerProps = {
   draft: string;
   hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
+  currentSeatThirdUserId?: string;
   inputEnterBehavior: InputEnterBehavior;
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
@@ -101,6 +102,7 @@ export function ChatComposer({
   draft,
   hasActiveFileUpload,
   groupMembers,
+  currentSeatThirdUserId,
   inputEnterBehavior,
   isGroupConversation,
   isEmojiPickerOpen,
@@ -144,6 +146,13 @@ export function ChatComposer({
     () => getMentionTrigger(draftText, cursorPosition),
     [cursorPosition, draftText],
   );
+  const mentionableGroupMembers = useMemo(() => {
+    if (!currentSeatThirdUserId) {
+      return groupMembers;
+    }
+
+    return groupMembers.filter((member) => member.id !== currentSeatThirdUserId);
+  }, [currentSeatThirdUserId, groupMembers]);
   const filteredMentionMembers = useMemo(() => {
     if (!mentionTrigger || !isGroupConversation) {
       return [];
@@ -151,12 +160,12 @@ export function ChatComposer({
 
     const normalizedQuery = mentionTrigger.query.trim().toLocaleLowerCase();
 
-    return groupMembers.filter((member) => {
+    return mentionableGroupMembers.filter((member) => {
       return member.displayName.toLocaleLowerCase().includes(normalizedQuery);
     });
-  }, [groupMembers, isGroupConversation, mentionTrigger]);
+  }, [isGroupConversation, mentionTrigger, mentionableGroupMembers]);
   const shouldShowMentionAll = useMemo(() => {
-    if (!mentionTrigger || groupMembers.length === 0) {
+    if (!mentionTrigger || mentionableGroupMembers.length === 0) {
       return false;
     }
 
@@ -166,15 +175,15 @@ export function ChatComposer({
       normalizedQuery.length === 0 ||
       "所有人".toLocaleLowerCase().includes(normalizedQuery)
     );
-  }, [groupMembers.length, mentionTrigger]);
+  }, [mentionTrigger, mentionableGroupMembers.length]);
   const mentionDropdownItems = useMemo<MentionDropdownItem[]>(
     () => {
-      if (groupMembers.length === 0) {
+      if (mentionableGroupMembers.length === 0) {
         return [];
       }
 
       const mentionAllItem: MentionDropdownItem = {
-        displayName: `所有人（${groupMembers.length}人）`,
+        displayName: `所有人（${mentionableGroupMembers.length}人）`,
         isAll: true,
         memberId: "__all__",
       };
@@ -188,7 +197,7 @@ export function ChatComposer({
         })),
       ];
     },
-    [filteredMentionMembers, groupMembers.length, shouldShowMentionAll],
+    [filteredMentionMembers, mentionableGroupMembers.length, shouldShowMentionAll],
   );
   const isMentionPickerOpen =
     canSendMessage &&

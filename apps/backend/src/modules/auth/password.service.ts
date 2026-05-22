@@ -19,7 +19,7 @@ export async function verifyPassword(hash: string, password: string) {
   activeVerifications += 1;
 
   try {
-    return await argon2.verify(hash, password);
+    return await argon2.verify(normalizeArgon2PhcHash(hash), password);
   } finally {
     activeVerifications -= 1;
   }
@@ -56,4 +56,30 @@ function readPositiveInteger(name: string, fallback: number) {
   const value = Number.parseInt(rawValue, 10);
 
   return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+function normalizeArgon2PhcHash(hash: string) {
+  const fields = hash.split("$");
+
+  if (
+    fields[0] !== "" ||
+    !["argon2d", "argon2i", "argon2id"].includes(fields[1] ?? "") ||
+    (fields.length !== 5 && fields.length !== 6)
+  ) {
+    return hash;
+  }
+
+  const normalizedFields = [...fields];
+  normalizedFields[normalizedFields.length - 2] = stripBase64Padding(
+    normalizedFields[normalizedFields.length - 2],
+  );
+  normalizedFields[normalizedFields.length - 1] = stripBase64Padding(
+    normalizedFields[normalizedFields.length - 1],
+  );
+
+  return normalizedFields.join("$");
+}
+
+function stripBase64Padding(value = "") {
+  return value.replace(/=+$/, "");
 }

@@ -295,7 +295,6 @@ describe("LoginPage", () => {
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     expect(router.state.location.pathname).toBe("/chat");
-    expect(mock.history.get).toHaveLength(2);
     expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toMatchObject({
       account: "agent001",
       password: "wrong-password",

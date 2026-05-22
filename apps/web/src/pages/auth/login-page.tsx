@@ -1,4 +1,4 @@
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertDialog,
@@ -46,6 +46,13 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [altchaRefreshKey, setAltchaRefreshKey] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,17 +68,29 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
     }
 
     setIsSubmitting(true);
+    let shouldResetSubmitting = true;
 
     try {
       await login({ account, altcha, password });
 
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      shouldResetSubmitting = false;
       notifyAuthSessionChanged();
       navigate("/chat", { replace: true });
     } catch (error) {
+      if (!isMountedRef.current) {
+        return;
+      }
+
       setErrorMessage((error as RequestError).message ?? "登录失败，请重试");
       setAltchaRefreshKey((key) => key + 1);
     } finally {
-      setIsSubmitting(false);
+      if (shouldResetSubmitting && isMountedRef.current) {
+        setIsSubmitting(false);
+      }
     }
   }
 

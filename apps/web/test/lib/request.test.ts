@@ -60,6 +60,24 @@ describe("request", () => {
     });
   });
 
+  it("rejects successful HTTP responses that contain API error envelopes", async () => {
+    mock.onPost("/server/seats/ndt/take-over").reply(200, {
+      error: {
+        code: "FORBIDDEN",
+        message: "无权限访问",
+      },
+      success: false,
+    });
+
+    await expect(
+      request({ method: "POST", url: "/server/seats/ndt/take-over" }),
+    ).rejects.toEqual({
+      code: "FORBIDDEN",
+      message: "无权限访问",
+      status: 200,
+    });
+  });
+
   it("refreshes access tokens once and retries the failed request", async () => {
     mock.onGet("/server/me").replyOnce(401, {
       error: {

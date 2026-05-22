@@ -7,19 +7,8 @@ import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
   resetChatWorkbenchTestState,
+  workbenchToastWarningMock,
 } from "./workbench-test-utils";
-
-vi.mock("sonner", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("sonner")>();
-
-  return {
-    ...actual,
-    toast: {
-      ...actual.toast,
-      warning: vi.fn(),
-    },
-  };
-});
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -254,6 +243,42 @@ describe("ChatWorkbenchPage", () => {
     await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" });
 
     expect(screen.getByText("ErrorCode: SEND_RATE_LIMITED")).toBeInTheDocument();
+  });
+
+  it("shows the API error message when account takeover fails", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    const takeOverSeat = vi.fn(async () => {
+      throw {
+        code: "FORBIDDEN",
+        message: "无权限访问",
+        status: 403,
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      takeOverSeat,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.hover(screen.getByRole("button", { name: "选择 念都堂" }));
+    await user.click(screen.getByRole("button", { name: "接管账号" }));
+    await screen.findByRole("alertdialog", {
+      name: "是否确认接管：念都堂",
+    });
+    await user.click(screen.getByRole("button", { name: "确认接管" }));
+
+    await waitFor(() => {
+      expect(takeOverSeat).toHaveBeenCalledWith("ndt");
+    });
+    await waitFor(() => {
+      expect(workbenchToastWarningMock).toHaveBeenCalledWith("无权限访问");
+    });
+    expect(workbenchToastWarningMock).not.toHaveBeenCalledWith("接管失败，请稍后重试");
   });
 
   it("does not show a history loader when the default message page covers all history", async () => {

@@ -34,6 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
+import { useAuthStore } from "@/store/auth-store";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
@@ -190,6 +191,12 @@ function ChatWorkbenchContent({
     unpinConversation,
     updateMessageDownloadContent,
   } = useWorkbenchStore();
+  const canTakeOverAccount = useAuthStore((state) =>
+    state.hasPermission("chat.takeover"),
+  );
+  const canUseChatSend = useAuthStore((state) =>
+    state.hasPermission("chat.send"),
+  );
 
   const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
@@ -311,6 +318,7 @@ function ChatWorkbenchContent({
     activeAccount.takenOverEmployeeId === me?.id;
   const isActiveConversationBizInactive = activeConversation?.bizStatus === 0;
   const canSendMessage =
+    canUseChatSend &&
     !!activeConversation &&
     !isActiveAccountOffline &&
     isActiveAccountTakenOver &&
@@ -321,12 +329,14 @@ function ChatWorkbenchContent({
       ? "1"
       : "0";
   const isConversationActionDisabled =
-    isActiveAccountOffline || !isActiveAccountTakenOver;
+    !canUseChatSend || isActiveAccountOffline || !isActiveAccountTakenOver;
   const composerPlaceholder = canSendMessage
     ? "请输入消息……"
     : bootstrapStatus === "loading" && !activeConversation
       ? "正在加载会话数据..."
-      : isActiveAccountOffline
+      : !canUseChatSend
+        ? "当前角色无发送权限，暂时无法发送消息"
+        : isActiveAccountOffline
         ? "当前账号离线，暂时无法发送消息"
         : !isActiveAccountTakenOver
           ? "当前账号未接管，暂时无法发送消息"
@@ -394,6 +404,11 @@ function ChatWorkbenchContent({
 
   const handleTakeOverAccount = useCallback(
     async (accountId: string) => {
+      if (!canTakeOverAccount) {
+        toast.warning("当前角色无接管权限");
+        return;
+      }
+
       const result = await takeOverAccount(accountId);
 
       if (!isMountedRef.current || result.ok) {
@@ -402,7 +417,7 @@ function ChatWorkbenchContent({
 
       toast.warning(result.errorMessage);
     },
-    [takeOverAccount],
+    [canTakeOverAccount, takeOverAccount],
   );
 
   useEffect(() => {
@@ -964,6 +979,7 @@ function ChatWorkbenchContent({
         <AccountRail
           accounts={accounts}
           activeAccountId={activeAccountId}
+          canTakeOverAccount={canTakeOverAccount}
           currentEmployee={me}
           currentEmployeeId={me?.id}
           isCollapsed={isAccountRailCollapsed}

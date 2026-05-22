@@ -637,6 +637,17 @@ describe("backend app", () => {
     expect(refresh.json()).toMatchObject({
       data: {
         expiresIn: 1200,
+        subUser: {
+          accountType: "sub",
+          displayName: "客服一号",
+          permissions: [
+            "chat.access",
+            "chat.send",
+            "chat.takeover",
+          ],
+          role: "operator",
+          subUserId: "101",
+        },
       },
       success: true,
     });

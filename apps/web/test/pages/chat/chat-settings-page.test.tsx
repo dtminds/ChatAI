@@ -6,6 +6,7 @@ import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { routerConfig } from "@/router";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import { useAuthStore } from "@/store/auth-store";
 import { requestInstance } from "@/lib/request";
 
 const mock = new MockAdapter(requestInstance);
@@ -62,6 +63,7 @@ function mockAuthenticatedSession(role = "admin") {
 describe("Chat settings pages", () => {
   beforeEach(() => {
     resetWorkbenchService();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
     mock.reset();
     mockAuthenticatedSession();
     mock.onGet("/server/settings/sub-accounts").reply(200, {

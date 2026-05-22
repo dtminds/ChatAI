@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   installChatWorkbenchTestEnvironment,
@@ -158,6 +159,44 @@ describe("ChatWorkbenchPage session flows", () => {
       );
       expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
     });
+  });
+
+  it("keeps the composer disabled for read-only users after taking over the active account", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "sub-user-001",
+    });
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", {
+      name: "当前角色无发送权限，暂时无法发送消息",
+    });
+    await user.click(screen.getByRole("textbox", {
+      name: "当前角色无发送权限，暂时无法发送消息",
+    }));
+    await user.paste("只读用户不能发送");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    expect(
+      screen.getByRole("textbox", {
+        name: "当前角色无发送权限，暂时无法发送消息",
+      }),
+    ).toHaveAttribute("aria-readonly", "true");
+    expect(screen.getByRole("button", { name: "微信表情" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("keeps the composer available while refreshing existing workbench data", async () => {

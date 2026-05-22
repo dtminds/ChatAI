@@ -5,8 +5,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { requestInstance } from "@/lib/request";
 import { routerConfig } from "@/router";
+import { useAuthStore } from "@/store/auth-store";
 
 const mock = new MockAdapter(requestInstance);
+const operatorSubUser = {
+  accountType: "sub" as const,
+  displayName: "客服一号",
+  permissions: ["chat.access", "chat.send", "chat.takeover"] as const,
+  role: "operator" as const,
+  subUserId: "101",
+};
 
 vi.mock("altcha/lib", () => ({
   scrypt: {
@@ -21,6 +29,7 @@ vi.mock("altcha/lib", () => ({
 describe("LoginPage", () => {
   afterEach(() => {
     mock.reset();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
     setSecureContext(true);
     window.localStorage.clear();
   });
@@ -159,10 +168,7 @@ describe("LoginPage", () => {
       {
         data: {
           expiresIn: 1200,
-          subUser: {
-            displayName: "客服一号",
-            subUserId: "101",
-          },
+          subUser: operatorSubUser,
         },
         success: true,
       },
@@ -254,10 +260,7 @@ describe("LoginPage", () => {
           {
             data: {
               expiresIn: 1200,
-              subUser: {
-                displayName: "客服一号",
-                subUserId: "101",
-              },
+              subUser: operatorSubUser,
             },
             success: true,
           },

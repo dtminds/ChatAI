@@ -5,6 +5,7 @@ import { vi } from "vitest";
 import { requestInstance } from "@/lib/request";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
@@ -100,6 +101,14 @@ export function resetChatWorkbenchTestState() {
     }),
   );
   workbenchToastWarningMock.mockClear();
+  useAuthStore.setState(useAuthStore.getInitialState(), true);
+  useAuthStore.getState().setSession({
+    accountType: "sub",
+    displayName: "客服一号",
+    permissions: ["chat.access", "chat.send", "chat.takeover"],
+    role: "operator",
+    subUserId: "sub-user-001",
+  });
   useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   Object.defineProperty(document, "visibilityState", {
     configurable: true,

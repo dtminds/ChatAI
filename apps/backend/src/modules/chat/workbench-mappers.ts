@@ -97,6 +97,8 @@ export type MessageHydrationSources = {
   >;
 };
 
+const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
+
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
   const hostSubUserId = normalizeOptionalId(row.host_sub_id);
@@ -445,6 +447,12 @@ function parseMessageContent(
         title: readStringField(parsed, "description") || "小程序",
       };
     default:
+      if (!msgtype && !rawContent) {
+        return {
+          text: UNSUPPORTED_MESSAGE_DISPLAY_TEXT,
+        };
+      }
+
       return {
         text: formatMessagePreview(msgtype, rawContent),
       };
@@ -452,7 +460,7 @@ function parseMessageContent(
 }
 
 function formatMessagePreview(msgtype: string | null, rawContent: string | null) {
-  if (!msgtype && !rawContent) {
+  if (msgtype == null && !rawContent) {
     return "";
   }
 

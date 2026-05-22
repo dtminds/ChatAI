@@ -120,6 +120,30 @@ describe("workbench MySQL mappers", () => {
     ).toMatchObject({
       lastMessage: "[新消息]",
     });
+
+    expect(
+      mapConversationRow({
+        chat_type: 1,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: "客户备注",
+        group_avatar: "",
+        group_name: "",
+        id: 93,
+        last_message_content: null,
+        last_message_type: "",
+        last_msgtime: 1778240100000,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "external-1",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+        verified: 0,
+      }),
+    ).toMatchObject({
+      lastMessage: "[新消息]",
+    });
   });
 
   it("extracts system conversation previews from display fields", () => {
@@ -258,6 +282,20 @@ describe("workbench MySQL mappers", () => {
       thirdExternalUserId: "external-1",
       thirdGroupId: undefined,
       thirdUserId: "third-user-1",
+    });
+  });
+
+  it("uses a visible fallback for blank unknown message types without content", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: null,
+        msgtype: "",
+      })),
+    ).toMatchObject({
+      content: {
+        text: "[暂不支持显示该消息]",
+      },
+      contentType: "text",
     });
   });
 

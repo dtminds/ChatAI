@@ -73,6 +73,12 @@ export type SeatOperateScope = {
   uid: number;
 };
 
+export type SeatEventScope = {
+  platform: number;
+  seatIds: string[];
+  uid: number;
+};
+
 export type ConversationListCursor = WorkbenchConversationCursorDto;
 
 export type ChangedConversationListResult = {
@@ -84,6 +90,13 @@ export type ChangedConversationListResult = {
 export type MessageUpdateEventListResult = Array<
   WorkbenchMessageUpdateEventDto & {
     eventTime: number;
+  }
+>;
+
+export type SeatUpdateEventListResult = Array<
+  {
+    eventTime: number;
+    seatId: string;
   }
 >;
 
@@ -305,6 +318,95 @@ export class WorkbenchRepository {
         (event): event is WorkbenchMessageUpdateEventDto & { eventTime: number } =>
           Boolean(event),
       );
+  }
+
+  async listSeatUpdateEvents(
+    input: {
+      afterCreateTime?: number;
+      limit: number;
+      platform: number;
+      seatIds: string[];
+      uid: number;
+    },
+  ): Promise<SeatUpdateEventListResult> {
+    const seatIds = uniqueIds(input.seatIds);
+
+    if (!seatIds.length || input.limit <= 0) {
+      return [];
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_broadcast_event as event")
+      .select([
+        "event.category_bind_id as category_bind_id",
+        "event.create_time as create_time",
+      ])
+      .where("event.uid", "=", input.uid)
+      .where("event.platform", "=", input.platform)
+      .where("event.category", "=", "user-seat")
+      .where("event.category_bind_id", "in", seatIds)
+      .where("event.event", "=", "user-seat.update");
+
+    if (input.afterCreateTime != null) {
+      query = query.where(
+        "event.create_time",
+        ">",
+        new Date(Math.max(0, input.afterCreateTime)),
+      );
+    }
+
+    const rows = await query
+      .orderBy("event.create_time", "asc")
+      .orderBy("event.id", "asc")
+      .limit(input.limit)
+      .execute();
+
+    return rows
+      .map((row) => {
+        const nextSeatId = String(row.category_bind_id ?? "").trim();
+
+        if (!nextSeatId) {
+          return undefined;
+        }
+
+        return {
+          eventTime: toTimestamp(row.create_time),
+          seatId: nextSeatId,
+        };
+      })
+      .filter(
+        (event): event is { eventTime: number; seatId: string } => Boolean(event),
+      );
+  }
+
+  async getSeatEventScope(subUserId: string): Promise<SeatEventScope | undefined> {
+    const subUserNumericId = parseMySqlId(subUserId);
+
+    if (subUserNumericId == null) {
+      return undefined;
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
+      .select([
+        "relation.user_seat_id as seat_id",
+        "relation.uid as uid",
+        "relation.platform as platform",
+      ])
+      .where("relation.sub_id", "=", subUserNumericId)
+      .execute();
+
+    const firstRow = rows[0];
+
+    if (!firstRow) {
+      return undefined;
+    }
+
+    return {
+      platform: firstRow.platform,
+      seatIds: uniqueIds(rows.map((row) => row.seat_id)),
+      uid: firstRow.uid,
+    };
   }
 
   async listMessagesByIds(

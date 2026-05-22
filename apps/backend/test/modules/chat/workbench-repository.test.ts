@@ -308,6 +308,7 @@ function createQueryBuilder(result: unknown) {
     whereExpressions,
     wheres,
     innerJoin() {
+      joins.push("innerJoin");
       return this;
     },
     leftJoin() {
@@ -1433,6 +1434,88 @@ describe("WorkbenchRepository", () => {
       ["platform", "=", 5],
       ["biz_status", "=", 1],
     ]);
+  });
+
+  it("lists user-seat update events by tenant scope without parsing event content", async () => {
+    const broadcastQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_broadcast_event as event") {
+            const query = createQueryBuilder([
+              {
+                category_bind_id: "12",
+                create_time: new Date("2026-05-21T06:15:21.000Z"),
+              },
+            ]);
+            broadcastQueries.push(query);
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listSeatUpdateEvents({
+        afterCreateTime: 1_778_840_000_000,
+        limit: 20,
+        platform: 5,
+        seatIds: ["12", "13"],
+        uid: 272,
+      }),
+    ).resolves.toEqual([
+      {
+        eventTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
+        seatId: "12",
+      },
+    ]);
+    expect(broadcastQueries[0]?.wheres).toEqual([
+      ["event.uid", "=", 272],
+      ["event.platform", "=", 5],
+      ["event.category", "=", "user-seat"],
+      ["event.category_bind_id", "in", ["12", "13"]],
+      ["event.event", "=", "user-seat.update"],
+      ["event.create_time", ">", new Date(1_778_840_000_000)],
+    ]);
+  });
+
+  it("reads seat event scope from sub-user seat relations only", async () => {
+    const relationQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createQueryBuilder([
+              {
+                platform: 5,
+                seat_id: 12,
+                uid: 272,
+              },
+              {
+                platform: 5,
+                seat_id: 13,
+                uid: 272,
+              },
+            ]);
+            relationQueries.push(query);
+
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.getSeatEventScope("101")).resolves.toEqual({
+      platform: 5,
+      seatIds: ["12", "13"],
+      uid: 272,
+    });
+    expect(relationQueries[0]?.joins).toEqual([]);
+    expect(relationQueries[0]?.wheres).toEqual([["relation.sub_id", "=", 101]]);
   });
 
   it("returns conversation tenant scope and takeover sub-user for Java write operations", async () => {

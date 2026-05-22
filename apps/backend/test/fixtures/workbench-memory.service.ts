@@ -297,13 +297,15 @@ export function createMemoryWorkbenchService() {
     },
     poll(_subUserId: string, request: WorkbenchPollRequest): WorkbenchPollResponse {
       const relevantEvents = state.events.filter((event) => event.version > request.sinceVersion);
-      const seatChanges = collapseLatest(
-        relevantEvents.filter(
+      const seatUpdateCursor = request.seatUpdateCursor ?? request.sinceVersion;
+      const seatUpdateEvents = collapseLatest(
+        state.events.filter(
           (event): event is Extract<WorkbenchEvent, { type: "seat" }> =>
-            event.type === "seat",
+            event.type === "seat" && event.version > seatUpdateCursor,
         ),
         (event) => event.payload.seatId,
-      ).map((event) => event.payload);
+      );
+      const seatChanges = seatUpdateEvents.map((event) => event.payload);
       const conversationChanges = collapseLatest(
         relevantEvents.filter(
           (event): event is Extract<WorkbenchEvent, { type: "conversation" }> =>
@@ -332,6 +334,7 @@ export function createMemoryWorkbenchService() {
         activeConversationMessages: clone(activeConversationMessages),
         conversationChanges: clone(conversationChanges),
         messageStatusChanges: clone(messageStatusChanges),
+        nextSeatUpdateCursor: getNextMemoryEventCursor(seatUpdateCursor, seatUpdateEvents),
         nextVersion: state.version,
       };
     },
@@ -755,6 +758,7 @@ function pushSeatEvent(state: MemoryWorkbenchState, seatId: string) {
   state.version += 1;
   state.events.push({
     payload: {
+      hostSubUserId: seat.hostSubUserId ?? null,
       seatId,
       lastMessageTime: seat.lastMessageTime,
       unreadCount: seat.unreadCount,
@@ -762,6 +766,22 @@ function pushSeatEvent(state: MemoryWorkbenchState, seatId: string) {
     type: "seat",
     version: state.version,
   });
+}
+
+function getNextMemoryEventCursor(
+  currentCursor: number,
+  events: Array<{
+    version?: number;
+  }>,
+) {
+  if (!Number.isFinite(currentCursor)) {
+    return undefined;
+  }
+
+  return events.reduce(
+    (latest, event) => Math.max(latest, event.version ?? currentCursor),
+    currentCursor,
+  );
 }
 
 function pushConversationEvent(

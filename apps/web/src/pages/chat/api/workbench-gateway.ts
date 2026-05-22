@@ -48,6 +48,7 @@ export type WorkbenchScopeRequest = {
   currentAccountId: string;
   freshBaseline?: boolean;
   messageUpdateCursor?: number;
+  seatUpdateCursor?: number;
   sinceVersion: number;
 };
 
@@ -120,6 +121,7 @@ export type WorkbenchPollResult = {
   messageUpdateEvents: WorkbenchMessageUpdateEventDto[];
   messageStatusChanges: WorkbenchMessageStatusChange[];
   nextMessageUpdateCursor?: number;
+  nextSeatUpdateCursor?: number;
   nextVersion: number;
   request: WorkbenchScopeRequest;
 };
@@ -442,6 +444,7 @@ export async function pollWorkbench(
     currentSeatId: request.currentAccountId,
     freshBaseline: request.freshBaseline,
     messageUpdateCursor: request.messageUpdateCursor,
+    seatUpdateCursor: request.seatUpdateCursor,
     sinceVersion: request.sinceVersion,
   });
 
@@ -473,6 +476,7 @@ export async function pollWorkbench(
       status: adaptMessageStatus(change.status),
     })),
     nextMessageUpdateCursor: response.nextMessageUpdateCursor,
+    nextSeatUpdateCursor: response.nextSeatUpdateCursor,
     nextVersion: response.nextVersion,
     request,
   };

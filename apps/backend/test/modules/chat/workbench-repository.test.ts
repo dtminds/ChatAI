@@ -315,6 +315,13 @@ function createQueryBuilder(result: unknown) {
       joins.push("leftJoin");
       return this;
     },
+    groupBy(columns: string[]) {
+      whereExpressions.push({
+        type: "groupBy",
+        columns,
+      });
+      return this;
+    },
     limit(limit: number) {
       limits.push(limit);
       return this;
@@ -438,6 +445,76 @@ describe("WorkbenchRepository", () => {
       messages: [],
     });
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
+  });
+
+  it("lists seats by ids with one batched query", async () => {
+    const seatQueryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder([
+              {
+                avatar: "",
+                host_sub_id: 101,
+                id: 12,
+                is_online: 1,
+                last_message_time: new Date("2026-05-21T06:15:21.000Z"),
+                third_user_name: "德瑞可",
+                third_userid: "seat-third-user-1",
+                unread_count: 7,
+              },
+              {
+                avatar: "",
+                host_sub_id: 202,
+                id: 13,
+                is_online: 0,
+                last_message_time: new Date("2026-05-21T06:16:21.000Z"),
+                third_user_name: "念都堂",
+                third_userid: "seat-third-user-2",
+                unread_count: 2,
+              },
+            ]);
+            seatQueryBuilders.push(query);
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.getSeatsByIds(["13", "12", "12", "not-a-seat"])).resolves.toEqual([
+      {
+        avatar: "",
+        description: "",
+        hostSubUserId: "101",
+        lastMessageTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
+        loginStatus: "online",
+        name: "德瑞可",
+        operatorName: "德瑞可",
+        phone: "",
+        seatId: "12",
+        thirdUserId: "seat-third-user-1",
+        unreadCount: 7,
+      },
+      {
+        avatar: "",
+        description: "",
+        hostSubUserId: "202",
+        lastMessageTime: new Date("2026-05-21T06:16:21.000Z").getTime(),
+        loginStatus: "offline",
+        name: "念都堂",
+        operatorName: "念都堂",
+        phone: "",
+        seatId: "13",
+        thirdUserId: "seat-third-user-2",
+        unreadCount: 2,
+      },
+    ]);
+    expect(seatQueryBuilders).toHaveLength(1);
+    expect(seatQueryBuilders[0]?.wheres).toContainEqual(["seat.id", "in", ["13", "12"]]);
+    expect(seatQueryBuilders[0]?.wheres).toContainEqual(["seat.biz_status", "=", 1]);
   });
 
   it("filters and limits conversation lists by requested chat mode", async () => {

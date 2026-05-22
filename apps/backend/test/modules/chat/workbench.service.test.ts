@@ -740,18 +740,23 @@ describe("MysqlWorkbenchService", () => {
 
   it("polls user-seat update events and refreshes changed seats", async () => {
     const javaClient = createJavaClient();
-    const getSeat = vi.fn(async (seatId: string) => ({
-      avatar: "",
-      description: "私域客户管理",
-      hostSubUserId: seatId === "12" ? "101" : "202",
-      lastMessageTime: seatId === "12" ? 1_778_840_001_000 : 1_778_840_002_000,
-      loginStatus: "online" as const,
-      name: seatId === "12" ? "德瑞可" : "念都堂",
-      operatorName: "小可",
-      phone: "13296712905",
-      seatId,
-      unreadCount: seatId === "12" ? 7 : 2,
-    }));
+    const getSeatsByIds = vi.fn(async (seatIds: string[]) =>
+      seatIds
+        .slice()
+        .sort()
+        .map((seatId) => ({
+          avatar: "",
+          description: "私域客户管理",
+          hostSubUserId: seatId === "12" ? "101" : "202",
+          lastMessageTime: seatId === "12" ? 1_778_840_001_000 : 1_778_840_002_000,
+          loginStatus: "online" as const,
+          name: seatId === "12" ? "德瑞可" : "念都堂",
+          operatorName: "小可",
+          phone: "13296712905",
+          seatId,
+          unreadCount: seatId === "12" ? 7 : 2,
+        })),
+    );
     const listSeatUpdateEvents = vi.fn().mockResolvedValue([
       {
         eventTime: 1_778_840_002_000,
@@ -761,7 +766,6 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat,
         getSeatEventScope: vi.fn().mockResolvedValue({
           platform: 5,
           seatIds: ["12", "13"],
@@ -772,6 +776,7 @@ describe("MysqlWorkbenchService", () => {
           items: [],
           nextVersion: 1_778_840_000_000,
         }),
+        getSeatsByIds,
         listSeatUpdateEvents,
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -806,8 +811,8 @@ describe("MysqlWorkbenchService", () => {
       seatIds: ["12", "13"],
       uid: 9001,
     });
-    expect(getSeat).toHaveBeenCalledWith("12");
-    expect(getSeat).toHaveBeenCalledWith("13");
+    expect(getSeatsByIds).toHaveBeenCalledWith(["12", "13"]);
+    expect(getSeatsByIds).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the seat update cursor unchanged when no update events are returned", async () => {

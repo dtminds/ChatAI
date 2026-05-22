@@ -10,6 +10,7 @@ import {
   type WorkbenchMessageQueryByIdsResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchMessageUpdateEventDto,
+  type WorkbenchSeatDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
@@ -642,6 +643,52 @@ export class WorkbenchRepository {
       .execute();
 
     return rows[0] ? mapSeatRow(rows[0] as SeatRow) : undefined;
+  }
+
+  async getSeatsByIds(seatIds: string[]): Promise<WorkbenchSeatDto[]> {
+    const normalizedSeatIds = asSchemaBigIntIds(uniqueIds(seatIds));
+
+    if (!normalizedSeatIds.length) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
+        join
+          .onRef("conversation.third_userid", "=", "seat.third_userid")
+          .onRef("conversation.uid", "=", "seat.uid")
+          .onRef("conversation.platform", "=", "seat.platform")
+          .on("conversation.biz_status", "=", BIZ_STATUS_ACTIVE),
+      )
+      .select((expressionBuilder) => [
+        "seat.id as id",
+        "seat.third_userid as third_userid",
+        "seat.third_user_name as third_user_name",
+        "seat.third_avatar as avatar",
+        "seat.is_online as is_online",
+        "seat.host_sub_id as host_sub_id",
+        expressionBuilder.fn
+          .coalesce(
+            expressionBuilder.fn.sum<number>("conversation.unread_cnt"),
+            expressionBuilder.val(0),
+          )
+          .as("unread_count"),
+        expressionBuilder.fn.max("conversation.last_msgtime").as("last_message_time"),
+      ])
+      .where("seat.id", "in", normalizedSeatIds)
+      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .groupBy([
+        "seat.id",
+        "seat.third_userid",
+        "seat.third_user_name",
+        "seat.third_avatar",
+        "seat.is_online",
+        "seat.host_sub_id",
+      ])
+      .execute();
+
+    return rows.map((row) => mapSeatRow(row as SeatRow));
   }
 
   async getSeatOperateScope(seatId: string): Promise<SeatOperateScope | undefined> {

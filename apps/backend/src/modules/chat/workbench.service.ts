@@ -598,15 +598,22 @@ export class MysqlWorkbenchService implements WorkbenchService {
           ? latestChangedLastMessageTime
           : request.sinceVersion + POLL_LAST_MESSAGE_OVERLAP_MS;
 
-    const seatChange = request.currentSeatId
-      ? await this.repository.getSeat(request.currentSeatId)
-      : undefined;
-    const changedSeats = await Promise.all(
-      uniqueStrings([
-        ...(seatChange ? [seatChange.seatId] : []),
-        ...seatUpdateEvents.map((event) => event.seatId),
-      ]).map((seatId) => this.repository.getSeat(seatId)),
+    const changedSeatIds = uniqueStrings([
+      ...(request.currentSeatId ? [request.currentSeatId] : []),
+      ...seatUpdateEvents.map((event) => event.seatId),
+    ]);
+    const changedSeats =
+      typeof this.repository.getSeatsByIds === "function"
+        ? await this.repository.getSeatsByIds(changedSeatIds)
+        : await Promise.all(changedSeatIds.map((seatId) => this.repository.getSeat(seatId)));
+    const changedSeatsById = new Map(
+      changedSeats
+        .filter((seat): seat is WorkbenchSeatDto => Boolean(seat))
+        .map((seat) => [seat.seatId, seat] as const),
     );
+    const orderedChangedSeats = changedSeatIds
+      .map((seatId) => changedSeatsById.get(seatId))
+      .filter((seat): seat is WorkbenchSeatDto => Boolean(seat));
 
     return {
       activeConversationMessages,
@@ -625,8 +632,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         seatUpdateCursor,
         seatUpdateEvents,
       ),
-      seatChanges: changedSeats
-        .filter((seat): seat is WorkbenchSeatDto => Boolean(seat))
+      seatChanges: orderedChangedSeats
         .map((seat) => ({
           hostSubUserId: seat.hostSubUserId ?? null,
           lastMessageTime: seat.lastMessageTime,

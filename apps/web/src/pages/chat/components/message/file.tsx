@@ -17,6 +17,55 @@ type FileExtensionBadgeProps = {
   extension: string;
 };
 
+const FILE_TYPE_ICON_BY_EXTENSION: Record<
+  string,
+  {
+    alt: string;
+    src: string;
+  }
+> = {
+  csv: {
+    alt: "Excel 文件",
+    src: "https://b5.bokr.com.cn/dist/excel.png",
+  },
+  doc: {
+    alt: "Word 文件",
+    src: "https://b5.bokr.com.cn/dist/word.png",
+  },
+  docx: {
+    alt: "Word 文件",
+    src: "https://b5.bokr.com.cn/dist/word.png",
+  },
+  pdf: {
+    alt: "PDF 文件",
+    src: "https://b5.bokr.com.cn/dist/pdf.png",
+  },
+  ppt: {
+    alt: "PPT 文件",
+    src: "https://b5.bokr.com.cn/dist/ppt.png",
+  },
+  pptx: {
+    alt: "PPT 文件",
+    src: "https://b5.bokr.com.cn/dist/ppt.png",
+  },
+  rar: {
+    alt: "压缩文件",
+    src: "https://b5.bokr.com.cn/dist/zip.png",
+  },
+  xls: {
+    alt: "Excel 文件",
+    src: "https://b5.bokr.com.cn/dist/excel.png",
+  },
+  xlsx: {
+    alt: "Excel 文件",
+    src: "https://b5.bokr.com.cn/dist/excel.png",
+  },
+  zip: {
+    alt: "压缩文件",
+    src: "https://b5.bokr.com.cn/dist/zip.png",
+  },
+};
+
 export function FileMessageCard({
   content,
   onDownloadClick,
@@ -78,6 +127,18 @@ export function FileExtensionBadge({
   className,
   extension,
 }: FileExtensionBadgeProps) {
+  const fileTypeIcon = getFileTypeIcon(extension);
+
+  if (fileTypeIcon) {
+    return (
+      <img
+        alt={fileTypeIcon.alt}
+        className={cn("size-12 shrink-0 object-contain", className)}
+        src={fileTypeIcon.src}
+      />
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -89,6 +150,10 @@ export function FileExtensionBadge({
       {extension}
     </div>
   );
+}
+
+function getFileTypeIcon(extension: string) {
+  return FILE_TYPE_ICON_BY_EXTENSION[extension.trim().toLowerCase()];
 }
 
 export function getFileBadgeTone(extension: string) {

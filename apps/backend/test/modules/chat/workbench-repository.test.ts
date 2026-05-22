@@ -228,6 +228,8 @@ function createMessagesByIdsDb(
 
 function createQueryBuilder(result: unknown) {
   let currentResult = result;
+  const aggregateFns: string[] = [];
+  const groupBys: string[] = [];
   const wheres: Array<[string, string, unknown]> = [];
   const limits: number[] = [];
   const orderBys: Array<[string, string | undefined]> = [];
@@ -266,6 +268,8 @@ function createQueryBuilder(result: unknown) {
         };
       },
       max() {
+        aggregateFns.push("max");
+
         return {
           as() {
             return undefined;
@@ -273,6 +277,8 @@ function createQueryBuilder(result: unknown) {
         };
       },
       sum() {
+        aggregateFns.push("sum");
+
         return undefined;
       },
     },
@@ -313,11 +319,17 @@ function createQueryBuilder(result: unknown) {
   });
 
   return {
+    aggregateFns,
+    groupBys,
     joins,
     limits,
     orderBys,
     whereExpressions,
     wheres,
+    groupBy(columns: string[]) {
+      groupBys.push(...columns);
+      return this;
+    },
     innerJoin() {
       return this;
     },
@@ -514,14 +526,7 @@ describe("WorkbenchRepository", () => {
                 platform: 5,
                 third_userid: "seat-user-001",
                 uid: 9001,
-                unread_cnt: 3,
-              },
-              {
-                last_msgtime: 1_778_839_800_000,
-                platform: 5,
-                third_userid: "seat-user-001",
-                uid: 9001,
-                unread_cnt: 1,
+                unread_cnt: 4,
               },
               {
                 last_msgtime: 1_778_839_900_000,
@@ -529,13 +534,6 @@ describe("WorkbenchRepository", () => {
                 third_userid: "seat-user-002",
                 uid: 9001,
                 unread_cnt: 9,
-              },
-              {
-                last_msgtime: 1_778_840_100_000,
-                platform: 5,
-                third_userid: "seat-user-001",
-                uid: 9002,
-                unread_cnt: 99,
               },
             ]);
             queryBuilders.push(query);
@@ -561,6 +559,12 @@ describe("WorkbenchRepository", () => {
     expect(queryBuilders[0]?.joins).toEqual([]);
     expect(queryBuilders[1]?.joins).toEqual([]);
     expect(queryBuilders[2]?.joins).toEqual([]);
+    expect(queryBuilders[2]?.aggregateFns).toEqual(["sum", "max"]);
+    expect(queryBuilders[2]?.groupBys).toEqual([
+      "uid",
+      "platform",
+      "third_userid",
+    ]);
   });
 
   it("loads seat details without joining conversations", async () => {

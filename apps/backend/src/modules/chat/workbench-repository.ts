@@ -1518,11 +1518,21 @@ export class WorkbenchRepository {
 
     return (await this.db
       .selectFrom("xy_wap_embed_conversation")
-      .select(["uid", "platform", "third_userid", "unread_cnt", "last_msgtime"])
+      .select(["uid", "platform", "third_userid"])
+      .select((expressionBuilder) => [
+        expressionBuilder.fn
+          .coalesce(
+            expressionBuilder.fn.sum<number>("unread_cnt"),
+            expressionBuilder.val(0),
+          )
+          .as("unread_cnt"),
+        expressionBuilder.fn.max("last_msgtime").as("last_msgtime"),
+      ])
       .where("uid", "in", uids)
       .where("platform", "in", platforms)
       .where("third_userid", "in", seatThirdUserIds)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .groupBy(["uid", "platform", "third_userid"])
       .execute()) as SeatConversationAggregateRow[];
   }
 
@@ -1899,17 +1909,9 @@ function groupSeatConversationAggregates(rows: SeatConversationAggregateRow[]) {
   >();
 
   for (const row of rows) {
-    const key = getSeatAggregateKey(row);
-    const current = aggregatesBySeatThirdUserId.get(key);
-    const unreadCount = (current?.unreadCount ?? 0) + (toNumber(row.unread_cnt) ?? 0);
-    const lastMessageTime =
-      compareTimestamps(row.last_msgtime, current?.lastMessageTime) > 0
-        ? row.last_msgtime
-        : (current?.lastMessageTime ?? null);
-
-    aggregatesBySeatThirdUserId.set(key, {
-      lastMessageTime,
-      unreadCount,
+    aggregatesBySeatThirdUserId.set(getSeatAggregateKey(row), {
+      lastMessageTime: row.last_msgtime,
+      unreadCount: toNumber(row.unread_cnt) ?? 0,
     });
   }
 

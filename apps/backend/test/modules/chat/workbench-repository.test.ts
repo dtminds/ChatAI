@@ -492,6 +492,13 @@ describe("WorkbenchRepository", () => {
             return query;
           }
 
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+            });
+          }
+
           if (table === "xy_wap_embed_user_seat") {
             const query = createQueryBuilder([
               {
@@ -559,6 +566,14 @@ describe("WorkbenchRepository", () => {
     expect(queryBuilders[0]?.joins).toEqual([]);
     expect(queryBuilders[1]?.joins).toEqual([]);
     expect(queryBuilders[2]?.joins).toEqual([]);
+    expect(queryBuilders[0]?.wheres).toContainEqual(["relation.uid", "=", 9001]);
+    expect(queryBuilders[0]?.wheres).toContainEqual(["relation.platform", "=", 5]);
+    expect(queryBuilders[1]?.wheres).toContainEqual(["uid", "=", 9001]);
+    expect(queryBuilders[1]?.wheres).toContainEqual(["platform", "=", 5]);
+    expect(queryBuilders[2]?.wheres).toContainEqual(["uid", "=", 9001]);
+    expect(queryBuilders[2]?.wheres).toContainEqual(["platform", "=", 5]);
+    expect(queryBuilders[2]?.wheres).not.toContainEqual(["uid", "in", [9001]]);
+    expect(queryBuilders[2]?.wheres).not.toContainEqual(["platform", "in", [5]]);
     expect(queryBuilders[2]?.aggregateFns).toEqual(["sum", "max"]);
     expect(queryBuilders[2]?.groupBys).toEqual([
       "uid",
@@ -630,6 +645,13 @@ describe("WorkbenchRepository", () => {
                 user_seat_id: "9007199254740993",
               },
             ]);
+          }
+
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+            });
           }
 
           if (table === "xy_wap_embed_user_seat") {

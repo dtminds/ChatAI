@@ -153,6 +153,11 @@ type SeatSummaryRow = SeatBaseRow & {
 
 type SeatAggregateKeyRow = Pick<SeatBaseRow, "platform" | "third_userid" | "uid">;
 
+type TenantScope = {
+  platform: number;
+  uid: number;
+};
+
 type SeatRelationLinkRow = {
   user_seat_id: number | string | bigint;
 };
@@ -485,10 +490,18 @@ export class WorkbenchRepository {
       return [];
     }
 
+    const scope = await this.getSubUserTenantScope(subUserNumericId);
+
+    if (!scope) {
+      return [];
+    }
+
     const relationRows = await this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
       .select(["relation.user_seat_id as user_seat_id"])
       .where("relation.sub_id", "=", subUserNumericId)
+      .where("relation.uid", "=", scope.uid)
+      .where("relation.platform", "=", scope.platform)
       .execute() as SeatRelationLinkRow[];
     const seatIds = uniquePositiveIdStrings(relationRows.map((row) => row.user_seat_id));
 
@@ -509,6 +522,8 @@ export class WorkbenchRepository {
         "host_sub_id",
       ])
       .where("id", "in", asSchemaBigIntIds(seatIds))
+      .where("uid", "=", scope.uid)
+      .where("platform", "=", scope.platform)
       .where("biz_status", "=", 1)
       .execute() as SeatBaseRow[];
     const aggregateRows = await this.getSeatConversationAggregateRows(seats);
@@ -1501,6 +1516,15 @@ export class WorkbenchRepository {
       .executeTakeFirst();
   }
 
+  private async getSubUserTenantScope(subUserId: number) {
+    return this.db
+      .selectFrom("xy_wap_embed_sub_user")
+      .select(["uid", "platform"])
+      .where("id", "=", subUserId)
+      .where("status", "=", 1)
+      .executeTakeFirst() as Promise<TenantScope | undefined>;
+  }
+
   private async getSeatConversationAggregateRows(
     seats: SeatAggregateKeyRow[],
   ) {
@@ -1508,32 +1532,33 @@ export class WorkbenchRepository {
       return [];
     }
 
-    const platforms = uniquePositiveNumbers(seats.map((seat) => seat.platform));
-    const seatThirdUserIds = uniqueNonEmpty(seats.map((seat) => seat.third_userid));
-    const uids = uniquePositiveNumbers(seats.map((seat) => seat.uid));
+    const seatKeysByTenant = groupSeatAggregateKeysByTenant(seats);
+    const rows: SeatConversationAggregateRow[] = [];
 
-    if (!platforms.length || !seatThirdUserIds.length || !uids.length) {
-      return [];
+    for (const { platform, thirdUserIds, uid } of seatKeysByTenant) {
+      rows.push(
+        ...((await this.db
+          .selectFrom("xy_wap_embed_conversation")
+          .select(["uid", "platform", "third_userid"])
+          .select((expressionBuilder) => [
+            expressionBuilder.fn
+              .coalesce(
+                expressionBuilder.fn.sum<number>("unread_cnt"),
+                expressionBuilder.val(0),
+              )
+              .as("unread_cnt"),
+            expressionBuilder.fn.max("last_msgtime").as("last_msgtime"),
+          ])
+          .where("uid", "=", uid)
+          .where("platform", "=", platform)
+          .where("third_userid", "in", thirdUserIds)
+          .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+          .groupBy(["uid", "platform", "third_userid"])
+          .execute()) as SeatConversationAggregateRow[]),
+      );
     }
 
-    return (await this.db
-      .selectFrom("xy_wap_embed_conversation")
-      .select(["uid", "platform", "third_userid"])
-      .select((expressionBuilder) => [
-        expressionBuilder.fn
-          .coalesce(
-            expressionBuilder.fn.sum<number>("unread_cnt"),
-            expressionBuilder.val(0),
-          )
-          .as("unread_cnt"),
-        expressionBuilder.fn.max("last_msgtime").as("last_msgtime"),
-      ])
-      .where("uid", "in", uids)
-      .where("platform", "in", platforms)
-      .where("third_userid", "in", seatThirdUserIds)
-      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-      .groupBy(["uid", "platform", "third_userid"])
-      .execute()) as SeatConversationAggregateRow[];
+    return rows;
   }
 
   private async getConversationGroups(
@@ -1936,6 +1961,43 @@ function withSeatConversationAggregate(
 
 function getSeatAggregateKey(seat: SeatAggregateKeyRow) {
   return `${seat.uid}:${seat.platform}:${seat.third_userid}`;
+}
+
+function groupSeatAggregateKeysByTenant(seats: SeatAggregateKeyRow[]) {
+  const thirdUserIdsByTenant = new Map<
+    string,
+    { platform: number; thirdUserIds: Set<string>; uid: number }
+  >();
+
+  for (const seat of seats) {
+    if (
+      !Number.isSafeInteger(seat.uid) ||
+      seat.uid <= 0 ||
+      !Number.isSafeInteger(seat.platform) ||
+      seat.platform <= 0 ||
+      !seat.third_userid
+    ) {
+      continue;
+    }
+
+    const key = `${seat.uid}:${seat.platform}`;
+    const current = thirdUserIdsByTenant.get(key) ?? {
+      platform: seat.platform,
+      thirdUserIds: new Set<string>(),
+      uid: seat.uid,
+    };
+
+    current.thirdUserIds.add(seat.third_userid);
+    thirdUserIdsByTenant.set(key, current);
+  }
+
+  return Array.from(thirdUserIdsByTenant.values())
+    .map((item) => ({
+      platform: item.platform,
+      thirdUserIds: Array.from(item.thirdUserIds),
+      uid: item.uid,
+    }))
+    .filter((item) => item.thirdUserIds.length > 0);
 }
 
 function sortSeatsByLastMessageTimeDesc(left: SeatSummaryRow, right: SeatSummaryRow) {

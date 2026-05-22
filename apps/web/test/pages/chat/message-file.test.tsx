@@ -31,7 +31,7 @@ describe("FileMessageCard", () => {
     expect(screen.queryByText(extension)).not.toBeInTheDocument();
   });
 
-  it("keeps the extension badge for unknown extensions", () => {
+  it("renders the default file icon for unknown extensions", () => {
     render(
       <FileMessageCard
         content={{
@@ -42,8 +42,11 @@ describe("FileMessageCard", () => {
       />,
     );
 
-    expect(screen.getByText("txt")).toBeInTheDocument();
-    expect(screen.queryByRole("img", { name: "txt 文件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/file.png",
+    );
+    expect(screen.queryByText("txt")).not.toBeInTheDocument();
   });
 
   it("renders a clickable transfer button when the file is not stored in COS", async () => {

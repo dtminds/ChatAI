@@ -66,6 +66,11 @@ const FILE_TYPE_ICON_BY_EXTENSION: Record<
   },
 };
 
+const DEFAULT_FILE_TYPE_ICON = {
+  alt: "文件",
+  src: "https://b5.bokr.com.cn/dist/file.png",
+};
+
 export function FileMessageCard({
   content,
   onDownloadClick,
@@ -127,46 +132,17 @@ export function FileExtensionBadge({
   className,
   extension,
 }: FileExtensionBadgeProps) {
-  const fileTypeIcon = getFileTypeIcon(extension);
-
-  if (fileTypeIcon) {
-    return (
-      <img
-        alt={fileTypeIcon.alt}
-        className={cn("size-12 shrink-0 object-contain", className)}
-        src={fileTypeIcon.src}
-      />
-    );
-  }
+  const fileTypeIcon = getFileTypeIcon(extension) ?? DEFAULT_FILE_TYPE_ICON;
 
   return (
-    <div
-      className={cn(
-        "flex size-12 items-center justify-center rounded-[8px] text-[11px] font-semibold uppercase",
-        getFileBadgeTone(extension),
-        className,
-      )}
-    >
-      {extension}
-    </div>
+    <img
+      alt={fileTypeIcon.alt}
+      className={cn("size-12 shrink-0 object-contain", className)}
+      src={fileTypeIcon.src}
+    />
   );
 }
 
 function getFileTypeIcon(extension: string) {
   return FILE_TYPE_ICON_BY_EXTENSION[extension.trim().toLowerCase()];
-}
-
-export function getFileBadgeTone(extension: string) {
-  switch (extension.toLowerCase()) {
-    case "pdf":
-      return "bg-destructive text-destructive-foreground";
-    case "xls":
-    case "xlsx":
-      return "bg-success text-success-foreground";
-    case "doc":
-    case "docx":
-      return "bg-info text-info-foreground";
-    default:
-      return "bg-muted-foreground text-background";
-  }
 }

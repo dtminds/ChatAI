@@ -186,7 +186,7 @@ describe("LoginPage", () => {
     });
   });
 
-  it("shows a login error when credentials are rejected", async () => {
+  it("shows a blocking error dialog when credentials are rejected", async () => {
     const user = userEvent.setup();
     setSecureContext(false);
     mock.onGet("/auth/altcha/challenge").reply(200, {
@@ -212,9 +212,101 @@ describe("LoginPage", () => {
     await screen.findByText("人机验证已通过");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
-    expect(await screen.findByText("用户名或密码错误")).toBeInTheDocument();
+    const errorDialog = await screen.findByRole("alertdialog", { name: "登录失败" });
+    expect(errorDialog).toHaveTextContent("用户名或密码错误");
+    expect(screen.getByRole("button", { name: "知道了" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(window.localStorage.getItem("chatai.accessToken")).toBeNull();
     expect(router.state.location.pathname).toBe("/login");
+  });
+
+  it("refreshes the fallback ALTCHA payload after a failed login", async () => {
+    const user = userEvent.setup();
+    setSecureContext(false);
+    const challenges = [
+      {
+        parameters: {
+          algorithm: "SCRYPT",
+          challenge: "challenge-001",
+        },
+        signature: "signature-001",
+      },
+      {
+        parameters: {
+          algorithm: "SCRYPT",
+          challenge: "challenge-002",
+        },
+        signature: "signature-002",
+      },
+    ];
+
+    mock.onGet("/auth/altcha/challenge").reply(() => {
+      const challenge = challenges.shift();
+
+      return challenge ? [200, challenge] : [500, {}];
+    });
+    mock.onPost("/auth/login").reply((config) => {
+      const payload = JSON.parse(config.data ?? "{}") as { password?: string };
+
+      if (payload.password === "correct-password") {
+        return [
+          200,
+          {
+            data: {
+              expiresIn: 1200,
+              subUser: {
+                displayName: "客服一号",
+                subUserId: "101",
+              },
+            },
+            success: true,
+          },
+        ];
+      }
+
+      return [
+        401,
+        {
+          error: {
+            code: "INVALID_CREDENTIALS",
+            message: "用户名或密码错误",
+          },
+          success: false,
+        },
+      ];
+    });
+
+    const router = renderLoginRoute();
+
+    await user.type(await screen.findByLabelText("用户名"), "agent001");
+    await user.type(screen.getByLabelText("密码"), "wrong-password");
+    await user.click(screen.getByRole("button", { name: "验证" }));
+    await screen.findByText("人机验证已通过");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    const errorDialog = await screen.findByRole("alertdialog", { name: "登录失败" });
+    expect(errorDialog).toHaveTextContent("用户名或密码错误");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(await screen.findByText("人机验证已通过")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "知道了" }));
+    await user.clear(screen.getByLabelText("密码"));
+    await user.type(screen.getByLabelText("密码"), "correct-password");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(router.state.location.pathname).toBe("/chat");
+    expect(mock.history.get).toHaveLength(2);
+    expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toMatchObject({
+      account: "agent001",
+      password: "wrong-password",
+    });
+    expect(JSON.parse(mock.history.post[1]?.data ?? "{}")).toMatchObject({
+      account: "agent001",
+      password: "correct-password",
+    });
+    expect(JSON.parse(mock.history.post[0]?.data ?? "{}").altcha).not.toEqual(
+      JSON.parse(mock.history.post[1]?.data ?? "{}").altcha,
+    );
   });
 });
 

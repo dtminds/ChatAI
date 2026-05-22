@@ -646,7 +646,11 @@ describe("MessageHistorySidePanel", () => {
     );
 
     expect(screen.getByText("2026年五一值班表.xlsx")).toHaveClass("truncate", "text-[14px]", "font-semibold");
-    expect(screen.getByText("xlsx")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Excel 文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/excel.png",
+    );
+    expect(screen.queryByText("xlsx")).not.toBeInTheDocument();
     expect(screen.getByText("范双飞（饭饭）")).toBeInTheDocument();
     expect(screen.getByText(/16K/)).toBeInTheDocument();
     expect(screen.getByText("5/19")).toBeInTheDocument();

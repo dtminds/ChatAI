@@ -1,5 +1,5 @@
 import {
-  ArrowDown01Icon,
+  DownloadCircle01Icon,
   Attachment01Icon,
   Loading03Icon,
 } from "@hugeicons/core-free-icons";
@@ -110,7 +110,7 @@ export function FileMessageCard({
               size={14}
               strokeWidth={1.8}
             />
-            下载中
+            提取中
           </span>
         ) : (
           <button
@@ -119,7 +119,7 @@ export function FileMessageCard({
             onClick={onDownloadClick}
             type="button"
           >
-            <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
+            <HugeiconsIcon icon={DownloadCircle01Icon} size={14} strokeWidth={1.8} />
             下载
           </button>
         )}

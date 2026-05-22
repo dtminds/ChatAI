@@ -8,6 +8,7 @@ import { ChatComposer } from "@/pages/chat/components/chat-composer";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
+import type { SidebarIframeSendStatus } from "@/pages/chat/lib/sidebar-iframe-url";
 import { MessageHistorySidePanel } from "@/pages/chat/components/message-history-side-panel";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import type {
@@ -32,6 +33,8 @@ type ChatPanelProps = {
   customer?: CustomerProfile;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
   sidebarIframeTos?: "0" | "1";
+  /** 侧栏 iframe `sendStatus`：发送能力状态码 */
+  sidebarIframeSendStatus?: SidebarIframeSendStatus;
   customerPanelWidth: number;
   draft: string;
   groupMembers: GroupMember[];
@@ -107,6 +110,7 @@ export function ChatPanel({
   composerPlaceholder,
   customer,
   sidebarIframeTos,
+  sidebarIframeSendStatus,
   customerPanelWidth,
   draft,
   groupMembers,
@@ -274,6 +278,7 @@ export function ChatPanel({
                   sidebarIframeConversationId={activeConversation.id}
                   sidebarIframeSeatId={activeConversation.accountId}
                   sidebarIframeTos={sidebarIframeTos}
+                  sidebarIframeSendStatus={sidebarIframeSendStatus}
                   groupMembers={groupMembers}
                   isGroupMembersLoading={isGroupMembersLoading}
                   isResizing={isResizingCustomerPanel}

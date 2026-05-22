@@ -47,7 +47,12 @@ import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
+import {
+  isChatReadOnlySubUser,
+  useAuthSubUser,
+} from "@/pages/chat/hooks/use-auth-sub-user";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
+import { resolveSidebarIframeSendStatus } from "@/pages/chat/lib/sidebar-iframe-url";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
@@ -190,6 +195,7 @@ function ChatWorkbenchContent({
     unpinConversation,
     updateMessageDownloadContent,
   } = useWorkbenchStore();
+  const authSubUser = useAuthSubUser();
 
   const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
@@ -320,6 +326,13 @@ function ChatWorkbenchContent({
     activeAccount.takenOverEmployeeId === me?.id
       ? "1"
       : "0";
+  const sidebarIframeSendStatus = resolveSidebarIframeSendStatus({
+    hasActiveConversation: !!activeConversation,
+    isAccountOffline: isActiveAccountOffline,
+    isAccountTakenOver: isActiveAccountTakenOver,
+    isConversationBizInactive: isActiveConversationBizInactive,
+    isReadOnly: isChatReadOnlySubUser(authSubUser),
+  });
   const isConversationActionDisabled =
     isActiveAccountOffline || !isActiveAccountTakenOver;
   const composerPlaceholder = canSendMessage
@@ -1007,6 +1020,7 @@ function ChatWorkbenchContent({
                 composerPlaceholder={composerPlaceholder}
                 customer={activeCustomer}
                 sidebarIframeTos={sidebarIframeTos}
+                sidebarIframeSendStatus={sidebarIframeSendStatus}
                 customerPanelWidth={customerPanelWidth}
                 draft={draft}
                 groupMembers={activeGroupMembers}

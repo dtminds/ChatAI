@@ -17,7 +17,10 @@ import type {
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
-import { buildSidebarIframeSrc } from "@/pages/chat/lib/sidebar-iframe-url";
+import {
+  buildSidebarIframeSrc,
+  type SidebarIframeSendStatus,
+} from "@/pages/chat/lib/sidebar-iframe-url";
 import {
   filterSidebarItemsForConversationMode,
   sortSidebarItems,
@@ -54,6 +57,8 @@ type CustomerSidePanelProps = {
   sidebarIframeConversationId?: string;
   /** `tos`：`0` 未接管，`1` 已由当前坐席接管当前账号 */
   sidebarIframeTos?: "0" | "1";
+  /** `sendStatus`：`0` 可发送，`1` 未接管，`2` 离线，`3` 会话已失效，`4` 只读 */
+  sidebarIframeSendStatus?: SidebarIframeSendStatus;
   /** `qd`：群聊时为三方群 ID */
   sidebarIframeQd?: string;
   customer?: CustomerProfile;
@@ -73,6 +78,7 @@ export function CustomerSidePanel({
   sidebarIframeConversationId,
   sidebarIframeSeatId,
   sidebarIframeTos,
+  sidebarIframeSendStatus,
   sidebarIframeQd,
   groupMembers,
   isGroupMembersLoading,
@@ -204,9 +210,10 @@ export function CustomerSidePanel({
       buildSidebarIframeSrc(url, {
         ...(sidebarIframeParamsForScope ?? {}),
         ...(sidebarIframeTos ? { tos: sidebarIframeTos } : {}),
+        ...(sidebarIframeSendStatus ? { sendStatus: sidebarIframeSendStatus } : {}),
         ...(sidebarIframeQd ? { qd: sidebarIframeQd } : {}),
       }),
-    [sidebarIframeParamsForScope, sidebarIframeQd, sidebarIframeTos],
+    [sidebarIframeParamsForScope, sidebarIframeQd, sidebarIframeSendStatus, sidebarIframeTos],
   );
   const activeSidebarItems = sortSidebarItems(scopedSidebarItems).filter(
     (item) => item.status === "active",
@@ -350,7 +357,7 @@ export function CustomerSidePanel({
                 <CustomSidebarIframe
                   isSrcPending={!canRenderSidebarIframeSrc}
                   itemName={item.name}
-                  loadKey={`${item.id}:${sidebarIframeParamsScopeKey}:${sidebarIframeTos ?? ""}:${sidebarIframeQd ?? ""}`}
+                  loadKey={`${item.id}:${sidebarIframeParamsScopeKey}:${sidebarIframeTos ?? ""}:${sidebarIframeSendStatus ?? ""}:${sidebarIframeQd ?? ""}`}
                   src={
                     canRenderSidebarIframeSrc
                       ? sidebarIframeSrcForUrl(item.url)

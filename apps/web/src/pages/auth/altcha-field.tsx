@@ -4,10 +4,13 @@ import {
   solveChallenge,
   type Solution,
 } from "altcha/lib";
+import type { AltchaWidgetElement } from "altcha";
 import ScryptWorker from "altcha/workers/scrypt?worker";
 import {
   type ButtonHTMLAttributes,
   useCallback,
+  useEffect,
+  useRef,
   useState,
 } from "react";
 import "altcha";
@@ -27,6 +30,10 @@ const WIDGET_CONFIGURATION = JSON.stringify({
 
 type AltchaFieldState = "idle" | "verifying" | "verified" | "error";
 
+type AltchaFieldProps = {
+  refreshKey?: number;
+};
+
 declare global {
   interface Window {
     $altcha?: {
@@ -35,33 +42,51 @@ declare global {
   }
 }
 
-export function AltchaField() {
+export function AltchaField({ refreshKey = 0 }: AltchaFieldProps) {
   ensureScryptWorker();
 
   if (isSecureContext) {
-    return (
-      <div className="[&>altcha-widget]:block [&>altcha-widget]:w-full text-[13px]">
-        <altcha-widget
-          auto="onload"
-          challenge={CHALLENGE_URL}
-          configuration={WIDGET_CONFIGURATION}
-          data-altcha-theme="business"
-          language="zh-cn"
-          name="altcha"
-          style={{ "--altcha-max-width": "100%" }}
-        />
-      </div>
-    );
+    return <SecureAltchaField refreshKey={refreshKey} />;
   }
 
-  return <HttpAltchaField />;
+  return <HttpAltchaField refreshKey={refreshKey} />;
+}
+
+function SecureAltchaField({ refreshKey }: Required<AltchaFieldProps>) {
+  const widgetRef = useRef<AltchaWidgetElement>(null);
+
+  useEffect(() => {
+    const widget = widgetRef.current;
+
+    if (!widget || refreshKey === 0) {
+      return;
+    }
+
+    widget.reset();
+    void widget.verify();
+  }, [refreshKey]);
+
+  return (
+    <div className="[&>altcha-widget]:block [&>altcha-widget]:w-full text-[13px]">
+      <altcha-widget
+        auto="onload"
+        challenge={CHALLENGE_URL}
+        configuration={WIDGET_CONFIGURATION}
+        data-altcha-theme="business"
+        language="zh-cn"
+        name="altcha"
+        ref={widgetRef}
+        style={{ "--altcha-max-width": "100%" }}
+      />
+    </div>
+  );
 }
 
 function ensureScryptWorker() {
   window.$altcha?.algorithms?.set("SCRYPT", () => new ScryptWorker());
 }
 
-function HttpAltchaField() {
+function HttpAltchaField({ refreshKey }: Required<AltchaFieldProps>) {
   const [payload, setPayload] = useState("");
   const [state, setState] = useState<AltchaFieldState>("idle");
 
@@ -89,6 +114,14 @@ function HttpAltchaField() {
       setState("error");
     }
   }, []);
+
+  useEffect(() => {
+    if (refreshKey === 0) {
+      return;
+    }
+
+    void verify();
+  }, [refreshKey, verify]);
 
   return (
     <div

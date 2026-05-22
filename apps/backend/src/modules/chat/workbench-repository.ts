@@ -37,6 +37,11 @@ import {
   type MessageRowQuotePreview,
   type SeatRow,
 } from "./workbench-mappers.js";
+import {
+  comparePositiveIdValues,
+  uniquePositiveIdStrings,
+  uniquePositiveNumbers,
+} from "../../shared/id-utils.js";
 const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
 const CHAT_TYPE_SINGLE = 1;
@@ -148,10 +153,8 @@ type SeatSummaryRow = SeatBaseRow & {
 
 type SeatAggregateKeyRow = Pick<SeatBaseRow, "platform" | "third_userid" | "uid">;
 
-type SeatRelationRow = {
-  platform: number;
-  uid: number;
-  user_seat_id: number | string;
+type SeatRelationLinkRow = {
+  user_seat_id: number | string | bigint;
 };
 
 type SeatConversationAggregateRow = {
@@ -344,7 +347,7 @@ export class WorkbenchRepository {
     messageIds: string[],
   ): Promise<WorkbenchMessageQueryByIdsResponse> {
     const conversationNumericId = parseMySqlId(conversationId);
-    const normalizedIds = uniqueNumbers(
+    const normalizedIds = uniquePositiveNumbers(
       messageIds
         .map((value) => Number.parseInt(value, 10))
         .filter((value) => Number.isSafeInteger(value) && value > 0),
@@ -484,12 +487,10 @@ export class WorkbenchRepository {
 
     const relationRows = await this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .select([
-        "relation.user_seat_id as user_seat_id",
-      ])
+      .select(["relation.user_seat_id as user_seat_id"])
       .where("relation.sub_id", "=", subUserNumericId)
-      .execute() as SeatRelationRow[];
-    const seatIds = uniqueNumbers(relationRows.map((row) => toNumber(row.user_seat_id)));
+      .execute() as SeatRelationLinkRow[];
+    const seatIds = uniquePositiveIdStrings(relationRows.map((row) => row.user_seat_id));
 
     if (!seatIds.length) {
       return [];
@@ -507,19 +508,13 @@ export class WorkbenchRepository {
         "is_online",
         "host_sub_id",
       ])
-      .where("id", "in", seatIds)
+      .where("id", "in", asSchemaBigIntIds(seatIds))
       .where("biz_status", "=", 1)
       .execute() as SeatBaseRow[];
     const aggregateRows = await this.getSeatConversationAggregateRows(seats);
     const aggregatesBySeatThirdUserId = groupSeatConversationAggregates(aggregateRows);
-    const relationSeatIds = new Set(
-      relationRows
-        .map((relation) => toNumber(relation.user_seat_id))
-        .filter((seatId): seatId is number => seatId != null),
-    );
 
     const hydratedSeats = seats
-      .filter((seat) => relationSeatIds.has(toNumber(seat.id) ?? 0))
       .map((seat) =>
         withSeatConversationAggregate(seat, aggregatesBySeatThirdUserId),
       )
@@ -1421,7 +1416,7 @@ export class WorkbenchRepository {
       uid: number;
     },
   ) {
-    const quoteIds = uniqueNumbers(rows.map(getQuoteMessageAuditId));
+    const quoteIds = uniquePositiveNumbers(rows.map(getQuoteMessageAuditId));
     const currentRowIds = new Set(rows.map((row) => toNumber(row.id)));
     const missingQuoteIds = quoteIds.filter((id) => !currentRowIds.has(id));
 
@@ -1513,9 +1508,9 @@ export class WorkbenchRepository {
       return [];
     }
 
-    const platforms = uniqueNumbers(seats.map((seat) => seat.platform));
+    const platforms = uniquePositiveNumbers(seats.map((seat) => seat.platform));
     const seatThirdUserIds = uniqueNonEmpty(seats.map((seat) => seat.third_userid));
-    const uids = uniqueNumbers(seats.map((seat) => seat.uid));
+    const uids = uniquePositiveNumbers(seats.map((seat) => seat.uid));
 
     if (!platforms.length || !seatThirdUserIds.length || !uids.length) {
       return [];
@@ -1951,7 +1946,7 @@ function sortSeatsByLastMessageTimeDesc(left: SeatSummaryRow, right: SeatSummary
     return timestampComparison;
   }
 
-  return (toNumber(right.id) ?? 0) - (toNumber(left.id) ?? 0);
+  return comparePositiveIdValues(right.id, left.id);
 }
 
 function compareTimestamps(
@@ -2012,16 +2007,6 @@ function asSchemaBigIntId(value: string) {
 
 function asSchemaBigIntIds(values: string[]) {
   return values as unknown as number[];
-}
-
-function uniqueNumbers(values: Array<number | undefined>) {
-  return Array.from(
-    new Set(
-      values.filter((value): value is number =>
-        typeof value === "number" && Number.isSafeInteger(value) && value > 0,
-      ),
-    ),
-  );
 }
 
 export function parseMySqlId(value: string) {

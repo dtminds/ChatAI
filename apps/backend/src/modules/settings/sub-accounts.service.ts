@@ -13,6 +13,7 @@ import {
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
+import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 import { deriveAccountRole, normalizeAccountRole } from "../auth/permissions.js";
 import { hashPassword } from "../auth/password.service.js";
 
@@ -385,9 +386,7 @@ export class SubAccountSettingsService {
   }
 
   private async normalizeSeatIds(scope: TenantScope, rawSeatIds: string[]) {
-    const uniqueSeatIds = Array.from(new Set(rawSeatIds.map(parseMySqlId))).filter(
-      (seatId): seatId is number => seatId != null,
-    );
+    const uniqueSeatIds = uniquePositiveNumbers(rawSeatIds.map(parseMySqlId));
 
     if (uniqueSeatIds.length !== rawSeatIds.length) {
       throw new BadRequestError("INVALID_SEAT", "托管账号不存在");

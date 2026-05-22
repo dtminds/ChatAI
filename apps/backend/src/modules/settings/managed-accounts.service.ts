@@ -7,6 +7,7 @@ import type {
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
+import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 
 type TenantScope = {
   platform: number;
@@ -326,16 +327,6 @@ function hydrateRelationRows(
       };
     })
     .filter((relation): relation is RelationRow => relation !== undefined);
-}
-
-function uniquePositiveNumbers(values: Array<number | undefined>) {
-  return Array.from(
-    new Set(
-      values.filter((value): value is number =>
-        typeof value === "number" && Number.isSafeInteger(value) && value > 0,
-      ),
-    ),
-  );
 }
 
 function mapManagedAccount(

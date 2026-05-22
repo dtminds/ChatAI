@@ -613,6 +613,80 @@ describe("WorkbenchRepository", () => {
     expect(queryBuilders[1]?.joins).toEqual([]);
   });
 
+  it("sorts seats with large ids without precision loss", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            return createQueryBuilder([
+              {
+                user_seat_id: "9007199254740992",
+              },
+              {
+                user_seat_id: "9007199254740993",
+              },
+            ]);
+          }
+
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder([
+              {
+                avatarUrl: "https://example.com/old.png",
+                host_sub_id: 0,
+                id: "9007199254740992",
+                is_online: 0,
+                platform: 5,
+                third_user_name: "旧席位",
+                third_userid: "seat-user-001",
+                uid: 9001,
+              },
+              {
+                avatarUrl: "https://example.com/new.png",
+                host_sub_id: 0,
+                id: "9007199254740993",
+                is_online: 0,
+                platform: 5,
+                third_user_name: "新席位",
+                third_userid: "seat-user-002",
+                uid: 9001,
+              },
+            ]);
+          }
+
+          if (table === "xy_wap_embed_conversation") {
+            return createQueryBuilder([
+              {
+                last_msgtime: 1_778_839_950_000,
+                platform: 5,
+                third_userid: "seat-user-001",
+                uid: 9001,
+                unread_cnt: 3,
+              },
+              {
+                last_msgtime: 1_778_839_950_000,
+                platform: 5,
+                third_userid: "seat-user-002",
+                uid: 9001,
+                unread_cnt: 1,
+              },
+            ]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.listSeats("11")).resolves.toEqual([
+      expect.objectContaining({
+        seatId: "9007199254740993",
+      }),
+      expect.objectContaining({
+        seatId: "9007199254740992",
+      }),
+    ]);
+  });
+
   it("checks seat access without joining sub-users and seats", async () => {
     const queryBuilders: Array<{ joins: string[]; table: string }> = [];
     const repository = new WorkbenchRepository(

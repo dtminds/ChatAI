@@ -1,34 +1,43 @@
 import type { AuthSubUser } from "@chatai/contracts";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getAuthSession } from "@/pages/auth/auth-service";
+import {
+  getAuthSessionGeneration,
+  getCachedAuthSubUser,
+  subscribeAuthSessionSnapshot,
+} from "@/pages/auth/auth-session";
 
 export function useAuthSubUser() {
-  const [subUser, setSubUser] = useState<AuthSubUser | undefined>(undefined);
+  const [subUser, setSubUser] = useState<AuthSubUser | undefined>(getCachedAuthSubUser);
+  const isMountedRef = useRef(false);
+  const sessionGenerationRef = useRef(getAuthSessionGeneration());
 
-  useEffect(() => {
-    let ignore = false;
-
-    async function load() {
-      try {
-        const response = await getAuthSession();
-
-        if (!ignore) {
-          setSubUser(response.data.subUser);
-        }
-      } catch {
-        if (!ignore) {
-          setSubUser(undefined);
-        }
-      }
+  const applySnapshot = useCallback((generation: number) => {
+    if (!isMountedRef.current) {
+      return;
     }
 
-    void load();
+    if (generation !== getAuthSessionGeneration()) {
+      return;
+    }
+
+    sessionGenerationRef.current = generation;
+    setSubUser(getCachedAuthSubUser());
+  }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    applySnapshot(getAuthSessionGeneration());
+
+    const unsubscribe = subscribeAuthSessionSnapshot((generation) => {
+      applySnapshot(generation);
+    });
 
     return () => {
-      ignore = true;
+      isMountedRef.current = false;
+      unsubscribe();
     };
-  }, []);
+  }, [applySnapshot]);
 
   return subUser;
 }
@@ -38,5 +47,5 @@ export function isChatReadOnlySubUser(subUser: AuthSubUser | undefined) {
     return false;
   }
 
-  return subUser.role === "viewer" || !subUser.permissions.includes("chat.send");
+  return subUser.role === "viewer" || !subUser.permissions?.includes("chat.send");
 }

@@ -357,7 +357,7 @@ export function CustomerSidePanel({
                 <CustomSidebarIframe
                   isSrcPending={!canRenderSidebarIframeSrc}
                   itemName={item.name}
-                  loadKey={`${item.id}:${sidebarIframeParamsScopeKey}:${sidebarIframeTos ?? ""}:${sidebarIframeSendStatus ?? ""}:${sidebarIframeQd ?? ""}`}
+                  loadKey={`${item.id}:${sidebarIframeParamsScopeKey}:${sidebarIframeTos ?? ""}:${sidebarIframeQd ?? ""}`}
                   src={
                     canRenderSidebarIframeSrc
                       ? sidebarIframeSrcForUrl(item.url)

@@ -6,7 +6,10 @@ import {
   applyAppearanceTheme,
   getInitialAppearanceTheme,
 } from "@/lib/appearance-theme";
-import { getAuthSession } from "@/pages/auth/auth-service";
+import {
+  resetAuthSessionSnapshot,
+  syncAuthSession,
+} from "@/pages/auth/auth-session";
 import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
 
 const PUBLIC_PATHS = new Set(["/login"]);
@@ -40,6 +43,7 @@ export function RootLayout() {
     let isActive = true;
 
     if (PUBLIC_PATHS.has(location.pathname)) {
+      resetAuthSessionSnapshot();
       updateAuthState("anonymous");
       return undefined;
     }
@@ -51,17 +55,18 @@ export function RootLayout() {
 
       updateAuthState("checking");
 
-      try {
-        await getAuthSession();
+      const subUser = await syncAuthSession(options);
 
-        if (isActive) {
-          updateAuthState("authenticated");
-        }
-      } catch {
-        if (isActive) {
-          updateAuthState("anonymous", location.pathname);
-        }
+      if (!isActive) {
+        return;
       }
+
+      if (subUser) {
+        updateAuthState("authenticated");
+        return;
+      }
+
+      updateAuthState("anonymous", location.pathname);
     };
 
     void syncAuthSessionState();

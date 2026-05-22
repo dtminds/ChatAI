@@ -3,6 +3,7 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RootLayout } from "@/app/root-layout";
+import { resetAuthSessionSnapshot } from "@/pages/auth/auth-session";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { requestInstance } from "@/lib/request";
 import { routerConfig } from "@/router";
@@ -11,11 +12,13 @@ const mock = new MockAdapter(requestInstance);
 
 describe("auth routes", () => {
   beforeEach(() => {
+    resetAuthSessionSnapshot();
     setSecureContext(true);
   });
 
   afterEach(() => {
     mock.reset();
+    resetAuthSessionSnapshot();
   });
 
   it("redirects /chat to /login when the session is missing", async () => {

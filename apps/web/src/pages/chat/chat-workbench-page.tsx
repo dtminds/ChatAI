@@ -52,7 +52,7 @@ import {
   useAuthSubUser,
 } from "@/pages/chat/hooks/use-auth-sub-user";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
-import { resolveSidebarIframeSendStatus } from "@/pages/chat/lib/sidebar-iframe-url";
+import { resolveWorkbenchSendCapability } from "@/pages/chat/lib/sidebar-iframe-url";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
@@ -315,39 +315,23 @@ function ChatWorkbenchContent({
   const isActiveAccountTakenOver =
     !!activeAccount?.takenOverEmployeeId &&
     activeAccount.takenOverEmployeeId === me?.id;
-  const isActiveConversationBizInactive = activeConversation?.bizStatus === 0;
-  const canSendMessage =
-    !!activeConversation &&
-    !isActiveAccountOffline &&
-    isActiveAccountTakenOver &&
-    !isActiveConversationBizInactive;
+  const isReadOnlySubUser = isChatReadOnlySubUser(authSubUser);
+  const { canSendMessage, composerPlaceholder, sidebarIframeSendStatus } =
+    resolveWorkbenchSendCapability({
+      bootstrapStatus,
+      conversationBizStatus: activeConversation?.bizStatus,
+      hasActiveConversation: !!activeConversation,
+      isAccountOffline: isActiveAccountOffline,
+      isAccountTakenOver: isActiveAccountTakenOver,
+      isReadOnly: isReadOnlySubUser,
+    });
   const sidebarIframeTos: "0" | "1" =
     !!activeAccount?.takenOverEmployeeId &&
     activeAccount.takenOverEmployeeId === me?.id
       ? "1"
       : "0";
-  const sidebarIframeSendStatus = resolveSidebarIframeSendStatus({
-    hasActiveConversation: !!activeConversation,
-    isAccountOffline: isActiveAccountOffline,
-    isAccountTakenOver: isActiveAccountTakenOver,
-    isConversationBizInactive: isActiveConversationBizInactive,
-    isReadOnly: isChatReadOnlySubUser(authSubUser),
-  });
   const isConversationActionDisabled =
     isActiveAccountOffline || !isActiveAccountTakenOver;
-  const composerPlaceholder = canSendMessage
-    ? "请输入消息……"
-    : bootstrapStatus === "loading" && !activeConversation
-      ? "正在加载会话数据..."
-      : isActiveAccountOffline
-        ? "当前账号离线，暂时无法发送消息"
-        : !isActiveAccountTakenOver
-          ? "当前账号未接管，暂时无法发送消息"
-          : isActiveConversationBizInactive
-            ? "当前会话已失效，暂时无法发送消息"
-          : !activeConversation
-            ? "当前列表暂无可发送会话"
-            : "当前会话暂不可发送消息";
 
   const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
 

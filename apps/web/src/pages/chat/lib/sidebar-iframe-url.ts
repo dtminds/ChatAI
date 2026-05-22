@@ -55,6 +55,83 @@ export function resolveSidebarIframeSendStatus(input: {
   return "0";
 }
 
+export function resolveWorkbenchSendCapability(input: {
+  bootstrapStatus: "idle" | "loading" | "ready" | "error";
+  conversationBizStatus?: number;
+  hasActiveConversation: boolean;
+  isAccountOffline: boolean;
+  isAccountTakenOver: boolean;
+  isReadOnly: boolean;
+}) {
+  let isConversationBizInactive = false;
+  isConversationBizInactive ||= (input.conversationBizStatus ?? 0) === 0;
+
+  const canSendMessage =
+    input.hasActiveConversation &&
+    !input.isReadOnly &&
+    !input.isAccountOffline &&
+    input.isAccountTakenOver &&
+    !isConversationBizInactive;
+
+  return {
+    canSendMessage,
+    composerPlaceholder: resolveComposerPlaceholder({
+      bootstrapStatus: input.bootstrapStatus,
+      canSendMessage,
+      hasActiveConversation: input.hasActiveConversation,
+      isAccountOffline: input.isAccountOffline,
+      isAccountTakenOver: input.isAccountTakenOver,
+      isConversationBizInactive,
+      isReadOnly: input.isReadOnly,
+    }),
+    sidebarIframeSendStatus: resolveSidebarIframeSendStatus({
+      hasActiveConversation: input.hasActiveConversation,
+      isAccountOffline: input.isAccountOffline,
+      isAccountTakenOver: input.isAccountTakenOver,
+      isConversationBizInactive,
+      isReadOnly: input.isReadOnly,
+    }),
+  };
+}
+
+function resolveComposerPlaceholder(input: {
+  bootstrapStatus: "idle" | "loading" | "ready" | "error";
+  canSendMessage: boolean;
+  hasActiveConversation: boolean;
+  isAccountOffline: boolean;
+  isAccountTakenOver: boolean;
+  isConversationBizInactive: boolean;
+  isReadOnly: boolean;
+}) {
+  if (input.canSendMessage) {
+    return "请输入消息……";
+  }
+
+  let placeholder: string | undefined;
+
+  if (input.bootstrapStatus === "loading" && !input.hasActiveConversation) {
+    placeholder ||= "正在加载会话数据...";
+  }
+
+  placeholder ||= input.isReadOnly
+    ? "当前账号为只读权限，无法发送消息"
+    : undefined;
+  placeholder ||= input.isAccountOffline
+    ? "当前账号离线，暂时无法发送消息"
+    : undefined;
+  placeholder ||= !input.isAccountTakenOver
+    ? "当前账号未接管，暂时无法发送消息"
+    : undefined;
+  placeholder ||= input.isConversationBizInactive
+    ? "当前会话已失效，暂时无法发送消息"
+    : undefined;
+  placeholder ||= !input.hasActiveConversation
+    ? "当前列表暂无可发送会话"
+    : undefined;
+
+  return placeholder ?? "当前会话暂不可发送消息";
+}
+
 export function buildSidebarIframeSrc(
   baseUrl: string,
   context: SidebarIframeUrlContext,

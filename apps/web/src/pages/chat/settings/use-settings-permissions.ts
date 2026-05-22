@@ -1,7 +1,7 @@
 import type { AuthSubUser } from "@chatai/contracts";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 
-import { getAuthSession } from "@/pages/auth/auth-service";
+import { useAuthSubUser } from "@/pages/chat/hooks/use-auth-sub-user";
 
 type SettingsPermissionState = {
   canManageManagedAccounts: boolean;
@@ -16,34 +16,12 @@ const readOnlyPermissions: SettingsPermissionState = {
 };
 
 export function useSettingsPermissions() {
-  const [permissions, setPermissions] =
-    useState<SettingsPermissionState>(readOnlyPermissions);
+  const subUser = useAuthSubUser();
 
-  useEffect(() => {
-    let ignore = false;
-
-    async function load() {
-      try {
-        const response = await getAuthSession();
-
-        if (!ignore) {
-          setPermissions(resolveSettingsPermissions(response.data.subUser));
-        }
-      } catch {
-        if (!ignore) {
-          setPermissions(readOnlyPermissions);
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
-  return permissions;
+  return useMemo(
+    () => (subUser ? resolveSettingsPermissions(subUser) : readOnlyPermissions),
+    [subUser],
+  );
 }
 
 function resolveSettingsPermissions(subUser: AuthSubUser): SettingsPermissionState {

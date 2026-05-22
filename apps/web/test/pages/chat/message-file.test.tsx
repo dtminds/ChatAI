@@ -49,6 +49,23 @@ describe("FileMessageCard", () => {
     expect(screen.queryByText("txt")).not.toBeInTheDocument();
   });
 
+  it("renders the default file icon when runtime data omits the extension", () => {
+    render(
+      <FileMessageCard
+        content={{
+          ...createFileContent(),
+          extension: null,
+          fileName: "备注",
+        } as unknown as FileMessageContent}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/file.png",
+    );
+  });
+
   it("renders a clickable transfer button when the file is not stored in COS", async () => {
     const user = userEvent.setup();
     const handleDownloadClick = vi.fn();

@@ -143,6 +143,10 @@ export function FileExtensionBadge({
   );
 }
 
-function getFileTypeIcon(extension: string) {
+function getFileTypeIcon(extension: string | null | undefined) {
+  if (!extension) {
+    return undefined;
+  }
+
   return FILE_TYPE_ICON_BY_EXTENSION[extension.trim().toLowerCase()];
 }

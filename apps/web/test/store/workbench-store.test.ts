@@ -1904,6 +1904,29 @@ describe("useWorkbenchStore", () => {
     expect(state.takeoverStatusByAccountId.ndt).toBeUndefined();
   });
 
+  it("returns the API error message when takeover fails", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async takeOverSeat() {
+        throw {
+          code: "FORBIDDEN",
+          message: "无权限访问",
+          status: 403,
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await expect(useWorkbenchStore.getState().takeOverAccount("ndt")).resolves.toEqual({
+      errorMessage: "无权限访问",
+      ok: false,
+    });
+    expect(useWorkbenchStore.getState().takeoverStatusByAccountId.ndt).toBeUndefined();
+  });
+
   it("keeps unread counts when switching into an untaken account", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
 

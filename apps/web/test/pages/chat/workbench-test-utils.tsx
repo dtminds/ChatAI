@@ -60,6 +60,8 @@ vi.mock("sonner", async (importOriginal) => {
 
 vi.mock("@/pages/chat/api/media-upload-service", () => mediaUploadMocks);
 
+export const workbenchToastWarningMock = vi.mocked(toast.warning);
+
 export function renderChatWorkbenchPage() {
   return render(<ChatWorkbenchPage />);
 }
@@ -97,7 +99,7 @@ export function resetChatWorkbenchTestState() {
       url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
     }),
   );
-  vi.mocked(toast.warning).mockClear();
+  workbenchToastWarningMock.mockClear();
   useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   Object.defineProperty(document, "visibilityState", {
     configurable: true,

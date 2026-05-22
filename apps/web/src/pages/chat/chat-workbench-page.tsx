@@ -392,6 +392,19 @@ function ChatWorkbenchContent({
     dismissReadReceiptError();
   }, [dismissReadReceiptError, readReceiptError]);
 
+  const handleTakeOverAccount = useCallback(
+    async (accountId: string) => {
+      const result = await takeOverAccount(accountId);
+
+      if (!isMountedRef.current || result.ok) {
+        return;
+      }
+
+      toast.warning(result.errorMessage);
+    },
+    [takeOverAccount],
+  );
+
   useEffect(() => {
     setIsEmojiPickerOpen(false);
   }, [activeConversation?.id]);
@@ -959,7 +972,7 @@ function ChatWorkbenchContent({
           onResizeStart={handleAccountRailResizeStart}
           onSelectAccount={setActiveAccount}
           onOpenSettings={onOpenSettings}
-          onTakeOverAccount={takeOverAccount}
+          onTakeOverAccount={handleTakeOverAccount}
           takeoverStatusByAccountId={takeoverStatusByAccountId}
         />
 

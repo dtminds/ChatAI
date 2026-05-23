@@ -342,7 +342,6 @@ describe("useWorkbenchStore", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: request.sinceVersion + 1,
           seatChanges: [],
         };
@@ -373,7 +372,6 @@ describe("useWorkbenchStore", () => {
               type: "remove",
             },
           ],
-          messageStatusChanges: [],
           nextVersion: request.sinceVersion + 1,
           seatChanges: [],
         };
@@ -1594,7 +1592,6 @@ describe("useWorkbenchStore", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           messageUpdateEvents: [
             {
               conversationId: request.activeConversationId ?? "conv-001",
@@ -1671,7 +1668,6 @@ describe("useWorkbenchStore", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           messageUpdateEvents: [
             {
               conversationId: "conv-001",
@@ -1793,7 +1789,6 @@ describe("useWorkbenchStore", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           messageUpdateEvents: [
             {
               conversationId: request.activeConversationId ?? "conv-001",

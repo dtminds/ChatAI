@@ -1642,7 +1642,19 @@ describe("backend app", () => {
       lastMessage: "后端 mock 发送测试",
       type: "upsert",
     });
-    expect(poll.json().messageStatusChanges[0]).toMatchObject({
+    expect(poll.json().activeConversationMessages).toMatchObject([
+      {
+        clientMessageId: "local-test-001",
+        conversationId: "conv-001",
+        status: "sent",
+      },
+    ]);
+    expect(
+      poll.json().activeConversationMessages.some(
+        (message) => message.clientMessageId === "local-test-001",
+      ),
+    ).toBe(true);
+    expect(poll.json().activeConversationMessages[0]).toMatchObject({
       clientMessageId: "local-test-001",
       conversationId: "conv-001",
       status: "sent",
@@ -1708,23 +1720,6 @@ describe("backend app", () => {
       },
     ]);
     expect(poll.statusCode).toBe(200);
-    expect(poll.json().messageStatusChanges).toMatchObject([
-      {
-        clientMessageId: "local-segment-test-001",
-        conversationId: "conv-001",
-        status: "sent",
-      },
-      {
-        clientMessageId: "local-segment-test-001_2",
-        conversationId: "conv-001",
-        status: "sent",
-      },
-      {
-        clientMessageId: "local-segment-test-001_3",
-        conversationId: "conv-001",
-        status: "sent",
-      },
-    ]);
     expect(messages.statusCode).toBe(200);
     expect(messages.json().messages.slice(-3)).toMatchObject([
       {

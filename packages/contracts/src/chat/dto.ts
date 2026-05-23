@@ -225,14 +225,6 @@ export type WorkbenchConversationChangeDto =
       type: "upsert";
     } & WorkbenchConversationSummaryDto);
 
-export type WorkbenchMessageStatusChangeDto = {
-  messageId: string;
-  clientMessageId?: string;
-  conversationId: string;
-  status: WorkbenchMessageStatus;
-  reason?: string;
-};
-
 export type WorkbenchMessageUpdateEventDto = {
   conversationId: string;
   eventId: number;
@@ -265,7 +257,6 @@ export type WorkbenchPollResponse = {
   seatChanges: WorkbenchSeatChangeDto[];
   conversationChanges: WorkbenchConversationChangeDto[];
   activeConversationMessages: WorkbenchMessageDto[];
-  messageStatusChanges: WorkbenchMessageStatusChangeDto[];
   messageUpdateEvents?: WorkbenchMessageUpdateEventDto[];
 };
 

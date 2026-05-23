@@ -100,7 +100,6 @@ describe("workbench gateway message paging", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: request.sinceVersion + 1,
           seatChanges: [],
         };
@@ -143,7 +142,6 @@ describe("workbench gateway message paging", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           messageUpdateEvents: [
             {
               conversationId: request.activeConversationId ?? "",
@@ -192,7 +190,6 @@ describe("workbench gateway message paging", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: request.sinceVersion + 1,
           seatChanges: [
             {

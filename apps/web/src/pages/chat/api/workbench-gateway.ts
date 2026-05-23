@@ -14,7 +14,6 @@ import type {
   WorkbenchConversationReadResponse,
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
-  WorkbenchMessageStatus,
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -32,7 +31,6 @@ import type {
   EmployeeProfile,
   GroupMember,
   Message,
-  MessageStatus,
 } from "@/pages/chat/chat-types";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
 
@@ -106,20 +104,11 @@ export type WorkbenchConversationChange =
       type: "upsert";
     };
 
-export type WorkbenchMessageStatusChange = {
-  clientMessageId?: string;
-  conversationId: string;
-  reason?: string;
-  remoteMessageId: string;
-  status: MessageStatus;
-};
-
 export type WorkbenchPollResult = {
   accountChanges: Array<WorkbenchSeatChangeDto & { accountId: string }>;
   activeConversationMessages: Message[];
   conversationChanges: WorkbenchConversationChange[];
   messageUpdateEvents: WorkbenchMessageUpdateEventDto[];
-  messageStatusChanges: WorkbenchMessageStatusChange[];
   nextMessageUpdateCursor?: number;
   nextSeatUpdateCursor?: number;
   nextVersion: number;
@@ -468,13 +457,6 @@ export async function pollWorkbench(
         },
     ),
     messageUpdateEvents: response.messageUpdateEvents ?? [],
-    messageStatusChanges: response.messageStatusChanges.map((change) => ({
-      clientMessageId: change.clientMessageId,
-      conversationId: change.conversationId,
-      reason: change.reason,
-      remoteMessageId: change.messageId,
-      status: adaptMessageStatus(change.status),
-    })),
     nextMessageUpdateCursor: response.nextMessageUpdateCursor,
     nextSeatUpdateCursor: response.nextSeatUpdateCursor,
     nextVersion: response.nextVersion,
@@ -516,19 +498,6 @@ function adaptHistoryMessagePage(
     nextCursor: page.nextCursor,
     prevCursor: page.prevCursor,
   };
-}
-
-function adaptMessageStatus(status: WorkbenchMessageStatus): MessageStatus {
-  switch (status) {
-    case "failed":
-      return "failed";
-    case "queued":
-    case "sending":
-      return "sending";
-    case "sent":
-    default:
-      return "sent";
-  }
 }
 
 function getFirstConversation(

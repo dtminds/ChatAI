@@ -1152,6 +1152,242 @@ describe("useWorkbenchStore", () => {
     expect(latestMessage?.id).not.toBe(failedMessage?.id);
   });
 
+  it("passes the failed message id when retrying a failed text message", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+
+    expect(failedMessage).toMatchObject({
+      remoteMessageId: expect.any(String),
+      status: "failed",
+    });
+
+    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
+
+    expect(sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        failMsgId: failedMessage!.remoteMessageId,
+        segment: {
+          text: "这条消息会失败 [fail]",
+          type: "text",
+        },
+      }),
+    );
+  });
+
+  it("keeps the failed message visible until retry send is accepted", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendGate = createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();
+    let sendCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage(payload) {
+        sendCount += 1;
+
+        if (sendCount === 2) {
+          return sendGate.promise;
+        }
+
+        return baseService.sendMessage(payload);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+
+    const retryPromise = useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .messagesByConversationId["conv-001"].some((message) => message.id === failedMessage!.id),
+    ).toBe(true);
+
+    sendGate.resolve({
+      clientMessageId: "retry-local-001",
+      messageId: "retry-opt-001",
+      optNo: "retry-opt-001",
+      status: "accepted",
+    });
+    await retryPromise;
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+
+    expect(messages.some((message) => message.id === failedMessage!.id)).toBe(false);
+    expect(messages.at(-1)).toMatchObject({
+      optNo: "retry-opt-001",
+      remoteMessageId: "retry-opt-001",
+      status: "accepted",
+    });
+  });
+
+  it("keeps the failed message when retry send is rejected", async () => {
+    const baseService = createMockWorkbenchService();
+    let sendCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage(payload) {
+        sendCount += 1;
+
+        if (sendCount === 2) {
+          throw new Error("重试接口失败");
+        }
+
+        return baseService.sendMessage(payload);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+    const beforeRetryCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+
+    const result = await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+
+    expect(result).toMatchObject({
+      errorMessage: "重试接口失败",
+      ok: false,
+      reason: "send",
+    });
+    expect(messages).toHaveLength(beforeRetryCount);
+    expect(messages.at(-1)).toMatchObject({
+      id: failedMessage!.id,
+      status: "failed",
+    });
+  });
+
+  it("does not retry unsupported failed message types", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              audioUrl: "https://cdn.example.com/voice.amr",
+              durationLabel: "0:05",
+              type: "voice",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "failed-voice-message",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    const result = await useWorkbenchStore
+      .getState()
+      .retryFailedMessage("failed-voice-message");
+
+    expect(result).toEqual({
+      errorCode: "UNSUPPORTED_RETRY_MESSAGE",
+      errorMessage: "暂不支持重发该消息",
+      reason: "unavailable",
+      ok: false,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(
+      useWorkbenchStore
+        .getState()
+        .messagesByConversationId["conv-001"].some(
+          (message) => message.id === "failed-voice-message",
+        ),
+    ).toBe(true);
+  });
+
+  it("does not retry failed file messages without a sendable url", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSizeLabel: "2 KB",
+              type: "file",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "failed-file-without-url",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    const result = await useWorkbenchStore
+      .getState()
+      .retryFailedMessage("failed-file-without-url");
+
+    expect(result).toEqual({
+      errorCode: "UNSUPPORTED_RETRY_MESSAGE",
+      errorMessage: "暂不支持重发该消息",
+      reason: "unavailable",
+      ok: false,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it("recovers by reloading the current scope when the poll cursor is invalidated", async () => {
     const baseService = createMockWorkbenchService();
     let shouldInvalidateCursor = true;

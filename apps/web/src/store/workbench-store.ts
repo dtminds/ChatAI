@@ -63,6 +63,8 @@ type SendMessageResult =
       ok: false;
     };
 
+type RetryFailedMessageResult = SendMessageResult;
+
 type TakeoverResult =
   | {
       ok: true;
@@ -166,7 +168,9 @@ type WorkbenchState = {
   sendAgentMessageSegments: (
     segments: ComposerSegment[],
     options?: {
+      failMsgId?: string;
       mention?: SendMentionPayload;
+      removeMessageIdOnAccepted?: string;
       onImageUploaded?: (payload: {
         nextSegment: ComposerSegment;
         previousSegment: ComposerSegment;
@@ -179,7 +183,7 @@ type WorkbenchState = {
   setSidebarItems: (items: SettingsSidebarItem[]) => void;
   takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
-  retryFailedMessage: (messageId: string) => Promise<void>;
+  retryFailedMessage: (messageId: string) => Promise<RetryFailedMessageResult>;
   loadOlderMessages: () => Promise<void>;
   openHistoryPanel: (conversationId?: string) => Promise<void>;
   closeHistoryPanel: () => void;
@@ -855,6 +859,73 @@ function buildOptimisticMessageContent(
     text: segment.text,
     type: "text",
   };
+}
+
+function getRetrySendInputFromMessage(message: ChatMessage): {
+  quote?: SendQuotePayload;
+  segment: ComposerSegment;
+} | undefined {
+  if (message.content.type === "text") {
+    return {
+      segment: {
+        text: message.content.text,
+        type: "text",
+      },
+    };
+  }
+
+  if (message.content.type === "quote") {
+    return {
+      quote: {
+        quoteMsgId: message.content.quoteMsgId,
+        quotedMessageId: message.content.quotedMessageId,
+        quotedMessage: message.content.quotedMessage,
+      },
+      segment: {
+        text: message.content.text,
+        type: "text",
+      },
+    };
+  }
+
+  if (message.content.type === "image") {
+    const imageUrl = message.content.imageUrl.trim();
+
+    if (!imageUrl) {
+      return undefined;
+    }
+
+    return {
+      segment: {
+        alt: message.content.alt,
+        height: message.content.height,
+        type: "image",
+        url: imageUrl,
+        width: message.content.width,
+      },
+    };
+  }
+
+  if (message.content.type === "file") {
+    const fileUrl = message.content.fileUrl?.trim();
+
+    if (!fileUrl) {
+      return undefined;
+    }
+
+    return {
+      segment: {
+        extension: message.content.extension,
+        fileName: message.content.fileName,
+        fileSize: 0,
+        fileSizeLabel: message.content.fileSizeLabel,
+        type: "file",
+        url: fileUrl,
+      },
+    };
+  }
+
+  return undefined;
 }
 
 function canUseConversationActions(state: WorkbenchState, account: Account | undefined) {
@@ -2112,6 +2183,7 @@ export function createWorkbenchStore() {
           const response = await sendTextMessage({
             clientMessageId: segmentClientMessageId,
             conversationId: activeConversationId,
+            failMsgId: options?.failMsgId,
             mention: mentionForSegment,
             quote: quoteForSegment,
             seatId: activeAccountId,
@@ -2141,7 +2213,10 @@ export function createWorkbenchStore() {
           set((currentState) => {
             const currentMessages =
               currentState.messagesByConversationId[activeConversationId] ?? [];
-            const nextMessages = [...currentMessages, optimisticMessage];
+            const currentMessagesWithoutAcceptedRemoval = options?.removeMessageIdOnAccepted
+              ? currentMessages.filter((message) => message.id !== options.removeMessageIdOnAccepted)
+              : currentMessages;
+            const nextMessages = [...currentMessagesWithoutAcceptedRemoval, optimisticMessage];
             const currentConversations =
               currentState.conversationListsByScope[activeAccountId] ?? [];
 
@@ -2167,7 +2242,14 @@ export function createWorkbenchStore() {
                 ...currentState.messagesByConversationId,
                 [activeConversationId]: nextMessages,
               },
-              pendingMessages: [...currentState.pendingMessages, optimisticMessage],
+              pendingMessages: [
+                ...(options?.removeMessageIdOnAccepted
+                  ? currentState.pendingMessages.filter(
+                      (message) => message.id !== options.removeMessageIdOnAccepted,
+                    )
+                  : currentState.pendingMessages),
+                optimisticMessage,
+              ],
             };
           });
         }
@@ -2212,31 +2294,37 @@ export function createWorkbenchStore() {
         (message) =>
           message.id === messageId &&
           message.role === "agent" &&
-          message.status === "failed" &&
-          message.content.type === "text",
+          message.status === "failed",
       );
 
       if (
         !failedMessage ||
-        failedMessage.role !== "agent" ||
-        failedMessage.content.type !== "text"
+        failedMessage.role !== "agent"
       ) {
-        return;
+        return {
+          errorCode: "MESSAGE_NOT_RETRYABLE",
+          errorMessage: "暂不支持重发该消息",
+          reason: "unavailable",
+          ok: false,
+        };
       }
 
-      set((currentState) => ({
-        messagesByConversationId: {
-          ...currentState.messagesByConversationId,
-          [failedMessage.conversationId]: (
-            currentState.messagesByConversationId[failedMessage.conversationId] ?? []
-          ).filter((message) => message.id !== failedMessage.id),
-        },
-        pendingMessages: currentState.pendingMessages.filter(
-          (message) => message.id !== failedMessage.id,
-        ),
-      }));
+      const retryInput = getRetrySendInputFromMessage(failedMessage);
 
-      await get().sendAgentTextMessage(failedMessage.content.text);
+      if (!retryInput) {
+        return {
+          errorCode: "UNSUPPORTED_RETRY_MESSAGE",
+          errorMessage: "暂不支持重发该消息",
+          reason: "unavailable",
+          ok: false,
+        };
+      }
+
+      return get().sendAgentMessageSegments([retryInput.segment], {
+        failMsgId: failedMessage.remoteMessageId ?? failedMessage.id,
+        removeMessageIdOnAccepted: failedMessage.id,
+        quote: retryInput.quote,
+      });
     },
     async loadOlderMessages() {
       const state = get();

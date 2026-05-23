@@ -410,7 +410,11 @@ function ChatWorkbenchContent({
         return;
       }
 
-      await retryFailedMessage(messageId);
+      const result = await retryFailedMessage(messageId);
+
+      if (!result.ok) {
+        toast.warning(result.errorMessage);
+      }
     },
     [canSendMessage, retryFailedMessage],
   );

@@ -434,6 +434,59 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts failMsgId for retry send-message requests", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { optNo: "opt-retry-001" },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createWorkbenchJavaClient().sendMessage({
+      clientMessageId: "local-retry-001",
+      failMsgId: 538,
+      msgData: {
+        msgtype: "text",
+        text: "重试消息",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/send-message",
+      expect.objectContaining({
+        body: JSON.stringify({
+          failMsgId: 538,
+          msgData: {
+            msgtype: "text",
+            text: "重试消息",
+          },
+          platform: 5,
+          sendType: 1,
+          source: 1,
+          thirdExternalUserid: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("posts local quote msgData to the Java send-message API", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

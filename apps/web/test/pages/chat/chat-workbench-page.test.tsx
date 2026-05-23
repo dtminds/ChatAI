@@ -107,6 +107,47 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("warns when retrying an unsupported failed message type", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              audioUrl: "https://cdn.example.com/voice.amr",
+              durationLabel: "0:05",
+              type: "voice",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "unsupported-failed-message",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: "重试发送" }));
+
+    expect(workbenchToastWarningMock).toHaveBeenCalledWith("暂不支持重发该消息");
+  });
+
   it("disables the composer while the active conversation send request is pending", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

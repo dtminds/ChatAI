@@ -1350,7 +1350,7 @@ describe("useWorkbenchStore", () => {
     });
   });
 
-  it("clears pending messages when the server receipt is already in conversation state", async () => {
+  it("keeps pending messages when poll has no server receipt", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
@@ -1364,6 +1364,23 @@ describe("useWorkbenchStore", () => {
         };
       },
     });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会成功");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().pendingMessages).toHaveLength(1);
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
+        (message) => message.content.type === "text" && message.content.text === "这条消息会成功",
+      ),
+    ).toBe(true);
+  });
+
+  it("clears pending messages when poll returns a matching server receipt", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService(baseService);
 
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会成功");

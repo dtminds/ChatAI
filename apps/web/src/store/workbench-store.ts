@@ -1918,11 +1918,13 @@ export function createWorkbenchStore() {
             };
           }
 
+          const serverMessages = [
+            ...response.activeConversationMessages,
+            ...Object.values(refreshedMessagesByConversationId).flat(),
+          ];
           const pendingMessages = currentState.pendingMessages.filter(
             (pendingMessage) =>
-              !(nextMessagesByConversationId[pendingMessage.conversationId] ?? []).some(
-                (message) => isSameMessage(pendingMessage, message),
-              ),
+              !serverMessages.some((message) => isSameMessage(pendingMessage, message)),
           );
 
           return {

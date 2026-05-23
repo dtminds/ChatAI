@@ -391,6 +391,13 @@ export class WorkbenchRepository {
 
     const rows = await this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.id", "=", "relation.user_seat_id")
+          .onRef("seat.uid", "=", "relation.uid")
+          .onRef("seat.platform", "=", "relation.platform")
+          .on("seat.biz_status", "=", 1),
+      )
       .select([
         "relation.user_seat_id as seat_id",
         "relation.uid as uid",

@@ -222,6 +222,11 @@ function createQueryBuilder(result: unknown) {
   const orderBys: Array<[string, string | undefined]> = [];
   const whereExpressions: unknown[] = [];
   const joins: string[] = [];
+  const joinConditions: Array<{
+    conditions: Array<[string, string, unknown]>;
+    table: string;
+    type: "innerJoin" | "leftJoin";
+  }> = [];
   function buildExpression(column: string, operator: string, value: unknown) {
     return {
       column,
@@ -303,16 +308,47 @@ function createQueryBuilder(result: unknown) {
 
   return {
     joins,
+    joinConditions,
     limits,
     orderBys,
     whereExpressions,
     wheres,
-    innerJoin() {
+    innerJoin(table: string, callback?: unknown) {
       joins.push("innerJoin");
+      if (typeof callback === "function") {
+        const conditions: Array<[string, string, unknown]> = [];
+        const joinBuilder = {
+          on(column: string, operator: string, value: unknown) {
+            conditions.push([column, operator, value]);
+            return this;
+          },
+          onRef(left: string, operator: string, right: string) {
+            conditions.push([left, operator, right]);
+            return this;
+          },
+        };
+        callback(joinBuilder);
+        joinConditions.push({ conditions, table, type: "innerJoin" });
+      }
       return this;
     },
-    leftJoin() {
+    leftJoin(table: string, callback?: unknown) {
       joins.push("leftJoin");
+      if (typeof callback === "function") {
+        const conditions: Array<[string, string, unknown]> = [];
+        const joinBuilder = {
+          on(column: string, operator: string, value: unknown) {
+            conditions.push([column, operator, value]);
+            return this;
+          },
+          onRef(left: string, operator: string, right: string) {
+            conditions.push([left, operator, right]);
+            return this;
+          },
+        };
+        callback(joinBuilder);
+        joinConditions.push({ conditions, table, type: "leftJoin" });
+      }
       return this;
     },
     groupBy(columns: string[]) {
@@ -1558,7 +1594,7 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("reads seat event scope from sub-user seat relations only", async () => {
+  it("reads active seat event scope from sub-user seat relations", async () => {
     const relationQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
     const repository = new WorkbenchRepository(
       {
@@ -1591,8 +1627,20 @@ describe("WorkbenchRepository", () => {
       seatIds: ["12", "13"],
       uid: 272,
     });
-    expect(relationQueries[0]?.joins).toEqual([]);
+    expect(relationQueries[0]?.joins).toEqual(["innerJoin"]);
     expect(relationQueries[0]?.wheres).toEqual([["relation.sub_id", "=", 101]]);
+    expect(relationQueries[0]?.joinConditions).toEqual([
+      {
+        conditions: [
+          ["seat.id", "=", "relation.user_seat_id"],
+          ["seat.uid", "=", "relation.uid"],
+          ["seat.platform", "=", "relation.platform"],
+          ["seat.biz_status", "=", 1],
+        ],
+        table: "xy_wap_embed_user_seat as seat",
+        type: "innerJoin",
+      },
+    ]);
   });
 
   it("returns conversation tenant scope and takeover sub-user for Java write operations", async () => {

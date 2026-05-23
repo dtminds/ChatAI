@@ -199,7 +199,7 @@ describe("ChatWorkbenchPage session flows", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("hides failed message retry controls for read-only users", async () => {
+  it("disables failed message retry controls for read-only users", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
 
@@ -249,7 +249,9 @@ describe("ChatWorkbenchPage session flows", () => {
 
     await screen.findByText("这条失败消息不能被只读用户重试");
 
-    expect(screen.queryByRole("button", { name: "重试发送" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试发送" })).toBeDisabled();
+    expect(screen.queryByText("模拟发送失败")).not.toBeInTheDocument();
+    expect(screen.queryByText("发送失败")).not.toBeInTheDocument();
     expect(sendMessage).not.toHaveBeenCalled();
   });
 

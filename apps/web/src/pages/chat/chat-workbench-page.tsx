@@ -420,6 +420,17 @@ function ChatWorkbenchContent({
     [canTakeOverAccount, takeOverAccount],
   );
 
+  const handleRetryFailedMessage = useCallback(
+    async (messageId: string) => {
+      if (!canSendMessage) {
+        return;
+      }
+
+      await retryFailedMessage(messageId);
+    },
+    [canSendMessage, retryFailedMessage],
+  );
+
   useEffect(() => {
     setIsEmojiPickerOpen(false);
   }, [activeConversation?.id]);
@@ -1110,7 +1121,7 @@ function ChatWorkbenchContent({
                 onOpenQuotedMessage={handleOpenQuotedMessage}
                 onQuoteMessage={handleQuoteMessage}
                 onMessageViewportScroll={handleMessageViewportScroll}
-                onRetryMessage={canSendMessage ? retryFailedMessage : undefined}
+                onRetryMessage={handleRetryFailedMessage}
                 onSendDraft={handleSendDraft}
                 onDismissScopeTransitionError={() => {
                   setFileUploadTransitionError(undefined);

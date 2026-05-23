@@ -87,7 +87,7 @@ type ChatPanelProps = {
   onQuoteMessage?: (message: ChatMessage) => void;
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
-  onRetryMessage?: (messageId: string) => void | Promise<void>;
+  onRetryMessage: (messageId: string) => void | Promise<void>;
   onSendDraft: (segments: ComposerSegment[]) => void;
   onDismissScopeTransitionError: () => void;
   scopeTransitionError?: string;

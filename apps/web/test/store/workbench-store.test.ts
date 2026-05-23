@@ -10,7 +10,7 @@ import {
   MAX_CONVERSATION_LIST_CACHE_SEATS,
   useWorkbenchStore,
 } from "@/store/workbench-store";
-import type { Conversation } from "@/pages/chat/chat-types";
+import type { Conversation, Message } from "@/pages/chat/chat-types";
 import type {
   WorkbenchHistoryMessagePageDto,
   WorkbenchMessageDto,
@@ -1443,6 +1443,56 @@ describe("useWorkbenchStore", () => {
           (message) => message.id === "failed-voice-message",
         ),
     ).toBe(true);
+  });
+
+  it("does not crash when retrying a failed image message without imageUrl", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              alt: "发送失败的图片",
+              type: "image",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "failed-image-without-url",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "failed",
+          } as Message,
+        ],
+      },
+    }));
+
+    const result = await useWorkbenchStore
+      .getState()
+      .retryFailedMessage("failed-image-without-url");
+
+    expect(result).toEqual({
+      errorCode: "UNSUPPORTED_RETRY_MESSAGE",
+      errorMessage: "暂不支持重发该消息",
+      reason: "unavailable",
+      ok: false,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("does not retry failed file messages without a sendable url", async () => {

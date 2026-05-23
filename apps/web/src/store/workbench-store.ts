@@ -889,7 +889,7 @@ function getRetrySendInputFromMessage(message: ChatMessage): {
   }
 
   if (message.content.type === "image") {
-    const imageUrl = message.content.imageUrl.trim();
+    const imageUrl = message.content.imageUrl?.trim();
 
     if (!imageUrl) {
       return undefined;

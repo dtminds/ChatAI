@@ -68,6 +68,7 @@ import {
   extractComposerMentionState,
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
+import { resolveWorkbenchPermissions } from "@/pages/chat/lib/workbench-permissions";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
@@ -192,12 +193,7 @@ function ChatWorkbenchContent({
     unpinConversation,
     updateMessageDownloadContent,
   } = useWorkbenchStore();
-  const canTakeOverAccount = useAuthStore((state) =>
-    state.hasPermission("chat.takeover"),
-  );
-  const canUseChatSend = useAuthStore((state) =>
-    state.hasPermission("chat.send"),
-  );
+  const subUser = useAuthStore((state) => state.subUser);
 
   const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
@@ -313,39 +309,22 @@ function ChatWorkbenchContent({
     undefined;
 
   useConversationRevealTimer(allConversations);
-  const isActiveAccountOffline = activeAccount?.loginStatus === "offline";
-  const isActiveAccountTakenOver =
-    !!activeAccount?.takenOverEmployeeId &&
-    activeAccount.takenOverEmployeeId === me?.id;
-  const isActiveConversationBizInactive = activeConversation?.bizStatus === 0;
-  const canSendMessage =
-    canUseChatSend &&
-    !!activeConversation &&
-    !isActiveAccountOffline &&
-    isActiveAccountTakenOver &&
-    !isActiveConversationBizInactive;
-  const sidebarIframeTos: "0" | "1" =
-    !!activeAccount?.takenOverEmployeeId &&
-    activeAccount.takenOverEmployeeId === me?.id
-      ? "1"
-      : "0";
-  const isConversationActionDisabled =
-    !canUseChatSend || isActiveAccountOffline || !isActiveAccountTakenOver;
-  const composerPlaceholder = canSendMessage
-    ? "请输入消息……"
-    : bootstrapStatus === "loading" && !activeConversation
-      ? "正在加载会话数据..."
-      : isActiveAccountOffline
-        ? "当前账号离线，暂时无法发送消息"
-        : !isActiveAccountTakenOver
-          ? "当前账号未接管，暂时无法发送消息"
-          : isActiveConversationBizInactive
-            ? "当前会话已失效，暂时无法发送消息"
-          : !activeConversation
-            ? "当前列表暂无可发送会话"
-            : !canUseChatSend
-              ? "当前账号无发送权限，暂时无法发送消息"
-            : "当前会话暂不可发送消息";
+  const workbenchPermissions = resolveWorkbenchPermissions({
+    account: activeAccount,
+    activeConversation,
+    bootstrapStatus,
+    me,
+    subUser,
+  });
+  const {
+    canSendMessage,
+    canTakeOverAccount,
+    canUseConversationActions,
+    composerPlaceholder,
+    isAccountTakenOverByCurrentUser,
+    isConversationActionDisabled,
+  } = workbenchPermissions;
+  const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";
 
   const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
 
@@ -395,8 +374,8 @@ function ChatWorkbenchContent({
   );
 
   useEffect(() => {
-    setConversationActionPermission(canUseChatSend);
-  }, [canUseChatSend, setConversationActionPermission]);
+    setConversationActionPermission(canUseConversationActions);
+  }, [canUseConversationActions, setConversationActionPermission]);
 
   useEffect(() => {
     if (!readReceiptError) {

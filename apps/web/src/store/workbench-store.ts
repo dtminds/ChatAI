@@ -29,6 +29,7 @@ import {
   type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
+import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import type { WorkbenchSendMessagePayload } from "@chatai/contracts";
@@ -856,12 +857,12 @@ function buildOptimisticMessageContent(
   };
 }
 
-function isAccountTakenOverByCurrentUser(account: Account | undefined, me: EmployeeProfile | undefined) {
-  return !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
-}
-
 function canUseConversationActions(state: WorkbenchState, account: Account | undefined) {
-  return state.canUseConversationActions && isAccountTakenOverByCurrentUser(account, state.me);
+  return canUseWorkbenchConversationActions({
+    account,
+    hasSendPermission: state.canUseConversationActions,
+    me: state.me,
+  });
 }
 
 function omitByKeys<T>(record: Record<string, T>, keys: Iterable<string>) {
@@ -2039,11 +2040,7 @@ export function createWorkbenchStore() {
         (conversation) => conversation.id === activeConversationId,
       );
 
-      if (
-        !activeConversation ||
-        account?.loginStatus === "offline" ||
-        !isAccountTakenOverByCurrentUser(account, me)
-      ) {
+      if (!activeConversation || !canUseConversationActions(state, account)) {
         return {
           errorCode: "UNAVAILABLE",
           errorMessage: "当前无法发送消息",

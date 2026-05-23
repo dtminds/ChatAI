@@ -2232,6 +2232,33 @@ describe("useWorkbenchStore", () => {
     expect(observedConversationIds).toEqual(["conv-001"]);
   });
 
+  it("skips conversation writes when the active account is offline", async () => {
+    const baseService = createMockWorkbenchService();
+    const markUnread = vi.fn(baseService.markConversationUnread);
+
+    setWorkbenchService({
+      ...baseService,
+      markConversationUnread: markUnread,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              loginStatus: "offline",
+            }
+          : account,
+      ),
+      canUseConversationActions: true,
+    }));
+
+    await useWorkbenchStore.getState().markConversationUnread("conv-002");
+
+    expect(markUnread).not.toHaveBeenCalled();
+  });
+
   it("marks a read conversation unread when the active account is taken over", async () => {
     const baseService = createMockWorkbenchService();
     const observedConversationIds: string[] = [];

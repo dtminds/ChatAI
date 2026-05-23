@@ -415,7 +415,12 @@ function MessageInlineStatusSlot({
         <button
           aria-busy={isRetryingMessage}
           aria-label={isRetryingMessage ? "正在重试发送" : "重试发送"}
-          className="inline-flex size-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-destructive"
+          className={cn(
+            "inline-flex size-4 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-55",
+            isRetryingMessage
+              ? "bg-transparent text-muted-foreground"
+              : "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:hover:bg-destructive",
+          )}
           disabled={!canRetry}
           onClick={() => {
             if (!canRetry) {

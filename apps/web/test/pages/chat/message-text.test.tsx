@@ -165,6 +165,7 @@ describe("text message bubble layout", () => {
 
     expect(retryButton).toBeDisabled();
     expect(retryButton).toHaveAttribute("aria-busy", "true");
+    expect(retryButton).not.toHaveClass("bg-destructive");
     expect(screen.queryByRole("button", { name: "重试发送" })).not.toBeInTheDocument();
   });
 

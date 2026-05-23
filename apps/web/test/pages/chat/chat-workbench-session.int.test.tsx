@@ -199,6 +199,55 @@ describe("ChatWorkbenchPage session flows", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
+  it("prioritizes not-taken-over copy over read-only role copy", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "sub-user-001",
+    });
+    setWorkbenchService(baseService);
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", {
+      name: "当前角色无发送权限，暂时无法发送消息",
+    });
+    await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
+
+    await screen.findByRole("textbox", {
+      name: "当前账号未接管，暂时无法发送消息",
+    });
+  });
+
+  it("does not auto mark active conversations read for read-only users", async () => {
+    const baseService = createMockWorkbenchService();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "sub-user-001",
+    });
+    setWorkbenchService({ ...baseService, markConversationRead });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", {
+      name: "当前角色无发送权限，暂时无法发送消息",
+    });
+
+    await waitFor(() => {
+      expect(markConversationRead).not.toHaveBeenCalled();
+    });
+  });
+
   it("disables failed message retry controls for read-only users", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);

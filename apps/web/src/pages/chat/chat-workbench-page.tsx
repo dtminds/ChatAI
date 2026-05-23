@@ -174,6 +174,7 @@ function ChatWorkbenchContent({
     readReceiptError,
     pinConversation,
     retryFailedMessage,
+    setConversationActionPermission,
     closeHistoryPanel,
     loadHistoryMessages,
     openHistoryPanel,
@@ -334,9 +335,7 @@ function ChatWorkbenchContent({
     ? "请输入消息……"
     : bootstrapStatus === "loading" && !activeConversation
       ? "正在加载会话数据..."
-      : !canUseChatSend
-        ? "当前角色无发送权限，暂时无法发送消息"
-        : isActiveAccountOffline
+      : isActiveAccountOffline
         ? "当前账号离线，暂时无法发送消息"
         : !isActiveAccountTakenOver
           ? "当前账号未接管，暂时无法发送消息"
@@ -344,6 +343,8 @@ function ChatWorkbenchContent({
             ? "当前会话已失效，暂时无法发送消息"
           : !activeConversation
             ? "当前列表暂无可发送会话"
+            : !canUseChatSend
+              ? "当前角色无发送权限，暂时无法发送消息"
             : "当前会话暂不可发送消息";
 
   const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
@@ -392,6 +393,10 @@ function ChatWorkbenchContent({
     },
     [],
   );
+
+  useEffect(() => {
+    setConversationActionPermission(canUseChatSend);
+  }, [canUseChatSend, setConversationActionPermission]);
 
   useEffect(() => {
     if (!readReceiptError) {

@@ -147,6 +147,7 @@ type WorkbenchState = {
   sinceVersion: number;
   messageUpdateCursor?: number;
   isPollBaselineFresh: boolean;
+  canUseConversationActions: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
   sidebarItems: SettingsSidebarItem[];
@@ -173,6 +174,7 @@ type WorkbenchState = {
     },
   ) => Promise<SendMessageResult>;
   sendAgentTextMessage: (text: string) => Promise<SendMessageResult>;
+  setConversationActionPermission: (canUseConversationActions: boolean) => void;
   setSidebarItems: (items: SettingsSidebarItem[]) => void;
   takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
@@ -220,6 +222,7 @@ function createInitialState(): Omit<
   | "markConversationUnread"
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
+  | "setConversationActionPermission"
   | "setSidebarItems"
   | "takeOverAccount"
   | "unpinConversation"
@@ -245,6 +248,7 @@ function createInitialState(): Omit<
     activeMode: "single",
     bootstrapError: undefined,
     bootstrapStatus: "idle",
+    canUseConversationActions: true,
     conversationListCacheSeatOrder: [],
     conversationListsByScope: {},
     conversationModeLoadedAtByScope: {},
@@ -856,6 +860,10 @@ function isAccountTakenOverByCurrentUser(account: Account | undefined, me: Emplo
   return !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
 }
 
+function canUseConversationActions(state: WorkbenchState, account: Account | undefined) {
+  return state.canUseConversationActions && isAccountTakenOverByCurrentUser(account, state.me);
+}
+
 function omitByKeys<T>(record: Record<string, T>, keys: Iterable<string>) {
   const keySet = new Set(keys);
   const next: Record<string, T> = {};
@@ -1185,7 +1193,7 @@ export function createWorkbenchStore() {
         (item) => item.id === conversation?.accountId,
       );
 
-      if (!conversation || !account || !isAccountTakenOverByCurrentUser(account, state.me)) {
+      if (!conversation || !account || !canUseConversationActions(state, account)) {
         return;
       }
 
@@ -1281,7 +1289,7 @@ export function createWorkbenchStore() {
           (account) => account.id === latestState.activeAccountId,
         );
 
-        if (!isAccountTakenOverByCurrentUser(activeAccount, latestState.me)) {
+        if (!canUseConversationActions(latestState, activeAccount)) {
           return;
         }
 
@@ -1301,6 +1309,9 @@ export function createWorkbenchStore() {
 
     return {
       ...createInitialState(),
+      setConversationActionPermission(canUseConversationActions) {
+        set({ canUseConversationActions });
+      },
       setSidebarItems(items) {
         set({ sidebarItems: items });
       },
@@ -1311,7 +1322,7 @@ export function createWorkbenchStore() {
           (item) => item.id === conversation?.accountId,
         );
 
-        if (!conversation || !account || !isAccountTakenOverByCurrentUser(account, state.me)) {
+        if (!conversation || !account || !canUseConversationActions(state, account)) {
           return;
         }
 
@@ -1394,7 +1405,7 @@ export function createWorkbenchStore() {
         if (
           !conversation ||
           conversation.unread > 0 ||
-          !isAccountTakenOverByCurrentUser(account, state.me)
+          !canUseConversationActions(state, account)
         ) {
           return;
         }
@@ -1431,7 +1442,7 @@ export function createWorkbenchStore() {
         if (
           !conversation ||
           conversation.unread <= 0 ||
-          !isAccountTakenOverByCurrentUser(account, state.me)
+          !canUseConversationActions(state, account)
         ) {
           return;
         }
@@ -1632,11 +1643,11 @@ export function createWorkbenchStore() {
 
         if (
           bootstrapResult.activeConversationId &&
-          isAccountTakenOverByCurrentUser(
+          canUseConversationActions(
+            get(),
             bootstrapResult.accounts.find(
               (account) => account.id === bootstrapResult.activeAccountId,
             ),
-            bootstrapResult.me,
           )
         ) {
           await markActiveConversationRead(
@@ -2756,9 +2767,9 @@ export function createWorkbenchStore() {
 
         if (
           scopeResult.nextConversationId &&
-          isAccountTakenOverByCurrentUser(
+          canUseConversationActions(
+            get(),
             get().accounts.find((account) => account.id === accountId),
-            get().me,
           )
         ) {
           await markActiveConversationRead(scopeResult.nextConversationId, requestId);
@@ -2870,7 +2881,7 @@ export function createWorkbenchStore() {
           (account) => account.id === latestState.activeAccountId,
         );
 
-        if (!isAccountTakenOverByCurrentUser(activeAccount, latestState.me)) {
+        if (!canUseConversationActions(latestState, activeAccount)) {
           return;
         }
 

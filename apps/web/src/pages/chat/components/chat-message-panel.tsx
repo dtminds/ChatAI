@@ -19,7 +19,7 @@ type ChatMessagePanelProps = {
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onMessageViewportScroll: () => void;
-  onRetryMessage: (messageId: string) => void | Promise<void>;
+  onRetryMessage?: (messageId: string) => void | Promise<void>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
 
@@ -86,11 +86,15 @@ export function ChatMessagePanel({
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
-                onRetryMessage={(messageId) => {
-                  startTransition(() => {
-                    void onRetryMessage(messageId);
-                  });
-                }}
+                onRetryMessage={
+                  onRetryMessage
+                    ? (messageId) => {
+                        startTransition(() => {
+                          void onRetryMessage(messageId);
+                        });
+                      }
+                    : undefined
+                }
               />
             </div>
           </div>

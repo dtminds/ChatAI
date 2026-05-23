@@ -1110,7 +1110,7 @@ function ChatWorkbenchContent({
                 onOpenQuotedMessage={handleOpenQuotedMessage}
                 onQuoteMessage={handleQuoteMessage}
                 onMessageViewportScroll={handleMessageViewportScroll}
-                onRetryMessage={retryFailedMessage}
+                onRetryMessage={canSendMessage ? retryFailedMessage : undefined}
                 onSendDraft={handleSendDraft}
                 onDismissScopeTransitionError={() => {
                   setFileUploadTransitionError(undefined);

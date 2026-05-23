@@ -199,6 +199,60 @@ describe("ChatWorkbenchPage session flows", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
+  it("hides failed message retry controls for read-only users", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "sub-user-001",
+    });
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", {
+      name: "当前角色无发送权限，暂时无法发送消息",
+    });
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "这条失败消息不能被只读用户重试",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "readonly-failed-message",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await screen.findByText("这条失败消息不能被只读用户重试");
+
+    expect(screen.queryByRole("button", { name: "重试发送" })).not.toBeInTheDocument();
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it("keeps the composer available while refreshing existing workbench data", async () => {
     const baseService = createMockWorkbenchService();
     const refreshGate = createDeferred();

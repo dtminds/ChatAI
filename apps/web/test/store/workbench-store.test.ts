@@ -944,6 +944,43 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("does not send messages from an inactive conversation", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: state.conversationListsByScope.drc.map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                bizStatus: 0,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    const result = await useWorkbenchStore.getState().sendAgentTextMessage(
+      "失效会话不能发送",
+    );
+
+    expect(result).toEqual({
+      errorCode: "UNAVAILABLE",
+      errorMessage: "当前无法发送消息",
+      reason: "unavailable",
+      ok: false,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it("does not create optimistic image messages when image upload fails", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
@@ -2251,7 +2288,7 @@ describe("useWorkbenchStore", () => {
             }
           : account,
       ),
-      canUseConversationActions: true,
+      hasChatSendPermission: true,
     }));
 
     await useWorkbenchStore.getState().markConversationUnread("conv-002");

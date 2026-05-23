@@ -148,7 +148,7 @@ type WorkbenchState = {
   sinceVersion: number;
   messageUpdateCursor?: number;
   isPollBaselineFresh: boolean;
-  canUseConversationActions: boolean;
+  hasChatSendPermission: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
   sidebarItems: SettingsSidebarItem[];
@@ -175,7 +175,7 @@ type WorkbenchState = {
     },
   ) => Promise<SendMessageResult>;
   sendAgentTextMessage: (text: string) => Promise<SendMessageResult>;
-  setConversationActionPermission: (canUseConversationActions: boolean) => void;
+  setConversationActionPermission: (hasChatSendPermission: boolean) => void;
   setSidebarItems: (items: SettingsSidebarItem[]) => void;
   takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
@@ -249,7 +249,7 @@ function createInitialState(): Omit<
     activeMode: "single",
     bootstrapError: undefined,
     bootstrapStatus: "idle",
-    canUseConversationActions: true,
+    hasChatSendPermission: true,
     conversationListCacheSeatOrder: [],
     conversationListsByScope: {},
     conversationModeLoadedAtByScope: {},
@@ -860,7 +860,7 @@ function buildOptimisticMessageContent(
 function canUseConversationActions(state: WorkbenchState, account: Account | undefined) {
   return canUseWorkbenchConversationActions({
     account,
-    hasSendPermission: state.canUseConversationActions,
+    hasSendPermission: state.hasChatSendPermission,
     me: state.me,
   });
 }
@@ -1310,8 +1310,8 @@ export function createWorkbenchStore() {
 
     return {
       ...createInitialState(),
-      setConversationActionPermission(canUseConversationActions) {
-        set({ canUseConversationActions });
+      setConversationActionPermission(hasChatSendPermission) {
+        set({ hasChatSendPermission });
       },
       setSidebarItems(items) {
         set({ sidebarItems: items });
@@ -2040,7 +2040,11 @@ export function createWorkbenchStore() {
         (conversation) => conversation.id === activeConversationId,
       );
 
-      if (!activeConversation || !canUseConversationActions(state, account)) {
+      if (
+        !activeConversation ||
+        activeConversation.bizStatus === 0 ||
+        !canUseConversationActions(state, account)
+      ) {
         return {
           errorCode: "UNAVAILABLE",
           errorMessage: "当前无法发送消息",

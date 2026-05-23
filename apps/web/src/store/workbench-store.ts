@@ -249,7 +249,7 @@ function createInitialState(): Omit<
     activeMode: "single",
     bootstrapError: undefined,
     bootstrapStatus: "idle",
-    hasChatSendPermission: true,
+    hasChatSendPermission: false,
     conversationListCacheSeatOrder: [],
     conversationListsByScope: {},
     conversationModeLoadedAtByScope: {},

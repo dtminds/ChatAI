@@ -16,6 +16,7 @@ import type {
   WorkbenchMessageDto,
 } from "@chatai/contracts";
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
+import { createFreshWorkbenchStoreForTest } from "./workbench-store-test-utils";
 
 vi.mock("@/pages/chat/api/media-upload-service", () => ({
   resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
@@ -113,6 +114,12 @@ describe("useWorkbenchStore", () => {
     resetWorkbenchStoreTestState();
     vi.mocked(resolveImageSegmentsForSend).mockImplementation(
       async (_conversationId, segments) => segments,
+    );
+  });
+
+  it("defaults chat send permission to false before synchronization", () => {
+    expect(createFreshWorkbenchStoreForTest().getState().hasChatSendPermission).toBe(
+      false,
     );
   });
 

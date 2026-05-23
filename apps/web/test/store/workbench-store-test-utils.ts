@@ -1,7 +1,12 @@
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
-import { useWorkbenchStore } from "@/store/workbench-store";
+import { createWorkbenchStore, useWorkbenchStore } from "@/store/workbench-store";
 
 export function resetWorkbenchStoreTestState() {
   resetWorkbenchService();
   useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+  useWorkbenchStore.getState().setConversationActionPermission(true);
+}
+
+export function createFreshWorkbenchStoreForTest() {
+  return createWorkbenchStore();
 }

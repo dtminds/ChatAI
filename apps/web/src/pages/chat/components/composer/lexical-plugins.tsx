@@ -36,6 +36,7 @@ import {
   $replaceWechatEmojiTokens,
   $exportComposerSegments,
   $getComposerPlainText,
+  $getComposerPlainTextCursorOffset,
   $insertComposerImage,
   $insertComposerMention,
   $insertComposerText,
@@ -48,7 +49,7 @@ type ComposerRuntimePluginProps = {
   canSendMessage: boolean;
   inputEnterBehavior: InputEnterBehavior;
   isMentionPickerOpen: boolean;
-  onDraftTextChange: (draftText: string) => void;
+  onDraftTextChange: (draftText: string, cursorPosition: number) => void;
   onEscapeMentionPicker: () => void;
   onMoveMentionPicker: (direction: "down" | "up") => void;
   onPasteImageFiles: (files: File[]) => void | Promise<void>;
@@ -278,7 +279,10 @@ export function ComposerRuntimePlugin({
     <OnChangePlugin
       onChange={(editorState) => {
         editorState.read(() => {
-          onDraftTextChange($getComposerPlainText());
+          onDraftTextChange(
+            $getComposerPlainText(),
+            $getComposerPlainTextCursorOffset(),
+          );
           onSegmentsChange(normalizeComposerSegments($exportComposerSegments()));
         });
       }}

@@ -319,7 +319,7 @@ function ChatWorkbenchContent({
   const {
     canSendMessage,
     canTakeOverAccount,
-    canUseConversationActions,
+    canUseChatSend,
     composerPlaceholder,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled,
@@ -374,8 +374,8 @@ function ChatWorkbenchContent({
   );
 
   useEffect(() => {
-    setConversationActionPermission(canUseConversationActions);
-  }, [canUseConversationActions, setConversationActionPermission]);
+    setConversationActionPermission(canUseChatSend);
+  }, [canUseChatSend, setConversationActionPermission]);
 
   useEffect(() => {
     if (!readReceiptError) {

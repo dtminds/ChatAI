@@ -141,6 +141,7 @@ describe("resolveWorkbenchPermissions", () => {
 
     expect(permissions).toMatchObject({
       canSendMessage: false,
+      canUseChatSend: true,
       canUseConversationActions: false,
       isConversationActionDisabled: true,
     });

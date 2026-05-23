@@ -24,6 +24,7 @@ type CanUseWorkbenchConversationActionsInput = {
 export type WorkbenchPermissions = {
   canSendMessage: boolean;
   canTakeOverAccount: boolean;
+  canUseChatSend: boolean;
   canUseConversationActions: boolean;
   composerPlaceholder: string;
   isAccountOffline: boolean;
@@ -59,6 +60,7 @@ export function resolveWorkbenchPermissions({
   return {
     canSendMessage,
     canTakeOverAccount,
+    canUseChatSend,
     canUseConversationActions,
     composerPlaceholder: resolveComposerPlaceholder({
       activeConversation,

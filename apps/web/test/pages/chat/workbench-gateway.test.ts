@@ -114,6 +114,7 @@ describe("workbench gateway message paging", () => {
         currentAccountId: "drc",
         freshBaseline: true,
         messageUpdateCursor: 1_778_840_020_000,
+        seatUpdateCursor: 1_778_840_030_000,
         sinceVersion: 1_778_840_010_000,
       },
       {
@@ -128,6 +129,7 @@ describe("workbench gateway message paging", () => {
       currentSeatId: "drc",
       freshBaseline: true,
       messageUpdateCursor: 1_778_840_020_000,
+      seatUpdateCursor: 1_778_840_030_000,
       sinceVersion: 1_778_840_010_000,
     });
   });
@@ -150,6 +152,7 @@ describe("workbench gateway message paging", () => {
             },
           ],
           nextMessageUpdateCursor: 1_778_840_010_000,
+          nextSeatUpdateCursor: 1_778_840_020_000,
           nextVersion: request.sinceVersion + 1,
           seatChanges: [],
         };
@@ -175,6 +178,54 @@ describe("workbench gateway message paging", () => {
         conversationId: "conv-001",
         eventId: 4,
         messageId: "829",
+      },
+    ]);
+    expect(result.nextSeatUpdateCursor).toBe(1_778_840_020_000);
+  });
+
+  it("keeps seat takeover changes in poll account metadata", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageStatusChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [
+            {
+              hostSubUserId: "202",
+              lastMessageTime: 1_778_840_020_000,
+              seatId: "drc",
+              unreadCount: 3,
+            },
+          ],
+        };
+      },
+    });
+
+    const result = await pollWorkbench(
+      {
+        activeConversationId: "conv-001",
+        activeMessageSeq: 9,
+        currentAccountId: "drc",
+        sinceVersion: 1_778_840_010_000,
+      },
+      {
+        accounts: [],
+        customerProfilesById: {},
+      },
+    );
+
+    expect(result.accountChanges).toEqual([
+      {
+        accountId: "drc",
+        hostSubUserId: "202",
+        lastMessageTime: 1_778_840_020_000,
+        seatId: "drc",
+        unreadCount: 3,
       },
     ]);
   });

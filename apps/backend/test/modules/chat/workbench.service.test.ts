@@ -651,6 +651,20 @@ describe("MysqlWorkbenchService", () => {
 
   it("polls new-message conversation changes for the current seat", async () => {
     const javaClient = createJavaClient();
+    const seat = {
+      avatar: "",
+      description: "私域客户管理",
+      lastMessageTime: 1_778_840_001_000,
+      loginStatus: "online",
+      name: "德瑞可",
+      operatorName: "小可",
+      phone: "13296712905",
+      seatId: "12",
+      unreadCount: 7,
+    };
+    const getSeatsByIds = vi.fn(async (seatIds: string[]) =>
+      seatIds.includes("12") ? [seat] : [],
+    );
     const listMessages = vi.fn().mockResolvedValue({
       filteredCount: 0,
       hasMore: false,
@@ -675,17 +689,6 @@ describe("MysqlWorkbenchService", () => {
       ],
       nextVersion: 1_778_840_001_000,
     });
-    const getSeat = vi.fn().mockResolvedValue({
-      avatar: "",
-      description: "私域客户管理",
-      lastMessageTime: 1_778_840_001_000,
-      loginStatus: "online",
-      name: "德瑞可",
-      operatorName: "小可",
-      phone: "13296712905",
-      seatId: "12",
-      unreadCount: 7,
-    });
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -696,7 +699,7 @@ describe("MysqlWorkbenchService", () => {
           seatHostSubUserId: "101",
           uid: 9001,
         }),
-        getSeat,
+        getSeatsByIds,
         listMessages,
         listChangedConversations,
       } as unknown as WorkbenchRepository,
@@ -735,7 +738,117 @@ describe("MysqlWorkbenchService", () => {
       beforeSeq: undefined,
       limit: 50,
     });
-    expect(getSeat).toHaveBeenCalledWith("12");
+    expect(getSeatsByIds).toHaveBeenCalledWith(["12"]);
+  });
+
+  it("polls user-seat update events and refreshes changed seats", async () => {
+    const javaClient = createJavaClient();
+    const getSeatsByIds = vi.fn(async (seatIds: string[]) =>
+      seatIds
+        .slice()
+        .sort()
+        .map((seatId) => ({
+          avatar: "",
+          description: "私域客户管理",
+          hostSubUserId: seatId === "12" ? "101" : "202",
+          lastMessageTime: seatId === "12" ? 1_778_840_001_000 : 1_778_840_002_000,
+          loginStatus: "online" as const,
+          name: seatId === "12" ? "德瑞可" : "念都堂",
+          operatorName: "小可",
+          phone: "13296712905",
+          seatId,
+          unreadCount: seatId === "12" ? 7 : 2,
+        })),
+    );
+    const listSeatUpdateEvents = vi.fn().mockResolvedValue([
+      {
+        eventTime: 1_778_840_002_000,
+        seatId: "13",
+      },
+    ]);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeatEventScope: vi.fn().mockResolvedValue({
+          platform: 5,
+          seatIds: ["12", "13"],
+          uid: 9001,
+        }),
+        listChangedConversations: vi.fn().mockResolvedValue({
+          hasMore: false,
+          items: [],
+          nextVersion: 1_778_840_000_000,
+        }),
+        getSeatsByIds,
+        listSeatUpdateEvents,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.poll("101", {
+        currentSeatId: "12",
+        seatUpdateCursor: 1_778_840_001_000,
+        sinceVersion: 1_778_840_000_000,
+      }),
+    ).resolves.toMatchObject({
+      nextSeatUpdateCursor: 1_778_840_002_000,
+      nextVersion: 1_778_840_000_000,
+      seatChanges: [
+        {
+          hostSubUserId: "101",
+          seatId: "12",
+          unreadCount: 7,
+        },
+        {
+          hostSubUserId: "202",
+          seatId: "13",
+          unreadCount: 2,
+        },
+      ],
+    });
+    expect(listSeatUpdateEvents).toHaveBeenCalledWith({
+      afterCreateTime: 1_778_840_001_000,
+      limit: 200,
+      platform: 5,
+      seatIds: ["12", "13"],
+      uid: 9001,
+    });
+    expect(getSeatsByIds).toHaveBeenCalledWith(["12", "13"]);
+    expect(getSeatsByIds).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the seat update cursor unchanged when no update events are returned", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSeatEventScope: vi.fn().mockResolvedValue({
+          platform: 5,
+          seatIds: ["12"],
+          uid: 9001,
+        }),
+        listChangedConversations: vi.fn().mockResolvedValue({
+          hasMore: false,
+          items: [],
+          nextVersion: 1_778_840_030_000,
+        }),
+        listSeatUpdateEvents: vi.fn().mockResolvedValue([]),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.poll("101", {
+        currentSeatId: "12",
+        seatUpdateCursor: 1_778_840_000_000,
+        sinceVersion: 1_778_839_000_000,
+      }),
+    ).resolves.toMatchObject({
+      nextSeatUpdateCursor: 1_778_840_000_000,
+      seatChanges: [],
+    });
   });
 
   it("checks seat access before listing history messages", async () => {
@@ -835,7 +948,7 @@ describe("MysqlWorkbenchService", () => {
           seatHostSubUserId: "101",
           uid: 9001,
         }),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listMessages,
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
@@ -891,7 +1004,7 @@ describe("MysqlWorkbenchService", () => {
           seatHostSubUserId: "101",
           uid: 9001,
         }),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -926,7 +1039,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -955,7 +1068,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -995,7 +1108,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations,
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -1018,7 +1131,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -1044,7 +1157,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [

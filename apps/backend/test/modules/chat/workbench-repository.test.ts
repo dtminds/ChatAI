@@ -222,6 +222,11 @@ function createQueryBuilder(result: unknown) {
   const orderBys: Array<[string, string | undefined]> = [];
   const whereExpressions: unknown[] = [];
   const joins: string[] = [];
+  const joinConditions: Array<{
+    conditions: Array<[string, string, unknown]>;
+    table: string;
+    type: "innerJoin" | "leftJoin";
+  }> = [];
   function buildExpression(column: string, operator: string, value: unknown) {
     return {
       column,
@@ -303,15 +308,54 @@ function createQueryBuilder(result: unknown) {
 
   return {
     joins,
+    joinConditions,
     limits,
     orderBys,
     whereExpressions,
     wheres,
-    innerJoin() {
+    innerJoin(table: string, callback?: unknown) {
+      joins.push("innerJoin");
+      if (typeof callback === "function") {
+        const conditions: Array<[string, string, unknown]> = [];
+        const joinBuilder = {
+          on(column: string, operator: string, value: unknown) {
+            conditions.push([column, operator, value]);
+            return this;
+          },
+          onRef(left: string, operator: string, right: string) {
+            conditions.push([left, operator, right]);
+            return this;
+          },
+        };
+        callback(joinBuilder);
+        joinConditions.push({ conditions, table, type: "innerJoin" });
+      }
       return this;
     },
-    leftJoin() {
+    leftJoin(table: string, callback?: unknown) {
       joins.push("leftJoin");
+      if (typeof callback === "function") {
+        const conditions: Array<[string, string, unknown]> = [];
+        const joinBuilder = {
+          on(column: string, operator: string, value: unknown) {
+            conditions.push([column, operator, value]);
+            return this;
+          },
+          onRef(left: string, operator: string, right: string) {
+            conditions.push([left, operator, right]);
+            return this;
+          },
+        };
+        callback(joinBuilder);
+        joinConditions.push({ conditions, table, type: "leftJoin" });
+      }
+      return this;
+    },
+    groupBy(columns: string[]) {
+      whereExpressions.push({
+        type: "groupBy",
+        columns,
+      });
       return this;
     },
     limit(limit: number) {
@@ -437,6 +481,76 @@ describe("WorkbenchRepository", () => {
       messages: [],
     });
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
+  });
+
+  it("lists seats by ids with one batched query", async () => {
+    const seatQueryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder([
+              {
+                avatar: "",
+                host_sub_id: 101,
+                id: 12,
+                is_online: 1,
+                last_message_time: new Date("2026-05-21T06:15:21.000Z"),
+                third_user_name: "德瑞可",
+                third_userid: "seat-third-user-1",
+                unread_count: 7,
+              },
+              {
+                avatar: "",
+                host_sub_id: 202,
+                id: 13,
+                is_online: 0,
+                last_message_time: new Date("2026-05-21T06:16:21.000Z"),
+                third_user_name: "念都堂",
+                third_userid: "seat-third-user-2",
+                unread_count: 2,
+              },
+            ]);
+            seatQueryBuilders.push(query);
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.getSeatsByIds(["13", "12", "12", "not-a-seat"])).resolves.toEqual([
+      {
+        avatar: "",
+        description: "",
+        hostSubUserId: "101",
+        lastMessageTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
+        loginStatus: "online",
+        name: "德瑞可",
+        operatorName: "德瑞可",
+        phone: "",
+        seatId: "12",
+        thirdUserId: "seat-third-user-1",
+        unreadCount: 7,
+      },
+      {
+        avatar: "",
+        description: "",
+        hostSubUserId: "202",
+        lastMessageTime: new Date("2026-05-21T06:16:21.000Z").getTime(),
+        loginStatus: "offline",
+        name: "念都堂",
+        operatorName: "念都堂",
+        phone: "",
+        seatId: "13",
+        thirdUserId: "seat-third-user-2",
+        unreadCount: 2,
+      },
+    ]);
+    expect(seatQueryBuilders).toHaveLength(1);
+    expect(seatQueryBuilders[0]?.wheres).toContainEqual(["seat.id", "in", ["13", "12"]]);
+    expect(seatQueryBuilders[0]?.wheres).toContainEqual(["seat.biz_status", "=", 1]);
   });
 
   it("filters and limits conversation lists by requested chat mode", async () => {
@@ -1432,6 +1546,100 @@ describe("WorkbenchRepository", () => {
       ["uid", "=", 9001],
       ["platform", "=", 5],
       ["biz_status", "=", 1],
+    ]);
+  });
+
+  it("lists user-seat update events by tenant scope without parsing event content", async () => {
+    const broadcastQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_broadcast_event as event") {
+            const query = createQueryBuilder([
+              {
+                category_bind_id: "12",
+                create_time: new Date("2026-05-21T06:15:21.000Z"),
+              },
+            ]);
+            broadcastQueries.push(query);
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listSeatUpdateEvents({
+        afterCreateTime: 1_778_840_000_000,
+        limit: 20,
+        platform: 5,
+        seatIds: ["12", "13"],
+        uid: 272,
+      }),
+    ).resolves.toEqual([
+      {
+        eventTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
+        seatId: "12",
+      },
+    ]);
+    expect(broadcastQueries[0]?.wheres).toEqual([
+      ["event.uid", "=", 272],
+      ["event.platform", "=", 5],
+      ["event.category", "=", "user-seat"],
+      ["event.category_bind_id", "in", ["12", "13"]],
+      ["event.event", "=", "user-seat.update"],
+      ["event.create_time", ">", new Date(1_778_840_000_000)],
+    ]);
+  });
+
+  it("reads active seat event scope from sub-user seat relations", async () => {
+    const relationQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createQueryBuilder([
+              {
+                platform: 5,
+                seat_id: 12,
+                uid: 272,
+              },
+              {
+                platform: 5,
+                seat_id: 13,
+                uid: 272,
+              },
+            ]);
+            relationQueries.push(query);
+
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.getSeatEventScope("101")).resolves.toEqual({
+      platform: 5,
+      seatIds: ["12", "13"],
+      uid: 272,
+    });
+    expect(relationQueries[0]?.joins).toEqual(["innerJoin"]);
+    expect(relationQueries[0]?.wheres).toEqual([["relation.sub_id", "=", 101]]);
+    expect(relationQueries[0]?.joinConditions).toEqual([
+      {
+        conditions: [
+          ["seat.id", "=", "relation.user_seat_id"],
+          ["seat.uid", "=", "relation.uid"],
+          ["seat.platform", "=", "relation.platform"],
+          ["seat.biz_status", "=", 1],
+        ],
+        table: "xy_wap_embed_user_seat as seat",
+        type: "innerJoin",
+      },
     ]);
   });
 

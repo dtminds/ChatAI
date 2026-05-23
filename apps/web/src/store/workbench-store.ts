@@ -149,6 +149,7 @@ type WorkbenchState = {
   pollState: PollState;
   sinceVersion: number;
   messageUpdateCursor?: number;
+  seatUpdateCursor?: number;
   isPollBaselineFresh: boolean;
   hasChatSendPermission: boolean;
   activeMessageSeq: number;
@@ -284,6 +285,7 @@ function createInitialState(): Omit<
     sendStatusByConversationId: {},
     sinceVersion: 0,
     messageUpdateCursor: undefined,
+    seatUpdateCursor: undefined,
     isPollBaselineFresh: false,
     sidebarItems: [],
     takeoverStatusByAccountId: {},
@@ -1689,6 +1691,7 @@ export function createWorkbenchStore() {
           sidebarItems: bootstrapResult.sidebarItems,
           isPollBaselineFresh: true,
           messageUpdateCursor: undefined,
+          seatUpdateCursor: undefined,
           sinceVersion: bootstrapResult.pollBaseline,
         });
 
@@ -1759,6 +1762,7 @@ export function createWorkbenchStore() {
           currentAccountId: state.activeAccountId,
           freshBaseline: state.isPollBaselineFresh,
           messageUpdateCursor: state.messageUpdateCursor,
+          seatUpdateCursor: state.seatUpdateCursor,
           sinceVersion: state.sinceVersion,
         };
         const response = await pollWorkbench(request, {
@@ -1827,6 +1831,9 @@ export function createWorkbenchStore() {
             return {
               ...account,
               lastMessageTime: change.lastMessageTime,
+              ...(Object.prototype.hasOwnProperty.call(change, "hostSubUserId")
+                ? { takenOverEmployeeId: change.hostSubUserId ?? undefined }
+                : {}),
               unreadCount: change.unreadCount,
             };
           });
@@ -1975,6 +1982,8 @@ export function createWorkbenchStore() {
             },
             messageUpdateCursor:
               response.nextMessageUpdateCursor ?? currentState.messageUpdateCursor,
+            seatUpdateCursor:
+              response.nextSeatUpdateCursor ?? currentState.seatUpdateCursor,
             sinceVersion: response.nextVersion,
           };
         });

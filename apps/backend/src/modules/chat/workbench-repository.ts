@@ -10,6 +10,7 @@ import {
   type WorkbenchMessageQueryByIdsResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchMessageUpdateEventDto,
+  type WorkbenchSeatDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
@@ -73,6 +74,12 @@ export type SeatOperateScope = {
   uid: number;
 };
 
+export type SeatEventScope = {
+  platform: number;
+  seatIds: string[];
+  uid: number;
+};
+
 export type ConversationListCursor = WorkbenchConversationCursorDto;
 
 export type ChangedConversationListResult = {
@@ -84,6 +91,13 @@ export type ChangedConversationListResult = {
 export type MessageUpdateEventListResult = Array<
   WorkbenchMessageUpdateEventDto & {
     eventTime: number;
+  }
+>;
+
+export type SeatUpdateEventListResult = Array<
+  {
+    eventTime: number;
+    seatId: string;
   }
 >;
 
@@ -281,6 +295,7 @@ export class WorkbenchRepository {
       );
     }
 
+    // message.update 低频，轮询 cursor 只按 create_time 推进，接受同秒事件超出 limit 时的边界取舍。
     const rows = await query
       .orderBy("event.create_time", "asc")
       .orderBy("event.id", "asc")
@@ -305,6 +320,103 @@ export class WorkbenchRepository {
         (event): event is WorkbenchMessageUpdateEventDto & { eventTime: number } =>
           Boolean(event),
       );
+  }
+
+  async listSeatUpdateEvents(
+    input: {
+      afterCreateTime?: number;
+      limit: number;
+      platform: number;
+      seatIds: string[];
+      uid: number;
+    },
+  ): Promise<SeatUpdateEventListResult> {
+    const seatIds = uniqueIds(input.seatIds);
+
+    if (!seatIds.length || input.limit <= 0) {
+      return [];
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_broadcast_event as event")
+      .select([
+        "event.category_bind_id as category_bind_id",
+        "event.create_time as create_time",
+      ])
+      .where("event.uid", "=", input.uid)
+      .where("event.platform", "=", input.platform)
+      .where("event.category", "=", "user-seat")
+      .where("event.category_bind_id", "in", seatIds)
+      .where("event.event", "=", "user-seat.update");
+
+    if (input.afterCreateTime != null) {
+      query = query.where(
+        "event.create_time",
+        ">",
+        new Date(Math.max(0, input.afterCreateTime)),
+      );
+    }
+
+    // user-seat.update 低频，轮询 cursor 只按 create_time 推进，接受同秒事件超出 limit 时的边界取舍。
+    const rows = await query
+      .orderBy("event.create_time", "asc")
+      .orderBy("event.id", "asc")
+      .limit(input.limit)
+      .execute();
+
+    return rows
+      .map((row) => {
+        const nextSeatId = String(row.category_bind_id ?? "").trim();
+
+        if (!nextSeatId) {
+          return undefined;
+        }
+
+        return {
+          eventTime: toTimestamp(row.create_time),
+          seatId: nextSeatId,
+        };
+      })
+      .filter(
+        (event): event is { eventTime: number; seatId: string } => Boolean(event),
+      );
+  }
+
+  async getSeatEventScope(subUserId: string): Promise<SeatEventScope | undefined> {
+    const subUserNumericId = parseMySqlId(subUserId);
+
+    if (subUserNumericId == null) {
+      return undefined;
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.id", "=", "relation.user_seat_id")
+          .onRef("seat.uid", "=", "relation.uid")
+          .onRef("seat.platform", "=", "relation.platform")
+          .on("seat.biz_status", "=", 1),
+      )
+      .select([
+        "relation.user_seat_id as seat_id",
+        "relation.uid as uid",
+        "relation.platform as platform",
+      ])
+      .where("relation.sub_id", "=", subUserNumericId)
+      .execute();
+
+    const firstRow = rows[0];
+
+    if (!firstRow) {
+      return undefined;
+    }
+
+    return {
+      platform: firstRow.platform,
+      seatIds: uniqueIds(rows.map((row) => row.seat_id)),
+      uid: firstRow.uid,
+    };
   }
 
   async listMessagesByIds(
@@ -540,6 +652,52 @@ export class WorkbenchRepository {
       .execute();
 
     return rows[0] ? mapSeatRow(rows[0] as SeatRow) : undefined;
+  }
+
+  async getSeatsByIds(seatIds: string[]): Promise<WorkbenchSeatDto[]> {
+    const normalizedSeatIds = asSchemaBigIntIds(uniqueIds(seatIds));
+
+    if (!normalizedSeatIds.length) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
+        join
+          .onRef("conversation.third_userid", "=", "seat.third_userid")
+          .onRef("conversation.uid", "=", "seat.uid")
+          .onRef("conversation.platform", "=", "seat.platform")
+          .on("conversation.biz_status", "=", BIZ_STATUS_ACTIVE),
+      )
+      .select((expressionBuilder) => [
+        "seat.id as id",
+        "seat.third_userid as third_userid",
+        "seat.third_user_name as third_user_name",
+        "seat.third_avatar as avatar",
+        "seat.is_online as is_online",
+        "seat.host_sub_id as host_sub_id",
+        expressionBuilder.fn
+          .coalesce(
+            expressionBuilder.fn.sum<number>("conversation.unread_cnt"),
+            expressionBuilder.val(0),
+          )
+          .as("unread_count"),
+        expressionBuilder.fn.max("conversation.last_msgtime").as("last_message_time"),
+      ])
+      .where("seat.id", "in", normalizedSeatIds)
+      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .groupBy([
+        "seat.id",
+        "seat.third_userid",
+        "seat.third_user_name",
+        "seat.third_avatar",
+        "seat.is_online",
+        "seat.host_sub_id",
+      ])
+      .execute();
+
+    return rows.map((row) => mapSeatRow(row as SeatRow));
   }
 
   async getSeatOperateScope(seatId: string): Promise<SeatOperateScope | undefined> {

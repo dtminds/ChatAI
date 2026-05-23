@@ -54,6 +54,7 @@ import {
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
+const POLL_SEAT_UPDATE_LIMIT = 200;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -526,12 +527,27 @@ export class MysqlWorkbenchService implements WorkbenchService {
           )
         : [];
     const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
+    const seatUpdateCursor = request.seatUpdateCursor ?? request.sinceVersion;
     const messageUpdateEvents =
       request.activeConversationId &&
       typeof this.repository.listMessageUpdateEvents === "function"
         ? await this.repository.listMessageUpdateEvents(request.activeConversationId, {
             afterCreateTime: messageUpdateCursor,
             limit: POLL_MESSAGE_UPDATE_LIMIT,
+          })
+        : [];
+    const seatEventScope =
+      typeof this.repository.getSeatEventScope === "function"
+        ? await this.repository.getSeatEventScope(subUserId)
+        : undefined;
+    const seatUpdateEvents =
+      seatEventScope && typeof this.repository.listSeatUpdateEvents === "function"
+        ? await this.repository.listSeatUpdateEvents({
+            afterCreateTime: seatUpdateCursor,
+            limit: POLL_SEAT_UPDATE_LIMIT,
+            platform: seatEventScope.platform,
+            seatIds: seatEventScope.seatIds,
+            uid: seatEventScope.uid,
           })
         : [];
     const sinceLastMsgTime = Math.max(
@@ -582,9 +598,19 @@ export class MysqlWorkbenchService implements WorkbenchService {
           ? latestChangedLastMessageTime
           : request.sinceVersion + POLL_LAST_MESSAGE_OVERLAP_MS;
 
-    const seatChange = request.currentSeatId
-      ? await this.repository.getSeat(request.currentSeatId)
-      : undefined;
+    const changedSeatIds = uniqueStrings([
+      ...(request.currentSeatId ? [request.currentSeatId] : []),
+      ...seatUpdateEvents.map((event) => event.seatId),
+    ]);
+    const changedSeats = await this.repository.getSeatsByIds(changedSeatIds);
+    const changedSeatsById = new Map(
+      changedSeats
+        .filter((seat): seat is WorkbenchSeatDto => Boolean(seat))
+        .map((seat) => [seat.seatId, seat] as const),
+    );
+    const orderedChangedSeats = changedSeatIds
+      .map((seatId) => changedSeatsById.get(seatId))
+      .filter((seat): seat is WorkbenchSeatDto => Boolean(seat));
 
     return {
       activeConversationMessages,
@@ -595,19 +621,21 @@ export class MysqlWorkbenchService implements WorkbenchService {
       messageStatusChanges: [],
       messageUpdateEvents,
       nextVersion,
-      nextMessageUpdateCursor: getNextMessageUpdateCursor(
+      nextMessageUpdateCursor: getNextEventCursor(
         messageUpdateCursor,
         messageUpdateEvents,
       ),
-      seatChanges: seatChange
-        ? [
-            {
-              lastMessageTime: seatChange.lastMessageTime,
-              seatId: seatChange.seatId,
-              unreadCount: seatChange.unreadCount,
-            },
-          ]
-        : [],
+      nextSeatUpdateCursor: getNextEventCursor(
+        seatUpdateCursor,
+        seatUpdateEvents,
+      ),
+      seatChanges: orderedChangedSeats
+        .map((seat) => ({
+          hostSubUserId: seat.hostSubUserId ?? null,
+          lastMessageTime: seat.lastMessageTime,
+          seatId: seat.seatId,
+          unreadCount: seat.unreadCount,
+        })),
     };
   }
 
@@ -739,7 +767,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 }
 
-function getNextMessageUpdateCursor(
+function getNextEventCursor(
   currentCursor: number,
   events: Array<{
     eventTime?: number;
@@ -767,6 +795,10 @@ function getNextMessageUpdateCursor(
   );
 
   return latestEventTime;
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values));
 }
 
 function getSingleSendSegment(

@@ -212,6 +212,7 @@ export type WorkbenchSeatChangeDto = {
   seatId: string;
   unreadCount: number;
   lastMessageTime?: number;
+  hostSubUserId?: string | null;
 };
 
 export type WorkbenchConversationChangeDto =
@@ -254,11 +255,13 @@ export type WorkbenchPollRequest = {
   activeConversationId?: string;
   activeMessageSeq?: number;
   messageUpdateCursor?: number;
+  seatUpdateCursor?: number;
 };
 
 export type WorkbenchPollResponse = {
   nextVersion: number;
   nextMessageUpdateCursor?: number;
+  nextSeatUpdateCursor?: number;
   seatChanges: WorkbenchSeatChangeDto[];
   conversationChanges: WorkbenchConversationChangeDto[];
   activeConversationMessages: WorkbenchMessageDto[];

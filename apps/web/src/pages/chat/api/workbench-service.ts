@@ -117,7 +117,7 @@ type WorkbenchEvent =
       type: "message";
       payload: WorkbenchMessageDto;
     }
-    | {
+  | {
       version: number;
       type: "message-status";
       payload: WorkbenchMessageStatusChangeDto;
@@ -422,10 +422,24 @@ export function createMockWorkbenchService(): WorkbenchService {
         request.sinceVersion - (request.freshBaseline ? 0 : MOCK_POLL_OVERLAP_MS),
       );
       const relevantEvents = state.events.filter((event) => event.version > sinceVersion);
-      const seatChanges = collapseLatest(
-        relevantEvents.filter((event): event is Extract<WorkbenchEvent, { type: "seat" }> => event.type === "seat"),
+      const seatUpdateCursor = request.seatUpdateCursor ?? request.sinceVersion;
+      const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
+      const seatUpdateEvents = collapseLatest(
+        state.events.filter(
+          (event): event is Extract<WorkbenchEvent, { type: "seat" }> =>
+            event.type === "seat" && event.version > seatUpdateCursor,
+        ),
         (event) => event.payload.seatId,
-      ).map((event) => event.payload);
+      );
+      const seatChanges = seatUpdateEvents.map((event) => event.payload);
+
+      const messageUpdateEventRecords = state.events.filter(
+        (event): event is Extract<WorkbenchEvent, { type: "message-update" }> =>
+          event.type === "message-update" &&
+          event.payload.conversationId === request.activeConversationId &&
+          event.version > messageUpdateCursor,
+      );
+      const messageUpdateEvents = messageUpdateEventRecords.map((event) => event.payload);
 
       const conversationChanges = collapseLatest(
         relevantEvents.filter(
@@ -451,13 +465,6 @@ export function createMockWorkbenchService(): WorkbenchService {
             event.type === "message-status",
         )
         .map((event) => event.payload);
-      const messageUpdateEvents = relevantEvents
-        .filter(
-          (event): event is Extract<WorkbenchEvent, { type: "message-update" }> =>
-            event.type === "message-update" &&
-            event.payload.conversationId === request.activeConversationId,
-        )
-        .map((event) => event.payload);
 
       return {
         seatChanges: clone(seatChanges),
@@ -465,6 +472,11 @@ export function createMockWorkbenchService(): WorkbenchService {
         conversationChanges: clone(conversationChanges),
         messageUpdateEvents: clone(messageUpdateEvents),
         messageStatusChanges: clone(messageStatusChanges),
+        nextMessageUpdateCursor: getNextMockEventCursor(
+          messageUpdateCursor,
+          messageUpdateEventRecords,
+        ),
+        nextSeatUpdateCursor: getNextMockEventCursor(seatUpdateCursor, seatUpdateEvents),
         nextVersion: state.version,
       };
     },
@@ -678,6 +690,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
           current_seat_id: request.currentSeatId,
           fresh_baseline: request.freshBaseline ? "1" : undefined,
           message_update_cursor: request.messageUpdateCursor,
+          seat_update_cursor: request.seatUpdateCursor,
           since_version: request.sinceVersion,
         },
       });
@@ -1314,6 +1327,22 @@ function pushMessageUpdateEvent(
     type: "message-update",
     version: state.version,
   });
+}
+
+function getNextMockEventCursor(
+  currentCursor: number,
+  events: Array<{
+    version?: number;
+  }>,
+) {
+  if (!Number.isFinite(currentCursor)) {
+    return undefined;
+  }
+
+  return events.reduce(
+    (latest, event) => Math.max(latest, event.version ?? currentCursor),
+    currentCursor,
+  );
 }
 
 function revokeMessage(

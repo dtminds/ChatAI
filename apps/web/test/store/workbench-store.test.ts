@@ -1094,6 +1094,11 @@ describe("useWorkbenchStore", () => {
   it("switches account and falls back to the first available mode", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
 
+    useWorkbenchStore.setState((state) => ({
+      ...state,
+      seatUpdateCursor: 1_778_840_020_000,
+    }));
+
     await useWorkbenchStore.getState().setActiveMode("group");
     await useWorkbenchStore.getState().setActiveAccount("ndt");
 
@@ -1103,6 +1108,7 @@ describe("useWorkbenchStore", () => {
     expect(state.activeMode).toBe("single");
     expect(state.activeConversationId).toBe("conv-005");
     expect(state.conversationListsByScope.ndt[0].unread).toBe(1);
+    expect(state.seatUpdateCursor).toBe(1_778_840_020_000);
   });
 
   it("marks send failures after polling a rejected message", async () => {
@@ -1597,6 +1603,7 @@ describe("useWorkbenchStore", () => {
             },
           ],
           nextMessageUpdateCursor: 1_778_840_010_000,
+          nextSeatUpdateCursor: 1_778_840_020_000,
           nextVersion: request.sinceVersion + 1,
           seatChanges: [],
         };
@@ -1630,6 +1637,7 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().pollWorkbench();
 
     expect(observedMessageIdBatches).toEqual([["829"]]);
+    expect(useWorkbenchStore.getState().seatUpdateCursor).toBe(1_778_840_020_000);
     expect(
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
         (message) => message.id === "829",
@@ -1901,6 +1909,10 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      ...state,
+      seatUpdateCursor: 1_778_840_030_000,
+    }));
 
     const recoveryPromise = useWorkbenchStore.getState().pollWorkbench();
     await useWorkbenchStore.getState().setActiveAccount("ndt");
@@ -1911,6 +1923,7 @@ describe("useWorkbenchStore", () => {
 
     expect(state.activeAccountId).toBe("ndt");
     expect(state.activeConversationId).toBe("conv-005");
+    expect(state.seatUpdateCursor).toBe(1_778_840_030_000);
   });
 
   it("loads the full seed page when the default message page covers all history", async () => {

@@ -16,6 +16,7 @@ import type {
   WorkbenchMessageDto,
 } from "@chatai/contracts";
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
+import { createFreshWorkbenchStoreForTest } from "./workbench-store-test-utils";
 
 vi.mock("@/pages/chat/api/media-upload-service", () => ({
   resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
@@ -113,6 +114,12 @@ describe("useWorkbenchStore", () => {
     resetWorkbenchStoreTestState();
     vi.mocked(resolveImageSegmentsForSend).mockImplementation(
       async (_conversationId, segments) => segments,
+    );
+  });
+
+  it("defaults chat send permission to false before synchronization", () => {
+    expect(createFreshWorkbenchStoreForTest().getState().hasChatSendPermission).toBe(
+      false,
     );
   });
 
@@ -942,6 +949,43 @@ describe("useWorkbenchStore", () => {
         },
       }),
     );
+  });
+
+  it("does not send messages from an inactive conversation", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: state.conversationListsByScope.drc.map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                bizStatus: 0,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    const result = await useWorkbenchStore.getState().sendAgentTextMessage(
+      "失效会话不能发送",
+    );
+
+    expect(result).toEqual({
+      errorCode: "UNAVAILABLE",
+      errorMessage: "当前无法发送消息",
+      reason: "unavailable",
+      ok: false,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("does not create optimistic image messages when image upload fails", async () => {
@@ -2230,6 +2274,33 @@ describe("useWorkbenchStore", () => {
 
     expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-005");
     expect(observedConversationIds).toEqual(["conv-001"]);
+  });
+
+  it("skips conversation writes when the active account is offline", async () => {
+    const baseService = createMockWorkbenchService();
+    const markUnread = vi.fn(baseService.markConversationUnread);
+
+    setWorkbenchService({
+      ...baseService,
+      markConversationUnread: markUnread,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              loginStatus: "offline",
+            }
+          : account,
+      ),
+      hasChatSendPermission: true,
+    }));
+
+    await useWorkbenchStore.getState().markConversationUnread("conv-002");
+
+    expect(markUnread).not.toHaveBeenCalled();
   });
 
   it("marks a read conversation unread when the active account is taken over", async () => {

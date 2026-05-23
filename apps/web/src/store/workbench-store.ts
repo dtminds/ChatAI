@@ -29,6 +29,7 @@ import {
   type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
+import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import type { WorkbenchSendMessagePayload } from "@chatai/contracts";
@@ -147,7 +148,7 @@ type WorkbenchState = {
   sinceVersion: number;
   messageUpdateCursor?: number;
   isPollBaselineFresh: boolean;
-  canUseConversationActions: boolean;
+  hasChatSendPermission: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
   sidebarItems: SettingsSidebarItem[];
@@ -174,7 +175,7 @@ type WorkbenchState = {
     },
   ) => Promise<SendMessageResult>;
   sendAgentTextMessage: (text: string) => Promise<SendMessageResult>;
-  setConversationActionPermission: (canUseConversationActions: boolean) => void;
+  setChatSendPermission: (hasChatSendPermission: boolean) => void;
   setSidebarItems: (items: SettingsSidebarItem[]) => void;
   takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
@@ -222,7 +223,7 @@ function createInitialState(): Omit<
   | "markConversationUnread"
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
-  | "setConversationActionPermission"
+  | "setChatSendPermission"
   | "setSidebarItems"
   | "takeOverAccount"
   | "unpinConversation"
@@ -248,7 +249,7 @@ function createInitialState(): Omit<
     activeMode: "single",
     bootstrapError: undefined,
     bootstrapStatus: "idle",
-    canUseConversationActions: true,
+    hasChatSendPermission: false,
     conversationListCacheSeatOrder: [],
     conversationListsByScope: {},
     conversationModeLoadedAtByScope: {},
@@ -856,12 +857,12 @@ function buildOptimisticMessageContent(
   };
 }
 
-function isAccountTakenOverByCurrentUser(account: Account | undefined, me: EmployeeProfile | undefined) {
-  return !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
-}
-
 function canUseConversationActions(state: WorkbenchState, account: Account | undefined) {
-  return state.canUseConversationActions && isAccountTakenOverByCurrentUser(account, state.me);
+  return canUseWorkbenchConversationActions({
+    account,
+    hasSendPermission: state.hasChatSendPermission,
+    me: state.me,
+  });
 }
 
 function omitByKeys<T>(record: Record<string, T>, keys: Iterable<string>) {
@@ -1309,8 +1310,8 @@ export function createWorkbenchStore() {
 
     return {
       ...createInitialState(),
-      setConversationActionPermission(canUseConversationActions) {
-        set({ canUseConversationActions });
+      setChatSendPermission(hasChatSendPermission) {
+        set({ hasChatSendPermission });
       },
       setSidebarItems(items) {
         set({ sidebarItems: items });
@@ -2041,8 +2042,8 @@ export function createWorkbenchStore() {
 
       if (
         !activeConversation ||
-        account?.loginStatus === "offline" ||
-        !isAccountTakenOverByCurrentUser(account, me)
+        activeConversation.bizStatus === 0 ||
+        !canUseConversationActions(state, account)
       ) {
         return {
           errorCode: "UNAVAILABLE",

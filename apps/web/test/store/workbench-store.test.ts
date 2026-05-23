@@ -1350,6 +1350,33 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("clears pending messages when the server receipt is already in conversation state", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: Date.now(),
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会成功");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().pendingMessages).toHaveLength(0);
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
+        (message) => message.content.type === "text" && message.content.text === "这条消息会成功",
+      ),
+    ).toBe(true);
+  });
+
   it("keeps the failed message when retry send is rejected", async () => {
     const baseService = createMockWorkbenchService();
     let sendCount = 0;

@@ -1920,8 +1920,8 @@ export function createWorkbenchStore() {
 
           const pendingMessages = currentState.pendingMessages.filter(
             (pendingMessage) =>
-              !response.activeConversationMessages.some((message) =>
-                isSameMessage(pendingMessage, message),
+              !(nextMessagesByConversationId[pendingMessage.conversationId] ?? []).some(
+                (message) => isSameMessage(pendingMessage, message),
               ),
           );
 

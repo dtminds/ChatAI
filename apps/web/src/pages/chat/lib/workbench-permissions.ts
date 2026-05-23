@@ -134,9 +134,5 @@ function resolveComposerPlaceholder({
     return "当前会话已失效，暂时无法发送消息";
   }
 
-  if (!canUseChatSend) {
-    return "当前账号无发送权限，暂时无法发送消息";
-  }
-
-  return "当前会话暂不可发送消息";
+  return "当前账号无发送权限，暂时无法发送消息";
 }

@@ -602,10 +602,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       ...(request.currentSeatId ? [request.currentSeatId] : []),
       ...seatUpdateEvents.map((event) => event.seatId),
     ]);
-    const changedSeats =
-      typeof this.repository.getSeatsByIds === "function"
-        ? await this.repository.getSeatsByIds(changedSeatIds)
-        : await Promise.all(changedSeatIds.map((seatId) => this.repository.getSeat(seatId)));
+    const changedSeats = await this.repository.getSeatsByIds(changedSeatIds);
     const changedSeatsById = new Map(
       changedSeats
         .filter((seat): seat is WorkbenchSeatDto => Boolean(seat))

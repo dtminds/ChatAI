@@ -651,6 +651,20 @@ describe("MysqlWorkbenchService", () => {
 
   it("polls new-message conversation changes for the current seat", async () => {
     const javaClient = createJavaClient();
+    const seat = {
+      avatar: "",
+      description: "私域客户管理",
+      lastMessageTime: 1_778_840_001_000,
+      loginStatus: "online",
+      name: "德瑞可",
+      operatorName: "小可",
+      phone: "13296712905",
+      seatId: "12",
+      unreadCount: 7,
+    };
+    const getSeatsByIds = vi.fn(async (seatIds: string[]) =>
+      seatIds.includes("12") ? [seat] : [],
+    );
     const listMessages = vi.fn().mockResolvedValue({
       filteredCount: 0,
       hasMore: false,
@@ -675,17 +689,6 @@ describe("MysqlWorkbenchService", () => {
       ],
       nextVersion: 1_778_840_001_000,
     });
-    const getSeat = vi.fn().mockResolvedValue({
-      avatar: "",
-      description: "私域客户管理",
-      lastMessageTime: 1_778_840_001_000,
-      loginStatus: "online",
-      name: "德瑞可",
-      operatorName: "小可",
-      phone: "13296712905",
-      seatId: "12",
-      unreadCount: 7,
-    });
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -696,7 +699,7 @@ describe("MysqlWorkbenchService", () => {
           seatHostSubUserId: "101",
           uid: 9001,
         }),
-        getSeat,
+        getSeatsByIds,
         listMessages,
         listChangedConversations,
       } as unknown as WorkbenchRepository,
@@ -735,7 +738,7 @@ describe("MysqlWorkbenchService", () => {
       beforeSeq: undefined,
       limit: 50,
     });
-    expect(getSeat).toHaveBeenCalledWith("12");
+    expect(getSeatsByIds).toHaveBeenCalledWith(["12"]);
   });
 
   it("polls user-seat update events and refreshes changed seats", async () => {
@@ -820,7 +823,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         getSeatEventScope: vi.fn().mockResolvedValue({
           platform: 5,
           seatIds: ["12"],
@@ -945,7 +948,7 @@ describe("MysqlWorkbenchService", () => {
           seatHostSubUserId: "101",
           uid: 9001,
         }),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listMessages,
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
@@ -1001,7 +1004,7 @@ describe("MysqlWorkbenchService", () => {
           seatHostSubUserId: "101",
           uid: 9001,
         }),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -1036,7 +1039,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -1065,7 +1068,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -1105,7 +1108,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations,
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -1128,7 +1131,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -1154,7 +1157,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getSeat: vi.fn().mockResolvedValue(undefined),
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [

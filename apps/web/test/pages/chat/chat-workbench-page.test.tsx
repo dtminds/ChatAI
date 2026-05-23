@@ -110,6 +110,11 @@ describe("ChatWorkbenchPage", () => {
     const beforeRetryId =
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1)?.id;
     const viewport = screen.getByTestId("message-viewport");
+    const scrollTo = vi.fn();
+    Object.defineProperty(viewport, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    });
     viewport.scrollTop = -160;
 
     await user.click(screen.getByRole("button", { name: "重试发送" }));
@@ -137,7 +142,11 @@ describe("ChatWorkbenchPage", () => {
       });
       expect(latestMessage?.id).not.toBe(beforeRetryId);
     });
-    expect(viewport.scrollTop).toBe(0);
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: 0,
+      behavior: "smooth",
+    });
+    expect(viewport.scrollTop).toBe(-160);
   });
 
   it("warns when retrying an unsupported failed message type", async () => {

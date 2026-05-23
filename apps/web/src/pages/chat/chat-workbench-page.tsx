@@ -430,7 +430,6 @@ function ChatWorkbenchContent({
         const messageViewport = messageViewportRef.current;
 
         if (messageViewport) {
-          messageViewport.scrollTop = 0;
           messageViewport.scrollTo?.({
             top: 0,
             behavior: "smooth",

@@ -1,12 +1,21 @@
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { StrictMode } from "react";
 import MockAdapter from "axios-mock-adapter";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { requestInstance } from "@/lib/request";
 import { routerConfig } from "@/router";
+import { useAuthStore } from "@/store/auth-store";
 
 const mock = new MockAdapter(requestInstance);
+const operatorSubUser = {
+  accountType: "sub" as const,
+  displayName: "客服一号",
+  permissions: ["chat.access", "chat.send", "chat.takeover"] as const,
+  role: "operator" as const,
+  subUserId: "101",
+};
 
 vi.mock("altcha/lib", () => ({
   scrypt: {
@@ -21,6 +30,7 @@ vi.mock("altcha/lib", () => ({
 describe("LoginPage", () => {
   afterEach(() => {
     mock.reset();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
     setSecureContext(true);
     window.localStorage.clear();
   });
@@ -159,10 +169,7 @@ describe("LoginPage", () => {
       {
         data: {
           expiresIn: 1200,
-          subUser: {
-            displayName: "客服一号",
-            subUserId: "101",
-          },
+          subUser: operatorSubUser,
         },
         success: true,
       },
@@ -184,6 +191,45 @@ describe("LoginPage", () => {
       altcha: expect.any(String),
       password: "correct-password",
     });
+  });
+
+  it("stays on chat after login even before the next session check succeeds", async () => {
+    const user = userEvent.setup();
+    setSecureContext(false);
+    mock.onGet("/auth/altcha/challenge").reply(200, {
+      parameters: {
+        algorithm: "SCRYPT",
+        challenge: "challenge-001",
+      },
+      signature: "signature-001",
+    });
+    mock.onPost("/auth/login").reply(200, {
+      data: {
+        expiresIn: 1200,
+        subUser: operatorSubUser,
+      },
+      success: true,
+    });
+    mock.onGet("/auth/session").reply(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+
+    const router = renderLoginRoute();
+
+    await user.type(await screen.findByLabelText("用户名"), "agent001");
+    await user.type(screen.getByLabelText("密码"), "correct-password");
+    await user.click(screen.getByRole("button", { name: "验证" }));
+    await screen.findByText("人机验证已通过");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(0);
   });
 
   it("shows a blocking error dialog when credentials are rejected", async () => {
@@ -254,10 +300,7 @@ describe("LoginPage", () => {
           {
             data: {
               expiresIn: 1200,
-              subUser: {
-                displayName: "客服一号",
-                subUserId: "101",
-              },
+              subUser: operatorSubUser,
             },
             success: true,
           },
@@ -314,7 +357,11 @@ function renderLoginRoute() {
     initialEntries: ["/login"],
   });
 
-  render(<RouterProvider router={router} />);
+  render(
+    <StrictMode>
+      <RouterProvider router={router} />
+    </StrictMode>,
+  );
 
   return router;
 }

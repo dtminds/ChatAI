@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { AltchaField } from "./altcha-field";
 import { login } from "./auth-service";
 import { notifyAuthSessionChanged } from "./auth-tokens";
+import { useAuthStore } from "@/store/auth-store";
 
 export function LoginPage() {
   return (
@@ -43,12 +44,15 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
   const accountId = useId();
   const passwordId = useId();
   const navigate = useNavigate();
+  const setSession = useAuthStore((state) => state.setSession);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [altchaRefreshKey, setAltchaRefreshKey] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
       isMountedRef.current = false;
     };
@@ -71,13 +75,14 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
     let shouldResetSubmitting = true;
 
     try {
-      await login({ account, altcha, password });
+      const response = await login({ account, altcha, password });
 
       if (!isMountedRef.current) {
         return;
       }
 
       shouldResetSubmitting = false;
+      setSession(response.data.subUser);
       notifyAuthSessionChanged();
       navigate("/chat", { replace: true });
     } catch (error) {

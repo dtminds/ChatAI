@@ -125,6 +125,7 @@ export async function refreshAccessToken(
     expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
     refreshToken,
     refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
+    subUser: mapAuthSubUser(subUser),
     tokenType: "Bearer",
   };
 }

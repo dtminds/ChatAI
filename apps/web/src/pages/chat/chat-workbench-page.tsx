@@ -34,6 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
+import { useAuthStore } from "@/store/auth-store";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
@@ -173,6 +174,7 @@ function ChatWorkbenchContent({
     readReceiptError,
     pinConversation,
     retryFailedMessage,
+    setConversationActionPermission,
     closeHistoryPanel,
     loadHistoryMessages,
     openHistoryPanel,
@@ -190,6 +192,12 @@ function ChatWorkbenchContent({
     unpinConversation,
     updateMessageDownloadContent,
   } = useWorkbenchStore();
+  const canTakeOverAccount = useAuthStore((state) =>
+    state.hasPermission("chat.takeover"),
+  );
+  const canUseChatSend = useAuthStore((state) =>
+    state.hasPermission("chat.send"),
+  );
 
   const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
@@ -311,6 +319,7 @@ function ChatWorkbenchContent({
     activeAccount.takenOverEmployeeId === me?.id;
   const isActiveConversationBizInactive = activeConversation?.bizStatus === 0;
   const canSendMessage =
+    canUseChatSend &&
     !!activeConversation &&
     !isActiveAccountOffline &&
     isActiveAccountTakenOver &&
@@ -321,7 +330,7 @@ function ChatWorkbenchContent({
       ? "1"
       : "0";
   const isConversationActionDisabled =
-    isActiveAccountOffline || !isActiveAccountTakenOver;
+    !canUseChatSend || isActiveAccountOffline || !isActiveAccountTakenOver;
   const composerPlaceholder = canSendMessage
     ? "请输入消息……"
     : bootstrapStatus === "loading" && !activeConversation
@@ -334,6 +343,8 @@ function ChatWorkbenchContent({
             ? "当前会话已失效，暂时无法发送消息"
           : !activeConversation
             ? "当前列表暂无可发送会话"
+            : !canUseChatSend
+              ? "当前账号无发送权限，暂时无法发送消息"
             : "当前会话暂不可发送消息";
 
   const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
@@ -384,6 +395,10 @@ function ChatWorkbenchContent({
   );
 
   useEffect(() => {
+    setConversationActionPermission(canUseChatSend);
+  }, [canUseChatSend, setConversationActionPermission]);
+
+  useEffect(() => {
     if (!readReceiptError) {
       return;
     }
@@ -394,6 +409,11 @@ function ChatWorkbenchContent({
 
   const handleTakeOverAccount = useCallback(
     async (accountId: string) => {
+      if (!canTakeOverAccount) {
+        toast.warning("当前账号无接管权限");
+        return;
+      }
+
       const result = await takeOverAccount(accountId);
 
       if (!isMountedRef.current || result.ok) {
@@ -402,7 +422,18 @@ function ChatWorkbenchContent({
 
       toast.warning(result.errorMessage);
     },
-    [takeOverAccount],
+    [canTakeOverAccount, takeOverAccount],
+  );
+
+  const handleRetryFailedMessage = useCallback(
+    async (messageId: string) => {
+      if (!canSendMessage) {
+        return;
+      }
+
+      await retryFailedMessage(messageId);
+    },
+    [canSendMessage, retryFailedMessage],
   );
 
   useEffect(() => {
@@ -964,6 +995,7 @@ function ChatWorkbenchContent({
         <AccountRail
           accounts={accounts}
           activeAccountId={activeAccountId}
+          canTakeOverAccount={canTakeOverAccount}
           currentEmployee={me}
           currentEmployeeId={me?.id}
           isCollapsed={isAccountRailCollapsed}
@@ -1094,7 +1126,7 @@ function ChatWorkbenchContent({
                 onOpenQuotedMessage={handleOpenQuotedMessage}
                 onQuoteMessage={handleQuoteMessage}
                 onMessageViewportScroll={handleMessageViewportScroll}
-                onRetryMessage={retryFailedMessage}
+                onRetryMessage={handleRetryFailedMessage}
                 onSendDraft={handleSendDraft}
                 onDismissScopeTransitionError={() => {
                   setFileUploadTransitionError(undefined);

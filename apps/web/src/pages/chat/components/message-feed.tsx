@@ -147,7 +147,7 @@ export function MessageRow({
   const isAgent = message.role === "agent";
   const isGroupConversation = Boolean(message.isGroupConversation);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
-  const inlineDeliveryState = getInlineDeliveryState(message, Boolean(onRetryMessage));
+  const inlineDeliveryState = getInlineDeliveryState(message);
   const messageActions = (
     <MessageActionAvatar
       message={message}
@@ -180,6 +180,7 @@ export function MessageRow({
           >
             {isAgent && message.content.type !== "quote" ? (
               <MessageInlineStatusSlot
+                canRetryMessage={canUseMessageActions}
                 message={message}
                 onRetryMessage={onRetryMessage}
                 state={inlineDeliveryState}
@@ -199,6 +200,7 @@ export function MessageRow({
               ) : null}
               {message.content.type === "quote" ? (
                 <QuoteMessageContentWithDelivery
+                  canRetryMessage={canUseMessageActions}
                   content={message.content}
                   inlineDeliveryState={inlineDeliveryState}
                   isAgent={isAgent}
@@ -234,6 +236,7 @@ export function MessageRow({
 }
 
 function QuoteMessageContentWithDelivery({
+  canRetryMessage,
   content,
   inlineDeliveryState,
   isAgent,
@@ -241,6 +244,7 @@ function QuoteMessageContentWithDelivery({
   onOpenQuotedMessage,
   onRetryMessage,
 }: {
+  canRetryMessage: boolean;
   content: Extract<ChatMessage["content"], { type: "quote" }>;
   inlineDeliveryState: InlineDeliveryState | null;
   isAgent: boolean;
@@ -258,6 +262,7 @@ function QuoteMessageContentWithDelivery({
       >
         {isAgent ? (
           <MessageInlineStatusSlot
+            canRetryMessage={canRetryMessage}
             message={message}
             onRetryMessage={onRetryMessage}
             state={inlineDeliveryState}
@@ -372,10 +377,12 @@ function MessageActionAvatar({
 }
 
 function MessageInlineStatusSlot({
+  canRetryMessage,
   message,
   onRetryMessage,
   state,
 }: {
+  canRetryMessage: boolean;
   message: ChatMessage;
   onRetryMessage?: (messageId: string) => void;
   state: InlineDeliveryState | null;
@@ -384,7 +391,9 @@ function MessageInlineStatusSlot({
     return null;
   }
 
-  if (state === "failed" && onRetryMessage) {
+  if (state === "failed") {
+    const canRetry = canRetryMessage && Boolean(onRetryMessage);
+
     return (
       <div
         className="mb-1 flex h-4 shrink-0 items-center"
@@ -392,8 +401,15 @@ function MessageInlineStatusSlot({
       >
         <button
           aria-label="重试发送"
-          className="inline-flex size-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
-          onClick={() => onRetryMessage(message.id)}
+          className="inline-flex size-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-destructive"
+          disabled={!canRetry}
+          onClick={() => {
+            if (!canRetry) {
+              return;
+            }
+
+            onRetryMessage?.(message.id);
+          }}
           title="重试发送"
           type="button"
         >
@@ -433,11 +449,8 @@ function MessageRevokedState() {
 
 type InlineDeliveryState = "accepted" | "failed";
 
-function getInlineDeliveryState(
-  message: ChatMessage,
-  canRetryMessage: boolean,
-): InlineDeliveryState | null {
-  if (message.status === "failed" && canRetryMessage) {
+function getInlineDeliveryState(message: ChatMessage): InlineDeliveryState | null {
+  if (message.status === "failed") {
     return "failed";
   }
 
@@ -452,18 +465,17 @@ function MessageDeliveryState({ message }: { message: ChatMessage }) {
     return null;
   }
 
-  const label =
-    message.status === "failed"
-      ? message.failReason ?? "发送失败"
-      : message.status === "pending"
-        ? "等待提交..."
-        : "发送中...";
+  if (message.status === "failed") {
+    return null;
+  }
+
+  const label = message.status === "pending" ? "等待提交..." : "发送中...";
 
   return (
     <p
       className={cn(
         "mt-1 px-1 text-[11px]",
-        message.status === "failed" ? "text-destructive" : "text-muted-foreground",
+        "text-muted-foreground",
       )}
     >
       {label}

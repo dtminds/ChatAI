@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   installChatWorkbenchTestEnvironment,
@@ -158,6 +159,149 @@ describe("ChatWorkbenchPage session flows", () => {
       );
       expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
     });
+  });
+
+  it("keeps the composer disabled for read-only users after taking over the active account", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "sub-user-001",
+    });
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", {
+      name: "当前账号无发送权限，暂时无法发送消息",
+    });
+    await user.click(screen.getByRole("textbox", {
+      name: "当前账号无发送权限，暂时无法发送消息",
+    }));
+    await user.paste("只读用户不能发送");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    expect(
+      screen.getByRole("textbox", {
+        name: "当前账号无发送权限，暂时无法发送消息",
+      }),
+    ).toHaveAttribute("aria-readonly", "true");
+    expect(screen.getByRole("button", { name: "微信表情" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("prioritizes not-taken-over copy over read-only role copy", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "sub-user-001",
+    });
+    setWorkbenchService(baseService);
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", {
+      name: "当前账号无发送权限，暂时无法发送消息",
+    });
+    await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
+
+    await screen.findByRole("textbox", {
+      name: "当前账号未接管，暂时无法发送消息",
+    });
+  });
+
+  it("does not auto mark active conversations read for read-only users", async () => {
+    const baseService = createMockWorkbenchService();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "sub-user-001",
+    });
+    setWorkbenchService({ ...baseService, markConversationRead });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", {
+      name: "当前账号无发送权限，暂时无法发送消息",
+    });
+
+    await waitFor(() => {
+      expect(markConversationRead).not.toHaveBeenCalled();
+    });
+  });
+
+  it("disables failed message retry controls for read-only users", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "sub-user-001",
+    });
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", {
+      name: "当前账号无发送权限，暂时无法发送消息",
+    });
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "这条失败消息不能被只读用户重试",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "readonly-failed-message",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await screen.findByText("这条失败消息不能被只读用户重试");
+
+    expect(screen.getByRole("button", { name: "重试发送" })).toBeDisabled();
+    expect(screen.queryByText("模拟发送失败")).not.toBeInTheDocument();
+    expect(screen.queryByText("发送失败")).not.toBeInTheDocument();
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("keeps the composer available while refreshing existing workbench data", async () => {

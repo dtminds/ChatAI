@@ -45,6 +45,7 @@ export const AuthRefreshRequestSchema = Type.Object({});
 
 export const AuthRefreshResponseSchema = Type.Object({
   expiresIn: Type.Number(),
+  subUser: AuthSubUserSchema,
 });
 
 export const AuthSessionResponseSchema = Type.Object({

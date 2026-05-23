@@ -5,6 +5,7 @@ import axios, {
   type AxiosResponse,
 } from "axios";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
+import { useAuthStore } from "@/store/auth-store";
 import type { AuthRefreshResponse } from "@chatai/contracts";
 
 export type RequestError = {
@@ -114,6 +115,10 @@ async function refreshAuth() {
     url: "/auth/refresh",
   })
     .then((refresh) => refresh.data)
+    .then((refresh) => {
+      useAuthStore.getState().setSession(refresh.subUser);
+      return refresh;
+    })
     .finally(() => {
       refreshRequest = null;
     });

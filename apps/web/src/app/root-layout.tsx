@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Toaster } from "@/components/ui/sonner";
@@ -8,29 +8,22 @@ import {
 } from "@/lib/appearance-theme";
 import { getAuthSession } from "@/pages/auth/auth-service";
 import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
+import { useAuthStore } from "@/store/auth-store";
 
 const PUBLIC_PATHS = new Set(["/login"]);
-type AuthStatus = "checking" | "authenticated" | "anonymous";
-type AuthState = {
-  checkedPath: string | null;
-  status: AuthStatus;
-};
 
 export function RootLayout() {
   const location = useLocation();
-  const [authState, setAuthState] = useState<AuthState>({
-    checkedPath: null,
-    status: PUBLIC_PATHS.has(location.pathname) ? "anonymous" : "checking",
-  });
-  const authStatusRef = useRef(authState.status);
+  const clearSession = useAuthStore((state) => state.clearSession);
+  const checkedPath = useAuthStore((state) => state.checkedPath);
+  const setChecking = useAuthStore((state) => state.setChecking);
+  const setSession = useAuthStore((state) => state.setSession);
+  const status = useAuthStore((state) => state.status);
+  const authStatusRef = useRef(status);
 
-  function updateAuthState(nextStatus: AuthStatus, checkedPath: string | null = null) {
-    authStatusRef.current = nextStatus;
-    setAuthState({
-      checkedPath,
-      status: nextStatus,
-    });
-  }
+  useEffect(() => {
+    authStatusRef.current = status;
+  }, [status]);
 
   useEffect(() => {
     applyAppearanceTheme(getInitialAppearanceTheme());
@@ -40,7 +33,7 @@ export function RootLayout() {
     let isActive = true;
 
     if (PUBLIC_PATHS.has(location.pathname)) {
-      updateAuthState("anonymous");
+      clearSession();
       return undefined;
     }
 
@@ -49,22 +42,24 @@ export function RootLayout() {
         return;
       }
 
-      updateAuthState("checking");
+      setChecking();
 
       try {
-        await getAuthSession();
+        const response = await getAuthSession();
 
         if (isActive) {
-          updateAuthState("authenticated");
+          setSession(response.data.subUser);
         }
       } catch {
         if (isActive) {
-          updateAuthState("anonymous", location.pathname);
+          clearSession(location.pathname);
         }
       }
     };
 
-    void syncAuthSessionState();
+    if (isActive) {
+      void syncAuthSessionState();
+    }
     const unsubscribe = subscribeAuthSessionChanged(() => {
       void syncAuthSessionState({ force: true });
     });
@@ -73,17 +68,17 @@ export function RootLayout() {
       isActive = false;
       unsubscribe();
     };
-  }, [location.pathname]);
+  }, [clearSession, setChecking, setSession, location.pathname]);
 
   const isPublicPath = PUBLIC_PATHS.has(location.pathname);
   const shouldVerifyPrivatePath =
     !isPublicPath &&
-    authState.status !== "authenticated" &&
-    authState.checkedPath !== location.pathname;
+    status !== "authenticated" &&
+    checkedPath !== location.pathname;
 
   if (
     !isPublicPath &&
-    (authState.status === "checking" || shouldVerifyPrivatePath)
+    (status === "checking" || shouldVerifyPrivatePath)
   ) {
     return (
       <div className="min-h-svh bg-background text-foreground">
@@ -107,7 +102,7 @@ export function RootLayout() {
     );
   }
 
-  if (!isPublicPath && authState.status === "anonymous") {
+  if (!isPublicPath && status === "anonymous") {
     return <Navigate replace state={{ from: location }} to="/login" />;
   }
 

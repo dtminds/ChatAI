@@ -216,6 +216,9 @@ function ChatWorkbenchContent({
     [],
   );
   const [isSendingDraft, setIsSendingDraft] = useState(false);
+  const [retryingMessageIds, setRetryingMessageIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [quotedMessage, setQuotedMessage] =
     useState<QuotedMessagePreviewContent | null>(null);
   const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
@@ -236,6 +239,7 @@ function ChatWorkbenchContent({
     useRef<MentionRetryDialogState | null>(null);
   const isSendingDraftRef = useRef(false);
   const isMountedRef = useRef(true);
+  const activeConversationIdRef = useRef<string | undefined>(activeConversationId);
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
@@ -374,6 +378,10 @@ function ChatWorkbenchContent({
   );
 
   useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
     setChatSendPermission(canUseChatSend);
   }, [canUseChatSend, setChatSendPermission]);
 
@@ -410,7 +418,41 @@ function ChatWorkbenchContent({
         return;
       }
 
-      await retryFailedMessage(messageId);
+      const retryConversationId = activeConversationIdRef.current;
+      setRetryingMessageIds((current) => new Set(current).add(messageId));
+
+      try {
+        const result = await retryFailedMessage(messageId);
+
+        if (
+          !isMountedRef.current ||
+          activeConversationIdRef.current !== retryConversationId
+        ) {
+          return;
+        }
+
+        if (!result.ok) {
+          toast.warning(result.errorMessage || "重试失败，请稍后重试");
+          return;
+        }
+
+        const messageViewport = messageViewportRef.current;
+
+        if (messageViewport) {
+          messageViewport.scrollTo?.({
+            top: 0,
+            behavior: "smooth",
+          });
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setRetryingMessageIds((current) => {
+            const next = new Set(current);
+            next.delete(messageId);
+            return next;
+          });
+        }
+      }
     },
     [canSendMessage, retryFailedMessage],
   );
@@ -1106,6 +1148,7 @@ function ChatWorkbenchContent({
                 onQuoteMessage={handleQuoteMessage}
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={handleRetryFailedMessage}
+                retryingMessageIds={retryingMessageIds}
                 onSendDraft={handleSendDraft}
                 onDismissScopeTransitionError={() => {
                   setFileUploadTransitionError(undefined);

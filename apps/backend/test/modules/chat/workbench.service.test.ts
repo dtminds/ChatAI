@@ -1282,6 +1282,59 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("passes failMsgId to Java when retrying a failed message", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-retry-001",
+      messageId: "opt-retry-001",
+      optNo: "opt-retry-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-retry-001",
+      conversationId: "88",
+      failMsgId: "538",
+      seatId: "12",
+      segment: {
+        text: "重试消息",
+        type: "text",
+      },
+    });
+
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-retry-001",
+      failMsgId: 538,
+      msgData: {
+        msgtype: "text",
+        text: "重试消息",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("maps a quoted text send to the Java local quote payload", async () => {
     const javaClient = createJavaClient();
     const getQuoteContentBase64 = vi.fn();

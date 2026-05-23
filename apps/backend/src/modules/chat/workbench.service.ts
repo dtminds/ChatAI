@@ -619,8 +619,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const segment = getSingleSendSegment(payload);
+    const failMsgId = getRetryFailMsgId(payload);
     const response = await this.javaClient.sendMessage({
       clientMessageId: payload.clientMessageId,
+      ...(failMsgId != null ? { failMsgId } : {}),
       msgData: buildJavaSendMessageData(payload, segment),
       platform: conversation.platform,
       sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
@@ -853,4 +855,18 @@ function buildJavaSendMessageData(
   }
 
   return message;
+}
+
+function getRetryFailMsgId(payload: WorkbenchSendMessagePayload) {
+  if (!payload.failMsgId) {
+    return undefined;
+  }
+
+  const failMsgId = parseMySqlId(payload.failMsgId);
+
+  if (failMsgId == null) {
+    throw new BadRequestError("INVALID_MESSAGE_ID", "失败消息 ID 无效");
+  }
+
+  return failMsgId;
 }

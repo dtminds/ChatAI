@@ -99,6 +99,7 @@ const SendMessageBodySchema = Type.Object({
   content: Type.Optional(Type.String()),
   contentType: Type.Optional(Type.Literal("text")),
   conversationId: Type.String(),
+  failMsgId: Type.Optional(Type.String()),
   mention: Type.Optional(
     Type.Object({
       all: Type.Optional(Type.Boolean()),

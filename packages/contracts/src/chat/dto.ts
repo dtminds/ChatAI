@@ -300,6 +300,7 @@ export type WorkbenchSendMessagePayload = {
   seatId: string;
   conversationId: string;
   clientMessageId: string;
+  failMsgId?: string;
   contentType?: "text";
   content?: string;
   mention?: {

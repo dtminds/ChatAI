@@ -73,6 +73,7 @@ export type JavaSendMessageData =
 
 export type JavaSendMessageInput = {
   clientMessageId: string;
+  failMsgId?: number;
   msgData: JavaSendMessageData;
   platform: number;
   sendType: (typeof JAVA_SEND_TYPE)[keyof typeof JAVA_SEND_TYPE];
@@ -259,6 +260,7 @@ async function postConversationOperate(
 
 function buildJavaSendMessageBody(input: JavaSendMessageInput) {
   return {
+    ...(input.failMsgId != null ? { failMsgId: input.failMsgId } : {}),
     msgData: input.msgData,
     platform: input.platform,
     sendType: input.sendType,

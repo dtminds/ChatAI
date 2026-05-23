@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -67,6 +67,22 @@ describe("ChatWorkbenchPage", () => {
 
   it("shows a retry icon before failed messages and retries on click", async () => {
     const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const retrySendGate = createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();
+    let sendCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage(payload) {
+        sendCount += 1;
+
+        if (sendCount === 2) {
+          return retrySendGate.promise;
+        }
+
+        return baseService.sendMessage(payload);
+      },
+    });
 
     renderChatWorkbenchPage();
 
@@ -93,8 +109,29 @@ describe("ChatWorkbenchPage", () => {
 
     const beforeRetryId =
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1)?.id;
+    const viewport = screen.getByTestId("message-viewport");
+    const scrollTo = vi.fn();
+    Object.defineProperty(viewport, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    });
+    viewport.scrollTop = -160;
 
     await user.click(screen.getByRole("button", { name: "重试发送" }));
+
+    const retryingButton = await screen.findByRole("button", {
+      name: "正在重试发送",
+    });
+
+    expect(retryingButton).toBeDisabled();
+    expect(retryingButton).toHaveAttribute("aria-busy", "true");
+
+    retrySendGate.resolve({
+      clientMessageId: "retry-local-001",
+      messageId: "retry-opt-001",
+      optNo: "retry-opt-001",
+      status: "accepted",
+    });
 
     await waitFor(() => {
       const latestMessage =
@@ -105,6 +142,231 @@ describe("ChatWorkbenchPage", () => {
       });
       expect(latestMessage?.id).not.toBe(beforeRetryId);
     });
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: 0,
+      behavior: "smooth",
+    });
+    expect(viewport.scrollTop).toBe(-160);
+  });
+
+  it("warns when retrying an unsupported failed message type", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              audioUrl: "https://cdn.example.com/voice.amr",
+              durationLabel: "0:05",
+              type: "voice",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "unsupported-failed-message",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: "重试发送" }));
+
+    expect(workbenchToastWarningMock).toHaveBeenCalledWith("暂不支持重发该消息");
+  });
+
+  it("shows a fallback warning when retry fails without an error message", async () => {
+    const user = userEvent.setup();
+    const retryFailedMessage = vi.fn(async () => ({
+      errorCode: "UNSUPPORTED_RETRY_MESSAGE",
+      reason: "unavailable" as const,
+      ok: false as const,
+    }));
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    useWorkbenchStore.setState((state) => ({
+      ...state,
+      retryFailedMessage,
+    }));
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "重试失败但没有错误消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "failed-message-without-error-message",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: "重试发送" }));
+
+    expect(retryFailedMessage).toHaveBeenCalledWith("failed-message-without-error-message");
+    expect(workbenchToastWarningMock).toHaveBeenCalledWith("重试失败，请稍后重试");
+  });
+
+  it("does not scroll the current conversation when retry succeeds after switching away", async () => {
+    const user = userEvent.setup();
+    const retryGate = createDeferred<{
+      ok: true;
+    }>();
+    const retryFailedMessage = vi.fn(() => retryGate.promise);
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    useWorkbenchStore.setState((state) => ({
+      ...state,
+      retryFailedMessage,
+    }));
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "切走后重试成功",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "failed-message-switch-success",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: "重试发送" }));
+    const viewport = screen.getByTestId("message-viewport");
+    const scrollTo = vi.fn();
+    Object.defineProperty(viewport, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    });
+
+    await act(async () => {
+      await useWorkbenchStore.getState().setActiveConversation("conv-002");
+    });
+    retryGate.resolve({
+      ok: true,
+    });
+
+    await waitFor(() => {
+      expect(retryFailedMessage).toHaveBeenCalledWith("failed-message-switch-success");
+    });
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("does not show retry warnings after switching away from the retried conversation", async () => {
+    const user = userEvent.setup();
+    const retryGate = createDeferred<{
+      errorCode: string;
+      errorMessage: string;
+      reason: "send";
+      ok: false;
+    }>();
+    const retryFailedMessage = vi.fn(() => retryGate.promise);
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    useWorkbenchStore.setState((state) => ({
+      ...state,
+      retryFailedMessage,
+    }));
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "切走后重试失败",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "failed-message-switch-error",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: "重试发送" }));
+
+    await act(async () => {
+      await useWorkbenchStore.getState().setActiveConversation("conv-002");
+    });
+    retryGate.resolve({
+      errorCode: "RETRY_FAILED",
+      errorMessage: "旧会话重试失败",
+      reason: "send",
+      ok: false,
+    });
+
+    await waitFor(() => {
+      expect(retryFailedMessage).toHaveBeenCalledWith("failed-message-switch-error");
+    });
+    expect(workbenchToastWarningMock).not.toHaveBeenCalledWith("旧会话重试失败");
   });
 
   it("disables the composer while the active conversation send request is pending", async () => {

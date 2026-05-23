@@ -67,6 +67,22 @@ describe("ChatWorkbenchPage", () => {
 
   it("shows a retry icon before failed messages and retries on click", async () => {
     const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const retrySendGate = createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();
+    let sendCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage(payload) {
+        sendCount += 1;
+
+        if (sendCount === 2) {
+          return retrySendGate.promise;
+        }
+
+        return baseService.sendMessage(payload);
+      },
+    });
 
     renderChatWorkbenchPage();
 
@@ -93,8 +109,24 @@ describe("ChatWorkbenchPage", () => {
 
     const beforeRetryId =
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1)?.id;
+    const viewport = screen.getByTestId("message-viewport");
+    viewport.scrollTop = -160;
 
     await user.click(screen.getByRole("button", { name: "重试发送" }));
+
+    const retryingButton = await screen.findByRole("button", {
+      name: "正在重试发送",
+    });
+
+    expect(retryingButton).toBeDisabled();
+    expect(retryingButton).toHaveAttribute("aria-busy", "true");
+
+    retrySendGate.resolve({
+      clientMessageId: "retry-local-001",
+      messageId: "retry-opt-001",
+      optNo: "retry-opt-001",
+      status: "accepted",
+    });
 
     await waitFor(() => {
       const latestMessage =
@@ -105,6 +137,7 @@ describe("ChatWorkbenchPage", () => {
       });
       expect(latestMessage?.id).not.toBe(beforeRetryId);
     });
+    expect(viewport.scrollTop).toBe(0);
   });
 
   it("warns when retrying an unsupported failed message type", async () => {

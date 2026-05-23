@@ -2321,7 +2321,7 @@ export function createWorkbenchStore() {
       }
 
       return get().sendAgentMessageSegments([retryInput.segment], {
-        failMsgId: failedMessage.remoteMessageId ?? failedMessage.id,
+        failMsgId: failedMessage.seq != null ? String(failedMessage.seq) : failedMessage.id,
         removeMessageIdOnAccepted: failedMessage.id,
         quote: retryInput.quote,
       });

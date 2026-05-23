@@ -20,6 +20,7 @@ type ChatMessagePanelProps = {
   onQuoteMessage?: (message: ChatMessage) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  retryingMessageIds?: ReadonlySet<string>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
 
@@ -39,6 +40,7 @@ export function ChatMessagePanel({
   onQuoteMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  retryingMessageIds,
   messageViewportRef,
 }: ChatMessagePanelProps) {
   return (
@@ -91,6 +93,7 @@ export function ChatMessagePanel({
                     void onRetryMessage(messageId);
                   });
                 }}
+                retryingMessageIds={retryingMessageIds}
               />
             </div>
           </div>

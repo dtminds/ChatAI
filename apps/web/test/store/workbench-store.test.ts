@@ -1172,12 +1172,26 @@ describe("useWorkbenchStore", () => {
       remoteMessageId: expect.any(String),
       status: "failed",
     });
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": state.messagesByConversationId["conv-001"].map((message) =>
+          message.id === failedMessage!.id
+            ? {
+                ...message,
+                remoteMessageId: "remote-msgid-001",
+                seq: 538,
+              }
+            : message,
+        ),
+      },
+    }));
 
     await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
 
     expect(sendMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        failMsgId: failedMessage!.remoteMessageId,
+        failMsgId: "538",
         segment: {
           text: "这条消息会失败 [fail]",
           type: "text",

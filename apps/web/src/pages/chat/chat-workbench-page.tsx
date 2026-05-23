@@ -216,6 +216,9 @@ function ChatWorkbenchContent({
     [],
   );
   const [isSendingDraft, setIsSendingDraft] = useState(false);
+  const [retryingMessageIds, setRetryingMessageIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [quotedMessage, setQuotedMessage] =
     useState<QuotedMessagePreviewContent | null>(null);
   const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
@@ -410,10 +413,37 @@ function ChatWorkbenchContent({
         return;
       }
 
-      const result = await retryFailedMessage(messageId);
+      setRetryingMessageIds((current) => new Set(current).add(messageId));
 
-      if (!result.ok) {
-        toast.warning(result.errorMessage);
+      try {
+        const result = await retryFailedMessage(messageId);
+
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        if (!result.ok) {
+          toast.warning(result.errorMessage);
+          return;
+        }
+
+        const messageViewport = messageViewportRef.current;
+
+        if (messageViewport) {
+          messageViewport.scrollTop = 0;
+          messageViewport.scrollTo?.({
+            top: 0,
+            behavior: "smooth",
+          });
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setRetryingMessageIds((current) => {
+            const next = new Set(current);
+            next.delete(messageId);
+            return next;
+          });
+        }
       }
     },
     [canSendMessage, retryFailedMessage],
@@ -1110,6 +1140,7 @@ function ChatWorkbenchContent({
                 onQuoteMessage={handleQuoteMessage}
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={handleRetryFailedMessage}
+                retryingMessageIds={retryingMessageIds}
                 onSendDraft={handleSendDraft}
                 onDismissScopeTransitionError={() => {
                   setFileUploadTransitionError(undefined);

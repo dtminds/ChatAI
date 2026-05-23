@@ -149,6 +149,25 @@ describe("text message bubble layout", () => {
     expect(textBubble.parentElement).not.toContainElement(quotePreview);
   });
 
+  it("shows retry loading state for failed messages being resent", () => {
+    render(
+      <MessageRow
+        isRetryingMessage
+        message={{
+          ...createTextMessage("重试中"),
+          status: "failed",
+        }}
+        onRetryMessage={() => undefined}
+      />,
+    );
+
+    const retryButton = screen.getByRole("button", { name: "正在重试发送" });
+
+    expect(retryButton).toBeDisabled();
+    expect(retryButton).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByRole("button", { name: "重试发送" })).not.toBeInTheDocument();
+  });
+
   it("does not show sending state after optimistic messages are reconciled", () => {
     render(
       <MessageRow

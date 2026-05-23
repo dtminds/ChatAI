@@ -295,6 +295,7 @@ export class WorkbenchRepository {
       );
     }
 
+    // message.update 低频，轮询 cursor 只按 create_time 推进，接受同秒事件超出 limit 时的边界取舍。
     const rows = await query
       .orderBy("event.create_time", "asc")
       .orderBy("event.id", "asc")
@@ -356,6 +357,7 @@ export class WorkbenchRepository {
       );
     }
 
+    // user-seat.update 低频，轮询 cursor 只按 create_time 推进，接受同秒事件超出 limit 时的边界取舍。
     const rows = await query
       .orderBy("event.create_time", "asc")
       .orderBy("event.id", "asc")

@@ -1200,6 +1200,101 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("omits failMsgId when retrying a failed message without seq", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+
+    expect(failedMessage).toMatchObject({
+      status: "failed",
+    });
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": state.messagesByConversationId["conv-001"].map((message) =>
+          message.id === failedMessage!.id
+            ? {
+                ...message,
+                remoteMessageId: "remote-msgid-001",
+                seq: undefined,
+              }
+            : message,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
+
+    expect(sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        failMsgId: undefined,
+      }),
+    );
+  });
+
+  it("does not invent fileSize when retrying a failed file message", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSizeLabel: "2 KB",
+              fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+              type: "file",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "failed-file-message",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            seq: 539,
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().retryFailedMessage("failed-file-message");
+
+    expect(sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        segment: expect.not.objectContaining({
+          fileSize: expect.any(Number),
+        }),
+      }),
+    );
+  });
+
   it("keeps the failed message visible until retry send is accepted", async () => {
     const baseService = createMockWorkbenchService();
     const sendGate = createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();

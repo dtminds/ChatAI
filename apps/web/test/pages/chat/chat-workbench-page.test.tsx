@@ -190,6 +190,57 @@ describe("ChatWorkbenchPage", () => {
     expect(workbenchToastWarningMock).toHaveBeenCalledWith("暂不支持重发该消息");
   });
 
+  it("shows a fallback warning when retry fails without an error message", async () => {
+    const user = userEvent.setup();
+    const retryFailedMessage = vi.fn(async () => ({
+      errorCode: "UNSUPPORTED_RETRY_MESSAGE",
+      reason: "unavailable" as const,
+      ok: false as const,
+    }));
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    useWorkbenchStore.setState((state) => ({
+      ...state,
+      retryFailedMessage,
+    }));
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "重试失败但没有错误消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            id: "failed-message-without-error-message",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: "重试发送" }));
+
+    expect(retryFailedMessage).toHaveBeenCalledWith("failed-message-without-error-message");
+    expect(workbenchToastWarningMock).toHaveBeenCalledWith("重试失败，请稍后重试");
+  });
+
   it("disables the composer while the active conversation send request is pending", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

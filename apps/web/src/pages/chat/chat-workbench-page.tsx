@@ -423,7 +423,7 @@ function ChatWorkbenchContent({
         }
 
         if (!result.ok) {
-          toast.warning(result.errorMessage);
+          toast.warning(result.errorMessage || "重试失败，请稍后重试");
           return;
         }
 

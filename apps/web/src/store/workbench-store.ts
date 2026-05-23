@@ -917,7 +917,6 @@ function getRetrySendInputFromMessage(message: ChatMessage): {
       segment: {
         extension: message.content.extension,
         fileName: message.content.fileName,
-        fileSize: 0,
         fileSizeLabel: message.content.fileSizeLabel,
         type: "file",
         url: fileUrl,
@@ -2321,7 +2320,7 @@ export function createWorkbenchStore() {
       }
 
       return get().sendAgentMessageSegments([retryInput.segment], {
-        failMsgId: failedMessage.seq != null ? String(failedMessage.seq) : failedMessage.id,
+        failMsgId: failedMessage.seq != null ? String(failedMessage.seq) : undefined,
         removeMessageIdOnAccepted: failedMessage.id,
         quote: retryInput.quote,
       });

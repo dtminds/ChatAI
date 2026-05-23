@@ -51,6 +51,8 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
   const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
       isMountedRef.current = false;
     };

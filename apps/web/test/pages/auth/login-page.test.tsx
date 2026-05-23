@@ -1,8 +1,9 @@
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { StrictMode } from "react";
 import MockAdapter from "axios-mock-adapter";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { requestInstance } from "@/lib/request";
 import { routerConfig } from "@/router";
 import { useAuthStore } from "@/store/auth-store";
@@ -192,6 +193,45 @@ describe("LoginPage", () => {
     });
   });
 
+  it("stays on chat after login even before the next session check succeeds", async () => {
+    const user = userEvent.setup();
+    setSecureContext(false);
+    mock.onGet("/auth/altcha/challenge").reply(200, {
+      parameters: {
+        algorithm: "SCRYPT",
+        challenge: "challenge-001",
+      },
+      signature: "signature-001",
+    });
+    mock.onPost("/auth/login").reply(200, {
+      data: {
+        expiresIn: 1200,
+        subUser: operatorSubUser,
+      },
+      success: true,
+    });
+    mock.onGet("/auth/session").reply(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+
+    const router = renderLoginRoute();
+
+    await user.type(await screen.findByLabelText("用户名"), "agent001");
+    await user.type(screen.getByLabelText("密码"), "correct-password");
+    await user.click(screen.getByRole("button", { name: "验证" }));
+    await screen.findByText("人机验证已通过");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/chat");
+    });
+    expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(0);
+  });
+
   it("shows a blocking error dialog when credentials are rejected", async () => {
     const user = userEvent.setup();
     setSecureContext(false);
@@ -317,7 +357,11 @@ function renderLoginRoute() {
     initialEntries: ["/login"],
   });
 
-  render(<RouterProvider router={router} />);
+  render(
+    <StrictMode>
+      <RouterProvider router={router} />
+    </StrictMode>,
+  );
 
   return router;
 }

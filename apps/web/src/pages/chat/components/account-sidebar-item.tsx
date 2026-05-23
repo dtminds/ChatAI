@@ -223,7 +223,7 @@ export function AccountSidebarItem({
               </>
             ) : (
               <p className="text-[13px] font-medium leading-5 text-muted-foreground">
-                当前角色无接管权限
+                当前账号无接管权限
               </p>
             )}
             <Button
@@ -373,7 +373,7 @@ export function AccountSidebarItem({
             </>
           ) : (
             <p className="text-[13px] font-medium leading-5 text-muted-foreground">
-              当前角色无接管权限
+              当前账号无接管权限
             </p>
           )}
           <Button

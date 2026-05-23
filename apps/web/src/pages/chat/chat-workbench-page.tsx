@@ -344,7 +344,7 @@ function ChatWorkbenchContent({
           : !activeConversation
             ? "当前列表暂无可发送会话"
             : !canUseChatSend
-              ? "当前角色无发送权限，暂时无法发送消息"
+              ? "当前账号无发送权限，暂时无法发送消息"
             : "当前会话暂不可发送消息";
 
   const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
@@ -410,7 +410,7 @@ function ChatWorkbenchContent({
   const handleTakeOverAccount = useCallback(
     async (accountId: string) => {
       if (!canTakeOverAccount) {
-        toast.warning("当前角色无接管权限");
+        toast.warning("当前账号无接管权限");
         return;
       }
 

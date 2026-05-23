@@ -181,17 +181,17 @@ describe("ChatWorkbenchPage session flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", {
-      name: "当前角色无发送权限，暂时无法发送消息",
+      name: "当前账号无发送权限，暂时无法发送消息",
     });
     await user.click(screen.getByRole("textbox", {
-      name: "当前角色无发送权限，暂时无法发送消息",
+      name: "当前账号无发送权限，暂时无法发送消息",
     }));
     await user.paste("只读用户不能发送");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
     expect(
       screen.getByRole("textbox", {
-        name: "当前角色无发送权限，暂时无法发送消息",
+        name: "当前账号无发送权限，暂时无法发送消息",
       }),
     ).toHaveAttribute("aria-readonly", "true");
     expect(screen.getByRole("button", { name: "微信表情" })).toBeDisabled();
@@ -215,7 +215,7 @@ describe("ChatWorkbenchPage session flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", {
-      name: "当前角色无发送权限，暂时无法发送消息",
+      name: "当前账号无发送权限，暂时无法发送消息",
     });
     await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
 
@@ -240,7 +240,7 @@ describe("ChatWorkbenchPage session flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", {
-      name: "当前角色无发送权限，暂时无法发送消息",
+      name: "当前账号无发送权限，暂时无法发送消息",
     });
 
     await waitFor(() => {
@@ -267,7 +267,7 @@ describe("ChatWorkbenchPage session flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", {
-      name: "当前角色无发送权限，暂时无法发送消息",
+      name: "当前账号无发送权限，暂时无法发送消息",
     });
 
     useWorkbenchStore.setState((state) => ({

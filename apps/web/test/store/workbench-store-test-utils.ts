@@ -4,7 +4,7 @@ import { createWorkbenchStore, useWorkbenchStore } from "@/store/workbench-store
 export function resetWorkbenchStoreTestState() {
   resetWorkbenchService();
   useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
-  useWorkbenchStore.getState().setConversationActionPermission(true);
+  useWorkbenchStore.getState().setChatSendPermission(true);
 }
 
 export function createFreshWorkbenchStoreForTest() {

@@ -175,7 +175,7 @@ type WorkbenchState = {
     },
   ) => Promise<SendMessageResult>;
   sendAgentTextMessage: (text: string) => Promise<SendMessageResult>;
-  setConversationActionPermission: (hasChatSendPermission: boolean) => void;
+  setChatSendPermission: (hasChatSendPermission: boolean) => void;
   setSidebarItems: (items: SettingsSidebarItem[]) => void;
   takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
@@ -223,7 +223,7 @@ function createInitialState(): Omit<
   | "markConversationUnread"
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
-  | "setConversationActionPermission"
+  | "setChatSendPermission"
   | "setSidebarItems"
   | "takeOverAccount"
   | "unpinConversation"
@@ -1310,7 +1310,7 @@ export function createWorkbenchStore() {
 
     return {
       ...createInitialState(),
-      setConversationActionPermission(hasChatSendPermission) {
+      setChatSendPermission(hasChatSendPermission) {
         set({ hasChatSendPermission });
       },
       setSidebarItems(items) {

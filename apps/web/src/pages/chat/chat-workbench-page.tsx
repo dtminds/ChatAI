@@ -175,7 +175,7 @@ function ChatWorkbenchContent({
     readReceiptError,
     pinConversation,
     retryFailedMessage,
-    setConversationActionPermission,
+    setChatSendPermission,
     closeHistoryPanel,
     loadHistoryMessages,
     openHistoryPanel,
@@ -374,8 +374,8 @@ function ChatWorkbenchContent({
   );
 
   useEffect(() => {
-    setConversationActionPermission(canUseChatSend);
-  }, [canUseChatSend, setConversationActionPermission]);
+    setChatSendPermission(canUseChatSend);
+  }, [canUseChatSend, setChatSendPermission]);
 
   useEffect(() => {
     if (!readReceiptError) {

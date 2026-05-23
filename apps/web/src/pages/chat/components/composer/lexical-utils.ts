@@ -31,6 +31,7 @@ import {
 
 const WECHAT_EMOJI_TOKEN_PATTERN = /\[([^[\]]+)\]/g;
 const COMPOSER_TEXT_ANCHOR = "\u200B";
+const COMPOSER_BLOCK_SEPARATOR_LENGTH = 2;
 
 export function $insertComposerText(text: string) {
   const nodes = parseWechatEmojiText(text).map((segment) => {
@@ -392,8 +393,12 @@ function getPlainTextOffsetForPoint(
 
     textOffset += getPlainTextLengthForNode(child);
 
-    if ($isElementNode(child) && !child.isInline() && index !== children.length - 1) {
-      textOffset += 2;
+    if (
+      $isElementNode(child) &&
+      !child.isInline() &&
+      index !== children.length - 1
+    ) {
+      textOffset += COMPOSER_BLOCK_SEPARATOR_LENGTH;
     }
   }
 
@@ -416,8 +421,12 @@ function getPlainTextLengthForElementChildrenBeforePoint(
 
     textLength += getPlainTextLengthForNode(child);
 
-    if ($isElementNode(child) && !child.isInline() && index !== children.length - 1) {
-      textLength += 2;
+    if (
+      $isElementNode(child) &&
+      !child.isInline() &&
+      index !== children.length - 1
+    ) {
+      textLength += COMPOSER_BLOCK_SEPARATOR_LENGTH;
     }
   }
 
@@ -524,7 +533,7 @@ function collectTextContentParts(node: LexicalNode): TextContentPart[] {
 
     if ($isElementNode(child) && !child.isInline() && index !== children.length - 1) {
       parts.push({
-        length: 2,
+        length: COMPOSER_BLOCK_SEPARATOR_LENGTH,
       });
     }
   });

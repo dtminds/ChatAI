@@ -188,9 +188,7 @@ export class SubAccountSettingsService {
 
     if (shouldRevokeSessions) {
       await this.revokeActiveSessions(numericSubAccountId);
-    }
-
-    if (shouldExpireAccessTokens) {
+    } else if (shouldExpireAccessTokens) {
       await this.expireAccessTokens(numericSubAccountId);
     }
 
@@ -381,10 +379,10 @@ export class SubAccountSettingsService {
   private async revokeActiveSessions(subAccountId: number) {
     await this.db
       .updateTable("xy_wap_embed_sub_user_session")
-      .set((expressionBuilder) => ({
+      .set({
         revoked_at: new Date(),
         update_time: new Date(),
-      }))
+      })
       .where("sub_user_id", "=", subAccountId)
       .where("revoked_at", "is", null)
       .execute();

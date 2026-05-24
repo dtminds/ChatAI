@@ -105,26 +105,26 @@ describe("request", () => {
     );
   });
 
-  it("keeps a normalized request error instance intact on repeated normalization", async () => {
-    mock.onGet("/server/settings/sidebar-items").replyOnce(200, {
-      error: {
-        code: "INVALID_SIDEBAR_URL",
-        message: "请输入有效的页面地址",
-      },
-      success: false,
+  it("preserves the original stack when normalizing thrown errors", async () => {
+    const originalError = new TypeError("请求参数无效");
+    const originalStack = "TypeError: 请求参数无效\n    at request interceptor";
+    originalError.stack = originalStack;
+    const interceptorId = requestInstance.interceptors.request.use(() => {
+      throw originalError;
     });
 
-    const firstError = await request({ method: "GET", url: "/server/settings/sidebar-items" }).catch(
-      (error: unknown) => error,
-    );
-    const secondError = await Promise.resolve(firstError).catch((error: unknown) => error);
+    try {
+      const normalizedError = await request({
+        method: "GET",
+        url: "/server/settings/sidebar-items",
+      }).catch((error: unknown) => error);
 
-    expect(secondError).toBe(firstError);
-    expect(secondError).toSatisfy(
-      (error: unknown) =>
-        error instanceof Error &&
-        (error as { message?: string }).message === "请输入有效的页面地址",
-    );
+      expect(normalizedError).toBeInstanceOf(Error);
+      expect((normalizedError as Error).message).toBe("请求参数无效");
+      expect((normalizedError as Error).stack).toContain(originalStack);
+    } finally {
+      requestInstance.interceptors.request.eject(interceptorId);
+    }
   });
 
   it("refreshes access tokens once and retries the failed request", async () => {

@@ -1922,22 +1922,12 @@ export class WorkbenchRepository {
           .on("rel.third_userid", "=", seatThirdUserId)
           .on("rel.biz_status", "=", 1),
       )
-      .leftJoin("xy_wap_embed_conversation as conv", (join) =>
-        join
-          .onRef("conv.uid", "=", "contact.uid")
-          .onRef("conv.platform", "=", "contact.platform")
-          .onRef("conv.third_external_userid", "=", "contact.third_external_userid")
-          .on("conv.third_userid", "=", seatThirdUserId)
-          .on("conv.chat_type", "=", CHAT_TYPE_SINGLE)
-          .on("conv.biz_status", "=", 1),
-      )
       .select([
         "contact.third_external_userid as thirdExternalUserId",
         "contact.name as name",
         "contact.real_name as realName",
         "contact.avatar as avatar",
         "rel.remark as remark",
-        "conv.id as conversationId",
       ])
       .where("contact.uid", "=", uid)
       .where("contact.platform", "=", platform)
@@ -1958,7 +1948,6 @@ export class WorkbenchRepository {
       realName: row.realName,
       avatar: row.avatar,
       remark: row.remark ?? undefined,
-      conversationId: row.conversationId != null ? String(row.conversationId) : undefined,
     }));
   }
 
@@ -1977,21 +1966,11 @@ export class WorkbenchRepository {
 
     const rows = await this.db
       .selectFrom("xy_wap_embed_group_seat as gs")
-      .leftJoin("xy_wap_embed_conversation as conv", (join) =>
-        join
-          .onRef("conv.uid", "=", "gs.uid")
-          .onRef("conv.platform", "=", "gs.platform")
-          .onRef("conv.third_group_id", "=", "gs.third_group_id")
-          .on("conv.third_userid", "=", seatThirdUserId)
-          .on("conv.chat_type", "=", CHAT_TYPE_GROUP)
-          .on("conv.biz_status", "=", 1),
-      )
       .select([
         "gs.third_group_id as thirdGroupId",
         "gs.name as name",
         "gs.avatar as avatar",
         "gs.remark as remark",
-        "conv.id as conversationId",
       ])
       .where("gs.uid", "=", uid)
       .where("gs.platform", "=", platform)
@@ -2011,7 +1990,6 @@ export class WorkbenchRepository {
       name: row.name ?? undefined,
       avatar: row.avatar,
       remark: row.remark ?? undefined,
-      conversationId: row.conversationId != null ? String(row.conversationId) : undefined,
     }));
   }
 

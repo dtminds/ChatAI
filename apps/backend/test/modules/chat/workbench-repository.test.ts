@@ -2436,8 +2436,23 @@ describe("WorkbenchRepository", () => {
   });
 
   it("escapes backslash, percent, and underscore in contact and group search keywords", async () => {
-    const contactQuery = createQueryBuilder([]);
-    const groupQuery = createQueryBuilder([]);
+    const contactQuery = createQueryBuilder([
+      {
+        avatar: "",
+        name: "测试客户",
+        realName: "测试客户",
+        remark: undefined,
+        thirdExternalUserId: "external-001",
+      },
+    ]);
+    const groupQuery = createQueryBuilder([
+      {
+        avatar: "",
+        name: "测试群",
+        remark: undefined,
+        thirdGroupId: "group-001",
+      },
+    ]);
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
@@ -2454,9 +2469,24 @@ describe("WorkbenchRepository", () => {
       } as never,
     );
 
-    await repository.searchContacts(9001, 5, "seat-user-001", "a\\b%_");
-    await repository.searchGroups(9001, 5, "seat-user-001", "a\\b%_");
+    const contacts = await repository.searchContacts(9001, 5, "seat-user-001", "a\\b%_");
+    const groups = await repository.searchGroups(9001, 5, "seat-user-001", "a\\b%_");
 
+    expect(contacts).toEqual([
+      {
+        avatar: "",
+        name: "测试客户",
+        realName: "测试客户",
+        thirdExternalUserId: "external-001",
+      },
+    ]);
+    expect(groups).toEqual([
+      {
+        avatar: "",
+        name: "测试群",
+        thirdGroupId: "group-001",
+      },
+    ]);
     expect(contactQuery.whereExpressions).toContainEqual({
       type: "or",
       expressions: [
@@ -2472,6 +2502,8 @@ describe("WorkbenchRepository", () => {
         { column: "gs.remark", operator: "like", value: "%a\\\\b\\%\\_%" },
       ],
     });
+    expect(contactQuery.joins).toEqual(["leftJoin"]);
+    expect(groupQuery.joins).toEqual([]);
   });
 
   it("hydrates a conversation only within the requested active seat scope", async () => {

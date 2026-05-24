@@ -1,4 +1,4 @@
-import { Search01Icon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, ArrowRight01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   SettingsManagedAccount,
@@ -23,6 +23,11 @@ import {
 } from "@/components/ui/dialog";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Input } from "@/components/ui/input";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+} from "@/components/ui/pagination";
 import {
   Popover,
   PopoverAnchor,
@@ -51,6 +56,12 @@ type DialogState = {
 };
 
 const emptyData: SettingsManagedAccountsResponse = {
+  pagination: {
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 1,
+  },
   managedAccounts: [],
   subAccounts: [],
 };
@@ -58,11 +69,46 @@ const emptyData: SettingsManagedAccountsResponse = {
 export function AccountsSettingsPage() {
   const { canManageManagedAccounts } = useSettingsPermissions();
   const [data, setData] = useState<SettingsManagedAccountsResponse>(emptyData);
+  const [page, setPage] = useState(1);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [appliedQuery, setAppliedQuery] = useState("");
+  const searchDebounceTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const nextQuery = query.trim();
+
+    if (nextQuery === appliedQuery) {
+      return;
+    }
+
+    if (searchDebounceTimerRef.current) {
+      window.clearTimeout(searchDebounceTimerRef.current);
+    }
+
+    if (!nextQuery) {
+      setPage(1);
+      setAppliedQuery("");
+      searchDebounceTimerRef.current = null;
+      return;
+    }
+
+    searchDebounceTimerRef.current = window.setTimeout(() => {
+      setPage(1);
+      setAppliedQuery(nextQuery);
+      searchDebounceTimerRef.current = null;
+    }, 450);
+
+    return () => {
+      if (searchDebounceTimerRef.current) {
+        window.clearTimeout(searchDebounceTimerRef.current);
+        searchDebounceTimerRef.current = null;
+      }
+    };
+  }, [query]);
 
   useEffect(() => {
     let ignore = false;
@@ -72,10 +118,17 @@ export function AccountsSettingsPage() {
       setErrorMessage("");
 
       try {
-        const response = await listManagedAccounts();
+        const response = await listManagedAccounts({
+          keyword: appliedQuery || undefined,
+          page,
+        });
 
         if (!ignore) {
-          setData(response);
+          setData({
+            pagination: response.pagination ?? emptyData.pagination,
+            managedAccounts: response.managedAccounts ?? [],
+            subAccounts: response.subAccounts ?? [],
+          });
         }
       } catch (error) {
         if (!ignore) {
@@ -93,19 +146,7 @@ export function AccountsSettingsPage() {
     return () => {
       ignore = true;
     };
-  }, []);
-
-  const filteredAccounts = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-
-    if (!normalizedQuery) {
-      return data.managedAccounts;
-    }
-
-    return data.managedAccounts.filter((account) =>
-      account.name.toLowerCase().includes(normalizedQuery),
-    );
-  }, [data.managedAccounts, query]);
+  }, [appliedQuery, page]);
 
   async function handleSubmit(managedAccount: SettingsManagedAccount, subAccountIds: string[]) {
     setPendingAccountId(managedAccount.id);
@@ -150,7 +191,9 @@ export function AccountsSettingsPage() {
           <Input
             aria-label="搜索托管账号"
             className="h-10 rounded-[8px] pl-9"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+            }}
             placeholder="搜索托管账号"
             value={query}
           />
@@ -191,8 +234,8 @@ export function AccountsSettingsPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : filteredAccounts.length > 0 ? (
-                filteredAccounts.map((account) => (
+              ) : data.managedAccounts.length > 0 ? (
+                data.managedAccounts.map((account) => (
                   <ManagedAccountRow
                     account={account}
                     canManage={canManageManagedAccounts}
@@ -212,6 +255,15 @@ export function AccountsSettingsPage() {
           </Table>
         </section>
       )}
+      {!isLoading && data.pagination.totalPages > 1 ? (
+        <div className="mt-4 flex justify-end">
+          <ManagedAccountsPagination
+            onPageChange={setPage}
+            page={data.pagination.page}
+            totalPages={data.pagination.totalPages}
+          />
+        </div>
+      ) : null}
 
       <SubAccountRelationDialog
         isSubmitting={pendingAccountId === dialogState?.managedAccount.id}
@@ -226,6 +278,97 @@ export function AccountsSettingsPage() {
         subAccounts={data.subAccounts}
       />
     </>
+  );
+}
+
+function ManagedAccountsPagination({
+  onPageChange,
+  page,
+  totalPages,
+}: {
+  onPageChange: (page: number) => void;
+  page: number;
+  totalPages: number;
+}) {
+  const pages = useMemo(() => {
+    const visiblePages = new Set<number>([1, totalPages, page]);
+
+    if (page > 1) {
+      visiblePages.add(page - 1);
+    }
+
+    if (page < totalPages) {
+      visiblePages.add(page + 1);
+    }
+
+    return Array.from(visiblePages)
+      .filter((value) => value >= 1 && value <= totalPages)
+      .sort((left, right) => left - right);
+  }, [page, totalPages]);
+
+  return (
+    <Pagination>
+      <PaginationContent className="justify-end">
+        <PaginationItem>
+          <Button
+            aria-label="上一页"
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ArrowLeft01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </PaginationItem>
+        {pages.map((value, index) => {
+          const previousPage = pages[index - 1];
+          const hasGap = index > 0 && previousPage !== value - 1;
+
+          return (
+            <PaginationItem key={value}>
+              {hasGap ? (
+                <span className="flex size-9 items-center justify-center text-muted-foreground">
+                  …
+                </span>
+              ) : null}
+              <Button
+                aria-current={value === page ? "page" : undefined}
+                disabled={value === page}
+                onClick={() => onPageChange(value)}
+                size="icon"
+                type="button"
+                variant={value === page ? "outline" : "ghost"}
+              >
+                {value}
+              </Button>
+            </PaginationItem>
+          );
+        })}
+        <PaginationItem>
+          <Button
+            aria-label="下一页"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ArrowRight01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
   );
 }
 

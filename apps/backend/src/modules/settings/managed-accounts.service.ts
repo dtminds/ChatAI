@@ -1,4 +1,5 @@
 import type {
+  SettingsManagedAccountsQuery,
   SettingsManagedAccount,
   SettingsManagedAccountSubAccount,
   SettingsManagedAccountsResponse,
@@ -49,20 +50,40 @@ const dbSubAccountType = {
   sub: 0,
 } as const;
 
+const defaultManagedAccountsPageSize = 10;
+
 export class ManagedAccountSettingsService {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async list(currentSubUserId: string): Promise<SettingsManagedAccountsResponse> {
+  async list(
+    currentSubUserId: string,
+    query: SettingsManagedAccountsQuery = {},
+  ): Promise<SettingsManagedAccountsResponse> {
     const scope = await this.getTenantScope(currentSubUserId);
+    const pageSize = defaultManagedAccountsPageSize;
+    const page = parsePositiveInteger(query.page) ?? 1;
+    const keyword = query.keyword?.trim().toLowerCase() ?? "";
     const [managedAccounts, subAccounts, relations] = await Promise.all([
       this.listManagedAccountRows(scope),
       this.listAssignableSubAccountRows(scope),
       this.listRelationRows(scope),
     ]);
     const relationsBySeatId = groupRelationsBySeatId(relations);
+    const filteredManagedAccounts = filterManagedAccountRows(managedAccounts, keyword);
+    const total = filteredManagedAccounts.length;
+    const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
+    const currentPage = Math.min(page, totalPages);
+    const startIndex = (currentPage - 1) * pageSize;
+    const pageRows = filteredManagedAccounts.slice(startIndex, startIndex + pageSize);
 
     return {
-      managedAccounts: managedAccounts.map((account) =>
+      pagination: {
+        page: currentPage,
+        pageSize,
+        total,
+        totalPages,
+      },
+      managedAccounts: pageRows.map((account) =>
         mapManagedAccount(account, relationsBySeatId.get(account.id) ?? []),
       ),
       subAccounts: subAccounts.map((subAccount) =>
@@ -320,6 +341,32 @@ function mapSubAccount(
     status: row.status === dbSubAccountStatus.active ? "active" : "disabled",
     type: row.type === dbSubAccountType.main ? dbSubAccountType.main : dbSubAccountType.sub,
   };
+}
+
+function filterManagedAccountRows(rows: ManagedAccountRow[], keyword: string) {
+  if (!keyword) {
+    return rows;
+  }
+
+  return rows.filter((row) =>
+    [row.third_user_name, String(row.id)].some((value) =>
+      value?.toLowerCase().includes(keyword),
+    ),
+  );
+}
+
+function parsePositiveInteger(value: number | string | undefined) {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  }
+
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  return Number.isSafeInteger(parsed) && String(parsed) === value ? parsed : undefined;
 }
 
 function mapRelationSubAccount(

@@ -938,6 +938,12 @@ describe("backend app", () => {
     expect(managedAccounts.statusCode).toBe(200);
     expect(managedAccounts.json()).toMatchObject({
       data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: expect.any(Number),
+          totalPages: expect.any(Number),
+        },
         managedAccounts: expect.any(Array),
       },
       success: true,

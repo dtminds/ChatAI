@@ -2,6 +2,7 @@ import type {
   ApiSuccessEnvelope,
   SettingsManagedAccount,
   SettingsManagedAccountsResponse,
+  SettingsManagedAccountsQuery,
   SettingsManagedAccountSubAccountsUpdateRequest,
   SettingsSidebarItem,
   SettingsSidebarItemCreateRequest,
@@ -31,9 +32,12 @@ export async function listSubAccounts(query: SettingsSubAccountsQuery = {}) {
   return response.data;
 }
 
-export async function listManagedAccounts() {
+export async function listManagedAccounts(query: SettingsManagedAccountsQuery = {}) {
   const response = await http.get<ApiSuccessEnvelope<SettingsManagedAccountsResponse>>(
     "/server/settings/managed-accounts",
+    {
+      params: query,
+    },
   );
 
   return response.data;

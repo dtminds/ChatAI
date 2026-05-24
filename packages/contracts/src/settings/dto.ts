@@ -69,9 +69,23 @@ export const SettingsManagedAccountSchema = Type.Object({
 });
 
 export const SettingsManagedAccountsResponseSchema = Type.Object({
+  pagination: Type.Object({
+    page: Type.Number(),
+    pageSize: Type.Number(),
+    total: Type.Number(),
+    totalPages: Type.Number(),
+  }),
   managedAccounts: Type.Array(SettingsManagedAccountSchema),
   subAccounts: Type.Array(SettingsManagedAccountSubAccountSchema),
 });
+
+export const SettingsManagedAccountsQuerySchema = Type.Object({
+  keyword: Type.Optional(Type.String()),
+  page: Type.Optional(Type.Union([
+    Type.Number({ minimum: 1 }),
+    Type.String({ pattern: "^[1-9]\\d*$" }),
+  ])),
+}, { additionalProperties: false });
 
 export const SettingsManagedAccountSubAccountsUpdateRequestSchema = Type.Object({
   subAccountIds: Type.Array(Type.String()),
@@ -164,6 +178,9 @@ export type SettingsManagedAccountSubAccount = Static<
 export type SettingsManagedAccount = Static<typeof SettingsManagedAccountSchema>;
 export type SettingsManagedAccountsResponse = Static<
   typeof SettingsManagedAccountsResponseSchema
+>;
+export type SettingsManagedAccountsQuery = Static<
+  typeof SettingsManagedAccountsQuerySchema
 >;
 export type SettingsManagedAccountSubAccountsUpdateRequest = Static<
   typeof SettingsManagedAccountSubAccountsUpdateRequestSchema

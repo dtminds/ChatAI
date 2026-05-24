@@ -151,6 +151,12 @@ describe("Chat settings pages", () => {
     });
     mock.onGet("/server/settings/managed-accounts").reply(200, {
       data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 2,
+          totalPages: 1,
+        },
         managedAccounts: [
           {
             avatarUrl: "https://example.com/drc.png",
@@ -407,6 +413,12 @@ describe("Chat settings pages", () => {
     });
     mock.onGet("/server/settings/managed-accounts").reply(200, {
       data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+          totalPages: 1,
+        },
         managedAccounts: [
           {
             id: "seat-1",
@@ -454,6 +466,94 @@ describe("Chat settings pages", () => {
     expect(
       screen.queryByRole("button", { name: "拖动 客户详情 调整排序" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("paginates managed-account list requests with 10 rows per page", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/sub-accounts").reply(200, {
+      data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 0,
+          totalPages: 1,
+        },
+        seats: [],
+        subAccounts: [],
+      },
+      success: true,
+    });
+    mock.onGet("/server/settings/managed-accounts").reply((config) => {
+      const page = Number((config.params as { page?: number } | undefined)?.page ?? 1);
+
+      if (page === 2) {
+        return [
+          200,
+          {
+            data: {
+              pagination: {
+                page: 2,
+                pageSize: 10,
+                total: 11,
+                totalPages: 2,
+              },
+              managedAccounts: [
+                {
+                  avatarUrl: "https://example.com/drc.png",
+                  id: "111",
+                  name: "托管11",
+                  onlineStatus: "offline",
+                  subAccounts: [],
+                },
+              ],
+              subAccounts: [],
+            },
+            success: true,
+          },
+        ];
+      }
+
+      return [
+        200,
+        {
+          data: {
+            pagination: {
+              page: 1,
+              pageSize: 10,
+              total: 11,
+              totalPages: 2,
+            },
+            managedAccounts: Array.from({ length: 10 }, (_, index) => ({
+              avatarUrl: "https://example.com/drc.png",
+              id: String(index + 101),
+              name: `托管${index + 1}`,
+              onlineStatus: "offline",
+              subAccounts: [],
+            })),
+            subAccounts: [],
+          },
+          success: true,
+        },
+      ];
+    });
+
+    renderRoute("/chat/settings");
+
+    expect(await screen.findByText("托管1")).toBeInTheDocument();
+    expect(screen.queryByText("托管11")).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "分页" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(await screen.findByText("托管11")).toBeInTheDocument();
+    expect(
+      mock.history.get.filter((request) => request.url === "/server/settings/managed-accounts"),
+    ).toHaveLength(2);
+    expect(
+      mock.history.get.some((request) => String((request.params as { page?: unknown } | undefined)?.page) === "2"),
+    ).toBe(true);
   });
 
   it("manages sidebar items and previews active item ordering", async () => {

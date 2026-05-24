@@ -1,6 +1,7 @@
 import {
   apiSuccess,
   SettingsManagedAccountSubAccountsUpdateRequestSchema,
+  SettingsManagedAccountsQuerySchema,
   SettingsSidebarItemCreateRequestSchema,
   SettingsSidebarItemsSortUpdateRequestSchema,
   SettingsSidebarItemStatusUpdateRequestSchema,
@@ -10,6 +11,7 @@ import {
   SettingsSubAccountStatusUpdateRequestSchema,
   SettingsSubAccountUpdateRequestSchema,
   type SettingsManagedAccountSubAccountsUpdateRequest,
+  type SettingsManagedAccountsQuery,
   type SettingsSidebarItemCreateRequest,
   type SettingsSidebarItemsSortUpdateRequest,
   type SettingsSidebarItemStatusUpdateRequest,
@@ -43,11 +45,19 @@ type ManagedAccountParams = Static<typeof ManagedAccountParamsSchema>;
 type SidebarItemParams = Static<typeof SidebarItemParamsSchema>;
 
 export async function registerSettingsRoutes(app: FastifyInstance) {
-  app.get("/api/server/settings/managed-accounts", {
+  app.get<{
+    Querystring: SettingsManagedAccountsQuery;
+  }>("/api/server/settings/managed-accounts", {
     preHandler: app.authenticate,
+    schema: {
+      querystring: SettingsManagedAccountsQuerySchema,
+    },
   }, async (request) => {
     return apiSuccess(
-      await createManagedAccountSettingsService(app.db).list(getSubUserId(request)),
+      await createManagedAccountSettingsService(app.db).list(getSubUserId(request), {
+        keyword: request.query.keyword,
+        page: request.query.page,
+      }),
     );
   });
 

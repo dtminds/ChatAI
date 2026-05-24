@@ -6,6 +6,7 @@ import {
 } from "../src/auth/dto";
 import {
   SettingsSidebarItemCreateRequestSchema,
+  SettingsManagedAccountsResponseSchema,
   SettingsSidebarItemsResponseSchema,
   SettingsSidebarItemsSortUpdateRequestSchema,
   SettingsSubAccountCreateRequestSchema,
@@ -51,6 +52,21 @@ describe("settings sub-account DTOs", () => {
             type: 0,
           },
         ],
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts managed-account list responses with pagination", () => {
+    expect(
+      Value.Check(SettingsManagedAccountsResponseSchema, {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+          totalPages: 1,
+        },
+        managedAccounts: [],
+        subAccounts: [],
       }),
     ).toBe(true);
   });

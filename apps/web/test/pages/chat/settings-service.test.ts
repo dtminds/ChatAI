@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createSubAccount,
   deleteSubAccount,
+  listManagedAccounts,
   listSubAccounts,
   updateSubAccount,
   updateSubAccountStatus,
@@ -26,6 +27,19 @@ describe("settings service", () => {
           totalPages: 0,
         },
         seats: [],
+        subAccounts: [],
+      },
+      success: true,
+    });
+    mock.onGet("/server/settings/managed-accounts").reply(200, {
+      data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 0,
+          totalPages: 1,
+        },
+        managedAccounts: [],
         subAccounts: [],
       },
       success: true,
@@ -99,6 +113,29 @@ describe("settings service", () => {
 
     expect(mock.history.get[0]?.params).toEqual({
       keyword: "客服",
+      page: 2,
+    });
+  });
+
+  it("passes pagination query params for managed-account list requests", async () => {
+    mock.onGet("/server/settings/managed-accounts").reply(200, {
+      data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+          totalPages: 1,
+        },
+        managedAccounts: [],
+        subAccounts: [],
+      },
+      success: true,
+    });
+
+    await listManagedAccounts({ page: 2, keyword: "德瑞可" });
+
+    expect(mock.history.get[0]?.params).toEqual({
+      keyword: "德瑞可",
       page: 2,
     });
   });

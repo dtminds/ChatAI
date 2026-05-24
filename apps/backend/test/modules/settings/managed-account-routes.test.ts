@@ -14,6 +14,12 @@ describe("settings managed-account routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 2,
+          totalPages: 1,
+        },
         managedAccounts: [
           {
             avatarUrl: "https://example.com/drc.png",

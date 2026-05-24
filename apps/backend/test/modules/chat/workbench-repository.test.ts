@@ -2434,6 +2434,98 @@ describe("WorkbenchRepository", () => {
     });
     expect(db.messageQueries).toHaveLength(0);
   });
+
+  it("escapes backslash, percent, and underscore in contact and group search keywords", async () => {
+    const contactQuery = createQueryBuilder([]);
+    const groupQuery = createQueryBuilder([]);
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_contact as contact") {
+            return contactQuery;
+          }
+
+          if (table === "xy_wap_embed_group_seat as gs") {
+            return groupQuery;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await repository.searchContacts(9001, 5, "seat-user-001", "a\\b%_");
+    await repository.searchGroups(9001, 5, "seat-user-001", "a\\b%_");
+
+    expect(contactQuery.whereExpressions).toContainEqual({
+      type: "or",
+      expressions: [
+        { column: "contact.name", operator: "like", value: "%a\\\\b\\%\\_%" },
+        { column: "contact.real_name", operator: "like", value: "%a\\\\b\\%\\_%" },
+        { column: "rel.remark", operator: "like", value: "%a\\\\b\\%\\_%" },
+      ],
+    });
+    expect(groupQuery.whereExpressions).toContainEqual({
+      type: "or",
+      expressions: [
+        { column: "gs.name", operator: "like", value: "%a\\\\b\\%\\_%" },
+        { column: "gs.remark", operator: "like", value: "%a\\\\b\\%\\_%" },
+      ],
+    });
+  });
+
+  it("hydrates a conversation only within the requested active seat scope", async () => {
+    let conversationQuery: ReturnType<typeof createQueryBuilder> | undefined;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            conversationQuery = createQueryBuilder(
+              createConversationRow({
+                id: 88,
+                third_external_userid: "external-001",
+                third_userid: "seat-user-001",
+              }),
+            );
+            return conversationQuery;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_contact" ||
+            table === "xy_wap_embed_customer_bind_relation" ||
+            table === "xy_wap_embed_group_seat"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await repository.getHydratedConversation(9001, 5, "seat-user-001", "88");
+
+    expect(conversationQuery?.wheres).toContainEqual([
+      "conversation.third_userid",
+      "=",
+      "seat-user-001",
+    ]);
+    expect(conversationQuery?.wheres).toContainEqual([
+      "conversation.biz_status",
+      "=",
+      1,
+    ]);
+  });
 });
 
 function messageRow(overrides: Partial<MessageRow>): MessageRow {

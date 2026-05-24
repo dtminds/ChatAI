@@ -1457,47 +1457,46 @@ export function createWorkbenchStore() {
 
         set({ searchKeyword: "", searchResults: null, isSearchLoading: false });
 
-        if (item.conversationId) {
-          await get().setActiveMode(nextMode);
-          await get().setActiveConversation(item.conversationId);
-        } else {
-          try {
-            set({ isConversationLoading: true });
-            const service = getWorkbenchService();
-            const payload = {
-              seatId,
-              chatType: isGroup ? 2 : 1,
-              thirdExternalUserId: isGroup ? undefined : item.thirdExternalUserId,
-              thirdGroupId: isGroup ? item.thirdGroupId : undefined,
-            };
-            const summaryDto = await service.getOrCreateConversation(payload);
-            const newConversation = adaptConversation(summaryDto);
+        try {
+          set({ isConversationLoading: true });
+          const service = getWorkbenchService();
+          const payload = {
+            seatId,
+            chatType: isGroup ? 2 : 1,
+            thirdExternalUserId: isGroup ? undefined : item.thirdExternalUserId,
+            thirdGroupId: isGroup ? item.thirdGroupId : undefined,
+          };
+          const summaryDto = await service.getOrCreateConversation(payload);
 
-            set((currentState) => {
-              const currentList = currentState.conversationListsByScope[seatId] ?? [];
-              // 始终用服务端最新数据替换列表中的旧条目，保证时间戳和排序正确
-              const nextList = sortConversations([
-                newConversation,
-                ...currentList.filter((c) => c.id !== newConversation.id),
-              ]);
-              return {
-                conversationListsByScope: {
-                  ...currentState.conversationListsByScope,
-                  [seatId]: nextList,
-                },
-              };
-            });
-
-            await get().setActiveMode(nextMode);
-            await get().setActiveConversation(newConversation.id);
-          } catch (error) {
-            set({
-              conversationOpenError:
-                getRequestApiErrorMessage(error) ?? "获取/开启会话失败，请稍后重试",
-            });
-          } finally {
-            set({ isConversationLoading: false });
+          if (get().activeAccountId !== seatId) {
+            return;
           }
+
+          const hydratedConversation = adaptConversation(summaryDto);
+
+          set((currentState) => {
+            const currentList = currentState.conversationListsByScope[seatId] ?? [];
+            const nextList = sortConversations([
+              hydratedConversation,
+              ...currentList.filter((conversation) => conversation.id !== hydratedConversation.id),
+            ]);
+            return {
+              conversationListsByScope: {
+                ...currentState.conversationListsByScope,
+                [seatId]: nextList,
+              },
+            };
+          });
+
+          await get().setActiveMode(nextMode);
+          await get().setActiveConversation(hydratedConversation.id);
+        } catch (error) {
+          set({
+            conversationOpenError:
+              getRequestApiErrorMessage(error) ?? "获取/开启会话失败，请稍后重试",
+          });
+        } finally {
+          set({ isConversationLoading: false });
         }
       },
       dismissConversationOpenError() {

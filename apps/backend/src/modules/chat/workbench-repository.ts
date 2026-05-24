@@ -1909,7 +1909,7 @@ export class WorkbenchRepository {
       return [];
     }
 
-    const escapedKeyword = keyword.replace(/[%_]/g, "\\$&");
+    const escapedKeyword = escapeLikeKeyword(keyword);
     const pattern = "%" + escapedKeyword + "%";
 
     const rows = await this.db
@@ -1972,7 +1972,7 @@ export class WorkbenchRepository {
       return [];
     }
 
-    const escapedKeyword = keyword.replace(/[%_]/g, "\\$&");
+    const escapedKeyword = escapeLikeKeyword(keyword);
     const pattern = "%" + escapedKeyword + "%";
 
     const rows = await this.db
@@ -2060,7 +2060,9 @@ export class WorkbenchRepository {
       ])
       .where("conversation.uid", "=", uid)
       .where("conversation.platform", "=", platform)
+      .where("conversation.third_userid", "=", seatThirdUserId)
       .where("conversation.id", "=", conversationNumericId)
+      .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
       .executeTakeFirst();
 
     if (!row) {
@@ -2395,6 +2397,10 @@ function getHistoryScopeRawMsgtypes(scope: WorkbenchHistoryMessageScope) {
     case "all":
       return [];
   }
+}
+
+function escapeLikeKeyword(keyword: string) {
+  return keyword.replace(/[\\%_]/g, "\\$&");
 }
 
 function getLocalDayBounds(day: string | undefined) {

@@ -61,7 +61,7 @@ export type WorkbenchQuotedMessagePreviewDto = {
   title?: string;
 };
 
-export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed" | "read";
+export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed";
 export type WorkbenchMessageFileDownloadStatus = "ing" | "finished" | "failed";
 
 export type WorkbenchMessageFileDownloadResponse = {
@@ -119,6 +119,8 @@ export type WorkbenchSeatDto = {
 };
 
 export type WorkbenchConversationSummaryDto = {
+  /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */
+  bizStatus?: number;
   conversationId: string;
   seatId: string;
   thirdUserId?: string;
@@ -210,6 +212,7 @@ export type WorkbenchSeatChangeDto = {
   seatId: string;
   unreadCount: number;
   lastMessageTime?: number;
+  hostSubUserId?: string | null;
 };
 
 export type WorkbenchConversationChangeDto =
@@ -222,12 +225,19 @@ export type WorkbenchConversationChangeDto =
       type: "upsert";
     } & WorkbenchConversationSummaryDto);
 
-export type WorkbenchMessageStatusChangeDto = {
-  messageId: string;
-  clientMessageId?: string;
+export type WorkbenchMessageUpdateEventDto = {
   conversationId: string;
-  status: WorkbenchMessageStatus;
-  reason?: string;
+  eventId: number;
+  messageId: string;
+};
+
+export type WorkbenchMessageQueryByIdsRequest = {
+  conversationId: string;
+  messageIds: string[];
+};
+
+export type WorkbenchMessageQueryByIdsResponse = {
+  messages: WorkbenchMessageDto[];
 };
 
 export type WorkbenchPollRequest = {
@@ -236,14 +246,18 @@ export type WorkbenchPollRequest = {
   currentSeatId?: string;
   activeConversationId?: string;
   activeMessageSeq?: number;
+  messageUpdateCursor?: number;
+  seatUpdateCursor?: number;
 };
 
 export type WorkbenchPollResponse = {
   nextVersion: number;
+  nextMessageUpdateCursor?: number;
+  nextSeatUpdateCursor?: number;
   seatChanges: WorkbenchSeatChangeDto[];
   conversationChanges: WorkbenchConversationChangeDto[];
   activeConversationMessages: WorkbenchMessageDto[];
-  messageStatusChanges: WorkbenchMessageStatusChangeDto[];
+  messageUpdateEvents?: WorkbenchMessageUpdateEventDto[];
 };
 
 export type WorkbenchOutgoingMessageTextSegment = {
@@ -280,6 +294,7 @@ export type WorkbenchSendMessagePayload = {
   seatId: string;
   conversationId: string;
   clientMessageId: string;
+  failMsgId?: string;
   contentType?: "text";
   content?: string;
   mention?: {

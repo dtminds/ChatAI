@@ -637,6 +637,17 @@ describe("backend app", () => {
     expect(refresh.json()).toMatchObject({
       data: {
         expiresIn: 1200,
+        subUser: {
+          accountType: "sub",
+          displayName: "客服一号",
+          permissions: [
+            "chat.access",
+            "chat.send",
+            "chat.takeover",
+          ],
+          role: "operator",
+          subUserId: "101",
+        },
       },
       success: true,
     });
@@ -1431,7 +1442,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
     });
 
     expect(read.statusCode).toBe(200);
@@ -1470,7 +1481,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
     });
 
     expect(unread.statusCode).toBe(200);
@@ -1509,7 +1520,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
     });
 
     expect(pin.statusCode).toBe(200);
@@ -1539,7 +1550,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
     });
 
     expect(unpin.statusCode).toBe(200);
@@ -1574,7 +1585,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-002&active_message_seq=0",
     });
 
     expect(response.statusCode).toBe(200);
@@ -1616,7 +1627,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
     });
 
     expect(send.statusCode).toBe(200);
@@ -1631,7 +1642,19 @@ describe("backend app", () => {
       lastMessage: "后端 mock 发送测试",
       type: "upsert",
     });
-    expect(poll.json().messageStatusChanges[0]).toMatchObject({
+    expect(poll.json().activeConversationMessages).toMatchObject([
+      {
+        clientMessageId: "local-test-001",
+        conversationId: "conv-001",
+        status: "sent",
+      },
+    ]);
+    expect(
+      poll.json().activeConversationMessages.some(
+        (message) => message.clientMessageId === "local-test-001",
+      ),
+    ).toBe(true);
+    expect(poll.json().activeConversationMessages[0]).toMatchObject({
       clientMessageId: "local-test-001",
       conversationId: "conv-001",
       status: "sent",
@@ -1673,7 +1696,7 @@ describe("backend app", () => {
     const poll = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+      url: "/api/server/poll?since_version=1284&message_update_cursor=1779275187000&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
     });
     const messages = await app.inject({
       headers: { authorization },
@@ -1697,23 +1720,6 @@ describe("backend app", () => {
       },
     ]);
     expect(poll.statusCode).toBe(200);
-    expect(poll.json().messageStatusChanges).toMatchObject([
-      {
-        clientMessageId: "local-segment-test-001",
-        conversationId: "conv-001",
-        status: "sent",
-      },
-      {
-        clientMessageId: "local-segment-test-001_2",
-        conversationId: "conv-001",
-        status: "sent",
-      },
-      {
-        clientMessageId: "local-segment-test-001_3",
-        conversationId: "conv-001",
-        status: "sent",
-      },
-    ]);
     expect(messages.statusCode).toBe(200);
     expect(messages.json().messages.slice(-3)).toMatchObject([
       {
@@ -1803,6 +1809,15 @@ describe("backend app", () => {
       },
       url: "/api/server/media/upload-credential",
     });
+    const download = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 1,
+      },
+      url: "/api/server/messages/remote-msg-file-001/download",
+    });
 
     for (const response of [send, takeOver, markRead, uploadCredential]) {
       expect(response.statusCode).toBe(403);
@@ -1814,6 +1829,11 @@ describe("backend app", () => {
         success: false,
       });
     }
+    expect(download.statusCode).toBe(200);
+    expect(download.json()).toEqual({
+      messageId: "remote-msg-file-001",
+      status: "accepted",
+    });
 
     await app.close();
   });

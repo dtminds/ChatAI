@@ -42,7 +42,6 @@ type ChatPanelProps = {
   isSendingDraft: boolean;
   isResizingCustomerPanel: boolean;
   messages: Message[];
-  downloadTransferStates?: Record<string, "idle" | "transferring">;
   quotedMessage: QuotedMessagePreviewContent | null;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
@@ -89,6 +88,7 @@ type ChatPanelProps = {
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  retryingMessageIds?: ReadonlySet<string>;
   onSendDraft: (segments: ComposerSegment[]) => void;
   onDismissScopeTransitionError: () => void;
   scopeTransitionError?: string;
@@ -118,7 +118,6 @@ export function ChatPanel({
   isSendingDraft,
   isResizingCustomerPanel,
   messages,
-  downloadTransferStates,
   quotedMessage,
   hasMoreHistory,
   historyLoadLabel,
@@ -148,6 +147,7 @@ export function ChatPanel({
   onClearQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  retryingMessageIds,
   onSendDraft,
   onDismissScopeTransitionError,
   scopeTransitionError,
@@ -158,6 +158,7 @@ export function ChatPanel({
   workbenchBodyRef,
 }: ChatPanelProps) {
   const hasActiveFileUpload = fileUploadQueue.length > 0;
+  const hasActiveConversation = activeConversation !== undefined;
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col bg-surface">
@@ -166,146 +167,153 @@ export function ChatPanel({
       />
 
       <div className="flex min-h-0 min-w-0 flex-1" ref={workbenchBodyRef}>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
-          <ChatMessagePanel
-            activeHistoryStatus={activeHistoryStatus}
-            bottomOverlay={
-              hasActiveFileUpload ? (
-                <FileUploadQueueBar
-                  items={fileUploadQueue}
-                  onCancelFileUpload={onCancelFileUpload}
-                />
-              ) : null
-            }
-            canUseMessageActions={canSendMessage}
-            hasBottomOverlay={hasActiveFileUpload}
-            hasMoreHistory={hasMoreHistory}
-            historyLoadLabel={historyLoadLabel}
-            isConversationLoading={isConversationLoading}
-            messages={messages}
-            downloadTransferStates={downloadTransferStates}
-            messageViewportRef={messageViewportRef}
-            onDownloadMessageFile={onDownloadMessageFile}
-            onMentionMessage={onMentionMessage}
-            onLoadOlderMessages={onLoadOlderMessages}
-            onOpenQuotedMessage={onOpenQuotedMessage}
-            onQuoteMessage={onQuoteMessage}
-            onMessageViewportScroll={onMessageViewportScroll}
-            onRetryMessage={onRetryMessage}
-          />
-
-          <Separator className="bg-divider" />
-
-          <div className="relative">
-            {scopeTransitionError ? (
-              <div
-                className="absolute bottom-full left-0 right-0 z-20 mb-0 flex min-h-8 items-center justify-between gap-3 border-t border-destructive/10 bg-destructive/55 px-5 py-1.5 text-xs font-medium leading-5 text-destructive-foreground/90 shadow-[0_-4px_16px_var(--shadow-soft)] backdrop-blur-md"
-                data-testid="scope-transition-error"
-                role="status"
-              >
-                <span className="min-w-0 truncate">{scopeTransitionError}</span>
-                <button
-                  aria-label="关闭错误提示"
-                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] text-destructive-foreground/75 outline-none transition-colors hover:bg-white/10 hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-white/30"
-                  onClick={onDismissScopeTransitionError}
-                  type="button"
-                >
-                  <HugeiconsIcon
-                    aria-hidden="true"
-                    icon={Cancel01Icon}
-                    size={14}
-                    strokeWidth={2}
-                  />
-                </button>
-              </div>
-            ) : null}
-
-            <div className="bg-surface px-4 py-3">
-              <ChatComposer
-                canSendMessage={canSendMessage}
-                draft={draft}
-                hasActiveFileUpload={hasActiveFileUpload}
-                groupMembers={groupMembers}
-                isGroupConversation={activeConversation?.mode === "group"}
-                inputEnterBehavior={inputEnterBehavior}
-                isEmojiPickerOpen={isEmojiPickerOpen}
-                isSending={isSendingDraft}
-                isHistoryPanelOpen={isHistoryPanelOpen}
-                onClearQuotedMessage={onClearQuotedMessage}
-                onDraftChange={onDraftChange}
-                onEmojiPickerOpenChange={onEmojiPickerOpenChange}
-                onEnterBehaviorChange={onEnterBehaviorChange}
-                onFileSelect={onFileSelect}
-                onOpenHistory={onOpenHistory}
-                onSegmentsChange={onComposerSegmentsChange}
-                onSendDraft={onSendDraft}
-                placeholder={composerPlaceholder}
-                quotedMessage={quotedMessage}
-                composerRef={composerRef}
+        {hasActiveConversation ? (
+          <>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
+              <ChatMessagePanel
+                activeHistoryStatus={activeHistoryStatus}
+                bottomOverlay={
+                  hasActiveFileUpload ? (
+                    <FileUploadQueueBar
+                      items={fileUploadQueue}
+                      onCancelFileUpload={onCancelFileUpload}
+                    />
+                  ) : null
+                }
+                canUseMessageActions={canSendMessage}
+                hasBottomOverlay={hasActiveFileUpload}
+                hasMoreHistory={hasMoreHistory}
+                historyLoadLabel={historyLoadLabel}
+                isConversationLoading={isConversationLoading}
+                messages={messages}
+                messageViewportRef={messageViewportRef}
+                onDownloadMessageFile={onDownloadMessageFile}
+                onMentionMessage={onMentionMessage}
+                onLoadOlderMessages={onLoadOlderMessages}
+                onOpenQuotedMessage={onOpenQuotedMessage}
+                onQuoteMessage={onQuoteMessage}
+                onMessageViewportScroll={onMessageViewportScroll}
+                onRetryMessage={onRetryMessage}
+                retryingMessageIds={retryingMessageIds}
               />
-            </div>
-          </div>
-        </div>
 
-        <div
-          className="relative flex h-full min-h-0 min-w-0 shrink-0"
-          data-testid="customer-side-panel-shell"
-          style={{ width: `${customerPanelWidth + 4}px` }}
-        >
-          <div
-            className={cn(
-              "flex h-full min-h-0 shrink-0",
-              historyPanel?.isOpen ? "invisible pointer-events-none" : "visible",
-            )}
-            data-testid="customer-side-panel-layout"
-          >
-            <CustomerSidePanel
-              accountName={accountName}
-              conversationMode={activeConversation?.mode}
-              customer={customer}
-              sidebarIframeQd={
-                activeConversation?.mode === "group" &&
-                activeConversation.thirdGroupId !== undefined &&
-                activeConversation.thirdGroupId !== ""
-                  ? activeConversation.thirdGroupId
-                  : undefined
-              }
-              sidebarIframeConversationId={activeConversation?.id}
-              sidebarIframeSeatId={activeConversation?.accountId}
-              sidebarIframeTos={sidebarIframeTos}
-              groupMembers={groupMembers}
-              isGroupMembersLoading={isGroupMembersLoading}
-              isResizing={isResizingCustomerPanel}
-              onRefreshGroupMembers={onRefreshGroupMembers}
-              onResizeStart={onCustomerPanelResizeStart}
-              panelWidth={customerPanelWidth}
-              sidebarItems={sidebarItems}
-            />
-          </div>
-          {historyPanel ? (
-            <MessageHistorySidePanel
-              accountAvatarUrl={accountAvatarUrl}
-              accountName={accountName}
-              activeConversation={activeConversation}
-              activeHistory={historyPanel.activeHistory}
-              activeHistoryError={historyPanel.activeHistoryError}
-              activeHistoryFilters={historyPanel.activeHistoryFilters}
-              activeHistoryLoading={historyPanel.activeHistoryLoading}
-              onDownloadMessageFile={onDownloadMessageFile}
-              scrollMode={historyPanel.scrollMode}
-              customer={customer}
-              groupMembers={groupMembers}
-              isOpen={historyPanel.isOpen}
-              onClose={onHistoryClose}
-              onLoadMoreNext={onHistoryLoadMoreNext}
-              onLoadMorePrev={onHistoryLoadMorePrev}
-              onRefresh={onHistoryRefresh}
-              onSetDay={onHistorySetDay}
-              onSetScope={onHistorySetScope}
-              onSetSenderId={onHistorySetSenderId}
-            />
-          ) : null}
-        </div>
+              <Separator className="bg-divider" />
+
+              <div className="relative">
+                {scopeTransitionError ? (
+                  <div
+                    className="absolute bottom-full left-0 right-0 z-20 mb-0 flex min-h-8 items-center justify-between gap-3 border-t border-destructive/10 bg-destructive/55 px-5 py-1.5 text-xs font-medium leading-5 text-destructive-foreground/90 shadow-[0_-4px_16px_var(--shadow-soft)] backdrop-blur-md"
+                    data-testid="scope-transition-error"
+                    role="status"
+                  >
+                    <span className="min-w-0 truncate">{scopeTransitionError}</span>
+                    <button
+                      aria-label="关闭错误提示"
+                      className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] text-destructive-foreground/75 outline-none transition-colors hover:bg-white/10 hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-white/30"
+                      onClick={onDismissScopeTransitionError}
+                      type="button"
+                    >
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        icon={Cancel01Icon}
+                        size={14}
+                        strokeWidth={2}
+                      />
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="bg-surface px-4 py-3">
+                  <ChatComposer
+                    canSendMessage={canSendMessage}
+                    draft={draft}
+                    hasActiveFileUpload={hasActiveFileUpload}
+                    currentSeatThirdUserId={activeConversation.thirdUserId}
+                    groupMembers={groupMembers}
+                    isGroupConversation={activeConversation.mode === "group"}
+                    inputEnterBehavior={inputEnterBehavior}
+                    isEmojiPickerOpen={isEmojiPickerOpen}
+                    isSending={isSendingDraft}
+                    isHistoryPanelOpen={isHistoryPanelOpen}
+                    onClearQuotedMessage={onClearQuotedMessage}
+                    onDraftChange={onDraftChange}
+                    onEmojiPickerOpenChange={onEmojiPickerOpenChange}
+                    onEnterBehaviorChange={onEnterBehaviorChange}
+                    onFileSelect={onFileSelect}
+                    onOpenHistory={onOpenHistory}
+                    onSegmentsChange={onComposerSegmentsChange}
+                    onSendDraft={onSendDraft}
+                    placeholder={composerPlaceholder}
+                    quotedMessage={quotedMessage}
+                    composerRef={composerRef}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="relative flex h-full min-h-0 min-w-0 shrink-0"
+              data-testid="customer-side-panel-shell"
+              style={{ width: `${customerPanelWidth + 4}px` }}
+            >
+              <div
+                className={cn(
+                  "flex h-full min-h-0 shrink-0",
+                  historyPanel?.isOpen ? "invisible pointer-events-none" : "visible",
+                )}
+                data-testid="customer-side-panel-layout"
+              >
+                <CustomerSidePanel
+                  accountName={accountName}
+                  conversationMode={activeConversation.mode}
+                  customer={customer}
+                  sidebarIframeQd={
+                    activeConversation.mode === "group" &&
+                    activeConversation.thirdGroupId !== undefined &&
+                    activeConversation.thirdGroupId !== ""
+                      ? activeConversation.thirdGroupId
+                      : undefined
+                  }
+                  sidebarIframeConversationId={activeConversation.id}
+                  sidebarIframeSeatId={activeConversation.accountId}
+                  sidebarIframeTos={sidebarIframeTos}
+                  groupMembers={groupMembers}
+                  isGroupMembersLoading={isGroupMembersLoading}
+                  isResizing={isResizingCustomerPanel}
+                  onRefreshGroupMembers={onRefreshGroupMembers}
+                  onResizeStart={onCustomerPanelResizeStart}
+                  panelWidth={customerPanelWidth}
+                  sidebarItems={sidebarItems}
+                />
+              </div>
+              {historyPanel ? (
+                <MessageHistorySidePanel
+                  accountAvatarUrl={accountAvatarUrl}
+                  accountName={accountName}
+                  activeConversation={activeConversation}
+                  activeHistory={historyPanel.activeHistory}
+                  activeHistoryError={historyPanel.activeHistoryError}
+                  activeHistoryFilters={historyPanel.activeHistoryFilters}
+                  activeHistoryLoading={historyPanel.activeHistoryLoading}
+                  onDownloadMessageFile={onDownloadMessageFile}
+                  scrollMode={historyPanel.scrollMode}
+                  customer={customer}
+                  groupMembers={groupMembers}
+                  isOpen={historyPanel.isOpen}
+                  onClose={onHistoryClose}
+                  onLoadMoreNext={onHistoryLoadMoreNext}
+                  onLoadMorePrev={onHistoryLoadMorePrev}
+                  onRefresh={onHistoryRefresh}
+                  onSetDay={onHistorySetDay}
+                  onSetScope={onHistorySetScope}
+                  onSetSenderId={onHistorySetSenderId}
+                />
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <div className="flex min-h-0 min-w-0 flex-1 bg-surface" />
+        )}
       </div>
     </section>
   );

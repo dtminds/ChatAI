@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -149,11 +149,18 @@ describe("AccountRail", () => {
 
     await user.hover(screen.getByRole("button", { name: "选择 support" }));
 
-    expect(screen.getByText("当前账号未被你接管，你将无法")).toBeInTheDocument();
-    expect(screen.getByText("使用该账号发送消息")).toBeInTheDocument();
-    expect(screen.getByText("标记消息已读状态")).toBeInTheDocument();
-
     await user.click(screen.getByRole("button", { name: "接管账号" }));
+
+    const confirmDialog = await screen.findByRole("alertdialog", {
+      name: "是否确认接管：support",
+    });
+    expect(
+      within(confirmDialog).getByText(
+        "接管后，将由你负责处理对话，其他子账号将无权发送消息",
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(within(confirmDialog).getByRole("button", { name: "确认接管" }));
 
     expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");
   });
@@ -185,13 +192,18 @@ describe("AccountRail", () => {
       />,
     );
 
-    const takeoverButton = screen.getByRole("button", { name: "接管中" });
+    expect(
+      await screen.findByRole("alertdialog", {
+        name: "是否确认接管：support",
+      }),
+    ).toBeInTheDocument();
+    const confirmDialog = screen.getByRole("alertdialog", {
+      name: "是否确认接管：support",
+    });
+    expect(within(confirmDialog).getByRole("button", { name: "取消" })).toBeInTheDocument();
+    expect(within(confirmDialog).getByRole("button", { name: "确认接管" })).toBeInTheDocument();
 
-    expect(screen.getByText("当前账号未被你接管，你将无法")).toBeInTheDocument();
-    expect(takeoverButton).toBeDisabled();
-    expect(takeoverButton).toHaveAttribute("aria-busy", "true");
-
-    await user.click(takeoverButton);
+    await user.click(within(confirmDialog).getByRole("button", { name: "确认接管" }));
 
     expect(handleTakeOverAccount).toHaveBeenCalledTimes(1);
   });
@@ -415,6 +427,11 @@ describe("AccountRail", () => {
     expect(screen.getByText("当前账号未被你接管，你将无法")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "接管账号" }));
+
+    const confirmDialog = await screen.findByRole("alertdialog", {
+      name: "是否确认接管：support",
+    });
+    await user.click(within(confirmDialog).getByRole("button", { name: "确认接管" }));
 
     expect(handleTakeOverAccount).toHaveBeenCalledWith("account-2");
   });

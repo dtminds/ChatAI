@@ -24,13 +24,15 @@ import {
   type WorkbenchGroupMembersResponse,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
+  type WorkbenchMessageQueryByIdsRequest,
+  type WorkbenchMessageQueryByIdsResponse,
   type WorkbenchMessageFileDownloadResponse,
   type WorkbenchMessageFileDownloadStatusResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchMessageStatus,
-  type WorkbenchMessageStatusChangeDto,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
+  type WorkbenchMessageUpdateEventDto,
   type WorkbenchSendMessagePayload,
   type SettingsSidebarItemsResponse,
   type WorkbenchSidebarIframeParamsDto,
@@ -75,6 +77,9 @@ export type WorkbenchService = {
   ) => Promise<WorkbenchHistoryMessagePageDto>;
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
+  getMessagesByIds: (
+    input: WorkbenchMessageQueryByIdsRequest,
+  ) => Promise<WorkbenchMessageQueryByIdsResponse>;
   downloadMessageFile: (input: {
     conversationId: string;
     messageId: string;
@@ -117,8 +122,8 @@ type WorkbenchEvent =
     }
   | {
       version: number;
-      type: "message-status";
-      payload: WorkbenchMessageStatusChangeDto;
+      type: "message-update";
+      payload: WorkbenchMessageUpdateEventDto;
     };
 
 type MockState = {
@@ -254,6 +259,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         messages: clone(scannedMessages),
         nextBeforeSeq: scannedMessages[0]?.seq,
         scannedCount: scannedMessages.length,
+      };
+    },
+    async getMessagesByIds(input) {
+      const messages = state.messagesByConversationId[input.conversationId] ?? [];
+      const normalizedIds = new Set(input.messageIds);
+
+      return {
+        messages: clone(
+          messages.filter((message) => normalizedIds.has(message.messageId)),
+        ),
       };
     },
     async downloadMessageFile(input) {
@@ -405,10 +420,24 @@ export function createMockWorkbenchService(): WorkbenchService {
         request.sinceVersion - (request.freshBaseline ? 0 : MOCK_POLL_OVERLAP_MS),
       );
       const relevantEvents = state.events.filter((event) => event.version > sinceVersion);
-      const seatChanges = collapseLatest(
-        relevantEvents.filter((event): event is Extract<WorkbenchEvent, { type: "seat" }> => event.type === "seat"),
+      const seatUpdateCursor = request.seatUpdateCursor ?? request.sinceVersion;
+      const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
+      const seatUpdateEvents = collapseLatest(
+        state.events.filter(
+          (event): event is Extract<WorkbenchEvent, { type: "seat" }> =>
+            event.type === "seat" && event.version > seatUpdateCursor,
+        ),
         (event) => event.payload.seatId,
-      ).map((event) => event.payload);
+      );
+      const seatChanges = seatUpdateEvents.map((event) => event.payload);
+
+      const messageUpdateEventRecords = state.events.filter(
+        (event): event is Extract<WorkbenchEvent, { type: "message-update" }> =>
+          event.type === "message-update" &&
+          event.payload.conversationId === request.activeConversationId &&
+          event.version > messageUpdateCursor,
+      );
+      const messageUpdateEvents = messageUpdateEventRecords.map((event) => event.payload);
 
       const conversationChanges = collapseLatest(
         relevantEvents.filter(
@@ -428,18 +457,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         )
         .map((event) => event.payload);
 
-      const messageStatusChanges = relevantEvents
-        .filter(
-          (event): event is Extract<WorkbenchEvent, { type: "message-status" }> =>
-            event.type === "message-status",
-        )
-        .map((event) => event.payload);
-
       return {
         seatChanges: clone(seatChanges),
         activeConversationMessages: clone(activeConversationMessages),
         conversationChanges: clone(conversationChanges),
-        messageStatusChanges: clone(messageStatusChanges),
+        messageUpdateEvents: clone(messageUpdateEvents),
+        nextMessageUpdateCursor: getNextMockEventCursor(
+          messageUpdateCursor,
+          messageUpdateEventRecords,
+        ),
+        nextSeatUpdateCursor: getNextMockEventCursor(seatUpdateCursor, seatUpdateEvents),
         nextVersion: state.version,
       };
     },
@@ -469,6 +496,7 @@ export function createMockWorkbenchService(): WorkbenchService {
           conversationId: payload.conversationId,
           createdAt: now + index,
           customerId: conversation.customerId,
+          failReason: outcome.reason,
           messageId,
           senderType: "agent" as const,
           seq: nextSeq,
@@ -493,13 +521,7 @@ export function createMockWorkbenchService(): WorkbenchService {
       pushConversationEvent(state, nextConversation);
       pushAccountEvent(state, payload.seatId);
       backendMessages.forEach((message) => {
-        pushMessageStatusEvent(state, {
-          clientMessageId: message.clientMessageId,
-          conversationId: message.conversationId,
-          messageId: message.messageId,
-          reason: outcome.reason,
-          status: outcome.status,
-        });
+        pushMessageEvent(state, message);
       });
 
       return {
@@ -602,6 +624,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
         },
       );
     },
+    getMessagesByIds(input) {
+      return http.post<WorkbenchMessageQueryByIdsResponse, WorkbenchMessageQueryByIdsRequest>(
+        "/server/messages/query-by-ids",
+        input,
+      );
+    },
     downloadMessageFile(input) {
       return http.post<
         WorkbenchMessageFileDownloadResponse,
@@ -655,6 +683,8 @@ export function createHttpWorkbenchService(): WorkbenchService {
           active_message_seq: request.activeMessageSeq,
           current_seat_id: request.currentSeatId,
           fresh_baseline: request.freshBaseline ? "1" : undefined,
+          message_update_cursor: request.messageUpdateCursor,
+          seat_update_cursor: request.seatUpdateCursor,
           since_version: request.sinceVersion,
         },
       });
@@ -871,6 +901,10 @@ function buildInitialState(): MockState {
           mode: conversation.mode,
           priority: conversation.priority,
           unreadCount: conversation.unread,
+          thirdUserId: `third-user-${seatId}`,
+          ...(conversation.mode === "group"
+            ? { thirdGroupId: `third-group-${conversation.id}` }
+            : {}),
         })),
       ),
     ]),
@@ -1086,8 +1120,6 @@ function normalizeBackendStatus(status: Message["status"]): WorkbenchMessageStat
       return "sending";
     case "failed":
       return "failed";
-    case "read":
-      return "read";
     case "sent":
     default:
       return "sent";
@@ -1278,18 +1310,6 @@ function pushConversationRemoveEvent(
   });
 }
 
-function pushMessageStatusEvent(
-  state: MockState,
-  change: WorkbenchMessageStatusChangeDto,
-) {
-  state.version = Math.max(state.version + 1, Date.now());
-  state.events.push({
-    payload: change,
-    type: "message-status",
-    version: state.version,
-  });
-}
-
 function pushMessageEvent(state: MockState, message: WorkbenchMessageDto) {
   state.version = Math.max(state.version + 1, Date.now(), message.createdAt ?? 0);
   state.events.push({
@@ -1297,6 +1317,34 @@ function pushMessageEvent(state: MockState, message: WorkbenchMessageDto) {
     type: "message",
     version: state.version,
   });
+}
+
+function pushMessageUpdateEvent(
+  state: MockState,
+  event: WorkbenchMessageUpdateEventDto,
+) {
+  state.version = Math.max(state.version + 1, Date.now());
+  state.events.push({
+    payload: event,
+    type: "message-update",
+    version: state.version,
+  });
+}
+
+function getNextMockEventCursor(
+  currentCursor: number,
+  events: Array<{
+    version?: number;
+  }>,
+) {
+  if (!Number.isFinite(currentCursor)) {
+    return undefined;
+  }
+
+  return events.reduce(
+    (latest, event) => Math.max(latest, event.version ?? currentCursor),
+    currentCursor,
+  );
 }
 
 function revokeMessage(
@@ -1311,26 +1359,20 @@ function revokeMessage(
     return;
   }
 
-  const revokeEventMessage = {
-    content: {
-      revokeMsgId: messageId,
-      revokeOriginMsgId: messageId,
-      type: "revoke",
-    },
-    contentType: "revoke",
+  const nextMessage = {
+    ...originalMessage,
+    isRevoked: true,
+  };
+
+  state.messagesByConversationId[conversationId] = messages.map((message) =>
+    message.messageId === messageId ? nextMessage : message,
+  );
+
+  pushMessageUpdateEvent(state, {
     conversationId,
-    createdAt: Math.max(Date.now(), (messages.at(-1)?.createdAt ?? 0) + 1),
-    customerId: originalMessage.customerId,
-    messageId: `revoke-${messageId}`,
-    seatId: originalMessage.seatId,
-    senderType: "system",
-    seq: getNextMessageSeq(state, conversationId),
-    status: "read",
-  } satisfies WorkbenchMessageDto;
-
-  state.messagesByConversationId[conversationId] = [...messages, revokeEventMessage];
-
-  pushMessageEvent(state, revokeEventMessage);
+    eventId: state.version + 1,
+    messageId,
+  });
 }
 
 function getNextMessageSeq(state: MockState, conversationId: string) {

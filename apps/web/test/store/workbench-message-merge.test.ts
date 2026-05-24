@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  WorkbenchMessageDto,
-  WorkbenchMessageStatusChangeDto,
-} from "@chatai/contracts";
+import type { WorkbenchMessageDto } from "@chatai/contracts";
 import {
   createMockWorkbenchService,
   setWorkbenchService,
@@ -55,19 +52,11 @@ describe("workbench message merge state", () => {
           seatId: "drc",
           senderType: "agent",
           seq: 999,
-          status: "read",
-        } satisfies WorkbenchMessageDto;
-        const statusChange = {
-          clientMessageId: observedClientMessageId,
-          conversationId: "conv-001",
-          messageId: "remote-stable-001",
           status: "sent",
-        } satisfies WorkbenchMessageStatusChangeDto;
-
+        } satisfies WorkbenchMessageDto;
         return {
           activeConversationMessages: [remoteMessage],
           conversationChanges: [],
-          messageStatusChanges: [statusChange],
           nextVersion: 9999,
           seatChanges: [],
         };
@@ -130,6 +119,79 @@ describe("workbench message merge state", () => {
     expect(state.historyStatusByConversationId["conv-001"]).toBeUndefined();
   });
 
+  it("marks optimistic messages failed when polled audit messages match by optNo", async () => {
+    const baseService = createMockWorkbenchService();
+    let observedClientMessageId = "";
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage(payload) {
+        observedClientMessageId = payload.clientMessageId;
+
+        return {
+          clientMessageId: payload.clientMessageId,
+          messageId: "opt-failed-001",
+          optNo: "opt-failed-001",
+          status: "accepted",
+        };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            {
+              clientMessageId: undefined,
+              content: {
+                text: "发送失败文本",
+              },
+              contentType: "text",
+              conversationId: "conv-001",
+              createdAt: Date.now(),
+              customerId: "cust-001",
+              messageId: "remote-failed-001",
+              optNo: "opt-failed-001",
+              seatId: "drc",
+              senderType: "agent",
+              seq: 999,
+              status: "failed",
+            },
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const initialCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+
+    await useWorkbenchStore.getState().sendAgentTextMessage("本地失败文本");
+    expect(useWorkbenchStore.getState().pendingMessages).toHaveLength(1);
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    const mergedMessages = state.messagesByConversationId["conv-001"];
+    const failedMatches = mergedMessages.filter(
+      (message) =>
+        message.optNo === "opt-failed-001" ||
+        message.remoteMessageId === "remote-failed-001" ||
+        message.id === observedClientMessageId,
+    );
+
+    expect(mergedMessages).toHaveLength(initialCount + 1);
+    expect(failedMatches).toHaveLength(1);
+    expect(failedMatches[0]).toMatchObject({
+      clientMessageId: observedClientMessageId,
+      id: "remote-failed-001",
+      optNo: "opt-failed-001",
+      remoteMessageId: "remote-failed-001",
+      status: "failed",
+    });
+    expect(state.pendingMessages).toHaveLength(0);
+  });
+
   it("reconciles polled messages by optNo while keeping unmatched optimistic messages", async () => {
     const baseService = createMockWorkbenchService();
     let sendIndex = 0;
@@ -163,11 +225,10 @@ describe("workbench message merge state", () => {
               seatId: "drc",
               senderType: "agent",
               seq: 999,
-              status: "read",
+              status: "sent",
             },
           ],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: 9999,
           seatChanges: [],
         };
@@ -241,7 +302,7 @@ describe("workbench message merge state", () => {
         id: "remote-text-001",
         optNo: "opt-2",
         remoteMessageId: "remote-text-001",
-        status: "read",
+        status: "sent",
       },
       {
         content: {
@@ -280,11 +341,10 @@ describe("workbench message merge state", () => {
               seatId: "drc",
               senderType: "customer",
               seq: 999,
-              status: "read",
+              status: "sent",
             },
           ],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: 9999,
           seatChanges: [],
         };

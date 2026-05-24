@@ -1,14 +1,17 @@
 import {
   $createParagraphNode,
   $createTextNode,
+  $getSelection,
   $getRoot,
   $insertNodes,
   $isElementNode,
   $isLineBreakNode,
+  $isRangeSelection,
   $isRootNode,
   $isTextNode,
   type ElementNode,
   type LexicalNode,
+  type PointType,
   type TextNode,
 } from "lexical";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
@@ -28,6 +31,7 @@ import {
 
 const WECHAT_EMOJI_TOKEN_PATTERN = /\[([^[\]]+)\]/g;
 const COMPOSER_TEXT_ANCHOR = "\u200B";
+const COMPOSER_BLOCK_SEPARATOR_LENGTH = 2;
 
 export function $insertComposerText(text: string) {
   const nodes = parseWechatEmojiText(text).map((segment) => {
@@ -147,6 +151,12 @@ export function $removeComposerTextRange(start: number, end: number) {
   }
 
   let textOffset = 0;
+  let selectionTarget:
+    | {
+        offset: number;
+        textNode: TextNode;
+      }
+    | undefined;
 
   for (const part of collectTextContentParts($getRoot())) {
     const nodeStart = textOffset;
@@ -174,15 +184,41 @@ export function $removeComposerTextRange(start: number, end: number) {
       Math.min(stripComposerTextAnchors(text).length, safeEnd - nodeStart),
     );
     const nextText = text.slice(0, rangeStart) + text.slice(rangeEnd);
+    const isStartNode = selectionTarget === undefined && safeStart <= nodeEnd;
 
     if (nextText) {
       textNode.setTextContent(nextText);
+      if (isStartNode) {
+        selectionTarget = {
+          offset: rangeStart,
+          textNode,
+        };
+      }
     } else {
+      const previousSibling = textNode.getPreviousSibling<TextNode>();
+      const nextSibling = textNode.getNextSibling<TextNode>();
+
       textNode.remove();
+
+      if (isStartNode && previousSibling && $isTextNode(previousSibling)) {
+        selectionTarget = {
+          offset: previousSibling.getTextContent().length,
+          textNode: previousSibling,
+        };
+      } else if (isStartNode && nextSibling && $isTextNode(nextSibling)) {
+        selectionTarget = {
+          offset: 0,
+          textNode: nextSibling,
+        };
+      }
     }
   }
 
-  $getRoot().selectEnd();
+  if (selectionTarget) {
+    selectionTarget.textNode.select(selectionTarget.offset, selectionTarget.offset);
+  } else {
+    $getRoot().selectEnd();
+  }
 }
 
 export function $exportComposerSegments() {
@@ -197,6 +233,23 @@ export function $exportComposerSegments() {
 
 export function $getComposerPlainText() {
   return stripComposerTextAnchors($getRoot().getTextContent());
+}
+
+export function $getComposerPlainTextCursorOffset() {
+  const selection = $getSelection();
+  const plainTextLength = $getComposerPlainText().length;
+
+  if (!$isRangeSelection(selection)) {
+    return plainTextLength;
+  }
+
+  return Math.max(
+    0,
+    Math.min(
+      plainTextLength,
+      getPlainTextOffsetForPoint($getRoot(), selection.anchor) ?? plainTextLength,
+    ),
+  );
 }
 
 function collectSegmentsFromNode(node: LexicalNode, segments: ComposerSegment[]) {
@@ -303,6 +356,90 @@ function stripComposerTextAnchors(text: string) {
   return text.replaceAll(COMPOSER_TEXT_ANCHOR, "");
 }
 
+function getPlainTextOffsetForPoint(
+  node: LexicalNode,
+  point: PointType,
+): number | null {
+  if (point.type === "text") {
+    const pointNode = point.getNode();
+
+    if ($isTextNode(node) && node.is(pointNode)) {
+      return stripComposerTextAnchors(
+        node.getTextContent().slice(0, point.offset),
+      ).length;
+    }
+  }
+
+  if (point.type === "element" && node.is(point.getNode())) {
+    return getPlainTextLengthForElementChildrenBeforePoint(
+      node as ElementNode,
+      point.offset,
+    );
+  }
+
+  if (!$isElementNode(node) && !$isRootNode(node)) {
+    return null;
+  }
+
+  let textOffset = 0;
+  const children = (node as ElementNode).getChildren();
+
+  for (const [index, child] of children.entries()) {
+    const offsetInChild = getPlainTextOffsetForPoint(child, point);
+
+    if (offsetInChild !== null) {
+      return textOffset + offsetInChild;
+    }
+
+    textOffset += getPlainTextLengthForNode(child);
+
+    if (
+      $isElementNode(child) &&
+      !child.isInline() &&
+      index !== children.length - 1
+    ) {
+      textOffset += COMPOSER_BLOCK_SEPARATOR_LENGTH;
+    }
+  }
+
+  return null;
+}
+
+function getPlainTextLengthForElementChildrenBeforePoint(
+  element: ElementNode,
+  pointOffset: number,
+): number {
+  let textLength = 0;
+  const children = element.getChildren();
+
+  for (let index = 0; index < Math.min(pointOffset, children.length); index += 1) {
+    const child = children[index];
+
+    if (!child) {
+      continue;
+    }
+
+    textLength += getPlainTextLengthForNode(child);
+
+    if (
+      $isElementNode(child) &&
+      !child.isInline() &&
+      index !== children.length - 1
+    ) {
+      textLength += COMPOSER_BLOCK_SEPARATOR_LENGTH;
+    }
+  }
+
+  return textLength;
+}
+
+function getPlainTextLengthForNode(node: LexicalNode): number {
+  return collectTextContentParts(node).reduce(
+    (textLength, part) => textLength + part.length,
+    0,
+  );
+}
+
 function toRawTextOffset(text: string, normalizedOffset: number) {
   if (normalizedOffset <= 0) {
     const firstVisibleIndex = Array.from(text).findIndex(
@@ -396,7 +533,7 @@ function collectTextContentParts(node: LexicalNode): TextContentPart[] {
 
     if ($isElementNode(child) && !child.isInline() && index !== children.length - 1) {
       parts.push({
-        length: 2,
+        length: COMPOSER_BLOCK_SEPARATOR_LENGTH,
       });
     }
   });

@@ -150,6 +150,8 @@ export class SubAccountSettingsService {
     };
 
     const normalizedPassword = payload.password?.trim() ?? "";
+    let shouldRevokeSessions = false;
+    let shouldExpireAccessTokens = false;
 
     if (normalizedPassword) {
       if (!isValidSettingsSubAccountPassword(normalizedPassword)) {
@@ -157,6 +159,7 @@ export class SubAccountSettingsService {
       }
 
       updateValues.password_hash = await hashPassword(normalizedPassword);
+      shouldRevokeSessions = true;
     }
 
     if (payload.role) {
@@ -167,6 +170,11 @@ export class SubAccountSettingsService {
       }
 
       updateValues.role = nextRole;
+      shouldExpireAccessTokens ||=
+        nextRole !== deriveAccountRole({
+          role: currentSubAccount?.role,
+          type: currentSubAccount?.type,
+        });
     }
 
     await this.db
@@ -177,6 +185,12 @@ export class SubAccountSettingsService {
       .where("platform", "=", scope.platform)
       .where("status", "!=", dbSubAccountStatus.deleted)
       .execute();
+
+    if (shouldRevokeSessions) {
+      await this.revokeActiveSessions(numericSubAccountId);
+    } else if (shouldExpireAccessTokens) {
+      await this.expireAccessTokens(numericSubAccountId);
+    }
 
     const seatIds = await this.normalizeSeatIds(scope, payload.seatIds);
     await this.replaceSeatRelations(scope, numericSubAccountId, seatIds);
@@ -360,6 +374,30 @@ export class SubAccountSettingsService {
     if (subAccount.type === dbSubAccountType.main) {
       throw new BadRequestError("MAIN_ACCOUNT_PROTECTED", "主账号不允许禁用或删除");
     }
+  }
+
+  private async revokeActiveSessions(subAccountId: number) {
+    await this.db
+      .updateTable("xy_wap_embed_sub_user_session")
+      .set({
+        revoked_at: new Date(),
+        update_time: new Date(),
+      })
+      .where("sub_user_id", "=", subAccountId)
+      .where("revoked_at", "is", null)
+      .execute();
+  }
+
+  private async expireAccessTokens(subAccountId: number) {
+    await this.db
+      .updateTable("xy_wap_embed_sub_user_session")
+      .set((expressionBuilder) => ({
+        session_version: expressionBuilder("session_version", "+", 1),
+        update_time: new Date(),
+      }))
+      .where("sub_user_id", "=", subAccountId)
+      .where("revoked_at", "is", null)
+      .execute();
   }
 
   private async normalizeSeatIds(scope: TenantScope, rawSeatIds: string[]) {

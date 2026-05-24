@@ -13,6 +13,7 @@ import {
   loadGroupMembers,
   loadAccountScope,
   loadConversationMessagesPage,
+  loadMessagesByIds,
   loadSeats,
   markConversationRead,
   markConversationUnread,
@@ -29,6 +30,7 @@ import {
   type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
+import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import type { WorkbenchSendMessagePayload } from "@chatai/contracts";
@@ -59,6 +61,17 @@ type SendMessageResult =
       errorCode: string;
       errorMessage?: string;
       reason: "file-upload" | "image-upload" | "send" | "unavailable";
+      ok: false;
+    };
+
+type RetryFailedMessageResult = SendMessageResult;
+
+type TakeoverResult =
+  | {
+      ok: true;
+    }
+  | {
+      errorMessage: string;
       ok: false;
     };
 
@@ -136,7 +149,10 @@ type WorkbenchState = {
   takeoverStatusByAccountId: Record<string, TakeoverStatus>;
   pollState: PollState;
   sinceVersion: number;
+  messageUpdateCursor?: number;
+  seatUpdateCursor?: number;
   isPollBaselineFresh: boolean;
+  hasChatSendPermission: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
   sidebarItems: SettingsSidebarItem[];
@@ -154,7 +170,9 @@ type WorkbenchState = {
   sendAgentMessageSegments: (
     segments: ComposerSegment[],
     options?: {
+      failMsgId?: string;
       mention?: SendMentionPayload;
+      removeMessageIdOnAccepted?: string;
       onImageUploaded?: (payload: {
         nextSegment: ComposerSegment;
         previousSegment: ComposerSegment;
@@ -163,10 +181,11 @@ type WorkbenchState = {
     },
   ) => Promise<SendMessageResult>;
   sendAgentTextMessage: (text: string) => Promise<SendMessageResult>;
+  setChatSendPermission: (hasChatSendPermission: boolean) => void;
   setSidebarItems: (items: SettingsSidebarItem[]) => void;
-  takeOverAccount: (accountId: string) => Promise<void>;
+  takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
-  retryFailedMessage: (messageId: string) => Promise<void>;
+  retryFailedMessage: (messageId: string) => Promise<RetryFailedMessageResult>;
   loadOlderMessages: () => Promise<void>;
   openHistoryPanel: (conversationId?: string) => Promise<void>;
   closeHistoryPanel: () => void;
@@ -179,11 +198,7 @@ type WorkbenchState = {
   updateMessageDownloadContent: (
     conversationId: string,
     messageId: string,
-    contentPatch: {
-      downloadStatus?: "ing" | "finished" | "failed";
-      fileUrlExpireTime?: number;
-      fileUrl?: string;
-    },
+    contentPatch: DownloadContentPatch,
   ) => void;
   searchKeyword: string;
   searchResults: import("@chatai/contracts").WorkbenchSearchResponseDto | null;
@@ -198,6 +213,12 @@ type WorkbenchState = {
 };
 
 type WorkbenchStore = WorkbenchState;
+
+type DownloadContentPatch = {
+  downloadStatus?: "ing" | "finished" | "failed";
+  fileUrlExpireTime?: number;
+  fileUrl?: string;
+};
 
 const defaultCustomerProfiles = seedCustomerProfiles;
 const MESSAGE_PAGE_SIZE = 50;
@@ -218,6 +239,7 @@ function createInitialState(): Omit<
   | "markConversationUnread"
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
+  | "setChatSendPermission"
   | "setSidebarItems"
   | "takeOverAccount"
   | "unpinConversation"
@@ -247,6 +269,7 @@ function createInitialState(): Omit<
     activeMode: "single",
     bootstrapError: undefined,
     bootstrapStatus: "idle",
+    hasChatSendPermission: false,
     conversationListCacheSeatOrder: [],
     conversationListsByScope: {},
     conversationModeLoadedAtByScope: {},
@@ -276,6 +299,8 @@ function createInitialState(): Omit<
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
     sinceVersion: 0,
+    messageUpdateCursor: undefined,
+    seatUpdateCursor: undefined,
     isPollBaselineFresh: false,
     sidebarItems: [],
     takeoverStatusByAccountId: {},
@@ -312,7 +337,7 @@ function getActiveMessageSeq(
   conversationId: string,
 ) {
   const messages = messagesByConversationId[conversationId] ?? [];
-  return messages.reduce((max, message, index) => Math.max(max, message.seq ?? index + 1), 0);
+  return messages.reduce((max, message) => Math.max(max, message.seq ?? 0), 0);
 }
 
 function buildMessagePaginationState(page: {
@@ -523,9 +548,27 @@ function upsertMessageList(
 
     if (existingIndex >= 0) {
       const currentMessage = merged[existingIndex];
+      if (currentMessage.role === "system" || nextMessage.role === "system") {
+        merged[existingIndex] = {
+          ...currentMessage,
+          ...nextMessage,
+        };
+        continue;
+      }
+
+      const nextSender = nextMessage.sender;
       merged[existingIndex] = {
         ...currentMessage,
         ...nextMessage,
+        sender: {
+          ...currentMessage.sender,
+          ...nextSender,
+          avatarUrl: nextSender.avatarUrl || currentMessage.sender.avatarUrl,
+          name: nextSender.name || currentMessage.sender.name,
+        },
+        senderDisplayName:
+          nextMessage.senderDisplayName ?? currentMessage.senderDisplayName,
+        author: nextMessage.author || currentMessage.author,
         clientMessageId: nextMessage.clientMessageId ?? currentMessage.clientMessageId,
       };
       continue;
@@ -535,6 +578,97 @@ function upsertMessageList(
   }
 
   return [...merged, ...sortMessagesForAppend(appendedMessages)];
+}
+
+function patchExistingMessageList(
+  currentMessages: Message[],
+  refreshedMessages: Message[],
+) {
+  if (!currentMessages.length || !refreshedMessages.length) {
+    return currentMessages;
+  }
+
+  const currentIndexById = new Map<string, number>();
+
+  currentMessages.forEach((message, index) => {
+    currentIndexById.set(message.id, index);
+  });
+
+  const merged = [...currentMessages];
+
+  for (const refreshedMessage of refreshedMessages) {
+    const existingIndex = currentIndexById.get(refreshedMessage.id);
+
+    if (existingIndex == null) {
+      continue;
+    }
+
+    const currentMessage = merged[existingIndex];
+
+    if (currentMessage.role === "system" || refreshedMessage.role === "system") {
+      merged[existingIndex] = {
+        ...currentMessage,
+        ...refreshedMessage,
+      };
+      continue;
+    }
+
+    merged[existingIndex] = {
+      ...currentMessage,
+      ...refreshedMessage,
+    };
+  }
+
+  return merged;
+}
+
+function patchDownloadMessageList(
+  currentMessages: Message[],
+  messageId: string,
+  contentPatch: DownloadContentPatch,
+) {
+  return currentMessages.map((message) =>
+    patchDownloadMessage(message, messageId, contentPatch),
+  );
+}
+
+function patchDownloadMessage(
+  message: Message,
+  messageId: string,
+  contentPatch: DownloadContentPatch,
+): Message {
+  if (message.id !== messageId || !isDownloadableMessage(message)) {
+    return message;
+  }
+
+  if (message.content.type === "video") {
+    return {
+      ...message,
+      content: {
+        ...message.content,
+        ...(contentPatch.downloadStatus === undefined
+          ? {}
+          : { downloadStatus: contentPatch.downloadStatus }),
+        ...(contentPatch.fileUrlExpireTime === undefined
+          ? {}
+          : { fileUrlExpireTime: contentPatch.fileUrlExpireTime }),
+        ...(contentPatch.fileUrl === undefined
+          ? {}
+          : { videoUrl: contentPatch.fileUrl }),
+      },
+    };
+  }
+
+  return {
+    ...message,
+    content: {
+      ...message.content,
+      ...(contentPatch.downloadStatus === undefined
+        ? {}
+        : { downloadStatus: contentPatch.downloadStatus }),
+      ...(contentPatch.fileUrl === undefined ? {} : { fileUrl: contentPatch.fileUrl }),
+    },
+  };
 }
 
 function isRevokeSignalMessage(message: Message) {
@@ -748,8 +882,78 @@ function buildOptimisticMessageContent(
   };
 }
 
-function isAccountTakenOverByCurrentUser(account: Account | undefined, me: EmployeeProfile | undefined) {
-  return !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
+function getRetrySendInputFromMessage(message: ChatMessage): {
+  quote?: SendQuotePayload;
+  segment: ComposerSegment;
+} | undefined {
+  if (message.content.type === "text") {
+    return {
+      segment: {
+        text: message.content.text,
+        type: "text",
+      },
+    };
+  }
+
+  if (message.content.type === "quote") {
+    return {
+      quote: {
+        quoteMsgId: message.content.quoteMsgId,
+        quotedMessageId: message.content.quotedMessageId,
+        quotedMessage: message.content.quotedMessage,
+      },
+      segment: {
+        text: message.content.text,
+        type: "text",
+      },
+    };
+  }
+
+  if (message.content.type === "image") {
+    const imageUrl = message.content.imageUrl?.trim();
+
+    if (!imageUrl) {
+      return undefined;
+    }
+
+    return {
+      segment: {
+        alt: message.content.alt,
+        height: message.content.height,
+        type: "image",
+        url: imageUrl,
+        width: message.content.width,
+      },
+    };
+  }
+
+  if (message.content.type === "file") {
+    const fileUrl = message.content.fileUrl?.trim();
+
+    if (!fileUrl) {
+      return undefined;
+    }
+
+    return {
+      segment: {
+        extension: message.content.extension,
+        fileName: message.content.fileName,
+        fileSizeLabel: message.content.fileSizeLabel,
+        type: "file",
+        url: fileUrl,
+      },
+    };
+  }
+
+  return undefined;
+}
+
+function canUseConversationActions(state: WorkbenchState, account: Account | undefined) {
+  return canUseWorkbenchConversationActions({
+    account,
+    hasSendPermission: state.hasChatSendPermission,
+    me: state.me,
+  });
 }
 
 function omitByKeys<T>(record: Record<string, T>, keys: Iterable<string>) {
@@ -1082,7 +1286,7 @@ export function createWorkbenchStore() {
         (item) => item.id === conversation?.accountId,
       );
 
-      if (!conversation || !account || !isAccountTakenOverByCurrentUser(account, state.me)) {
+      if (!conversation || !account || !canUseConversationActions(state, account)) {
         return;
       }
 
@@ -1178,7 +1382,7 @@ export function createWorkbenchStore() {
           (account) => account.id === latestState.activeAccountId,
         );
 
-        if (!isAccountTakenOverByCurrentUser(activeAccount, latestState.me)) {
+        if (!canUseConversationActions(latestState, activeAccount)) {
           return;
         }
 
@@ -1198,6 +1402,9 @@ export function createWorkbenchStore() {
 
     return {
       ...createInitialState(),
+      setChatSendPermission(hasChatSendPermission) {
+        set({ hasChatSendPermission });
+      },
       setSearchKeyword(keyword) {
         set({ searchKeyword: keyword });
 
@@ -1306,7 +1513,7 @@ export function createWorkbenchStore() {
           (item) => item.id === conversation?.accountId,
         );
 
-        if (!conversation || !account || !isAccountTakenOverByCurrentUser(account, state.me)) {
+        if (!conversation || !account || !canUseConversationActions(state, account)) {
           return;
         }
 
@@ -1389,7 +1596,7 @@ export function createWorkbenchStore() {
         if (
           !conversation ||
           conversation.unread > 0 ||
-          !isAccountTakenOverByCurrentUser(account, state.me)
+          !canUseConversationActions(state, account)
         ) {
           return;
         }
@@ -1426,7 +1633,7 @@ export function createWorkbenchStore() {
         if (
           !conversation ||
           conversation.unread <= 0 ||
-          !isAccountTakenOverByCurrentUser(account, state.me)
+          !canUseConversationActions(state, account)
         ) {
           return;
         }
@@ -1447,63 +1654,68 @@ export function createWorkbenchStore() {
         );
       },
       async takeOverAccount(accountId) {
-      const state = get();
-      const { me } = state;
+        const state = get();
+        const { me } = state;
 
-      if (!accountId || !me) {
-        return;
-      }
-
-      const account = state.accounts.find((item) => item.id === accountId);
-
-      if (
-        !account ||
-        account.loginStatus === "offline" ||
-        account.takenOverEmployeeId === me.id
-      ) {
-        return;
-      }
-
-      const requestId = issueTakeoverRequestId(accountId);
-
-      set((currentState) => ({
-        takeoverStatusByAccountId: {
-          ...currentState.takeoverStatusByAccountId,
-          [accountId]: "taking-over",
-        },
-      }));
-
-      try {
-        const nextAccount = await takeOverAccountRequest(accountId);
-
-        if (!isCurrentTakeoverRequest(accountId, requestId)) {
-          return;
+        if (!accountId || !me) {
+          return { ok: true };
         }
 
-        set((currentState) => ({
-          accounts: currentState.accounts.map((item) =>
-            item.id === accountId ? nextAccount : item,
-          ),
-          takeoverStatusByAccountId: omitTakeoverStatus(
-            currentState.takeoverStatusByAccountId,
-            accountId,
-          ),
-        }));
-        clearTakeoverRequest(accountId);
-      } catch {
-        if (!isCurrentTakeoverRequest(accountId, requestId)) {
-          return;
+        const account = state.accounts.find((item) => item.id === accountId);
+
+        if (
+          !account ||
+          account.loginStatus === "offline" ||
+          account.takenOverEmployeeId === me.id
+        ) {
+          return { ok: true };
         }
 
+        const requestId = issueTakeoverRequestId(accountId);
+
         set((currentState) => ({
-          takeoverStatusByAccountId: omitTakeoverStatus(
-            currentState.takeoverStatusByAccountId,
-            accountId,
-          ),
+          takeoverStatusByAccountId: {
+            ...currentState.takeoverStatusByAccountId,
+            [accountId]: "taking-over",
+          },
         }));
-        clearTakeoverRequest(accountId);
-      }
-    },
+
+        try {
+          const nextAccount = await takeOverAccountRequest(accountId);
+
+          if (!isCurrentTakeoverRequest(accountId, requestId)) {
+            return { ok: true };
+          }
+
+          set((currentState) => ({
+            accounts: currentState.accounts.map((item) =>
+              item.id === accountId ? nextAccount : item,
+            ),
+            takeoverStatusByAccountId: omitTakeoverStatus(
+              currentState.takeoverStatusByAccountId,
+              accountId,
+            ),
+          }));
+          clearTakeoverRequest(accountId);
+          return { ok: true };
+        } catch (error) {
+          if (!isCurrentTakeoverRequest(accountId, requestId)) {
+            return { ok: true };
+          }
+
+          set((currentState) => ({
+            takeoverStatusByAccountId: omitTakeoverStatus(
+              currentState.takeoverStatusByAccountId,
+              accountId,
+            ),
+          }));
+          clearTakeoverRequest(accountId);
+          return {
+            errorMessage: getRequestErrorMessage(error, "接管失败，请稍后重试"),
+            ok: false,
+          };
+        }
+      },
     async unpinConversation(conversationId) {
       await setConversationPinned(conversationId, false);
     },
@@ -1552,10 +1764,10 @@ export function createWorkbenchStore() {
           seatOrder: conversationListCacheSeatOrder,
         });
 
-        set({
-          accounts: bootstrapResult.accounts,
-          activeAccountId: bootstrapResult.activeAccountId,
-          activeConversationId: bootstrapResult.activeConversationId,
+          set({
+            accounts: bootstrapResult.accounts,
+            activeAccountId: bootstrapResult.activeAccountId,
+            activeConversationId: bootstrapResult.activeConversationId,
           activeMessageSeq: getActiveMessageSeq(
             conversationPage
               ? {
@@ -1596,6 +1808,8 @@ export function createWorkbenchStore() {
             : {},
           sidebarItems: bootstrapResult.sidebarItems,
           isPollBaselineFresh: true,
+          messageUpdateCursor: undefined,
+          seatUpdateCursor: undefined,
           sinceVersion: bootstrapResult.pollBaseline,
         });
 
@@ -1621,11 +1835,11 @@ export function createWorkbenchStore() {
 
         if (
           bootstrapResult.activeConversationId &&
-          isAccountTakenOverByCurrentUser(
+          canUseConversationActions(
+            get(),
             bootstrapResult.accounts.find(
               (account) => account.id === bootstrapResult.activeAccountId,
             ),
-            bootstrapResult.me,
           )
         ) {
           await markActiveConversationRead(
@@ -1665,6 +1879,8 @@ export function createWorkbenchStore() {
           activeMessageSeq: state.activeMessageSeq,
           currentAccountId: state.activeAccountId,
           freshBaseline: state.isPollBaselineFresh,
+          messageUpdateCursor: state.messageUpdateCursor,
+          seatUpdateCursor: state.seatUpdateCursor,
           sinceVersion: state.sinceVersion,
         };
         const response = await pollWorkbench(request, {
@@ -1672,6 +1888,39 @@ export function createWorkbenchStore() {
           customerProfilesById: state.customerProfilesById,
           me: state.me,
         });
+        const messageUpdateIdsByConversationId = (response.messageUpdateEvents ?? []).reduce(
+          (accumulator, event) => {
+            const currentIds = accumulator[event.conversationId];
+
+            if (currentIds) {
+              currentIds.push(event.messageId);
+            } else {
+              accumulator[event.conversationId] = [event.messageId];
+            }
+
+            return accumulator;
+          },
+          {} as Record<string, string[]>,
+        );
+
+        const refreshedMessagesByConversationId = Object.fromEntries(
+          await Promise.all(
+            Object.entries(messageUpdateIdsByConversationId).map(
+              async ([conversationId, messageIds]): Promise<[string, Message[]]> => [
+                conversationId,
+                await loadMessagesByIds(
+                  {
+                    accounts: state.accounts,
+                    customerProfilesById: state.customerProfilesById,
+                    me: state.me,
+                  },
+                  conversationId,
+                  messageIds,
+                ),
+              ],
+            ),
+          ),
+        ) as Record<string, Message[]>;
 
         set((currentState) => {
           const isStaleScope =
@@ -1700,6 +1949,9 @@ export function createWorkbenchStore() {
             return {
               ...account,
               lastMessageTime: change.lastMessageTime,
+              ...(Object.prototype.hasOwnProperty.call(change, "hostSubUserId")
+                ? { takenOverEmployeeId: change.hostSubUserId ?? undefined }
+                : {}),
               unreadCount: change.unreadCount,
             };
           });
@@ -1744,35 +1996,53 @@ export function createWorkbenchStore() {
               upsertMessageList(currentMessages, response.activeConversationMessages);
           }
 
-          for (const change of response.messageStatusChanges) {
-            const conversationMessages = nextMessagesByConversationId[change.conversationId] ?? [];
+          for (const [conversationId, refreshedMessages] of Object.entries(
+            refreshedMessagesByConversationId,
+          )) {
+            if (!refreshedMessages.length) {
+              continue;
+            }
 
-            nextMessagesByConversationId[change.conversationId] = conversationMessages.map(
-              (message) => {
-                const matches =
-                  (change.clientMessageId &&
-                    message.clientMessageId === change.clientMessageId) ||
-                  message.remoteMessageId === change.remoteMessageId;
-
-                if (!matches) {
-                  return message;
-                }
-
-                return {
-                  ...message,
-                  failReason: change.reason,
-                  remoteMessageId: change.remoteMessageId ?? message.remoteMessageId,
-                  status: change.status,
-                };
-              },
+            const conversationMessages = nextMessagesByConversationId[conversationId] ?? [];
+            nextMessagesByConversationId[conversationId] = patchExistingMessageList(
+              conversationMessages,
+              refreshedMessages,
             );
           }
 
+          const nextHistoryPanelByConversationId = {
+            ...clearedResourceState.historyPanelByConversationId,
+          };
+
+          for (const [conversationId, refreshedMessages] of Object.entries(
+            refreshedMessagesByConversationId,
+          )) {
+            if (!refreshedMessages.length) {
+              continue;
+            }
+
+            const historyPanel = nextHistoryPanelByConversationId[conversationId];
+
+            if (!historyPanel) {
+              continue;
+            }
+
+            nextHistoryPanelByConversationId[conversationId] = {
+              ...historyPanel,
+              messages: patchExistingMessageList(
+                historyPanel.messages,
+                refreshedMessages,
+              ),
+            };
+          }
+
+          const serverMessages = [
+            ...response.activeConversationMessages,
+            ...Object.values(refreshedMessagesByConversationId).flat(),
+          ];
           const pendingMessages = currentState.pendingMessages.filter(
             (pendingMessage) =>
-              !response.messageStatusChanges.some(
-                (change) => change.clientMessageId === pendingMessage.clientMessageId,
-              ),
+              !serverMessages.some((message) => isSameMessage(pendingMessage, message)),
           );
 
           return {
@@ -1793,6 +2063,7 @@ export function createWorkbenchStore() {
               clearedResourceState.groupMembersByConversationId,
             groupMembersLoadingByConversationId:
               clearedResourceState.groupMembersLoadingByConversationId,
+            historyPanelByConversationId: nextHistoryPanelByConversationId,
             messagePaginationByConversationId:
               clearedResourceState.messagePaginationByConversationId,
             messagesByConversationId: nextMessagesByConversationId,
@@ -1802,6 +2073,10 @@ export function createWorkbenchStore() {
               lastSuccessAt: Date.now(),
               status: "idle",
             },
+            messageUpdateCursor:
+              response.nextMessageUpdateCursor ?? currentState.messageUpdateCursor,
+            seatUpdateCursor:
+              response.nextSeatUpdateCursor ?? currentState.seatUpdateCursor,
             sinceVersion: response.nextVersion,
           };
         });
@@ -1882,17 +2157,18 @@ export function createWorkbenchStore() {
                 ? currentState.activeConversationId
                 : scopeResult.nextConversationId;
 
-              return {
-                ...nextState,
-                activeConversationId: nextActiveConversationId,
-                activeMessageSeq: getActiveMessageSeq(
-                  nextMessagesByConversationId,
-                  nextActiveConversationId,
-                ),
-                pendingMessages: currentState.pendingMessages.filter(
-                  (message) => message.conversationId !== state.activeConversationId,
-                ),
-                isPollBaselineFresh: true,
+            return {
+              ...nextState,
+              activeConversationId: nextActiveConversationId,
+              activeMessageSeq: getActiveMessageSeq(
+                nextMessagesByConversationId,
+                nextActiveConversationId,
+              ),
+              messageUpdateCursor: undefined,
+              pendingMessages: currentState.pendingMessages.filter(
+                (message) => message.conversationId !== state.activeConversationId,
+              ),
+              isPollBaselineFresh: true,
                 sinceVersion: scopeResult.pollBaseline,
               };
             });
@@ -1938,8 +2214,8 @@ export function createWorkbenchStore() {
 
       if (
         !activeConversation ||
-        account?.loginStatus === "offline" ||
-        !isAccountTakenOverByCurrentUser(account, me)
+        activeConversation.bizStatus === 0 ||
+        !canUseConversationActions(state, account)
       ) {
         return {
           errorCode: "UNAVAILABLE",
@@ -2008,6 +2284,7 @@ export function createWorkbenchStore() {
           const response = await sendTextMessage({
             clientMessageId: segmentClientMessageId,
             conversationId: activeConversationId,
+            failMsgId: options?.failMsgId,
             mention: mentionForSegment,
             quote: quoteForSegment,
             seatId: activeAccountId,
@@ -2037,7 +2314,10 @@ export function createWorkbenchStore() {
           set((currentState) => {
             const currentMessages =
               currentState.messagesByConversationId[activeConversationId] ?? [];
-            const nextMessages = [...currentMessages, optimisticMessage];
+            const currentMessagesWithoutAcceptedRemoval = options?.removeMessageIdOnAccepted
+              ? currentMessages.filter((message) => message.id !== options.removeMessageIdOnAccepted)
+              : currentMessages;
+            const nextMessages = [...currentMessagesWithoutAcceptedRemoval, optimisticMessage];
             const currentConversations =
               currentState.conversationListsByScope[activeAccountId] ?? [];
 
@@ -2063,7 +2343,14 @@ export function createWorkbenchStore() {
                 ...currentState.messagesByConversationId,
                 [activeConversationId]: nextMessages,
               },
-              pendingMessages: [...currentState.pendingMessages, optimisticMessage],
+              pendingMessages: [
+                ...(options?.removeMessageIdOnAccepted
+                  ? currentState.pendingMessages.filter(
+                      (message) => message.id !== options.removeMessageIdOnAccepted,
+                    )
+                  : currentState.pendingMessages),
+                optimisticMessage,
+              ],
             };
           });
         }
@@ -2108,31 +2395,37 @@ export function createWorkbenchStore() {
         (message) =>
           message.id === messageId &&
           message.role === "agent" &&
-          message.status === "failed" &&
-          message.content.type === "text",
+          message.status === "failed",
       );
 
       if (
         !failedMessage ||
-        failedMessage.role !== "agent" ||
-        failedMessage.content.type !== "text"
+        failedMessage.role !== "agent"
       ) {
-        return;
+        return {
+          errorCode: "MESSAGE_NOT_RETRYABLE",
+          errorMessage: "暂不支持重发该消息",
+          reason: "unavailable",
+          ok: false,
+        };
       }
 
-      set((currentState) => ({
-        messagesByConversationId: {
-          ...currentState.messagesByConversationId,
-          [failedMessage.conversationId]: (
-            currentState.messagesByConversationId[failedMessage.conversationId] ?? []
-          ).filter((message) => message.id !== failedMessage.id),
-        },
-        pendingMessages: currentState.pendingMessages.filter(
-          (message) => message.id !== failedMessage.id,
-        ),
-      }));
+      const retryInput = getRetrySendInputFromMessage(failedMessage);
 
-      await get().sendAgentTextMessage(failedMessage.content.text);
+      if (!retryInput) {
+        return {
+          errorCode: "UNSUPPORTED_RETRY_MESSAGE",
+          errorMessage: "暂不支持重发该消息",
+          reason: "unavailable",
+          ok: false,
+        };
+      }
+
+      return get().sendAgentMessageSegments([retryInput.segment], {
+        failMsgId: failedMessage.seq != null ? String(failedMessage.seq) : undefined,
+        removeMessageIdOnAccepted: failedMessage.id,
+        quote: retryInput.quote,
+      });
     },
     async loadOlderMessages() {
       const state = get();
@@ -2660,6 +2953,7 @@ export function createWorkbenchStore() {
                   }
                 : nextGroupMembersLoadingByConversationId,
             isPollBaselineFresh: true,
+            messageUpdateCursor: undefined,
             sinceVersion: scopeResult.pollBaseline,
           };
         });
@@ -2671,9 +2965,9 @@ export function createWorkbenchStore() {
 
         if (
           scopeResult.nextConversationId &&
-          isAccountTakenOverByCurrentUser(
+          canUseConversationActions(
+            get(),
             get().accounts.find((account) => account.id === accountId),
-            get().me,
           )
         ) {
           await markActiveConversationRead(scopeResult.nextConversationId, requestId);
@@ -2707,6 +3001,7 @@ export function createWorkbenchStore() {
         isConversationLoading: true,
         historyPanelOpenConversationId: undefined,
         scopeTransitionError: undefined,
+        messageUpdateCursor: undefined,
       });
 
       if (currentConversation?.mode === "group") {
@@ -2772,6 +3067,7 @@ export function createWorkbenchStore() {
             },
             isConversationLoading: false,
             messagesByConversationId: nextMessagesByConversationId,
+            messageUpdateCursor: undefined,
             scopeTransitionError: undefined,
           };
         });
@@ -2783,7 +3079,7 @@ export function createWorkbenchStore() {
           (account) => account.id === latestState.activeAccountId,
         );
 
-        if (!isAccountTakenOverByCurrentUser(activeAccount, latestState.me)) {
+        if (!canUseConversationActions(latestState, activeAccount)) {
           return;
         }
 
@@ -2912,37 +3208,29 @@ export function createWorkbenchStore() {
       updateMessageDownloadContent(conversationId, messageId, contentPatch) {
         set((currentState) => {
           const messages = currentState.messagesByConversationId[conversationId] ?? [];
+          const historyPanel = currentState.historyPanelByConversationId[conversationId];
 
           return {
+            historyPanelByConversationId: historyPanel
+              ? {
+                  ...currentState.historyPanelByConversationId,
+                  [conversationId]: {
+                    ...historyPanel,
+                    messages: patchDownloadMessageList(
+                      historyPanel.messages,
+                      messageId,
+                      contentPatch,
+                    ),
+                  },
+                }
+              : currentState.historyPanelByConversationId,
             messagesByConversationId: {
               ...currentState.messagesByConversationId,
-              [conversationId]: messages.map((message) => {
-                if (message.id !== messageId || !isDownloadableMessage(message)) {
-                  return message;
-                }
-
-                if (message.content.type === "video") {
-                  return {
-                    ...message,
-                    content: {
-                      ...message.content,
-                      downloadStatus: contentPatch.downloadStatus,
-                      ...(contentPatch.fileUrlExpireTime === undefined
-                        ? {}
-                        : { fileUrlExpireTime: contentPatch.fileUrlExpireTime }),
-                      videoUrl: contentPatch.fileUrl ?? message.content.videoUrl,
-                    },
-                  };
-                }
-
-                return {
-                  ...message,
-                  content: {
-                    ...message.content,
-                    ...contentPatch,
-                  },
-                };
-              }),
+              [conversationId]: patchDownloadMessageList(
+                messages,
+                messageId,
+                contentPatch,
+              ),
             },
           };
         });

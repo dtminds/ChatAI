@@ -177,6 +177,50 @@ describe("settings sub-account routes", () => {
     await app.close();
   });
 
+  it("revokes active sessions when a sub-account password changes", async () => {
+    const { app, authorization, db } = await createSettingsApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        name: "客服二号",
+        password: "Strong1!",
+        seatIds: ["102"],
+      },
+      url: "/api/server/settings/sub-accounts/12",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(db.revokedSessionSubUserIds).toEqual([12]);
+
+    await app.close();
+  });
+
+  it("expires existing access tokens when a sub-account role changes", async () => {
+    const { app, authorization, db } = await createSettingsApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        name: "客服一号",
+        password: "",
+        role: "viewer",
+        seatIds: ["101"],
+      },
+      url: "/api/server/settings/sub-accounts/11",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(db.updatedSubAccount).toMatchObject({
+      role: "viewer",
+    });
+    expect(db.expiredAccessTokenSubUserIds).toEqual([11]);
+
+    await app.close();
+  });
+
   it("rejects weak sub-account passwords on create and update", async () => {
     const hashSpy = vi.spyOn(argon2, "hash");
     const { app, authorization } = await createSettingsApp();
@@ -356,6 +400,8 @@ function createSettingsDbMock() {
     deletedRelationSubIds: [] as number[],
     insertedRelations: [] as Array<Record<string, unknown>>,
     insertedSubAccount: undefined as Record<string, unknown> | undefined,
+    expiredAccessTokenSubUserIds: [] as number[],
+    revokedSessionSubUserIds: [] as number[],
     statusUpdates: [] as number[],
     subAccountListWheres: [] as Array<[string, string, unknown]>,
     updatedSubAccount: undefined as Record<string, unknown> | undefined,
@@ -510,22 +556,58 @@ function createSettingsDbMock() {
       return builder;
     },
     updateTable(table: string) {
+      const wheres: Array<[string, string, unknown]> = [];
+      let nextValues: Record<string, unknown> = {};
       const builder = {
-        execute: async () => [],
-        set: (values: Record<string, unknown>) => {
-          if (table !== "xy_wap_embed_sub_user") {
+        execute: async () => {
+          if (table === "xy_wap_embed_sub_user_session") {
+            const subUserId = wheres.find(([column]) => column === "sub_user_id")?.[2];
+
+            if (typeof subUserId === "number") {
+              if ("revoked_at" in nextValues) {
+                state.revokedSessionSubUserIds.push(subUserId);
+              } else if ("session_version" in nextValues) {
+                state.expiredAccessTokenSubUserIds.push(subUserId);
+              }
+            }
+          }
+
+          return [];
+        },
+        set: (values: Record<string, unknown> | ((expressionBuilder: unknown) => Record<string, unknown>)) => {
+          if (
+            table !== "xy_wap_embed_sub_user" &&
+            table !== "xy_wap_embed_sub_user_session"
+          ) {
             throw new Error(`Unexpected update table: ${table}`);
           }
 
-          if ("status" in values) {
-            state.statusUpdates.push(values.status as number);
+          if (table === "xy_wap_embed_sub_user") {
+            const updateValues = values as Record<string, unknown>;
+
+            if ("status" in updateValues) {
+              state.statusUpdates.push(updateValues.status as number);
+            } else {
+              state.updatedSubAccount = updateValues;
+            }
           } else {
-            state.updatedSubAccount = values;
+            nextValues =
+              typeof values === "function"
+                ? values(
+                    (column: string, operator: string, value: unknown) =>
+                      column === "session_version" && operator === "+" && value === 1
+                        ? 2
+                        : undefined,
+                  )
+                : values;
           }
 
           return builder;
         },
-        where: () => builder,
+        where: (column: string, operator: string, value: unknown) => {
+          wheres.push([column, operator, value]);
+          return builder;
+        },
       };
 
       return builder;

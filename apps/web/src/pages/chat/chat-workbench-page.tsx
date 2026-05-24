@@ -12,6 +12,14 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
   AlertDialog,
@@ -26,6 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
+import { useAuthStore } from "@/store/auth-store";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
@@ -46,15 +55,11 @@ import type {
   ChatMessage,
   ChatMode,
   FileUploadQueueItem,
-  Message,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
-import {
-  downloadMessageFile,
-  getMessageFileDownloadStatus,
-} from "@/pages/chat/api/workbench-gateway";
+import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -63,6 +68,7 @@ import {
   extractComposerMentionState,
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
+import { resolveWorkbenchPermissions } from "@/pages/chat/lib/workbench-permissions";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
@@ -72,9 +78,6 @@ import {
 } from "@/pages/chat/lib/panel-width";
 
 const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
-const MAX_ACTIVE_DOWNLOAD_TRANSFERS = 3;
-const DOWNLOAD_STATUS_POLL_INTERVAL_MS = 3000;
-const MAX_DOWNLOAD_STATUS_POLL_COUNT = 40;
 
 type PendingComposerDiscardSwitch =
   | {
@@ -85,6 +88,13 @@ type PendingComposerDiscardSwitch =
       mode: ChatMode;
       type: "mode";
     };
+
+type MentionRetryDialogState = {
+  conversationId: string;
+  displayName: string;
+  groupMemberId: string;
+  refreshedOnce: boolean;
+};
 
 function getInitialAccountRailCollapsed() {
   try {
@@ -165,6 +175,7 @@ function ChatWorkbenchContent({
     readReceiptError,
     pinConversation,
     retryFailedMessage,
+    setChatSendPermission,
     closeHistoryPanel,
     loadHistoryMessages,
     openHistoryPanel,
@@ -182,6 +193,7 @@ function ChatWorkbenchContent({
     unpinConversation,
     updateMessageDownloadContent,
   } = useWorkbenchStore();
+  const subUser = useAuthStore((state) => state.subUser);
 
   const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
@@ -204,10 +216,17 @@ function ChatWorkbenchContent({
     [],
   );
   const [isSendingDraft, setIsSendingDraft] = useState(false);
+  const [retryingMessageIds, setRetryingMessageIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [quotedMessage, setQuotedMessage] =
     useState<QuotedMessagePreviewContent | null>(null);
   const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
     useState<PendingComposerDiscardSwitch | null>(null);
+  const [mentionRetryDialogState, setMentionRetryDialogState] =
+    useState<MentionRetryDialogState | null>(null);
+  const [isRefreshingMentionTarget, setIsRefreshingMentionTarget] =
+    useState(false);
   const [isAccountRailCollapsed, setIsAccountRailCollapsed] = useState(
     getInitialAccountRailCollapsed,
   );
@@ -216,18 +235,16 @@ function ChatWorkbenchContent({
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
+  const mentionRetryDialogStateRef =
+    useRef<MentionRetryDialogState | null>(null);
   const isSendingDraftRef = useRef(false);
+  const shouldRestoreComposerFocusRef = useRef(false);
   const isMountedRef = useRef(true);
+  const activeConversationIdRef = useRef<string | undefined>(activeConversationId);
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
   );
-  const [downloadTransferStates, setDownloadTransferStates] = useState<
-    Record<string, "idle" | "transferring">
-  >({});
-  const downloadPollingTimeoutsRef = useRef(new Map<string, number>());
-  const downloadPollingMessageIdsRef = useRef(new Set<string>());
-  const downloadPollingConversationRef = useRef<string | undefined>(undefined);
   const {
     customerPanelWidth,
     handleCustomerPanelResizeStart,
@@ -297,32 +314,22 @@ function ChatWorkbenchContent({
     undefined;
 
   useConversationRevealTimer(allConversations);
-  const isActiveAccountOffline = activeAccount?.loginStatus === "offline";
-  const isActiveAccountTakenOver =
-    !!activeAccount?.takenOverEmployeeId &&
-    activeAccount.takenOverEmployeeId === me?.id;
-  const canSendMessage =
-    !!activeConversation &&
-    !isActiveAccountOffline &&
-    isActiveAccountTakenOver;
-  const sidebarIframeTos: "0" | "1" =
-    !!activeAccount?.takenOverEmployeeId &&
-    activeAccount.takenOverEmployeeId === me?.id
-      ? "1"
-      : "0";
-  const isConversationActionDisabled =
-    isActiveAccountOffline || !isActiveAccountTakenOver;
-  const composerPlaceholder = canSendMessage
-    ? "请输入消息……"
-    : bootstrapStatus === "loading" && !activeConversation
-      ? "正在加载会话数据..."
-      : isActiveAccountOffline
-        ? "当前账号离线，暂时无法发送消息"
-        : !isActiveAccountTakenOver
-          ? "当前账号未接管，暂时无法发送消息"
-          : !activeConversation
-            ? "当前列表暂无可发送会话"
-            : "当前会话暂不可发送消息";
+  const workbenchPermissions = resolveWorkbenchPermissions({
+    account: activeAccount,
+    activeConversation,
+    bootstrapStatus,
+    me,
+    subUser,
+  });
+  const {
+    canSendMessage,
+    canTakeOverAccount,
+    canUseChatSend,
+    composerPlaceholder,
+    isAccountTakenOverByCurrentUser,
+    isConversationActionDisabled,
+  } = workbenchPermissions;
+  const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";
 
   const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
 
@@ -337,35 +344,6 @@ function ChatWorkbenchContent({
       const nextQueue = updater(currentQueue);
       fileUploadQueueRef.current = nextQueue;
       return nextQueue;
-    });
-  };
-
-  const clearDownloadPollingTimers = () => {
-    downloadPollingTimeoutsRef.current.forEach((timeoutId) => {
-      window.clearTimeout(timeoutId);
-    });
-    downloadPollingTimeoutsRef.current.clear();
-    downloadPollingMessageIdsRef.current.clear();
-  };
-
-  const updateDownloadTransferState = (
-    messageId: string,
-    state: "idle" | "transferring",
-  ) => {
-    if (!isMountedRef.current) {
-      return;
-    }
-
-    setDownloadTransferStates((currentStates) => {
-      if (state === "idle") {
-        const { [messageId]: _ignored, ...nextStates } = currentStates;
-        return nextStates;
-      }
-
-      return {
-        ...currentStates,
-        [messageId]: state,
-      };
     });
   };
 
@@ -395,45 +373,18 @@ function ChatWorkbenchContent({
         });
         fileUploadAbortControllersRef.current.clear();
         fileUploadQueueRef.current = [];
-        clearDownloadPollingTimers();
       };
     },
     [],
   );
 
   useEffect(() => {
-    if (downloadPollingConversationRef.current === activeConversation?.id) {
-      return;
-    }
-
-    clearDownloadPollingTimers();
-    downloadPollingConversationRef.current = activeConversation?.id;
-    setDownloadTransferStates({});
-  }, [activeConversation?.id]);
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
 
   useEffect(() => {
-    if (!activeConversation) {
-      return;
-    }
-
-    const restorableMessages = getRestorableDownloadMessages(activeMessages);
-    const restorableIds = new Set(restorableMessages.map((message) => message.id));
-
-    downloadPollingMessageIdsRef.current.forEach((messageId) => {
-      if (!restorableIds.has(messageId)) {
-        stopMessageDownloadPolling(messageId);
-      }
-    });
-
-    restorableMessages.forEach((message) => {
-      if (downloadPollingMessageIdsRef.current.has(message.id)) {
-        return;
-      }
-
-      updateDownloadTransferState(message.id, "transferring");
-      startMessageDownloadPolling(message);
-    });
-  }, [activeConversation?.id, activeMessages]);
+    setChatSendPermission(canUseChatSend);
+  }, [canUseChatSend, setChatSendPermission]);
 
   useEffect(() => {
     if (!readReceiptError) {
@@ -444,9 +395,89 @@ function ChatWorkbenchContent({
     dismissReadReceiptError();
   }, [dismissReadReceiptError, readReceiptError]);
 
+  const handleTakeOverAccount = useCallback(
+    async (accountId: string) => {
+      if (!canTakeOverAccount) {
+        toast.warning("当前账号无接管权限");
+        return;
+      }
+
+      const result = await takeOverAccount(accountId);
+
+      if (!isMountedRef.current || result.ok) {
+        return;
+      }
+
+      toast.warning(result.errorMessage);
+    },
+    [canTakeOverAccount, takeOverAccount],
+  );
+
+  const handleRetryFailedMessage = useCallback(
+    async (messageId: string) => {
+      if (!canSendMessage) {
+        return;
+      }
+
+      const retryConversationId = activeConversationIdRef.current;
+      setRetryingMessageIds((current) => new Set(current).add(messageId));
+
+      try {
+        const result = await retryFailedMessage(messageId);
+
+        if (
+          !isMountedRef.current ||
+          activeConversationIdRef.current !== retryConversationId
+        ) {
+          return;
+        }
+
+        if (!result.ok) {
+          toast.warning(result.errorMessage || "重试失败，请稍后重试");
+          return;
+        }
+
+        const messageViewport = messageViewportRef.current;
+
+        if (messageViewport) {
+          messageViewport.scrollTo?.({
+            top: 0,
+            behavior: "smooth",
+          });
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setRetryingMessageIds((current) => {
+            const next = new Set(current);
+            next.delete(messageId);
+            return next;
+          });
+        }
+      }
+    },
+    [canSendMessage, retryFailedMessage],
+  );
+
   useEffect(() => {
     setIsEmojiPickerOpen(false);
   }, [activeConversation?.id]);
+
+  useEffect(() => {
+    mentionRetryDialogStateRef.current = null;
+    setMentionRetryDialogState(null);
+    setIsRefreshingMentionTarget(false);
+  }, [activeConversation?.id]);
+
+  useEffect(() => {
+    if (isSendingDraft || !shouldRestoreComposerFocusRef.current) {
+      return;
+    }
+
+    shouldRestoreComposerFocusRef.current = false;
+    const editor = composerRef.current;
+    editor?.getRootElement()?.focus();
+    editor?.focus();
+  }, [isSendingDraft]);
 
   useWorkbenchPolling({
     activeAccountId,
@@ -469,6 +500,7 @@ function ChatWorkbenchContent({
   };
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
+    const sendConversationId = activeConversation?.id;
     const normalizedSegments = segments.length > 0 ? segments : [];
     const mentionState = extractComposerMentionState(segments);
     const mention =
@@ -527,7 +559,10 @@ function ChatWorkbenchContent({
         },
       });
 
-      if (!isMountedRef.current) {
+      if (
+        !isMountedRef.current ||
+        activeConversationIdRef.current !== sendConversationId
+      ) {
         return;
       }
 
@@ -546,10 +581,13 @@ function ChatWorkbenchContent({
       clearComposer({
         keepQuote: quotedMessage !== null && !result.didConsumeQuote,
       });
-      composerRef.current?.focus();
     } finally {
       isSendingDraftRef.current = false;
-      setIsSendingDraft(false);
+      if (isMountedRef.current) {
+        shouldRestoreComposerFocusRef.current =
+          activeConversationIdRef.current === sendConversationId;
+        setIsSendingDraft(false);
+      }
     }
   };
 
@@ -699,20 +737,10 @@ function ChatWorkbenchContent({
       return;
     }
 
-    if (
-      downloadPollingMessageIdsRef.current.size >=
-      MAX_ACTIVE_DOWNLOAD_TRANSFERS
-    ) {
-      toast.warning("下载队列已满，请稍后");
-      return;
-    }
-
     if (message.conversationId !== activeConversation.id) {
       return;
     }
 
-    updateDownloadTransferState(message.id, "transferring");
-    downloadPollingMessageIdsRef.current.add(message.id);
     updateMessageDownloadContent(message.conversationId, message.id, {
       downloadStatus: "ing",
     });
@@ -727,133 +755,17 @@ function ChatWorkbenchContent({
           return;
         }
 
-        startMessageDownloadPolling(message);
       })
       .catch(() => {
         if (!isMountedRef.current) {
           return;
         }
 
-        stopMessageDownloadPolling(message.id);
         updateMessageDownloadContent(message.conversationId, message.id, {
           downloadStatus: "failed",
         });
         toast.warning("下载失败，请稍后重试");
       });
-  };
-
-  const startMessageDownloadPolling = (message: ChatMessage) => {
-    downloadPollingMessageIdsRef.current.add(message.id);
-
-    if (downloadPollingTimeoutsRef.current.has(message.id)) {
-      return;
-    }
-
-    pollMessageDownloadStatus(message, 0);
-  };
-
-  const stopMessageDownloadPolling = (messageId: string) => {
-    const timeoutId = downloadPollingTimeoutsRef.current.get(messageId);
-
-    if (timeoutId !== undefined) {
-      window.clearTimeout(timeoutId);
-      downloadPollingTimeoutsRef.current.delete(messageId);
-    }
-
-    downloadPollingMessageIdsRef.current.delete(messageId);
-    updateDownloadTransferState(messageId, "idle");
-  };
-
-  const pollMessageDownloadStatus = (message: ChatMessage, attempt: number) => {
-    if (!isMountedRef.current || !message.seq) {
-      stopMessageDownloadPolling(message.id);
-      return;
-    }
-
-    if (attempt >= MAX_DOWNLOAD_STATUS_POLL_COUNT) {
-      stopMessageDownloadPolling(message.id);
-      updateMessageDownloadContent(message.conversationId, message.id, {
-        downloadStatus: "failed",
-      });
-      toast.warning("文件下载超时，请稍后重试");
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      downloadPollingTimeoutsRef.current.delete(message.id);
-
-      if (
-        !isMountedRef.current ||
-        downloadPollingConversationRef.current !== message.conversationId
-      ) {
-        downloadPollingMessageIdsRef.current.delete(message.id);
-        return;
-      }
-
-      void getMessageFileDownloadStatus({
-        conversationId: message.conversationId,
-        messageSeq: message.seq ?? 0,
-      })
-        .then((status) => {
-          if (
-            !isMountedRef.current ||
-            downloadPollingConversationRef.current !== message.conversationId
-          ) {
-            return;
-          }
-
-          if (status?.downloadStatus === "finished") {
-            stopMessageDownloadPolling(message.id);
-            updateMessageDownloadContent(message.conversationId, message.id, {
-              downloadStatus: "finished",
-              fileUrlExpireTime: status.fileUrlExpireTime,
-              fileUrl: status.fileUrl,
-            });
-
-            if (message.content.type === "file" && status.fileUrl) {
-              openMessageDownloadUrl(message, status.fileUrl);
-            }
-            return;
-          }
-
-          if (status?.downloadStatus === "failed") {
-            stopMessageDownloadPolling(message.id);
-            updateMessageDownloadContent(message.conversationId, message.id, {
-              downloadStatus: "failed",
-            });
-            toast.warning("下载失败，请稍后重试");
-            return;
-          }
-
-          pollMessageDownloadStatus(message, attempt + 1);
-        })
-        .catch(() => {
-          if (!isMountedRef.current) {
-            return;
-          }
-
-          if (downloadPollingConversationRef.current !== message.conversationId) {
-            return;
-          }
-
-          stopMessageDownloadPolling(message.id);
-          updateMessageDownloadContent(message.conversationId, message.id, {
-            downloadStatus: "failed",
-          });
-          window.setTimeout(() => {
-            if (
-              !isMountedRef.current ||
-              downloadPollingConversationRef.current !== message.conversationId
-            ) {
-              return;
-            }
-
-            toast.warning("下载失败，请稍后重试");
-          }, 0);
-        });
-    }, DOWNLOAD_STATUS_POLL_INTERVAL_MS);
-
-    downloadPollingTimeoutsRef.current.set(message.id, timeoutId);
   };
 
   const handleDraftChange = (nextDraft: string) => {
@@ -976,11 +888,89 @@ function ChatWorkbenchContent({
       return;
     }
 
+    const activeGroupMember = activeGroupMembers.find(
+      (member) => member.id === message.sender.groupMemberId,
+    );
+
+    if (!activeGroupMember) {
+      const retryDialogState = {
+        conversationId: message.conversationId,
+        displayName: message.senderDisplayName || message.sender.name,
+        groupMemberId: message.sender.groupMemberId,
+        refreshedOnce: false,
+      };
+
+      mentionRetryDialogStateRef.current = retryDialogState;
+      setMentionRetryDialogState(retryDialogState);
+      return;
+    }
+
     composerRef.current?.dispatchCommand(INSERT_COMPOSER_MENTION_COMMAND, {
-      displayName: message.senderDisplayName || message.sender.name,
-      memberId: message.sender.groupMemberId,
+      displayName: activeGroupMember.displayName,
+      memberId: activeGroupMember.id,
     });
     composerRef.current?.focus();
+  };
+
+  const handleRetryMentionTarget = async () => {
+    const dialogState = mentionRetryDialogState;
+
+    if (!dialogState || !activeConversation?.id || isRefreshingMentionTarget) {
+      return;
+    }
+
+    setIsRefreshingMentionTarget(true);
+
+    try {
+      await loadActiveGroupMembers({ force: true });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      const refreshedState = useWorkbenchStore.getState();
+      const isStillActiveRetry =
+        refreshedState.activeConversationId === dialogState.conversationId &&
+        mentionRetryDialogStateRef.current?.conversationId ===
+          dialogState.conversationId &&
+        mentionRetryDialogStateRef.current?.groupMemberId ===
+          dialogState.groupMemberId;
+
+      if (!isStillActiveRetry) {
+        return;
+      }
+
+      const refreshedMembers =
+        refreshedState.groupMembersByConversationId[
+          dialogState.conversationId
+        ] ?? [];
+      const refreshedMember = refreshedMembers.find(
+        (member) => member.id === dialogState.groupMemberId,
+      );
+
+      if (!refreshedMember) {
+        const nextDialogState = {
+          ...dialogState,
+          refreshedOnce: true,
+        };
+
+        mentionRetryDialogStateRef.current = nextDialogState;
+        setMentionRetryDialogState(nextDialogState);
+        return;
+      }
+
+      composerRef.current?.dispatchCommand(INSERT_COMPOSER_MENTION_COMMAND, {
+        displayName: refreshedMember.displayName,
+        memberId: refreshedMember.id,
+      });
+      composerRef.current?.focus();
+      mentionRetryDialogStateRef.current = null;
+      setMentionRetryDialogState(null);
+    } finally {
+      if (isMountedRef.current) {
+        setIsRefreshingMentionTarget(false);
+      }
+    }
   };
 
   if (bootstrapStatus === "loading" && accounts.length === 0) {
@@ -1045,6 +1035,7 @@ function ChatWorkbenchContent({
         <AccountRail
           accounts={accounts}
           activeAccountId={activeAccountId}
+          canTakeOverAccount={canTakeOverAccount}
           currentEmployee={me}
           currentEmployeeId={me?.id}
           isCollapsed={isAccountRailCollapsed}
@@ -1053,7 +1044,7 @@ function ChatWorkbenchContent({
           onResizeStart={handleAccountRailResizeStart}
           onSelectAccount={setActiveAccount}
           onOpenSettings={onOpenSettings}
-          onTakeOverAccount={takeOverAccount}
+          onTakeOverAccount={handleTakeOverAccount}
           takeoverStatusByAccountId={takeoverStatusByAccountId}
         />
 
@@ -1111,7 +1102,6 @@ function ChatWorkbenchContent({
                 isSendingDraft={isSendingDraft}
                 isResizingCustomerPanel={isResizingCustomerPanel}
                 fileUploadQueue={fileUploadQueue}
-                downloadTransferStates={downloadTransferStates}
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
@@ -1176,7 +1166,8 @@ function ChatWorkbenchContent({
                 onOpenQuotedMessage={handleOpenQuotedMessage}
                 onQuoteMessage={handleQuoteMessage}
                 onMessageViewportScroll={handleMessageViewportScroll}
-                onRetryMessage={retryFailedMessage}
+                onRetryMessage={handleRetryFailedMessage}
+                retryingMessageIds={retryingMessageIds}
                 onSendDraft={handleSendDraft}
                 onDismissScopeTransitionError={() => {
                   setFileUploadTransitionError(undefined);
@@ -1304,6 +1295,51 @@ function ChatWorkbenchContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Dialog
+        open={mentionRetryDialogState !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            mentionRetryDialogStateRef.current = null;
+            setMentionRetryDialogState(null);
+            setIsRefreshingMentionTarget(false);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {mentionRetryDialogState?.refreshedOnce
+                ? "刷新后仍未找到该成员"
+                : "该成员已退群或群成员数据未更新"}
+            </DialogTitle>
+            <DialogDescription>
+              {mentionRetryDialogState?.refreshedOnce
+                ? `${mentionRetryDialogState.displayName} 可能已退群，暂不支持 @Ta`
+                : `${mentionRetryDialogState?.displayName ?? ""} 暂不支持 @Ta，请刷新群成员后重试`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              disabled={isRefreshingMentionTarget}
+              onClick={() => {
+                void handleRetryMentionTarget();
+              }}
+            >
+              {isRefreshingMentionTarget ? "刷新中" : "刷新群成员并重试"}
+            </Button>
+            <Button
+              onClick={() => {
+                mentionRetryDialogStateRef.current = null;
+                setMentionRetryDialogState(null);
+                setIsRefreshingMentionTarget(false);
+              }}
+              variant="outline"
+            >
+              取消
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1381,33 +1417,6 @@ function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
     message.content.downloadStatus === "finished" &&
     url
   );
-}
-
-function getRestorableDownloadMessages(messages: Message[]) {
-  return messages
-    .filter((message): message is ChatMessage => {
-      if (message.role === "system") {
-        return false;
-      }
-
-      if (message.content.type !== "file" && message.content.type !== "video") {
-        return false;
-      }
-
-      return (
-        message.content.downloadStatus === "ing" &&
-        Boolean(message.seq)
-      );
-    })
-    .sort(
-      (left, right) =>
-        getMessageDownloadOrderValue(right) - getMessageDownloadOrderValue(left),
-    )
-    .slice(0, MAX_ACTIVE_DOWNLOAD_TRANSFERS);
-}
-
-function getMessageDownloadOrderValue(message: ChatMessage) {
-  return message.seq ?? 0;
 }
 
 function buildQuotedMessagePreview(

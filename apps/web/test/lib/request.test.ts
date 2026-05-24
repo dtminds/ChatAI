@@ -1,12 +1,21 @@
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { http, request, requestInstance } from "@/lib/request";
+import { useAuthStore } from "@/store/auth-store";
 
 const mock = new MockAdapter(requestInstance);
+const operatorSubUser = {
+  accountType: "sub" as const,
+  displayName: "客服一号",
+  permissions: ["chat.access", "chat.send", "chat.takeover"] as const,
+  role: "operator" as const,
+  subUserId: "101",
+};
 
 describe("request", () => {
   afterEach(() => {
     mock.reset();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
   });
 
   it("adds default workbench headers", async () => {
@@ -60,6 +69,24 @@ describe("request", () => {
     });
   });
 
+  it("rejects successful HTTP responses that contain API error envelopes", async () => {
+    mock.onPost("/server/seats/ndt/take-over").reply(200, {
+      error: {
+        code: "FORBIDDEN",
+        message: "无权限访问",
+      },
+      success: false,
+    });
+
+    await expect(
+      request({ method: "POST", url: "/server/seats/ndt/take-over" }),
+    ).rejects.toEqual({
+      code: "FORBIDDEN",
+      message: "无权限访问",
+      status: 200,
+    });
+  });
+
   it("refreshes access tokens once and retries the failed request", async () => {
     mock.onGet("/server/me").replyOnce(401, {
       error: {
@@ -73,6 +100,7 @@ describe("request", () => {
       {
         data: {
           expiresIn: 1200,
+          subUser: operatorSubUser,
         },
         received: config.data,
         success: true,
@@ -91,6 +119,42 @@ describe("request", () => {
       withCredentials: true,
     });
     expect(mock.history.post[0]?.data).toBeUndefined();
+  });
+
+  it("stores refreshed auth session permissions after a successful refresh", async () => {
+    mock.onGet("/server/me").replyOnce(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+    mock.onPost("/auth/refresh").reply(200, {
+      data: {
+        expiresIn: 1200,
+        subUser: {
+          accountType: "sub",
+          displayName: "客服（只读）",
+          permissions: ["chat.access"],
+          role: "viewer",
+          subUserId: "101",
+        },
+      },
+      success: true,
+    });
+    mock.onGet("/server/me").reply(200, {
+      displayName: "客服（只读）",
+      subUserId: "101",
+    });
+
+    await http.get("/server/me");
+
+    expect(useAuthStore.getState().subUser).toMatchObject({
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "101",
+    });
   });
 
   it("shares one refresh request across concurrent unauthorized responses", async () => {
@@ -116,6 +180,7 @@ describe("request", () => {
         {
           data: {
             expiresIn: 1200,
+            subUser: operatorSubUser,
           },
           success: true,
         },

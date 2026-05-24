@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkbenchJavaClient } from "../../../src/modules/chat/workbench-java-client.js";
+import {
+  JAVA_INTERNAL_API_USER_MESSAGE,
+  WORKBENCH_INTERNAL_API_FAILED_CODE,
+  createWorkbenchJavaClient,
+} from "../../../src/modules/chat/workbench-java-client.js";
 
 describe("createWorkbenchJavaClient", () => {
   afterEach(() => {
@@ -20,7 +24,8 @@ describe("createWorkbenchJavaClient", () => {
         uid: 9001,
       }),
     ).rejects.toMatchObject({
-      code: "JAVA_INTERNAL_API_FAILED",
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
       statusCode: 502,
     });
 
@@ -56,10 +61,10 @@ describe("createWorkbenchJavaClient", () => {
     await expect(
       createWorkbenchJavaClient().getUploadCredential({ uid: 9001 }),
     ).rejects.toMatchObject({
-      code: "JAVA_INTERNAL_API_FAILED",
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
       details: {
         error: 123,
-        path: "/third-internal/file/get-upload-credential",
       },
     });
 
@@ -134,7 +139,8 @@ describe("createWorkbenchJavaClient", () => {
         uid: 9001,
       }),
     ).rejects.toMatchObject({
-      code: "JAVA_INTERNAL_API_FAILED",
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
     });
 
     expect(logger.error).toHaveBeenCalledWith(
@@ -391,13 +397,13 @@ describe("createWorkbenchJavaClient", () => {
     await expect(
       createWorkbenchJavaClient().sendMessage({
         clientMessageId: "local-001",
-        message: {
-          msgContent: "今天统一看群公告",
-          msgNum: 1,
-          msgType: 2001,
+        msgData: {
+          msgtype: "text",
+          text: "今天统一看群公告",
         },
         platform: 5,
         sendType: 2,
+        source: 1,
         thirdGroupId: "group-001",
         thirdUserId: "seat-user-001",
         uid: 9001,
@@ -412,15 +418,13 @@ describe("createWorkbenchJavaClient", () => {
       "https://java.internal/third-internal/wap-embed/conversation/send-message",
       expect.objectContaining({
         body: JSON.stringify({
-          msgDatas: [
-            {
-              msgContent: "今天统一看群公告",
-              msgNum: 1,
-              msgType: 2001,
-            },
-          ],
+          msgData: {
+            msgtype: "text",
+            text: "今天统一看群公告",
+          },
           platform: 5,
           sendType: 2,
+          source: 1,
           thirdGroupId: "group-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
@@ -430,7 +434,60 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
-  it("posts quoteContentBase64 in Java send-message msg data", async () => {
+  it("posts failMsgId for retry send-message requests", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { optNo: "opt-retry-001" },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createWorkbenchJavaClient().sendMessage({
+      clientMessageId: "local-retry-001",
+      failMsgId: 538,
+      msgData: {
+        msgtype: "text",
+        text: "重试消息",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/send-message",
+      expect.objectContaining({
+        body: JSON.stringify({
+          failMsgId: 538,
+          msgData: {
+            msgtype: "text",
+            text: "重试消息",
+          },
+          platform: 5,
+          sendType: 1,
+          source: 1,
+          thirdExternalUserid: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts local quote msgData to the Java send-message API", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -449,14 +506,14 @@ describe("createWorkbenchJavaClient", () => {
 
     await createWorkbenchJavaClient().sendMessage({
       clientMessageId: "local-quote-001",
-      message: {
-        msgContent: "正式引用消息",
-        msgNum: 1,
-        msgType: 2033,
-        quoteContentBase64: "base64-quote-content",
+      msgData: {
+        msgtype: "quote",
+        quoteMsgId: 538,
+        text: "正式引用消息",
       },
       platform: 5,
       sendType: 1,
+      source: 1,
       thirdExternalUserid: "external-001",
       thirdUserId: "seat-user-001",
       uid: 9001,
@@ -466,16 +523,14 @@ describe("createWorkbenchJavaClient", () => {
       "https://java.internal/third-internal/wap-embed/conversation/send-message",
       expect.objectContaining({
         body: JSON.stringify({
-          msgDatas: [
-            {
-              msgContent: "正式引用消息",
-              msgNum: 1,
-              msgType: 2033,
-              quoteContentBase64: "base64-quote-content",
-            },
-          ],
+          msgData: {
+            msgtype: "quote",
+            quoteMsgId: 538,
+            text: "正式引用消息",
+          },
           platform: 5,
           sendType: 1,
+          source: 1,
           thirdExternalUserid: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,

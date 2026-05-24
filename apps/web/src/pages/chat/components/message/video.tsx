@@ -1,4 +1,4 @@
-import { Download01Icon, Loading03Icon, PlayIcon } from "@hugeicons/core-free-icons";
+import { Download04Icon, Loading03Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { CSSProperties } from "react";
 import type { VideoMessageContent } from "@/pages/chat/chat-types";
@@ -16,17 +16,16 @@ type VideoMessageCardProps = {
   content: VideoMessageContent;
   onDownloadClick?: () => void;
   onPlayClick?: () => void;
-  transferState?: "idle" | "transferring";
 };
 
 export function VideoMessageCard({
   content,
   onDownloadClick,
   onPlayClick,
-  transferState = "idle",
 }: VideoMessageCardProps) {
   const mediaSize = getValidVideoSize(content);
   const coverImageUrl = content.coverImageUrl?.trim() ?? "";
+  const isDownloading = content.downloadStatus === "ing";
   const needsTransfer = Boolean(
     content.fileSerialNo &&
       (isExpiringUrlExpired(content.fileUrlExpireTime) ||
@@ -64,7 +63,7 @@ export function VideoMessageCard({
       )}
       <div className="absolute inset-0 bg-black/5" />
 
-      {transferState === "transferring" ? (
+      {isDownloading ? (
         <span
           aria-label="视频下载中"
           className="absolute left-1/2 top-1/2 z-1 inline-flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/90 bg-black/15 text-white shadow-[0_2px_12px_var(--shadow-medium)] backdrop-blur-[1px]"
@@ -84,7 +83,7 @@ export function VideoMessageCard({
           onClick={onDownloadClick}
           type="button"
         >
-          <HugeiconsIcon icon={Download01Icon} size={24} strokeWidth={2.2} />
+          <HugeiconsIcon icon={Download04Icon} size={24} strokeWidth={2.2} />
         </button>
       ) : (
         <button

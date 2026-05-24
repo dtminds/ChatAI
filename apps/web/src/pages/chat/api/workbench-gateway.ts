@@ -14,12 +14,13 @@ import type {
   WorkbenchConversationReadResponse,
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
-  WorkbenchMessageStatus,
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSeatChangeDto,
   WorkbenchUploadCredentialResponse,
+  WorkbenchMessageQueryByIdsRequest,
+  WorkbenchMessageUpdateEventDto,
 } from "@chatai/contracts";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import type {
@@ -30,7 +31,6 @@ import type {
   EmployeeProfile,
   GroupMember,
   Message,
-  MessageStatus,
 } from "@/pages/chat/chat-types";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
 
@@ -45,6 +45,8 @@ export type WorkbenchScopeRequest = {
   activeMessageSeq: number;
   currentAccountId: string;
   freshBaseline?: boolean;
+  messageUpdateCursor?: number;
+  seatUpdateCursor?: number;
   sinceVersion: number;
 };
 
@@ -102,19 +104,13 @@ export type WorkbenchConversationChange =
       type: "upsert";
     };
 
-export type WorkbenchMessageStatusChange = {
-  clientMessageId?: string;
-  conversationId: string;
-  reason?: string;
-  remoteMessageId: string;
-  status: MessageStatus;
-};
-
 export type WorkbenchPollResult = {
   accountChanges: Array<WorkbenchSeatChangeDto & { accountId: string }>;
   activeConversationMessages: Message[];
   conversationChanges: WorkbenchConversationChange[];
-  messageStatusChanges: WorkbenchMessageStatusChange[];
+  messageUpdateEvents: WorkbenchMessageUpdateEventDto[];
+  nextMessageUpdateCursor?: number;
+  nextSeatUpdateCursor?: number;
   nextVersion: number;
   request: WorkbenchScopeRequest;
 };
@@ -330,6 +326,23 @@ export async function loadConversationMessagesPage(
   };
 }
 
+export async function loadMessagesByIds(
+  context: GatewayContext,
+  conversationId: string,
+  messageIds: string[],
+): Promise<Message[]> {
+  if (!messageIds.length) {
+    return [];
+  }
+
+  const response = await getWorkbenchService().getMessagesByIds({
+    conversationId,
+    messageIds,
+  } satisfies WorkbenchMessageQueryByIdsRequest);
+
+  return adaptMessages(response.messages, context);
+}
+
 export async function loadConversationHistoryMessagesPage(
   context: GatewayContext,
   conversationId: string,
@@ -419,6 +432,8 @@ export async function pollWorkbench(
     activeMessageSeq: request.activeMessageSeq,
     currentSeatId: request.currentAccountId,
     freshBaseline: request.freshBaseline,
+    messageUpdateCursor: request.messageUpdateCursor,
+    seatUpdateCursor: request.seatUpdateCursor,
     sinceVersion: request.sinceVersion,
   });
 
@@ -439,15 +454,11 @@ export async function pollWorkbench(
             accountId: change.seatId,
             conversation: adaptConversation(change),
             type: "upsert" as const,
-          },
+        },
     ),
-    messageStatusChanges: response.messageStatusChanges.map((change) => ({
-      clientMessageId: change.clientMessageId,
-      conversationId: change.conversationId,
-      reason: change.reason,
-      remoteMessageId: change.messageId,
-      status: adaptMessageStatus(change.status),
-    })),
+    messageUpdateEvents: response.messageUpdateEvents ?? [],
+    nextMessageUpdateCursor: response.nextMessageUpdateCursor,
+    nextSeatUpdateCursor: response.nextSeatUpdateCursor,
     nextVersion: response.nextVersion,
     request,
   };
@@ -457,9 +468,7 @@ function adaptMessages(
   messageDtos: Parameters<typeof adaptMessage>[0][],
   context: GatewayContext,
 ) {
-  const accountMap = Object.fromEntries(
-    context.accounts.map((account) => [account.id, account]),
-  ) as Record<string, Account>;
+  const accountMap = buildAccountMap(context.accounts);
 
   return messageDtos.map((message) =>
     adaptMessage(
@@ -469,6 +478,13 @@ function adaptMessages(
       context.me,
     ),
   );
+}
+
+function buildAccountMap(accounts: Account[]) {
+  return Object.fromEntries(accounts.map((account) => [account.id, account])) as Record<
+    string,
+    Account
+  >;
 }
 
 function adaptHistoryMessagePage(
@@ -482,21 +498,6 @@ function adaptHistoryMessagePage(
     nextCursor: page.nextCursor,
     prevCursor: page.prevCursor,
   };
-}
-
-function adaptMessageStatus(status: WorkbenchMessageStatus): MessageStatus {
-  switch (status) {
-    case "failed":
-      return "failed";
-    case "read":
-      return "read";
-    case "queued":
-    case "sending":
-      return "sending";
-    case "sent":
-    default:
-      return "sent";
-  }
 }
 
 function getFirstConversation(

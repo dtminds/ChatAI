@@ -8,7 +8,6 @@ type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
   bottomOverlay?: ReactNode;
   canUseMessageActions?: boolean;
-  downloadTransferStates?: Record<string, "idle" | "transferring">;
   hasBottomOverlay?: boolean;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
@@ -21,6 +20,7 @@ type ChatMessagePanelProps = {
   onQuoteMessage?: (message: ChatMessage) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  retryingMessageIds?: ReadonlySet<string>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
 
@@ -28,7 +28,6 @@ export function ChatMessagePanel({
   activeHistoryStatus,
   bottomOverlay,
   canUseMessageActions = true,
-  downloadTransferStates,
   hasBottomOverlay = false,
   hasMoreHistory,
   historyLoadLabel,
@@ -41,6 +40,7 @@ export function ChatMessagePanel({
   onQuoteMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  retryingMessageIds,
   messageViewportRef,
 }: ChatMessagePanelProps) {
   return (
@@ -83,7 +83,6 @@ export function ChatMessagePanel({
               ) : null}
               <ChatMessageList
                 canUseMessageActions={canUseMessageActions}
-                downloadTransferStates={downloadTransferStates}
                 messages={messages}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}
@@ -94,6 +93,7 @@ export function ChatMessagePanel({
                     void onRetryMessage(messageId);
                   });
                 }}
+                retryingMessageIds={retryingMessageIds}
               />
             </div>
           </div>

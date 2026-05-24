@@ -7,6 +7,16 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -25,6 +35,7 @@ import type { Account } from "@/pages/chat/chat-types";
 export function AccountSidebarItem({
   account,
   currentEmployeeId,
+  canTakeOverAccount = true,
   isActive,
   onClick,
   onTakeOverAccount,
@@ -32,6 +43,7 @@ export function AccountSidebarItem({
   variant = "default",
 }: {
   account: Account;
+  canTakeOverAccount?: boolean;
   currentEmployeeId?: string;
   isActive: boolean;
   onClick: () => void;
@@ -41,13 +53,14 @@ export function AccountSidebarItem({
 }) {
   const closePopoverTimerRef = useRef<number | null>(null);
   const [isTakeoverPopoverOpen, setIsTakeoverPopoverOpen] = useState(false);
+  const [isTakeoverConfirmOpen, setIsTakeoverConfirmOpen] = useState(false);
   const isOffline = account.loginStatus === "offline";
   const isTakenOverByCurrentUser =
     !!account.takenOverEmployeeId && account.takenOverEmployeeId === currentEmployeeId;
   const isTakingOver = takeoverStatus === "taking-over";
   const statusLabel = isOffline ? "离线" : isTakenOverByCurrentUser ? "接管中" : "未接管";
   const canShowTakeoverPopover = !isOffline && !isTakenOverByCurrentUser;
-  const canTakeOver = canShowTakeoverPopover && !isTakingOver;
+  const canTakeOver = canTakeOverAccount && canShowTakeoverPopover && !isTakingOver;
   const shouldShowUnreadDot =
     !isActive && isTakenOverByCurrentUser && !!account.unreadCount;
   const compactStatusLabel =
@@ -198,13 +211,21 @@ export function AccountSidebarItem({
                 {account.name}
               </p>
             </div>
-            <p className="text-[13px] font-medium leading-5 text-warning">
-              当前账号未被你接管，你将无法
-            </p>
-            <ul className="mt-1 list-disc space-y-1 pl-4 text-[12px] leading-5 text-muted-foreground">
-              <li>使用该账号发送消息</li>
-              <li>标记消息已读状态</li>
-            </ul>
+            {canTakeOverAccount ? (
+              <>
+                <p className="text-[13px] font-medium leading-5 text-warning">
+                  当前账号未被你接管，你将无法
+                </p>
+                <ul className="mt-1 list-disc space-y-1 pl-4 text-[12px] leading-5 text-muted-foreground">
+                  <li>使用该账号发送消息</li>
+                  <li>标记消息已读状态</li>
+                </ul>
+              </>
+            ) : (
+              <p className="text-[13px] font-medium leading-5 text-muted-foreground">
+                当前账号无接管权限
+              </p>
+            )}
             <Button
               aria-busy={isTakingOver}
               className="mt-3 h-8 w-full rounded-[10px] text-xs"
@@ -215,9 +236,7 @@ export function AccountSidebarItem({
                   return;
                 }
 
-                startTransition(() => {
-                  void onTakeOverAccount?.(account.id);
-                });
+                setIsTakeoverConfirmOpen(true);
               }}
               size="sm"
               type="button"
@@ -233,6 +252,32 @@ export function AccountSidebarItem({
             </Button>
           </PopoverContent>
         ) : null}
+        <AlertDialog
+          onOpenChange={setIsTakeoverConfirmOpen}
+          open={isTakeoverConfirmOpen}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>是否确认接管：{account.name}</AlertDialogTitle>
+              <AlertDialogDescription>
+                接管后，将由你负责处理对话，其他子账号将无权发送消息
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  startTransition(() => {
+                    void onTakeOverAccount?.(account.id);
+                  });
+                }}
+                variant="default"
+              >
+                确认接管
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </Popover>
     );
   }
@@ -316,13 +361,21 @@ export function AccountSidebarItem({
           side="right"
           sideOffset={2}
         >
-          <p className="text-[13px] font-medium leading-5 text-warning">
-            当前账号未被你接管，你将无法
-          </p>
-          <ul className="mt-1 list-disc space-y-1 pl-4 text-[12px] leading-5 text-muted-foreground">
-            <li>使用该账号发送消息</li>
-            <li>标记消息已读状态</li>
-          </ul>
+          {canTakeOverAccount ? (
+            <>
+              <p className="text-[13px] font-medium leading-5 text-warning">
+                当前账号未被你接管，你将无法
+              </p>
+              <ul className="mt-1 list-disc space-y-1 pl-4 text-[12px] leading-5 text-muted-foreground">
+                <li>使用该账号发送消息</li>
+                <li>标记消息已读状态</li>
+              </ul>
+            </>
+          ) : (
+            <p className="text-[13px] font-medium leading-5 text-muted-foreground">
+              当前账号无接管权限
+            </p>
+          )}
           <Button
             aria-busy={isTakingOver}
             className="mt-3 h-8 w-full rounded-[10px] text-xs"
@@ -333,9 +386,7 @@ export function AccountSidebarItem({
                 return;
               }
 
-              startTransition(() => {
-                void onTakeOverAccount?.(account.id);
-              });
+              setIsTakeoverConfirmOpen(true);
             }}
             size="sm"
             type="button"
@@ -351,6 +402,32 @@ export function AccountSidebarItem({
           </Button>
         </PopoverContent>
       ) : null}
+      <AlertDialog
+        onOpenChange={setIsTakeoverConfirmOpen}
+        open={isTakeoverConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>是否确认接管：{account.name}</AlertDialogTitle>
+            <AlertDialogDescription>
+              接管后，将由你负责处理对话，其他子账号将无权发送消息
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                startTransition(() => {
+                  void onTakeOverAccount?.(account.id);
+                });
+              }}
+              variant="default"
+            >
+              确认接管
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Popover>
   );
 }

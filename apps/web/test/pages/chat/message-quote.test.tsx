@@ -409,6 +409,6 @@ function createQuoteMessage(content: ChatMessage["content"]): ChatMessage {
       name: "Support Agent",
     },
     sentAt: "2026-05-13 10:00:00",
-    status: "read",
+    status: "sent",
   };
 }

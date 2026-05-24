@@ -1,5 +1,5 @@
 import {
-  ArrowDown01Icon,
+  DownloadCircle01Icon,
   Attachment01Icon,
   Loading03Icon,
 } from "@hugeicons/core-free-icons";
@@ -10,7 +10,6 @@ import type { FileMessageContent } from "@/pages/chat/chat-types";
 type FileMessageCardProps = {
   content: FileMessageContent;
   onDownloadClick?: () => void;
-  transferState?: "idle" | "transferring";
 };
 
 type FileExtensionBadgeProps = {
@@ -18,11 +17,66 @@ type FileExtensionBadgeProps = {
   extension: string;
 };
 
+const FILE_TYPE_ICON_BY_EXTENSION: Record<
+  string,
+  {
+    alt: string;
+    src: string;
+  }
+> = {
+  csv: {
+    alt: "Excel 文件",
+    src: "https://b5.bokr.com.cn/dist/excel.png",
+  },
+  doc: {
+    alt: "Word 文件",
+    src: "https://b5.bokr.com.cn/dist/word.png",
+  },
+  docx: {
+    alt: "Word 文件",
+    src: "https://b5.bokr.com.cn/dist/word.png",
+  },
+  pdf: {
+    alt: "PDF 文件",
+    src: "https://b5.bokr.com.cn/dist/pdf.png",
+  },
+  ppt: {
+    alt: "PPT 文件",
+    src: "https://b5.bokr.com.cn/dist/ppt.png",
+  },
+  pptx: {
+    alt: "PPT 文件",
+    src: "https://b5.bokr.com.cn/dist/ppt.png",
+  },
+  rar: {
+    alt: "压缩文件",
+    src: "https://b5.bokr.com.cn/dist/zip.png",
+  },
+  xls: {
+    alt: "Excel 文件",
+    src: "https://b5.bokr.com.cn/dist/excel.png",
+  },
+  xlsx: {
+    alt: "Excel 文件",
+    src: "https://b5.bokr.com.cn/dist/excel.png",
+  },
+  zip: {
+    alt: "压缩文件",
+    src: "https://b5.bokr.com.cn/dist/zip.png",
+  },
+};
+
+const DEFAULT_FILE_TYPE_ICON = {
+  alt: "文件",
+  src: "https://b5.bokr.com.cn/dist/file.png",
+};
+
 export function FileMessageCard({
   content,
   onDownloadClick,
-  transferState = "idle",
 }: FileMessageCardProps) {
+  const isDownloading = content.downloadStatus === "ing";
+
   return (
     <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 pb-2">
       <div className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-2.5">
@@ -44,7 +98,7 @@ export function FileMessageCard({
           <span>{content.sourceLabel ?? "文件"}</span>
         </span>
 
-        {transferState === "transferring" ? (
+        {isDownloading ? (
           <span
             aria-label="文件下载中"
             className="inline-flex items-center gap-1 font-medium text-muted-foreground"
@@ -56,7 +110,7 @@ export function FileMessageCard({
               size={14}
               strokeWidth={1.8}
             />
-            下载中
+            提取中
           </span>
         ) : (
           <button
@@ -65,7 +119,7 @@ export function FileMessageCard({
             onClick={onDownloadClick}
             type="button"
           >
-            <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.8} />
+            <HugeiconsIcon icon={DownloadCircle01Icon} size={14} strokeWidth={1.8} />
             下载
           </button>
         )}
@@ -78,30 +132,21 @@ export function FileExtensionBadge({
   className,
   extension,
 }: FileExtensionBadgeProps) {
+  const fileTypeIcon = getFileTypeIcon(extension) ?? DEFAULT_FILE_TYPE_ICON;
+
   return (
-    <div
-      className={cn(
-        "flex size-12 items-center justify-center rounded-[8px] text-[11px] font-semibold uppercase",
-        getFileBadgeTone(extension),
-        className,
-      )}
-    >
-      {extension}
-    </div>
+    <img
+      alt={fileTypeIcon.alt}
+      className={cn("size-12 shrink-0 object-contain", className)}
+      src={fileTypeIcon.src}
+    />
   );
 }
 
-export function getFileBadgeTone(extension: string) {
-  switch (extension.toLowerCase()) {
-    case "pdf":
-      return "bg-destructive text-destructive-foreground";
-    case "xls":
-    case "xlsx":
-      return "bg-success text-success-foreground";
-    case "doc":
-    case "docx":
-      return "bg-info text-info-foreground";
-    default:
-      return "bg-muted-foreground text-background";
+function getFileTypeIcon(extension: string | null | undefined) {
+  if (!extension) {
+    return undefined;
   }
+
+  return FILE_TYPE_ICON_BY_EXTENSION[extension.trim().toLowerCase()];
 }

@@ -12,6 +12,8 @@ import type {
   WorkbenchMessageFileDownloadResponse,
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchMessagePageDto,
+  WorkbenchMessageQueryByIdsRequest,
+  WorkbenchMessageQueryByIdsResponse,
   WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
@@ -40,9 +42,9 @@ import type {
   WorkbenchJavaClient,
 } from "./workbench-java-client.js";
 import {
+  JAVA_MESSAGE_SOURCE,
   JAVA_MENTION_HIT_TYPE,
   JAVA_MENTION_LOCATION,
-  JAVA_MSG_TYPE,
   JAVA_SEND_TYPE,
 } from "./workbench-java-client.js";
 import { buildSidebarIframeTuseCipherTexts } from "../../lib/tuse-crypto.js";
@@ -55,6 +57,8 @@ import {
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const CHAT_TYPE_GROUP = 2;
+const POLL_MESSAGE_UPDATE_LIMIT = 200;
+const POLL_SEAT_UPDATE_LIMIT = 200;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -79,6 +83,11 @@ export type WorkbenchService = {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ): Promise<WorkbenchMessagePageDto> | WorkbenchMessagePageDto;
+  getMessagesByIds(
+    subUserId: string,
+    conversationId: string,
+    messageIds: string[],
+  ): Promise<WorkbenchMessageQueryByIdsResponse> | WorkbenchMessageQueryByIdsResponse;
   getHistoryMessages(
     subUserId: string,
     conversationId: string,
@@ -275,6 +284,22 @@ export class MysqlWorkbenchService implements WorkbenchService {
     });
   }
 
+  async getMessagesByIds(
+    subUserId: string,
+    conversationId: string,
+    messageIds: string[],
+  ) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    return this.repository.listMessagesByIds(conversationId, messageIds);
+  }
+
   async getHistoryMessages(
     subUserId: string,
     conversationId: string,
@@ -350,8 +375,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     messageId: string,
   ) {
-    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const conversation = await this.repository.getConversationLookup(conversationId);
     const normalizedMessageId = messageId.trim();
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
 
     if (!normalizedMessageId) {
       throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
@@ -508,6 +539,30 @@ export class MysqlWorkbenchService implements WorkbenchService {
             page.messages.filter((message) => message.seq > (request.activeMessageSeq ?? 0)),
           )
         : [];
+    const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
+    const seatUpdateCursor = request.seatUpdateCursor ?? request.sinceVersion;
+    const messageUpdateEvents =
+      request.activeConversationId &&
+      typeof this.repository.listMessageUpdateEvents === "function"
+        ? await this.repository.listMessageUpdateEvents(request.activeConversationId, {
+            afterCreateTime: messageUpdateCursor,
+            limit: POLL_MESSAGE_UPDATE_LIMIT,
+          })
+        : [];
+    const seatEventScope =
+      typeof this.repository.getSeatEventScope === "function"
+        ? await this.repository.getSeatEventScope(subUserId)
+        : undefined;
+    const seatUpdateEvents =
+      seatEventScope && typeof this.repository.listSeatUpdateEvents === "function"
+        ? await this.repository.listSeatUpdateEvents({
+            afterCreateTime: seatUpdateCursor,
+            limit: POLL_SEAT_UPDATE_LIMIT,
+            platform: seatEventScope.platform,
+            seatIds: seatEventScope.seatIds,
+            uid: seatEventScope.uid,
+          })
+        : [];
     const sinceLastMsgTime = Math.max(
       0,
       request.sinceVersion -
@@ -556,9 +611,19 @@ export class MysqlWorkbenchService implements WorkbenchService {
           ? latestChangedLastMessageTime
           : request.sinceVersion + POLL_LAST_MESSAGE_OVERLAP_MS;
 
-    const seatChange = request.currentSeatId
-      ? await this.repository.getSeat(request.currentSeatId)
-      : undefined;
+    const changedSeatIds = uniqueStrings([
+      ...(request.currentSeatId ? [request.currentSeatId] : []),
+      ...seatUpdateEvents.map((event) => event.seatId),
+    ]);
+    const changedSeats = await this.repository.getSeatsByIds(changedSeatIds);
+    const changedSeatsById = new Map(
+      changedSeats
+        .filter((seat): seat is WorkbenchSeatDto => Boolean(seat))
+        .map((seat) => [seat.seatId, seat] as const),
+    );
+    const orderedChangedSeats = changedSeatIds
+      .map((seatId) => changedSeatsById.get(seatId))
+      .filter((seat): seat is WorkbenchSeatDto => Boolean(seat));
 
     return {
       activeConversationMessages,
@@ -566,17 +631,23 @@ export class MysqlWorkbenchService implements WorkbenchService {
         ...conversation,
         type: "upsert" as const,
       })),
-      messageStatusChanges: [],
+      messageUpdateEvents,
       nextVersion,
-      seatChanges: seatChange
-        ? [
-            {
-              lastMessageTime: seatChange.lastMessageTime,
-              seatId: seatChange.seatId,
-              unreadCount: seatChange.unreadCount,
-            },
-          ]
-        : [],
+      nextMessageUpdateCursor: getNextEventCursor(
+        messageUpdateCursor,
+        messageUpdateEvents,
+      ),
+      nextSeatUpdateCursor: getNextEventCursor(
+        seatUpdateCursor,
+        seatUpdateEvents,
+      ),
+      seatChanges: orderedChangedSeats
+        .map((seat) => ({
+          hostSubUserId: seat.hostSubUserId ?? null,
+          lastMessageTime: seat.lastMessageTime,
+          seatId: seat.seatId,
+          unreadCount: seat.unreadCount,
+        })),
     };
   }
 
@@ -588,16 +659,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const segment = getSingleSendSegment(payload);
-    const quoteContentBase64 = await this.getQuoteContentBase64(payload, segment, {
-      platform: conversation.platform,
-      uid: conversation.uid,
-    });
-
+    const failMsgId = getRetryFailMsgId(payload);
     const response = await this.javaClient.sendMessage({
       clientMessageId: payload.clientMessageId,
-      message: buildJavaSendMessageData(payload, segment, quoteContentBase64),
+      ...(failMsgId != null ? { failMsgId } : {}),
+      msgData: buildJavaSendMessageData(payload, segment),
       platform: conversation.platform,
       sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
+      source: JAVA_MESSAGE_SOURCE.WORKBENCH,
       ...(conversation.thirdExternalUserId
         ? { thirdExternalUserid: conversation.thirdExternalUserId }
         : {}),
@@ -624,28 +693,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return response;
-  }
-
-  private async getQuoteContentBase64(
-    payload: WorkbenchSendMessagePayload,
-    segment: WorkbenchOutgoingMessageSegment,
-    scope: { platform: number; uid: number },
-  ) {
-    if (segment.type !== "text") {
-      return undefined;
-    }
-
-    const messageId = payload.quote?.quotedMessageId?.trim();
-
-    if (!messageId) {
-      return undefined;
-    }
-
-    return this.repository.getQuoteContentBase64({
-      messageId,
-      platform: scope.platform,
-      uid: scope.uid,
-    });
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {
@@ -840,11 +887,49 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 }
 
+function getNextEventCursor(
+  currentCursor: number,
+  events: Array<{
+    eventTime?: number;
+  }>,
+) {
+  if (!Number.isFinite(currentCursor)) {
+    return undefined;
+  }
+
+  if (!events.length) {
+    return currentCursor;
+  }
+
+  const latestEventTime = events.reduce(
+    (latest, event) => {
+      const eventTime = event.eventTime;
+
+      if (eventTime == null) {
+        return latest;
+      }
+
+      return Math.max(latest, eventTime);
+    },
+    currentCursor,
+  );
+
+  return latestEventTime;
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values));
+}
+
 function getSingleSendSegment(
   payload: WorkbenchSendMessagePayload,
 ): WorkbenchOutgoingMessageSegment {
   if (payload.segment) {
     return payload.segment;
+  }
+
+  if (payload.segments && payload.segments.length > 1) {
+    throw new BadRequestError("UNSUPPORTED_SEND_MESSAGE", "当前仅支持单条消息发送");
   }
 
   if (payload.segments?.[0]) {
@@ -860,14 +945,7 @@ function getSingleSendSegment(
 function buildJavaSendMessageData(
   payload: WorkbenchSendMessagePayload,
   segment: WorkbenchOutgoingMessageSegment,
-  quoteContentBase64?: string,
 ): JavaSendMessageData {
-  const normalizedQuoteContentBase64 = quoteContentBase64?.trim();
-  const withQuoteContentBase64 = (message: JavaSendMessageData): JavaSendMessageData =>
-    normalizedQuoteContentBase64
-      ? { ...message, quoteContentBase64: normalizedQuoteContentBase64 }
-      : message;
-
   if (segment.type === "image") {
     const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
 
@@ -875,11 +953,10 @@ function buildJavaSendMessageData(
       throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片消息缺少可发送地址");
     }
 
-    return withQuoteContentBase64({
-      msgContent: imageUrl,
-      msgNum: 1,
-      msgType: JAVA_MSG_TYPE.IMAGE,
-    });
+    return {
+      fileUrl: imageUrl,
+      msgtype: "image",
+    };
   }
 
   if (segment.type === "file") {
@@ -894,25 +971,26 @@ function buildJavaSendMessageData(
       throw new BadRequestError("INVALID_FILE_MESSAGE", "文件消息缺少可发送地址");
     }
 
-    return withQuoteContentBase64({
-      msgContent: fileName,
-      msgNum: 1,
-      msgType: JAVA_MSG_TYPE.FILE,
-      vcHref: fileUrl,
-      vcTitle: fileName,
-    });
+    return {
+      fileName,
+      fileUrl,
+      msgtype: "file",
+    };
   }
 
-  const message: JavaSendMessageData = {
-    msgContent: segment.text,
-    msgNum: 1,
-    msgType: normalizedQuoteContentBase64
-      ? JAVA_MSG_TYPE.QUOTE_TEXT
-      : JAVA_MSG_TYPE.TEXT,
-  };
-  if (normalizedQuoteContentBase64) {
-    message.quoteContentBase64 = normalizedQuoteContentBase64;
-  }
+  const quoteMsgId = payload.quote?.quoteMsgId
+    ? parseMySqlId(payload.quote.quoteMsgId)
+    : undefined;
+  const message: JavaSendMessageData = quoteMsgId == null
+    ? {
+        msgtype: "text",
+        text: segment.text,
+      }
+    : {
+        msgtype: "quote",
+        quoteMsgId,
+        text: segment.text,
+      };
 
   const mentionMemberIds = payload.mention?.memberIds.filter(Boolean) ?? [];
 
@@ -929,4 +1007,18 @@ function buildJavaSendMessageData(
   }
 
   return message;
+}
+
+function getRetryFailMsgId(payload: WorkbenchSendMessagePayload) {
+  if (!payload.failMsgId) {
+    return undefined;
+  }
+
+  const failMsgId = parseMySqlId(payload.failMsgId);
+
+  if (failMsgId == null) {
+    throw new BadRequestError("INVALID_MESSAGE_ID", "失败消息 ID 无效");
+  }
+
+  return failMsgId;
 }

@@ -515,6 +515,7 @@ export function ChatComposer({
             className="size-7 rounded-full p-0 shadow-none"
             disabled={isSending || !canSubmitDraft}
             onClick={handleSendDraft}
+            onMouseDown={(event) => event.preventDefault()}
             size="icon"
           >
             <HugeiconsIcon

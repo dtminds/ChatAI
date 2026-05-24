@@ -833,6 +833,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     await waitFor(() => {
       expect(composer).toHaveTextContent("");
       expect(sendButton).toHaveAttribute("aria-busy", "false");
+      expect(composer).toHaveFocus();
     });
   });
 

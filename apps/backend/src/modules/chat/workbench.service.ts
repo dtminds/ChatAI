@@ -618,7 +618,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
         ...conversation,
         type: "upsert" as const,
       })),
-      messageStatusChanges: [],
       messageUpdateEvents,
       nextVersion,
       nextMessageUpdateCursor: getNextEventCursor(

@@ -833,6 +833,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     await waitFor(() => {
       expect(composer).toHaveTextContent("");
       expect(sendButton).toHaveAttribute("aria-busy", "false");
+      expect(composer).toHaveFocus();
     });
   });
 
@@ -876,6 +877,53 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(confirmSpy).not.toHaveBeenCalled();
 
     confirmSpy.mockRestore();
+  });
+
+  it("does not restore composer focus after switching conversations while sending", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessageGate =
+      createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage() {
+        return sendMessageGate.promise;
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "旧会话发送中");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => {
+      expect(composer).toHaveAttribute("contenteditable", "false");
+    });
+
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+    await user.click(await screen.findByRole("button", { name: "确认切换" }));
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+
+    sendMessageGate.resolve({
+      clientMessageId: "client-msg-test",
+      messageId: "msg-server-test",
+      messages: [
+        {
+          clientMessageId: "client-msg-test",
+          messageId: "msg-server-test",
+          status: "accepted",
+        },
+      ],
+      status: "accepted",
+    });
+
+    await waitFor(() => {
+      expect(composer).toHaveAttribute("contenteditable", "true");
+    });
+    expect(composer).not.toHaveFocus();
   });
 
   it("shows a dialog before switching conversations when a quote is selected", async () => {

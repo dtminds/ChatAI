@@ -342,7 +342,6 @@ describe("useWorkbenchStore", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: request.sinceVersion + 1,
           seatChanges: [],
         };
@@ -373,7 +372,6 @@ describe("useWorkbenchStore", () => {
               type: "remove",
             },
           ],
-          messageStatusChanges: [],
           nextVersion: request.sinceVersion + 1,
           seatChanges: [],
         };
@@ -1352,6 +1350,50 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("keeps pending messages when poll has no server receipt", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: Date.now(),
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会成功");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().pendingMessages).toHaveLength(1);
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
+        (message) => message.content.type === "text" && message.content.text === "这条消息会成功",
+      ),
+    ).toBe(true);
+  });
+
+  it("clears pending messages when poll returns a matching server receipt", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService(baseService);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会成功");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().pendingMessages).toHaveLength(0);
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
+        (message) => message.content.type === "text" && message.content.text === "这条消息会成功",
+      ),
+    ).toBe(true);
+  });
+
   it("keeps the failed message when retry send is rejected", async () => {
     const baseService = createMockWorkbenchService();
     let sendCount = 0;
@@ -1594,7 +1636,6 @@ describe("useWorkbenchStore", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           messageUpdateEvents: [
             {
               conversationId: request.activeConversationId ?? "conv-001",
@@ -1671,7 +1712,6 @@ describe("useWorkbenchStore", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           messageUpdateEvents: [
             {
               conversationId: "conv-001",
@@ -1793,7 +1833,6 @@ describe("useWorkbenchStore", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           messageUpdateEvents: [
             {
               conversationId: request.activeConversationId ?? "conv-001",

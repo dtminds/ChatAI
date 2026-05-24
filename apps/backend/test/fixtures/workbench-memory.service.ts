@@ -17,7 +17,6 @@ import type {
   WorkbenchMessageFileDownloadResponse,
   WorkbenchMessagePageDto,
   WorkbenchMessageStatus,
-  WorkbenchMessageStatusChangeDto,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
   WorkbenchSendMessagePayload,
@@ -43,11 +42,6 @@ type WorkbenchEvent =
       version: number;
       type: "message";
       payload: WorkbenchMessageDto;
-    }
-  | {
-      version: number;
-      type: "message-status";
-      payload: WorkbenchMessageStatusChangeDto;
     };
 
 type MemoryWorkbenchState = {
@@ -322,18 +316,11 @@ export function createMemoryWorkbenchService() {
             event.payload.seq > (request.activeMessageSeq ?? 0),
         )
         .map((event) => event.payload);
-      const messageStatusChanges = relevantEvents
-        .filter(
-          (event): event is Extract<WorkbenchEvent, { type: "message-status" }> =>
-            event.type === "message-status",
-        )
-        .map((event) => event.payload);
 
       return {
         seatChanges: clone(seatChanges),
         activeConversationMessages: clone(activeConversationMessages),
         conversationChanges: clone(conversationChanges),
-        messageStatusChanges: clone(messageStatusChanges),
         nextSeatUpdateCursor: getNextMemoryEventCursor(seatUpdateCursor, seatUpdateEvents),
         nextVersion: state.version,
       };
@@ -393,13 +380,7 @@ export function createMemoryWorkbenchService() {
       pushConversationEvent(state, nextConversation);
       pushSeatEvent(state, payload.seatId);
       backendMessages.forEach((message) => {
-        pushMessageStatusEvent(state, {
-          clientMessageId: message.clientMessageId,
-          conversationId: message.conversationId,
-          messageId: message.messageId,
-          reason: outcome.reason,
-          status: outcome.status,
-        });
+        pushMessageEvent(state, message);
       });
 
       return {
@@ -799,6 +780,15 @@ function pushConversationEvent(
   });
 }
 
+function pushMessageEvent(state: MemoryWorkbenchState, message: WorkbenchMessageDto) {
+  state.version += 1;
+  state.events.push({
+    payload: message,
+    type: "message",
+    version: state.version,
+  });
+}
+
 function pushConversationRemoveEvent(
   state: MemoryWorkbenchState,
   seatId: string,
@@ -812,18 +802,6 @@ function pushConversationRemoveEvent(
       type: "remove",
     },
     type: "conversation",
-    version: state.version,
-  });
-}
-
-function pushMessageStatusEvent(
-  state: MemoryWorkbenchState,
-  change: WorkbenchMessageStatusChangeDto,
-) {
-  state.version += 1;
-  state.events.push({
-    payload: change,
-    type: "message-status",
     version: state.version,
   });
 }

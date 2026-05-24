@@ -238,6 +238,7 @@ function ChatWorkbenchContent({
   const mentionRetryDialogStateRef =
     useRef<MentionRetryDialogState | null>(null);
   const isSendingDraftRef = useRef(false);
+  const shouldRestoreComposerFocusRef = useRef(false);
   const isMountedRef = useRef(true);
   const activeConversationIdRef = useRef<string | undefined>(activeConversationId);
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
@@ -467,6 +468,17 @@ function ChatWorkbenchContent({
     setIsRefreshingMentionTarget(false);
   }, [activeConversation?.id]);
 
+  useEffect(() => {
+    if (isSendingDraft || !shouldRestoreComposerFocusRef.current) {
+      return;
+    }
+
+    shouldRestoreComposerFocusRef.current = false;
+    const editor = composerRef.current;
+    editor?.getRootElement()?.focus();
+    editor?.focus();
+  }, [isSendingDraft]);
+
   useWorkbenchPolling({
     activeAccountId,
     bootstrapStatus,
@@ -488,6 +500,7 @@ function ChatWorkbenchContent({
   };
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
+    const sendConversationId = activeConversation?.id;
     const normalizedSegments = segments.length > 0 ? segments : [];
     const mentionState = extractComposerMentionState(segments);
     const mention =
@@ -546,7 +559,10 @@ function ChatWorkbenchContent({
         },
       });
 
-      if (!isMountedRef.current) {
+      if (
+        !isMountedRef.current ||
+        activeConversationIdRef.current !== sendConversationId
+      ) {
         return;
       }
 
@@ -565,10 +581,13 @@ function ChatWorkbenchContent({
       clearComposer({
         keepQuote: quotedMessage !== null && !result.didConsumeQuote,
       });
-      composerRef.current?.focus();
     } finally {
       isSendingDraftRef.current = false;
-      setIsSendingDraft(false);
+      if (isMountedRef.current) {
+        shouldRestoreComposerFocusRef.current =
+          activeConversationIdRef.current === sendConversationId;
+        setIsSendingDraft(false);
+      }
     }
   };
 

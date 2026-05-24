@@ -30,7 +30,6 @@ import {
   type WorkbenchMessageFileDownloadStatusResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchMessageStatus,
-  type WorkbenchMessageStatusChangeDto,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
   type WorkbenchMessageUpdateEventDto,
@@ -116,11 +115,6 @@ type WorkbenchEvent =
       version: number;
       type: "message";
       payload: WorkbenchMessageDto;
-    }
-  | {
-      version: number;
-      type: "message-status";
-      payload: WorkbenchMessageStatusChangeDto;
     }
   | {
       version: number;
@@ -459,19 +453,11 @@ export function createMockWorkbenchService(): WorkbenchService {
         )
         .map((event) => event.payload);
 
-      const messageStatusChanges = relevantEvents
-        .filter(
-          (event): event is Extract<WorkbenchEvent, { type: "message-status" }> =>
-            event.type === "message-status",
-        )
-        .map((event) => event.payload);
-
       return {
         seatChanges: clone(seatChanges),
         activeConversationMessages: clone(activeConversationMessages),
         conversationChanges: clone(conversationChanges),
         messageUpdateEvents: clone(messageUpdateEvents),
-        messageStatusChanges: clone(messageStatusChanges),
         nextMessageUpdateCursor: getNextMockEventCursor(
           messageUpdateCursor,
           messageUpdateEventRecords,
@@ -506,6 +492,7 @@ export function createMockWorkbenchService(): WorkbenchService {
           conversationId: payload.conversationId,
           createdAt: now + index,
           customerId: conversation.customerId,
+          failReason: outcome.reason,
           messageId,
           senderType: "agent" as const,
           seq: nextSeq,
@@ -530,13 +517,7 @@ export function createMockWorkbenchService(): WorkbenchService {
       pushConversationEvent(state, nextConversation);
       pushAccountEvent(state, payload.seatId);
       backendMessages.forEach((message) => {
-        pushMessageStatusEvent(state, {
-          clientMessageId: message.clientMessageId,
-          conversationId: message.conversationId,
-          messageId: message.messageId,
-          reason: outcome.reason,
-          status: outcome.status,
-        });
+        pushMessageEvent(state, message);
       });
 
       return {
@@ -1305,14 +1286,11 @@ function pushConversationRemoveEvent(
   });
 }
 
-function pushMessageStatusEvent(
-  state: MockState,
-  change: WorkbenchMessageStatusChangeDto,
-) {
-  state.version = Math.max(state.version + 1, Date.now());
+function pushMessageEvent(state: MockState, message: WorkbenchMessageDto) {
+  state.version = Math.max(state.version + 1, Date.now(), message.createdAt ?? 0);
   state.events.push({
-    payload: change,
-    type: "message-status",
+    payload: message,
+    type: "message",
     version: state.version,
   });
 }

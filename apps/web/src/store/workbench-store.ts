@@ -318,7 +318,7 @@ function getActiveMessageSeq(
   conversationId: string,
 ) {
   const messages = messagesByConversationId[conversationId] ?? [];
-  return messages.reduce((max, message, index) => Math.max(max, message.seq ?? index + 1), 0);
+  return messages.reduce((max, message) => Math.max(max, message.seq ?? 0), 0);
 }
 
 function buildMessagePaginationState(page: {
@@ -1918,38 +1918,13 @@ export function createWorkbenchStore() {
             };
           }
 
-          for (const change of response.messageStatusChanges) {
-            const conversationMessages = nextMessagesByConversationId[change.conversationId] ?? [];
-
-            nextMessagesByConversationId[change.conversationId] = conversationMessages.map(
-              (message) => {
-                const matches =
-                  (change.clientMessageId &&
-                    message.clientMessageId === change.clientMessageId) ||
-                  message.remoteMessageId === change.remoteMessageId;
-
-                if (!matches) {
-                  return message;
-                }
-
-                return {
-                  ...message,
-                  failReason: change.reason,
-                  remoteMessageId: change.remoteMessageId ?? message.remoteMessageId,
-                  status: change.status,
-                };
-              },
-            );
-          }
-
+          const serverMessages = [
+            ...response.activeConversationMessages,
+            ...Object.values(refreshedMessagesByConversationId).flat(),
+          ];
           const pendingMessages = currentState.pendingMessages.filter(
             (pendingMessage) =>
-              !response.messageStatusChanges.some(
-                (change) => change.clientMessageId === pendingMessage.clientMessageId,
-              ) &&
-              !response.activeConversationMessages.some((message) =>
-                isSameMessage(pendingMessage, message),
-              ),
+              !serverMessages.some((message) => isSameMessage(pendingMessage, message)),
           );
 
           return {

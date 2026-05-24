@@ -89,6 +89,14 @@ type JavaSendMessageResponse = {
 };
 
 export type WorkbenchJavaClient = {
+  createConversation(input: {
+    chatType: number;
+    platform: number;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<{ conversationId: string } | undefined>;
   deleteConversation(input: {
     conversationId: string;
     platform: number;
@@ -138,6 +146,31 @@ export function createWorkbenchJavaClient(
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
   return {
+    createConversation(input) {
+      return postJavaEnvelope<number | string>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/manual-new",
+        {
+          chatType: input.chatType,
+          platform: input.platform,
+          thirdExternalUserid: input.thirdExternalUserId,
+          thirdGroupId: input.thirdGroupId,
+          thirdUserid: input.thirdUserId,
+          uid: input.uid,
+        },
+        logger,
+        "create-conversation",
+      )
+        .then((conversationId) => ({ conversationId: String(conversationId) }))
+        .catch((error) => {
+          logger.warn(
+            { error, input },
+            "调用 Java 创建会话接口失败",
+          );
+          return undefined;
+        });
+    },
     deleteConversation(input) {
       return postConversationOperate(
         baseUrl,

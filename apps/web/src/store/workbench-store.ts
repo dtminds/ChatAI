@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
-import { formatConversationPreview, formatWorkbenchTimestamp } from "@/pages/chat/api/workbench-adapter";
+import { formatConversationPreview, formatWorkbenchTimestamp, adaptConversation } from "@/pages/chat/api/workbench-adapter";
+import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
   CONVERSATION_MODE_CACHE_TTL_MS,
@@ -199,6 +200,16 @@ type WorkbenchState = {
     messageId: string,
     contentPatch: DownloadContentPatch,
   ) => void;
+  searchKeyword: string;
+  searchResults: import("@chatai/contracts").WorkbenchSearchResponseDto | null;
+  isSearchLoading: boolean;
+  setSearchKeyword: (keyword: string) => void;
+  triggerSearch: (seatIdOverride?: string) => Promise<void>;
+  selectOrCreateAndSelectConversation: (
+    item: import("@chatai/contracts").WorkbenchSearchContactResultDto | import("@chatai/contracts").WorkbenchSearchGroupResultDto,
+  ) => Promise<void>;
+  conversationOpenError?: string;
+  dismissConversationOpenError: () => void;
 };
 
 type WorkbenchStore = WorkbenchState;
@@ -245,6 +256,10 @@ function createInitialState(): Omit<
   | "updateMessageDownloadContent"
   | "dismissScopeTransitionError"
   | "dismissReadReceiptError"
+  | "setSearchKeyword"
+  | "triggerSearch"
+  | "selectOrCreateAndSelectConversation"
+  | "dismissConversationOpenError"
 > {
   return {
     accounts: [],
@@ -289,6 +304,10 @@ function createInitialState(): Omit<
     isPollBaselineFresh: false,
     sidebarItems: [],
     takeoverStatusByAccountId: {},
+    searchKeyword: "",
+    searchResults: null,
+    isSearchLoading: false,
+    conversationOpenError: undefined,
   };
 }
 
@@ -1055,6 +1074,7 @@ export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
   let latestGroupMembersRequestId = 0;
+  let searchDebounceTimer: NodeJS.Timeout | null = null;
   const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
   const latestGroupMembersRequestIdByConversationId: Record<string, number> = {};
 
@@ -1384,6 +1404,104 @@ export function createWorkbenchStore() {
       ...createInitialState(),
       setChatSendPermission(hasChatSendPermission) {
         set({ hasChatSendPermission });
+      },
+      setSearchKeyword(keyword) {
+        set({ searchKeyword: keyword });
+
+        if (searchDebounceTimer) {
+          clearTimeout(searchDebounceTimer);
+        }
+
+        if (!keyword.trim()) {
+          set({ searchResults: null, isSearchLoading: false });
+          return;
+        }
+
+        // Capture seatId now so the debounce fires against the correct account
+        // even if the user switches accounts within the 450 ms window.
+        const seatIdAtSchedule = get().activeAccountId;
+
+        set({ isSearchLoading: true });
+
+        searchDebounceTimer = setTimeout(() => {
+          void get().triggerSearch(seatIdAtSchedule ?? undefined);
+        }, 450);
+      },
+      async triggerSearch(seatIdOverride?: string) {
+        const keyword = get().searchKeyword;
+        const seatId = seatIdOverride ?? get().activeAccountId;
+        // If the account has changed since the debounce was scheduled, discard.
+        if (!keyword.trim() || !seatId || seatId !== get().activeAccountId) {
+          set({ searchResults: null, isSearchLoading: false });
+          return;
+        }
+
+        set({ isSearchLoading: true });
+        try {
+          const service = getWorkbenchService();
+          const results = await service.search(seatId, keyword);
+          // Discard stale results if keyword or account changed while awaiting.
+          if (get().searchKeyword === keyword && get().activeAccountId === seatId) {
+            set({ searchResults: results, isSearchLoading: false });
+          }
+        } catch (error) {
+          if (get().searchKeyword === keyword && get().activeAccountId === seatId) {
+            set({ searchResults: null, isSearchLoading: false });
+          }
+        }
+      },
+      async selectOrCreateAndSelectConversation(item) {
+        const seatId = get().activeAccountId;
+        const isGroup = "thirdGroupId" in item;
+        const nextMode: ChatMode = isGroup ? "group" : "single";
+
+        set({ searchKeyword: "", searchResults: null, isSearchLoading: false });
+
+        if (item.conversationId) {
+          await get().setActiveMode(nextMode);
+          await get().setActiveConversation(item.conversationId);
+        } else {
+          try {
+            set({ isConversationLoading: true });
+            const service = getWorkbenchService();
+            const payload = {
+              seatId,
+              chatType: isGroup ? 2 : 1,
+              thirdExternalUserId: isGroup ? undefined : item.thirdExternalUserId,
+              thirdGroupId: isGroup ? item.thirdGroupId : undefined,
+            };
+            const summaryDto = await service.getOrCreateConversation(payload);
+            const newConversation = adaptConversation(summaryDto);
+
+            set((currentState) => {
+              const currentList = currentState.conversationListsByScope[seatId] ?? [];
+              // 始终用服务端最新数据替换列表中的旧条目，保证时间戳和排序正确
+              const nextList = sortConversations([
+                newConversation,
+                ...currentList.filter((c) => c.id !== newConversation.id),
+              ]);
+              return {
+                conversationListsByScope: {
+                  ...currentState.conversationListsByScope,
+                  [seatId]: nextList,
+                },
+              };
+            });
+
+            await get().setActiveMode(nextMode);
+            await get().setActiveConversation(newConversation.id);
+          } catch (error) {
+            set({
+              conversationOpenError:
+                getRequestApiErrorMessage(error) ?? "获取/开启会话失败，请稍后重试",
+            });
+          } finally {
+            set({ isConversationLoading: false });
+          }
+        }
+      },
+      dismissConversationOpenError() {
+        set({ conversationOpenError: undefined });
       },
       setSidebarItems(items) {
         set({ sidebarItems: items });
@@ -2699,6 +2817,14 @@ export function createWorkbenchStore() {
       if (!accountId || state.activeAccountId === accountId) {
         return;
       }
+
+      // 切换账号时立即取消未完成的搜索定时器并清空搜索态，
+      // 防止上一个账号的搜索结果或进行中的请求污染新账号的视图。
+      if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = null;
+      }
+      set({ searchKeyword: "", searchResults: null, isSearchLoading: false });
 
       const requestId = issueScopeRequestId();
       set({

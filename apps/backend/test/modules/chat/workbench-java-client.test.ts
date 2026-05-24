@@ -303,6 +303,42 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts manual-new conversation payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: 99887766, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().createConversation({
+        chatType: 1,
+        platform: 5,
+        thirdExternalUserId: "external-001",
+        thirdGroupId: undefined,
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({ conversationId: "99887766" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/manual-new",
+      expect.objectContaining({
+        body: JSON.stringify({
+          chatType: 1,
+          platform: 5,
+          thirdExternalUserid: "external-001",
+          thirdGroupId: undefined,
+          thirdUserid: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("requests COS upload credentials from the Java internal API with tenant uid", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const uploadCredential = {

@@ -2436,16 +2436,11 @@ describe("WorkbenchRepository", () => {
   });
 
   it("escapes backslash, percent, and underscore in contact and group search keywords", async () => {
-    const contactQuery = createQueryBuilder([
+    const bindQuery = createQueryBuilder([
       {
         avatar: "",
         name: "测试客户",
         realName: "测试客户",
-        thirdExternalUserId: "external-001",
-      },
-    ]);
-    const bindQuery = createQueryBuilder([
-      {
         remark: "客户备注",
         thirdExternalUserId: "external-001",
       },
@@ -2461,11 +2456,7 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
-          if (table === "xy_wap_embed_contact") {
-            return contactQuery;
-          }
-
-          if (table === "xy_wap_embed_customer_bind_relation") {
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
             return bindQuery;
           }
 
@@ -2491,11 +2482,32 @@ describe("WorkbenchRepository", () => {
       },
     ]);
     expect(bindQuery.wheres).toContainEqual([
-      "remark",
-      "like",
-      "%a\\\\b\\%\\_%",
+      "bind.third_userid",
+      "=",
+      "seat-user-001",
     ]);
-    expect(bindQuery.joins).toEqual([]);
+    expect(bindQuery.whereExpressions).toContainEqual({
+      type: "or",
+      expressions: [
+        { column: "contact.name", operator: "like", value: "%a\\\\b\\%\\_%" },
+        { column: "bind.remark", operator: "like", value: "%a\\\\b\\%\\_%" },
+      ],
+    });
+    expect(bindQuery.joinConditions).toContainEqual({
+      conditions: [
+        [
+          "contact.third_external_userid",
+          "=",
+          "bind.third_external_userid",
+        ],
+        ["contact.uid", "=", "bind.uid"],
+        ["contact.platform", "=", "bind.platform"],
+        ["contact.biz_status", "=", 1],
+      ],
+      table: "xy_wap_embed_contact as contact",
+      type: "innerJoin",
+    });
+    expect(bindQuery.joins).toEqual(["innerJoin"]);
     expect(groups).toEqual([
       {
         avatar: "",
@@ -2503,13 +2515,6 @@ describe("WorkbenchRepository", () => {
         thirdGroupId: "group-001",
       },
     ]);
-    expect(contactQuery.whereExpressions).toContainEqual({
-      type: "or",
-      expressions: [
-        { column: "name", operator: "like", value: "%a\\\\b\\%\\_%" },
-        { column: "real_name", operator: "like", value: "%a\\\\b\\%\\_%" },
-      ],
-    });
     expect(groupQuery.whereExpressions).toContainEqual({
       type: "or",
       expressions: [
@@ -2517,6 +2522,71 @@ describe("WorkbenchRepository", () => {
         { column: "remark", operator: "like", value: "%a\\\\b\\%\\_%" },
       ],
     });
+  });
+
+  it("searches contacts within the requested seat bind scope", async () => {
+    const bindQuery = createQueryBuilder([
+      {
+        avatar: "https://example.com/customer.png",
+        name: "王帅",
+        realName: "王帅",
+        remark: "设计顾问",
+        thirdExternalUserId: "external-001",
+      },
+    ]);
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            return bindQuery;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const contacts = await repository.searchContacts(9001, 5, "seat-user-001", "帅");
+
+    expect(contacts).toEqual([
+      {
+        avatar: "https://example.com/customer.png",
+        name: "王帅",
+        realName: "王帅",
+        remark: "设计顾问",
+        thirdExternalUserId: "external-001",
+      },
+    ]);
+    expect(bindQuery.wheres).toContainEqual(["bind.uid", "=", 9001]);
+    expect(bindQuery.wheres).toContainEqual(["bind.platform", "=", 5]);
+    expect(bindQuery.wheres).toContainEqual([
+      "bind.third_userid",
+      "=",
+      "seat-user-001",
+    ]);
+    expect(bindQuery.wheres).toContainEqual(["bind.biz_status", "=", 1]);
+    expect(bindQuery.whereExpressions).toContainEqual({
+      type: "or",
+      expressions: [
+        { column: "contact.name", operator: "like", value: "%帅%" },
+        { column: "bind.remark", operator: "like", value: "%帅%" },
+      ],
+    });
+    expect(bindQuery.joinConditions).toContainEqual({
+      conditions: [
+        [
+          "contact.third_external_userid",
+          "=",
+          "bind.third_external_userid",
+        ],
+        ["contact.uid", "=", "bind.uid"],
+        ["contact.platform", "=", "bind.platform"],
+        ["contact.biz_status", "=", 1],
+      ],
+      table: "xy_wap_embed_contact as contact",
+      type: "innerJoin",
+    });
+    expect(bindQuery.limits).toContain(100);
   });
 
   it("hydrates a conversation only within the requested active seat scope", async () => {

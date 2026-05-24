@@ -349,4 +349,66 @@ describe("ConversationListPanel", () => {
     await user.click(within(searchbox).getByRole("button", { name: /星云客户 1/ }));
     expect(mockSelectOrCreate).toHaveBeenCalledWith(contacts[0]);
   });
+
+  it("shows both remark and contact name when they differ", async () => {
+    const contact = {
+      ...makeContact(1, "王帅"),
+      remark: "设计顾问",
+    };
+    storeState = {
+      ...defaultStoreState,
+      searchKeyword: "设计",
+      isSearchLoading: false,
+      searchResults: { contacts: [contact], groups: [] },
+    };
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={conversations.filter((item) => item.mode === "single")}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    const searchbox = await screen.findByRole("dialog", { name: "搜索结果" });
+    expect(
+      within(searchbox).getByRole("button", { name: /设计顾问（王帅）/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows only contact name when remark is empty or equal to name", async () => {
+    const contacts = [
+      {
+        ...makeContact(1, "王帅"),
+        remark: "王帅",
+      },
+      {
+        ...makeContact(2, "李帅"),
+        remark: "",
+      },
+    ];
+    storeState = {
+      ...defaultStoreState,
+      searchKeyword: "帅",
+      isSearchLoading: false,
+      searchResults: { contacts, groups: [] },
+    };
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={conversations.filter((item) => item.mode === "single")}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    const searchbox = await screen.findByRole("dialog", { name: "搜索结果" });
+    expect(within(searchbox).getByRole("button", { name: /^王帅$/ })).toBeInTheDocument();
+    expect(within(searchbox).getByRole("button", { name: /^李帅$/ })).toBeInTheDocument();
+    expect(within(searchbox).queryByText("王帅（王帅）")).not.toBeInTheDocument();
+  });
 });

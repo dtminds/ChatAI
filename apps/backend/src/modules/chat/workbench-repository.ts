@@ -1912,69 +1912,42 @@ export class WorkbenchRepository {
     const escapedKeyword = escapeLikeKeyword(keyword);
     const pattern = "%" + escapedKeyword + "%";
 
-    const [contacts, binds] = await Promise.all([
-      this.db
-        .selectFrom("xy_wap_embed_contact")
-        .select([
-          "third_external_userid as thirdExternalUserId",
-          "name",
-          "real_name as realName",
-          "avatar",
-        ])
-        .where("uid", "=", uid)
-        .where("platform", "=", platform)
-        .where("biz_status", "=", 1)
-        .where((eb) =>
-          eb.or([
-            eb("name", "like", pattern),
-            eb("real_name", "like", pattern),
-          ]),
-        )
-        .limit(100)
-        .execute(),
-      this.db
-        .selectFrom("xy_wap_embed_customer_bind_relation")
-        .select(["third_external_userid as thirdExternalUserId", "remark"])
-        .where("uid", "=", uid)
-        .where("platform", "=", platform)
-        .where("third_userid", "=", seatThirdUserId)
-        .where("biz_status", "=", 1)
-        .where("remark", "like", pattern)
-        .limit(100)
-        .execute(),
-    ]);
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_customer_bind_relation as bind")
+      .innerJoin("xy_wap_embed_contact as contact", (join) =>
+        join
+          .onRef("contact.third_external_userid", "=", "bind.third_external_userid")
+          .onRef("contact.uid", "=", "bind.uid")
+          .onRef("contact.platform", "=", "bind.platform")
+          .on("contact.biz_status", "=", BIZ_STATUS_ACTIVE),
+      )
+      .select([
+        "contact.third_external_userid as thirdExternalUserId",
+        "contact.name as name",
+        "contact.real_name as realName",
+        "contact.avatar as avatar",
+        "bind.remark as remark",
+      ])
+      .where("bind.uid", "=", uid)
+      .where("bind.platform", "=", platform)
+      .where("bind.third_userid", "=", seatThirdUserId)
+      .where("bind.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where((eb) =>
+        eb.or([
+          eb("contact.name", "like", pattern),
+          eb("bind.remark", "like", pattern),
+        ]),
+      )
+      .limit(100)
+      .execute();
 
-    const resultMap = new Map<
-      string,
-      WorkbenchSearchContactResultDto & { remark?: string }
-    >();
-
-    for (const contact of contacts) {
-      resultMap.set(contact.thirdExternalUserId, {
-        avatar: contact.avatar,
-        name: contact.name,
-        realName: contact.realName,
-        thirdExternalUserId: contact.thirdExternalUserId,
-      });
-    }
-
-    for (const bind of binds) {
-      const existing = resultMap.get(bind.thirdExternalUserId);
-      if (existing) {
-        existing.remark = bind.remark ?? undefined;
-        continue;
-      }
-
-      resultMap.set(bind.thirdExternalUserId, {
-        avatar: "",
-        name: bind.remark ?? "",
-        realName: bind.remark ?? "",
-        remark: bind.remark ?? undefined,
-        thirdExternalUserId: bind.thirdExternalUserId,
-      });
-    }
-
-    return [...resultMap.values()];
+    return rows.map((row) => ({
+      avatar: row.avatar,
+      name: row.name,
+      realName: row.realName,
+      remark: row.remark ?? undefined,
+      thirdExternalUserId: row.thirdExternalUserId,
+    }));
   }
 
   async searchGroups(

@@ -501,7 +501,7 @@ function SearchContactResultItem({
   keyword: string;
   onSelect: () => void;
 }) {
-  const displayName = item.remark || item.name || item.realName || "未知用户";
+  const displayName = formatContactDisplayName(item);
   return (
     <Button
       className="grid h-auto w-full grid-cols-[auto_minmax(0,1fr)] items-center justify-normal gap-2 rounded-none px-4 py-2 text-left hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring/20"
@@ -523,6 +523,17 @@ function SearchContactResultItem({
       </div>
     </Button>
   );
+}
+
+function formatContactDisplayName(item: WorkbenchSearchContactResultDto) {
+  const name = item.name || item.realName || "未知用户";
+  const remark = item.remark?.trim();
+
+  if (remark && remark !== name) {
+    return `${remark}（${name}）`;
+  }
+
+  return name;
 }
 
 function SearchGroupResultItem({

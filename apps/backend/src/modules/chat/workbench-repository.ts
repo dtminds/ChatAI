@@ -1912,43 +1912,69 @@ export class WorkbenchRepository {
     const escapedKeyword = escapeLikeKeyword(keyword);
     const pattern = "%" + escapedKeyword + "%";
 
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_contact as contact")
-      .leftJoin("xy_wap_embed_customer_bind_relation as rel", (join) =>
-        join
-          .onRef("rel.uid", "=", "contact.uid")
-          .onRef("rel.platform", "=", "contact.platform")
-          .onRef("rel.third_external_userid", "=", "contact.third_external_userid")
-          .on("rel.third_userid", "=", seatThirdUserId)
-          .on("rel.biz_status", "=", 1),
-      )
-      .select([
-        "contact.third_external_userid as thirdExternalUserId",
-        "contact.name as name",
-        "contact.real_name as realName",
-        "contact.avatar as avatar",
-        "rel.remark as remark",
-      ])
-      .where("contact.uid", "=", uid)
-      .where("contact.platform", "=", platform)
-      .where("contact.biz_status", "=", 1)
-      .where((eb) =>
-        eb.or([
-          eb("contact.name", "like", pattern),
-          eb("contact.real_name", "like", pattern),
-          eb("rel.remark", "like", pattern),
-        ]),
-      )
-      .limit(100)
-      .execute();
+    const [contacts, binds] = await Promise.all([
+      this.db
+        .selectFrom("xy_wap_embed_contact")
+        .select([
+          "third_external_userid as thirdExternalUserId",
+          "name",
+          "real_name as realName",
+          "avatar",
+        ])
+        .where("uid", "=", uid)
+        .where("platform", "=", platform)
+        .where("biz_status", "=", 1)
+        .where((eb) =>
+          eb.or([
+            eb("name", "like", pattern),
+            eb("real_name", "like", pattern),
+          ]),
+        )
+        .limit(100)
+        .execute(),
+      this.db
+        .selectFrom("xy_wap_embed_customer_bind_relation")
+        .select(["third_external_userid as thirdExternalUserId", "remark"])
+        .where("uid", "=", uid)
+        .where("platform", "=", platform)
+        .where("third_userid", "=", seatThirdUserId)
+        .where("biz_status", "=", 1)
+        .where("remark", "like", pattern)
+        .limit(100)
+        .execute(),
+    ]);
 
-    return rows.map((row) => ({
-      thirdExternalUserId: row.thirdExternalUserId,
-      name: row.name,
-      realName: row.realName,
-      avatar: row.avatar,
-      remark: row.remark ?? undefined,
-    }));
+    const resultMap = new Map<
+      string,
+      WorkbenchSearchContactResultDto & { remark?: string }
+    >();
+
+    for (const contact of contacts) {
+      resultMap.set(contact.thirdExternalUserId, {
+        avatar: contact.avatar,
+        name: contact.name,
+        realName: contact.realName,
+        thirdExternalUserId: contact.thirdExternalUserId,
+      });
+    }
+
+    for (const bind of binds) {
+      const existing = resultMap.get(bind.thirdExternalUserId);
+      if (existing) {
+        existing.remark = bind.remark ?? undefined;
+        continue;
+      }
+
+      resultMap.set(bind.thirdExternalUserId, {
+        avatar: "",
+        name: bind.remark ?? "",
+        realName: bind.remark ?? "",
+        remark: bind.remark ?? undefined,
+        thirdExternalUserId: bind.thirdExternalUserId,
+      });
+    }
+
+    return [...resultMap.values()];
   }
 
   async searchGroups(
@@ -1965,21 +1991,21 @@ export class WorkbenchRepository {
     const pattern = "%" + escapedKeyword + "%";
 
     const rows = await this.db
-      .selectFrom("xy_wap_embed_group_seat as gs")
+      .selectFrom("xy_wap_embed_group_seat")
       .select([
-        "gs.third_group_id as thirdGroupId",
-        "gs.name as name",
-        "gs.avatar as avatar",
-        "gs.remark as remark",
+        "third_group_id as thirdGroupId",
+        "name",
+        "avatar",
+        "remark",
       ])
-      .where("gs.uid", "=", uid)
-      .where("gs.platform", "=", platform)
-      .where("gs.third_userid", "=", seatThirdUserId)
-      .where("gs.biz_status", "=", 1)
+      .where("uid", "=", uid)
+      .where("platform", "=", platform)
+      .where("third_userid", "=", seatThirdUserId)
+      .where("biz_status", "=", 1)
       .where((eb) =>
         eb.or([
-          eb("gs.name", "like", pattern),
-          eb("gs.remark", "like", pattern),
+          eb("name", "like", pattern),
+          eb("remark", "like", pattern),
         ]),
       )
       .limit(100)

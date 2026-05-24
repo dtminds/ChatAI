@@ -2441,7 +2441,12 @@ describe("WorkbenchRepository", () => {
         avatar: "",
         name: "测试客户",
         realName: "测试客户",
-        remark: undefined,
+        thirdExternalUserId: "external-001",
+      },
+    ]);
+    const bindQuery = createQueryBuilder([
+      {
+        remark: "客户备注",
         thirdExternalUserId: "external-001",
       },
     ]);
@@ -2456,11 +2461,15 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
-          if (table === "xy_wap_embed_contact as contact") {
+          if (table === "xy_wap_embed_contact") {
             return contactQuery;
           }
 
-          if (table === "xy_wap_embed_group_seat as gs") {
+          if (table === "xy_wap_embed_customer_bind_relation") {
+            return bindQuery;
+          }
+
+          if (table === "xy_wap_embed_group_seat") {
             return groupQuery;
           }
 
@@ -2477,9 +2486,16 @@ describe("WorkbenchRepository", () => {
         avatar: "",
         name: "测试客户",
         realName: "测试客户",
+        remark: "客户备注",
         thirdExternalUserId: "external-001",
       },
     ]);
+    expect(bindQuery.wheres).toContainEqual([
+      "remark",
+      "like",
+      "%a\\\\b\\%\\_%",
+    ]);
+    expect(bindQuery.joins).toEqual([]);
     expect(groups).toEqual([
       {
         avatar: "",
@@ -2490,20 +2506,17 @@ describe("WorkbenchRepository", () => {
     expect(contactQuery.whereExpressions).toContainEqual({
       type: "or",
       expressions: [
-        { column: "contact.name", operator: "like", value: "%a\\\\b\\%\\_%" },
-        { column: "contact.real_name", operator: "like", value: "%a\\\\b\\%\\_%" },
-        { column: "rel.remark", operator: "like", value: "%a\\\\b\\%\\_%" },
+        { column: "name", operator: "like", value: "%a\\\\b\\%\\_%" },
+        { column: "real_name", operator: "like", value: "%a\\\\b\\%\\_%" },
       ],
     });
     expect(groupQuery.whereExpressions).toContainEqual({
       type: "or",
       expressions: [
-        { column: "gs.name", operator: "like", value: "%a\\\\b\\%\\_%" },
-        { column: "gs.remark", operator: "like", value: "%a\\\\b\\%\\_%" },
+        { column: "name", operator: "like", value: "%a\\\\b\\%\\_%" },
+        { column: "remark", operator: "like", value: "%a\\\\b\\%\\_%" },
       ],
     });
-    expect(contactQuery.joins).toEqual(["leftJoin"]);
-    expect(groupQuery.joins).toEqual([]);
   });
 
   it("hydrates a conversation only within the requested active seat scope", async () => {

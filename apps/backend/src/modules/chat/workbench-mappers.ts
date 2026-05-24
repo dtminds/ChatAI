@@ -132,7 +132,7 @@ export function mapConversationRow(
     mode === "group" ? row.group_avatar ?? "" : row.customer_avatar ?? "";
 
   return {
-    bizStatus: row.biz_status == null ? undefined : toNumber(row.biz_status),
+    bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,

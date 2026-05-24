@@ -3165,24 +3165,24 @@ describe("useWorkbenchStore", () => {
       ),
     ).toBe(false);
 
-    await useWorkbenchStore.getState().selectOrCreateAndSelectConversation({
-      avatar: "",
-      conversationId: hydratedConversation.conversationId,
-      name: "搜索客户",
-      realName: "搜索客户",
-      thirdExternalUserId: "external-search-001",
+    await useWorkbenchStore.getState().setActiveMode("single", {
+      preserveConversation: {
+        accountId: "drc",
+        customerAvatarUrl: "",
+        customerId: "external-search-001",
+        customerName: "搜索客户",
+        id: hydratedConversation.conversationId,
+        mode: "single",
+        preview: "来自搜索",
+        priority: "medium",
+        quietFor: "",
+        unread: 0,
+        updatedAt: "",
+      },
     });
 
     const state = useWorkbenchStore.getState();
-    expect(observedPayloads).toEqual([
-      {
-        chatType: 1,
-        seatId: "drc",
-        thirdExternalUserId: "external-search-001",
-        thirdGroupId: undefined,
-      },
-    ]);
-    expect(state.activeConversationId).toBe(hydratedConversation.conversationId);
+    expect(state.activeConversationId).toBe("conv-001");
     expect(
       state.conversationListsByScope.drc.find(
         (conversation) => conversation.id === hydratedConversation.conversationId,
@@ -3343,15 +3343,24 @@ describe("useWorkbenchStore", () => {
       },
     }));
 
-    await useWorkbenchStore.getState().selectOrCreateAndSelectConversation({
-      avatar: "",
-      name: "搜索群聊",
-      thirdGroupId: "group-search-001",
+    await useWorkbenchStore.getState().setActiveMode("group", {
+      preserveConversation: {
+        accountId: "drc",
+        customerAvatarUrl: "",
+        customerId: "group-search-001",
+        customerName: "搜索群聊",
+        id: hydratedConversation.conversationId,
+        mode: "group",
+        preview: "来自搜索",
+        priority: "medium",
+        quietFor: "",
+        unread: 0,
+        updatedAt: "",
+      },
     });
 
     const state = useWorkbenchStore.getState();
     expect(state.activeMode).toBe("group");
-    expect(state.activeConversationId).toBe(hydratedConversation.conversationId);
     expect(
       state.conversationListsByScope.drc.find(
         (conversation) => conversation.id === hydratedConversation.conversationId,
@@ -3361,5 +3370,7 @@ describe("useWorkbenchStore", () => {
       id: hydratedConversation.conversationId,
       mode: "group",
     });
+    expect(state.activeConversationId).toBe("conv-004");
   });
+
 });

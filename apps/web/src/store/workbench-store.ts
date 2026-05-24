@@ -32,8 +32,11 @@ import {
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
-import type { SettingsSidebarItem } from "@chatai/contracts";
-import type { WorkbenchSendMessagePayload } from "@chatai/contracts";
+import {
+  CHAT_TYPE,
+  type SettingsSidebarItem,
+  type WorkbenchSendMessagePayload,
+} from "@chatai/contracts";
 import type {
   Account,
   ChatMessage,
@@ -164,7 +167,10 @@ type WorkbenchState = {
   pinConversation: (conversationId: string) => Promise<void>;
   setActiveAccount: (accountId: string) => Promise<void>;
   setActiveConversation: (conversationId: string) => Promise<void>;
-  setActiveMode: (mode: ChatMode) => Promise<void>;
+  setActiveMode: (
+    mode: ChatMode,
+    options?: { preserveConversation?: Conversation },
+  ) => Promise<void>;
   loadActiveGroupMembers: (options?: { force?: boolean }) => Promise<void>;
   markConversationUnread: (conversationId: string) => Promise<void>;
   sendAgentMessageSegments: (
@@ -356,10 +362,27 @@ function replaceConversationsByMode(
   currentList: Conversation[],
   mode: ChatMode,
   nextModeConversations: Conversation[],
+  preserveConversation?: Conversation,
 ) {
+  const preservedConversationIds = preserveConversation
+    ? new Set([preserveConversation.id])
+    : undefined;
+
+  const nextModeList = preserveConversation
+    ? mergeConversationList(nextModeConversations, preserveConversation).filter(
+        (conversation) => conversation.mode === mode,
+      )
+    : nextModeConversations;
+
   return sortConversations([
-    ...currentList.filter((conversation) => conversation.mode !== mode),
-    ...nextModeConversations,
+    ...currentList.filter(
+      (conversation) =>
+        conversation.mode !== mode ||
+        (preservedConversationIds
+          ? preservedConversationIds.has(conversation.id)
+          : false),
+    ),
+    ...nextModeList,
   ]);
 }
 
@@ -1462,7 +1485,7 @@ export function createWorkbenchStore() {
           const service = getWorkbenchService();
           const payload = {
             seatId,
-            chatType: isGroup ? 2 : 1,
+            chatType: isGroup ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
             thirdExternalUserId: isGroup ? undefined : item.thirdExternalUserId,
             thirdGroupId: isGroup ? item.thirdGroupId : undefined,
           };
@@ -1474,37 +1497,13 @@ export function createWorkbenchStore() {
 
           const hydratedConversation = adaptConversation(summaryDto);
 
-          set((currentState) => {
-            const currentList = currentState.conversationListsByScope[seatId] ?? [];
-            const nextList = sortConversations([
-              hydratedConversation,
-              ...currentList.filter((conversation) => conversation.id !== hydratedConversation.id),
-            ]);
-            return {
-              conversationListsByScope: {
-                ...currentState.conversationListsByScope,
-                [seatId]: nextList,
-              },
-            };
+          await get().setActiveMode(nextMode, {
+            preserveConversation: hydratedConversation,
           });
-
-          await get().setActiveMode(nextMode);
 
           if (get().activeAccountId !== seatId) {
             return;
           }
-
-          set((currentState) => {
-            const currentList = currentState.conversationListsByScope[seatId] ?? [];
-
-            return {
-              conversationListsByScope: {
-                ...currentState.conversationListsByScope,
-                [seatId]: mergeConversationList(currentList, hydratedConversation),
-              },
-            };
-          });
-
           await get().setActiveConversation(hydratedConversation.id);
         } catch (error) {
           if (get().activeAccountId === seatId) {
@@ -3113,10 +3112,23 @@ export function createWorkbenchStore() {
         }
       }
     },
-    async setActiveMode(mode) {
+    async setActiveMode(mode, options) {
       const state = get();
+      const preserveConversation = options?.preserveConversation;
 
       if (state.activeMode === mode) {
+        if (preserveConversation && state.activeAccountId) {
+          set((currentState) => ({
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [state.activeAccountId]: mergeConversationList(
+                currentState.conversationListsByScope[state.activeAccountId] ?? [],
+                preserveConversation,
+              ),
+            },
+          }));
+        }
+
         return;
       }
 
@@ -3152,6 +3164,7 @@ export function createWorkbenchStore() {
                   currentState.conversationListsByScope[accountId] ?? [],
                   mode,
                   result.conversations,
+                  preserveConversation,
                 ),
               },
               conversationModeLoadedAtByScope: markConversationModesLoaded(

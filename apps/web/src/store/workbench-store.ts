@@ -1507,12 +1507,16 @@ export function createWorkbenchStore() {
 
           await get().setActiveConversation(hydratedConversation.id);
         } catch (error) {
-          set({
-            conversationOpenError:
-              getRequestApiErrorMessage(error) ?? "获取/开启会话失败，请稍后重试",
-          });
+          if (get().activeAccountId === seatId) {
+            set({
+              conversationOpenError:
+                getRequestApiErrorMessage(error) ?? "获取/开启会话失败，请稍后重试",
+            });
+          }
         } finally {
-          set({ isConversationLoading: false });
+          if (get().activeAccountId === seatId) {
+            set({ isConversationLoading: false });
+          }
         }
       },
       dismissConversationOpenError() {

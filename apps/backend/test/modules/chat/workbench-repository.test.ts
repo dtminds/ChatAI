@@ -2712,6 +2712,7 @@ describe("WorkbenchRepository", () => {
       type: "or",
       expressions: [
         { column: "contact.name", operator: "like", value: "%a\\\\b\\%\\_%" },
+        { column: "contact.real_name", operator: "like", value: "%a\\\\b\\%\\_%" },
         { column: "bind.remark", operator: "like", value: "%a\\\\b\\%\\_%" },
       ],
     });
@@ -2791,6 +2792,7 @@ describe("WorkbenchRepository", () => {
       type: "or",
       expressions: [
         { column: "contact.name", operator: "like", value: "%帅%" },
+        { column: "contact.real_name", operator: "like", value: "%帅%" },
         { column: "bind.remark", operator: "like", value: "%帅%" },
       ],
     });

@@ -1945,6 +1945,7 @@ export class WorkbenchRepository {
       .where((eb) =>
         eb.or([
           eb("contact.name", "like", pattern),
+          eb("contact.real_name", "like", pattern),
           eb("bind.remark", "like", pattern),
         ]),
       )

@@ -3241,6 +3241,35 @@ describe("useWorkbenchStore", () => {
     expect(state.isConversationLoading).toBe(false);
   });
 
+  it("does not show stale search open errors after switching accounts", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredConversation = createDeferred<WorkbenchConversationSummaryDto>();
+
+    setWorkbenchService({
+      ...baseService,
+      getOrCreateConversation() {
+        return deferredConversation.promise;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const selectPromise = useWorkbenchStore.getState().selectOrCreateAndSelectConversation({
+      avatar: "",
+      conversationId: "conv-search-stale",
+      name: "搜索客户",
+      realName: "搜索客户",
+      thirdExternalUserId: "external-search-stale",
+    });
+
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    deferredConversation.reject(new Error("旧账号开启失败"));
+    await selectPromise;
+
+    const state = useWorkbenchStore.getState();
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.conversationOpenError).toBeUndefined();
+  });
+
   it("keeps a hydrated search conversation when switching modes reloads stale lists", async () => {
     const baseService = createMockWorkbenchService();
     const hydratedConversation: WorkbenchConversationSummaryDto = {

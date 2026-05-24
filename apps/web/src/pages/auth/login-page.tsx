@@ -107,9 +107,6 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
             <div className="flex flex-col gap-6">
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">欢迎回来</h1>
-                <p className="text-balance text-muted-foreground">
-                  登录你的客服工作台
-                </p>
               </div>
 
               <div className="grid gap-2">
@@ -173,7 +170,7 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
             <img
               alt="登录页占位图"
               className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
-              src="https://ui.shadcn.com/placeholder.svg"
+              src="https://b5.bokr.com.cn/dist/login_bg_2.png"
             />
           </div>
         </CardContent>

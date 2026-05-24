@@ -40,7 +40,6 @@ describe("LoginPage", () => {
     renderLoginRoute();
 
     expect(await screen.findByRole("heading", { name: "欢迎回来" })).toBeInTheDocument();
-    expect(screen.getByText("登录你的客服工作台")).toBeInTheDocument();
     expect(screen.getByLabelText("用户名")).toBeInTheDocument();
     expect(screen.getByLabelText("密码")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
@@ -54,7 +53,7 @@ describe("LoginPage", () => {
     });
     expect(screen.getByAltText("登录页占位图")).toHaveAttribute(
       "src",
-      "https://ui.shadcn.com/placeholder.svg",
+      "https://b5.bokr.com.cn/dist/login_bg_2.png",
     );
     expect(screen.queryByText("注册")).not.toBeInTheDocument();
     expect(

@@ -91,7 +91,7 @@ describe("resolveWorkbenchPermissions", () => {
     expect(
       resolveWorkbenchPermissions({
         account: createAccount(),
-        activeConversation: createConversation({ bizStatus: 0 }),
+        activeConversation: createConversation({ bizStatus: 2 }),
         bootstrapStatus: "ready",
         me,
         subUser: viewer,
@@ -103,12 +103,22 @@ describe("resolveWorkbenchPermissions", () => {
     expect(
       resolveWorkbenchPermissions({
         account: createAccount({ takenOverEmployeeId: me.id }),
-        activeConversation: createConversation({ bizStatus: 0 }),
+        activeConversation: createConversation({ bizStatus: 2 }),
         bootstrapStatus: "ready",
         me,
         subUser: viewer,
       }).composerPlaceholder,
     ).toBe("当前会话已失效，暂时无法发送消息");
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({ takenOverEmployeeId: me.id }),
+        activeConversation: createConversation({ bizStatus: 1 }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: viewer,
+      }).composerPlaceholder,
+    ).toBe("当前账号无发送权限，暂时无法发送消息");
   });
 
   it("uses account permission copy when state is otherwise usable but account lacks send permission", () => {
@@ -172,6 +182,7 @@ function createAccount(overrides: Partial<Account> = {}): Account {
 function createConversation(overrides: Partial<Conversation> = {}): Conversation {
   return {
     accountId: "drc",
+    bizStatus: 1,
     customerAvatarUrl: "",
     customerId: "customer-001",
     customerName: "客户一号",

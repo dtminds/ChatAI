@@ -72,6 +72,30 @@ describe("workbench MySQL mappers", () => {
     expect(conversation.verified).toBe(false);
   });
 
+  it("defaults conversation biz status to hidden when metadata is missing", () => {
+    const conversation = mapConversationRow({
+      chat_type: 1,
+      create_time: null,
+      customer_avatar: "",
+      customer_name: "",
+      group_avatar: "",
+      group_name: "",
+      id: 88,
+      last_message_content: "最近一条文本",
+      last_message_type: "text",
+      last_msgtime: 1778240100000,
+      pinned_time: 0,
+      seat_id: 12,
+      third_external_userid: "external-1",
+      third_group_id: "",
+      third_userid: "third-user-1",
+      unread_cnt: 2,
+      verified: 0,
+    });
+
+    expect(conversation.bizStatus).toBe(0);
+  });
+
   it("uses raw conversation preview content only for text messages", () => {
     expect(
       mapConversationRow({

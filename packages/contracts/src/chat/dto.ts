@@ -386,3 +386,32 @@ export type WorkbenchUploadCredentialResponse = {
 export type WorkbenchTakeOverSeatResponse = {
   seat: WorkbenchSeatDto;
 };
+
+export type WorkbenchSearchContactResultDto = {
+  thirdExternalUserId: string;
+  name: string;
+  realName: string;
+  avatar: string;
+  remark?: string;
+  conversationId?: string;
+};
+
+export type WorkbenchSearchGroupResultDto = {
+  thirdGroupId: string;
+  name?: string;
+  avatar: string;
+  remark?: string;
+  conversationId?: string;
+};
+
+export type WorkbenchSearchResponseDto = {
+  contacts: WorkbenchSearchContactResultDto[];
+  groups: WorkbenchSearchGroupResultDto[];
+};
+
+export type WorkbenchGetOrCreateConversationRequestDto = {
+  seatId: string;
+  chatType: number;
+  thirdExternalUserId?: string;
+  thirdGroupId?: string;
+};

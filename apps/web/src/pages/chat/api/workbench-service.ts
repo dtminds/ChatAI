@@ -39,6 +39,8 @@ import {
   type WorkbenchSendMessageResponse,
   type WorkbenchTakeOverSeatResponse,
   type WorkbenchUploadCredentialResponse,
+  type WorkbenchSearchResponseDto,
+  type WorkbenchGetOrCreateConversationRequestDto,
 } from "@chatai/contracts";
 import type {
   ChatMode,
@@ -96,6 +98,8 @@ export type WorkbenchService = {
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
+  search: (seatId: string, keyword: string) => Promise<WorkbenchSearchResponseDto>;
+  getOrCreateConversation: (payload: WorkbenchGetOrCreateConversationRequestDto) => Promise<WorkbenchConversationSummaryDto>;
 };
 
 export type WorkbenchServiceMode = "mock" | "http";
@@ -550,6 +554,15 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       return { seat: clone(nextAccount) };
     },
+    async search(seatId, keyword) {
+      return {
+        contacts: [],
+        groups: [],
+      };
+    },
+    async getOrCreateConversation(payload) {
+      throw new Error("Mock not implemented");
+    },
   };
 }
 
@@ -690,6 +703,17 @@ export function createHttpWorkbenchService(): WorkbenchService {
     unpinConversation(conversationId) {
       return http.post<WorkbenchConversationUnpinResponse>(
         `/server/conversations/${conversationId}/unpin`,
+      );
+    },
+    search(seatId, keyword) {
+      return http.get<WorkbenchSearchResponseDto>("/server/search", {
+        params: { seatId, keyword },
+      });
+    },
+    getOrCreateConversation(payload) {
+      return http.post<WorkbenchConversationSummaryDto>(
+        "/server/conversations/get-or-create",
+        payload,
       );
     },
   };
@@ -868,6 +892,7 @@ function buildInitialState(): MockState {
         conversations.map((conversation) => ({
           seatId: conversation.accountId,
           conversationId: conversation.id,
+          bizStatus: conversation.bizStatus ?? 1,
           customerAvatar: conversation.customerAvatarUrl,
           customerId: conversation.customerId,
           customerName: conversation.customerName,

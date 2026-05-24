@@ -11,6 +11,10 @@ import {
   type WorkbenchMessagePageDto,
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSeatDto,
+  type WorkbenchSearchContactResultDto,
+  type WorkbenchSearchGroupResultDto,
+  type WorkbenchSearchResponseDto,
+  type WorkbenchConversationSummaryDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
@@ -127,7 +131,13 @@ type ConversationPageRow = Omit<
 };
 
 type ConversationHydrationSources = {
-  bindsByThirdExternalId: Map<string, { remark: string | null }>;
+  bindsByThirdExternalId: Map<
+    string,
+    {
+      bizStatus: number | null;
+      remark: string | null;
+    }
+  >;
   contactsByThirdExternalId: Map<
     string,
     {
@@ -1706,12 +1716,11 @@ export class WorkbenchRepository {
       contactThirdExternalIds.length
         ? this.db
             .selectFrom("xy_wap_embed_customer_bind_relation")
-            .select(["third_external_userid", "remark"])
+            .select(["third_external_userid", "remark", "biz_status"])
             .where("uid", "=", uid)
             .where("platform", "=", platform)
             .where("third_userid", "=", seatThirdUserId)
             .where("third_external_userid", "in", contactThirdExternalIds)
-            .where("biz_status", "=", 1)
             .execute()
         : [],
       groupIds.length
@@ -1731,6 +1740,7 @@ export class WorkbenchRepository {
         binds.map((bind) => [
           bind.third_external_userid,
           {
+            bizStatus: bind.biz_status,
             remark: bind.remark,
           },
         ]),
@@ -1792,11 +1802,15 @@ export class WorkbenchRepository {
       biz_status:
         row.chat_type === CHAT_TYPE_GROUP
           ? (group?.bizStatus ?? BIZ_STATUS_HIDDEN)
-          : (contact?.bizStatus ?? BIZ_STATUS_HIDDEN),
+          : (bind?.bizStatus ?? BIZ_STATUS_HIDDEN),
       customer_avatar: contact?.avatar ?? null,
-      customer_name: bind?.remark ?? contact?.realName ?? contact?.name ?? null,
+      customer_name: firstNonEmptyString(
+        bind?.remark,
+        contact?.realName,
+        contact?.name,
+      ) ?? null,
       group_avatar: group?.avatar ?? null,
-      group_name: group?.name ?? null,
+      group_name: firstNonEmptyString(group?.name) ?? null,
       last_message_content: lastMessage?.content ?? null,
       last_message_type: lastMessage?.msgtype ?? null,
     });
@@ -1894,7 +1908,194 @@ export class WorkbenchRepository {
       ),
     };
   }
+
+  async searchContacts(
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+    keyword: string,
+  ): Promise<WorkbenchSearchContactResultDto[]> {
+    if (!keyword.trim()) {
+      return [];
+    }
+
+    const escapedKeyword = escapeLikeKeyword(keyword);
+    const pattern = "%" + escapedKeyword + "%";
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_customer_bind_relation as bind")
+      .innerJoin("xy_wap_embed_contact as contact", (join) =>
+        join
+          .onRef("contact.third_external_userid", "=", "bind.third_external_userid")
+          .onRef("contact.uid", "=", "bind.uid")
+          .onRef("contact.platform", "=", "bind.platform")
+          .on("contact.biz_status", "=", BIZ_STATUS_ACTIVE),
+      )
+      .select([
+        "contact.third_external_userid as thirdExternalUserId",
+        "contact.name as name",
+        "contact.real_name as realName",
+        "contact.avatar as avatar",
+        "bind.remark as remark",
+      ])
+      .where("bind.uid", "=", uid)
+      .where("bind.platform", "=", platform)
+      .where("bind.third_userid", "=", seatThirdUserId)
+      .where("bind.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where((eb) =>
+        eb.or([
+          eb("contact.name", "like", pattern),
+          eb("contact.real_name", "like", pattern),
+          eb("bind.remark", "like", pattern),
+        ]),
+      )
+      .limit(100)
+      .execute();
+
+    return rows.map((row) => ({
+      avatar: row.avatar,
+      name: row.name,
+      realName: row.realName,
+      remark: row.remark ?? undefined,
+      thirdExternalUserId: row.thirdExternalUserId,
+    }));
+  }
+
+  async searchGroups(
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+    keyword: string,
+  ): Promise<WorkbenchSearchGroupResultDto[]> {
+    if (!keyword.trim()) {
+      return [];
+    }
+
+    const escapedKeyword = escapeLikeKeyword(keyword);
+    const pattern = "%" + escapedKeyword + "%";
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_group_seat")
+      .select([
+        "third_group_id as thirdGroupId",
+        "name",
+        "avatar",
+        "remark",
+      ])
+      .where("uid", "=", uid)
+      .where("platform", "=", platform)
+      .where("third_userid", "=", seatThirdUserId)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where((eb) =>
+        eb.or([
+          eb("name", "like", pattern),
+          eb("remark", "like", pattern),
+        ]),
+      )
+      .limit(100)
+      .execute();
+
+    return rows.map((row) => ({
+      thirdGroupId: row.thirdGroupId,
+      name: row.name ?? undefined,
+      avatar: row.avatar,
+      remark: row.remark ?? undefined,
+    }));
+  }
+
+  async getHydratedConversation(
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchConversationSummaryDto | null> {
+    const conversationNumericId = parseMySqlId(conversationId);
+
+    if (conversationNumericId == null) {
+      return null;
+    }
+
+    const seat = await this.db
+      .selectFrom("xy_wap_embed_user_seat")
+      .select("id")
+      .where("uid", "=", uid)
+      .where("platform", "=", platform)
+      .where("third_userid", "=", seatThirdUserId)
+      .where("biz_status", "=", 1)
+      .executeTakeFirst();
+
+    if (!seat) {
+      return null;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .select([
+        "conversation.id as id",
+        "conversation.chat_type as chat_type",
+        "conversation.create_time as create_time",
+        "conversation.last_audit_info_id as last_audit_info_id",
+        "conversation.third_userid as third_userid",
+        "conversation.third_external_userid as third_external_userid",
+        "conversation.third_group_id as third_group_id",
+        "conversation.unread_cnt as unread_cnt",
+        "conversation.last_msgtime as last_msgtime",
+        "conversation.pinned_time as pinned_time",
+        "conversation.verified as verified",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder.val(seat.id).as("seat_id"),
+      ])
+      .where("conversation.uid", "=", uid)
+      .where("conversation.platform", "=", platform)
+      .where("conversation.third_userid", "=", seatThirdUserId)
+      .where("conversation.id", "=", conversationNumericId)
+      .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .executeTakeFirst();
+
+    if (!row) {
+      return null;
+    }
+
+    const conversationRow = row as ConversationPageRow;
+    const hydrationSources = await this.getConversationHydrationSources(
+      [conversationRow],
+      uid,
+      platform,
+      seatThirdUserId,
+    );
+
+    return this.mapHydratedConversationRow(conversationRow, hydrationSources);
+  }
+
+  async findConversationIdByTarget(
+    uid: number,
+    platform: number,
+    seatThirdUserId: string,
+    chatType: number,
+    targetId: string,
+  ): Promise<string | undefined> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select("id")
+      .where("uid", "=", uid)
+      .where("platform", "=", platform)
+      .where("third_userid", "=", seatThirdUserId)
+      .where("chat_type", "=", chatType)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE);
+
+    if (chatType === CHAT_TYPE_GROUP) {
+      query = query.where("third_group_id", "=", targetId);
+    } else {
+      query = query.where("third_external_userid", "=", targetId);
+    }
+
+    const row = await query.executeTakeFirst();
+    return row?.id != null ? String(row.id) : undefined;
+  }
+
 }
+
 
 function emptyMessagePage(): WorkbenchMessagePageDto {
   return {
@@ -2006,6 +2207,18 @@ function uniqueNonEmpty(values: Array<string | null | undefined>) {
         .filter(Boolean),
     ),
   );
+}
+
+function firstNonEmptyString(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const normalized = value?.trim();
+
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return undefined;
 }
 
 function uniqueIds(values: Array<number | string | null | undefined>) {
@@ -2184,6 +2397,10 @@ function getHistoryScopeRawMsgtypes(scope: WorkbenchHistoryMessageScope) {
     case "all":
       return [];
   }
+}
+
+function escapeLikeKeyword(keyword: string) {
+  return keyword.replace(/[\\%_]/g, "\\$&");
 }
 
 function getLocalDayBounds(day: string | undefined) {

@@ -12,6 +12,7 @@ import {
 } from "@/store/workbench-store";
 import type { Conversation, Message } from "@/pages/chat/chat-types";
 import type {
+  WorkbenchConversationSummaryDto,
   WorkbenchHistoryMessagePageDto,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
@@ -966,7 +967,7 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                bizStatus: 0,
+                bizStatus: 2,
               }
             : conversation,
         ),
@@ -3105,4 +3106,344 @@ describe("useWorkbenchStore", () => {
 
     expect(useWorkbenchStore.getState().readReceiptError).toBe("标记已读失败");
   });
+
+  it("hydrates and caches an existing search result before selecting it", async () => {
+    const baseService = createMockWorkbenchService();
+    const hydratedConversation: WorkbenchConversationSummaryDto = {
+      conversationId: "conv-search-001",
+      seatId: "drc",
+      customerId: "cust-search-001",
+      customerName: "搜索客户",
+      customerAvatar: "",
+      lastMessage: "来自搜索",
+      lastMessageTime: 1_778_999_000_000,
+      unreadCount: 0,
+      mode: "single",
+      priority: "medium",
+      thirdExternalUserId: "external-search-001",
+      thirdUserId: "third-user-drc",
+    };
+    const observedPayloads: unknown[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getOrCreateConversation(payload) {
+        observedPayloads.push(payload);
+        return hydratedConversation;
+      },
+      async getMessages(conversationId, options) {
+        if (conversationId === hydratedConversation.conversationId) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              {
+                content: { text: "来自搜索" },
+                contentType: "text",
+                conversationId,
+                createdAt: 1_778_999_000_000,
+                customerId: hydratedConversation.customerId,
+                messageId: "msg-search-001",
+                seatId: hydratedConversation.seatId,
+                senderType: "customer",
+                seq: 1,
+                status: "sent",
+              },
+            ],
+            scannedCount: 1,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    expect(
+      useWorkbenchStore.getState().conversationListsByScope.drc.some(
+        (conversation) => conversation.id === hydratedConversation.conversationId,
+      ),
+    ).toBe(false);
+
+    await useWorkbenchStore.getState().setActiveMode("single", {
+      preserveConversation: {
+        accountId: "drc",
+        customerAvatarUrl: "",
+        customerId: "external-search-001",
+        customerName: "搜索客户",
+        id: hydratedConversation.conversationId,
+        mode: "single",
+        preview: "来自搜索",
+        priority: "medium",
+        quietFor: "",
+        unread: 0,
+        updatedAt: "",
+      },
+    });
+
+    const state = useWorkbenchStore.getState();
+    expect(state.activeConversationId).toBe("conv-001");
+    expect(
+      state.conversationListsByScope.drc.find(
+        (conversation) => conversation.id === hydratedConversation.conversationId,
+      ),
+    ).toMatchObject({
+      customerName: "搜索客户",
+      id: hydratedConversation.conversationId,
+    });
+  });
+
+  it("does not apply hydrated search results after switching accounts", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredConversation = createDeferred<WorkbenchConversationSummaryDto>();
+
+    setWorkbenchService({
+      ...baseService,
+      getOrCreateConversation() {
+        return deferredConversation.promise;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const selectPromise = useWorkbenchStore.getState().selectOrCreateAndSelectConversation({
+      avatar: "",
+      conversationId: "conv-search-stale",
+      name: "搜索客户",
+      realName: "搜索客户",
+      thirdExternalUserId: "external-search-stale",
+    });
+
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    deferredConversation.resolve({
+      conversationId: "conv-search-stale",
+      customerAvatar: "",
+      customerId: "cust-search-stale",
+      customerName: "搜索客户",
+      lastMessage: "来自搜索",
+      lastMessageTime: 1_778_999_000_000,
+      mode: "single",
+      priority: "medium",
+      seatId: "drc",
+      thirdExternalUserId: "external-search-stale",
+      thirdUserId: "third-user-drc",
+      unreadCount: 0,
+    });
+    await selectPromise;
+
+    const state = useWorkbenchStore.getState();
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.activeConversationId).not.toBe("conv-search-stale");
+    expect(
+      state.conversationListsByScope.drc.some(
+        (conversation) => conversation.id === "conv-search-stale",
+      ),
+    ).toBe(false);
+    expect(state.isConversationLoading).toBe(false);
+  });
+
+  it("keeps search input and results when opening a search conversation fails", async () => {
+    const baseService = createMockWorkbenchService();
+    const searchResults = {
+      contacts: [
+        {
+          avatar: "",
+          conversationId: "conv-search-failed",
+          name: "搜索客户",
+          realName: "搜索客户",
+          thirdExternalUserId: "external-search-failed",
+        },
+      ],
+      groups: [],
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async getOrCreateConversation() {
+        throw new Error("开启失败");
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState({
+      isSearchLoading: false,
+      searchKeyword: "搜索客户",
+      searchResults,
+    });
+
+    await useWorkbenchStore
+      .getState()
+      .selectOrCreateAndSelectConversation(searchResults.contacts[0]);
+
+    const state = useWorkbenchStore.getState();
+    expect(state.searchKeyword).toBe("搜索客户");
+    expect(state.searchResults).toBe(searchResults);
+    expect(state.isSearchLoading).toBe(false);
+    expect(state.conversationOpenError).toBe("开启失败");
+  });
+
+  it("does not show stale search open errors after switching accounts", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredConversation = createDeferred<WorkbenchConversationSummaryDto>();
+
+    setWorkbenchService({
+      ...baseService,
+      getOrCreateConversation() {
+        return deferredConversation.promise;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const selectPromise = useWorkbenchStore.getState().selectOrCreateAndSelectConversation({
+      avatar: "",
+      conversationId: "conv-search-stale",
+      name: "搜索客户",
+      realName: "搜索客户",
+      thirdExternalUserId: "external-search-stale",
+    });
+
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+    deferredConversation.reject(new Error("旧账号开启失败"));
+    await selectPromise;
+
+    const state = useWorkbenchStore.getState();
+    expect(state.activeAccountId).toBe("ndt");
+    expect(state.conversationOpenError).toBeUndefined();
+  });
+
+  it("merges preserved same-mode conversations into their own account scope", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    await useWorkbenchStore.getState().setActiveMode("single", {
+      preserveConversation: {
+        accountId: "drc",
+        customerAvatarUrl: "",
+        customerId: "drc-preserved-customer",
+        customerName: "跨账号保留客户",
+        id: "drc-preserved-conversation",
+        mode: "single",
+        preview: "来自搜索",
+        priority: "medium",
+        quietFor: "",
+        unread: 0,
+        updatedAt: "",
+      },
+    });
+
+    const state = useWorkbenchStore.getState();
+    expect(
+      state.conversationListsByScope.drc.some(
+        (conversation) => conversation.id === "drc-preserved-conversation",
+      ),
+    ).toBe(true);
+    expect(
+      state.conversationListsByScope.ndt.some(
+        (conversation) => conversation.id === "drc-preserved-conversation",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a hydrated search conversation when switching modes reloads stale lists", async () => {
+    const baseService = createMockWorkbenchService();
+    const hydratedConversation: WorkbenchConversationSummaryDto = {
+      conversationId: "conv-search-group-001",
+      seatId: "drc",
+      customerId: "group-search-001",
+      customerName: "搜索群聊",
+      customerAvatar: "",
+      lastMessage: "来自搜索",
+      lastMessageTime: 1_778_999_000_000,
+      mode: "group",
+      priority: "medium",
+      thirdGroupId: "group-search-001",
+      thirdUserId: "third-user-drc",
+      unreadCount: 0,
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId, options) {
+        const result = await baseService.getConversations(accountId, options);
+
+        if (accountId === "drc" && options?.mode === "group") {
+          return {
+            ...result,
+            items: result.items.filter(
+              (conversation) => conversation.conversationId !== hydratedConversation.conversationId,
+            ),
+          };
+        }
+
+        return result;
+      },
+      async getGroupMembers(conversationId) {
+        if (conversationId === hydratedConversation.conversationId) {
+          return {
+            conversationId,
+            groupSeatId: "group-seat-search-001",
+            thirdGroupId: "group-search-001",
+            items: [],
+          };
+        }
+
+        return baseService.getGroupMembers(conversationId);
+      },
+      async getMessages(conversationId, options) {
+        if (conversationId === hydratedConversation.conversationId) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation() {
+        return hydratedConversation;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      conversationModeLoadedAtByScope: {
+        ...state.conversationModeLoadedAtByScope,
+        drc: {
+          ...state.conversationModeLoadedAtByScope.drc,
+          group: 0,
+        },
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveMode("group", {
+      preserveConversation: {
+        accountId: "drc",
+        customerAvatarUrl: "",
+        customerId: "group-search-001",
+        customerName: "搜索群聊",
+        id: hydratedConversation.conversationId,
+        mode: "group",
+        preview: "来自搜索",
+        priority: "medium",
+        quietFor: "",
+        unread: 0,
+        updatedAt: "",
+      },
+    });
+
+    const state = useWorkbenchStore.getState();
+    expect(state.activeMode).toBe("group");
+    expect(
+      state.conversationListsByScope.drc.find(
+        (conversation) => conversation.id === hydratedConversation.conversationId,
+      ),
+    ).toMatchObject({
+      customerName: "搜索群聊",
+      id: hydratedConversation.conversationId,
+      mode: "group",
+    });
+    expect(state.activeConversationId).toBe("conv-004");
+  });
+
 });

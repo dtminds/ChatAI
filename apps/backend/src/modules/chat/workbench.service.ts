@@ -25,7 +25,11 @@ import type {
   WorkbenchSubUserDto,
   WorkbenchTakeOverSeatResponse,
   WorkbenchUploadCredentialResponse,
+  WorkbenchSearchResponseDto,
+  WorkbenchGetOrCreateConversationRequestDto,
+  WorkbenchConversationSummaryDto,
 } from "@chatai/contracts";
+import { CHAT_TYPE } from "@chatai/contracts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -139,6 +143,15 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchConversationUnpinResponse> | WorkbenchConversationUnpinResponse;
+  search(
+    subUserId: string,
+    seatId: string,
+    keyword: string,
+  ): Promise<WorkbenchSearchResponseDto> | WorkbenchSearchResponseDto;
+  getOrCreateConversation(
+    subUserId: string,
+    payload: WorkbenchGetOrCreateConversationRequestDto,
+  ): Promise<WorkbenchConversationSummaryDto> | WorkbenchConversationSummaryDto;
 };
 
 export class MysqlWorkbenchService implements WorkbenchService {
@@ -763,6 +776,115 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     return conversation;
+  }
+
+  async search(
+    subUserId: string,
+    seatId: string,
+    keyword: string,
+  ): Promise<WorkbenchSearchResponseDto> {
+    await this.getMe(subUserId);
+    await this.assertSeatAccess(subUserId, seatId);
+
+    const seatNumericId = parseMySqlId(seatId);
+    if (seatNumericId == null) {
+      return { contacts: [], groups: [] };
+    }
+
+    const seatScope = await this.repository.getSeatOperateScope(seatId);
+    if (!seatScope) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    const [contacts, groups] = await Promise.all([
+      this.repository.searchContacts(seatScope.uid, seatScope.platform, seatScope.thirdUserId, keyword),
+      this.repository.searchGroups(seatScope.uid, seatScope.platform, seatScope.thirdUserId, keyword),
+    ]);
+
+    return { contacts, groups };
+  }
+
+  async getOrCreateConversation(
+    subUserId: string,
+    payload: WorkbenchGetOrCreateConversationRequestDto,
+  ): Promise<WorkbenchConversationSummaryDto> {
+    await this.getMe(subUserId);
+    await this.assertSeatAccess(subUserId, payload.seatId);
+
+    const seatNumericId = parseMySqlId(payload.seatId);
+    if (seatNumericId == null) {
+      throw new BadRequestError("INVALID_SEAT_ID", "席位ID无效");
+    }
+
+    const seatScope = await this.repository.getSeatOperateScope(payload.seatId);
+    if (!seatScope) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    const seatThirdUserId = seatScope.thirdUserId;
+    const targetId =
+      payload.chatType === CHAT_TYPE.GROUP ? payload.thirdGroupId : payload.thirdExternalUserId;
+
+    if (!targetId) {
+      throw new BadRequestError("INVALID_TARGET_ID", "目标ID无效");
+    }
+
+    // 1. 先查本地 DB 是否已有会话
+    const existingConversationId = await this.repository.findConversationIdByTarget(
+      seatScope.uid,
+      seatScope.platform,
+      seatThirdUserId,
+      payload.chatType,
+      targetId,
+    );
+
+    if (existingConversationId) {
+      const hydrated = await this.repository.getHydratedConversation(
+        seatScope.uid,
+        seatScope.platform,
+        seatThirdUserId,
+        existingConversationId,
+      );
+      if (!hydrated) {
+        throw new NotFoundError("CONVERSATION_HYDRATION_FAILED", "打开会话失败，请稍后重试");
+      }
+      return hydrated;
+    }
+
+    // 2. 本地不存在，调用 Java 接口创建（Java 接口待接入，目前调用会失败并返回 undefined）
+    // Java 调用失败（网络错误、接口未实现等）时 javaClient 内部 catch 返回 undefined
+    const javaResponse = await this.javaClient.createConversation({
+      chatType: payload.chatType,
+      platform: seatScope.platform,
+      thirdExternalUserId: payload.thirdExternalUserId,
+      thirdGroupId: payload.thirdGroupId,
+      thirdUserId: seatThirdUserId,
+      uid: seatScope.uid,
+    });
+
+    if (!javaResponse?.conversationId) {
+      // Java 未返回有效 conversationId，不做本地兜底，直接报错
+      throw new BadRequestError("CREATE_CONVERSATION_FAILED", "创建会话失败，请稍后重试");
+    }
+
+    // 3. Java 返回了 conversationId，检查是否已同步到本地 DB
+    const hydrated = await this.repository.getHydratedConversation(
+      seatScope.uid,
+      seatScope.platform,
+      seatThirdUserId,
+      javaResponse.conversationId,
+    );
+
+    if (!hydrated) {
+      // Java 创建成功但会话尚未同步到本地 DB，不自行插入，报错提示
+      this.logger.warn(
+        { conversationId: javaResponse.conversationId, payload },
+        "Java 已创建会话但本地 DB 尚未同步",
+      );
+      throw new NotFoundError("CONVERSATION_NOT_SYNCED", "打开会话失败，请稍后重试");
+    }
+
+    return hydrated;
   }
 }
 

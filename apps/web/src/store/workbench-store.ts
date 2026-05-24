@@ -364,10 +364,6 @@ function replaceConversationsByMode(
   nextModeConversations: Conversation[],
   preserveConversation?: Conversation,
 ) {
-  const preservedConversationIds = preserveConversation
-    ? new Set([preserveConversation.id])
-    : undefined;
-
   const nextModeList = preserveConversation
     ? mergeConversationList(nextModeConversations, preserveConversation).filter(
         (conversation) => conversation.mode === mode,
@@ -375,13 +371,8 @@ function replaceConversationsByMode(
     : nextModeConversations;
 
   return sortConversations([
-    ...currentList.filter(
-      (conversation) =>
-        conversation.mode !== mode ||
-        (preservedConversationIds
-          ? preservedConversationIds.has(conversation.id)
-          : false),
-    ),
+    // The reloaded list already carries the preserved conversation when needed.
+    ...currentList.filter((conversation) => conversation.mode !== mode),
     ...nextModeList,
   ]);
 }
@@ -1097,7 +1088,7 @@ export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
   let latestGroupMembersRequestId = 0;
-  let searchDebounceTimer: NodeJS.Timeout | null = null;
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
   const latestGroupMembersRequestIdByConversationId: Record<string, number> = {};
 

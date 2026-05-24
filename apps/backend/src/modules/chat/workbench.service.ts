@@ -29,6 +29,7 @@ import type {
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchConversationSummaryDto,
 } from "@chatai/contracts";
+import { CHAT_TYPE } from "@chatai/contracts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -56,7 +57,6 @@ import {
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
-const CHAT_TYPE_GROUP = 2;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
 const POLL_SEAT_UPDATE_LIMIT = 200;
 
@@ -822,7 +822,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const seatThirdUserId = seatScope.thirdUserId;
-    const targetId = payload.chatType === CHAT_TYPE_GROUP ? payload.thirdGroupId : payload.thirdExternalUserId;
+    const targetId =
+      payload.chatType === CHAT_TYPE.GROUP ? payload.thirdGroupId : payload.thirdExternalUserId;
 
     if (!targetId) {
       throw new BadRequestError("INVALID_TARGET_ID", "目标ID无效");

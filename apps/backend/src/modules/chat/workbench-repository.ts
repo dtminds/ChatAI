@@ -131,7 +131,13 @@ type ConversationPageRow = Omit<
 };
 
 type ConversationHydrationSources = {
-  bindsByThirdExternalId: Map<string, { remark: string | null }>;
+  bindsByThirdExternalId: Map<
+    string,
+    {
+      bizStatus: number | null;
+      remark: string | null;
+    }
+  >;
   contactsByThirdExternalId: Map<
     string,
     {
@@ -1710,7 +1716,7 @@ export class WorkbenchRepository {
       contactThirdExternalIds.length
         ? this.db
             .selectFrom("xy_wap_embed_customer_bind_relation")
-            .select(["third_external_userid", "remark"])
+            .select(["third_external_userid", "remark", "biz_status"])
             .where("uid", "=", uid)
             .where("platform", "=", platform)
             .where("third_userid", "=", seatThirdUserId)
@@ -1734,6 +1740,7 @@ export class WorkbenchRepository {
         binds.map((bind) => [
           bind.third_external_userid,
           {
+            bizStatus: bind.biz_status,
             remark: bind.remark,
           },
         ]),
@@ -1795,7 +1802,7 @@ export class WorkbenchRepository {
       biz_status:
         row.chat_type === CHAT_TYPE_GROUP
           ? (group?.bizStatus ?? BIZ_STATUS_HIDDEN)
-          : (contact?.bizStatus ?? BIZ_STATUS_HIDDEN),
+          : (bind?.bizStatus ?? BIZ_STATUS_HIDDEN),
       customer_avatar: contact?.avatar ?? null,
       customer_name: firstNonEmptyString(
         bind?.remark,

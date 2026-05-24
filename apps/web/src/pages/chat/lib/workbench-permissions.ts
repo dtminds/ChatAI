@@ -46,7 +46,7 @@ export function resolveWorkbenchPermissions({
   const isAccountOffline = account?.loginStatus === "offline";
   const isAccountTakenOverByCurrentUser =
     !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
-  const isConversationBizInactive = activeConversation?.bizStatus === 0;
+  const isConversationBizInactive = activeConversation?.bizStatus !== 1;
   const canUseConversationActions = canUseWorkbenchConversationActions({
     account,
     hasSendPermission: canUseChatSend,

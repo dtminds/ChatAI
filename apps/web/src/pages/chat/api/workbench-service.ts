@@ -892,6 +892,7 @@ function buildInitialState(): MockState {
         conversations.map((conversation) => ({
           seatId: conversation.accountId,
           conversationId: conversation.id,
+          bizStatus: conversation.bizStatus ?? 1,
           customerAvatar: conversation.customerAvatarUrl,
           customerId: conversation.customerId,
           customerName: conversation.customerName,

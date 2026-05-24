@@ -2229,7 +2229,7 @@ export function createWorkbenchStore() {
 
       if (
         !activeConversation ||
-        activeConversation.bizStatus === 0 ||
+        activeConversation.bizStatus !== 1 ||
         !canUseConversationActions(state, account)
       ) {
         return {

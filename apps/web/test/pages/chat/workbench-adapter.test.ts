@@ -35,10 +35,10 @@ describe("workbench adapter", () => {
     expect(
       adaptConversation({
         ...conversationDto,
-        bizStatus: 0,
+        bizStatus: 2,
       }),
     ).toMatchObject({
-      bizStatus: 0,
+      bizStatus: 2,
     });
   });
 });

@@ -967,7 +967,7 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                bizStatus: 0,
+                bizStatus: 2,
               }
             : conversation,
         ),

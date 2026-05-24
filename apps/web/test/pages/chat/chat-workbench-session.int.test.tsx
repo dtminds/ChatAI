@@ -68,7 +68,7 @@ describe("ChatWorkbenchPage session flows", () => {
             index === 0
               ? {
                   ...item,
-                  bizStatus: 0,
+                  bizStatus: 2,
                 }
               : item,
           ),

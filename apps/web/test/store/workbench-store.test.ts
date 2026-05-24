@@ -3241,6 +3241,46 @@ describe("useWorkbenchStore", () => {
     expect(state.isConversationLoading).toBe(false);
   });
 
+  it("keeps search input and results when opening a search conversation fails", async () => {
+    const baseService = createMockWorkbenchService();
+    const searchResults = {
+      contacts: [
+        {
+          avatar: "",
+          conversationId: "conv-search-failed",
+          name: "搜索客户",
+          realName: "搜索客户",
+          thirdExternalUserId: "external-search-failed",
+        },
+      ],
+      groups: [],
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async getOrCreateConversation() {
+        throw new Error("开启失败");
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState({
+      isSearchLoading: false,
+      searchKeyword: "搜索客户",
+      searchResults,
+    });
+
+    await useWorkbenchStore
+      .getState()
+      .selectOrCreateAndSelectConversation(searchResults.contacts[0]);
+
+    const state = useWorkbenchStore.getState();
+    expect(state.searchKeyword).toBe("搜索客户");
+    expect(state.searchResults).toBe(searchResults);
+    expect(state.isSearchLoading).toBe(false);
+    expect(state.conversationOpenError).toBe("开启失败");
+  });
+
   it("does not show stale search open errors after switching accounts", async () => {
     const baseService = createMockWorkbenchService();
     const deferredConversation = createDeferred<WorkbenchConversationSummaryDto>();
@@ -3268,6 +3308,39 @@ describe("useWorkbenchStore", () => {
     const state = useWorkbenchStore.getState();
     expect(state.activeAccountId).toBe("ndt");
     expect(state.conversationOpenError).toBeUndefined();
+  });
+
+  it("merges preserved same-mode conversations into their own account scope", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    await useWorkbenchStore.getState().setActiveMode("single", {
+      preserveConversation: {
+        accountId: "drc",
+        customerAvatarUrl: "",
+        customerId: "drc-preserved-customer",
+        customerName: "跨账号保留客户",
+        id: "drc-preserved-conversation",
+        mode: "single",
+        preview: "来自搜索",
+        priority: "medium",
+        quietFor: "",
+        unread: 0,
+        updatedAt: "",
+      },
+    });
+
+    const state = useWorkbenchStore.getState();
+    expect(
+      state.conversationListsByScope.drc.some(
+        (conversation) => conversation.id === "drc-preserved-conversation",
+      ),
+    ).toBe(true);
+    expect(
+      state.conversationListsByScope.ndt.some(
+        (conversation) => conversation.id === "drc-preserved-conversation",
+      ),
+    ).toBe(false);
   });
 
   it("keeps a hydrated search conversation when switching modes reloads stale lists", async () => {

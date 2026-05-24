@@ -1469,8 +1469,6 @@ export function createWorkbenchStore() {
         const isGroup = "thirdGroupId" in item;
         const nextMode: ChatMode = isGroup ? "group" : "single";
 
-        set({ searchKeyword: "", searchResults: null, isSearchLoading: false });
-
         try {
           set({ isConversationLoading: true });
           const service = getWorkbenchService();
@@ -1496,6 +1494,10 @@ export function createWorkbenchStore() {
             return;
           }
           await get().setActiveConversation(hydratedConversation.id);
+
+          if (get().activeAccountId === seatId) {
+            set({ searchKeyword: "", searchResults: null, isSearchLoading: false });
+          }
         } catch (error) {
           if (get().activeAccountId === seatId) {
             set({
@@ -3108,12 +3110,14 @@ export function createWorkbenchStore() {
       const preserveConversation = options?.preserveConversation;
 
       if (state.activeMode === mode) {
-        if (preserveConversation && state.activeAccountId) {
+        const accountId = preserveConversation?.accountId;
+
+        if (preserveConversation && accountId) {
           set((currentState) => ({
             conversationListsByScope: {
               ...currentState.conversationListsByScope,
-              [state.activeAccountId]: mergeConversationList(
-                currentState.conversationListsByScope[state.activeAccountId] ?? [],
+              [accountId]: mergeConversationList(
+                currentState.conversationListsByScope[accountId] ?? [],
                 preserveConversation,
               ),
             },

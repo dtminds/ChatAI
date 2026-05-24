@@ -1,4 +1,4 @@
-import { ArrowLeft01Icon, ArrowRight01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   SettingsManagedAccount,
@@ -24,11 +24,6 @@ import {
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Input } from "@/components/ui/input";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-} from "@/components/ui/pagination";
-import {
   Popover,
   PopoverAnchor,
   PopoverContent,
@@ -47,7 +42,12 @@ import {
   listManagedAccounts,
   updateManagedAccountSubAccounts,
 } from "@/pages/chat/settings/settings-service";
-import { PageHeader, StatusText } from "@/pages/chat/settings/shared";
+import {
+  PageHeader,
+  SettingsPagination,
+  StatusText,
+  settingsPageSize,
+} from "@/pages/chat/settings/shared";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 import { cn } from "@/lib/utils";
 
@@ -59,8 +59,6 @@ const emptyData: SettingsManagedAccountsResponse = {
   managedAccounts: [],
   subAccounts: [],
 };
-
-const settingsPageSize = 10;
 
 export function AccountsSettingsPage() {
   const { canManageManagedAccounts } = useSettingsPermissions();
@@ -124,12 +122,6 @@ export function AccountsSettingsPage() {
   useEffect(() => {
     setPage(1);
   }, [query]);
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
 
   async function handleSubmit(managedAccount: SettingsManagedAccount, subAccountIds: string[]) {
     setPendingAccountId(managedAccount.id);
@@ -259,97 +251,6 @@ export function AccountsSettingsPage() {
         subAccounts={data.subAccounts}
       />
     </>
-  );
-}
-
-function SettingsPagination({
-  onPageChange,
-  page,
-  totalPages,
-}: {
-  onPageChange: (page: number) => void;
-  page: number;
-  totalPages: number;
-}) {
-  const pages = useMemo(() => {
-    const visiblePages = new Set<number>([1, totalPages, page]);
-
-    if (page > 1) {
-      visiblePages.add(page - 1);
-    }
-
-    if (page < totalPages) {
-      visiblePages.add(page + 1);
-    }
-
-    return Array.from(visiblePages)
-      .filter((value) => value >= 1 && value <= totalPages)
-      .sort((left, right) => left - right);
-  }, [page, totalPages]);
-
-  return (
-    <Pagination>
-      <PaginationContent className="justify-end">
-        <PaginationItem>
-          <Button
-            aria-label="上一页"
-            disabled={page <= 1}
-            onClick={() => onPageChange(page - 1)}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon
-              color="currentColor"
-              icon={ArrowLeft01Icon}
-              size={16}
-              strokeWidth={1.8}
-            />
-          </Button>
-        </PaginationItem>
-        {pages.map((value, index) => {
-          const previousPage = pages[index - 1];
-          const hasGap = index > 0 && previousPage !== value - 1;
-
-          return (
-            <PaginationItem key={value}>
-              {hasGap ? (
-                <span className="flex size-9 items-center justify-center text-muted-foreground">
-                  ...
-                </span>
-              ) : null}
-              <Button
-                aria-current={value === page ? "page" : undefined}
-                disabled={value === page}
-                onClick={() => onPageChange(value)}
-                size="icon"
-                type="button"
-                variant={value === page ? "outline" : "ghost"}
-              >
-                {value}
-              </Button>
-            </PaginationItem>
-          );
-        })}
-        <PaginationItem>
-          <Button
-            aria-label="下一页"
-            disabled={page >= totalPages}
-            onClick={() => onPageChange(page + 1)}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon
-              color="currentColor"
-              icon={ArrowRight01Icon}
-              size={16}
-              strokeWidth={1.8}
-            />
-          </Button>
-        </PaginationItem>
-      </PaginationContent>
-    </Pagination>
   );
 }
 

@@ -21,6 +21,12 @@ describe("settings sub-account DTOs", () => {
   it("accepts sub-account list responses with related seats", () => {
     expect(
       Value.Check(SettingsSubAccountsResponseSchema, {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+          totalPages: 1,
+        },
         seats: [
           {
             avatarUrl: "https://example.com/drc.png",

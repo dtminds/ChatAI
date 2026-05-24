@@ -1211,6 +1211,90 @@ describe("Chat settings pages", () => {
     expect(screen.getByText("关联托管账号 · 1")).toBeInTheDocument();
   });
 
+  it("paginates sub-accounts locally with 10 rows per page", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/sub-accounts").reply(200, {
+      data: {
+        seats: [],
+        subAccounts: Array.from({ length: 11 }, (_, index) => ({
+          account: `agent${String(index + 1).padStart(3, "0")}`,
+          id: String(index + 1),
+          name: `客服${index + 1}`,
+          role: "operator",
+          seats: [],
+          status: "active",
+          type: 0,
+        })),
+      },
+      success: true,
+    });
+
+    renderRoute("/chat/settings/sub-accounts");
+
+    expect(await screen.findByText("客服1")).toBeInTheDocument();
+    expect(screen.getByText("客服10")).toBeInTheDocument();
+    expect(screen.queryByText("客服11")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(screen.getByText("客服11")).toBeInTheDocument();
+    expect(screen.queryByText("客服1")).not.toBeInTheDocument();
+    expect(
+      mock.history.get.filter((request) => request.url === "/server/settings/sub-accounts"),
+    ).toHaveLength(1);
+
+    await user.type(screen.getByRole("textbox", { name: "搜索子账号" }), "agent001");
+
+    expect(screen.getByText("客服1")).toBeInTheDocument();
+    expect(screen.queryByText("客服11")).not.toBeInTheDocument();
+  });
+
+  it("paginates managed accounts locally with 10 rows per page", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/managed-accounts").reply(200, {
+      data: {
+        managedAccounts: Array.from({ length: 11 }, (_, index) => ({
+          avatarUrl: "",
+          id: String(index + 1),
+          name: `托管${index + 1}`,
+          onlineStatus: "offline",
+          subAccounts: [],
+        })),
+        subAccounts: [],
+      },
+      success: true,
+    });
+
+    renderRoute("/chat/settings");
+
+    expect(await screen.findByText("托管1")).toBeInTheDocument();
+    expect(screen.getByText("托管10")).toBeInTheDocument();
+    expect(screen.queryByText("托管11")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(screen.getByText("托管11")).toBeInTheDocument();
+    expect(screen.queryByText("托管1")).not.toBeInTheDocument();
+    expect(
+      mock.history.get.filter((request) => request.url === "/server/settings/managed-accounts"),
+    ).toHaveLength(1);
+
+    await user.type(screen.getByRole("textbox", { name: "搜索托管账号" }), "托管1");
+
+    expect(screen.getByText("托管1")).toBeInTheDocument();
+    expect(screen.getByText("托管10")).toBeInTheDocument();
+    expect(screen.queryByText("托管2")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("row")).toHaveLength(4);
+    expect(screen.queryByRole("button", { name: "下一页" })).not.toBeInTheDocument();
+    expect(
+      mock.history.get.filter((request) => request.url === "/server/settings/managed-accounts"),
+    ).toHaveLength(1);
+  });
+
   it("centers the sub-account loading state with the shared loader", async () => {
     mock.resetHandlers();
     mockAuthenticatedSession();

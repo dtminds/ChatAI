@@ -1,4 +1,4 @@
-import { Search01Icon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, ArrowRight01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   SettingsManagedAccount,
@@ -23,6 +23,11 @@ import {
 } from "@/components/ui/dialog";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Input } from "@/components/ui/input";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+} from "@/components/ui/pagination";
 import {
   Popover,
   PopoverAnchor,
@@ -55,12 +60,15 @@ const emptyData: SettingsManagedAccountsResponse = {
   subAccounts: [],
 };
 
+const settingsPageSize = 10;
+
 export function AccountsSettingsPage() {
   const { canManageManagedAccounts } = useSettingsPermissions();
   const [data, setData] = useState<SettingsManagedAccountsResponse>(emptyData);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
@@ -106,6 +114,22 @@ export function AccountsSettingsPage() {
       account.name.toLowerCase().includes(normalizedQuery),
     );
   }, [data.managedAccounts, query]);
+  const totalPages = Math.max(1, Math.ceil(filteredAccounts.length / settingsPageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedAccounts = filteredAccounts.slice(
+    (currentPage - 1) * settingsPageSize,
+    currentPage * settingsPageSize,
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   async function handleSubmit(managedAccount: SettingsManagedAccount, subAccountIds: string[]) {
     setPendingAccountId(managedAccount.id);
@@ -191,8 +215,8 @@ export function AccountsSettingsPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : filteredAccounts.length > 0 ? (
-                filteredAccounts.map((account) => (
+              ) : pagedAccounts.length > 0 ? (
+                pagedAccounts.map((account) => (
                   <ManagedAccountRow
                     account={account}
                     canManage={canManageManagedAccounts}
@@ -212,6 +236,15 @@ export function AccountsSettingsPage() {
           </Table>
         </section>
       )}
+      {!isLoading && totalPages > 1 ? (
+        <div className="mt-4 flex justify-end">
+          <SettingsPagination
+            onPageChange={setPage}
+            page={currentPage}
+            totalPages={totalPages}
+          />
+        </div>
+      ) : null}
 
       <SubAccountRelationDialog
         isSubmitting={pendingAccountId === dialogState?.managedAccount.id}
@@ -226,6 +259,97 @@ export function AccountsSettingsPage() {
         subAccounts={data.subAccounts}
       />
     </>
+  );
+}
+
+function SettingsPagination({
+  onPageChange,
+  page,
+  totalPages,
+}: {
+  onPageChange: (page: number) => void;
+  page: number;
+  totalPages: number;
+}) {
+  const pages = useMemo(() => {
+    const visiblePages = new Set<number>([1, totalPages, page]);
+
+    if (page > 1) {
+      visiblePages.add(page - 1);
+    }
+
+    if (page < totalPages) {
+      visiblePages.add(page + 1);
+    }
+
+    return Array.from(visiblePages)
+      .filter((value) => value >= 1 && value <= totalPages)
+      .sort((left, right) => left - right);
+  }, [page, totalPages]);
+
+  return (
+    <Pagination>
+      <PaginationContent className="justify-end">
+        <PaginationItem>
+          <Button
+            aria-label="上一页"
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ArrowLeft01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </PaginationItem>
+        {pages.map((value, index) => {
+          const previousPage = pages[index - 1];
+          const hasGap = index > 0 && previousPage !== value - 1;
+
+          return (
+            <PaginationItem key={value}>
+              {hasGap ? (
+                <span className="flex size-9 items-center justify-center text-muted-foreground">
+                  ...
+                </span>
+              ) : null}
+              <Button
+                aria-current={value === page ? "page" : undefined}
+                disabled={value === page}
+                onClick={() => onPageChange(value)}
+                size="icon"
+                type="button"
+                variant={value === page ? "outline" : "ghost"}
+              >
+                {value}
+              </Button>
+            </PaginationItem>
+          );
+        })}
+        <PaginationItem>
+          <Button
+            aria-label="下一页"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ArrowRight01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
   );
 }
 

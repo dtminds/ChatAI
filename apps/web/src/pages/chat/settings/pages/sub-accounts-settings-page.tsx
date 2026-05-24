@@ -1,5 +1,7 @@
 import {
   Add01Icon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
   EyeIcon,
   MoreHorizontalIcon,
   Search01Icon,
@@ -61,6 +63,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Input } from "@/components/ui/input";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+} from "@/components/ui/pagination";
 import {
   Popover,
   PopoverAnchor,
@@ -133,6 +140,8 @@ const emptyData: SettingsSubAccountsResponse = {
   subAccounts: [],
 };
 
+const settingsPageSize = 10;
+
 function toSelectableRole(role: AccountRole): "admin" | "operator" | "viewer" {
   if (role === "admin" || role === "viewer") {
     return role;
@@ -151,6 +160,7 @@ export function SubAccountsSettingsPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -197,6 +207,22 @@ export function SubAccountsSettingsPage() {
       ),
     );
   }, [data.subAccounts, query]);
+  const totalPages = Math.max(1, Math.ceil(filteredSubAccounts.length / settingsPageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedSubAccounts = filteredSubAccounts.slice(
+    (currentPage - 1) * settingsPageSize,
+    currentPage * settingsPageSize,
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   async function handleSubmit(values: FormValues, mode: FormMode) {
     const actionKey =
@@ -380,8 +406,8 @@ export function SubAccountsSettingsPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : filteredSubAccounts.length > 0 ? (
-                filteredSubAccounts.map((subAccount) => (
+              ) : pagedSubAccounts.length > 0 ? (
+                pagedSubAccounts.map((subAccount) => (
                   <SubAccountRow
                     canManage={canManageSubAccounts}
                     isDeleting={pendingAction === `delete:${subAccount.id}`}
@@ -411,6 +437,15 @@ export function SubAccountsSettingsPage() {
           </Table>
         </section>
       )}
+      {!isLoading && totalPages > 1 ? (
+        <div className="mt-4 flex justify-end">
+          <SettingsPagination
+            onPageChange={setPage}
+            page={currentPage}
+            totalPages={totalPages}
+          />
+        </div>
+      ) : null}
 
       <SubAccountDialog
         isSubmitting={
@@ -462,6 +497,97 @@ export function SubAccountsSettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+function SettingsPagination({
+  onPageChange,
+  page,
+  totalPages,
+}: {
+  onPageChange: (page: number) => void;
+  page: number;
+  totalPages: number;
+}) {
+  const pages = useMemo(() => {
+    const visiblePages = new Set<number>([1, totalPages, page]);
+
+    if (page > 1) {
+      visiblePages.add(page - 1);
+    }
+
+    if (page < totalPages) {
+      visiblePages.add(page + 1);
+    }
+
+    return Array.from(visiblePages)
+      .filter((value) => value >= 1 && value <= totalPages)
+      .sort((left, right) => left - right);
+  }, [page, totalPages]);
+
+  return (
+    <Pagination>
+      <PaginationContent className="justify-end">
+        <PaginationItem>
+          <Button
+            aria-label="上一页"
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ArrowLeft01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </PaginationItem>
+        {pages.map((value, index) => {
+          const previousPage = pages[index - 1];
+          const hasGap = index > 0 && previousPage !== value - 1;
+
+          return (
+            <PaginationItem key={value}>
+              {hasGap ? (
+                <span className="flex size-9 items-center justify-center text-muted-foreground">
+                  ...
+                </span>
+              ) : null}
+              <Button
+                aria-current={value === page ? "page" : undefined}
+                disabled={value === page}
+                onClick={() => onPageChange(value)}
+                size="icon"
+                type="button"
+                variant={value === page ? "outline" : "ghost"}
+              >
+                {value}
+              </Button>
+            </PaginationItem>
+          );
+        })}
+        <PaginationItem>
+          <Button
+            aria-label="下一页"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ArrowRight01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
   );
 }
 

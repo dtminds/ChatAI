@@ -1489,6 +1489,22 @@ export function createWorkbenchStore() {
           });
 
           await get().setActiveMode(nextMode);
+
+          if (get().activeAccountId !== seatId) {
+            return;
+          }
+
+          set((currentState) => {
+            const currentList = currentState.conversationListsByScope[seatId] ?? [];
+
+            return {
+              conversationListsByScope: {
+                ...currentState.conversationListsByScope,
+                [seatId]: mergeConversationList(currentList, hydratedConversation),
+              },
+            };
+          });
+
           await get().setActiveConversation(hydratedConversation.id);
         } catch (error) {
           set({

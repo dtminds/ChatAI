@@ -3240,4 +3240,97 @@ describe("useWorkbenchStore", () => {
     ).toBe(false);
     expect(state.isConversationLoading).toBe(false);
   });
+
+  it("keeps a hydrated search conversation when switching modes reloads stale lists", async () => {
+    const baseService = createMockWorkbenchService();
+    const hydratedConversation: WorkbenchConversationSummaryDto = {
+      conversationId: "conv-search-group-001",
+      seatId: "drc",
+      customerId: "group-search-001",
+      customerName: "搜索群聊",
+      customerAvatar: "",
+      lastMessage: "来自搜索",
+      lastMessageTime: 1_778_999_000_000,
+      mode: "group",
+      priority: "medium",
+      thirdGroupId: "group-search-001",
+      thirdUserId: "third-user-drc",
+      unreadCount: 0,
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId, options) {
+        const result = await baseService.getConversations(accountId, options);
+
+        if (accountId === "drc" && options?.mode === "group") {
+          return {
+            ...result,
+            items: result.items.filter(
+              (conversation) => conversation.conversationId !== hydratedConversation.conversationId,
+            ),
+          };
+        }
+
+        return result;
+      },
+      async getGroupMembers(conversationId) {
+        if (conversationId === hydratedConversation.conversationId) {
+          return {
+            conversationId,
+            groupSeatId: "group-seat-search-001",
+            thirdGroupId: "group-search-001",
+            items: [],
+          };
+        }
+
+        return baseService.getGroupMembers(conversationId);
+      },
+      async getMessages(conversationId, options) {
+        if (conversationId === hydratedConversation.conversationId) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [],
+            scannedCount: 0,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+      async getOrCreateConversation() {
+        return hydratedConversation;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      conversationModeLoadedAtByScope: {
+        ...state.conversationModeLoadedAtByScope,
+        drc: {
+          ...state.conversationModeLoadedAtByScope.drc,
+          group: 0,
+        },
+      },
+    }));
+
+    await useWorkbenchStore.getState().selectOrCreateAndSelectConversation({
+      avatar: "",
+      name: "搜索群聊",
+      thirdGroupId: "group-search-001",
+    });
+
+    const state = useWorkbenchStore.getState();
+    expect(state.activeMode).toBe("group");
+    expect(state.activeConversationId).toBe(hydratedConversation.conversationId);
+    expect(
+      state.conversationListsByScope.drc.find(
+        (conversation) => conversation.id === hydratedConversation.conversationId,
+      ),
+    ).toMatchObject({
+      customerName: "搜索群聊",
+      id: hydratedConversation.conversationId,
+      mode: "group",
+    });
+  });
 });

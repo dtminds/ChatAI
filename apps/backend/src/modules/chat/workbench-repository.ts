@@ -1715,7 +1715,6 @@ export class WorkbenchRepository {
             .where("platform", "=", platform)
             .where("third_userid", "=", seatThirdUserId)
             .where("third_external_userid", "in", contactThirdExternalIds)
-            .where("biz_status", "=", 1)
             .execute()
         : [],
       groupIds.length
@@ -1798,9 +1797,13 @@ export class WorkbenchRepository {
           ? (group?.bizStatus ?? BIZ_STATUS_HIDDEN)
           : (contact?.bizStatus ?? BIZ_STATUS_HIDDEN),
       customer_avatar: contact?.avatar ?? null,
-      customer_name: bind?.remark ?? contact?.realName ?? contact?.name ?? null,
+      customer_name: firstNonEmptyString(
+        bind?.remark,
+        contact?.realName,
+        contact?.name,
+      ) ?? null,
       group_avatar: group?.avatar ?? null,
-      group_name: group?.name ?? null,
+      group_name: firstNonEmptyString(group?.name) ?? null,
       last_message_content: lastMessage?.content ?? null,
       last_message_type: lastMessage?.msgtype ?? null,
     });
@@ -1974,7 +1977,7 @@ export class WorkbenchRepository {
       .where("uid", "=", uid)
       .where("platform", "=", platform)
       .where("third_userid", "=", seatThirdUserId)
-      .where("biz_status", "=", 1)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .where((eb) =>
         eb.or([
           eb("name", "like", pattern),
@@ -2071,7 +2074,7 @@ export class WorkbenchRepository {
       .where("platform", "=", platform)
       .where("third_userid", "=", seatThirdUserId)
       .where("chat_type", "=", chatType)
-      .where("biz_status", "=", 1);
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE);
 
     if (chatType === CHAT_TYPE_GROUP) {
       query = query.where("third_group_id", "=", targetId);
@@ -2196,6 +2199,18 @@ function uniqueNonEmpty(values: Array<string | null | undefined>) {
         .filter(Boolean),
     ),
   );
+}
+
+function firstNonEmptyString(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const normalized = value?.trim();
+
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return undefined;
 }
 
 function uniqueIds(values: Array<number | string | null | undefined>) {

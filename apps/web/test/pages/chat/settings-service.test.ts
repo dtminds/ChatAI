@@ -19,6 +19,12 @@ describe("settings service", () => {
   it("uses public /server settings endpoints for sub-account CRUD", async () => {
     mock.onGet("/server/settings/sub-accounts").reply(200, {
       data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 0,
+          totalPages: 0,
+        },
         seats: [],
         subAccounts: [],
       },
@@ -72,5 +78,28 @@ describe("settings service", () => {
     expect(mock.history.put[0]?.url).toBe("/server/settings/sub-accounts/11");
     expect(mock.history.patch[0]?.url).toBe("/server/settings/sub-accounts/11/status");
     expect(mock.history.delete[0]?.url).toBe("/server/settings/sub-accounts/11");
+  });
+
+  it("passes pagination query params for sub-account list requests", async () => {
+    mock.onGet("/server/settings/sub-accounts").reply(200, {
+      data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+          totalPages: 1,
+        },
+        seats: [],
+        subAccounts: [],
+      },
+      success: true,
+    });
+
+    await listSubAccounts({ page: 2, keyword: "客服" });
+
+    expect(mock.history.get[0]?.params).toEqual({
+      keyword: "客服",
+      page: 2,
+    });
   });
 });

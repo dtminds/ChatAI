@@ -19,6 +19,12 @@ describe("settings sub-account routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 3,
+          totalPages: 1,
+        },
         seats: [
           {
             avatarUrl: "https://example.com/drc.png",
@@ -70,6 +76,73 @@ describe("settings sub-account routes", () => {
       success: true,
     });
     expect(db.getSubAccountListWheres()).toContainEqual(["sub_user.uid", "=", 9001]);
+
+    await app.close();
+  });
+
+  it("returns paged sub-accounts and pagination metadata", async () => {
+    const { app, authorization } = await createSettingsApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      query: {
+        page: "1",
+      },
+      url: "/api/server/settings/sub-accounts",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 3,
+          totalPages: 1,
+        },
+      },
+      success: true,
+    });
+
+    await app.close();
+  });
+
+  it("filters sub-accounts by account keyword even when name does not match", async () => {
+    const { app, authorization } = await createSettingsApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      query: {
+        keyword: "agent002",
+      },
+      url: "/api/server/settings/sub-accounts",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+          totalPages: 1,
+        },
+        subAccounts: [
+          {
+            account: "agent002",
+            id: "12",
+            name: "客服二号",
+            role: "operator",
+            seats: [],
+            status: "disabled",
+            type: 0,
+          },
+        ],
+      },
+      success: true,
+    });
 
     await app.close();
   });

@@ -28,9 +28,23 @@ export const SettingsSubAccountSchema = Type.Object({
 });
 
 export const SettingsSubAccountsResponseSchema = Type.Object({
+  pagination: Type.Object({
+    page: Type.Number(),
+    pageSize: Type.Number(),
+    total: Type.Number(),
+    totalPages: Type.Number(),
+  }),
   seats: Type.Array(SettingsWeComSeatSchema),
   subAccounts: Type.Array(SettingsSubAccountSchema),
 });
+
+export const SettingsSubAccountsQuerySchema = Type.Object({
+  keyword: Type.Optional(Type.String()),
+  page: Type.Optional(Type.Union([
+    Type.Number({ minimum: 1 }),
+    Type.String({ pattern: "^[1-9]\\d*$" }),
+  ])),
+}, { additionalProperties: false });
 
 export const SettingsManagedAccountOnlineStatusSchema = Type.Union([
   Type.Literal("online"),
@@ -137,6 +151,9 @@ export type SettingsWeComSeat = Static<typeof SettingsWeComSeatSchema>;
 export type SettingsSubAccount = Static<typeof SettingsSubAccountSchema>;
 export type SettingsSubAccountsResponse = Static<
   typeof SettingsSubAccountsResponseSchema
+>;
+export type SettingsSubAccountsQuery = Static<
+  typeof SettingsSubAccountsQuerySchema
 >;
 export type SettingsManagedAccountOnlineStatus = Static<
   typeof SettingsManagedAccountOnlineStatusSchema

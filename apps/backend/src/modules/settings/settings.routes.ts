@@ -5,6 +5,7 @@ import {
   SettingsSidebarItemsSortUpdateRequestSchema,
   SettingsSidebarItemStatusUpdateRequestSchema,
   SettingsSidebarItemUpdateRequestSchema,
+  SettingsSubAccountsQuerySchema,
   SettingsSubAccountCreateRequestSchema,
   SettingsSubAccountStatusUpdateRequestSchema,
   SettingsSubAccountUpdateRequestSchema,
@@ -13,6 +14,7 @@ import {
   type SettingsSidebarItemsSortUpdateRequest,
   type SettingsSidebarItemStatusUpdateRequest,
   type SettingsSidebarItemUpdateRequest,
+  type SettingsSubAccountsQuery,
   type SettingsSubAccountCreateRequest,
   type SettingsSubAccountStatusUpdateRequest,
   type SettingsSubAccountUpdateRequest,
@@ -73,11 +75,19 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get("/api/server/settings/sub-accounts", {
+  app.get<{
+    Querystring: SettingsSubAccountsQuery;
+  }>("/api/server/settings/sub-accounts", {
     preHandler: app.authenticate,
+    schema: {
+      querystring: SettingsSubAccountsQuerySchema,
+    },
   }, async (request) => {
     return apiSuccess(
-      await createSubAccountSettingsService(app.db).list(getSubUserId(request)),
+      await createSubAccountSettingsService(app.db).list(getSubUserId(request), {
+        keyword: request.query.keyword,
+        page: request.query.page,
+      }),
     );
   });
 

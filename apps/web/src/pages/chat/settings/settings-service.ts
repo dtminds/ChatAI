@@ -12,6 +12,7 @@ import type {
   SettingsSidebarItemUpdateRequest,
   SettingsSubAccount,
   SettingsSubAccountCreateRequest,
+  SettingsSubAccountsQuery,
   SettingsSubAccountsResponse,
   SettingsSubAccountStatus,
   SettingsSubAccountStatusUpdateRequest,
@@ -19,9 +20,12 @@ import type {
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
 
-export async function listSubAccounts() {
+export async function listSubAccounts(query: SettingsSubAccountsQuery = {}) {
   const response = await http.get<ApiSuccessEnvelope<SettingsSubAccountsResponse>>(
     "/server/settings/sub-accounts",
+    {
+      params: query,
+    },
   );
 
   return response.data;

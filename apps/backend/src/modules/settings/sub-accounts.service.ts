@@ -1,6 +1,7 @@
 import type {
   SettingsSubAccount,
   SettingsSubAccountCreateRequest,
+  SettingsSubAccountsQuery,
   SettingsSubAccountsResponse,
   SettingsSubAccountStatus,
   SettingsSubAccountUpdateRequest,
@@ -54,25 +55,41 @@ const dbSubAccountType = {
   sub: 0,
 } as const;
 
+const defaultSubAccountsPageSize = 10;
+
 export class SubAccountSettingsService {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async list(currentSubUserId: string): Promise<SettingsSubAccountsResponse> {
+  async list(
+    currentSubUserId: string,
+    query: SettingsSubAccountsQuery = {},
+  ): Promise<SettingsSubAccountsResponse> {
     const scope = await this.getTenantScope(currentSubUserId);
+    const pageSize = defaultSubAccountsPageSize;
+    const page = parsePositiveInteger(query.page) ?? 1;
+    const keyword = query.keyword?.trim().toLowerCase() ?? "";
     const [subAccounts, seats, relations] = await Promise.all([
-      this.listSubAccountRows(scope),
+      this.listSubAccountRows(scope, keyword),
       this.listSeatRows(scope),
       this.listRelationRows(scope),
     ]);
     const relationsBySubAccountId = groupRelationsBySubAccountId(relations);
+    const total = subAccounts.length;
+    const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
+    const currentPage = Math.min(page, totalPages);
+    const startIndex = (currentPage - 1) * pageSize;
+    const pageRows = subAccounts.slice(startIndex, startIndex + pageSize);
 
     return {
+      pagination: {
+        page: currentPage,
+        pageSize,
+        total,
+        totalPages,
+      },
       seats: seats.map(mapSeat),
-      subAccounts: subAccounts.map((subAccount) =>
-        mapSubAccount(
-          subAccount,
-          relationsBySubAccountId.get(subAccount.id) ?? [],
-        ),
+      subAccounts: pageRows.map((subAccount) =>
+        mapSubAccount(subAccount, relationsBySubAccountId.get(subAccount.id) ?? []),
       ),
     };
   }
@@ -274,8 +291,8 @@ export class SubAccountSettingsService {
     };
   }
 
-  private listSubAccountRows(scope: TenantScope) {
-    return this.db
+  private listSubAccountRows(scope: TenantScope, keyword = "") {
+    let query = this.db
       .selectFrom("xy_wap_embed_sub_user as sub_user")
       .select([
         "sub_user.account",
@@ -287,9 +304,12 @@ export class SubAccountSettingsService {
       ])
       .where("sub_user.uid", "=", scope.uid)
       .where("sub_user.platform", "=", scope.platform)
-      .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
+      .where("sub_user.status", "!=", dbSubAccountStatus.deleted);
+
+    return query
       .orderBy("sub_user.id", "desc")
-      .execute() as Promise<SubAccountRow[]>;
+      .execute()
+      .then((rows) => filterSubAccountRows(rows as SubAccountRow[], keyword));
   }
 
   private listSeatRows(scope: TenantScope) {
@@ -538,6 +558,30 @@ function mapRelationSeat(row: RelationRow): SettingsWeComSeat {
     name: row.name || "未命名托管账号",
     seatId: String(row.seat_id),
   };
+}
+
+function filterSubAccountRows(rows: SubAccountRow[], keyword: string) {
+  if (!keyword) {
+    return rows;
+  }
+
+  return rows.filter((row) =>
+    [row.name, row.account].some((value) => value.toLowerCase().includes(keyword)),
+  );
+}
+
+function parsePositiveInteger(value: number | string | undefined) {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  }
+
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  return Number.isSafeInteger(parsed) && String(parsed) === value ? parsed : undefined;
 }
 
 function parseMySqlId(value: string | number | null | undefined) {

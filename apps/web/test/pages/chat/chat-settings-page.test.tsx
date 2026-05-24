@@ -68,6 +68,12 @@ describe("Chat settings pages", () => {
     mockAuthenticatedSession();
     mock.onGet("/server/settings/sub-accounts").reply(200, {
       data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 3,
+          totalPages: 1,
+        },
         seats: [
           {
             avatarUrl: "https://example.com/drc.png",
@@ -378,6 +384,12 @@ describe("Chat settings pages", () => {
     mockAuthenticatedSession("operator");
     mock.onGet("/server/settings/sub-accounts").reply(200, {
       data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+          totalPages: 1,
+        },
         seats: [],
         subAccounts: [
           {
@@ -1225,6 +1237,131 @@ describe("Chat settings pages", () => {
 
     expect(loadingStatus).toContainElement(loadingText);
     expect(screen.getByLabelText("正在加载")).toBeInTheDocument();
+  });
+
+  it("paginates sub-account list requests with 10 rows per page", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/sub-accounts").reply((config) => {
+      const page = Number((config.params as { page?: number } | undefined)?.page ?? 1);
+
+      if (page === 2) {
+        return [
+          200,
+          {
+            data: {
+              pagination: {
+                page: 2,
+                pageSize: 10,
+                total: 11,
+                totalPages: 2,
+              },
+              seats: [],
+              subAccounts: [
+                {
+                  account: "agent011",
+                  id: "11",
+                  name: "客服11",
+                  role: "operator",
+                  seats: [],
+                  status: "active",
+                  type: 0,
+                },
+              ],
+            },
+            success: true,
+          },
+        ];
+      }
+
+      return [
+        200,
+        {
+          data: {
+            pagination: {
+              page: 1,
+              pageSize: 10,
+              total: 11,
+              totalPages: 2,
+            },
+            seats: [],
+            subAccounts: Array.from({ length: 10 }, (_, index) => ({
+              account: `agent${String(index + 1).padStart(3, "0")}`,
+              id: String(index + 1),
+              name: `客服${index + 1}`,
+              role: "operator",
+              seats: [],
+              status: "active",
+              type: 0,
+            })),
+          },
+          success: true,
+        },
+      ];
+    });
+
+    renderRoute("/chat/settings/sub-accounts");
+
+    expect(await screen.findByText("客服1")).toBeInTheDocument();
+    expect(screen.queryByText("客服11")).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "分页" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(await screen.findByText("客服11")).toBeInTheDocument();
+    expect(
+      mock.history.get.filter((request) => request.url === "/server/settings/sub-accounts"),
+    ).toHaveLength(2);
+    expect(
+      mock.history.get.some((request) => String((request.params as { page?: unknown } | undefined)?.page) === "2"),
+    ).toBe(true);
+  });
+
+  it("debounces sub-account search requests while typing", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/sub-accounts").reply(200, {
+      data: {
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 0,
+          totalPages: 1,
+        },
+        seats: [],
+        subAccounts: [],
+      },
+      success: true,
+    });
+
+    renderRoute("/chat/settings/sub-accounts");
+
+    await waitFor(() => {
+      expect(
+        mock.history.get.filter((request) => request.url === "/server/settings/sub-accounts"),
+      ).toHaveLength(1);
+    });
+
+    await user.type(screen.getByRole("textbox", { name: "搜索子账号" }), "agent002");
+
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+    expect(
+      mock.history.get.filter((request) => request.url === "/server/settings/sub-accounts"),
+    ).toHaveLength(1);
+
+    await waitFor(() => {
+      const requests = mock.history.get.filter(
+        (request) => request.url === "/server/settings/sub-accounts",
+      );
+
+      expect(requests).toHaveLength(2);
+      expect(requests[1]?.params).toMatchObject({
+        keyword: "agent002",
+        page: 1,
+      });
+    });
   });
 
   it("switches and persists appearance themes from the appearance settings page", async () => {

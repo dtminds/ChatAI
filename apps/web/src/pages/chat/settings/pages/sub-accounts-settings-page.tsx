@@ -1,5 +1,7 @@
 import {
   Add01Icon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
   EyeIcon,
   MoreHorizontalIcon,
   Search01Icon,
@@ -61,6 +63,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Input } from "@/components/ui/input";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+} from "@/components/ui/pagination";
 import {
   Popover,
   PopoverAnchor,
@@ -129,6 +136,12 @@ type FormValues = {
 };
 
 const emptyData: SettingsSubAccountsResponse = {
+  pagination: {
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 1,
+  },
   seats: [],
   subAccounts: [],
 };
@@ -144,6 +157,7 @@ function toSelectableRole(role: AccountRole): "admin" | "operator" | "viewer" {
 export function SubAccountsSettingsPage() {
   const { canManageSubAccounts } = useSettingsPermissions();
   const [data, setData] = useState<SettingsSubAccountsResponse>(emptyData);
+  const [page, setPage] = useState(1);
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SettingsSubAccount | null>(
     null,
@@ -152,6 +166,40 @@ export function SubAccountsSettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [appliedQuery, setAppliedQuery] = useState("");
+  const searchDebounceTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const nextQuery = query.trim();
+
+    if (nextQuery === appliedQuery) {
+      return;
+    }
+
+    if (searchDebounceTimerRef.current) {
+      window.clearTimeout(searchDebounceTimerRef.current);
+    }
+
+    if (!nextQuery) {
+      setPage(1);
+      setAppliedQuery("");
+      searchDebounceTimerRef.current = null;
+      return;
+    }
+
+    searchDebounceTimerRef.current = window.setTimeout(() => {
+      setPage(1);
+      setAppliedQuery(nextQuery);
+      searchDebounceTimerRef.current = null;
+    }, 450);
+
+    return () => {
+      if (searchDebounceTimerRef.current) {
+        window.clearTimeout(searchDebounceTimerRef.current);
+        searchDebounceTimerRef.current = null;
+      }
+    };
+  }, [query]);
 
   useEffect(() => {
     let ignore = false;
@@ -161,10 +209,17 @@ export function SubAccountsSettingsPage() {
       setErrorMessage("");
 
       try {
-        const response = await listSubAccounts();
+        const response = await listSubAccounts({
+          keyword: appliedQuery || undefined,
+          page,
+        });
 
         if (!ignore) {
-          setData(response);
+          setData({
+            pagination: response.pagination ?? emptyData.pagination,
+            seats: response.seats ?? [],
+            subAccounts: response.subAccounts ?? [],
+          });
         }
       } catch (error) {
         if (!ignore) {
@@ -182,21 +237,7 @@ export function SubAccountsSettingsPage() {
     return () => {
       ignore = true;
     };
-  }, []);
-
-  const filteredSubAccounts = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-
-    if (!normalizedQuery) {
-      return data.subAccounts;
-    }
-
-    return data.subAccounts.filter((subAccount) =>
-      [subAccount.name, subAccount.account].some((value) =>
-        value.toLowerCase().includes(normalizedQuery),
-      ),
-    );
-  }, [data.subAccounts, query]);
+  }, [appliedQuery, page]);
 
   async function handleSubmit(values: FormValues, mode: FormMode) {
     const actionKey =
@@ -219,6 +260,7 @@ export function SubAccountsSettingsPage() {
           ...current,
           subAccounts: [nextSubAccount, ...current.subAccounts],
         }));
+        setPage(1);
         toast.success("子账号已新增");
       } else if (dialogState?.mode === "edit") {
         const updateRole =
@@ -292,6 +334,9 @@ export function SubAccountsSettingsPage() {
           (subAccount) => subAccount.id !== deleteTarget.id,
         ),
       }));
+      if (data.subAccounts.length === 1 && page > 1) {
+        setPage(page - 1);
+      }
       setDeleteTarget(null);
       toast.success("子账号已删除");
     } catch (error) {
@@ -321,7 +366,9 @@ export function SubAccountsSettingsPage() {
           <Input
             aria-label="搜索子账号"
             className="h-10 rounded-[8px] pl-9"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+            }}
             placeholder="搜索子账号"
             value={query}
           />
@@ -380,8 +427,8 @@ export function SubAccountsSettingsPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : filteredSubAccounts.length > 0 ? (
-                filteredSubAccounts.map((subAccount) => (
+              ) : data.subAccounts.length > 0 ? (
+                data.subAccounts.map((subAccount) => (
                   <SubAccountRow
                     canManage={canManageSubAccounts}
                     isDeleting={pendingAction === `delete:${subAccount.id}`}
@@ -411,6 +458,15 @@ export function SubAccountsSettingsPage() {
           </Table>
         </section>
       )}
+      {!isLoading && data.pagination.totalPages > 1 ? (
+        <div className="mt-4 flex justify-end">
+          <SubAccountsPagination
+            page={data.pagination.page}
+            totalPages={data.pagination.totalPages}
+            onPageChange={setPage}
+          />
+        </div>
+      ) : null}
 
       <SubAccountDialog
         isSubmitting={
@@ -462,6 +518,97 @@ export function SubAccountsSettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+function SubAccountsPagination({
+  onPageChange,
+  page,
+  totalPages,
+}: {
+  onPageChange: (page: number) => void;
+  page: number;
+  totalPages: number;
+}) {
+  const pages = useMemo(() => {
+    const visiblePages = new Set<number>([1, totalPages, page]);
+
+    if (page > 1) {
+      visiblePages.add(page - 1);
+    }
+
+    if (page < totalPages) {
+      visiblePages.add(page + 1);
+    }
+
+    return Array.from(visiblePages)
+      .filter((value) => value >= 1 && value <= totalPages)
+      .sort((left, right) => left - right);
+  }, [page, totalPages]);
+
+  return (
+    <Pagination>
+      <PaginationContent className="justify-end">
+        <PaginationItem>
+          <Button
+            aria-label="上一页"
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ArrowLeft01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </PaginationItem>
+        {pages.map((value, index) => {
+          const previousPage = pages[index - 1];
+          const hasGap = index > 0 && previousPage !== value - 1;
+
+          return (
+            <PaginationItem key={value}>
+              {hasGap ? (
+                <span className="flex size-9 items-center justify-center text-muted-foreground">
+                  …
+                </span>
+              ) : null}
+              <Button
+                aria-current={value === page ? "page" : undefined}
+                disabled={value === page}
+                onClick={() => onPageChange(value)}
+                size="icon"
+                type="button"
+                variant={value === page ? "outline" : "ghost"}
+              >
+                {value}
+              </Button>
+            </PaginationItem>
+          );
+        })}
+        <PaginationItem>
+          <Button
+            aria-label="下一页"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ArrowRight01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
   );
 }
 

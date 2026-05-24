@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { RequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { AltchaField } from "./altcha-field";
 import { login } from "./auth-service";
@@ -90,7 +89,7 @@ function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
         return;
       }
 
-      setErrorMessage((error as RequestError).message ?? "登录失败，请重试");
+      setErrorMessage(error instanceof Error && error.message ? error.message : "登录失败，请重试");
       setAltchaRefreshKey((key) => key + 1);
     } finally {
       if (shouldResetSubmitting && isMountedRef.current) {

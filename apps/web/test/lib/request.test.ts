@@ -105,6 +105,28 @@ describe("request", () => {
     );
   });
 
+  it("keeps a normalized request error instance intact on repeated normalization", async () => {
+    mock.onGet("/server/settings/sidebar-items").replyOnce(200, {
+      error: {
+        code: "INVALID_SIDEBAR_URL",
+        message: "请输入有效的页面地址",
+      },
+      success: false,
+    });
+
+    const firstError = await request({ method: "GET", url: "/server/settings/sidebar-items" }).catch(
+      (error: unknown) => error,
+    );
+    const secondError = await Promise.resolve(firstError).catch((error: unknown) => error);
+
+    expect(secondError).toBe(firstError);
+    expect(secondError).toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        (error as { message?: string }).message === "请输入有效的页面地址",
+    );
+  });
+
   it("refreshes access tokens once and retries the failed request", async () => {
     mock.onGet("/server/me").replyOnce(401, {
       error: {

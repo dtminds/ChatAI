@@ -39,6 +39,7 @@ class RequestNormalizedError extends Error {
 
   constructor(error: RequestError) {
     super(error.message);
+    this.name = "RequestNormalizedError";
     this.code = error.code;
     this.status = error.status;
   }
@@ -103,7 +104,11 @@ function normalizeError(error: unknown): RequestError {
   return { message: "Unknown request error" };
 }
 
-function toRequestError(error: RequestError) {
+function toRequestError(error: RequestError | RequestNormalizedError) {
+  if (error instanceof RequestNormalizedError) {
+    return error;
+  }
+
   return new RequestNormalizedError(error);
 }
 

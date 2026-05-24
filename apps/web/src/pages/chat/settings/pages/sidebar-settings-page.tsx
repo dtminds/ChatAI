@@ -934,15 +934,7 @@ function isCjkChar(char: string) {
 }
 
 function getErrorMessage(error: unknown) {
-  if (typeof error === "object" && error && "response" in error) {
-    const response = (error as { response?: { data?: { error?: { message?: string } } } }).response;
-
-    if (response?.data?.error?.message) {
-      return response.data.error.message;
-    }
-  }
-
-  if (error instanceof Error) {
+  if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
 

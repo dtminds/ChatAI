@@ -33,6 +33,17 @@ class ApiEnvelopeError extends Error {
   }
 }
 
+class RequestNormalizedError extends Error {
+  readonly code?: string;
+  readonly status?: number;
+
+  constructor(error: RequestError) {
+    super(error.message);
+    this.code = error.code;
+    this.status = error.status;
+  }
+}
+
 export const requestInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
   timeout: 15000,
@@ -90,6 +101,10 @@ function normalizeError(error: unknown): RequestError {
   }
 
   return { message: "Unknown request error" };
+}
+
+function toRequestError(error: RequestError) {
+  return new RequestNormalizedError(error);
 }
 
 export function isRequestError(error: unknown): error is RequestError {
@@ -164,11 +179,11 @@ export async function request<TResponse = unknown, TPayload = unknown>(
         return retryResponse.data;
       } catch (refreshError) {
         notifyAuthSessionChanged();
-        return Promise.reject(normalizeError(refreshError));
+        return Promise.reject(toRequestError(normalizeError(refreshError)));
       }
     }
 
-    return Promise.reject(normalizeError(error));
+    return Promise.reject(toRequestError(normalizeError(error)));
   }
 }
 

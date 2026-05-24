@@ -44,11 +44,13 @@ describe("request", () => {
   it("normalizes axios errors", async () => {
     mock.onPost("/messages").reply(503, { message: "Upstream unavailable" });
 
-    await expect(request({ method: "POST", url: "/messages" })).rejects.toEqual({
-      message: "Upstream unavailable",
-      status: 503,
-      code: undefined,
-    });
+    await expect(request({ method: "POST", url: "/messages" })).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message === "Upstream unavailable" &&
+        (error as { status?: number }).status === 503 &&
+        (error as { code?: string }).code === undefined,
+    );
   });
 
   it("normalizes API error envelopes", async () => {
@@ -60,13 +62,13 @@ describe("request", () => {
       success: false,
     });
 
-    await expect(
-      request({ method: "GET", url: "/server/accounts", _skipAuthRetry: true }),
-    ).rejects.toEqual({
-      code: "UNAUTHORIZED",
-      message: "登录已失效",
-      status: 401,
-    });
+    await expect(request({ method: "GET", url: "/server/accounts", _skipAuthRetry: true })).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message === "登录已失效" &&
+        (error as { code?: string }).code === "UNAUTHORIZED" &&
+        (error as { status?: number }).status === 401,
+    );
   });
 
   it("rejects successful HTTP responses that contain API error envelopes", async () => {
@@ -78,13 +80,29 @@ describe("request", () => {
       success: false,
     });
 
-    await expect(
-      request({ method: "POST", url: "/server/seats/ndt/take-over" }),
-    ).rejects.toEqual({
-      code: "FORBIDDEN",
-      message: "无权限访问",
-      status: 200,
+    await expect(request({ method: "POST", url: "/server/seats/ndt/take-over" })).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message === "无权限访问" &&
+        (error as { code?: string }).code === "FORBIDDEN" &&
+        (error as { status?: number }).status === 200,
+    );
+  });
+
+  it("throws api envelope failures as Error instances", async () => {
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      error: {
+        code: "INVALID_SIDEBAR_URL",
+        message: "请输入有效的页面地址",
+      },
+      success: false,
     });
+
+    await expect(request({ method: "GET", url: "/server/settings/sidebar-items" })).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        (error as { message?: string }).message === "请输入有效的页面地址",
+    );
   });
 
   it("refreshes access tokens once and retries the failed request", async () => {

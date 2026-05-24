@@ -33,7 +33,7 @@ class ApiEnvelopeError extends Error {
   }
 }
 
-class RequestNormalizedError extends Error {
+export class RequestNormalizedError extends Error {
   readonly code?: string;
   readonly status?: number;
 

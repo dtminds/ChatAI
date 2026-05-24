@@ -1,6 +1,6 @@
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { http, request, requestInstance } from "@/lib/request";
+import { http, request, RequestNormalizedError, requestInstance } from "@/lib/request";
 import { useAuthStore } from "@/store/auth-store";
 
 const mock = new MockAdapter(requestInstance);
@@ -47,9 +47,10 @@ describe("request", () => {
     await expect(request({ method: "POST", url: "/messages" })).rejects.toSatisfy(
       (error: unknown) =>
         error instanceof Error &&
+        error instanceof RequestNormalizedError &&
         error.message === "Upstream unavailable" &&
-        (error as { status?: number }).status === 503 &&
-        (error as { code?: string }).code === undefined,
+        error.status === 503 &&
+        error.code === undefined,
     );
   });
 
@@ -65,9 +66,10 @@ describe("request", () => {
     await expect(request({ method: "GET", url: "/server/accounts", _skipAuthRetry: true })).rejects.toSatisfy(
       (error: unknown) =>
         error instanceof Error &&
+        error instanceof RequestNormalizedError &&
         error.message === "登录已失效" &&
-        (error as { code?: string }).code === "UNAUTHORIZED" &&
-        (error as { status?: number }).status === 401,
+        error.code === "UNAUTHORIZED" &&
+        error.status === 401,
     );
   });
 
@@ -83,9 +85,10 @@ describe("request", () => {
     await expect(request({ method: "POST", url: "/server/seats/ndt/take-over" })).rejects.toSatisfy(
       (error: unknown) =>
         error instanceof Error &&
+        error instanceof RequestNormalizedError &&
         error.message === "无权限访问" &&
-        (error as { code?: string }).code === "FORBIDDEN" &&
-        (error as { status?: number }).status === 200,
+        error.code === "FORBIDDEN" &&
+        error.status === 200,
     );
   });
 

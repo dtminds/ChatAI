@@ -1251,6 +1251,54 @@ describe("Chat settings pages", () => {
     expect(screen.queryByText("客服11")).not.toBeInTheDocument();
   });
 
+  it("returns to the first sub-account page after creating a new account", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/sub-accounts").reply(200, {
+      data: {
+        seats: [],
+        subAccounts: Array.from({ length: 11 }, (_, index) => ({
+          account: `agent${String(index + 1).padStart(3, "0")}`,
+          id: String(index + 1),
+          name: `客服${index + 1}`,
+          role: "operator",
+          seats: [],
+          status: "active",
+          type: 0,
+        })),
+      },
+      success: true,
+    });
+    mock.onPost("/server/settings/sub-accounts").reply((config) => [
+      200,
+      {
+        data: {
+          ...JSON.parse(config.data ?? "{}"),
+          id: "12",
+          seats: [],
+          status: "active",
+          type: 0,
+        },
+        success: true,
+      },
+    ]);
+
+    renderRoute("/chat/settings/sub-accounts");
+
+    await user.click(await screen.findByRole("button", { name: "下一页" }));
+    expect(screen.getByText("客服11")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "新增子账号" }));
+    await user.type(screen.getByLabelText("登录用户名"), "agent012");
+    await user.type(screen.getByLabelText("密码"), "Strong1!");
+    await user.type(screen.getByLabelText("姓名"), "客服十二号");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    expect(await screen.findByText("客服十二号")).toBeInTheDocument();
+    expect(screen.queryByText("客服11")).not.toBeInTheDocument();
+  });
+
   it("paginates managed accounts locally with 10 rows per page", async () => {
     const user = userEvent.setup();
     mock.resetHandlers();

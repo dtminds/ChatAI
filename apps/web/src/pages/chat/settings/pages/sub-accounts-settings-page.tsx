@@ -236,6 +236,7 @@ export function SubAccountsSettingsPage() {
           ...current,
           subAccounts: [nextSubAccount, ...current.subAccounts],
         }));
+        setPage(1);
         toast.success("子账号已新增");
       } else if (dialogState?.mode === "edit") {
         const updateRole =

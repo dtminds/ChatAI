@@ -44,6 +44,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  listManagedAccountSubAccountOptions,
   listManagedAccounts,
   updateManagedAccountSubAccounts,
 } from "@/pages/chat/settings/settings-service";
@@ -275,7 +276,6 @@ export function AccountsSettingsPage() {
         onSubmit={handleSubmit}
         open={!!dialogState}
         state={dialogState}
-        subAccounts={data.subAccounts}
       />
     </>
   );
@@ -544,19 +544,20 @@ function SubAccountRelationDialog({
   onSubmit,
   open,
   state,
-  subAccounts,
 }: {
   isSubmitting: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (managedAccount: SettingsManagedAccount, subAccountIds: string[]) => Promise<void>;
   open: boolean;
   state: DialogState | null;
-  subAccounts: SettingsManagedAccountSubAccount[];
 }) {
   const [query, setQuery] = useState("");
+  const [isSubAccountOptionsLoading, setIsSubAccountOptionsLoading] = useState(false);
+  const [subAccountOptions, setSubAccountOptions] = useState<SettingsManagedAccountSubAccount[]>([]);
   const [selectedSubAccountIds, setSelectedSubAccountIds] = useState<string[]>([]);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const managedAccount = state?.managedAccount;
+  const selectedSubAccountIdsKey = selectedSubAccountIds.join(",");
 
   useEffect(() => {
     if (!state) {
@@ -564,10 +565,57 @@ function SubAccountRelationDialog({
     }
 
     setQuery("");
+    setSubAccountOptions(state.managedAccount.subAccounts);
     setSelectedSubAccountIds(
       state.managedAccount.subAccounts.map((subAccount) => subAccount.id),
     );
   }, [state]);
+
+  useEffect(() => {
+    if (!state) {
+      return;
+    }
+
+    let ignore = false;
+    const timer = window.setTimeout(() => {
+      setIsSubAccountOptionsLoading(true);
+
+      void listManagedAccountSubAccountOptions({ keyword: query.trim() || undefined })
+        .then((response) => {
+          if (ignore) {
+            return;
+          }
+
+          setSubAccountOptions((current) =>
+            mergeSubAccountOptions(
+              response.subAccounts ?? [],
+              current.filter((subAccount) =>
+                selectedSubAccountIds.includes(subAccount.id),
+              ),
+            ),
+          );
+        })
+        .catch(() => {
+          if (!ignore) {
+            setSubAccountOptions((current) =>
+              current.filter((subAccount) =>
+                selectedSubAccountIds.includes(subAccount.id),
+              ),
+            );
+          }
+        })
+        .finally(() => {
+          if (!ignore) {
+            setIsSubAccountOptionsLoading(false);
+          }
+        });
+    }, 450);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(timer);
+    };
+  }, [state, query, selectedSubAccountIdsKey]);
 
   function toggleSubAccount(subAccountId: string) {
     setSelectedSubAccountIds((current) =>
@@ -601,12 +649,13 @@ function SubAccountRelationDialog({
             }}
           >
             <SubAccountSelectionList
+              isLoading={isSubAccountOptionsLoading}
               onQueryChange={setQuery}
               pickerPortalContainer={contentElement}
               onToggleSubAccount={toggleSubAccount}
               query={query}
               selectedSubAccountIds={selectedSubAccountIds}
-              subAccounts={subAccounts}
+              subAccounts={subAccountOptions}
             />
 
             <DialogFooter>
@@ -627,6 +676,7 @@ function SubAccountRelationDialog({
 }
 
 function SubAccountSelectionList({
+  isLoading,
   onQueryChange,
   onToggleSubAccount,
   pickerPortalContainer,
@@ -634,6 +684,7 @@ function SubAccountSelectionList({
   selectedSubAccountIds,
   subAccounts,
 }: {
+  isLoading: boolean;
   onQueryChange: (query: string) => void;
   onToggleSubAccount: (subAccountId: string) => void;
   pickerPortalContainer?: HTMLElement | null;
@@ -697,7 +748,11 @@ function SubAccountSelectionList({
           portalContainer={pickerPortalContainer}
           sideOffset={8}
         >
-          {subAccounts.length > 0 ? (
+          {isLoading ? (
+            <p className="px-2.5 py-8 text-center text-sm text-muted-foreground">
+              正在加载子账号
+            </p>
+          ) : subAccounts.length > 0 ? (
             <ScrollArea className="h-[15rem]">
               <div className="space-y-1 pr-2">
                 {filteredSubAccounts.length > 0 ? (
@@ -830,6 +885,19 @@ function formatSubAccountName(subAccount: SettingsManagedAccountSubAccount) {
   return subAccount.isTakingOver
     ? `${subAccount.name}（接管中）`
     : subAccount.name;
+}
+
+function mergeSubAccountOptions(
+  options: SettingsManagedAccountSubAccount[],
+  selectedOptions: SettingsManagedAccountSubAccount[],
+) {
+  const subAccountsById = new Map<string, SettingsManagedAccountSubAccount>();
+
+  for (const subAccount of [...selectedOptions, ...options]) {
+    subAccountsById.set(subAccount.id, subAccount);
+  }
+
+  return Array.from(subAccountsById.values());
 }
 
 function getInitial(name: string) {

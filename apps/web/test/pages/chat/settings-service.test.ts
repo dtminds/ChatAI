@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createSubAccount,
   deleteSubAccount,
+  listManagedAccountSubAccountOptions,
   listManagedAccounts,
+  listSeatOptions,
   listSubAccounts,
   updateSubAccount,
   updateSubAccountStatus,
@@ -138,5 +140,24 @@ describe("settings service", () => {
       keyword: "德瑞可",
       page: 2,
     });
+  });
+
+  it("uses option endpoints for relation pickers", async () => {
+    mock.onGet("/server/settings/seat-options").reply(200, {
+      data: { seats: [] },
+      success: true,
+    });
+    mock.onGet("/server/settings/sub-account-options").reply(200, {
+      data: { subAccounts: [] },
+      success: true,
+    });
+
+    await listSeatOptions({ keyword: "德瑞可" });
+    await listManagedAccountSubAccountOptions({ keyword: "客服" });
+
+    expect(mock.history.get[0]?.url).toBe("/server/settings/seat-options");
+    expect(mock.history.get[0]?.params).toEqual({ keyword: "德瑞可" });
+    expect(mock.history.get[1]?.url).toBe("/server/settings/sub-account-options");
+    expect(mock.history.get[1]?.params).toEqual({ keyword: "客服" });
   });
 });

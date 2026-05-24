@@ -94,6 +94,7 @@ import { Label } from "@/components/ui/label";
 import {
   createSubAccount,
   deleteSubAccount,
+  listSeatOptions,
   listSubAccounts,
   updateSubAccount,
   updateSubAccountStatus,
@@ -481,7 +482,6 @@ export function SubAccountsSettingsPage() {
         }}
         onSubmit={handleSubmit}
         open={!!dialogState}
-        seats={data.seats}
         state={dialogState}
       />
 
@@ -866,6 +866,7 @@ function getSeatInitial(name: string) {
 }
 
 function SeatSelectionList({
+  isLoading,
   onQueryChange,
   onToggleSeat,
   pickerPortalContainer,
@@ -873,6 +874,7 @@ function SeatSelectionList({
   seats,
   selectedSeatIds,
 }: {
+  isLoading: boolean;
   onQueryChange: (query: string) => void;
   onToggleSeat: (seatId: string) => void;
   pickerPortalContainer?: HTMLElement | null;
@@ -936,7 +938,11 @@ function SeatSelectionList({
           portalContainer={pickerPortalContainer}
           sideOffset={8}
         >
-          {seats.length > 0 ? (
+          {isLoading ? (
+            <p className="px-2.5 py-8 text-center text-sm text-muted-foreground">
+              正在加载托管账号
+            </p>
+          ) : seats.length > 0 ? (
             <ScrollArea className="h-[15rem]">
               <div className="space-y-1 pr-2">
                 {filteredSeats.length > 0 ? (
@@ -1007,14 +1013,12 @@ function SubAccountDialog({
   onOpenChange,
   onSubmit,
   open,
-  seats,
   state,
 }: {
   isSubmitting: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: FormValues, mode: FormMode) => Promise<void>;
   open: boolean;
-  seats: SettingsWeComSeat[];
   state: DialogState | null;
 }) {
   const [formValues, setFormValues] = useState<FormValues>({
@@ -1025,6 +1029,8 @@ function SubAccountDialog({
     seatIds: [],
   });
   const [formError, setFormError] = useState("");
+  const [seatOptions, setSeatOptions] = useState<SettingsWeComSeat[]>([]);
+  const [isSeatOptionsLoading, setIsSeatOptionsLoading] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [seatQuery, setSeatQuery] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -1039,6 +1045,7 @@ function SubAccountDialog({
     : mode === "create"
       ? `${passwordHelpId}-hint`
       : undefined;
+  const selectedSeatIdsKey = formValues.seatIds.join(",");
 
   useEffect(() => {
     if (!state) {
@@ -1056,10 +1063,52 @@ function SubAccountDialog({
       seatIds: state.subAccount?.seats.map((seat) => seat.seatId) ?? [],
     });
     setFormError("");
+    setSeatOptions(state.subAccount?.seats ?? []);
     setPasswordError("");
     setSeatQuery("");
     setShowPassword(false);
   }, [state]);
+
+  useEffect(() => {
+    if (!state) {
+      return;
+    }
+
+    let ignore = false;
+    const timer = window.setTimeout(() => {
+      setIsSeatOptionsLoading(true);
+
+      void listSeatOptions({ keyword: seatQuery.trim() || undefined })
+        .then((response) => {
+          if (ignore) {
+            return;
+          }
+
+          setSeatOptions((current) =>
+            mergeSeatOptions(response.seats ?? [], current.filter((seat) =>
+              formValues.seatIds.includes(seat.seatId),
+            )),
+          );
+        })
+        .catch(() => {
+          if (!ignore) {
+            setSeatOptions((current) =>
+              current.filter((seat) => formValues.seatIds.includes(seat.seatId)),
+            );
+          }
+        })
+        .finally(() => {
+          if (!ignore) {
+            setIsSeatOptionsLoading(false);
+          }
+        });
+    }, 450);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(timer);
+    };
+  }, [state, seatQuery, selectedSeatIdsKey]);
 
   function updateField(field: keyof FormValues, value: string | string[]) {
     setFormValues((current) => ({
@@ -1265,9 +1314,10 @@ function SubAccountDialog({
               role="group"
             >
               <SeatSelectionList
+                isLoading={isSeatOptionsLoading}
                 pickerPortalContainer={contentElement}
                 query={seatQuery}
-                seats={seats}
+                seats={seatOptions}
                 selectedSeatIds={formValues.seatIds}
                 onQueryChange={setSeatQuery}
                 onToggleSeat={toggleSeat}
@@ -1328,6 +1378,19 @@ function generatePassword() {
   }
 
   return combined.join("");
+}
+
+function mergeSeatOptions(
+  options: SettingsWeComSeat[],
+  selectedOptions: SettingsWeComSeat[],
+) {
+  const seatsById = new Map<string, SettingsWeComSeat>();
+
+  for (const seat of [...selectedOptions, ...options]) {
+    seatsById.set(seat.seatId, seat);
+  }
+
+  return Array.from(seatsById.values());
 }
 
 function pickRandomChar(chars: string) {

@@ -38,12 +38,20 @@ export const SettingsSubAccountsResponseSchema = Type.Object({
   subAccounts: Type.Array(SettingsSubAccountSchema),
 });
 
+export const SettingsSeatOptionsResponseSchema = Type.Object({
+  seats: Type.Array(SettingsWeComSeatSchema),
+});
+
 export const SettingsSubAccountsQuerySchema = Type.Object({
   keyword: Type.Optional(Type.String()),
   page: Type.Optional(Type.Union([
     Type.Number({ minimum: 1 }),
     Type.String({ pattern: "^[1-9]\\d*$" }),
   ])),
+}, { additionalProperties: false });
+
+export const SettingsAssignmentOptionsQuerySchema = Type.Object({
+  keyword: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
 export const SettingsManagedAccountOnlineStatusSchema = Type.Union([
@@ -76,6 +84,10 @@ export const SettingsManagedAccountsResponseSchema = Type.Object({
     totalPages: Type.Number(),
   }),
   managedAccounts: Type.Array(SettingsManagedAccountSchema),
+  subAccounts: Type.Array(SettingsManagedAccountSubAccountSchema),
+});
+
+export const SettingsManagedAccountSubAccountOptionsResponseSchema = Type.Object({
   subAccounts: Type.Array(SettingsManagedAccountSubAccountSchema),
 });
 
@@ -166,8 +178,14 @@ export type SettingsSubAccount = Static<typeof SettingsSubAccountSchema>;
 export type SettingsSubAccountsResponse = Static<
   typeof SettingsSubAccountsResponseSchema
 >;
+export type SettingsSeatOptionsResponse = Static<
+  typeof SettingsSeatOptionsResponseSchema
+>;
 export type SettingsSubAccountsQuery = Static<
   typeof SettingsSubAccountsQuerySchema
+>;
+export type SettingsAssignmentOptionsQuery = Static<
+  typeof SettingsAssignmentOptionsQuerySchema
 >;
 export type SettingsManagedAccountOnlineStatus = Static<
   typeof SettingsManagedAccountOnlineStatusSchema
@@ -178,6 +196,9 @@ export type SettingsManagedAccountSubAccount = Static<
 export type SettingsManagedAccount = Static<typeof SettingsManagedAccountSchema>;
 export type SettingsManagedAccountsResponse = Static<
   typeof SettingsManagedAccountsResponseSchema
+>;
+export type SettingsManagedAccountSubAccountOptionsResponse = Static<
+  typeof SettingsManagedAccountSubAccountOptionsResponseSchema
 >;
 export type SettingsManagedAccountsQuery = Static<
   typeof SettingsManagedAccountsQuerySchema

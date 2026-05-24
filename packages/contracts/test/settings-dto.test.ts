@@ -7,8 +7,10 @@ import {
 import {
   SettingsSidebarItemCreateRequestSchema,
   SettingsManagedAccountsResponseSchema,
+  SettingsManagedAccountSubAccountOptionsResponseSchema,
   SettingsSidebarItemsResponseSchema,
   SettingsSidebarItemsSortUpdateRequestSchema,
+  SettingsSeatOptionsResponseSchema,
   SettingsSubAccountCreateRequestSchema,
   SettingsSubAccountsResponseSchema,
   SettingsSubAccountUpdateRequestSchema,
@@ -67,6 +69,35 @@ describe("settings sub-account DTOs", () => {
         },
         managedAccounts: [],
         subAccounts: [],
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts settings assignment option responses", () => {
+    expect(
+      Value.Check(SettingsSeatOptionsResponseSchema, {
+        seats: [
+          {
+            avatarUrl: "https://example.com/drc.png",
+            seatId: "101",
+            name: "德瑞可",
+          },
+        ],
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(SettingsManagedAccountSubAccountOptionsResponseSchema, {
+        subAccounts: [
+          {
+            account: "agent001",
+            id: "11",
+            isTakingOver: false,
+            name: "客服一号",
+            status: "active",
+            type: 0,
+          },
+        ],
       }),
     ).toBe(true);
   });

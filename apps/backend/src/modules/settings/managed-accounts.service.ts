@@ -1,7 +1,9 @@
 import type {
+  SettingsAssignmentOptionsQuery,
   SettingsManagedAccountsQuery,
   SettingsManagedAccount,
   SettingsManagedAccountSubAccount,
+  SettingsManagedAccountSubAccountOptionsResponse,
   SettingsManagedAccountsResponse,
   SettingsManagedAccountSubAccountsUpdateRequest,
 } from "@chatai/contracts";
@@ -63,18 +65,56 @@ export class ManagedAccountSettingsService {
     const pageSize = defaultManagedAccountsPageSize;
     const page = parsePositiveInteger(query.page) ?? 1;
     const keyword = query.keyword?.trim().toLowerCase() ?? "";
-    const [managedAccounts, subAccounts, relations] = await Promise.all([
-      this.listManagedAccountRows(scope),
-      this.listAssignableSubAccountRows(scope),
-      this.listRelationRows(scope),
-    ]);
-    const relationsBySeatId = groupRelationsBySeatId(relations);
-    const filteredManagedAccounts = filterManagedAccountRows(managedAccounts, keyword);
-    const total = filteredManagedAccounts.length;
+    let countQuery = this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .select(({ fn }) => fn.count<number>("seat.id").as("total"))
+      .where("seat.uid", "=", scope.uid)
+      .where("seat.platform", "=", scope.platform)
+      .where("seat.biz_status", "=", 1);
+
+    if (keyword) {
+      countQuery = countQuery.where((eb) =>
+        eb.or([
+          eb("seat.third_user_name", "like", `%${keyword}%`),
+          eb(eb.cast<string>("seat.id", "char"), "like", `%${keyword}%`),
+        ]),
+      );
+    }
+
+    const totalRow = await countQuery.executeTakeFirst();
+    const total = Number(totalRow?.total ?? 0);
     const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
     const currentPage = Math.min(page, totalPages);
-    const startIndex = (currentPage - 1) * pageSize;
-    const pageRows = filteredManagedAccounts.slice(startIndex, startIndex + pageSize);
+    const offset = (currentPage - 1) * pageSize;
+    let pageQuery = this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .select([
+        "seat.third_avatar as avatarUrl",
+        "seat.host_sub_id",
+        "seat.id",
+        "seat.is_online",
+        "seat.third_user_name",
+      ])
+      .where("seat.uid", "=", scope.uid)
+      .where("seat.platform", "=", scope.platform)
+      .where("seat.biz_status", "=", 1);
+
+    if (keyword) {
+      pageQuery = pageQuery.where((eb) =>
+        eb.or([
+          eb("seat.third_user_name", "like", `%${keyword}%`),
+          eb(eb.cast<string>("seat.id", "char"), "like", `%${keyword}%`),
+        ]),
+      );
+    }
+
+    const pageRows = (await pageQuery
+      .orderBy("seat.id", "desc")
+      .limit(pageSize)
+      .offset(offset)
+      .execute()) as ManagedAccountRow[];
+    const relations = await this.listRelationRows(scope, pageRows.map((account) => account.id));
+    const relationsBySeatId = groupRelationsBySeatId(relations);
 
     return {
       pagination: {
@@ -86,9 +126,23 @@ export class ManagedAccountSettingsService {
       managedAccounts: pageRows.map((account) =>
         mapManagedAccount(account, relationsBySeatId.get(account.id) ?? []),
       ),
-      subAccounts: subAccounts.map((subAccount) =>
-        mapSubAccount(subAccount, false),
-      ),
+      subAccounts: [],
+    };
+  }
+
+  async listSubAccountOptions(
+    currentSubUserId: string,
+    query: SettingsAssignmentOptionsQuery = {},
+  ): Promise<SettingsManagedAccountSubAccountOptionsResponse> {
+    const scope = await this.getTenantScope(currentSubUserId);
+    const keyword = query.keyword?.trim().toLowerCase() ?? "";
+    const subAccounts = await this.listAssignableSubAccountRows(scope, {
+      keyword,
+      limit: 20,
+    });
+
+    return {
+      subAccounts: subAccounts.map((subAccount) => mapSubAccount(subAccount, false)),
     };
   }
 
@@ -135,24 +189,14 @@ export class ManagedAccountSettingsService {
     };
   }
 
-  private listManagedAccountRows(scope: TenantScope) {
-    return this.db
-      .selectFrom("xy_wap_embed_user_seat as seat")
-      .select([
-        "seat.third_avatar as avatarUrl",
-        "seat.host_sub_id",
-        "seat.id",
-        "seat.is_online",
-        "seat.third_user_name",
-      ])
-      .where("seat.uid", "=", scope.uid)
-      .where("seat.platform", "=", scope.platform)
-      .where("seat.biz_status", "=", 1)
-      .orderBy("seat.id", "desc")
-      .execute() as Promise<ManagedAccountRow[]>;
-  }
+  private listAssignableSubAccountRows(
+    scope: TenantScope,
+    options: { ids?: number[]; keyword?: string; limit?: number } = {},
+  ) {
+    if (options.ids !== undefined && options.ids.length === 0) {
+      return Promise.resolve([] as SubAccountRow[]);
+    }
 
-  private listAssignableSubAccountRows(scope: TenantScope, subAccountIds?: number[]) {
     let query = this.db
       .selectFrom("xy_wap_embed_sub_user as sub_user")
       .select([
@@ -166,16 +210,33 @@ export class ManagedAccountSettingsService {
       .where("sub_user.platform", "=", scope.platform)
       .where("sub_user.status", "!=", dbSubAccountStatus.deleted);
 
-    if (subAccountIds !== undefined) {
-      query = query.where("sub_user.id", "in", subAccountIds);
+    if (options.ids !== undefined) {
+      query = query.where("sub_user.id", "in", options.ids);
     }
 
-    return query
-      .orderBy("sub_user.id", "desc")
-      .execute() as Promise<SubAccountRow[]>;
+    if (options.keyword) {
+      query = query.where((eb) =>
+        eb.or([
+          eb("sub_user.name", "like", `%${options.keyword}%`),
+          eb("sub_user.account", "like", `%${options.keyword}%`),
+        ]),
+      );
+    }
+
+    query = query.orderBy("sub_user.id", "desc");
+
+    if (options.limit !== undefined) {
+      query = query.limit(options.limit);
+    }
+
+    return query.execute() as Promise<SubAccountRow[]>;
   }
 
-  private listRelationRows(scope: TenantScope, managedAccountId?: number) {
+  private listRelationRows(scope: TenantScope, managedAccountIds?: number[]) {
+    if (managedAccountIds !== undefined && managedAccountIds.length === 0) {
+      return Promise.resolve([] as RelationRow[]);
+    }
+
     let query = this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
       .innerJoin("xy_wap_embed_sub_user as sub_user", (join) =>
@@ -196,8 +257,8 @@ export class ManagedAccountSettingsService {
       .where("relation.platform", "=", scope.platform)
       .where("sub_user.status", "!=", dbSubAccountStatus.deleted);
 
-    if (managedAccountId !== undefined) {
-      query = query.where("relation.user_seat_id", "=", managedAccountId);
+    if (managedAccountIds !== undefined) {
+      query = query.where("relation.user_seat_id", "in", managedAccountIds);
     }
 
     return query.execute() as Promise<RelationRow[]>;
@@ -231,7 +292,7 @@ export class ManagedAccountSettingsService {
       return [];
     }
 
-    const subAccounts = await this.listAssignableSubAccountRows(scope, uniqueSubAccountIds);
+    const subAccounts = await this.listAssignableSubAccountRows(scope, { ids: uniqueSubAccountIds });
     const validSubAccountIds = new Set(subAccounts.map((subAccount) => subAccount.id));
 
     if (uniqueSubAccountIds.some((subAccountId) => !validSubAccountIds.has(subAccountId))) {
@@ -286,7 +347,7 @@ export class ManagedAccountSettingsService {
         .where("seat.platform", "=", scope.platform)
         .where("seat.biz_status", "=", 1)
         .executeTakeFirst() as Promise<ManagedAccountRow | undefined>,
-      this.listRelationRows(scope, managedAccountId),
+      this.listRelationRows(scope, [managedAccountId]),
     ]);
 
     if (!managedAccount) {
@@ -341,18 +402,6 @@ function mapSubAccount(
     status: row.status === dbSubAccountStatus.active ? "active" : "disabled",
     type: row.type === dbSubAccountType.main ? dbSubAccountType.main : dbSubAccountType.sub,
   };
-}
-
-function filterManagedAccountRows(rows: ManagedAccountRow[], keyword: string) {
-  if (!keyword) {
-    return rows;
-  }
-
-  return rows.filter((row) =>
-    [row.third_user_name, String(row.id)].some((value) =>
-      value?.toLowerCase().includes(keyword),
-    ),
-  );
 }
 
 function parsePositiveInteger(value: number | string | undefined) {

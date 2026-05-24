@@ -5,6 +5,12 @@ import argon2 from "argon2";
 import { buildApp } from "../src/app";
 import { createMemoryWorkbenchService } from "./fixtures/workbench-memory.service";
 import {
+  addMockWhereClause,
+  applyMockPaging,
+  matchesMockWhereClauses,
+  type MockWhereClause,
+} from "./helpers/mock-kysely";
+import {
   ACCESS_TOKEN_COOKIE_NAME,
   REFRESH_TOKEN_COOKIE_NAME,
 } from "../src/modules/auth/auth-cookies";
@@ -2149,6 +2155,16 @@ function createSettingsDbMock(currentSubUser: {
       },
     ],
   ]);
+  const seats: Array<{
+    biz_status: number;
+    host_sub_id: number;
+    id: number;
+    is_online: number;
+    platform: number;
+    third_avatar: string;
+    third_user_name: string;
+    uid: number;
+  }> = [];
   let lastInsertedId = 201;
 
   return {
@@ -2188,17 +2204,44 @@ function createSettingsDbMock(currentSubUser: {
       return builder;
     },
     selectFrom(table: string) {
-      const wheres: Array<[string, string, unknown]> = [];
+      const wheres: MockWhereClause[] = [];
+      const selectColumns: Array<string> = [];
+      const getQueryValue = (column: string) => {
+        const clause = wheres.find(
+          (whereClause): whereClause is [string, string, unknown] =>
+            Array.isArray(whereClause) && whereClause[0] === column,
+        );
+
+        return clause?.[2];
+      };
       const builder = {
         execute: async () => {
           if (table === "xy_wap_embed_sub_user_session") {
-            return matchesSimpleWheres(session as Record<string, unknown>, wheres)
+            return matchesMockWhereClauses(session as Record<string, unknown>, wheres)
               ? [session]
               : [];
           }
 
-          if (table === "xy_wap_embed_user_seat") {
-            return [];
+          if (table === "xy_wap_embed_user_seat" || table === "xy_wap_embed_user_seat as seat") {
+            const filtered = seats.filter((seat) =>
+              matchesMockWhereClauses(seat as unknown as Record<string, unknown>, wheres),
+            );
+
+            if (selectColumns.some((column) => column.includes("count("))) {
+              return [{ total: filtered.length }];
+            }
+
+            return applyMockPaging(
+              filtered,
+              getQueryValue("limit") as number | undefined,
+              getQueryValue("offset") as number | undefined,
+            ).map((seat) => ({
+              avatarUrl: seat.third_avatar,
+              host_sub_id: seat.host_sub_id,
+              id: seat.id,
+              is_online: seat.is_online,
+              third_user_name: seat.third_user_name,
+            }));
           }
 
           if (table.includes("xy_wap_embed_user_seat_sub_relation")) {
@@ -2206,8 +2249,18 @@ function createSettingsDbMock(currentSubUser: {
           }
 
           if (table === "xy_wap_embed_sub_user" || table.includes("xy_wap_embed_sub_user")) {
-            return Array.from(subAccounts.values()).filter((row) =>
-              matchesSimpleWheres(row, wheres),
+            const filtered = Array.from(subAccounts.values()).filter((row) =>
+              matchesMockWhereClauses(row, wheres),
+            );
+
+            if (selectColumns.some((column) => column.includes("count("))) {
+              return [{ total: filtered.length }];
+            }
+
+            return applyMockPaging(
+              filtered,
+              getQueryValue("limit") as number | undefined,
+              getQueryValue("offset") as number | undefined,
             );
           }
 
@@ -2215,7 +2268,7 @@ function createSettingsDbMock(currentSubUser: {
         },
         executeTakeFirst: async () => {
           if (table === "xy_wap_embed_sub_user_session") {
-            return matchesSimpleWheres(session as Record<string, unknown>, wheres)
+            return matchesMockWhereClauses(session as Record<string, unknown>, wheres)
               ? session
               : undefined;
           }
@@ -2232,10 +2285,32 @@ function createSettingsDbMock(currentSubUser: {
           return result;
         },
         innerJoin: () => builder,
+        limit: (value: number) => {
+          wheres.push(["limit", "=", value]);
+          return builder;
+        },
+        offset: (value: number) => {
+          wheres.push(["offset", "=", value]);
+          return builder;
+        },
         orderBy: () => builder,
-        select: () => builder,
-        where: (column: string, operator: string, value: unknown) => {
-          wheres.push([column, operator, value]);
+        select: (selection?: unknown) => {
+          if (Array.isArray(selection)) {
+            selectColumns.push(...selection.map((item) => String(item)));
+          }
+
+          if (typeof selection === "function") {
+            selectColumns.push("count(total)");
+          }
+
+          return builder;
+        },
+        where: (
+          column: string | Parameters<typeof addMockWhereClause>[1],
+          operator?: string,
+          value?: unknown,
+        ) => {
+          addMockWhereClause(wheres, column, operator, value);
           return builder;
         },
       };
@@ -2243,13 +2318,13 @@ function createSettingsDbMock(currentSubUser: {
       return builder;
     },
     updateTable(table: string) {
-      const wheres: Array<[string, string, unknown]> = [];
+      const wheres: MockWhereClause[] = [];
       let nextValues: Record<string, unknown> = {};
       const builder = {
         execute: async () => {
           if (table === "xy_wap_embed_sub_user") {
             for (const [id, row] of subAccounts) {
-              if (matchesSimpleWheres(row, wheres)) {
+              if (matchesMockWhereClauses(row, wheres)) {
                 subAccounts.set(id, {
                   ...row,
                   ...(nextValues as Partial<typeof row>),
@@ -2264,8 +2339,12 @@ function createSettingsDbMock(currentSubUser: {
           nextValues = values;
           return builder;
         },
-        where: (column: string, operator: string, value: unknown) => {
-          wheres.push([column, operator, value]);
+        where: (
+          column: string | Parameters<typeof addMockWhereClause>[1],
+          operator?: string,
+          value?: unknown,
+        ) => {
+          addMockWhereClause(wheres, column, operator, value);
           return builder;
         },
       };

@@ -74,28 +74,7 @@ describe("Chat settings pages", () => {
           total: 3,
           totalPages: 1,
         },
-        seats: [
-          {
-            avatarUrl: "https://example.com/drc.png",
-            name: "德瑞可",
-            seatId: "101",
-          },
-          {
-            avatarUrl: "https://example.com/ndt.png",
-            name: "念都堂",
-            seatId: "102",
-          },
-          {
-            avatarUrl: "https://example.com/mid.png",
-            name: "中台号",
-            seatId: "103",
-          },
-          {
-            avatarUrl: "https://example.com/after-sale.png",
-            name: "售后号",
-            seatId: "104",
-          },
-        ],
+        seats: [],
         subAccounts: [
           {
             account: "owner",
@@ -219,55 +198,112 @@ describe("Chat settings pages", () => {
             subAccounts: [],
           },
         ],
-        subAccounts: [
-          {
-            account: "owner",
-            id: "1",
-            isTakingOver: false,
-            name: "主账号",
-            role: "owner",
-            status: "active",
-            type: 1,
-          },
-          {
-            account: "agent001",
-            id: "11",
-            isTakingOver: false,
-            name: "客服一号",
-            role: "admin",
-            status: "active",
-            type: 0,
-          },
-          {
-            account: "agent002",
-            id: "12",
-            isTakingOver: false,
-            name: "客服二号",
-            role: "operator",
-            status: "active",
-            type: 0,
-          },
-          {
-            account: "agent003",
-            id: "13",
-            isTakingOver: false,
-            name: "客服三号",
-            role: "operator",
-            status: "active",
-            type: 0,
-          },
-          {
-            account: "agent004",
-            id: "14",
-            isTakingOver: false,
-            name: "客服四号",
-            role: "operator",
-            status: "disabled",
-            type: 0,
-          },
-        ],
+        subAccounts: [],
       },
       success: true,
+    });
+    mock.onGet("/server/settings/seat-options").reply((config) => {
+      const keyword = String((config.params as { keyword?: string } | undefined)?.keyword ?? "");
+      const seats = [
+        {
+          avatarUrl: "https://example.com/drc.png",
+          name: "德瑞可",
+          seatId: "101",
+        },
+        {
+          avatarUrl: "https://example.com/ndt.png",
+          name: "念都堂",
+          seatId: "102",
+        },
+        {
+          avatarUrl: "https://example.com/mid.png",
+          name: "中台号",
+          seatId: "103",
+        },
+        {
+          avatarUrl: "https://example.com/after-sale.png",
+          name: "售后号",
+          seatId: "104",
+        },
+      ];
+
+      return [
+        200,
+        {
+          data: {
+            seats: keyword
+              ? seats.filter((seat) => seat.name.includes(keyword))
+              : seats,
+          },
+          success: true,
+        },
+      ];
+    });
+    mock.onGet("/server/settings/sub-account-options").reply((config) => {
+      const keyword = String((config.params as { keyword?: string } | undefined)?.keyword ?? "");
+      const subAccounts = [
+        {
+          account: "owner",
+          id: "1",
+          isTakingOver: false,
+          name: "主账号",
+          role: "owner",
+          status: "active",
+          type: 1,
+        },
+        {
+          account: "agent001",
+          id: "11",
+          isTakingOver: false,
+          name: "客服一号",
+          role: "admin",
+          status: "active",
+          type: 0,
+        },
+        {
+          account: "agent002",
+          id: "12",
+          isTakingOver: false,
+          name: "客服二号",
+          role: "operator",
+          status: "active",
+          type: 0,
+        },
+        {
+          account: "agent003",
+          id: "13",
+          isTakingOver: false,
+          name: "客服三号",
+          role: "operator",
+          status: "active",
+          type: 0,
+        },
+        {
+          account: "agent004",
+          id: "14",
+          isTakingOver: false,
+          name: "客服四号",
+          role: "operator",
+          status: "disabled",
+          type: 0,
+        },
+      ];
+
+      return [
+        200,
+        {
+          data: {
+            subAccounts: keyword
+              ? subAccounts.filter((subAccount) =>
+                  [subAccount.name, subAccount.account].some((value) =>
+                    value.includes(keyword),
+                  ),
+                )
+              : subAccounts,
+          },
+          success: true,
+        },
+      ];
     });
     mock.onGet("/server/settings/sidebar-items").reply(200, {
       data: {
@@ -995,7 +1031,7 @@ describe("Chat settings pages", () => {
     expect(screen.getByText("暂无已分配账号")).toBeInTheDocument();
     await user.click(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
     await user.type(screen.getByRole("textbox", { name: "搜索并选择托管账号" }), "念都");
-    expect(screen.getByText("念都堂")).toBeInTheDocument();
+    expect(await screen.findByText("念都堂")).toBeInTheDocument();
     expect(createDialog).toContainElement(screen.getByText("念都堂"));
     expect(screen.queryByText("德瑞可")).not.toBeInTheDocument();
     await user.clear(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
@@ -1006,7 +1042,7 @@ describe("Chat settings pages", () => {
     expect(screen.getByRole("option", { name: "客服（只读）" })).toBeInTheDocument();
     await user.click(screen.getByRole("option", { name: "客服" }));
     await user.click(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
-    await user.click(screen.getByRole("checkbox", { name: "德瑞可" }));
+    await user.click(await screen.findByRole("checkbox", { name: "德瑞可" }));
     expect(screen.getByText("已选择 1 个")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认提交" }));
 
@@ -1189,10 +1225,10 @@ describe("Chat settings pages", () => {
     expect(within(dialog).queryByLabelText("关联子账号 客服一号")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("textbox", { name: "搜索并选择子账号" }));
-    expect(screen.getByRole("checkbox", { name: "主账号" })).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: "主账号" })).toBeInTheDocument();
     expect(dialog).toContainElement(screen.getByRole("checkbox", { name: "主账号" }));
     await user.type(screen.getByRole("textbox", { name: "搜索并选择子账号" }), "二号");
-    expect(screen.getByRole("checkbox", { name: "客服二号" })).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: "客服二号" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "客服三号" })).not.toBeInTheDocument();
     await user.clear(screen.getByRole("textbox", { name: "搜索并选择子账号" }));
     await user.click(screen.getByRole("checkbox", { name: "客服一号" }));
@@ -1235,7 +1271,7 @@ describe("Chat settings pages", () => {
     await user.click(await screen.findByRole("button", { name: "新增子账号" }));
     await user.click(screen.getByRole("textbox", { name: "搜索并选择托管账号" }));
 
-    expect(screen.getByRole("checkbox", { name: "德瑞可" })).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: "德瑞可" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("dialog", { name: "添加子账号" }));
 

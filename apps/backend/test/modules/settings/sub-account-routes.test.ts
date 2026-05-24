@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import argon2 from "argon2";
 import { buildMockedApp } from "../../helpers/build-mocked-app";
+import {
+  addMockWhereClause,
+  applyMockPaging,
+  matchesMockWhereClauses,
+  type MockWhereClause,
+} from "../../helpers/mock-kysely";
 
 describe("settings sub-account routes", () => {
   afterEach(() => {
@@ -25,18 +31,7 @@ describe("settings sub-account routes", () => {
           total: 3,
           totalPages: 1,
         },
-        seats: [
-          {
-            avatarUrl: "https://example.com/drc.png",
-            name: "德瑞可",
-            seatId: "101",
-          },
-          {
-            avatarUrl: "https://example.com/ndt.png",
-            name: "念都堂",
-            seatId: "102",
-          },
-        ],
+        seats: [],
         subAccounts: [
           {
             account: "owner",
@@ -76,6 +71,38 @@ describe("settings sub-account routes", () => {
       success: true,
     });
     expect(db.getSubAccountListWheres()).toContainEqual(["sub_user.uid", "=", 9001]);
+    expect(db.getSubAccountListWheres()).toContainEqual(["limit", "=", 10]);
+    expect(db.getSubAccountListWheres()).toContainEqual(["offset", "=", 0]);
+
+    await app.close();
+  });
+
+  it("lists seat options with database keyword filtering and limit", async () => {
+    const { app, authorization, db } = await createSettingsApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      query: {
+        keyword: "德",
+      },
+      url: "/api/server/settings/seat-options",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(db.getSeatOptionWheres()).toContainEqual(["limit", "=", 20]);
+    expect(response.json()).toEqual({
+      data: {
+        seats: [
+          {
+            avatarUrl: "https://example.com/drc.png",
+            name: "德瑞可",
+            seatId: "101",
+          },
+        ],
+      },
+      success: true,
+    });
 
     await app.close();
   });
@@ -447,6 +474,7 @@ function createSettingsDbMock() {
   ];
   const seats = [
     {
+      biz_status: 1,
       third_avatar: "https://example.com/drc.png",
       id: 101,
       platform: 5,
@@ -454,6 +482,7 @@ function createSettingsDbMock() {
       uid: 9001,
     },
     {
+      biz_status: 1,
       third_avatar: "https://example.com/ndt.png",
       id: 102,
       platform: 5,
@@ -475,18 +504,40 @@ function createSettingsDbMock() {
     insertedSubAccount: undefined as Record<string, unknown> | undefined,
     expiredAccessTokenSubUserIds: [] as number[],
     revokedSessionSubUserIds: [] as number[],
+    seatOptionWheres: [] as MockWhereClause[],
     statusUpdates: [] as number[],
-    subAccountListWheres: [] as Array<[string, string, unknown]>,
+    subAccountListWheres: [] as MockWhereClause[],
     updatedSubAccount: undefined as Record<string, unknown> | undefined,
+    getSeatOptionWheres() {
+      return state.seatOptionWheres;
+    },
     getSubAccountListWheres() {
       return state.subAccountListWheres;
     },
+    getQueryValue(wheres: MockWhereClause[], column: string) {
+      const clause = wheres.find(
+        (whereClause): whereClause is [string, string, unknown] =>
+          Array.isArray(whereClause) && whereClause[0] === column,
+      );
+
+      return clause?.[2];
+    },
     selectFrom(table: string) {
-      const wheres: Array<[string, string, unknown]> = [];
+      const wheres: MockWhereClause[] = [];
+      const selectColumns: Array<string> = [];
       const builder = {
         execute: async () => {
           if (table === "xy_wap_embed_user_seat") {
-            return seats.map((seat) => ({
+            state.seatOptionWheres = wheres;
+            const filtered = seats.filter((seat) =>
+              matchesMockWhereClauses(seat, wheres),
+            );
+
+            return applyMockPaging(
+              filtered,
+              state.getQueryValue(wheres, "limit") as number | undefined,
+              state.getQueryValue(wheres, "offset") as number | undefined,
+            ).map((seat) => ({
               avatarUrl: seat.third_avatar,
               id: seat.id,
               third_user_name: seat.third_user_name,
@@ -494,35 +545,41 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
-            const subId = wheres.find(([column]) => column === "relation.sub_id")?.[2];
-
             return [...relations, ...state.insertedRelations]
-              .filter((relation) => subId === undefined || relation.sub_id === subId)
               .map((relation) => {
                 const seat = seats.find((item) => item.id === relation.user_seat_id);
 
                 return {
                   avatarUrl: seat?.third_avatar,
+                  biz_status: 1,
                   name: seat?.third_user_name,
+                  platform: relation.platform,
+                  relation: relation,
                   seat_id: relation.user_seat_id,
                   sub_id: relation.sub_id,
+                  uid: relation.uid,
+                  user_seat_id: relation.user_seat_id,
                 };
-              });
+              })
+              .filter((relation) =>
+                matchesMockWhereClauses(relation as Record<string, unknown>, wheres),
+              );
           }
 
           if (table === "xy_wap_embed_sub_user as sub_user") {
             state.subAccountListWheres = wheres;
+            const limit = state.getQueryValue(wheres, "limit");
+            const offset = state.getQueryValue(wheres, "offset");
+            const filtered = subUsers.filter((subUser) =>
+              matchesMockWhereClauses(subUser, wheres),
+            );
+            const sliced = applyMockPaging(filtered, limit as number | undefined, offset as number | undefined);
 
-            return subUsers
-              .filter((subUser) => {
-                if (subUser.status === 0) {
-                  return false;
-                }
+            if (selectColumns.some((column) => column.includes("count("))) {
+              return [{ total: filtered.length }];
+            }
 
-                const id = wheres.find(([column]) => column === "sub_user.id")?.[2];
-
-                return id ? subUser.id === id : true;
-              })
+            return sliced
               .map((subUser) => ({
                 account: subUser.account,
                 id: subUser.id,
@@ -548,14 +605,14 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_sub_user") {
-            if (wheres.some(([column]) => column === "account")) {
-              const account = wheres.find(([column]) => column === "account")?.[2];
+            if (state.getQueryValue(wheres, "account") !== undefined) {
+              const account = state.getQueryValue(wheres, "account");
 
               return subUsers.find((subUser) => subUser.account === account);
             }
 
-            if (wheres.some(([column]) => column === "id")) {
-              const id = wheres.find(([column]) => column === "id")?.[2];
+            if (state.getQueryValue(wheres, "id") !== undefined) {
+              const id = state.getQueryValue(wheres, "id");
 
               return subUsers.find((subUser) => subUser.id === id);
             }
@@ -564,7 +621,11 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_sub_user as sub_user") {
-            const id = wheres.find(([column]) => column === "sub_user.id")?.[2];
+            if (selectColumns.some((column) => column.includes("count("))) {
+              return (await builder.execute())[0];
+            }
+
+            const id = state.getQueryValue(wheres, "sub_user.id");
 
             if (id) {
               const subUser = subUsers.find((item) => item.id === id);
@@ -590,9 +651,31 @@ function createSettingsDbMock() {
         innerJoin: () => builder,
         leftJoin: () => builder,
         orderBy: () => builder,
-        select: () => builder,
-        where: (column: string, operator: string, value: unknown) => {
-          wheres.push([column, operator, value]);
+        select: (selection?: unknown) => {
+          if (Array.isArray(selection)) {
+            selectColumns.push(...selection.map((item) => String(item)));
+          }
+
+          if (typeof selection === "function") {
+            selectColumns.push("count(total)");
+          }
+
+          return builder;
+        },
+        where: (
+          column: string | Parameters<typeof addMockWhereClause>[1],
+          operator?: string,
+          value?: unknown,
+        ) => {
+          addMockWhereClause(wheres, column, operator, value);
+          return builder;
+        },
+        limit: (value: number) => {
+          wheres.push(["limit", "=", value]);
+          return builder;
+        },
+        offset: (value: number) => {
+          wheres.push(["offset", "=", value]);
           return builder;
         },
       };

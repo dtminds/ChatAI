@@ -1,5 +1,6 @@
 import {
   apiSuccess,
+  SettingsAssignmentOptionsQuerySchema,
   SettingsManagedAccountSubAccountsUpdateRequestSchema,
   SettingsManagedAccountsQuerySchema,
   SettingsSidebarItemCreateRequestSchema,
@@ -10,6 +11,7 @@ import {
   SettingsSubAccountCreateRequestSchema,
   SettingsSubAccountStatusUpdateRequestSchema,
   SettingsSubAccountUpdateRequestSchema,
+  type SettingsAssignmentOptionsQuery,
   type SettingsManagedAccountSubAccountsUpdateRequest,
   type SettingsManagedAccountsQuery,
   type SettingsSidebarItemCreateRequest,
@@ -61,6 +63,24 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     );
   });
 
+  app.get<{
+    Querystring: SettingsAssignmentOptionsQuery;
+  }>("/api/server/settings/sub-account-options", {
+    preHandler: app.authenticate,
+    schema: {
+      querystring: SettingsAssignmentOptionsQuerySchema,
+    },
+  }, async (request) => {
+    return apiSuccess(
+      await createManagedAccountSettingsService(app.db).listSubAccountOptions(
+        getSubUserId(request),
+        {
+          keyword: request.query.keyword,
+        },
+      ),
+    );
+  });
+
   app.put<{
     Body: SettingsManagedAccountSubAccountsUpdateRequest;
     Params: ManagedAccountParams;
@@ -97,6 +117,21 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       await createSubAccountSettingsService(app.db).list(getSubUserId(request), {
         keyword: request.query.keyword,
         page: request.query.page,
+      }),
+    );
+  });
+
+  app.get<{
+    Querystring: SettingsAssignmentOptionsQuery;
+  }>("/api/server/settings/seat-options", {
+    preHandler: app.authenticate,
+    schema: {
+      querystring: SettingsAssignmentOptionsQuerySchema,
+    },
+  }, async (request) => {
+    return apiSuccess(
+      await createSubAccountSettingsService(app.db).listSeatOptions(getSubUserId(request), {
+        keyword: request.query.keyword,
       }),
     );
   });

@@ -1,9 +1,11 @@
 import type {
   ApiSuccessEnvelope,
   SettingsManagedAccount,
+  SettingsManagedAccountSubAccountOptionsResponse,
   SettingsManagedAccountsResponse,
   SettingsManagedAccountsQuery,
   SettingsManagedAccountSubAccountsUpdateRequest,
+  SettingsSeatOptionsResponse,
   SettingsSidebarItem,
   SettingsSidebarItemCreateRequest,
   SettingsSidebarItemsResponse,
@@ -18,6 +20,7 @@ import type {
   SettingsSubAccountStatus,
   SettingsSubAccountStatusUpdateRequest,
   SettingsSubAccountUpdateRequest,
+  SettingsAssignmentOptionsQuery,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
 
@@ -39,6 +42,29 @@ export async function listManagedAccounts(query: SettingsManagedAccountsQuery = 
       params: query,
     },
   );
+
+  return response.data;
+}
+
+export async function listSeatOptions(query: SettingsAssignmentOptionsQuery = {}) {
+  const response = await http.get<ApiSuccessEnvelope<SettingsSeatOptionsResponse>>(
+    "/server/settings/seat-options",
+    {
+      params: query,
+    },
+  );
+
+  return response.data;
+}
+
+export async function listManagedAccountSubAccountOptions(
+  query: SettingsAssignmentOptionsQuery = {},
+) {
+  const response = await http.get<
+    ApiSuccessEnvelope<SettingsManagedAccountSubAccountOptionsResponse>
+  >("/server/settings/sub-account-options", {
+    params: query,
+  });
 
   return response.data;
 }

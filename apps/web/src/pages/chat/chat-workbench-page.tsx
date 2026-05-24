@@ -500,6 +500,7 @@ function ChatWorkbenchContent({
   };
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
+    const sendConversationId = activeConversation?.id;
     const normalizedSegments = segments.length > 0 ? segments : [];
     const mentionState = extractComposerMentionState(segments);
     const mention =
@@ -558,7 +559,10 @@ function ChatWorkbenchContent({
         },
       });
 
-      if (!isMountedRef.current) {
+      if (
+        !isMountedRef.current ||
+        activeConversationIdRef.current !== sendConversationId
+      ) {
         return;
       }
 
@@ -579,8 +583,11 @@ function ChatWorkbenchContent({
       });
     } finally {
       isSendingDraftRef.current = false;
-      shouldRestoreComposerFocusRef.current = true;
-      setIsSendingDraft(false);
+      if (isMountedRef.current) {
+        shouldRestoreComposerFocusRef.current =
+          activeConversationIdRef.current === sendConversationId;
+        setIsSendingDraft(false);
+      }
     }
   };
 

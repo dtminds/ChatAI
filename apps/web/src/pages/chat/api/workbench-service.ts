@@ -32,6 +32,8 @@ import {
   type WorkbenchMessageStatus,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
+  type WorkbenchSmartReplyGeneralAnswerRequest,
+  type WorkbenchSmartReplyGeneralAnswerResponse,
   type WorkbenchSmartReplyPollRequest,
   type WorkbenchSmartReplyPollResponse,
   type WorkbenchMessageUpdateEventDto,
@@ -100,6 +102,9 @@ export type WorkbenchService = {
   pollSmartReplies: (
     request: WorkbenchSmartReplyPollRequest,
   ) => Promise<WorkbenchSmartReplyPollResponse>;
+  requestSmartReplyGeneralAnswer: (
+    request: WorkbenchSmartReplyGeneralAnswerRequest,
+  ) => Promise<WorkbenchSmartReplyGeneralAnswerResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
@@ -478,6 +483,9 @@ export function createMockWorkbenchService(): WorkbenchService {
     async pollSmartReplies() {
       return { suggestions: [] };
     },
+    async requestSmartReplyGeneralAnswer() {
+      return { suggestion: null };
+    },
     async sendMessage(payload) {
       const conversation = findConversation(state, payload.conversationId);
 
@@ -702,6 +710,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
         "/server/smart-reply/poll",
         request,
       );
+    },
+    requestSmartReplyGeneralAnswer(request) {
+      return http.post<
+        WorkbenchSmartReplyGeneralAnswerResponse,
+        WorkbenchSmartReplyGeneralAnswerRequest
+      >("/server/smart-reply/general-answer", request);
     },
     sendMessage(payload) {
       return http.post<WorkbenchSendMessageResponse, WorkbenchSendMessagePayload>(

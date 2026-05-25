@@ -149,6 +149,107 @@ describe("message feed row actions", () => {
     expect(onQuoteMessage).not.toHaveBeenCalled();
   });
 
+  it("shows smart reply trigger icon for customer messages without suggestions", () => {
+    render(
+      <MessageRow
+        message={{
+          content: { text: "客户想了解产品", type: "text" },
+          conversationId: "conv-1",
+          id: "msg-customer-1",
+          role: "customer",
+          sender: { id: "cus-1", name: "客户甲" },
+          sentAt: "2026-05-25T10:00:00+08:00",
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("smart-reply-trigger-icon")).toBeInTheDocument();
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+  });
+
+  it("calls smart reply trigger handler when the side icon is clicked", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      id: "msg-customer-1",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+    } as ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onTriggerSmartReply={onTriggerSmartReply}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "生成智能回复" }));
+
+    expect(onTriggerSmartReply).toHaveBeenCalledWith(message);
+  });
+
+  it("hides smart reply trigger icon when a ready suggestion card is shown", () => {
+    render(
+      <MessageRow
+        message={{
+          content: { text: "客户想了解产品", type: "text" },
+          conversationId: "conv-1",
+          id: "msg-customer-1",
+          role: "customer",
+          sender: { id: "cus-1", name: "客户甲" },
+          sentAt: "2026-05-25T10:00:00+08:00",
+        }}
+        smartReply={{
+          assistantName: "护肤小助手",
+          content: "建议先确认肤质",
+          status: "ready",
+          versionCount: 1,
+          versionIndex: 0,
+        }}
+      />,
+    );
+
+    expect(screen.queryByTestId("smart-reply-trigger-icon")).not.toBeInTheDocument();
+    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
+  });
+
+  it("calls smart reply trigger handler when regenerate is selected", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      id: "msg-customer-1",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+    } as ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onTriggerSmartReply={onTriggerSmartReply}
+        smartReply={{
+          assistantName: "护肤小助手",
+          content: "建议先确认肤质",
+          status: "ready",
+          versionCount: 1,
+          versionIndex: 0,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "智能回复调整" }));
+    await user.click(screen.getByRole("menuitem", { name: "重新生成" }));
+
+    expect(onTriggerSmartReply).toHaveBeenCalledWith(message);
+  });
+
   it("keeps the feed item key stable after optimistic messages are reconciled", () => {
     const optimisticMessage = {
       ...createTextMessage("已确认消息"),

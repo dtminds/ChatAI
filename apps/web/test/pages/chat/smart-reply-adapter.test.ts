@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
+import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
   adaptSmartReplySuggestions,
+  collectNewSmartReplyPendingKeys,
+  collectQuestionImgs,
   collectSmartReplyMsgIds,
+  createPendingSmartReplySuggestion,
+  createTriggeredSmartReplySuggestion,
   getSmartReplyLookupKey,
+  getSmartReplyProcessingLabel,
+  isSmartReplyReady,
+  mergeSmartReplySuggestionsWithPending,
+  resolveSmartReplyProcessingLabel,
+  shouldShowSmartReplyCard,
+  shouldShowSmartReplyTriggerIcon,
 } from "@/pages/chat/api/smart-reply-adapter";
 
 describe("smart-reply-adapter", () => {
@@ -34,24 +45,193 @@ describe("smart-reply-adapter", () => {
     expect(getSmartReplyLookupKey({ id: "wx-msg-001" })).toBe("wx-msg-001");
   });
 
+  it("returns processing labels by message content type", () => {
+    expect(getSmartReplyProcessingLabel("voice", "processing")).toBe("正在处理语音消息...");
+    expect(getSmartReplyProcessingLabel("image", "processing")).toBe("正在处理图片消息...");
+    expect(getSmartReplyProcessingLabel("text", "processing")).toBe("AI正在生成话术...");
+  });
+
+  it("returns generating label while smart reply is thinking", () => {
+    expect(getSmartReplyProcessingLabel("voice", "thinking")).toBe("AI正在生成话术...");
+    expect(getSmartReplyProcessingLabel("image", "thinking")).toBe("AI正在生成话术...");
+    expect(resolveSmartReplyProcessingLabel("voice", "processing", true)).toBe(
+      "AI正在生成话术...",
+    );
+  });
+
+  it("collects image urls for general-answer requests", () => {
+    expect(
+      collectQuestionImgs({
+        content: { imageUrl: "https://example.com/image.png", alt: "图片", type: "image" },
+        id: "msg-image",
+        role: "customer",
+      } as ChatMessage),
+    ).toEqual(["https://example.com/image.png"]);
+    expect(
+      collectQuestionImgs({
+        content: { text: "文本", type: "text" },
+        id: "msg-text",
+        role: "customer",
+      } as ChatMessage),
+    ).toEqual([]);
+  });
+
+  it("creates triggered suggestions with media processing state", () => {
+    expect(
+      createTriggeredSmartReplySuggestion({
+        content: { imageUrl: "https://example.com/image.png", alt: "图片", type: "image" },
+        id: "msg-image",
+        role: "customer",
+      } as ChatMessage),
+    ).toEqual(createPendingSmartReplySuggestion());
+    expect(
+      createTriggeredSmartReplySuggestion({
+        content: { text: "文本", type: "text" },
+        id: "msg-text",
+        role: "customer",
+      } as ChatMessage).status,
+    ).toBe("thinking");
+  });
+
+  it("treats ready suggestions and busy suggestions differently", () => {
+    expect(
+      isSmartReplyReady({
+        assistantName: "护肤小助手",
+        content: "建议回复",
+        status: "ready",
+        versionCount: 1,
+        versionIndex: 0,
+      }),
+    ).toBe(true);
+    expect(
+      isSmartReplyReady({
+        assistantName: "护肤小助手",
+        content: "",
+        status: "thinking",
+        versionCount: 1,
+        versionIndex: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("marks only newly appended customer messages as pending", () => {
+    expect(
+      collectNewSmartReplyPendingKeys(
+        [
+          {
+            content: { text: "旧消息", type: "text" },
+            id: "msg-1",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:00:00+08:00",
+            seq: 10,
+          },
+        ] as Message[],
+        [
+          {
+            content: { text: "新消息", type: "text" },
+            id: "msg-2",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:01:00+08:00",
+            seq: 11,
+          },
+        ] as Message[],
+      ),
+    ).toEqual(["11"]);
+  });
+
+  it("does not mark history preload messages as pending", () => {
+    expect(
+      collectNewSmartReplyPendingKeys(
+        [],
+        [
+          {
+            content: { text: "首屏消息", type: "text" },
+            id: "msg-1",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:00:00+08:00",
+            seq: 1,
+          },
+        ] as Message[],
+      ),
+    ).toEqual([]);
+  });
+
+  it("shows trigger icon only for eligible customer messages without a smart reply card", () => {
+    const customerMessage = {
+      content: { text: "客户消息", type: "text" },
+      id: "msg-1",
+      role: "customer",
+    } as const;
+
+    expect(
+      shouldShowSmartReplyTriggerIcon(customerMessage, undefined),
+    ).toBe(true);
+    expect(
+      shouldShowSmartReplyTriggerIcon(customerMessage, {
+        assistantName: "护肤小助手",
+        content: "建议回复",
+        status: "ready",
+        versionCount: 1,
+        versionIndex: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowSmartReplyTriggerIcon(customerMessage, {
+        assistantName: "护肤小助手",
+        content: "",
+        status: "processing",
+        versionCount: 1,
+        versionIndex: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowSmartReplyTriggerIcon(
+        {
+          ...customerMessage,
+          role: "agent",
+        },
+        undefined,
+      ),
+    ).toBe(false);
+  });
+
+  it("merges pending placeholders until suggestions are ready", () => {
+    const merged = mergeSmartReplySuggestionsWithPending(
+      {},
+      { "1090": true },
+    );
+
+    expect(merged["1090"]).toEqual(createPendingSmartReplySuggestion());
+    expect(
+      shouldShowSmartReplyCard({
+        assistantName: "护肤小助手",
+        content: "",
+        status: "processing",
+        versionCount: 1,
+        versionIndex: 0,
+      }),
+    ).toBe(true);
+  });
+
   it("adapts suggestions into a message id map", () => {
     const map = adaptSmartReplySuggestions([
       {
         assistantName: "护肤小助手",
         content: "建议回复",
         messageId: "1090",
+        refAttachIds: ["101", "102"],
         status: "ready",
-        versionCount: 2,
-        versionIndex: 1,
       },
     ]);
 
     expect(map["1090"]).toEqual({
       assistantName: "护肤小助手",
       content: "建议回复",
+      refAttachIds: ["101", "102"],
       status: "ready",
-      versionCount: 2,
-      versionIndex: 1,
     });
   });
 });

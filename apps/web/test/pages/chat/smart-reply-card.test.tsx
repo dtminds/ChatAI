@@ -1,14 +1,19 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SMART_REPLY_MEDIA_PROCESSING_HINT_MS } from "@/pages/chat/api/smart-reply-adapter";
 import {
   SmartReplyCard,
+  SmartReplyInlineProcessingHint,
   SmartReplyMessageAnchor,
-  SmartReplyTriggerIcon,
 } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
 describe("SmartReplyCard", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders assistant header, content and footer actions", () => {
     render(
       <SmartReplyCard
@@ -18,8 +23,6 @@ describe("SmartReplyCard", () => {
         onMakeShorter={() => undefined}
         onRegenerate={() => undefined}
         onSend={() => undefined}
-        versionCount={6}
-        versionIndex={0}
       />,
     );
 
@@ -28,7 +31,7 @@ describe("SmartReplyCard", () => {
     expect(screen.getByText("这里是思考的文案...")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "编辑" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument();
-    expect(screen.getByText("1/6")).toBeInTheDocument();
+    expect(screen.getByLabelText("推荐附件 0 个")).toHaveTextContent("0");
   });
 
   it("collapses to header only and expands again from the header toggle", async () => {
@@ -66,6 +69,18 @@ describe("SmartReplyCard", () => {
     expect(screen.getByText("这里是思考的文案...")).toBeInTheDocument();
   });
 
+  it("shows ref attach count in toolbar", () => {
+    render(
+      <SmartReplyCard
+        assistantName="护肤小助手"
+        content="建议回复"
+        refAttachIds={["101", "102", "103"]}
+      />,
+    );
+
+    expect(screen.getByLabelText("推荐附件 3 个")).toHaveTextContent("3");
+  });
+
   it("opens ai adjustment menu from the magic action", async () => {
     const user = userEvent.setup();
 
@@ -84,6 +99,35 @@ describe("SmartReplyCard", () => {
 
     expect(screen.getByRole("menuitem", { name: "简短一点" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "重新生成" })).toBeInTheDocument();
+  });
+
+  it("calls onRegenerate with the anchor message", async () => {
+    const user = userEvent.setup();
+    const onRegenerate = vi.fn();
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        onRegenerate={onRegenerate}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌",
+          status: "ready",
+          versionCount: 1,
+          versionIndex: 0,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "智能回复调整" }));
+    await user.click(screen.getByRole("menuitem", { name: "重新生成" }));
+
+    expect(onRegenerate).toHaveBeenCalledWith(message);
   });
 
   it("opens edit dialog from message anchor", async () => {
@@ -214,16 +258,65 @@ describe("SmartReplyCard", () => {
     expect(violationPanel).toHaveTextContent("太好用了");
   });
 
-  it("hides trigger icon while thinking or processing", () => {
-    const { rerender } = render(<SmartReplyTriggerIcon />);
+  it("renders inline processing hint with the provided label", () => {
+    render(<SmartReplyInlineProcessingHint label="正在处理图片消息..." />);
 
-    expect(screen.getByTestId("smart-reply-trigger-icon")).toBeInTheDocument();
+    expect(screen.getByTestId("smart-reply-inline-processing")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("正在处理图片消息...");
+  });
 
-    rerender(<SmartReplyTriggerIcon isThinking />);
-    expect(screen.queryByTestId("smart-reply-trigger-icon")).not.toBeInTheDocument();
+  it("shows generating text while smart reply is thinking", () => {
+    const message = {
+      content: { audioUrl: "https://example.com/voice.mp3", durationLabel: "3\"", type: "voice" },
+      id: "msg-voice",
+      role: "customer",
+    } as ChatMessage;
 
-    rerender(<SmartReplyTriggerIcon isProcessing />);
-    expect(screen.queryByTestId("smart-reply-trigger-icon")).not.toBeInTheDocument();
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "",
+          status: "thinking",
+          versionCount: 1,
+          versionIndex: 0,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("AI正在生成话术...");
+  });
+
+  it("switches media processing text to generating text after the hint duration", () => {
+    vi.useFakeTimers();
+
+    const message = {
+      content: { imageUrl: "https://example.com/image.png", type: "image" },
+      id: "msg-image",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "",
+          status: "processing",
+          versionCount: 1,
+          versionIndex: 0,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("正在处理图片消息...");
+
+    act(() => {
+      vi.advanceTimersByTime(SMART_REPLY_MEDIA_PROCESSING_HINT_MS);
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("AI正在生成话术...");
   });
 
   it("renders smart reply card inline below the message anchor", () => {

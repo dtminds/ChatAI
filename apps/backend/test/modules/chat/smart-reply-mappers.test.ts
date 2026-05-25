@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  mapJavaGeneralAnswer,
   mapJavaUserHistoryAnswerList,
   normalizeSmartReplyMsgIds,
-  parseSmartReplyJavaMsgIds,
-  summarizeJavaUserHistoryAnswerRawData,
 } from "../../../src/modules/chat/smart-reply-mappers.js";
 
 describe("normalizeSmartReplyMsgIds", () => {
@@ -18,33 +17,14 @@ describe("normalizeSmartReplyMsgIds", () => {
   });
 });
 
-describe("parseSmartReplyJavaMsgIds", () => {
-  it("parses legacy string message ids", () => {
-    expect(parseSmartReplyJavaMsgIds(["1022692", "msg-001"])).toEqual([1022692]);
-  });
-});
-
-describe("summarizeJavaUserHistoryAnswerRawData", () => {
-  it("summarizes empty array payloads from Java", () => {
-    expect(summarizeJavaUserHistoryAnswerRawData([])).toEqual({
-      dataType: "array",
-      itemCount: 0,
-      objectKeys: undefined,
-      preview: [],
-    });
-  });
-});
-
 describe("mapJavaUserHistoryAnswerList", () => {
-  it("maps array payloads by msgId", () => {
+  it("maps array payloads by analyseMsgId", () => {
     const response = mapJavaUserHistoryAnswerList([
       {
-        answerContent: "您好，可以先告诉我肤质吗",
-        answerStatus: 2,
+        analyseMsgId: 1022692,
         assistantName: "护肤小助手",
-        msgId: "msg-001",
-        versionCount: 3,
-        versionIndex: 1,
+        recommendAnswer: "您好，可以先告诉我肤质吗",
+        status: 2,
       },
     ]);
 
@@ -52,30 +32,14 @@ describe("mapJavaUserHistoryAnswerList", () => {
       {
         assistantName: "护肤小助手",
         content: "您好，可以先告诉我肤质吗",
-        messageId: "msg-001",
+        generateStatus: 2,
+        messageId: "1022692",
         status: "ready",
-        versionCount: 3,
-        versionIndex: 1,
       },
     ]);
   });
 
-  it("maps numeric msgId from Java payloads", () => {
-    const response = mapJavaUserHistoryAnswerList([
-      {
-        answerContent: "您好",
-        answerStatus: 2,
-        assistantName: "护肤小助手",
-        msgId: 1022692,
-        versionCount: 1,
-        versionIndex: 0,
-      },
-    ]);
-
-    expect(response.suggestions[0]?.messageId).toBe("1022692");
-  });
-
-  it("maps SCRM user-history-answer-list payloads with analyseMsgId", () => {
+  it("maps SCRM user-history-answer-list payloads", () => {
     const response = mapJavaUserHistoryAnswerList([
       {
         analyseMsgId: 1121,
@@ -89,10 +53,9 @@ describe("mapJavaUserHistoryAnswerList", () => {
       {
         assistantName: "名字超长的ai助手名字超长的ai助手名字",
         content: "您好，请问您具体是遇到了什么问题呢",
+        generateStatus: 2,
         messageId: "1121",
         status: "ready",
-        versionCount: 1,
-        versionIndex: 0,
       },
     ]);
   });
@@ -101,9 +64,9 @@ describe("mapJavaUserHistoryAnswerList", () => {
     const response = mapJavaUserHistoryAnswerList({
       list: [
         {
-          answerStatus: 0,
-          botName: "客服助手",
-          msgid: "msg-002",
+          analyseMsgId: 1002,
+          assistantName: "客服助手",
+          status: 0,
         },
       ],
     });
@@ -112,11 +75,41 @@ describe("mapJavaUserHistoryAnswerList", () => {
       {
         assistantName: "客服助手",
         content: "",
-        messageId: "msg-002",
+        generateStatus: 0,
+        messageId: "1002",
         status: "thinking",
-        versionCount: 1,
-        versionIndex: 0,
       },
     ]);
+  });
+
+  it("maps single general-answer payloads", () => {
+    expect(
+      mapJavaGeneralAnswer({
+        analyseMsgId: 1121,
+        assistantName: "护肤小助手",
+        recommendAnswer: "您好",
+        status: 2,
+      }),
+    ).toEqual({
+      assistantName: "护肤小助手",
+      content: "您好",
+      generateStatus: 2,
+      messageId: "1121",
+      status: "ready",
+    });
+  });
+
+  it("parses comma-separated refAttachIds", () => {
+    const response = mapJavaUserHistoryAnswerList([
+      {
+        analyseMsgId: 1121,
+        assistantName: "护肤小助手",
+        recommendAnswer: "您好",
+        refAttachIds: "101, 102",
+        status: 2,
+      },
+    ]);
+
+    expect(response.suggestions[0]?.refAttachIds).toEqual(["101", "102"]);
   });
 });

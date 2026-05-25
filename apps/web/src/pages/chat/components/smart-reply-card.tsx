@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight01Icon,
   ArrowDown01Icon,
@@ -15,6 +15,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import {
+  isSmartReplyMediaContentType,
+  resolveSmartReplyProcessingLabel,
+  SMART_REPLY_BUSY_TIMEOUT_MS,
+  SMART_REPLY_MEDIA_PROCESSING_HINT_MS,
+} from "@/pages/chat/api/smart-reply-adapter";
 import { SmartReplyEditDialog } from "@/pages/chat/components/smart-reply-edit-dialog";
 
 const SMART_REPLY_TRIGGER_ICON =
@@ -23,10 +29,10 @@ const SMART_REPLY_TRIGGER_ICON =
 export type SmartReplySuggestion = {
   assistantAvatarUrl?: string;
   assistantName: string;
+  busyRequestId?: number;
   content: string;
   status?: "thinking" | "processing" | "ready";
-  versionCount: number;
-  versionIndex: number;
+  refAttachIds?: string[];
 };
 
 export type SmartReplyCardProps = {
@@ -40,8 +46,8 @@ export type SmartReplyCardProps = {
   onMakeShorter?: () => void;
   onRegenerate?: () => void;
   onSend?: () => void;
-  versionCount: number;
-  versionIndex: number;
+  processingLabel?: string;
+  refAttachIds?: string[];
 };
 
 export function SmartReplyCard({
@@ -55,11 +61,10 @@ export function SmartReplyCard({
   onMakeShorter,
   onRegenerate,
   onSend,
-  versionCount,
-  versionIndex,
+  processingLabel,
+  refAttachIds,
 }: SmartReplyCardProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const versionLabel = `${versionIndex + 1}/${Math.max(versionCount, 1)}`;
 
   return (
     <article
@@ -106,6 +111,7 @@ export function SmartReplyCard({
             isThinking={isThinking}
             isProcessing={isProcessing}
             isKnowledgeHit={isKnowledgeHit}
+            processingLabel={processingLabel}
           />
           {
             isKnowledgeHit && !isThinking && !isProcessing ? 
@@ -113,7 +119,8 @@ export function SmartReplyCard({
               <SmartReplyToolbar
                 onMakeShorter={onMakeShorter}
                 onRegenerate={onRegenerate}
-                versionLabel={versionLabel}
+                refAttachIds={refAttachIds}
+                onEdit={onEdit}
               />
               <SmartReplyActions
                 content={content}
@@ -135,6 +142,7 @@ type SmartReplyMessageAnchorProps = {
   onMakeShorter?: (message: ChatMessage) => void;
   onRegenerate?: (message: ChatMessage) => void;
   onSend?: (message: ChatMessage, content: string) => void;
+  onBusyTimeout?: () => void;
   suggestion?: SmartReplySuggestion | null;
 };
 
@@ -144,6 +152,7 @@ export function SmartReplyMessageAnchor({
   onMakeShorter,
   onRegenerate,
   onSend,
+  onBusyTimeout,
   suggestion,
 }: SmartReplyMessageAnchorProps) {
   const [dismissed, setDismissed] = useState(false);
@@ -157,6 +166,13 @@ export function SmartReplyMessageAnchor({
   const displayContent = resolvedSuggestion.content;
   const isThinking = resolvedSuggestion.status === "thinking";
   const isProcessing = resolvedSuggestion.status === "processing";
+  const isBusy = isThinking || isProcessing;
+  const processingLabel = useSmartReplyProcessingLabel(
+    message.content.type,
+    resolvedSuggestion.status,
+  );
+
+  useSmartReplyBusyTimeout(isBusy, onBusyTimeout, resolvedSuggestion.busyRequestId);
 
   const handleDismiss = () => {
     setDismissed(true);
@@ -166,11 +182,13 @@ export function SmartReplyMessageAnchor({
   return (
     <>
       <SmartReplyCard
+        refAttachIds={resolvedSuggestion.refAttachIds}
         assistantAvatarUrl={resolvedSuggestion.assistantAvatarUrl}
         assistantName={resolvedSuggestion.assistantName}
         content={displayContent}
         isThinking={isThinking}
         isProcessing={isProcessing}
+        processingLabel={processingLabel}
         onEdit={() => setIsEditDialogOpen(true)}
         onMakeShorter={
           onMakeShorter
@@ -187,15 +205,15 @@ export function SmartReplyMessageAnchor({
             : undefined
         }
         onSend={
-          onSend
-            ? () => {
-                onSend(message, displayContent.trim());
-                handleDismiss();
-              }
-            : undefined
+          resolvedSuggestion.refAttachIds?.length &&
+          resolvedSuggestion.refAttachIds.length > 0
+            ? () => setIsEditDialogOpen(true)
+            : onSend
+              ? () => {
+                  onSend(message, displayContent.trim());
+                }
+              : undefined
         }
-        versionCount={resolvedSuggestion.versionCount}
-        versionIndex={resolvedSuggestion.versionIndex}
       />
       <SmartReplyEditDialog
         initialContent={displayContent}
@@ -214,6 +232,55 @@ export function SmartReplyMessageAnchor({
   );
 }
 
+function useSmartReplyProcessingLabel(
+  contentType: ChatMessage["content"]["type"],
+  status: SmartReplySuggestion["status"] | undefined,
+) {
+  const isThinking = status === "thinking";
+  const isProcessing = status === "processing";
+  const isMediaMessage = isSmartReplyMediaContentType(contentType);
+  const [mediaHintExpired, setMediaHintExpired] = useState(false);
+
+  useEffect(() => {
+    if (isThinking) {
+      setMediaHintExpired(true);
+      return;
+    }
+
+    if (!isProcessing || !isMediaMessage) {
+      setMediaHintExpired(false);
+      return;
+    }
+
+    setMediaHintExpired(false);
+    const timer = window.setTimeout(() => {
+      setMediaHintExpired(true);
+    }, SMART_REPLY_MEDIA_PROCESSING_HINT_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [contentType, isMediaMessage, isProcessing, isThinking]);
+
+  return resolveSmartReplyProcessingLabel(contentType, status, mediaHintExpired);
+}
+
+function useSmartReplyBusyTimeout(
+  isBusy: boolean,
+  onTimeout?: () => void,
+  busyRequestId?: number,
+) {
+  useEffect(() => {
+    if (!isBusy || !onTimeout) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      onTimeout();
+    }, SMART_REPLY_BUSY_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [busyRequestId, isBusy, onTimeout]);
+}
+
 export function isSmartReplyBusy(
   suggestion?: SmartReplySuggestion | null,
 ): boolean {
@@ -225,22 +292,49 @@ export function isSmartReplyBusy(
 export function SmartReplyTriggerIcon({
   isProcessing = false,
   isThinking = false,
+  onClick,
 }: {
   isProcessing?: boolean;
   isThinking?: boolean;
+  onClick?: () => void;
 }) {
   if (isProcessing || isThinking) {
     return null;
   }
 
   return (
-    <img
-      alt=""
-      aria-hidden
-      className="size-[14px] object-contain"
+    <button
+      aria-label="生成智能回复"
+      className="inline-flex size-[14px] shrink-0 items-center justify-center border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
       data-testid="smart-reply-trigger-icon"
-      src={SMART_REPLY_TRIGGER_ICON}
-    />
+      onClick={onClick}
+      type="button"
+    >
+      <img
+        alt=""
+        aria-hidden
+        className="size-[14px] object-contain"
+        src={SMART_REPLY_TRIGGER_ICON}
+      />
+    </button>
+  );
+}
+
+export function SmartReplyInlineProcessingHint({ label }: { label: string }) {
+  return (
+    <div
+      className="ml-[16px] flex shrink-0 items-center gap-1"
+      data-testid="smart-reply-inline-processing"
+      role="status"
+    >
+      <HugeiconsIcon
+        color="#666666"
+        icon={Loading03Icon}
+        size={14}
+        strokeWidth={2}
+      />
+      <p className="text-[12px] leading-4 text-[#3D3D3D]">{label}</p>
+    </div>
   );
 }
 
@@ -266,11 +360,13 @@ function SmartReplyContentBody({
   isThinking,
   isProcessing,
   isKnowledgeHit,
+  processingLabel,
 }: {
   content: string;
   isThinking: boolean;
   isProcessing: boolean;
   isKnowledgeHit: boolean;
+  processingLabel?: string;
 }) {
   return (
     <div className="px-[16px] py-[12px]">
@@ -279,6 +375,7 @@ function SmartReplyContentBody({
           isKnowledgeHit={isKnowledgeHit}
           isProcessing={isProcessing}
           isThinking={isThinking}
+          processingLabel={processingLabel}
         />
       ) : (
         <p className="max-h-[120px] overflow-y-auto whitespace-pre-wrap text-[13px] leading-[22px] text-[#101419] bg-[#F6F6F6] px-[12px] py-[5px] rounded-[6px]">
@@ -293,10 +390,12 @@ function SmartReplyReadonlyContent({
   isThinking,
   isProcessing,
   isKnowledgeHit,
+  processingLabel,
 }: {
   isThinking: boolean;
   isProcessing: boolean;
   isKnowledgeHit: boolean;
+  processingLabel?: string;
 }) {
   return (
     <div className="rounded-[10px]">
@@ -309,7 +408,8 @@ function SmartReplyReadonlyContent({
             strokeWidth={2}
           />
           <p className="text-[13px] text-[#3D3D3D]" role="status">
-            {isThinking ? "AI正在生成话术..." : "正在处理消息..."}
+            {processingLabel ??
+              (isThinking ? "AI正在生成话术..." : "正在处理消息...")}
           </p>
         </div>
       ) : null}
@@ -328,12 +428,16 @@ function SmartReplyReadonlyContent({
 function SmartReplyToolbar({
   onMakeShorter,
   onRegenerate,
-  versionLabel,
+  refAttachIds,
+  onEdit,
 }: {
   onMakeShorter?: () => void;
   onRegenerate?: () => void;
-  versionLabel: string;
+  refAttachIds?: string[];
+  onEdit?: () => void;
 }) {
+  const refAttachCount = refAttachIds?.length ?? 0;
+
   return (
     <div className="flex min-w-0 items-center gap-[10px] cursor-pointer">
       <DropdownMenu>
@@ -357,16 +461,24 @@ function SmartReplyToolbar({
           <DropdownMenuItem onSelect={onRegenerate}>重新生成</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <Separator className="h-[12px] bg-[#EEEFF0]" orientation="vertical" />
-      <div className="inline-flex items-center gap-1 text-[12px] leading-4 text-muted-foreground">
-        <img
-          alt=""
-          aria-hidden
-          className="size-[14px] object-contain"
-          src="https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/third/容器@2x (3).png!tiny.webp"
-        />
-        <span>{versionLabel}</span>
-      </div>
+      {
+        refAttachCount > 0 ? <>
+          <Separator className="h-[12px] bg-[#EEEFF0]" orientation="vertical" />
+          <div
+            aria-label={`推荐附件 ${refAttachCount} 个`}
+            className="inline-flex items-center gap-1 text-[12px] leading-4 text-muted-foreground"
+            onClick={onEdit}
+          >
+            <img
+              alt=""
+              aria-hidden
+              className="size-[14px] object-contain"
+              src="https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/third/容器@2x (3).png!tiny.webp"
+            />
+            <span>{refAttachCount}</span>
+          </div>
+        </> : null
+      }
     </div>
   );
 }

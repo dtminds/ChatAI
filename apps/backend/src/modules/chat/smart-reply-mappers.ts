@@ -4,7 +4,6 @@ import type {
   WorkbenchSmartReplyStatus,
   WorkbenchSmartReplySuggestionDto,
 } from "@chatai/contracts";
-import { parseMySqlId } from "./workbench-repository.js";
 
 export function normalizeSmartReplyMsgIds(
   messageIds: number[],
@@ -29,75 +28,36 @@ export function normalizeSmartReplyMsgIds(
   return normalized;
 }
 
-/** @deprecated 仅兼容旧调用；BFF 请求体应直接传 number[] */
-export function parseSmartReplyJavaMsgIds(
-  messageIds: string[],
-  limit = SMART_REPLY_MSG_IDS_LIMIT,
-) {
-  const seen = new Set<number>();
-  const parsed: number[] = [];
-
-  for (const rawMessageId of messageIds) {
-    const numericMessageId = parseMySqlId(rawMessageId.trim());
-
-    if (numericMessageId == null || seen.has(numericMessageId)) {
-      continue;
-    }
-
-    seen.add(numericMessageId);
-    parsed.push(numericMessageId);
-
-    if (parsed.length >= limit) {
-      break;
-    }
-  }
-
-  return parsed;
-}
-
-type JavaSmartReplyAnswerVersion = {
-  answerContent?: string;
-  answer?: string;
-  content?: string;
-  recommendAnswer?: string;
-  versionIndex?: number;
-  versionNo?: number;
-};
-
 type JavaSmartReplyAnswerItem = {
   analyseMsgId?: number | string;
-  answerContent?: string;
-  answer?: string;
-  answerList?: JavaSmartReplyAnswerVersion[];
-  answerStatus?: number | string;
-  assistantAvatar?: string;
-  assistantAvatarUrl?: string;
+  answerType?: number | string;
+  assistantId?: number | string;
   assistantName?: string;
-  botAvatar?: string;
-  botAvatarUrl?: string;
-  botName?: string;
-  content?: string;
-  currentVersion?: number;
-  generateStatus?: number | string;
-  msgId?: number | string;
-  msgid?: number | string;
+  createTime?: string;
+  failReason?: string;
+  id?: number | string;
+  questionIntent?: string;
+  realAnswer?: string;
   recommendAnswer?: string;
+  refAttachIds?: string;
   status?: number | string;
-  totalVersion?: number;
-  versionCount?: number;
-  versionIndex?: number;
-  versionNum?: number;
+  totalToken?: number | string;
 };
 
-export function summarizeJavaUserHistoryAnswerRawData(data: unknown) {
-  const items = extractJavaAnswerItems(data);
+export function mapJavaGeneralAnswer(
+  data: unknown,
+): WorkbenchSmartReplySuggestionDto | null {
+  const mapped = mapJavaUserHistoryAnswerList(data);
 
-  return {
-    dataType: Array.isArray(data) ? "array" : data == null ? "null" : typeof data,
-    itemCount: items.length,
-    objectKeys: isRecord(data) ? Object.keys(data) : undefined,
-    preview: items.length > 0 ? items.slice(0, 3) : data,
-  };
+  if (mapped.suggestions.length > 0) {
+    return mapped.suggestions[0] ?? null;
+  }
+
+  if (isJavaAnswerItem(data)) {
+    return mapJavaUserHistoryAnswerList([data]).suggestions[0] ?? null;
+  }
+
+  return null;
 }
 
 export function mapJavaUserHistoryAnswerList(
@@ -140,92 +100,42 @@ function extractJavaAnswerItems(data: unknown): JavaSmartReplyAnswerItem[] {
     }
   }
 
-  return Object.values(data).filter(isJavaAnswerItem);
+  return [];
 }
 
 function mapJavaAnswerItem(
   item: JavaSmartReplyAnswerItem,
 ): WorkbenchSmartReplySuggestionDto | undefined {
-  const messageId =
-    readMessageId(item.msgId) ??
-    readMessageId(item.msgid) ??
-    readMessageId(item.analyseMsgId);
+  const messageId = readMessageId(item.analyseMsgId);
 
   if (!messageId) {
     return undefined;
   }
 
-  const versions = Array.isArray(item.answerList) ? item.answerList : [];
-  const latestVersion =
-    versions.length > 0 ? versions[versions.length - 1] : undefined;
-  const content =
-    readAnswerContent(latestVersion) ??
-    readAnswerContent(item) ??
-    "";
+  const content = readString(item.recommendAnswer) ?? readString(item.realAnswer) ?? "";
 
   if (!content.trim()) {
-    const status = mapSmartReplyStatus(item);
+    const status = mapSmartReplyStatus(item.status);
 
     if (status !== "thinking" && status !== "processing") {
       return undefined;
     }
   }
 
-  const versionCount = Math.max(
-    1,
-    readPositiveInteger(item.versionCount) ??
-      readPositiveInteger(item.versionNum) ??
-      readPositiveInteger(item.totalVersion) ??
-      (versions.length > 0 ? versions.length : 1),
-  );
-  const versionIndex = Math.min(
-    Math.max(versionCount - 1, 0),
-    readNonNegativeInteger(item.versionIndex) ??
-      readNonNegativeInteger(item.currentVersion) ??
-      readNonNegativeInteger(latestVersion?.versionIndex) ??
-      readNonNegativeInteger(latestVersion?.versionNo) ??
-      0,
-  );
-
   return {
-    assistantAvatarUrl:
-      readString(item.assistantAvatarUrl) ??
-      readString(item.assistantAvatar) ??
-      readString(item.botAvatarUrl) ??
-      readString(item.botAvatar),
-    assistantName:
-      readString(item.assistantName) ??
-      readString(item.botName) ??
-      "智能助手",
+    assistantName: readString(item.assistantName) ?? "智能助手",
     content: content.trim(),
-    // Java msgId 与请求体 msgIds 一致，均为消息 seq
+    failReason: readString(item.failReason),
+    generateStatus: item.status,
     messageId,
-    status: mapSmartReplyStatus(item),
-    versionCount,
-    versionIndex,
+    refAttachIds: parseRefAttachIds(item.refAttachIds),
+    status: mapSmartReplyStatus(item.status),
   };
 }
 
-function readAnswerContent(
-  value: JavaSmartReplyAnswerItem | JavaSmartReplyAnswerVersion | undefined,
-) {
-  if (!value) {
-    return undefined;
-  }
-
-  return (
-    readString(value.answerContent) ??
-    readString(value.recommendAnswer) ??
-    readString(value.answer) ??
-    readString(value.content)
-  );
-}
-
 function mapSmartReplyStatus(
-  item: JavaSmartReplyAnswerItem,
+  rawStatus: JavaSmartReplyAnswerItem["status"],
 ): WorkbenchSmartReplyStatus | undefined {
-  const rawStatus = item.answerStatus ?? item.generateStatus ?? item.status;
-
   if (typeof rawStatus === "string") {
     const normalized = rawStatus.trim().toLowerCase();
 
@@ -273,13 +183,23 @@ function mapSmartReplyStatus(
   return "ready";
 }
 
+function parseRefAttachIds(value: string | undefined) {
+  const raw = readString(value);
+
+  if (!raw) {
+    return undefined;
+  }
+
+  const ids = raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+
+  return ids.length > 0 ? ids : undefined;
+}
+
 function isJavaAnswerItem(value: unknown): value is JavaSmartReplyAnswerItem {
-  return (
-    isRecord(value) &&
-    (value.msgId != null ||
-      value.msgid != null ||
-      value.analyseMsgId != null)
-  );
+  return isRecord(value) && value.analyseMsgId != null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -298,12 +218,6 @@ function readString(value: unknown) {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
-}
-
-function readPositiveInteger(value: unknown) {
-  const parsed = readNonNegativeInteger(value);
-
-  return parsed != null && parsed > 0 ? parsed : undefined;
 }
 
 function readNonNegativeInteger(value: unknown) {

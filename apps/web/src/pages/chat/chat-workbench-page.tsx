@@ -2,6 +2,7 @@ import {
   startTransition,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -60,6 +61,7 @@ import type {
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
+import { mergeSmartReplySuggestionsWithPending } from "@/pages/chat/api/smart-reply-adapter";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -171,8 +173,10 @@ function ChatWorkbenchContent({
     messagePaginationByConversationId,
     messagesByConversationId,
     smartReplyByMessageIdByConversationId,
+    smartReplyPendingMessageKeysByConversationId,
     pollState,
     pollWorkbench,
+    requestSmartReplyGeneralAnswer,
     readReceiptError,
     pinConversation,
     retryFailedMessage,
@@ -287,9 +291,20 @@ function ChatWorkbenchContent({
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
     [];
-  const activeSmartReplyByMessageId = activeConversation
-    ? (smartReplyByMessageIdByConversationId[activeConversation.id] ?? {})
-    : {};
+  const activeSmartReplyByMessageId = useMemo(() => {
+    if (!activeConversation) {
+      return {};
+    }
+
+    return mergeSmartReplySuggestionsWithPending(
+      smartReplyByMessageIdByConversationId[activeConversation.id] ?? {},
+      smartReplyPendingMessageKeysByConversationId[activeConversation.id] ?? {},
+    );
+  }, [
+    activeConversation,
+    smartReplyByMessageIdByConversationId,
+    smartReplyPendingMessageKeysByConversationId,
+  ]);
   const activeGroupMembers =
     activeConversation?.mode === "group"
       ? (groupMembersByConversationId[activeConversation.id] ?? [])
@@ -884,6 +899,10 @@ function ChatWorkbenchContent({
     composerRef.current?.focus();
   };
 
+  const handleTriggerSmartReply = (message: ChatMessage) => {
+    void requestSmartReplyGeneralAnswer(message);
+  };
+
   const handleMentionMessage = (message: ChatMessage) => {
     if (
       !message.isGroupConversation ||
@@ -1172,6 +1191,7 @@ function ChatWorkbenchContent({
                 onMentionMessage={handleMentionMessage}
                 onOpenQuotedMessage={handleOpenQuotedMessage}
                 onQuoteMessage={handleQuoteMessage}
+                onTriggerSmartReply={handleTriggerSmartReply}
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={handleRetryFailedMessage}
                 retryingMessageIds={retryingMessageIds}

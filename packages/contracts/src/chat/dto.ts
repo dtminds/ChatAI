@@ -272,11 +272,11 @@ export type WorkbenchSmartReplyStatus = "thinking" | "processing" | "ready";
 export type WorkbenchSmartReplySuggestionDto = {
   messageId: string;
   assistantName: string;
-  assistantAvatarUrl?: string;
   content: string;
+  failReason?: string;
+  generateStatus?: number | string;
+  refAttachIds?: string[];
   status?: WorkbenchSmartReplyStatus;
-  versionCount: number;
-  versionIndex: number;
 };
 
 /** msgIds 传消息 seq（非 messageId / msgid） */
@@ -287,6 +287,17 @@ export type WorkbenchSmartReplyPollRequest = {
 
 export type WorkbenchSmartReplyPollResponse = {
   suggestions: WorkbenchSmartReplySuggestionDto[];
+};
+
+/** msgId 传消息 seq（非 messageId / msgid） */
+export type WorkbenchSmartReplyGeneralAnswerRequest = {
+  conversationId: string;
+  msgId: number;
+  questionImgs?: string[];
+};
+
+export type WorkbenchSmartReplyGeneralAnswerResponse = {
+  suggestion: WorkbenchSmartReplySuggestionDto | null;
 };
 
 export type WorkbenchOutgoingMessageTextSegment = {

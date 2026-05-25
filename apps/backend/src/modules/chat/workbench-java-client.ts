@@ -1,5 +1,6 @@
 import type {
   WorkbenchSendMessageResponse,
+  WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollResponse,
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
@@ -8,8 +9,8 @@ import {
   ServiceUnavailableError,
 } from "../../shared/errors.js";
 import {
+  mapJavaGeneralAnswer,
   mapJavaUserHistoryAnswerList,
-  summarizeJavaUserHistoryAnswerRawData,
 } from "./smart-reply-mappers.js";
 import {
   getLoggerRequestId,
@@ -101,6 +102,14 @@ export type WorkbenchJavaClient = {
     thirdUserId: string;
     uid: number;
   }): Promise<WorkbenchSmartReplyPollResponse>;
+  requestGeneralAnswer(input: {
+    chatType: number;
+    msgId: number;
+    questionImgs: string[];
+    thirdExternalId: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<WorkbenchSmartReplyGeneralAnswerResponse>;
   createConversation(input: {
     chatType: number;
     platform: number;
@@ -173,22 +182,28 @@ export function createWorkbenchJavaClient(
         logger,
         "list-user-history-answers",
       ).then((data) => {
-        logger.info(
-          {
-            ...buildJavaLogContext({
-              chatType: input.chatType,
-              msgIds: input.msgIds,
-              thirdExternalId: input.thirdExternalId,
-              thirdUserId: input.thirdUserId,
-              uid: input.uid,
-            }),
-            operation: "list-user-history-answers",
-            ...summarizeJavaUserHistoryAnswerRawData(data),
-          },
-          "Java user-history-answer-list 原始 data",
-        );
-
         return mapJavaUserHistoryAnswerList(data);
+      });
+    },
+    requestGeneralAnswer(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-msg-audit-recommend-answer/general-answer",
+        {
+          chatType: input.chatType,
+          msgId: input.msgId,
+          questionImgs: input.questionImgs,
+          thirdExternalId: input.thirdExternalId,
+          thirdUserId: input.thirdUserId,
+          uid: input.uid,
+        },
+        logger,
+        "request-general-answer",
+      ).then((data) => {
+        return {
+          suggestion: mapJavaGeneralAnswer(data),
+        };
       });
     },
     createConversation(input) {
@@ -497,6 +512,7 @@ function buildJavaLogContext(body: unknown) {
     "chatType",
     "conversationId",
     "msgid",
+    "msgId",
     "msgIds",
     "platform",
     "thirdExternalId",

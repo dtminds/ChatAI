@@ -25,12 +25,15 @@ import type {
 } from "@chatai/contracts";
 import {
   adaptSmartReplySuggestions,
+  collectQuestionImgs,
   collectSmartReplyMsgIds,
+  createTriggeredSmartReplySuggestion,
 } from "@/pages/chat/api/smart-reply-adapter";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type {
   Account,
+  ChatMessage,
   ChatMode,
   Conversation,
   CustomerProfile,
@@ -483,15 +486,39 @@ export async function pollSmartReplies(
     return {};
   }
 
-  const pollRequest = {
+  const response = await getWorkbenchService().pollSmartReplies({
     conversationId: request.conversationId,
     msgIds,
-  };
-
-
-  const response = await getWorkbenchService().pollSmartReplies(pollRequest);
+  });
 
   return adaptSmartReplySuggestions(response.suggestions);
+}
+
+export async function requestSmartReplyGeneralAnswer(
+  message: ChatMessage,
+  conversationId: string,
+): Promise<SmartReplySuggestion> {
+  const msgId = message.seq;
+
+  if (!Number.isSafeInteger(msgId) || msgId == null || msgId <= 0) {
+    throw new Error("消息序号无效，无法生成智能回复");
+  }
+
+  const response = await getWorkbenchService().requestSmartReplyGeneralAnswer({
+    conversationId,
+    msgId,
+    questionImgs: collectQuestionImgs(message),
+  });
+
+  if (!response.suggestion) {
+    return createTriggeredSmartReplySuggestion(message);
+  }
+
+  const [suggestion] = Object.values(
+    adaptSmartReplySuggestions([response.suggestion]),
+  );
+
+  return suggestion ?? createTriggeredSmartReplySuggestion(message);
 }
 
 function adaptMessages(

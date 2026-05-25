@@ -19,6 +19,8 @@ import type {
   WorkbenchMessageStatus,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
+  WorkbenchSmartReplyGeneralAnswerRequest,
+  WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplyPollResponse,
   WorkbenchSendMessagePayload,
@@ -332,6 +334,12 @@ export function createMemoryWorkbenchService() {
       _request: WorkbenchSmartReplyPollRequest,
     ): WorkbenchSmartReplyPollResponse {
       return { suggestions: [] };
+    },
+    requestSmartReplyGeneralAnswer(
+      _subUserId: string,
+      _request: WorkbenchSmartReplyGeneralAnswerRequest,
+    ): WorkbenchSmartReplyGeneralAnswerResponse {
+      return { suggestion: null };
     },
     sendMessage(
       _subUserId: string,

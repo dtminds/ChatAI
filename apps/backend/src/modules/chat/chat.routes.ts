@@ -3,6 +3,7 @@ import type {
   WorkbenchPollRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
+  WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyPollRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
@@ -71,6 +72,12 @@ const MessageQueryByIdsBodySchema = Type.Object({
 const SmartReplyPollBodySchema = Type.Object({
   conversationId: Type.String(),
   msgIds: Type.Array(Type.Integer({ minimum: 1 })),
+});
+
+const SmartReplyGeneralAnswerBodySchema = Type.Object({
+  conversationId: Type.String(),
+  msgId: Type.Integer({ minimum: 1 }),
+  questionImgs: Type.Optional(Type.Array(Type.String())),
 });
 
 const WorkbenchMessageContentTypeSchema = Type.Union([
@@ -512,6 +519,21 @@ export async function registerChatRoutes(app: FastifyInstance) {
       getWorkbenchService(app, request).pollSmartReplies(
         getSubUserId(request),
         request.body satisfies WorkbenchSmartReplyPollRequest,
+      ),
+  );
+
+  app.post<{ Body: Static<typeof SmartReplyGeneralAnswerBodySchema> }>(
+    "/api/server/smart-reply/general-answer",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartReplyGeneralAnswerBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).requestSmartReplyGeneralAnswer(
+        getSubUserId(request),
+        request.body satisfies WorkbenchSmartReplyGeneralAnswerRequest,
       ),
   );
 

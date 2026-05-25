@@ -19,11 +19,14 @@ import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
-import { getSmartReplyLookupKey } from "@/pages/chat/api/smart-reply-adapter";
+import {
+  getSmartReplyLookupKey,
+  shouldShowSmartReplyCard,
+  shouldShowSmartReplyTriggerIcon,
+} from "@/pages/chat/api/smart-reply-adapter";
 import {
   SmartReplyMessageAnchor,
   SmartReplyTriggerIcon,
-  isSmartReplyBusy,
   type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
@@ -44,9 +47,11 @@ type ChatMessageListProps = {
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
+  onTriggerSmartReply?: (message: ChatMessage) => void;
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
 };
+
 
 type FeedItem =
   | {
@@ -69,6 +74,7 @@ export function ChatMessageList({
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
+  onTriggerSmartReply,
   retryingMessageIds,
   smartReplyByMessageId,
 }: ChatMessageListProps) {
@@ -98,6 +104,7 @@ export function ChatMessageList({
               onOpenQuotedMessage={onOpenQuotedMessage}
               onQuoteMessage={onQuoteMessage}
               onRetryMessage={onRetryMessage}
+              onTriggerSmartReply={onTriggerSmartReply}
               isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
               smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
             />
@@ -144,6 +151,7 @@ export function MessageRow({
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
+  onTriggerSmartReply,
   isRetryingMessage = false,
   smartReply,
 }: {
@@ -156,6 +164,7 @@ export function MessageRow({
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
+  onTriggerSmartReply?: (message: ChatMessage) => void;
   smartReply?: SmartReplySuggestion;
 }) {
   if (message.role === "system") {
@@ -166,7 +175,8 @@ export function MessageRow({
   const isGroupConversation = Boolean(message.isGroupConversation);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
   const inlineDeliveryState = getInlineDeliveryState(message);
-  const smartReplyBusy = isSmartReplyBusy(smartReply);
+  const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);
+  const showSmartReplyTriggerIcon = shouldShowSmartReplyTriggerIcon(message, smartReply);
   const messageActions = (
     <MessageActionAvatar
       message={message}
@@ -175,6 +185,10 @@ export function MessageRow({
       onQuoteMessage={onQuoteMessage}
     />
   );
+
+  const onSendSmartReply = (message: ChatMessage, content: string) => {
+    console.log(message, content, 'onSendSmartReply');
+  };
 
   return (
     <div
@@ -237,16 +251,23 @@ export function MessageRow({
                     onDownloadMessageFile={onDownloadMessageFile}
                     onOpenQuotedMessage={onOpenQuotedMessage}
                   />
-                  {!isAgent && !message.isRevoked && !smartReplyBusy ? (
+                  {showSmartReplyTriggerIcon ? (
                     <div className="ml-[16px] cursor-pointer">
-                      <SmartReplyTriggerIcon />
+                      <SmartReplyTriggerIcon
+                        onClick={() => onTriggerSmartReply?.(message)}
+                      />
                     </div>
                   ) : null}
                 </div>
               )}
               {message.isRevoked ? <MessageRevokedState /> : null}
-              {!isAgent && !message.isRevoked && smartReply ? (
-                <SmartReplyMessageAnchor message={message} suggestion={smartReply} />
+              {showSmartReplyCard ? (
+                <SmartReplyMessageAnchor
+                  message={message}
+                  onRegenerate={onTriggerSmartReply}
+                  suggestion={smartReply}
+                  onSend={onSendSmartReply}
+                />
               ) : null}
               {showTimestamp ? (
                 <p className="px-1 text-[11px] leading-4 text-muted-foreground/80">

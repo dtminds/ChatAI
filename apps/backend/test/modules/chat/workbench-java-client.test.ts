@@ -583,12 +583,10 @@ describe("createWorkbenchJavaClient", () => {
         JSON.stringify({
           data: [
             {
-              answerContent: "您好",
-              answerStatus: 2,
+              analyseMsgId: 1001,
               assistantName: "护肤小助手",
-              msgId: "msg-001",
-              versionCount: 1,
-              versionIndex: 0,
+              recommendAnswer: "您好",
+              status: 2,
             },
           ],
           error: 0,
@@ -614,10 +612,9 @@ describe("createWorkbenchJavaClient", () => {
         {
           assistantName: "护肤小助手",
           content: "您好",
-          messageId: "msg-001",
+          generateStatus: 2,
+          messageId: "1001",
           status: "ready",
-          versionCount: 1,
-          versionIndex: 0,
         },
       ],
     });
@@ -662,6 +659,62 @@ describe("createWorkbenchJavaClient", () => {
         uid: 9001,
       }),
     ).resolves.toEqual({ suggestions: [] });
+  });
+
+  it("posts general-answer requests with smart reply scope fields", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            analyseMsgId: 1121,
+            assistantName: "护肤小助手",
+            recommendAnswer: "您好",
+            status: 0,
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().requestGeneralAnswer({
+        chatType: 1,
+        msgId: 1121,
+        questionImgs: ["https://example.com/image.png"],
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      suggestion: {
+        assistantName: "护肤小助手",
+        content: "您好",
+        generateStatus: 0,
+        messageId: "1121",
+        status: "thinking",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/general-answer",
+      expect.objectContaining({
+        body: JSON.stringify({
+          chatType: 1,
+          msgId: 1121,
+          questionImgs: ["https://example.com/image.png"],
+          thirdExternalId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
   });
 });
 

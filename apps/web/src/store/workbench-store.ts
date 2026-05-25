@@ -20,6 +20,7 @@ import {
   pinConversation,
   pollWorkbench,
   pollSmartReplies,
+  requestSmartReplyGeneralAnswer,
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
   unpinConversation,
@@ -39,7 +40,11 @@ import {
   type SettingsSidebarItem,
   type WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
-import { shouldPollSmartReplies } from "@/pages/chat/lib/smart-reply-polling";
+import {
+  collectNewSmartReplyPendingKeys,
+  createTriggeredSmartReplySuggestion,
+  getSmartReplyLookupKey,
+} from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type {
   Account,
@@ -138,6 +143,7 @@ type WorkbenchState = {
     string,
     Record<string, SmartReplySuggestion>
   >;
+  smartReplyPendingMessageKeysByConversationId: Record<string, Record<string, true>>;
   smartReplyLastPolledAtByConversationId: Record<string, number>;
   activeAccountId: string;
   activeConversationId: string;
@@ -210,6 +216,7 @@ type WorkbenchState = {
   loadHistoryMessages: (options?: { cursor?: string; direction?: "next" | "prev" }) => Promise<void>;
   refreshSeatSummaries: () => Promise<void>;
   pollWorkbench: () => Promise<void>;
+  requestSmartReplyGeneralAnswer: (message: ChatMessage) => Promise<void>;
   updateMessageDownloadContent: (
     conversationId: string,
     messageId: string,
@@ -268,6 +275,7 @@ function createInitialState(): Omit<
   | "loadHistoryMessages"
   | "refreshSeatSummaries"
   | "pollWorkbench"
+  | "requestSmartReplyGeneralAnswer"
   | "updateMessageDownloadContent"
   | "dismissScopeTransitionError"
   | "dismissReadReceiptError"
@@ -305,6 +313,7 @@ function createInitialState(): Omit<
     messagePaginationByConversationId: {},
     messagesByConversationId: {},
     smartReplyByMessageIdByConversationId: {},
+    smartReplyPendingMessageKeysByConversationId: {},
     smartReplyLastPolledAtByConversationId: {},
     pendingMessages: [],
     pollState: {
@@ -603,6 +612,94 @@ function upsertMessageList(
   }
 
   return [...merged, ...sortMessagesForAppend(appendedMessages)];
+}
+
+function mergeSmartReplyPollResult(
+  previousSuggestions: Record<string, SmartReplySuggestion>,
+  previousPending: Record<string, true>,
+  nextSuggestions: Record<string, SmartReplySuggestion>,
+) {
+  const nextPending = { ...previousPending };
+
+  for (const messageId of Object.keys(nextSuggestions)) {
+    delete nextPending[messageId];
+  }
+
+  return {
+    pending: nextPending,
+    suggestions: {
+      ...previousSuggestions,
+      ...nextSuggestions,
+    },
+  };
+}
+
+function scheduleSmartReplyPoll(
+  get: () => WorkbenchStore,
+  set: (
+    partial:
+      | Partial<WorkbenchStore>
+      | ((state: WorkbenchStore) => Partial<WorkbenchStore>),
+  ) => void,
+  conversationId: string,
+  options?: { force?: boolean },
+) {
+  const state = get();
+  const lastPolledAt = state.smartReplyLastPolledAtByConversationId[conversationId];
+
+  if (
+    !options?.force &&
+    lastPolledAt != null &&
+    Date.now() - lastPolledAt < SMART_REPLY_POLL_INTERVAL_MS
+  ) {
+    return;
+  }
+
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+
+  set((currentState) => ({
+    smartReplyLastPolledAtByConversationId: {
+      ...currentState.smartReplyLastPolledAtByConversationId,
+      [conversationId]: Date.now(),
+    },
+  }));
+
+  void pollSmartReplies(
+    {
+      conversationId,
+      msgIds: [],
+    },
+    messages,
+  )
+    .then((smartReplyByMessageId) => {
+      set((currentState) => {
+        if (currentState.activeConversationId !== conversationId) {
+          return currentState;
+        }
+
+        const previousSuggestions =
+          currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {};
+        const previousPending =
+          currentState.smartReplyPendingMessageKeysByConversationId[conversationId] ?? {};
+        const merged = mergeSmartReplyPollResult(
+          previousSuggestions,
+          previousPending,
+          smartReplyByMessageId,
+        );
+
+        return {
+          smartReplyByMessageIdByConversationId: {
+            ...currentState.smartReplyByMessageIdByConversationId,
+            [conversationId]: merged.suggestions,
+          },
+          smartReplyPendingMessageKeysByConversationId: {
+            ...currentState.smartReplyPendingMessageKeysByConversationId,
+            [conversationId]: merged.pending,
+          },
+        };
+      });
+    })
+    .catch(() => undefined);
 }
 
 function patchExistingMessageList(
@@ -1048,6 +1145,10 @@ function clearConversationMessageState(
     ),
     smartReplyByMessageIdByConversationId: omitByKeys(
       state.smartReplyByMessageIdByConversationId,
+      clearedConversationIds,
+    ),
+    smartReplyPendingMessageKeysByConversationId: omitByKeys(
+      state.smartReplyPendingMessageKeysByConversationId,
       clearedConversationIds,
     ),
     smartReplyLastPolledAtByConversationId: omitByKeys(
@@ -1533,6 +1634,66 @@ export function createWorkbenchStore() {
       dismissConversationOpenError() {
         set({ conversationOpenError: undefined });
       },
+      async requestSmartReplyGeneralAnswer(message) {
+        const state = get();
+        const conversationId = state.activeConversationId;
+
+        if (!conversationId) {
+          return;
+        }
+
+        const lookupKey = getSmartReplyLookupKey(message);
+        const optimisticSuggestion = createTriggeredSmartReplySuggestion(message);
+
+        set((currentState) => ({
+          smartReplyByMessageIdByConversationId: {
+            ...currentState.smartReplyByMessageIdByConversationId,
+            [conversationId]: {
+              ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {}),
+              [lookupKey]: optimisticSuggestion,
+            },
+          },
+        }));
+
+        try {
+          const suggestion = await requestSmartReplyGeneralAnswer(message, conversationId);
+
+          set((currentState) => {
+            if (currentState.activeConversationId !== conversationId) {
+              return currentState;
+            }
+
+            return {
+              smartReplyByMessageIdByConversationId: {
+                ...currentState.smartReplyByMessageIdByConversationId,
+                [conversationId]: {
+                  ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {}),
+                  [lookupKey]: suggestion,
+                },
+              },
+            };
+          });
+
+          scheduleSmartReplyPoll(get, set, conversationId, { force: true });
+        } catch {
+          set((currentState) => {
+            if (currentState.activeConversationId !== conversationId) {
+              return currentState;
+            }
+
+            const previousSuggestions =
+              currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {};
+            const { [lookupKey]: _removed, ...restSuggestions } = previousSuggestions;
+
+            return {
+              smartReplyByMessageIdByConversationId: {
+                ...currentState.smartReplyByMessageIdByConversationId,
+                [conversationId]: restSuggestions,
+              },
+            };
+          });
+        }
+      },
       setSidebarItems(items) {
         set({ sidebarItems: items });
       },
@@ -1952,6 +2113,15 @@ export function createWorkbenchStore() {
           ),
         ) as Record<string, Message[]>;
 
+        const polledConversationId = response.request.activeConversationId;
+        const newSmartReplyPendingKeys =
+          polledConversationId && response.activeConversationMessages.length > 0
+            ? collectNewSmartReplyPendingKeys(
+                state.messagesByConversationId[polledConversationId] ?? [],
+                response.activeConversationMessages,
+              )
+            : [];
+
         set((currentState) => {
           const isStaleScope =
             currentState.activeAccountId !== response.request.currentAccountId ||
@@ -2015,15 +2185,31 @@ export function createWorkbenchStore() {
           const nextMessagesByConversationId = {
             ...clearedResourceState.messagesByConversationId,
           };
+          const nextSmartReplyPendingMessageKeysByConversationId = {
+            ...clearedResourceState.smartReplyPendingMessageKeysByConversationId,
+          };
 
           if (
             response.activeConversationMessages.length > 0 &&
-            response.request.activeConversationId
+            polledConversationId
           ) {
             const currentMessages =
-              nextMessagesByConversationId[response.request.activeConversationId] ?? [];
-            nextMessagesByConversationId[response.request.activeConversationId] =
-              upsertMessageList(currentMessages, response.activeConversationMessages);
+              nextMessagesByConversationId[polledConversationId] ?? [];
+            nextMessagesByConversationId[polledConversationId] = upsertMessageList(
+              currentMessages,
+              response.activeConversationMessages,
+            );
+
+            if (newSmartReplyPendingKeys.length > 0) {
+              const currentPending =
+                nextSmartReplyPendingMessageKeysByConversationId[polledConversationId] ?? {};
+              nextSmartReplyPendingMessageKeysByConversationId[polledConversationId] = {
+                ...currentPending,
+                ...Object.fromEntries(
+                  newSmartReplyPendingKeys.map((messageId) => [messageId, true as const]),
+                ),
+              };
+            }
           }
 
           for (const [conversationId, refreshedMessages] of Object.entries(
@@ -2098,6 +2284,8 @@ export function createWorkbenchStore() {
               clearedResourceState.messagePaginationByConversationId,
             messagesByConversationId: nextMessagesByConversationId,
             pendingMessages,
+            smartReplyPendingMessageKeysByConversationId:
+              nextSmartReplyPendingMessageKeysByConversationId,
             pollState: {
               ...currentState.pollState,
               lastSuccessAt: Date.now(),
@@ -2111,53 +2299,10 @@ export function createWorkbenchStore() {
           };
         });
 
-        const polledConversationId = response.request.activeConversationId;
-
         if (polledConversationId) {
-          const stateAfterPoll = get();
-          const lastSmartReplyPolledAt =
-            stateAfterPoll.smartReplyLastPolledAtByConversationId[polledConversationId];
-
-          if (
-            shouldPollSmartReplies(
-              lastSmartReplyPolledAt,
-              Date.now(),
-              SMART_REPLY_POLL_INTERVAL_MS,
-            )
-          ) {
-            const messagesAfterPoll =
-              stateAfterPoll.messagesByConversationId[polledConversationId] ?? [];
-
-            set((currentState) => ({
-              smartReplyLastPolledAtByConversationId: {
-                ...currentState.smartReplyLastPolledAtByConversationId,
-                [polledConversationId]: Date.now(),
-              },
-            }));
-
-            void pollSmartReplies(
-              {
-                conversationId: polledConversationId,
-                msgIds: [],
-              },
-              messagesAfterPoll,
-            )
-              .then((smartReplyByMessageId) => {
-                set((currentState) => {
-                  if (currentState.activeConversationId !== polledConversationId) {
-                    return currentState;
-                  }
-
-                  return {
-                    smartReplyByMessageIdByConversationId: {
-                      ...currentState.smartReplyByMessageIdByConversationId,
-                      [polledConversationId]: smartReplyByMessageId,
-                    },
-                  };
-                });
-              })
-              .catch(() => undefined);
-          }
+          scheduleSmartReplyPoll(get, set, polledConversationId, {
+            force: newSmartReplyPendingKeys.length > 0,
+          });
         }
       } catch (error) {
         if (isCursorInvalidationError(error)) {

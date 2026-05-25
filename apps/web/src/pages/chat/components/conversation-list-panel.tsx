@@ -2,9 +2,19 @@ import { startTransition, useEffect, useMemo, useState } from "react";
 import {
   Cancel01Icon,
   LicenseNoIcon,
+  Loading03Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyMedia } from "@/components/ui/empty";
@@ -15,6 +25,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ConversationCard } from "@/pages/chat/components/conversation-card";
 import type { ChatMode, Conversation } from "@/pages/chat/chat-types";
+import type {
+  WorkbenchSearchContactResultDto,
+  WorkbenchSearchGroupResultDto,
+} from "@chatai/contracts";
+import { useWorkbenchStore } from "@/store/workbench-store";
+
+type SearchResultItem = WorkbenchSearchContactResultDto | WorkbenchSearchGroupResultDto;
 
 const CUSTOMER_PREVIEW_LIMIT = 5;
 const GROUP_PREVIEW_LIMIT = 10;
@@ -49,7 +66,15 @@ export function ConversationListPanel({
   onUnpinConversation,
   searchableConversations = conversations,
 }: ConversationListPanelProps) {
-  const [searchKeyword, setSearchKeyword] = useState("");
+  const {
+    searchKeyword,
+    searchResults,
+    isSearchLoading,
+    setSearchKeyword,
+    selectOrCreateAndSelectConversation,
+    conversationOpenError,
+    dismissConversationOpenError,
+  } = useWorkbenchStore();
   const [expandedSearchSection, setExpandedSearchSection] = useState<ChatMode | null>(
     null,
   );
@@ -65,22 +90,6 @@ export function ConversationListPanel({
     }),
     [conversations],
   );
-  const searchResults = useMemo(() => {
-    if (!normalizedKeyword) {
-      return { customers: [], groups: [] };
-    }
-
-    const matchedConversations = searchableConversations.filter((conversation) =>
-      conversation.customerName.toLocaleLowerCase().includes(normalizedKeyword),
-    );
-
-    return {
-      customers: matchedConversations.filter(
-        (conversation) => conversation.mode === "single",
-      ),
-      groups: matchedConversations.filter((conversation) => conversation.mode === "group"),
-    };
-  }, [normalizedKeyword, searchableConversations]);
 
   useEffect(() => {
     setMountedModes((currentModes) => {
@@ -92,17 +101,35 @@ export function ConversationListPanel({
     });
   }, [activeMode]);
 
-  const handleSearchSelect = (conversation: Conversation) => {
-    setSearchKeyword("");
+  const handleSearchSelect = (item: SearchResultItem) => {
     setExpandedSearchSection(null);
-    startTransition(() => {
-      void onSelectMode(conversation.mode);
-      void onSelectConversation(conversation.id);
-    });
+    void selectOrCreateAndSelectConversation(item);
   };
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-col border-r border-divider bg-surface">
+    <>
+      <AlertDialog
+        open={!!conversationOpenError}
+        onOpenChange={(open) => {
+          if (!open) dismissConversationOpenError();
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>开启会话失败</AlertDialogTitle>
+            <AlertDialogDescription>
+              {conversationOpenError}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={dismissConversationOpenError}>
+              我知道了
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <section className="flex min-h-0 min-w-0 flex-col border-r border-divider bg-surface">
       <div className="border-b border-divider px-4 py-4">
         <Popover
           modal={false}
@@ -173,12 +200,13 @@ export function ConversationListPanel({
           >
             <SearchResultDropdown
               expandedSection={expandedSearchSection}
-              groups={searchResults.groups}
+              groups={searchResults?.groups ?? []}
               keyword={searchKeyword.trim()}
               onCollapse={() => setExpandedSearchSection(null)}
               onExpand={setExpandedSearchSection}
               onSelect={handleSearchSelect}
-              customers={searchResults.customers}
+              customers={searchResults?.contacts ?? []}
+              isLoading={isSearchLoading}
             />
           </PopoverContent>
         </Popover>
@@ -290,6 +318,7 @@ export function ConversationListPanel({
         </Tabs>
       </div>
     </section>
+    </>
   );
 }
 
@@ -301,14 +330,16 @@ function SearchResultDropdown({
   onCollapse,
   onExpand,
   onSelect,
+  isLoading,
 }: {
-  customers: Conversation[];
+  customers: WorkbenchSearchContactResultDto[];
   expandedSection: ChatMode | null;
-  groups: Conversation[];
+  groups: WorkbenchSearchGroupResultDto[];
   keyword: string;
   onCollapse: () => void;
   onExpand: (section: ChatMode) => void;
-  onSelect: (conversation: Conversation) => void;
+  onSelect: (item: SearchResultItem) => void;
+  isLoading: boolean;
 }) {
   const isShowingCustomers = expandedSection === null || expandedSection === "single";
   const isShowingGroups = expandedSection === null || expandedSection === "group";
@@ -317,21 +348,37 @@ function SearchResultDropdown({
   const visibleGroups =
     expandedSection === "group" ? groups : groups.slice(0, GROUP_PREVIEW_LIMIT);
 
+  if (isLoading) {
+    return (
+      <div className="flex h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+        <HugeiconsIcon
+          className="animate-spin"
+          color="currentColor"
+          icon={Loading03Icon}
+          size={18}
+          strokeWidth={1.8}
+        />
+        <span>正在搜索中...</span>
+      </div>
+    );
+  }
+
   if (customers.length === 0 && groups.length === 0) {
     return (
       <div className="px-4 py-6 text-sm text-muted-foreground">
-        没有匹配的客户或群聊。
+        没有匹配的联系人或群聊。
       </div>
     );
   }
 
   if (expandedSection) {
     const title = expandedSection === "single" ? "联系人" : "群聊";
-    const conversations = expandedSection === "single" ? customers : groups;
+    const contactsList = expandedSection === "single" ? customers : [];
+    const groupsList = expandedSection === "group" ? groups : [];
 
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <div className="shrink-0 bg-popover px-4 py-2">
+        <div className="shrink-0 bg-popover px-4 py-2 border-b border-divider">
           <h2 className="text-sm font-semibold text-muted-foreground">{title}</h2>
         </div>
         <ScrollArea
@@ -343,18 +390,27 @@ function SearchResultDropdown({
             role: "list",
           }}
         >
-          <div className="space-y-1">
-            {conversations.map((conversation) => (
-              <SearchResultItem
-                conversation={conversation}
-                key={conversation.id}
-                keyword={keyword}
-                onSelect={() => onSelect(conversation)}
-              />
-            ))}
+          <div className="space-y-1 py-2">
+            {expandedSection === "single"
+              ? contactsList.map((contact) => (
+                  <SearchContactResultItem
+                    item={contact}
+                    key={contact.thirdExternalUserId}
+                    keyword={keyword}
+                    onSelect={() => onSelect(contact)}
+                  />
+                ))
+              : groupsList.map((group) => (
+                  <SearchGroupResultItem
+                    item={group}
+                    key={group.thirdGroupId}
+                    keyword={keyword}
+                    onSelect={() => onSelect(group)}
+                  />
+                ))}
           </div>
         </ScrollArea>
-        <div className="shrink-0 px-4 py-2">
+        <div className="shrink-0 px-4 py-2 border-t border-divider">
           <Button
             className="h-auto rounded-none p-0 text-[13px] font-medium text-primary hover:bg-transparent hover:text-primary/85"
             onClick={onCollapse}
@@ -374,91 +430,78 @@ function SearchResultDropdown({
       data-testid="conversation-search-results-scroll-area"
     >
       <div>
-        {isShowingCustomers ? (
-          <SearchResultSection
-            conversations={visibleCustomers}
-            hasMore={expandedSection === null && customers.length > CUSTOMER_PREVIEW_LIMIT}
-            keyword={keyword}
-            onExpand={() => onExpand("single")}
-            onSelect={onSelect}
-            title="联系人"
-          />
+        {isShowingCustomers && customers.length > 0 ? (
+          <section className="py-3">
+            <h2 className="mb-2 px-4 text-[12px] font-semibold text-muted-foreground">
+              联系人
+            </h2>
+            <div className="space-y-1">
+              {visibleCustomers.map((contact) => (
+                <SearchContactResultItem
+                  item={contact}
+                  key={contact.thirdExternalUserId}
+                  keyword={keyword}
+                  onSelect={() => onSelect(contact)}
+                />
+              ))}
+            </div>
+            {customers.length > CUSTOMER_PREVIEW_LIMIT ? (
+              <Button
+                className="mx-4 mt-3 h-auto rounded-none p-0 text-[12px] font-medium text-primary hover:bg-transparent hover:text-primary/85"
+                onClick={() => onExpand("single")}
+                type="button"
+                variant="ghost"
+              >
+                查看全部
+              </Button>
+            ) : null}
+          </section>
         ) : null}
         {isShowingCustomers && isShowingGroups && customers.length > 0 && groups.length > 0 ? (
           <div className="border-t border-divider" />
         ) : null}
-        {isShowingGroups ? (
-          <SearchResultSection
-            conversations={visibleGroups}
-            hasMore={expandedSection === null && groups.length > GROUP_PREVIEW_LIMIT}
-            keyword={keyword}
-            onExpand={() => onExpand("group")}
-            onSelect={onSelect}
-            title="群聊"
-          />
+        {isShowingGroups && groups.length > 0 ? (
+          <section className="py-3">
+            <h2 className="mb-2 px-4 text-[12px] font-semibold text-muted-foreground">
+              群聊
+            </h2>
+            <div className="space-y-1">
+              {visibleGroups.map((group) => (
+                <SearchGroupResultItem
+                  item={group}
+                  key={group.thirdGroupId}
+                  keyword={keyword}
+                  onSelect={() => onSelect(group)}
+                />
+              ))}
+            </div>
+            {groups.length > GROUP_PREVIEW_LIMIT ? (
+              <Button
+                className="mx-4 mt-3 h-auto rounded-none p-0 text-[12px] font-medium text-primary hover:bg-transparent hover:text-primary/85"
+                onClick={() => onExpand("group")}
+                type="button"
+                variant="ghost"
+              >
+                查看全部
+              </Button>
+            ) : null}
+          </section>
         ) : null}
       </div>
     </ScrollArea>
   );
 }
 
-function SearchResultSection({
-  conversations,
-  hasMore,
-  keyword,
-  onExpand,
-  onSelect,
-  title,
-}: {
-  conversations: Conversation[];
-  hasMore: boolean;
-  keyword: string;
-  onExpand: () => void;
-  onSelect: (conversation: Conversation) => void;
-  title: string;
-}) {
-  if (conversations.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="py-3">
-      <h2 className="mb-2 px-4 text-[12px] font-semibold text-muted-foreground">
-        {title}
-      </h2>
-      <div className="space-y-1">
-        {conversations.map((conversation) => (
-          <SearchResultItem
-            conversation={conversation}
-            key={conversation.id}
-            keyword={keyword}
-            onSelect={() => onSelect(conversation)}
-          />
-        ))}
-      </div>
-      {hasMore ? (
-        <Button
-          className="mx-4 mt-3 h-auto rounded-none p-0 text-[12px] font-medium text-primary hover:bg-transparent hover:text-primary/85"
-          onClick={onExpand}
-          type="button"
-          variant="ghost"
-        >
-          查看全部
-        </Button>
-      ) : null}
-    </section>
-  );
-}
-
-function SearchResultItem({
-  conversation,
+function SearchContactResultItem({
+  item,
   keyword,
   onSelect,
 }: {
-  conversation: Conversation;
+  item: WorkbenchSearchContactResultDto;
   keyword: string;
   onSelect: () => void;
 }) {
+  const displayName = formatContactDisplayName(item);
   return (
     <Button
       className="grid h-auto w-full grid-cols-[auto_minmax(0,1fr)] items-center justify-normal gap-2 rounded-none px-4 py-2 text-left hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring/20"
@@ -468,14 +511,58 @@ function SearchResultItem({
     >
       <Avatar className="size-10 rounded-[8px]">
         <AvatarImage
-          alt={conversation.customerName}
-          src={conversation.customerAvatarUrl}
+          alt={displayName}
+          src={item.avatar}
         />
         <AvatarFallback className="rounded-[8px]" />
       </Avatar>
       <div className="min-w-0 self-center">
         <p className="truncate text-[14px] font-normal text-foreground">
-          <HighlightedText text={conversation.customerName} keyword={keyword} />
+          <HighlightedText text={displayName} keyword={keyword} />
+        </p>
+      </div>
+    </Button>
+  );
+}
+
+function formatContactDisplayName(item: WorkbenchSearchContactResultDto) {
+  const name = item.name || item.realName || "未知用户";
+  const remark = item.remark?.trim();
+
+  if (remark && remark !== name) {
+    return `${remark}（${name}）`;
+  }
+
+  return name;
+}
+
+function SearchGroupResultItem({
+  item,
+  keyword,
+  onSelect,
+}: {
+  item: WorkbenchSearchGroupResultDto;
+  keyword: string;
+  onSelect: () => void;
+}) {
+  const groupName = item.remark || item.name || "未知群聊";
+  return (
+    <Button
+      className="grid h-auto w-full grid-cols-[auto_minmax(0,1fr)] items-center justify-normal gap-2 rounded-none px-4 py-2 text-left hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring/20"
+      onClick={onSelect}
+      type="button"
+      variant="ghost"
+    >
+      <Avatar className="size-10 rounded-[8px]">
+        <AvatarImage
+          alt={groupName}
+          src={item.avatar}
+        />
+        <AvatarFallback className="rounded-[8px]" />
+      </Avatar>
+      <div className="min-w-0 self-center">
+        <p className="truncate text-[14px] font-normal text-foreground">
+          <HighlightedText text={groupName} keyword={keyword} />
         </p>
       </div>
     </Button>

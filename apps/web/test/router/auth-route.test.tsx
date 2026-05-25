@@ -3,22 +3,28 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RootLayout } from "@/app/root-layout";
-import { resetAuthSessionSnapshot } from "@/pages/auth/auth-session";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { requestInstance } from "@/lib/request";
 import { routerConfig } from "@/router";
+import { useAuthStore } from "@/store/auth-store";
 
 const mock = new MockAdapter(requestInstance);
+const operatorSubUser = {
+  accountType: "sub" as const,
+  displayName: "客服一号",
+  permissions: ["chat.access", "chat.send", "chat.takeover"] as const,
+  role: "operator" as const,
+  subUserId: "101",
+};
 
 describe("auth routes", () => {
   beforeEach(() => {
-    resetAuthSessionSnapshot();
     setSecureContext(true);
   });
 
   afterEach(() => {
     mock.reset();
-    resetAuthSessionSnapshot();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
   });
 
   it("redirects /chat to /login when the session is missing", async () => {
@@ -43,10 +49,7 @@ describe("auth routes", () => {
   it("allows /chat when the session cookie is valid", async () => {
     mock.onGet("/auth/session").reply(200, {
       data: {
-        subUser: {
-          displayName: "客服一号",
-          subUserId: "101",
-        },
+        subUser: operatorSubUser,
       },
       success: true,
     });
@@ -73,10 +76,7 @@ describe("auth routes", () => {
     });
     mock.onGet("/auth/session").reply(200, {
       data: {
-        subUser: {
-          displayName: "客服一号",
-          subUserId: "101",
-        },
+        subUser: operatorSubUser,
       },
       success: true,
     });
@@ -121,10 +121,7 @@ describe("auth routes", () => {
   it("redirects an active private route when the auth session is cleared", async () => {
     mock.onGet("/auth/session").replyOnce(200, {
       data: {
-        subUser: {
-          displayName: "客服一号",
-          subUserId: "101",
-        },
+        subUser: operatorSubUser,
       },
       success: true,
     });
@@ -155,10 +152,7 @@ describe("auth routes", () => {
   it("does not recheck an authenticated session on private-route navigation", async () => {
     mock.onGet("/auth/session").reply(200, {
       data: {
-        subUser: {
-          displayName: "客服一号",
-          subUserId: "101",
-        },
+        subUser: operatorSubUser,
       },
       success: true,
     });

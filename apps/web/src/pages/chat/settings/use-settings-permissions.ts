@@ -1,7 +1,5 @@
 import type { AuthSubUser } from "@chatai/contracts";
-import { useMemo } from "react";
-
-import { useAuthSubUser } from "@/pages/chat/hooks/use-auth-sub-user";
+import { useAuthStore } from "@/store/auth-store";
 
 type SettingsPermissionState = {
   canManageManagedAccounts: boolean;
@@ -16,12 +14,9 @@ const readOnlyPermissions: SettingsPermissionState = {
 };
 
 export function useSettingsPermissions() {
-  const subUser = useAuthSubUser();
+  const subUser = useAuthStore((state) => state.subUser);
 
-  return useMemo(
-    () => (subUser ? resolveSettingsPermissions(subUser) : readOnlyPermissions),
-    [subUser],
-  );
+  return subUser ? resolveSettingsPermissions(subUser) : readOnlyPermissions;
 }
 
 function resolveSettingsPermissions(subUser: AuthSubUser): SettingsPermissionState {

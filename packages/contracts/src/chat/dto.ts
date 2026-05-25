@@ -212,6 +212,7 @@ export type WorkbenchSeatChangeDto = {
   seatId: string;
   unreadCount: number;
   lastMessageTime?: number;
+  hostSubUserId?: string | null;
 };
 
 export type WorkbenchConversationChangeDto =
@@ -223,14 +224,6 @@ export type WorkbenchConversationChangeDto =
   | ({
       type: "upsert";
     } & WorkbenchConversationSummaryDto);
-
-export type WorkbenchMessageStatusChangeDto = {
-  messageId: string;
-  clientMessageId?: string;
-  conversationId: string;
-  status: WorkbenchMessageStatus;
-  reason?: string;
-};
 
 export type WorkbenchMessageUpdateEventDto = {
   conversationId: string;
@@ -254,15 +247,16 @@ export type WorkbenchPollRequest = {
   activeConversationId?: string;
   activeMessageSeq?: number;
   messageUpdateCursor?: number;
+  seatUpdateCursor?: number;
 };
 
 export type WorkbenchPollResponse = {
   nextVersion: number;
   nextMessageUpdateCursor?: number;
+  nextSeatUpdateCursor?: number;
   seatChanges: WorkbenchSeatChangeDto[];
   conversationChanges: WorkbenchConversationChangeDto[];
   activeConversationMessages: WorkbenchMessageDto[];
-  messageStatusChanges: WorkbenchMessageStatusChangeDto[];
   messageUpdateEvents?: WorkbenchMessageUpdateEventDto[];
 };
 
@@ -300,6 +294,7 @@ export type WorkbenchSendMessagePayload = {
   seatId: string;
   conversationId: string;
   clientMessageId: string;
+  failMsgId?: string;
   contentType?: "text";
   content?: string;
   mention?: {
@@ -390,4 +385,33 @@ export type WorkbenchUploadCredentialResponse = {
 
 export type WorkbenchTakeOverSeatResponse = {
   seat: WorkbenchSeatDto;
+};
+
+export type WorkbenchSearchContactResultDto = {
+  thirdExternalUserId: string;
+  name: string;
+  realName: string;
+  avatar: string;
+  remark?: string;
+  conversationId?: string;
+};
+
+export type WorkbenchSearchGroupResultDto = {
+  thirdGroupId: string;
+  name?: string;
+  avatar: string;
+  remark?: string;
+  conversationId?: string;
+};
+
+export type WorkbenchSearchResponseDto = {
+  contacts: WorkbenchSearchContactResultDto[];
+  groups: WorkbenchSearchGroupResultDto[];
+};
+
+export type WorkbenchGetOrCreateConversationRequestDto = {
+  seatId: string;
+  chatType: number;
+  thirdExternalUserId?: string;
+  thirdGroupId?: string;
 };

@@ -91,6 +91,7 @@ type ChatPanelProps = {
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  retryingMessageIds?: ReadonlySet<string>;
   onSendDraft: (segments: ComposerSegment[]) => void;
   onDismissScopeTransitionError: () => void;
   scopeTransitionError?: string;
@@ -150,6 +151,7 @@ export function ChatPanel({
   onClearQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  retryingMessageIds,
   onSendDraft,
   onDismissScopeTransitionError,
   scopeTransitionError,
@@ -196,6 +198,7 @@ export function ChatPanel({
                 onQuoteMessage={onQuoteMessage}
                 onMessageViewportScroll={onMessageViewportScroll}
                 onRetryMessage={onRetryMessage}
+                retryingMessageIds={retryingMessageIds}
               />
 
               <Separator className="bg-divider" />

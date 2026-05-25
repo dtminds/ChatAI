@@ -25,7 +25,11 @@ import type {
   WorkbenchSubUserDto,
   WorkbenchTakeOverSeatResponse,
   WorkbenchUploadCredentialResponse,
+  WorkbenchSearchResponseDto,
+  WorkbenchGetOrCreateConversationRequestDto,
+  WorkbenchConversationSummaryDto,
 } from "@chatai/contracts";
+import { CHAT_TYPE } from "@chatai/contracts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -54,6 +58,7 @@ import {
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
+const POLL_SEAT_UPDATE_LIMIT = 200;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -138,6 +143,15 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchConversationUnpinResponse> | WorkbenchConversationUnpinResponse;
+  search(
+    subUserId: string,
+    seatId: string,
+    keyword: string,
+  ): Promise<WorkbenchSearchResponseDto> | WorkbenchSearchResponseDto;
+  getOrCreateConversation(
+    subUserId: string,
+    payload: WorkbenchGetOrCreateConversationRequestDto,
+  ): Promise<WorkbenchConversationSummaryDto> | WorkbenchConversationSummaryDto;
 };
 
 export class MysqlWorkbenchService implements WorkbenchService {
@@ -526,12 +540,27 @@ export class MysqlWorkbenchService implements WorkbenchService {
           )
         : [];
     const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
+    const seatUpdateCursor = request.seatUpdateCursor ?? request.sinceVersion;
     const messageUpdateEvents =
       request.activeConversationId &&
       typeof this.repository.listMessageUpdateEvents === "function"
         ? await this.repository.listMessageUpdateEvents(request.activeConversationId, {
             afterCreateTime: messageUpdateCursor,
             limit: POLL_MESSAGE_UPDATE_LIMIT,
+          })
+        : [];
+    const seatEventScope =
+      typeof this.repository.getSeatEventScope === "function"
+        ? await this.repository.getSeatEventScope(subUserId)
+        : undefined;
+    const seatUpdateEvents =
+      seatEventScope && typeof this.repository.listSeatUpdateEvents === "function"
+        ? await this.repository.listSeatUpdateEvents({
+            afterCreateTime: seatUpdateCursor,
+            limit: POLL_SEAT_UPDATE_LIMIT,
+            platform: seatEventScope.platform,
+            seatIds: seatEventScope.seatIds,
+            uid: seatEventScope.uid,
           })
         : [];
     const sinceLastMsgTime = Math.max(
@@ -582,9 +611,19 @@ export class MysqlWorkbenchService implements WorkbenchService {
           ? latestChangedLastMessageTime
           : request.sinceVersion + POLL_LAST_MESSAGE_OVERLAP_MS;
 
-    const seatChange = request.currentSeatId
-      ? await this.repository.getSeat(request.currentSeatId)
-      : undefined;
+    const changedSeatIds = uniqueStrings([
+      ...(request.currentSeatId ? [request.currentSeatId] : []),
+      ...seatUpdateEvents.map((event) => event.seatId),
+    ]);
+    const changedSeats = await this.repository.getSeatsByIds(changedSeatIds);
+    const changedSeatsById = new Map(
+      changedSeats
+        .filter((seat): seat is WorkbenchSeatDto => Boolean(seat))
+        .map((seat) => [seat.seatId, seat] as const),
+    );
+    const orderedChangedSeats = changedSeatIds
+      .map((seatId) => changedSeatsById.get(seatId))
+      .filter((seat): seat is WorkbenchSeatDto => Boolean(seat));
 
     return {
       activeConversationMessages,
@@ -592,22 +631,23 @@ export class MysqlWorkbenchService implements WorkbenchService {
         ...conversation,
         type: "upsert" as const,
       })),
-      messageStatusChanges: [],
       messageUpdateEvents,
       nextVersion,
-      nextMessageUpdateCursor: getNextMessageUpdateCursor(
+      nextMessageUpdateCursor: getNextEventCursor(
         messageUpdateCursor,
         messageUpdateEvents,
       ),
-      seatChanges: seatChange
-        ? [
-            {
-              lastMessageTime: seatChange.lastMessageTime,
-              seatId: seatChange.seatId,
-              unreadCount: seatChange.unreadCount,
-            },
-          ]
-        : [],
+      nextSeatUpdateCursor: getNextEventCursor(
+        seatUpdateCursor,
+        seatUpdateEvents,
+      ),
+      seatChanges: orderedChangedSeats
+        .map((seat) => ({
+          hostSubUserId: seat.hostSubUserId ?? null,
+          lastMessageTime: seat.lastMessageTime,
+          seatId: seat.seatId,
+          unreadCount: seat.unreadCount,
+        })),
     };
   }
 
@@ -619,8 +659,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const segment = getSingleSendSegment(payload);
+    const failMsgId = getRetryFailMsgId(payload);
     const response = await this.javaClient.sendMessage({
       clientMessageId: payload.clientMessageId,
+      ...(failMsgId != null ? { failMsgId } : {}),
       msgData: buildJavaSendMessageData(payload, segment),
       platform: conversation.platform,
       sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
@@ -735,9 +777,118 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     return conversation;
   }
+
+  async search(
+    subUserId: string,
+    seatId: string,
+    keyword: string,
+  ): Promise<WorkbenchSearchResponseDto> {
+    await this.getMe(subUserId);
+    await this.assertSeatAccess(subUserId, seatId);
+
+    const seatNumericId = parseMySqlId(seatId);
+    if (seatNumericId == null) {
+      return { contacts: [], groups: [] };
+    }
+
+    const seatScope = await this.repository.getSeatOperateScope(seatId);
+    if (!seatScope) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    const [contacts, groups] = await Promise.all([
+      this.repository.searchContacts(seatScope.uid, seatScope.platform, seatScope.thirdUserId, keyword),
+      this.repository.searchGroups(seatScope.uid, seatScope.platform, seatScope.thirdUserId, keyword),
+    ]);
+
+    return { contacts, groups };
+  }
+
+  async getOrCreateConversation(
+    subUserId: string,
+    payload: WorkbenchGetOrCreateConversationRequestDto,
+  ): Promise<WorkbenchConversationSummaryDto> {
+    await this.getMe(subUserId);
+    await this.assertSeatAccess(subUserId, payload.seatId);
+
+    const seatNumericId = parseMySqlId(payload.seatId);
+    if (seatNumericId == null) {
+      throw new BadRequestError("INVALID_SEAT_ID", "席位ID无效");
+    }
+
+    const seatScope = await this.repository.getSeatOperateScope(payload.seatId);
+    if (!seatScope) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    const seatThirdUserId = seatScope.thirdUserId;
+    const targetId =
+      payload.chatType === CHAT_TYPE.GROUP ? payload.thirdGroupId : payload.thirdExternalUserId;
+
+    if (!targetId) {
+      throw new BadRequestError("INVALID_TARGET_ID", "目标ID无效");
+    }
+
+    // 1. 先查本地 DB 是否已有会话
+    const existingConversationId = await this.repository.findConversationIdByTarget(
+      seatScope.uid,
+      seatScope.platform,
+      seatThirdUserId,
+      payload.chatType,
+      targetId,
+    );
+
+    if (existingConversationId) {
+      const hydrated = await this.repository.getHydratedConversation(
+        seatScope.uid,
+        seatScope.platform,
+        seatThirdUserId,
+        existingConversationId,
+      );
+      if (!hydrated) {
+        throw new NotFoundError("CONVERSATION_HYDRATION_FAILED", "打开会话失败，请稍后重试");
+      }
+      return hydrated;
+    }
+
+    // 2. 本地不存在，调用 Java 接口创建（Java 接口待接入，目前调用会失败并返回 undefined）
+    // Java 调用失败（网络错误、接口未实现等）时 javaClient 内部 catch 返回 undefined
+    const javaResponse = await this.javaClient.createConversation({
+      chatType: payload.chatType,
+      platform: seatScope.platform,
+      thirdExternalUserId: payload.thirdExternalUserId,
+      thirdGroupId: payload.thirdGroupId,
+      thirdUserId: seatThirdUserId,
+      uid: seatScope.uid,
+    });
+
+    if (!javaResponse?.conversationId) {
+      // Java 未返回有效 conversationId，不做本地兜底，直接报错
+      throw new BadRequestError("CREATE_CONVERSATION_FAILED", "创建会话失败，请稍后重试");
+    }
+
+    // 3. Java 返回了 conversationId，检查是否已同步到本地 DB
+    const hydrated = await this.repository.getHydratedConversation(
+      seatScope.uid,
+      seatScope.platform,
+      seatThirdUserId,
+      javaResponse.conversationId,
+    );
+
+    if (!hydrated) {
+      // Java 创建成功但会话尚未同步到本地 DB，不自行插入，报错提示
+      this.logger.warn(
+        { conversationId: javaResponse.conversationId, payload },
+        "Java 已创建会话但本地 DB 尚未同步",
+      );
+      throw new NotFoundError("CONVERSATION_NOT_SYNCED", "打开会话失败，请稍后重试");
+    }
+
+    return hydrated;
+  }
 }
 
-function getNextMessageUpdateCursor(
+function getNextEventCursor(
   currentCursor: number,
   events: Array<{
     eventTime?: number;
@@ -765,6 +916,10 @@ function getNextMessageUpdateCursor(
   );
 
   return latestEventTime;
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values));
 }
 
 function getSingleSendSegment(
@@ -853,4 +1008,18 @@ function buildJavaSendMessageData(
   }
 
   return message;
+}
+
+function getRetryFailMsgId(payload: WorkbenchSendMessagePayload) {
+  if (!payload.failMsgId) {
+    return undefined;
+  }
+
+  const failMsgId = parseMySqlId(payload.failMsgId);
+
+  if (failMsgId == null) {
+    throw new BadRequestError("INVALID_MESSAGE_ID", "失败消息 ID 无效");
+  }
+
+  return failMsgId;
 }

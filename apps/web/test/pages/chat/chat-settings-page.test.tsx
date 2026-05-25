@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { routerConfig } from "@/router";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import { useAuthStore } from "@/store/auth-store";
 import { requestInstance } from "@/lib/request";
 
 vi.mock("sonner", async (importOriginal) => {
@@ -78,6 +79,7 @@ describe("Chat settings pages", () => {
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.success).mockClear();
     resetWorkbenchService();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
     mock.reset();
     mockAuthenticatedSession();
     mock.onGet("/server/settings/sub-accounts").reply(200, {
@@ -832,6 +834,37 @@ describe("Chat settings pages", () => {
 
     expect(screen.getByText("页面名称最多 8 个字符")).toBeInTheDocument();
     expect(mock.history.post).toHaveLength(0);
+  });
+
+  it("shows sidebar item api error messages returned by success false envelopes", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: [],
+      },
+      success: true,
+    });
+    mock.onPost("/server/settings/sidebar-items").reply(200, {
+      error: {
+        code: "INVALID_SIDEBAR_URL",
+        message: "请输入有效的页面地址",
+      },
+      success: false,
+    });
+
+    renderRoute("/chat/settings/sidebar");
+
+    await user.click(await screen.findByRole("button", { name: "新增页面" }));
+    await user.type(screen.getByLabelText("页面名称"), "素材中心");
+    await user.type(screen.getByLabelText("页面地址"), "not-a-url");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("请输入有效的页面地址");
+    });
+    expect(screen.queryByText("操作失败，请稍后重试")).not.toBeInTheDocument();
   });
 
   it("creates, edits, toggles, and deletes sub-accounts from settings", async () => {

@@ -1,6 +1,7 @@
 import {
   AtIcon,
   ExclamationMarkIcon,
+  Loading03Icon,
   MoreHorizontalIcon,
   QuoteUpIcon,
 } from "@hugeicons/core-free-icons";
@@ -36,6 +37,7 @@ type ChatMessageListProps = {
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
+  retryingMessageIds?: ReadonlySet<string>;
 };
 
 type FeedItem =
@@ -59,6 +61,7 @@ export function ChatMessageList({
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
+  retryingMessageIds,
 }: ChatMessageListProps) {
   const items = useMemo(
     () => buildFeedItems(messages, showTimeDividers),
@@ -86,6 +89,7 @@ export function ChatMessageList({
               onOpenQuotedMessage={onOpenQuotedMessage}
               onQuoteMessage={onQuoteMessage}
               onRetryMessage={onRetryMessage}
+              isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
             />
           </div>
         ),
@@ -130,9 +134,11 @@ export function MessageRow({
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
+  isRetryingMessage = false,
 }: {
   message: Message;
   canUseMessageActions?: boolean;
+  isRetryingMessage?: boolean;
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
@@ -147,7 +153,7 @@ export function MessageRow({
   const isAgent = message.role === "agent";
   const isGroupConversation = Boolean(message.isGroupConversation);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
-  const inlineDeliveryState = getInlineDeliveryState(message, Boolean(onRetryMessage));
+  const inlineDeliveryState = getInlineDeliveryState(message);
   const messageActions = (
     <MessageActionAvatar
       message={message}
@@ -180,6 +186,8 @@ export function MessageRow({
           >
             {isAgent && message.content.type !== "quote" ? (
               <MessageInlineStatusSlot
+                canRetryMessage={canUseMessageActions}
+                isRetryingMessage={isRetryingMessage}
                 message={message}
                 onRetryMessage={onRetryMessage}
                 state={inlineDeliveryState}
@@ -199,8 +207,10 @@ export function MessageRow({
               ) : null}
               {message.content.type === "quote" ? (
                 <QuoteMessageContentWithDelivery
+                  canRetryMessage={canUseMessageActions}
                   content={message.content}
                   inlineDeliveryState={inlineDeliveryState}
+                  isRetryingMessage={isRetryingMessage}
                   isAgent={isAgent}
                   message={message}
                   onOpenQuotedMessage={onOpenQuotedMessage}
@@ -234,15 +244,19 @@ export function MessageRow({
 }
 
 function QuoteMessageContentWithDelivery({
+  canRetryMessage,
   content,
   inlineDeliveryState,
+  isRetryingMessage,
   isAgent,
   message,
   onOpenQuotedMessage,
   onRetryMessage,
 }: {
+  canRetryMessage: boolean;
   content: Extract<ChatMessage["content"], { type: "quote" }>;
   inlineDeliveryState: InlineDeliveryState | null;
+  isRetryingMessage: boolean;
   isAgent: boolean;
   message: ChatMessage;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
@@ -258,6 +272,8 @@ function QuoteMessageContentWithDelivery({
       >
         {isAgent ? (
           <MessageInlineStatusSlot
+            canRetryMessage={canRetryMessage}
+            isRetryingMessage={isRetryingMessage}
             message={message}
             onRetryMessage={onRetryMessage}
             state={inlineDeliveryState}
@@ -372,10 +388,14 @@ function MessageActionAvatar({
 }
 
 function MessageInlineStatusSlot({
+  canRetryMessage,
+  isRetryingMessage,
   message,
   onRetryMessage,
   state,
 }: {
+  canRetryMessage: boolean;
+  isRetryingMessage: boolean;
   message: ChatMessage;
   onRetryMessage?: (messageId: string) => void;
   state: InlineDeliveryState | null;
@@ -384,20 +404,40 @@ function MessageInlineStatusSlot({
     return null;
   }
 
-  if (state === "failed" && onRetryMessage) {
+  if (state === "failed") {
+    const canRetry = canRetryMessage && Boolean(onRetryMessage) && !isRetryingMessage;
+
     return (
       <div
         className="mb-1 flex h-4 shrink-0 items-center"
         data-testid="message-inline-status-slot"
       >
         <button
-          aria-label="重试发送"
-          className="inline-flex size-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
-          onClick={() => onRetryMessage(message.id)}
-          title="重试发送"
+          aria-busy={isRetryingMessage}
+          aria-label={isRetryingMessage ? "正在重试发送" : "重试发送"}
+          className={cn(
+            "inline-flex size-4 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-55",
+            isRetryingMessage
+              ? "bg-transparent text-muted-foreground"
+              : "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:hover:bg-destructive",
+          )}
+          disabled={!canRetry}
+          onClick={() => {
+            if (!canRetry) {
+              return;
+            }
+
+            onRetryMessage?.(message.id);
+          }}
+          title={isRetryingMessage ? "正在重试发送" : "重试发送"}
           type="button"
         >
-          <HugeiconsIcon icon={ExclamationMarkIcon} size={10} strokeWidth={2.4} />
+          <HugeiconsIcon
+            className={cn(isRetryingMessage && "animate-spin")}
+            icon={isRetryingMessage ? Loading03Icon : ExclamationMarkIcon}
+            size={10}
+            strokeWidth={2.4}
+          />
         </button>
       </div>
     );
@@ -433,11 +473,8 @@ function MessageRevokedState() {
 
 type InlineDeliveryState = "accepted" | "failed";
 
-function getInlineDeliveryState(
-  message: ChatMessage,
-  canRetryMessage: boolean,
-): InlineDeliveryState | null {
-  if (message.status === "failed" && canRetryMessage) {
+function getInlineDeliveryState(message: ChatMessage): InlineDeliveryState | null {
+  if (message.status === "failed") {
     return "failed";
   }
 
@@ -452,18 +489,17 @@ function MessageDeliveryState({ message }: { message: ChatMessage }) {
     return null;
   }
 
-  const label =
-    message.status === "failed"
-      ? message.failReason ?? "发送失败"
-      : message.status === "pending"
-        ? "等待提交..."
-        : "发送中...";
+  if (message.status === "failed") {
+    return null;
+  }
+
+  const label = message.status === "pending" ? "等待提交..." : "发送中...";
 
   return (
     <p
       className={cn(
         "mt-1 px-1 text-[11px]",
-        message.status === "failed" ? "text-destructive" : "text-muted-foreground",
+        "text-muted-foreground",
       )}
     >
       {label}

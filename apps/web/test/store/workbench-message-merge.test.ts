@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  WorkbenchMessageDto,
-  WorkbenchMessageStatusChangeDto,
-} from "@chatai/contracts";
+import type { WorkbenchMessageDto } from "@chatai/contracts";
 import {
   createMockWorkbenchService,
   setWorkbenchService,
@@ -57,17 +54,9 @@ describe("workbench message merge state", () => {
           seq: 999,
           status: "sent",
         } satisfies WorkbenchMessageDto;
-        const statusChange = {
-          clientMessageId: observedClientMessageId,
-          conversationId: "conv-001",
-          messageId: "remote-stable-001",
-          status: "sent",
-        } satisfies WorkbenchMessageStatusChangeDto;
-
         return {
           activeConversationMessages: [remoteMessage],
           conversationChanges: [],
-          messageStatusChanges: [statusChange],
           nextVersion: 9999,
           seatChanges: [],
         };
@@ -167,7 +156,6 @@ describe("workbench message merge state", () => {
             },
           ],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: 9999,
           seatChanges: [],
         };
@@ -241,7 +229,6 @@ describe("workbench message merge state", () => {
             },
           ],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: 9999,
           seatChanges: [],
         };
@@ -358,7 +345,6 @@ describe("workbench message merge state", () => {
             },
           ],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: 9999,
           seatChanges: [],
         };

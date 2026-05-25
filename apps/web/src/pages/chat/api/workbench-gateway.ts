@@ -14,7 +14,6 @@ import type {
   WorkbenchConversationReadResponse,
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
-  WorkbenchMessageStatus,
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -32,7 +31,6 @@ import type {
   EmployeeProfile,
   GroupMember,
   Message,
-  MessageStatus,
 } from "@/pages/chat/chat-types";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
 
@@ -48,6 +46,7 @@ export type WorkbenchScopeRequest = {
   currentAccountId: string;
   freshBaseline?: boolean;
   messageUpdateCursor?: number;
+  seatUpdateCursor?: number;
   sinceVersion: number;
 };
 
@@ -105,21 +104,13 @@ export type WorkbenchConversationChange =
       type: "upsert";
     };
 
-export type WorkbenchMessageStatusChange = {
-  clientMessageId?: string;
-  conversationId: string;
-  reason?: string;
-  remoteMessageId: string;
-  status: MessageStatus;
-};
-
 export type WorkbenchPollResult = {
   accountChanges: Array<WorkbenchSeatChangeDto & { accountId: string }>;
   activeConversationMessages: Message[];
   conversationChanges: WorkbenchConversationChange[];
   messageUpdateEvents: WorkbenchMessageUpdateEventDto[];
-  messageStatusChanges: WorkbenchMessageStatusChange[];
   nextMessageUpdateCursor?: number;
+  nextSeatUpdateCursor?: number;
   nextVersion: number;
   request: WorkbenchScopeRequest;
 };
@@ -442,6 +433,7 @@ export async function pollWorkbench(
     currentSeatId: request.currentAccountId,
     freshBaseline: request.freshBaseline,
     messageUpdateCursor: request.messageUpdateCursor,
+    seatUpdateCursor: request.seatUpdateCursor,
     sinceVersion: request.sinceVersion,
   });
 
@@ -465,14 +457,8 @@ export async function pollWorkbench(
         },
     ),
     messageUpdateEvents: response.messageUpdateEvents ?? [],
-    messageStatusChanges: response.messageStatusChanges.map((change) => ({
-      clientMessageId: change.clientMessageId,
-      conversationId: change.conversationId,
-      reason: change.reason,
-      remoteMessageId: change.messageId,
-      status: adaptMessageStatus(change.status),
-    })),
     nextMessageUpdateCursor: response.nextMessageUpdateCursor,
+    nextSeatUpdateCursor: response.nextSeatUpdateCursor,
     nextVersion: response.nextVersion,
     request,
   };
@@ -512,19 +498,6 @@ function adaptHistoryMessagePage(
     nextCursor: page.nextCursor,
     prevCursor: page.prevCursor,
   };
-}
-
-function adaptMessageStatus(status: WorkbenchMessageStatus): MessageStatus {
-  switch (status) {
-    case "failed":
-      return "failed";
-    case "queued":
-    case "sending":
-      return "sending";
-    case "sent":
-    default:
-      return "sent";
-  }
 }
 
 function getFirstConversation(

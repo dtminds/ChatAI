@@ -5,6 +5,67 @@ import { FileMessageCard } from "@/pages/chat/components/message";
 import type { FileMessageContent } from "@/pages/chat/chat-types";
 
 describe("FileMessageCard", () => {
+  it.each([
+    ["xls", "Excel 文件", "https://b5.bokr.com.cn/dist/excel.png"],
+    ["xlsx", "Excel 文件", "https://b5.bokr.com.cn/dist/excel.png"],
+    ["csv", "Excel 文件", "https://b5.bokr.com.cn/dist/excel.png"],
+    ["pdf", "PDF 文件", "https://b5.bokr.com.cn/dist/pdf.png"],
+    ["doc", "Word 文件", "https://b5.bokr.com.cn/dist/word.png"],
+    ["docx", "Word 文件", "https://b5.bokr.com.cn/dist/word.png"],
+    ["ppt", "PPT 文件", "https://b5.bokr.com.cn/dist/ppt.png"],
+    ["pptx", "PPT 文件", "https://b5.bokr.com.cn/dist/ppt.png"],
+    ["zip", "压缩文件", "https://b5.bokr.com.cn/dist/zip.png"],
+    ["rar", "压缩文件", "https://b5.bokr.com.cn/dist/zip.png"],
+  ])("renders the configured file type icon for %s files", (extension, label, src) => {
+    render(
+      <FileMessageCard
+        content={{
+          ...createFileContent(),
+          extension,
+          fileName: `报价单.${extension}`,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: label })).toHaveAttribute("src", src);
+    expect(screen.queryByText(extension)).not.toBeInTheDocument();
+  });
+
+  it("renders the default file icon for unknown extensions", () => {
+    render(
+      <FileMessageCard
+        content={{
+          ...createFileContent(),
+          extension: "txt",
+          fileName: "备注.txt",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/file.png",
+    );
+    expect(screen.queryByText("txt")).not.toBeInTheDocument();
+  });
+
+  it("renders the default file icon when runtime data omits the extension", () => {
+    render(
+      <FileMessageCard
+        content={{
+          ...createFileContent(),
+          extension: null,
+          fileName: "备注",
+        } as unknown as FileMessageContent}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/file.png",
+    );
+  });
+
   it("renders a clickable transfer button when the file is not stored in COS", async () => {
     const user = userEvent.setup();
     const handleDownloadClick = vi.fn();

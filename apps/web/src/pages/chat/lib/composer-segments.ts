@@ -21,7 +21,7 @@ export type ComposerFileSegment = {
   extension: string;
   fileId?: string;
   fileName: string;
-  fileSize: number;
+  fileSize?: number;
   fileSizeLabel: string;
   url?: string;
 };

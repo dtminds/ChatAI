@@ -34,6 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
+import { useAuthStore } from "@/store/auth-store";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
@@ -49,10 +50,9 @@ import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scro
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import {
   isChatReadOnlySubUser,
-  useAuthSubUser,
 } from "@/pages/chat/hooks/use-auth-sub-user";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
-import { resolveWorkbenchSendCapability } from "@/pages/chat/lib/sidebar-iframe-url";
+import { resolveSidebarIframeSendStatus } from "@/pages/chat/lib/sidebar-iframe-url";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
@@ -72,6 +72,7 @@ import {
   extractComposerMentionState,
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
+import { resolveWorkbenchPermissions } from "@/pages/chat/lib/workbench-permissions";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
@@ -178,6 +179,7 @@ function ChatWorkbenchContent({
     readReceiptError,
     pinConversation,
     retryFailedMessage,
+    setChatSendPermission,
     closeHistoryPanel,
     loadHistoryMessages,
     openHistoryPanel,
@@ -195,7 +197,7 @@ function ChatWorkbenchContent({
     unpinConversation,
     updateMessageDownloadContent,
   } = useWorkbenchStore();
-  const authSubUser = useAuthSubUser();
+  const subUser = useAuthStore((state) => state.subUser);
 
   const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
@@ -218,6 +220,9 @@ function ChatWorkbenchContent({
     [],
   );
   const [isSendingDraft, setIsSendingDraft] = useState(false);
+  const [retryingMessageIds, setRetryingMessageIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [quotedMessage, setQuotedMessage] =
     useState<QuotedMessagePreviewContent | null>(null);
   const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
@@ -237,7 +242,9 @@ function ChatWorkbenchContent({
   const mentionRetryDialogStateRef =
     useRef<MentionRetryDialogState | null>(null);
   const isSendingDraftRef = useRef(false);
+  const shouldRestoreComposerFocusRef = useRef(false);
   const isMountedRef = useRef(true);
+  const activeConversationIdRef = useRef<string | undefined>(activeConversationId);
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
@@ -311,27 +318,31 @@ function ChatWorkbenchContent({
     undefined;
 
   useConversationRevealTimer(allConversations);
-  const isActiveAccountOffline = activeAccount?.loginStatus === "offline";
-  const isActiveAccountTakenOver =
-    !!activeAccount?.takenOverEmployeeId &&
-    activeAccount.takenOverEmployeeId === me?.id;
-  const isReadOnlySubUser = isChatReadOnlySubUser(authSubUser);
-  const { canSendMessage, composerPlaceholder, sidebarIframeSendStatus } =
-    resolveWorkbenchSendCapability({
-      bootstrapStatus,
-      conversationBizStatus: activeConversation?.bizStatus,
-      hasActiveConversation: !!activeConversation,
-      isAccountOffline: isActiveAccountOffline,
-      isAccountTakenOver: isActiveAccountTakenOver,
-      isReadOnly: isReadOnlySubUser,
-    });
-  const sidebarIframeTos: "0" | "1" =
-    !!activeAccount?.takenOverEmployeeId &&
-    activeAccount.takenOverEmployeeId === me?.id
-      ? "1"
-      : "0";
-  const isConversationActionDisabled =
-    isActiveAccountOffline || !isActiveAccountTakenOver;
+  const workbenchPermissions = resolveWorkbenchPermissions({
+    account: activeAccount,
+    activeConversation,
+    bootstrapStatus,
+    me,
+    subUser,
+  });
+  const {
+    canSendMessage,
+    canTakeOverAccount,
+    canUseChatSend,
+    composerPlaceholder,
+    isAccountOffline,
+    isAccountTakenOverByCurrentUser,
+    isConversationActionDisabled,
+    isConversationBizInactive,
+  } = workbenchPermissions;
+  const sidebarIframeSendStatus = resolveSidebarIframeSendStatus({
+    hasActiveConversation: !!activeConversation,
+    isAccountOffline,
+    isAccountTakenOver: isAccountTakenOverByCurrentUser,
+    isConversationBizInactive,
+    isReadOnly: isChatReadOnlySubUser(subUser),
+  });
+  const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";
 
   const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
 
@@ -381,6 +392,14 @@ function ChatWorkbenchContent({
   );
 
   useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    setChatSendPermission(canUseChatSend);
+  }, [canUseChatSend, setChatSendPermission]);
+
+  useEffect(() => {
     if (!readReceiptError) {
       return;
     }
@@ -388,6 +407,69 @@ function ChatWorkbenchContent({
     toast.warning(readReceiptError);
     dismissReadReceiptError();
   }, [dismissReadReceiptError, readReceiptError]);
+
+  const handleTakeOverAccount = useCallback(
+    async (accountId: string) => {
+      if (!canTakeOverAccount) {
+        toast.warning("当前账号无接管权限");
+        return;
+      }
+
+      const result = await takeOverAccount(accountId);
+
+      if (!isMountedRef.current || result.ok) {
+        return;
+      }
+
+      toast.warning(result.errorMessage);
+    },
+    [canTakeOverAccount, takeOverAccount],
+  );
+
+  const handleRetryFailedMessage = useCallback(
+    async (messageId: string) => {
+      if (!canSendMessage) {
+        return;
+      }
+
+      const retryConversationId = activeConversationIdRef.current;
+      setRetryingMessageIds((current) => new Set(current).add(messageId));
+
+      try {
+        const result = await retryFailedMessage(messageId);
+
+        if (
+          !isMountedRef.current ||
+          activeConversationIdRef.current !== retryConversationId
+        ) {
+          return;
+        }
+
+        if (!result.ok) {
+          toast.warning(result.errorMessage || "重试失败，请稍后重试");
+          return;
+        }
+
+        const messageViewport = messageViewportRef.current;
+
+        if (messageViewport) {
+          messageViewport.scrollTo?.({
+            top: 0,
+            behavior: "smooth",
+          });
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setRetryingMessageIds((current) => {
+            const next = new Set(current);
+            next.delete(messageId);
+            return next;
+          });
+        }
+      }
+    },
+    [canSendMessage, retryFailedMessage],
+  );
 
   useEffect(() => {
     setIsEmojiPickerOpen(false);
@@ -398,6 +480,17 @@ function ChatWorkbenchContent({
     setMentionRetryDialogState(null);
     setIsRefreshingMentionTarget(false);
   }, [activeConversation?.id]);
+
+  useEffect(() => {
+    if (isSendingDraft || !shouldRestoreComposerFocusRef.current) {
+      return;
+    }
+
+    shouldRestoreComposerFocusRef.current = false;
+    const editor = composerRef.current;
+    editor?.getRootElement()?.focus();
+    editor?.focus();
+  }, [isSendingDraft]);
 
   useWorkbenchPolling({
     activeAccountId,
@@ -420,6 +513,7 @@ function ChatWorkbenchContent({
   };
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
+    const sendConversationId = activeConversation?.id;
     const normalizedSegments = segments.length > 0 ? segments : [];
     const mentionState = extractComposerMentionState(segments);
     const mention =
@@ -478,7 +572,10 @@ function ChatWorkbenchContent({
         },
       });
 
-      if (!isMountedRef.current) {
+      if (
+        !isMountedRef.current ||
+        activeConversationIdRef.current !== sendConversationId
+      ) {
         return;
       }
 
@@ -497,10 +594,13 @@ function ChatWorkbenchContent({
       clearComposer({
         keepQuote: quotedMessage !== null && !result.didConsumeQuote,
       });
-      composerRef.current?.focus();
     } finally {
       isSendingDraftRef.current = false;
-      setIsSendingDraft(false);
+      if (isMountedRef.current) {
+        shouldRestoreComposerFocusRef.current =
+          activeConversationIdRef.current === sendConversationId;
+        setIsSendingDraft(false);
+      }
     }
   };
 
@@ -948,6 +1048,7 @@ function ChatWorkbenchContent({
         <AccountRail
           accounts={accounts}
           activeAccountId={activeAccountId}
+          canTakeOverAccount={canTakeOverAccount}
           currentEmployee={me}
           currentEmployeeId={me?.id}
           isCollapsed={isAccountRailCollapsed}
@@ -956,7 +1057,7 @@ function ChatWorkbenchContent({
           onResizeStart={handleAccountRailResizeStart}
           onSelectAccount={setActiveAccount}
           onOpenSettings={onOpenSettings}
-          onTakeOverAccount={takeOverAccount}
+          onTakeOverAccount={handleTakeOverAccount}
           takeoverStatusByAccountId={takeoverStatusByAccountId}
         />
 
@@ -1079,7 +1180,8 @@ function ChatWorkbenchContent({
                 onOpenQuotedMessage={handleOpenQuotedMessage}
                 onQuoteMessage={handleQuoteMessage}
                 onMessageViewportScroll={handleMessageViewportScroll}
-                onRetryMessage={retryFailedMessage}
+                onRetryMessage={handleRetryFailedMessage}
+                retryingMessageIds={retryingMessageIds}
                 onSendDraft={handleSendDraft}
                 onDismissScopeTransitionError={() => {
                   setFileUploadTransitionError(undefined);

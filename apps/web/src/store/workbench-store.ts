@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
-import { formatConversationPreview, formatWorkbenchTimestamp } from "@/pages/chat/api/workbench-adapter";
+import { formatConversationPreview, formatWorkbenchTimestamp, adaptConversation } from "@/pages/chat/api/workbench-adapter";
+import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
   CONVERSATION_MODE_CACHE_TTL_MS,
@@ -29,9 +30,13 @@ import {
   type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
+import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
-import type { SettingsSidebarItem } from "@chatai/contracts";
-import type { WorkbenchSendMessagePayload } from "@chatai/contracts";
+import {
+  CHAT_TYPE,
+  type SettingsSidebarItem,
+  type WorkbenchSendMessagePayload,
+} from "@chatai/contracts";
 import type {
   Account,
   ChatMessage,
@@ -59,6 +64,17 @@ type SendMessageResult =
       errorCode: string;
       errorMessage?: string;
       reason: "file-upload" | "image-upload" | "send" | "unavailable";
+      ok: false;
+    };
+
+type RetryFailedMessageResult = SendMessageResult;
+
+type TakeoverResult =
+  | {
+      ok: true;
+    }
+  | {
+      errorMessage: string;
       ok: false;
     };
 
@@ -137,7 +153,9 @@ type WorkbenchState = {
   pollState: PollState;
   sinceVersion: number;
   messageUpdateCursor?: number;
+  seatUpdateCursor?: number;
   isPollBaselineFresh: boolean;
+  hasChatSendPermission: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
   sidebarItems: SettingsSidebarItem[];
@@ -149,13 +167,18 @@ type WorkbenchState = {
   pinConversation: (conversationId: string) => Promise<void>;
   setActiveAccount: (accountId: string) => Promise<void>;
   setActiveConversation: (conversationId: string) => Promise<void>;
-  setActiveMode: (mode: ChatMode) => Promise<void>;
+  setActiveMode: (
+    mode: ChatMode,
+    options?: { preserveConversation?: Conversation },
+  ) => Promise<void>;
   loadActiveGroupMembers: (options?: { force?: boolean }) => Promise<void>;
   markConversationUnread: (conversationId: string) => Promise<void>;
   sendAgentMessageSegments: (
     segments: ComposerSegment[],
     options?: {
+      failMsgId?: string;
       mention?: SendMentionPayload;
+      removeMessageIdOnAccepted?: string;
       onImageUploaded?: (payload: {
         nextSegment: ComposerSegment;
         previousSegment: ComposerSegment;
@@ -164,10 +187,11 @@ type WorkbenchState = {
     },
   ) => Promise<SendMessageResult>;
   sendAgentTextMessage: (text: string) => Promise<SendMessageResult>;
+  setChatSendPermission: (hasChatSendPermission: boolean) => void;
   setSidebarItems: (items: SettingsSidebarItem[]) => void;
-  takeOverAccount: (accountId: string) => Promise<void>;
+  takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
-  retryFailedMessage: (messageId: string) => Promise<void>;
+  retryFailedMessage: (messageId: string) => Promise<RetryFailedMessageResult>;
   loadOlderMessages: () => Promise<void>;
   openHistoryPanel: (conversationId?: string) => Promise<void>;
   closeHistoryPanel: () => void;
@@ -182,6 +206,16 @@ type WorkbenchState = {
     messageId: string,
     contentPatch: DownloadContentPatch,
   ) => void;
+  searchKeyword: string;
+  searchResults: import("@chatai/contracts").WorkbenchSearchResponseDto | null;
+  isSearchLoading: boolean;
+  setSearchKeyword: (keyword: string) => void;
+  triggerSearch: (seatIdOverride?: string) => Promise<void>;
+  selectOrCreateAndSelectConversation: (
+    item: import("@chatai/contracts").WorkbenchSearchContactResultDto | import("@chatai/contracts").WorkbenchSearchGroupResultDto,
+  ) => Promise<void>;
+  conversationOpenError?: string;
+  dismissConversationOpenError: () => void;
 };
 
 type WorkbenchStore = WorkbenchState;
@@ -211,6 +245,7 @@ function createInitialState(): Omit<
   | "markConversationUnread"
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
+  | "setChatSendPermission"
   | "setSidebarItems"
   | "takeOverAccount"
   | "unpinConversation"
@@ -227,6 +262,10 @@ function createInitialState(): Omit<
   | "updateMessageDownloadContent"
   | "dismissScopeTransitionError"
   | "dismissReadReceiptError"
+  | "setSearchKeyword"
+  | "triggerSearch"
+  | "selectOrCreateAndSelectConversation"
+  | "dismissConversationOpenError"
 > {
   return {
     accounts: [],
@@ -236,6 +275,7 @@ function createInitialState(): Omit<
     activeMode: "single",
     bootstrapError: undefined,
     bootstrapStatus: "idle",
+    hasChatSendPermission: false,
     conversationListCacheSeatOrder: [],
     conversationListsByScope: {},
     conversationModeLoadedAtByScope: {},
@@ -266,9 +306,14 @@ function createInitialState(): Omit<
     sendStatusByConversationId: {},
     sinceVersion: 0,
     messageUpdateCursor: undefined,
+    seatUpdateCursor: undefined,
     isPollBaselineFresh: false,
     sidebarItems: [],
     takeoverStatusByAccountId: {},
+    searchKeyword: "",
+    searchResults: null,
+    isSearchLoading: false,
+    conversationOpenError: undefined,
   };
 }
 
@@ -298,7 +343,7 @@ function getActiveMessageSeq(
   conversationId: string,
 ) {
   const messages = messagesByConversationId[conversationId] ?? [];
-  return messages.reduce((max, message, index) => Math.max(max, message.seq ?? index + 1), 0);
+  return messages.reduce((max, message) => Math.max(max, message.seq ?? 0), 0);
 }
 
 function buildMessagePaginationState(page: {
@@ -317,10 +362,18 @@ function replaceConversationsByMode(
   currentList: Conversation[],
   mode: ChatMode,
   nextModeConversations: Conversation[],
+  preserveConversation?: Conversation,
 ) {
+  const nextModeList = preserveConversation
+    ? mergeConversationList(nextModeConversations, preserveConversation).filter(
+        (conversation) => conversation.mode === mode,
+      )
+    : nextModeConversations;
+
   return sortConversations([
+    // The reloaded list already carries the preserved conversation when needed.
     ...currentList.filter((conversation) => conversation.mode !== mode),
-    ...nextModeConversations,
+    ...nextModeList,
   ]);
 }
 
@@ -843,8 +896,78 @@ function buildOptimisticMessageContent(
   };
 }
 
-function isAccountTakenOverByCurrentUser(account: Account | undefined, me: EmployeeProfile | undefined) {
-  return !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
+function getRetrySendInputFromMessage(message: ChatMessage): {
+  quote?: SendQuotePayload;
+  segment: ComposerSegment;
+} | undefined {
+  if (message.content.type === "text") {
+    return {
+      segment: {
+        text: message.content.text,
+        type: "text",
+      },
+    };
+  }
+
+  if (message.content.type === "quote") {
+    return {
+      quote: {
+        quoteMsgId: message.content.quoteMsgId,
+        quotedMessageId: message.content.quotedMessageId,
+        quotedMessage: message.content.quotedMessage,
+      },
+      segment: {
+        text: message.content.text,
+        type: "text",
+      },
+    };
+  }
+
+  if (message.content.type === "image") {
+    const imageUrl = message.content.imageUrl?.trim();
+
+    if (!imageUrl) {
+      return undefined;
+    }
+
+    return {
+      segment: {
+        alt: message.content.alt,
+        height: message.content.height,
+        type: "image",
+        url: imageUrl,
+        width: message.content.width,
+      },
+    };
+  }
+
+  if (message.content.type === "file") {
+    const fileUrl = message.content.fileUrl?.trim();
+
+    if (!fileUrl) {
+      return undefined;
+    }
+
+    return {
+      segment: {
+        extension: message.content.extension,
+        fileName: message.content.fileName,
+        fileSizeLabel: message.content.fileSizeLabel,
+        type: "file",
+        url: fileUrl,
+      },
+    };
+  }
+
+  return undefined;
+}
+
+function canUseConversationActions(state: WorkbenchState, account: Account | undefined) {
+  return canUseWorkbenchConversationActions({
+    account,
+    hasSendPermission: state.hasChatSendPermission,
+    me: state.me,
+  });
 }
 
 function omitByKeys<T>(record: Record<string, T>, keys: Iterable<string>) {
@@ -965,6 +1088,7 @@ export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
   let latestGroupMembersRequestId = 0;
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
   const latestGroupMembersRequestIdByConversationId: Record<string, number> = {};
 
@@ -1176,7 +1300,7 @@ export function createWorkbenchStore() {
         (item) => item.id === conversation?.accountId,
       );
 
-      if (!conversation || !account || !isAccountTakenOverByCurrentUser(account, state.me)) {
+      if (!conversation || !account || !canUseConversationActions(state, account)) {
         return;
       }
 
@@ -1272,7 +1396,7 @@ export function createWorkbenchStore() {
           (account) => account.id === latestState.activeAccountId,
         );
 
-        if (!isAccountTakenOverByCurrentUser(activeAccount, latestState.me)) {
+        if (!canUseConversationActions(latestState, activeAccount)) {
           return;
         }
 
@@ -1292,6 +1416,104 @@ export function createWorkbenchStore() {
 
     return {
       ...createInitialState(),
+      setChatSendPermission(hasChatSendPermission) {
+        set({ hasChatSendPermission });
+      },
+      setSearchKeyword(keyword) {
+        set({ searchKeyword: keyword });
+
+        if (searchDebounceTimer) {
+          clearTimeout(searchDebounceTimer);
+        }
+
+        if (!keyword.trim()) {
+          set({ searchResults: null, isSearchLoading: false });
+          return;
+        }
+
+        // Capture seatId now so the debounce fires against the correct account
+        // even if the user switches accounts within the 450 ms window.
+        const seatIdAtSchedule = get().activeAccountId;
+
+        set({ isSearchLoading: true });
+
+        searchDebounceTimer = setTimeout(() => {
+          void get().triggerSearch(seatIdAtSchedule ?? undefined);
+        }, 450);
+      },
+      async triggerSearch(seatIdOverride?: string) {
+        const keyword = get().searchKeyword;
+        const seatId = seatIdOverride ?? get().activeAccountId;
+        // If the account has changed since the debounce was scheduled, discard.
+        if (!keyword.trim() || !seatId || seatId !== get().activeAccountId) {
+          set({ searchResults: null, isSearchLoading: false });
+          return;
+        }
+
+        set({ isSearchLoading: true });
+        try {
+          const service = getWorkbenchService();
+          const results = await service.search(seatId, keyword);
+          // Discard stale results if keyword or account changed while awaiting.
+          if (get().searchKeyword === keyword && get().activeAccountId === seatId) {
+            set({ searchResults: results, isSearchLoading: false });
+          }
+        } catch (error) {
+          if (get().searchKeyword === keyword && get().activeAccountId === seatId) {
+            set({ searchResults: null, isSearchLoading: false });
+          }
+        }
+      },
+      async selectOrCreateAndSelectConversation(item) {
+        const seatId = get().activeAccountId;
+        const isGroup = "thirdGroupId" in item;
+        const nextMode: ChatMode = isGroup ? "group" : "single";
+
+        try {
+          set({ isConversationLoading: true });
+          const service = getWorkbenchService();
+          const payload = {
+            seatId,
+            chatType: isGroup ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
+            thirdExternalUserId: isGroup ? undefined : item.thirdExternalUserId,
+            thirdGroupId: isGroup ? item.thirdGroupId : undefined,
+          };
+          const summaryDto = await service.getOrCreateConversation(payload);
+
+          if (get().activeAccountId !== seatId) {
+            return;
+          }
+
+          const hydratedConversation = adaptConversation(summaryDto);
+
+          await get().setActiveMode(nextMode, {
+            preserveConversation: hydratedConversation,
+          });
+
+          if (get().activeAccountId !== seatId) {
+            return;
+          }
+          await get().setActiveConversation(hydratedConversation.id);
+
+          if (get().activeAccountId === seatId) {
+            set({ searchKeyword: "", searchResults: null, isSearchLoading: false });
+          }
+        } catch (error) {
+          if (get().activeAccountId === seatId) {
+            set({
+              conversationOpenError:
+                getRequestApiErrorMessage(error) ?? "获取/开启会话失败，请稍后重试",
+            });
+          }
+        } finally {
+          if (get().activeAccountId === seatId) {
+            set({ isConversationLoading: false });
+          }
+        }
+      },
+      dismissConversationOpenError() {
+        set({ conversationOpenError: undefined });
+      },
       setSidebarItems(items) {
         set({ sidebarItems: items });
       },
@@ -1302,7 +1524,7 @@ export function createWorkbenchStore() {
           (item) => item.id === conversation?.accountId,
         );
 
-        if (!conversation || !account || !isAccountTakenOverByCurrentUser(account, state.me)) {
+        if (!conversation || !account || !canUseConversationActions(state, account)) {
           return;
         }
 
@@ -1385,7 +1607,7 @@ export function createWorkbenchStore() {
         if (
           !conversation ||
           conversation.unread > 0 ||
-          !isAccountTakenOverByCurrentUser(account, state.me)
+          !canUseConversationActions(state, account)
         ) {
           return;
         }
@@ -1422,7 +1644,7 @@ export function createWorkbenchStore() {
         if (
           !conversation ||
           conversation.unread <= 0 ||
-          !isAccountTakenOverByCurrentUser(account, state.me)
+          !canUseConversationActions(state, account)
         ) {
           return;
         }
@@ -1443,63 +1665,68 @@ export function createWorkbenchStore() {
         );
       },
       async takeOverAccount(accountId) {
-      const state = get();
-      const { me } = state;
+        const state = get();
+        const { me } = state;
 
-      if (!accountId || !me) {
-        return;
-      }
-
-      const account = state.accounts.find((item) => item.id === accountId);
-
-      if (
-        !account ||
-        account.loginStatus === "offline" ||
-        account.takenOverEmployeeId === me.id
-      ) {
-        return;
-      }
-
-      const requestId = issueTakeoverRequestId(accountId);
-
-      set((currentState) => ({
-        takeoverStatusByAccountId: {
-          ...currentState.takeoverStatusByAccountId,
-          [accountId]: "taking-over",
-        },
-      }));
-
-      try {
-        const nextAccount = await takeOverAccountRequest(accountId);
-
-        if (!isCurrentTakeoverRequest(accountId, requestId)) {
-          return;
+        if (!accountId || !me) {
+          return { ok: true };
         }
 
-        set((currentState) => ({
-          accounts: currentState.accounts.map((item) =>
-            item.id === accountId ? nextAccount : item,
-          ),
-          takeoverStatusByAccountId: omitTakeoverStatus(
-            currentState.takeoverStatusByAccountId,
-            accountId,
-          ),
-        }));
-        clearTakeoverRequest(accountId);
-      } catch {
-        if (!isCurrentTakeoverRequest(accountId, requestId)) {
-          return;
+        const account = state.accounts.find((item) => item.id === accountId);
+
+        if (
+          !account ||
+          account.loginStatus === "offline" ||
+          account.takenOverEmployeeId === me.id
+        ) {
+          return { ok: true };
         }
 
+        const requestId = issueTakeoverRequestId(accountId);
+
         set((currentState) => ({
-          takeoverStatusByAccountId: omitTakeoverStatus(
-            currentState.takeoverStatusByAccountId,
-            accountId,
-          ),
+          takeoverStatusByAccountId: {
+            ...currentState.takeoverStatusByAccountId,
+            [accountId]: "taking-over",
+          },
         }));
-        clearTakeoverRequest(accountId);
-      }
-    },
+
+        try {
+          const nextAccount = await takeOverAccountRequest(accountId);
+
+          if (!isCurrentTakeoverRequest(accountId, requestId)) {
+            return { ok: true };
+          }
+
+          set((currentState) => ({
+            accounts: currentState.accounts.map((item) =>
+              item.id === accountId ? nextAccount : item,
+            ),
+            takeoverStatusByAccountId: omitTakeoverStatus(
+              currentState.takeoverStatusByAccountId,
+              accountId,
+            ),
+          }));
+          clearTakeoverRequest(accountId);
+          return { ok: true };
+        } catch (error) {
+          if (!isCurrentTakeoverRequest(accountId, requestId)) {
+            return { ok: true };
+          }
+
+          set((currentState) => ({
+            takeoverStatusByAccountId: omitTakeoverStatus(
+              currentState.takeoverStatusByAccountId,
+              accountId,
+            ),
+          }));
+          clearTakeoverRequest(accountId);
+          return {
+            errorMessage: getRequestErrorMessage(error, "接管失败，请稍后重试"),
+            ok: false,
+          };
+        }
+      },
     async unpinConversation(conversationId) {
       await setConversationPinned(conversationId, false);
     },
@@ -1593,6 +1820,7 @@ export function createWorkbenchStore() {
           sidebarItems: bootstrapResult.sidebarItems,
           isPollBaselineFresh: true,
           messageUpdateCursor: undefined,
+          seatUpdateCursor: undefined,
           sinceVersion: bootstrapResult.pollBaseline,
         });
 
@@ -1618,11 +1846,11 @@ export function createWorkbenchStore() {
 
         if (
           bootstrapResult.activeConversationId &&
-          isAccountTakenOverByCurrentUser(
+          canUseConversationActions(
+            get(),
             bootstrapResult.accounts.find(
               (account) => account.id === bootstrapResult.activeAccountId,
             ),
-            bootstrapResult.me,
           )
         ) {
           await markActiveConversationRead(
@@ -1663,6 +1891,7 @@ export function createWorkbenchStore() {
           currentAccountId: state.activeAccountId,
           freshBaseline: state.isPollBaselineFresh,
           messageUpdateCursor: state.messageUpdateCursor,
+          seatUpdateCursor: state.seatUpdateCursor,
           sinceVersion: state.sinceVersion,
         };
         const response = await pollWorkbench(request, {
@@ -1731,6 +1960,9 @@ export function createWorkbenchStore() {
             return {
               ...account,
               lastMessageTime: change.lastMessageTime,
+              ...(Object.prototype.hasOwnProperty.call(change, "hostSubUserId")
+                ? { takenOverEmployeeId: change.hostSubUserId ?? undefined }
+                : {}),
               unreadCount: change.unreadCount,
             };
           });
@@ -1815,38 +2047,13 @@ export function createWorkbenchStore() {
             };
           }
 
-          for (const change of response.messageStatusChanges) {
-            const conversationMessages = nextMessagesByConversationId[change.conversationId] ?? [];
-
-            nextMessagesByConversationId[change.conversationId] = conversationMessages.map(
-              (message) => {
-                const matches =
-                  (change.clientMessageId &&
-                    message.clientMessageId === change.clientMessageId) ||
-                  message.remoteMessageId === change.remoteMessageId;
-
-                if (!matches) {
-                  return message;
-                }
-
-                return {
-                  ...message,
-                  failReason: change.reason,
-                  remoteMessageId: change.remoteMessageId ?? message.remoteMessageId,
-                  status: change.status,
-                };
-              },
-            );
-          }
-
+          const serverMessages = [
+            ...response.activeConversationMessages,
+            ...Object.values(refreshedMessagesByConversationId).flat(),
+          ];
           const pendingMessages = currentState.pendingMessages.filter(
             (pendingMessage) =>
-              !response.messageStatusChanges.some(
-                (change) => change.clientMessageId === pendingMessage.clientMessageId,
-              ) &&
-              !response.activeConversationMessages.some((message) =>
-                isSameMessage(pendingMessage, message),
-              ),
+              !serverMessages.some((message) => isSameMessage(pendingMessage, message)),
           );
 
           return {
@@ -1879,6 +2086,8 @@ export function createWorkbenchStore() {
             },
             messageUpdateCursor:
               response.nextMessageUpdateCursor ?? currentState.messageUpdateCursor,
+            seatUpdateCursor:
+              response.nextSeatUpdateCursor ?? currentState.seatUpdateCursor,
             sinceVersion: response.nextVersion,
           };
         });
@@ -2016,8 +2225,8 @@ export function createWorkbenchStore() {
 
       if (
         !activeConversation ||
-        account?.loginStatus === "offline" ||
-        !isAccountTakenOverByCurrentUser(account, me)
+        activeConversation.bizStatus !== 1 ||
+        !canUseConversationActions(state, account)
       ) {
         return {
           errorCode: "UNAVAILABLE",
@@ -2086,6 +2295,7 @@ export function createWorkbenchStore() {
           const response = await sendTextMessage({
             clientMessageId: segmentClientMessageId,
             conversationId: activeConversationId,
+            failMsgId: options?.failMsgId,
             mention: mentionForSegment,
             quote: quoteForSegment,
             seatId: activeAccountId,
@@ -2115,7 +2325,10 @@ export function createWorkbenchStore() {
           set((currentState) => {
             const currentMessages =
               currentState.messagesByConversationId[activeConversationId] ?? [];
-            const nextMessages = [...currentMessages, optimisticMessage];
+            const currentMessagesWithoutAcceptedRemoval = options?.removeMessageIdOnAccepted
+              ? currentMessages.filter((message) => message.id !== options.removeMessageIdOnAccepted)
+              : currentMessages;
+            const nextMessages = [...currentMessagesWithoutAcceptedRemoval, optimisticMessage];
             const currentConversations =
               currentState.conversationListsByScope[activeAccountId] ?? [];
 
@@ -2141,7 +2354,14 @@ export function createWorkbenchStore() {
                 ...currentState.messagesByConversationId,
                 [activeConversationId]: nextMessages,
               },
-              pendingMessages: [...currentState.pendingMessages, optimisticMessage],
+              pendingMessages: [
+                ...(options?.removeMessageIdOnAccepted
+                  ? currentState.pendingMessages.filter(
+                      (message) => message.id !== options.removeMessageIdOnAccepted,
+                    )
+                  : currentState.pendingMessages),
+                optimisticMessage,
+              ],
             };
           });
         }
@@ -2186,31 +2406,37 @@ export function createWorkbenchStore() {
         (message) =>
           message.id === messageId &&
           message.role === "agent" &&
-          message.status === "failed" &&
-          message.content.type === "text",
+          message.status === "failed",
       );
 
       if (
         !failedMessage ||
-        failedMessage.role !== "agent" ||
-        failedMessage.content.type !== "text"
+        failedMessage.role !== "agent"
       ) {
-        return;
+        return {
+          errorCode: "MESSAGE_NOT_RETRYABLE",
+          errorMessage: "暂不支持重发该消息",
+          reason: "unavailable",
+          ok: false,
+        };
       }
 
-      set((currentState) => ({
-        messagesByConversationId: {
-          ...currentState.messagesByConversationId,
-          [failedMessage.conversationId]: (
-            currentState.messagesByConversationId[failedMessage.conversationId] ?? []
-          ).filter((message) => message.id !== failedMessage.id),
-        },
-        pendingMessages: currentState.pendingMessages.filter(
-          (message) => message.id !== failedMessage.id,
-        ),
-      }));
+      const retryInput = getRetrySendInputFromMessage(failedMessage);
 
-      await get().sendAgentTextMessage(failedMessage.content.text);
+      if (!retryInput) {
+        return {
+          errorCode: "UNSUPPORTED_RETRY_MESSAGE",
+          errorMessage: "暂不支持重发该消息",
+          reason: "unavailable",
+          ok: false,
+        };
+      }
+
+      return get().sendAgentMessageSegments([retryInput.segment], {
+        failMsgId: failedMessage.seq != null ? String(failedMessage.seq) : undefined,
+        removeMessageIdOnAccepted: failedMessage.id,
+        quote: retryInput.quote,
+      });
     },
     async loadOlderMessages() {
       const state = get();
@@ -2603,6 +2829,14 @@ export function createWorkbenchStore() {
         return;
       }
 
+      // 切换账号时立即取消未完成的搜索定时器并清空搜索态，
+      // 防止上一个账号的搜索结果或进行中的请求污染新账号的视图。
+      if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = null;
+      }
+      set({ searchKeyword: "", searchResults: null, isSearchLoading: false });
+
       const requestId = issueScopeRequestId();
       set({
         isConversationLoading: true,
@@ -2742,9 +2976,9 @@ export function createWorkbenchStore() {
 
         if (
           scopeResult.nextConversationId &&
-          isAccountTakenOverByCurrentUser(
+          canUseConversationActions(
+            get(),
             get().accounts.find((account) => account.id === accountId),
-            get().me,
           )
         ) {
           await markActiveConversationRead(scopeResult.nextConversationId, requestId);
@@ -2856,7 +3090,7 @@ export function createWorkbenchStore() {
           (account) => account.id === latestState.activeAccountId,
         );
 
-        if (!isAccountTakenOverByCurrentUser(activeAccount, latestState.me)) {
+        if (!canUseConversationActions(latestState, activeAccount)) {
           return;
         }
 
@@ -2871,10 +3105,25 @@ export function createWorkbenchStore() {
         }
       }
     },
-    async setActiveMode(mode) {
+    async setActiveMode(mode, options) {
       const state = get();
+      const preserveConversation = options?.preserveConversation;
 
       if (state.activeMode === mode) {
+        const accountId = preserveConversation?.accountId;
+
+        if (preserveConversation && accountId) {
+          set((currentState) => ({
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [accountId]: mergeConversationList(
+                currentState.conversationListsByScope[accountId] ?? [],
+                preserveConversation,
+              ),
+            },
+          }));
+        }
+
         return;
       }
 
@@ -2910,6 +3159,7 @@ export function createWorkbenchStore() {
                   currentState.conversationListsByScope[accountId] ?? [],
                   mode,
                   result.conversations,
+                  preserveConversation,
                 ),
               },
               conversationModeLoadedAtByScope: markConversationModesLoaded(

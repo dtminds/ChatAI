@@ -4,7 +4,7 @@ import {
   ArrowDown01Icon,
   Cancel01Icon,
   ExclamationMarkIcon,
-  Download01Icon,
+  Download04Icon,
   Loading03Icon,
   PlayIcon,
   Tick02Icon,
@@ -971,7 +971,7 @@ function HistoryMediaTile({
               onClick={() => onDownloadMessageFile(message)}
               type="button"
             >
-              <HugeiconsIcon icon={Download01Icon} size={21} strokeWidth={2.1} />
+              <HugeiconsIcon icon={Download04Icon} size={21} strokeWidth={2.1} />
             </button>
           ) : null
         ) : isVideoPlayable ? (

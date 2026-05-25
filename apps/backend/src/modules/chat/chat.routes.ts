@@ -7,7 +7,7 @@ import type {
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WorkbenchService } from "./workbench.service.js";
-import { fetchProxiedMediaAsset } from "./media-proxy.service.js";
+import { checkPlayableVoiceAsset } from "./media-proxy.service.js";
 import { ForbiddenError } from "../../shared/errors.js";
 import { withRequestId } from "../../shared/logger.js";
 
@@ -45,7 +45,7 @@ const HistoryMessagesQuerySchema = Type.Object({
   sender_id: Type.Optional(Type.String()),
 });
 
-const MediaProxyQuerySchema = Type.Object({
+const PlayableVoiceQuerySchema = Type.Object({
   url: Type.String({ minLength: 1 }),
 });
 
@@ -207,7 +207,7 @@ type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
 type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
 type HistoryMessagesQuery = Static<typeof HistoryMessagesQuerySchema>;
-type MediaProxyQuery = Static<typeof MediaProxyQuerySchema>;
+type PlayableVoiceQuery = Static<typeof PlayableVoiceQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
@@ -244,26 +244,18 @@ export async function registerChatRoutes(app: FastifyInstance) {
     getWorkbenchService(app, request).getSeats(getSubUserId(request)),
   );
 
-  app.get<{ Querystring: MediaProxyQuery }>(
-    "/api/server/media/proxy",
+  app.get<{ Querystring: PlayableVoiceQuery }>(
+    "/api/server/media/playable-voice",
     {
       preHandler: app.authenticate,
       schema: {
-        querystring: MediaProxyQuerySchema,
+        querystring: PlayableVoiceQuerySchema,
       },
     },
-    async (request, reply) => {
-      const media = await fetchProxiedMediaAsset(request.query.url, request.log);
-
-      reply.header("cache-control", "private, max-age=300");
-      reply.header("content-type", media.contentType);
-
-      if (media.contentLength) {
-        reply.header("content-length", media.contentLength);
-      }
-
-      return reply.send(media.body);
-    },
+    async (request) => ({
+      data: await checkPlayableVoiceAsset(request.query.url, request.log),
+      success: true,
+    }),
   );
 
   app.post<{ Body: MediaUploadCredentialBody }>(

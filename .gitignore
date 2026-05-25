@@ -1,6 +1,7 @@
 node_modules
 .pnpm-store
 .worktrees
+artifacts/
 dist
 .vite
 .DS_Store
@@ -203,6 +204,7 @@ dist
 
 # Serverless directories
 .serverless/
+apps/voice-service/.scf-package/
 
 # FuseBox cache
 .fusebox/

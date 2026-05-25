@@ -1,10 +1,10 @@
 import { VolumeHighIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import BenzAMRRecorder from "benz-amr-recorder";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { request } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import type { VoiceMessageContent } from "@/pages/chat/chat-types";
+import type { WorkbenchPlayableVoiceResponse } from "@chatai/contracts";
 
 type VoiceMessageCardProps = {
   content: VoiceMessageContent;
@@ -16,10 +16,6 @@ type ActiveVoicePlayback = {
   stop: () => void;
 };
 
-type CleanupOptions = {
-  destroyAmr?: boolean;
-};
-
 let activeVoicePlayback: ActiveVoicePlayback | null = null;
 let playbackGeneration = 0;
 
@@ -29,12 +25,9 @@ export function VoiceMessageCard({
 }: VoiceMessageCardProps) {
   const bubbleTone = isAgent ? "bg-primary/10" : "bg-secondary";
   const playbackIdRef = useRef(Symbol("voice-message-playback"));
-  const amrBlobRef = useRef<Blob | null>(null);
-  const amrUrlRef = useRef<string | null>(null);
-  const amrRef = useRef<BenzAMRRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playbackState, setPlaybackState] = useState<
-    "idle" | "playing" | "error"
+    "idle" | "playing" | "error" | "not-ready"
   >("idle");
   const canPlay = Boolean(content.audioUrl);
   const label = content.durationLabel || "语音";
@@ -45,17 +38,8 @@ export function VoiceMessageCard({
     }
   }, []);
 
-  const stopPlayback = useCallback((options: CleanupOptions = {}) => {
+  const stopPlayback = useCallback(() => {
     audioRef.current?.pause();
-    if (options.destroyAmr) {
-      destroyAmrRecorder(amrRef.current);
-      amrRef.current = null;
-      amrBlobRef.current = null;
-      amrUrlRef.current = null;
-    } else {
-      amrRef.current?.stop();
-    }
-
     clearActivePlayback();
     setPlaybackState("idle");
   }, [clearActivePlayback]);
@@ -91,7 +75,7 @@ export function VoiceMessageCard({
 
   useEffect(() => {
     return () => {
-      stopPlayback({ destroyAmr: true });
+      stopPlayback();
     };
   }, [stopPlayback]);
 
@@ -104,27 +88,21 @@ export function VoiceMessageCard({
 
     try {
       generation = claimActivePlayback();
-
-      if (isAmrUrl(content.audioUrl)) {
-        await playAmrVoice(content.audioUrl);
-        return;
-      }
-
-      if (!audioRef.current || audioRef.current.src !== content.audioUrl) {
-        amrRef.current?.stop();
-        audioRef.current?.pause();
-        audioRef.current = new Audio(content.audioUrl);
-        audioRef.current.addEventListener("ended", finishPlayback);
-        audioRef.current.addEventListener("error", failPlayback);
-      }
+      const playableUrl = isAmrUrl(content.audioUrl)
+        ? await resolvePlayableVoiceUrl(content.audioUrl)
+        : content.audioUrl;
 
       if (!isCurrentPlayback(generation)) {
         return;
       }
 
-      audioRef.current.currentTime = 0;
-      setPlaybackState("playing");
-      await audioRef.current.play();
+      if (!playableUrl) {
+        clearActivePlayback();
+        setPlaybackState("not-ready");
+        return;
+      }
+
+      await playNativeAudio(playableUrl, generation);
     } catch {
       if (generation == null || isCurrentPlayback(generation)) {
         failPlayback();
@@ -132,40 +110,21 @@ export function VoiceMessageCard({
     }
   };
 
-  const playAmrVoice = async (audioUrl: string) => {
-    audioRef.current?.pause();
-    const generation = playbackGeneration;
-
-    if (amrUrlRef.current !== audioUrl) {
-      destroyAmrRecorder(amrRef.current);
-      amrBlobRef.current = null;
-      amrRef.current = null;
-      amrUrlRef.current = null;
-    }
-
-    if (!amrRef.current) {
-      amrRef.current = new BenzAMRRecorder();
-      amrRef.current.onEnded(finishPlayback);
-      amrRef.current.onStop(finishPlayback);
-    }
-
-    if (!amrRef.current.isInit()) {
-      if (shouldProxyAmrAudio()) {
-        amrBlobRef.current ??= await downloadAmrVoice(audioUrl);
-        await amrRef.current.initWithBlob(amrBlobRef.current);
-      } else {
-        await amrRef.current.initWithUrl(audioUrl);
-      }
-
-      amrUrlRef.current = audioUrl;
+  const playNativeAudio = async (audioUrl: string, generation: number) => {
+    if (!audioRef.current || audioRef.current.src !== audioUrl) {
+      audioRef.current?.pause();
+      audioRef.current = new Audio(audioUrl);
+      audioRef.current.addEventListener("ended", finishPlayback);
+      audioRef.current.addEventListener("error", failPlayback);
     }
 
     if (!isCurrentPlayback(generation)) {
       return;
     }
 
+    audioRef.current.currentTime = 0;
     setPlaybackState("playing");
-    amrRef.current.play();
+    await audioRef.current.play();
   };
 
   return (
@@ -191,9 +150,11 @@ export function VoiceMessageCard({
       <span className="relative z-1 shrink-0 text-[14px] leading-none text-foreground">
         {playbackState === "error"
           ? "暂不可播放"
-          : playbackState === "playing"
-            ? "播放中"
-            : label}
+          : playbackState === "not-ready"
+            ? "暂不支持播放，请稍后重试"
+            : playbackState === "playing"
+              ? "播放中"
+              : label}
       </span>
     </button>
   );
@@ -203,34 +164,14 @@ function isAmrUrl(url: string) {
   return /\.amr(?:[?#].*)?$/i.test(url);
 }
 
-function shouldProxyAmrAudio() {
-  return import.meta.env.DEV;
-}
-
-function downloadAmrVoice(url: string) {
-  return request<Blob>({
+async function resolvePlayableVoiceUrl(url: string) {
+  const response = await request<{ data: WorkbenchPlayableVoiceResponse }>({
     method: "GET",
     params: {
       url,
     },
-    responseType: "blob",
-    url: "/server/media/proxy",
+    url: "/server/media/playable-voice",
   });
-}
 
-function destroyAmrRecorder(recorder: BenzAMRRecorder | null) {
-  try {
-    recorder?.destroy();
-  } catch (error) {
-    if (!isKnownAmrDestroyError(error)) {
-      throw error;
-    }
-  }
-}
-
-function isKnownAmrDestroyError(error: unknown) {
-  return (
-    error instanceof TypeError &&
-    error.message.includes("Cannot set properties of null")
-  );
+  return response.data.playable ? response.data.playableUrl : undefined;
 }

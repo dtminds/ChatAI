@@ -1,4 +1,3 @@
-import { Readable } from "node:stream";
 import {
   BadGatewayError,
   BadRequestError,
@@ -7,18 +6,20 @@ import { noopLogger, type AppLogger } from "../../shared/logger.js";
 
 const ALLOWED_MEDIA_HOST = "b5.bokr.com.cn";
 const DEFAULT_MEDIA_PROXY_TIMEOUT_MS = 8000;
+const SOURCE_VOICE_PREFIX = "/s5/voice/";
+const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 
-export type ProxiedMediaAsset = {
-  body: Readable;
-  contentLength?: string;
-  contentType: string;
+export type PlayableVoiceStatus = {
+  playable: boolean;
+  playableUrl?: string;
 };
 
-export async function fetchProxiedMediaAsset(
+export async function checkPlayableVoiceAsset(
   rawUrl: string,
   logger: AppLogger = noopLogger,
-) {
-  const url = parseAllowedMediaUrl(rawUrl);
+): Promise<PlayableVoiceStatus> {
+  const sourceUrl = parseAllowedMediaUrl(rawUrl);
+  const playableUrl = buildPlayableVoiceUrl(sourceUrl);
   const controller = new AbortController();
   const timeoutId = setTimeout(
     () => controller.abort(),
@@ -27,59 +28,50 @@ export async function fetchProxiedMediaAsset(
   let response: Response;
 
   try {
-    response = await fetch(url.toString(), {
+    response = await fetch(playableUrl.toString(), {
+      method: "HEAD",
       signal: controller.signal,
     });
   } catch (error) {
     logger.error(
       {
-        host: url.hostname,
-        operation: "media-proxy",
-        path: url.pathname,
+        host: playableUrl.hostname,
+        operation: "playable-voice-head",
+        path: playableUrl.pathname,
         reason: error instanceof Error ? error.name : "unknown",
       },
-      "媒体资源代理获取失败",
+      "可播放语音资源检查失败",
     );
-    throw new BadGatewayError("MEDIA_PROXY_FETCH_FAILED", "媒体资源获取失败", {
+    throw new BadGatewayError("PLAYABLE_VOICE_CHECK_FAILED", "语音资源检查失败", {
       reason: error instanceof Error ? error.name : "unknown",
     });
   } finally {
     clearTimeout(timeoutId);
   }
 
+  if (response.status === 404) {
+    return { playable: false };
+  }
+
   if (!response.ok) {
     logger.error(
       {
-        host: url.hostname,
-        operation: "media-proxy",
-        path: url.pathname,
+        host: playableUrl.hostname,
+        operation: "playable-voice-head",
+        path: playableUrl.pathname,
         status: response.status,
       },
-      "媒体资源代理返回异常状态",
+      "可播放语音资源检查返回异常状态",
     );
-    throw new BadGatewayError("MEDIA_PROXY_FETCH_FAILED", "媒体资源获取失败", {
+    throw new BadGatewayError("PLAYABLE_VOICE_CHECK_FAILED", "语音资源检查失败", {
       status: response.status,
     });
   }
 
-  if (!response.body) {
-    logger.error(
-      {
-        host: url.hostname,
-        operation: "media-proxy",
-        path: url.pathname,
-      },
-      "媒体资源代理响应体为空",
-    );
-    throw new BadGatewayError("MEDIA_PROXY_FETCH_FAILED", "媒体资源获取失败");
-  }
-
   return {
-    body: Readable.fromWeb(response.body),
-    contentLength: response.headers.get("content-length") ?? undefined,
-    contentType:
-      response.headers.get("content-type") ?? "application/octet-stream",
-  } satisfies ProxiedMediaAsset;
+    playable: true,
+    playableUrl: playableUrl.toString(),
+  };
 }
 
 function parseAllowedMediaUrl(rawUrl: string) {
@@ -96,6 +88,21 @@ function parseAllowedMediaUrl(rawUrl: string) {
   }
 
   return url;
+}
+
+function buildPlayableVoiceUrl(sourceUrl: URL) {
+  if (!sourceUrl.pathname.startsWith(SOURCE_VOICE_PREFIX)) {
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "媒体资源地址不允许访问");
+  }
+
+  const playableUrl = new URL(sourceUrl);
+  playableUrl.pathname = sourceUrl.pathname
+    .replace(SOURCE_VOICE_PREFIX, PLAYABLE_VOICE_PREFIX)
+    .replace(/\.[^/.]+$/u, ".wav");
+  playableUrl.search = "";
+  playableUrl.hash = "";
+
+  return playableUrl;
 }
 
 function readMediaProxyTimeoutMs() {

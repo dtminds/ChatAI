@@ -5,15 +5,16 @@ import type { WorkbenchMessageDto } from "@chatai/contracts";
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { VoiceMessageCard } from "@/pages/chat/components/message";
 
+type AudioMockInstance = {
+  addEventListener: ReturnType<typeof vi.fn>;
+  currentTime: number;
+  pause: ReturnType<typeof vi.fn>;
+  play: ReturnType<typeof vi.fn>;
+  removeEventListener: ReturnType<typeof vi.fn>;
+  src: string;
+};
+
 const mocks = vi.hoisted(() => ({
-  amrDestroy: vi.fn(),
-  amrInitWithBlob: vi.fn().mockResolvedValue(undefined),
-  amrInitWithUrl: vi.fn().mockResolvedValue(undefined),
-  amrIsInit: vi.fn(() => false),
-  amrOnEnded: vi.fn(),
-  amrOnStop: vi.fn(),
-  amrPlay: vi.fn(),
-  amrStop: vi.fn(),
   request: vi.fn(),
 }));
 
@@ -21,49 +22,28 @@ vi.mock("@/lib/request", () => ({
   request: mocks.request,
 }));
 
-vi.mock("benz-amr-recorder", () => ({
-  default: vi.fn(function BenzAMRRecorderMock(this: {
-    destroy: typeof mocks.amrDestroy;
-    initWithBlob: typeof mocks.amrInitWithBlob;
-    initWithUrl: typeof mocks.amrInitWithUrl;
-    isInit: typeof mocks.amrIsInit;
-    onEnded: typeof mocks.amrOnEnded;
-    onStop: typeof mocks.amrOnStop;
-    play: typeof mocks.amrPlay;
-    stop: typeof mocks.amrStop;
-  }) {
-    this.destroy = mocks.amrDestroy;
-    this.initWithBlob = mocks.amrInitWithBlob;
-    this.initWithUrl = mocks.amrInitWithUrl;
-    this.isInit = mocks.amrIsInit;
-    this.onEnded = mocks.amrOnEnded;
-    this.onStop = mocks.amrOnStop;
-    this.play = mocks.amrPlay;
-    this.stop = mocks.amrStop;
-  }),
-}));
-
 describe("voice message playback", () => {
   afterEach(() => {
-    mocks.amrDestroy.mockClear();
-    mocks.amrInitWithBlob.mockClear();
-    mocks.amrInitWithBlob.mockResolvedValue(undefined);
-    mocks.amrInitWithUrl.mockClear();
-    mocks.amrInitWithUrl.mockResolvedValue(undefined);
-    mocks.amrIsInit.mockClear();
-    mocks.amrIsInit.mockReturnValue(false);
-    mocks.amrOnEnded.mockClear();
-    mocks.amrOnStop.mockClear();
-    mocks.amrPlay.mockClear();
-    mocks.amrStop.mockClear();
     mocks.request.mockClear();
-    mocks.request.mockResolvedValue(new Blob(["amr"]));
+    mocks.request.mockResolvedValue({
+      data: {
+        playable: true,
+        playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+      },
+      success: true,
+    });
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
 
   beforeEach(() => {
-    mocks.request.mockResolvedValue(new Blob(["amr"]));
+    mocks.request.mockResolvedValue({
+      data: {
+        playable: true,
+        playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+      },
+      success: true,
+    });
   });
 
   it("adapts voice audio URLs from backend messages", () => {
@@ -112,8 +92,10 @@ describe("voice message playback", () => {
     });
   });
 
-  it("plays AMR voice messages through the media proxy in development", async () => {
+  it("plays AMR voice messages through the converted WAV URL", async () => {
     const user = userEvent.setup();
+    const play = vi.fn().mockResolvedValue(undefined);
+    const { AudioMock } = stubAudio({ play });
 
     render(
       <VoiceMessageCard
@@ -134,13 +116,43 @@ describe("voice message playback", () => {
         params: {
           url: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
         },
-        responseType: "blob",
-        url: "/server/media/proxy",
+        url: "/server/media/playable-voice",
       });
-      expect(mocks.amrInitWithBlob).toHaveBeenCalledWith(expect.any(Blob));
-      expect(mocks.amrInitWithUrl).not.toHaveBeenCalled();
-      expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
+      expect(AudioMock).toHaveBeenCalledWith(
+        "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+      );
+      expect(play).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("shows a retry-later message when converted voice is not ready", async () => {
+    const user = userEvent.setup();
+    const play = vi.fn().mockResolvedValue(undefined);
+    stubAudio({ play });
+    mocks.request.mockResolvedValueOnce({
+      data: {
+        playable: false,
+      },
+      success: true,
+    });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button")).toHaveTextContent("暂不支持播放，请稍后重试");
+    });
+    expect(play).not.toHaveBeenCalled();
   });
 
   it("keeps the volume icon static while a voice message is playing", async () => {
@@ -160,7 +172,7 @@ describe("voice message playback", () => {
     await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
 
     await waitFor(() => {
-      expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
+      expect(mocks.request).toHaveBeenCalledTimes(1);
     });
 
     const icon = screen.getByTestId("voice-volume-icon");
@@ -172,6 +184,15 @@ describe("voice message playback", () => {
 
   it("stops the previous voice message before playing another one", async () => {
     const user = userEvent.setup();
+    const firstPause = vi.fn();
+    const secondPlay = vi.fn().mockResolvedValue(undefined);
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({
+      instances: audioInstances,
+      pause: firstPause,
+      play: vi.fn().mockResolvedValue(undefined),
+      playSequence: [vi.fn().mockResolvedValue(undefined), secondPlay],
+    });
 
     render(
       <div>
@@ -197,30 +218,39 @@ describe("voice message playback", () => {
     await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
 
     await waitFor(() => {
-      expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
+      expect(mocks.request).toHaveBeenCalledTimes(1);
     });
 
     await user.click(screen.getByRole("button", { name: "播放语音消息 12\"" }));
 
     await waitFor(() => {
-      expect(mocks.amrStop).toHaveBeenCalledTimes(1);
-      expect(mocks.amrPlay).toHaveBeenCalledTimes(2);
+      expect(mocks.request).toHaveBeenCalledTimes(2);
+      expect(secondPlay).toHaveBeenCalledTimes(1);
     });
+    expect(audioInstances[0]?.pause).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "播放语音消息 11\"" })).toHaveTextContent(
       "11\"",
     );
   });
 
-  it("does not let stale AMR initialization resume after another voice claims playback", async () => {
+  it("does not let a stale playable voice check resume after another voice claims playback", async () => {
     const user = userEvent.setup();
-    let resolveFirstDownload!: (value: Blob) => void;
-    const firstDownload = new Promise<Blob>((resolve) => {
-      resolveFirstDownload = resolve;
+    let resolveFirstCheck!: (value: unknown) => void;
+    const firstCheck = new Promise((resolve) => {
+      resolveFirstCheck = resolve;
     });
+    const play = vi.fn().mockResolvedValue(undefined);
+    stubAudio({ play });
 
     mocks.request
-      .mockReturnValueOnce(firstDownload)
-      .mockResolvedValue(new Blob(["second-amr"]));
+      .mockReturnValueOnce(firstCheck)
+      .mockResolvedValue({
+        data: {
+          playable: true,
+          playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/second.wav",
+        },
+        success: true,
+      });
 
     render(
       <div>
@@ -247,19 +277,25 @@ describe("voice message playback", () => {
     await user.click(screen.getByRole("button", { name: "播放语音消息 12\"" }));
 
     await waitFor(() => {
-      expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
+      expect(play).toHaveBeenCalledTimes(1);
     });
 
-    resolveFirstDownload(new Blob(["first-amr"]));
-
-    await waitFor(() => {
-      expect(mocks.amrInitWithBlob).toHaveBeenCalledTimes(2);
+    resolveFirstCheck({
+      data: {
+        playable: true,
+        playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/first.wav",
+      },
+      success: true,
     });
-    expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
+
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(play).toHaveBeenCalledTimes(1);
   });
 
   it("stops playback when the voice message unmounts", async () => {
     const user = userEvent.setup();
+    const pause = vi.fn();
+    stubAudio({ pause });
     const { unmount } = render(
       <VoiceMessageCard
         content={{
@@ -274,96 +310,18 @@ describe("voice message playback", () => {
     await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
 
     await waitFor(() => {
-      expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
+      expect(mocks.request).toHaveBeenCalledTimes(1);
     });
 
     unmount();
 
-    expect(mocks.amrStop).not.toHaveBeenCalled();
-    expect(mocks.amrDestroy).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not stop AMR before destroying it on unmount", async () => {
-    const user = userEvent.setup();
-    mocks.amrDestroy.mockImplementationOnce(() => undefined);
-    mocks.amrStop.mockImplementationOnce(() => {
-      throw new TypeError("Cannot set properties of null (setting 'onended')");
-    });
-    const { unmount } = render(
-      <VoiceMessageCard
-        content={{
-          type: "voice",
-          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
-          durationLabel: "11\"",
-        }}
-        isAgent={false}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
-
-    await waitFor(() => {
-      expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
-    });
-
-    expect(() => unmount()).not.toThrow();
-    expect(mocks.amrStop).not.toHaveBeenCalled();
-    expect(mocks.amrDestroy).toHaveBeenCalledTimes(1);
-  });
-
-  it("plays AMR voice messages from the original URL in production", async () => {
-    vi.stubEnv("DEV", false);
-    const user = userEvent.setup();
-
-    render(
-      <VoiceMessageCard
-        content={{
-          type: "voice",
-          audioUrl: "https://b3.bork.com.cn/bilin/20260421/272/voice.amr",
-          durationLabel: "11\"",
-        }}
-        isAgent={false}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
-
-    await waitFor(() => {
-      expect(mocks.amrInitWithUrl).toHaveBeenCalledWith(
-        "https://b3.bork.com.cn/bilin/20260421/272/voice.amr",
-      );
-      expect(mocks.amrPlay).toHaveBeenCalledTimes(1);
-    });
-    expect(mocks.request).not.toHaveBeenCalled();
-    expect(mocks.amrInitWithBlob).not.toHaveBeenCalled();
+    expect(pause).toHaveBeenCalledTimes(1);
   });
 
   it("plays browser-supported voice message URLs with native Audio", async () => {
     const user = userEvent.setup();
     const play = vi.fn().mockResolvedValue(undefined);
-    const pause = vi.fn();
-    const load = vi.fn();
-
-    vi.stubGlobal(
-      "Audio",
-      vi.fn(function AudioMock(this: {
-        addEventListener: ReturnType<typeof vi.fn>;
-        currentTime: number;
-        load: typeof load;
-        pause: typeof pause;
-        play: typeof play;
-        removeEventListener: ReturnType<typeof vi.fn>;
-        src: string;
-      }, src: string) {
-        this.addEventListener = vi.fn();
-        this.currentTime = 0;
-        this.load = load;
-        this.pause = pause;
-        this.play = play;
-        this.removeEventListener = vi.fn();
-        this.src = src;
-      }),
-    );
+    stubAudio({ play });
 
     render(
       <VoiceMessageCard
@@ -381,7 +339,6 @@ describe("voice message playback", () => {
     await waitFor(() => {
       expect(play).toHaveBeenCalledTimes(1);
     });
-    expect(mocks.amrInitWithUrl).not.toHaveBeenCalled();
     expect(mocks.request).not.toHaveBeenCalled();
   });
 
@@ -399,6 +356,32 @@ describe("voice message playback", () => {
     expect(screen.getByRole("button", { name: "语音消息不可播放" })).toBeDisabled();
   });
 });
+
+function stubAudio({
+  instances = [],
+  pause = vi.fn(),
+  play = vi.fn().mockResolvedValue(undefined),
+  playSequence,
+}: {
+  instances?: AudioMockInstance[];
+  pause?: ReturnType<typeof vi.fn>;
+  play?: ReturnType<typeof vi.fn>;
+  playSequence?: Array<ReturnType<typeof vi.fn>>;
+} = {}) {
+  const AudioMock = vi.fn(function AudioMock(this: AudioMockInstance, src: string) {
+    this.addEventListener = vi.fn();
+    this.currentTime = 0;
+    this.pause = instances.length === 0 ? pause : vi.fn();
+    this.play = playSequence?.[instances.length] ?? play;
+    this.removeEventListener = vi.fn();
+    this.src = src;
+    instances.push(this);
+  });
+
+  vi.stubGlobal("Audio", AudioMock);
+
+  return { AudioMock, instances };
+}
 
 function createVoiceDto(): WorkbenchMessageDto {
   return {

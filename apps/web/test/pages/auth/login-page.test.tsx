@@ -43,7 +43,15 @@ describe("LoginPage", () => {
     expect(screen.getByLabelText("用户名")).toBeInTheDocument();
     expect(screen.getByLabelText("密码")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
-    const altchaWidget = document.querySelector("altcha-widget");
+    const altchaWidget = await waitFor(() => {
+      const widget = document.querySelector("altcha-widget");
+
+      if (!widget) {
+        throw new Error("ALTCHA widget is not mounted yet.");
+      }
+
+      return widget;
+    });
     expect(altchaWidget).toBeInTheDocument();
     expect(altchaWidget).toHaveAttribute("data-altcha-theme", "business");
     expect(altchaWidget).toHaveStyle({ "--altcha-max-width": "100%" });

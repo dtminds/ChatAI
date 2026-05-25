@@ -4,29 +4,26 @@ import {
   solveChallenge,
   type Solution,
 } from "altcha/lib";
-import type { AltchaWidgetElement } from "altcha";
-import ScryptWorker from "altcha/workers/scrypt?worker";
 import {
   type ButtonHTMLAttributes,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
-  useRef,
   useState,
 } from "react";
-import "altcha";
-import "altcha/i18n/zh-cn";
-import "altcha/themes/business.css";
 import { Button } from "@/components/ui/button";
 import { http } from "@/lib/request";
 import { cn } from "@/lib/utils";
 
-const CHALLENGE_URL = "/api/auth/altcha/challenge";
 const CHALLENGE_API_PATH = "/auth/altcha/challenge";
 const SOLVE_TIMEOUT_MS = 15000;
-const WIDGET_CONFIGURATION = JSON.stringify({
-  hideFooter: true,
-  hideLogo: true,
-});
+
+const SecureAltchaField = lazy(() =>
+  import("./secure-altcha-field").then((module) => ({
+    default: module.SecureAltchaField,
+  })),
+);
 
 type AltchaFieldState = "idle" | "verifying" | "verified" | "error";
 
@@ -34,56 +31,28 @@ type AltchaFieldProps = {
   refreshKey?: number;
 };
 
-declare global {
-  interface Window {
-    $altcha?: {
-      algorithms?: Map<string, () => Worker>;
-    };
-  }
-}
-
 export function AltchaField({ refreshKey = 0 }: AltchaFieldProps) {
-  ensureScryptWorker();
-
   if (isSecureContext) {
-    return <SecureAltchaField refreshKey={refreshKey} />;
+    return (
+      <Suspense fallback={<AltchaWidgetFallback />}>
+        <SecureAltchaField refreshKey={refreshKey} />
+      </Suspense>
+    );
   }
 
   return <HttpAltchaField refreshKey={refreshKey} />;
 }
 
-function SecureAltchaField({ refreshKey }: Required<AltchaFieldProps>) {
-  const widgetRef = useRef<AltchaWidgetElement>(null);
-
-  useEffect(() => {
-    const widget = widgetRef.current;
-
-    if (!widget || refreshKey === 0) {
-      return;
-    }
-
-    widget.reset();
-    void widget.verify();
-  }, [refreshKey]);
-
+function AltchaWidgetFallback() {
   return (
-    <div className="[&>altcha-widget]:block [&>altcha-widget]:w-full text-[13px]">
-      <altcha-widget
-        auto="onload"
-        challenge={CHALLENGE_URL}
-        configuration={WIDGET_CONFIGURATION}
-        data-altcha-theme="business"
-        language="zh-cn"
-        name="altcha"
-        ref={widgetRef}
-        style={{ "--altcha-max-width": "100%" }}
-      />
+    <div
+      aria-live="polite"
+      className="rounded-md border border-input bg-background px-3 py-3 text-sm text-muted-foreground"
+      role="status"
+    >
+      正在加载人机验证
     </div>
   );
-}
-
-function ensureScryptWorker() {
-  window.$altcha?.algorithms?.set("SCRYPT", () => new ScryptWorker());
 }
 
 function HttpAltchaField({ refreshKey }: Required<AltchaFieldProps>) {

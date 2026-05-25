@@ -4,6 +4,11 @@ import type {
   Conversation,
   EmployeeProfile,
 } from "@/pages/chat/chat-types";
+import { isChatReadOnlySubUser } from "@/pages/chat/hooks/use-auth-sub-user";
+import {
+  resolveSidebarIframeSendStatus,
+  type SidebarIframeSendStatus,
+} from "@/pages/chat/lib/sidebar-iframe-url";
 
 type WorkbenchBootstrapStatus = "idle" | "loading" | "ready" | "error";
 
@@ -31,6 +36,7 @@ export type WorkbenchPermissions = {
   isAccountTakenOverByCurrentUser: boolean;
   isConversationActionDisabled: boolean;
   isConversationBizInactive: boolean;
+  sidebarIframeSendStatus: SidebarIframeSendStatus;
 };
 
 export function resolveWorkbenchPermissions({
@@ -75,6 +81,13 @@ export function resolveWorkbenchPermissions({
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled: !canUseConversationActions,
     isConversationBizInactive,
+    sidebarIframeSendStatus: resolveSidebarIframeSendStatus({
+      hasActiveConversation: !!activeConversation,
+      isAccountOffline,
+      isAccountTakenOver: isAccountTakenOverByCurrentUser,
+      isConversationBizInactive,
+      isReadOnly: isChatReadOnlySubUser(subUser),
+    }),
   };
 }
 

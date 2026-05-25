@@ -39,7 +39,50 @@ describe("resolveWorkbenchPermissions", () => {
       canTakeOverAccount: true,
       canUseConversationActions: true,
       composerPlaceholder: "请输入消息……",
+      sidebarIframeSendStatus: "0",
     });
+  });
+
+  it("maps sidebar iframe send status from workbench state", () => {
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({ takenOverEmployeeId: me.id }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: viewer,
+      }).sidebarIframeSendStatus,
+    ).toBe("4");
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({ takenOverEmployeeId: me.id }),
+        activeConversation: createConversation({ bizStatus: 2 }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).sidebarIframeSendStatus,
+    ).toBe("3");
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount(),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).sidebarIframeSendStatus,
+    ).toBe("1");
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({ takenOverEmployeeId: me.id }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: undefined,
+      }).sidebarIframeSendStatus,
+    ).toBe("4");
   });
 
   it("prioritizes unavailable conversation state before account state and permission copy", () => {

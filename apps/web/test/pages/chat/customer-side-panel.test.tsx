@@ -369,6 +369,7 @@ describe("CustomerSidePanel", () => {
         sidebarIframeConversationId="conv-42"
         sidebarIframeSeatId="seat-42"
         sidebarIframeTos="1"
+        sidebarIframeSendStatus="3"
         sidebarItems={[
           {
             bindTypes: ["1", "2"],
@@ -393,6 +394,7 @@ describe("CustomerSidePanel", () => {
       expect(parsed.searchParams.get("fsw")).toBe("fsw-cipher");
       expect(parsed.searchParams.get("ts")).toBe("ts-cipher");
       expect(parsed.searchParams.get("tos")).toBe("1");
+      expect(parsed.searchParams.get("sendStatus")).toBe("3");
     });
 
     expect(fetchWorkbenchSidebarIframeParams).toHaveBeenCalledWith({

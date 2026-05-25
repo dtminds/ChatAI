@@ -1,5 +1,70 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildSidebarIframeSrc } from "@/pages/chat/lib/sidebar-iframe-url";
+import {
+  buildSidebarIframeSrc,
+  resolveSidebarIframeSendStatus,
+} from "@/pages/chat/lib/sidebar-iframe-url";
+
+describe("resolveSidebarIframeSendStatus", () => {
+  it("returns 0 when the agent can send messages", () => {
+    expect(
+      resolveSidebarIframeSendStatus({
+        hasActiveConversation: true,
+        isAccountOffline: false,
+        isAccountTakenOver: true,
+        isConversationBizInactive: false,
+        isReadOnly: false,
+      }),
+    ).toBe("0");
+  });
+
+  it("returns 4 for read-only agents before other blocking reasons", () => {
+    expect(
+      resolveSidebarIframeSendStatus({
+        hasActiveConversation: true,
+        isAccountOffline: true,
+        isAccountTakenOver: false,
+        isConversationBizInactive: true,
+        isReadOnly: true,
+      }),
+    ).toBe("4");
+  });
+
+  it("returns 2 when the account is offline", () => {
+    expect(
+      resolveSidebarIframeSendStatus({
+        hasActiveConversation: true,
+        isAccountOffline: true,
+        isAccountTakenOver: true,
+        isConversationBizInactive: false,
+        isReadOnly: false,
+      }),
+    ).toBe("2");
+  });
+
+  it("returns 1 when the account is not taken over", () => {
+    expect(
+      resolveSidebarIframeSendStatus({
+        hasActiveConversation: true,
+        isAccountOffline: false,
+        isAccountTakenOver: false,
+        isConversationBizInactive: false,
+        isReadOnly: false,
+      }),
+    ).toBe("1");
+  });
+
+  it("returns 3 when the conversation is inactive", () => {
+    expect(
+      resolveSidebarIframeSendStatus({
+        hasActiveConversation: true,
+        isAccountOffline: false,
+        isAccountTakenOver: true,
+        isConversationBizInactive: true,
+        isReadOnly: false,
+      }),
+    ).toBe("3");
+  });
+});
 
 describe("buildSidebarIframeSrc", () => {
   afterEach(() => {
@@ -32,6 +97,20 @@ describe("buildSidebarIframeSrc", () => {
         tos: "1",
       }),
     ).toBe("https://example.com/x?foo=1&tos=1");
+  });
+
+  it("appends sendStatus when provided", () => {
+    vi.stubGlobal("window", { location: { origin: "http://localhost:5173" } });
+
+    expect(buildSidebarIframeSrc("https://example.com/assets", { sendStatus: "2" })).toBe(
+      "https://example.com/assets?sendStatus=2",
+    );
+    expect(
+      buildSidebarIframeSrc("https://example.com/assets", {
+        sendStatus: "0",
+        tos: "1",
+      }),
+    ).toBe("https://example.com/assets?tos=1&sendStatus=0");
   });
 
   it("appends rd, fsw and ts search params when provided", () => {

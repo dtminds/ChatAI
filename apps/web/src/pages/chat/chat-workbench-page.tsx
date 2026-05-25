@@ -328,6 +328,7 @@ function ChatWorkbenchContent({
     composerPlaceholder,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled,
+    sidebarIframeSendStatus,
   } = workbenchPermissions;
   const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";
 
@@ -1092,6 +1093,7 @@ function ChatWorkbenchContent({
                 composerPlaceholder={composerPlaceholder}
                 customer={activeCustomer}
                 sidebarIframeTos={sidebarIframeTos}
+                sidebarIframeSendStatus={sidebarIframeSendStatus}
                 customerPanelWidth={customerPanelWidth}
                 draft={draft}
                 groupMembers={activeGroupMembers}

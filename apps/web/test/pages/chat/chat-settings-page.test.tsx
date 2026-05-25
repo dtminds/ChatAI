@@ -3,11 +3,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
+import { toast } from "sonner";
 import { routerConfig } from "@/router";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import { useAuthStore } from "@/store/auth-store";
 import { requestInstance } from "@/lib/request";
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      error: vi.fn(),
+      success: vi.fn(),
+    },
+  };
+});
 
 const mock = new MockAdapter(requestInstance);
 
@@ -62,6 +76,8 @@ function mockAuthenticatedSession(role = "admin") {
 
 describe("Chat settings pages", () => {
   beforeEach(() => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
     resetWorkbenchService();
     useAuthStore.setState(useAuthStore.getInitialState(), true);
     mock.reset();
@@ -667,6 +683,46 @@ describe("Chat settings pages", () => {
     expect(useWorkbenchStore.getState().sidebarItems.some((item) => item.id === "203")).toBe(false);
   });
 
+  it("shows API error message when updating a sidebar item fails", async () => {
+    const user = userEvent.setup();
+
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: [
+          {
+            bindTypes: ["1", "2"],
+            id: "201",
+            name: "企业名片",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/card",
+          },
+        ],
+      },
+      success: true,
+    });
+    mock.onPut("/server/settings/sidebar-items/201").reply(400, {
+      error: {
+        code: "INVALID_SIDEBAR_URL",
+        message: "页面地址必须使用 HTTPS 协议",
+      },
+      success: false,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    await user.click(await screen.findByRole("button", { name: "打开 企业名片 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "编辑" }));
+    await user.clear(screen.getByLabelText("页面地址"));
+    await user.type(screen.getByLabelText("页面地址"), "http://example.com/card");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("页面地址必须使用 HTTPS 协议");
+    });
+  });
+
   it("keeps sidebar preview fallback ordering aligned with numeric database ids", async () => {
     mock.resetHandlers();
     mockAuthenticatedSession();
@@ -805,7 +861,9 @@ describe("Chat settings pages", () => {
     await user.type(screen.getByLabelText("页面地址"), "not-a-url");
     await user.click(screen.getByRole("button", { name: "确认提交" }));
 
-    expect(await screen.findByText("请输入有效的页面地址")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("请输入有效的页面地址");
+    });
     expect(screen.queryByText("操作失败，请稍后重试")).not.toBeInTheDocument();
   });
 

@@ -52,7 +52,7 @@ import {
   isChatReadOnlySubUser,
 } from "@/pages/chat/hooks/use-auth-sub-user";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
-import { resolveSidebarIframeSendStatus } from "@/pages/chat/lib/sidebar-iframe-url";
+import { resolveWorkbenchSendCapability } from "@/pages/chat/lib/sidebar-iframe-url";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
@@ -330,16 +330,15 @@ function ChatWorkbenchContent({
     canTakeOverAccount,
     canUseChatSend,
     composerPlaceholder,
-    isAccountOffline,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled,
-    isConversationBizInactive,
   } = workbenchPermissions;
-  const sidebarIframeSendStatus = resolveSidebarIframeSendStatus({
+  const { sidebarIframeSendStatus } = resolveWorkbenchSendCapability({
+    bootstrapStatus,
+    conversationBizStatus: activeConversation?.bizStatus,
     hasActiveConversation: !!activeConversation,
-    isAccountOffline,
+    isAccountOffline: workbenchPermissions.isAccountOffline,
     isAccountTakenOver: isAccountTakenOverByCurrentUser,
-    isConversationBizInactive,
     isReadOnly: isChatReadOnlySubUser(subUser),
   });
   const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";

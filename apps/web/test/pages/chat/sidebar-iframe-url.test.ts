@@ -97,6 +97,21 @@ describe("resolveWorkbenchSendCapability", () => {
     expect(result.sidebarIframeSendStatus).toBe("3");
     expect(result.composerPlaceholder).toBe("当前会话已失效，暂时无法发送消息");
   });
+
+  it("treats non-active conversation biz status as inactive", () => {
+    const result = resolveWorkbenchSendCapability({
+      bootstrapStatus: "ready",
+      conversationBizStatus: 2,
+      hasActiveConversation: true,
+      isAccountOffline: false,
+      isAccountTakenOver: true,
+      isReadOnly: false,
+    });
+
+    expect(result.canSendMessage).toBe(false);
+    expect(result.sidebarIframeSendStatus).toBe("3");
+    expect(result.composerPlaceholder).toBe("当前会话已失效，暂时无法发送消息");
+  });
 });
 
 describe("buildSidebarIframeSrc", () => {

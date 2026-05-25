@@ -63,8 +63,7 @@ export function resolveWorkbenchSendCapability(input: {
   isAccountTakenOver: boolean;
   isReadOnly: boolean;
 }) {
-  let isConversationBizInactive = false;
-  isConversationBizInactive ||= (input.conversationBizStatus ?? 0) === 0;
+  const isConversationBizInactive = (input.conversationBizStatus ?? 0) !== 1;
 
   const canSendMessage =
     input.hasActiveConversation &&

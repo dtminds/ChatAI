@@ -1,7 +1,7 @@
 export function createPcm16MonoWav(pcm: Uint8Array, sampleRate: number) {
   const headerSize = 44;
   const wav = new Uint8Array(headerSize + pcm.byteLength);
-  const view = new DataView(wav.buffer);
+  const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
   const byteRate = sampleRate * 2;
   const blockAlign = 2;
 

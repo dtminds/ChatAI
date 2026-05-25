@@ -50,7 +50,7 @@ export function buildPlayableObjectKey(sourceKey: string) {
 
   return sourceKey
     .replace(/^s5\/voice\//, "s5/playable-voice/")
-    .replace(/\.amr$/i, ".wav");
+    .replace(/\.[^/.]+$/u, ".wav");
 }
 
 function startsWithAscii(data: Uint8Array, text: string) {
@@ -68,13 +68,5 @@ function startsWithAscii(data: Uint8Array, text: string) {
 }
 
 function indexOfAscii(data: Uint8Array, text: string) {
-  const needle = [...text].map((char) => char.charCodeAt(0));
-
-  for (let index = 0; index <= data.length - needle.length; index += 1) {
-    if (needle.every((byte, needleIndex) => data[index + needleIndex] === byte)) {
-      return index;
-    }
-  }
-
-  return -1;
+  return Buffer.from(data.buffer, data.byteOffset, data.byteLength).indexOf(text);
 }

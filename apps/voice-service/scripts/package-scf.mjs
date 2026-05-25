@@ -1,35 +1,34 @@
 #!/usr/bin/env node
 
-import { mkdir, rm, cp, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, rm, mkdtemp, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const workspaceRoot = resolve(rootDir, "../..");
 const outputDir = join(rootDir, "../../artifacts/voice-service");
 const zipPath = join(outputDir, "voice-service-scf.zip");
 const stagingDir = await mkdtemp(join(tmpdir(), "voice-service-scf-"));
-const esbuildBin = join(workspaceRoot, "node_modules/.pnpm/node_modules/esbuild/bin/esbuild");
 
 await run("pnpm", ["--dir", rootDir, "build"]);
 
 await mkdir(stagingDir, { recursive: true });
 await mkdir(outputDir, { recursive: true });
 
-await run("node", [
-  esbuildBin,
+await run("pnpm", [
+  "exec",
+  "esbuild",
   join(rootDir, "src/index.ts"),
   "--bundle",
   "--platform=node",
   "--target=node22",
   "--format=cjs",
-  "--outfile=index.js",
+  `--outfile=${join(stagingDir, "index.js")}`,
   "--external:audio-decode",
   "--external:cos-nodejs-sdk-v5",
   "--external:silk-wasm",
-], stagingDir);
+]);
 
 await writeFile(
   join(stagingDir, "package.json"),

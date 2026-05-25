@@ -43,6 +43,12 @@ describe("voice media sniffing", () => {
     expect(buildPlayableObjectKey("s5/voice/20260513/272/a.amr")).toBe(
       "s5/playable-voice/20260513/272/a.wav",
     );
+    expect(buildPlayableObjectKey("s5/voice/20260513/272/a.silk")).toBe(
+      "s5/playable-voice/20260513/272/a.wav",
+    );
+    expect(buildPlayableObjectKey("s5/voice/20260513/272/a.awb")).toBe(
+      "s5/playable-voice/20260513/272/a.wav",
+    );
   });
 });
 

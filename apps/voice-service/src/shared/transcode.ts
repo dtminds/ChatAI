@@ -88,7 +88,7 @@ function mixDownToPcm16(channelData: Float32Array[]) {
   const channels = channelData.length;
   const samples = channelData[0]?.length ?? 0;
   const pcm = new Uint8Array(samples * 2);
-  const view = new DataView(pcm.buffer);
+  const view = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
 
   for (let sampleIndex = 0; sampleIndex < samples; sampleIndex += 1) {
     let mixed = 0;

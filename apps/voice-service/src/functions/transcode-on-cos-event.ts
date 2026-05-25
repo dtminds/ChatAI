@@ -123,6 +123,10 @@ function normalizeEventObjectKey(
     if (markerIndex >= 0) {
       return normalizedKey.slice(markerIndex + marker.length);
     }
+
+    if (normalizedKey.startsWith(`${bucketName}/`)) {
+      return normalizedKey.slice(bucketName.length + 1);
+    }
   }
 
   return normalizedKey;

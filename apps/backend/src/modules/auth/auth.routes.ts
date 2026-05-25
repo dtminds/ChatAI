@@ -100,6 +100,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
 
         return apiSuccess({
           expiresIn: refresh.expiresIn,
+          subUser: refresh.subUser,
         });
       } catch (error) {
         clearAuthCookies(reply);

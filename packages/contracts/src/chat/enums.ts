@@ -28,6 +28,11 @@ export const GROUP_MEMBER_TYPE = {
   OWNER: 2,
 } as const;
 
+export const CHAT_TYPE = {
+  SINGLE: 1,
+  GROUP: 2,
+} as const;
+
 export type LoginStatus = Static<typeof LoginStatusSchema>;
 export type TakeoverStatus = Static<typeof TakeoverStatusSchema>;
 export type ConversationCustodyMode = Static<typeof ConversationCustodyModeSchema>;

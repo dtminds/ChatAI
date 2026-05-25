@@ -4,64 +4,58 @@ import {
   solveChallenge,
   type Solution,
 } from "altcha/lib";
-import ScryptWorker from "altcha/workers/scrypt?worker";
 import {
   type ButtonHTMLAttributes,
+  lazy,
+  Suspense,
   useCallback,
+  useEffect,
   useState,
 } from "react";
-import "altcha";
-import "altcha/i18n/zh-cn";
-import "altcha/themes/business.css";
 import { Button } from "@/components/ui/button";
 import { http } from "@/lib/request";
 import { cn } from "@/lib/utils";
 
-const CHALLENGE_URL = "/api/auth/altcha/challenge";
 const CHALLENGE_API_PATH = "/auth/altcha/challenge";
 const SOLVE_TIMEOUT_MS = 15000;
-const WIDGET_CONFIGURATION = JSON.stringify({
-  hideFooter: true,
-  hideLogo: true,
-});
+
+const SecureAltchaField = lazy(() =>
+  import("./secure-altcha-field").then((module) => ({
+    default: module.SecureAltchaField,
+  })),
+);
 
 type AltchaFieldState = "idle" | "verifying" | "verified" | "error";
 
-declare global {
-  interface Window {
-    $altcha?: {
-      algorithms?: Map<string, () => Worker>;
-    };
-  }
-}
+type AltchaFieldProps = {
+  refreshKey?: number;
+};
 
-export function AltchaField() {
-  ensureScryptWorker();
-
+export function AltchaField({ refreshKey = 0 }: AltchaFieldProps) {
   if (isSecureContext) {
     return (
-      <div className="[&>altcha-widget]:block [&>altcha-widget]:w-full text-[13px]">
-        <altcha-widget
-          auto="onload"
-          challenge={CHALLENGE_URL}
-          configuration={WIDGET_CONFIGURATION}
-          data-altcha-theme="business"
-          language="zh-cn"
-          name="altcha"
-          style={{ "--altcha-max-width": "100%" }}
-        />
-      </div>
+      <Suspense fallback={<AltchaWidgetFallback />}>
+        <SecureAltchaField refreshKey={refreshKey} />
+      </Suspense>
     );
   }
 
-  return <HttpAltchaField />;
+  return <HttpAltchaField refreshKey={refreshKey} />;
 }
 
-function ensureScryptWorker() {
-  window.$altcha?.algorithms?.set("SCRYPT", () => new ScryptWorker());
+function AltchaWidgetFallback() {
+  return (
+    <div
+      aria-live="polite"
+      className="rounded-md border border-input bg-background px-3 py-3 text-sm text-muted-foreground"
+      role="status"
+    >
+      正在加载人机验证
+    </div>
+  );
 }
 
-function HttpAltchaField() {
+function HttpAltchaField({ refreshKey }: Required<AltchaFieldProps>) {
   const [payload, setPayload] = useState("");
   const [state, setState] = useState<AltchaFieldState>("idle");
 
@@ -89,6 +83,14 @@ function HttpAltchaField() {
       setState("error");
     }
   }, []);
+
+  useEffect(() => {
+    if (refreshKey === 0) {
+      return;
+    }
+
+    void verify();
+  }, [refreshKey, verify]);
 
   return (
     <div

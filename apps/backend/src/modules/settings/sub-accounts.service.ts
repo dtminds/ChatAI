@@ -150,6 +150,8 @@ export class SubAccountSettingsService {
     };
 
     const normalizedPassword = payload.password?.trim() ?? "";
+    let shouldRevokeSessions = false;
+    let shouldExpireAccessTokens = false;
 
     if (normalizedPassword) {
       if (!isValidSettingsSubAccountPassword(normalizedPassword)) {
@@ -157,9 +159,8 @@ export class SubAccountSettingsService {
       }
 
       updateValues.password_hash = await hashPassword(normalizedPassword);
+      shouldRevokeSessions = true;
     }
-
-    let shouldExpireAccessTokens = false;
 
     if (payload.role) {
       const nextRole = normalizeAccountRole(payload.role);
@@ -185,7 +186,9 @@ export class SubAccountSettingsService {
       .where("status", "!=", dbSubAccountStatus.deleted)
       .execute();
 
-    if (shouldExpireAccessTokens) {
+    if (shouldRevokeSessions) {
+      await this.revokeActiveSessions(numericSubAccountId);
+    } else if (shouldExpireAccessTokens) {
       await this.expireAccessTokens(numericSubAccountId);
     }
 
@@ -371,6 +374,18 @@ export class SubAccountSettingsService {
     if (subAccount.type === dbSubAccountType.main) {
       throw new BadRequestError("MAIN_ACCOUNT_PROTECTED", "主账号不允许禁用或删除");
     }
+  }
+
+  private async revokeActiveSessions(subAccountId: number) {
+    await this.db
+      .updateTable("xy_wap_embed_sub_user_session")
+      .set({
+        revoked_at: new Date(),
+        update_time: new Date(),
+      })
+      .where("sub_user_id", "=", subAccountId)
+      .where("revoked_at", "is", null)
+      .execute();
   }
 
   private async expireAccessTokens(subAccountId: number) {

@@ -73,6 +73,30 @@ describe("workbench MySQL mappers", () => {
     expect(conversation.verified).toBe(false);
   });
 
+  it("defaults conversation biz status to hidden when metadata is missing", () => {
+    const conversation = mapConversationRow({
+      chat_type: 1,
+      create_time: null,
+      customer_avatar: "",
+      customer_name: "",
+      group_avatar: "",
+      group_name: "",
+      id: 88,
+      last_message_content: "最近一条文本",
+      last_message_type: "text",
+      last_msgtime: 1778240100000,
+      pinned_time: 0,
+      seat_id: 12,
+      third_external_userid: "external-1",
+      third_group_id: "",
+      third_userid: "third-user-1",
+      unread_cnt: 2,
+      verified: 0,
+    });
+
+    expect(conversation.bizStatus).toBe(0);
+  });
+
   it("uses raw conversation preview content only for text messages", () => {
     expect(
       mapConversationRow({
@@ -109,6 +133,30 @@ describe("workbench MySQL mappers", () => {
         id: 92,
         last_message_content: "不能直接透出",
         last_message_type: "unknown-msgtype",
+        last_msgtime: 1778240100000,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "external-1",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+        verified: 0,
+      }),
+    ).toMatchObject({
+      lastMessage: "[新消息]",
+    });
+
+    expect(
+      mapConversationRow({
+        chat_type: 1,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: "客户备注",
+        group_avatar: "",
+        group_name: "",
+        id: 93,
+        last_message_content: null,
+        last_message_type: "",
         last_msgtime: 1778240100000,
         pinned_time: 0,
         seat_id: 12,
@@ -259,6 +307,20 @@ describe("workbench MySQL mappers", () => {
       thirdExternalUserId: "external-1",
       thirdGroupId: undefined,
       thirdUserId: "third-user-1",
+    });
+  });
+
+  it("uses a visible fallback for blank unknown message types without content", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: null,
+        msgtype: "",
+      })),
+    ).toMatchObject({
+      content: {
+        text: "[暂不支持显示该消息]",
+      },
+      contentType: "text",
     });
   });
 

@@ -1,4 +1,4 @@
-import { Download01Icon, Loading03Icon, PlayIcon } from "@hugeicons/core-free-icons";
+import { Download04Icon, Loading03Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { CSSProperties } from "react";
 import type { VideoMessageContent } from "@/pages/chat/chat-types";
@@ -83,7 +83,7 @@ export function VideoMessageCard({
           onClick={onDownloadClick}
           type="button"
         >
-          <HugeiconsIcon icon={Download01Icon} size={24} strokeWidth={2.2} />
+          <HugeiconsIcon icon={Download04Icon} size={24} strokeWidth={2.2} />
         </button>
       ) : (
         <button

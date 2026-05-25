@@ -47,6 +47,33 @@ async function pasteIntoComposer(
   await user.paste(text);
 }
 
+function placeContentEditableCaretAtTextOffset(element: HTMLElement, offset: number) {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let remainingOffset = Math.max(0, offset);
+  let currentNode = walker.nextNode();
+
+  while (currentNode) {
+    const textLength = currentNode.textContent?.length ?? 0;
+
+    if (remainingOffset <= textLength) {
+      const range = document.createRange();
+      range.setStart(currentNode, remainingOffset);
+      range.collapse(true);
+
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      element.focus();
+      return;
+    }
+
+    remainingOffset -= textLength;
+    currentNode = walker.nextNode();
+  }
+
+  element.focus();
+}
+
 async function expectLatestConversationMessage(
   conversationId: string,
   expectedMessage: object,
@@ -239,6 +266,86 @@ describe("ChatWorkbenchPage composer flows", () => {
         "@缪勇飞 群昵称111",
       );
     });
+  });
+
+  it("excludes the current seat from the group mention picker", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await user.click(await screen.findByRole("tab", { name: "群聊" }));
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "@");
+
+    const listbox = await screen.findByRole("listbox", { name: "选择群成员" });
+    expect(within(listbox).getByRole("option", { name: "所有人（6人）" })).toBeInTheDocument();
+    expect(
+      within(listbox).queryByRole("option", { name: "德瑞可-小可" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("pads a selected mention when @ is typed immediately after text", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await user.click(await screen.findByRole("tab", { name: "群聊" }));
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "请@");
+
+    const listbox = await screen.findByRole("listbox", { name: "选择群成员" });
+    await user.click(within(listbox).getByRole("option", { name: "所有人（6人）" }));
+
+    expect(composer).toHaveTextContent("请 @所有人");
+  });
+
+  it("inserts a selected mention at a middle caret position", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await user.click(await screen.findByRole("tab", { name: "群聊" }));
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "1  @帅庆 @帅庆");
+    placeContentEditableCaretAtTextOffset(composer, 1);
+    await user.keyboard("@");
+
+    const listbox = await screen.findByRole("listbox", { name: "选择群成员" });
+    await user.click(within(listbox).getByRole("option", { name: "所有人（6人）" }));
+
+    expect(composer.textContent).toBe("1 @所有人   @帅庆 @帅庆");
+  });
+
+  it("opens the group mention picker when @ is typed at a middle caret position", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await user.click(await screen.findByRole("tab", { name: "群聊" }));
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "1  @帅庆 @帅庆");
+    placeContentEditableCaretAtTextOffset(composer, 1);
+    await user.keyboard("@");
+
+    const listbox = await screen.findByRole("listbox", { name: "选择群成员" });
+    expect(within(listbox).getByRole("option", { name: "所有人（6人）" })).toBeInTheDocument();
+    expect(composer.textContent).toBe("1@  @帅庆 @帅庆");
   });
 
   it("keeps the retry dialog open when refreshed group members still do not contain the mention target", async () => {
@@ -726,6 +833,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     await waitFor(() => {
       expect(composer).toHaveTextContent("");
       expect(sendButton).toHaveAttribute("aria-busy", "false");
+      expect(composer).toHaveFocus();
     });
   });
 
@@ -769,6 +877,53 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(confirmSpy).not.toHaveBeenCalled();
 
     confirmSpy.mockRestore();
+  });
+
+  it("does not restore composer focus after switching conversations while sending", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessageGate =
+      createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage() {
+        return sendMessageGate.promise;
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "旧会话发送中");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => {
+      expect(composer).toHaveAttribute("contenteditable", "false");
+    });
+
+    await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
+    await user.click(await screen.findByRole("button", { name: "确认切换" }));
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+
+    sendMessageGate.resolve({
+      clientMessageId: "client-msg-test",
+      messageId: "msg-server-test",
+      messages: [
+        {
+          clientMessageId: "client-msg-test",
+          messageId: "msg-server-test",
+          status: "accepted",
+        },
+      ],
+      status: "accepted",
+    });
+
+    await waitFor(() => {
+      expect(composer).toHaveAttribute("contenteditable", "true");
+    });
+    expect(composer).not.toHaveFocus();
   });
 
   it("shows a dialog before switching conversations when a quote is selected", async () => {

@@ -5,6 +5,7 @@ import axios, {
   type AxiosResponse,
 } from "axios";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
+import { useAuthStore } from "@/store/auth-store";
 import type { AuthRefreshResponse } from "@chatai/contracts";
 
 export type RequestError = {
@@ -20,6 +21,33 @@ type ApiErrorEnvelope = {
   };
   success?: false;
 };
+
+class ApiEnvelopeError extends Error {
+  readonly code?: string;
+  readonly status?: number;
+
+  constructor(envelope: ApiErrorEnvelope, status?: number) {
+    super(envelope.error?.message ?? "Request failed");
+    this.code = envelope.error?.code;
+    this.status = status;
+  }
+}
+
+export class RequestNormalizedError extends Error {
+  readonly code?: string;
+  readonly status?: number;
+
+  constructor(error: RequestError, cause?: unknown) {
+    super(error.message, cause === undefined ? undefined : { cause });
+    this.name = "RequestNormalizedError";
+    this.code = error.code;
+    this.status = error.status;
+
+    if (cause instanceof Error && cause.stack) {
+      this.stack = cause.stack;
+    }
+  }
+}
 
 export const requestInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
@@ -61,6 +89,14 @@ function normalizeError(error: unknown): RequestError {
     };
   }
 
+  if (error instanceof ApiEnvelopeError) {
+    return {
+      message: error.message,
+      status: error.status,
+      code: error.code,
+    };
+  }
+
   if (isRequestError(error)) {
     return error;
   }
@@ -72,12 +108,28 @@ function normalizeError(error: unknown): RequestError {
   return { message: "Unknown request error" };
 }
 
+function toRequestError(error: RequestError | RequestNormalizedError, cause?: unknown) {
+  if (error instanceof RequestNormalizedError) {
+    return error;
+  }
+
+  return new RequestNormalizedError(error, cause);
+}
+
 export function isRequestError(error: unknown): error is RequestError {
   if (!error || typeof error !== "object") {
     return false;
   }
 
   return typeof (error as RequestError).message === "string";
+}
+
+function isApiErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  return (value as ApiErrorEnvelope).success === false;
 }
 
 async function refreshAuth() {
@@ -87,6 +139,10 @@ async function refreshAuth() {
     url: "/auth/refresh",
   })
     .then((refresh) => refresh.data)
+    .then((refresh) => {
+      useAuthStore.getState().setSession(refresh.subUser);
+      return refresh;
+    })
     .finally(() => {
       refreshRequest = null;
     });
@@ -103,6 +159,10 @@ export async function request<TResponse = unknown, TPayload = unknown>(
       AxiosResponse<TResponse>,
       TPayload
     >(config);
+
+    if (isApiErrorEnvelope(response.data)) {
+      throw new ApiEnvelopeError(response.data, response.status);
+    }
 
     return response.data;
   } catch (error) {
@@ -121,14 +181,18 @@ export async function request<TResponse = unknown, TPayload = unknown>(
           TPayload
         >(retryConfig);
 
+        if (isApiErrorEnvelope(retryResponse.data)) {
+          throw new ApiEnvelopeError(retryResponse.data, retryResponse.status);
+        }
+
         return retryResponse.data;
       } catch (refreshError) {
         notifyAuthSessionChanged();
-        return Promise.reject(normalizeError(refreshError));
+        return Promise.reject(toRequestError(normalizeError(refreshError), refreshError));
       }
     }
 
-    return Promise.reject(normalizeError(error));
+    return Promise.reject(toRequestError(normalizeError(error), error));
   }
 }
 

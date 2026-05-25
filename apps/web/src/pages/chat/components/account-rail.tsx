@@ -46,6 +46,7 @@ type AccountRailProps = {
   isCollapsed?: boolean;
   currentEmployee?: EmployeeProfile;
   currentEmployeeId?: string;
+  canTakeOverAccount?: boolean;
   onCollapseChange?: (isCollapsed: boolean) => void;
   onLogout?: () => void | Promise<void>;
   onResizeStart?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -75,6 +76,7 @@ function getFirstGrapheme(value: string) {
 export function AccountRail({
   accounts,
   activeAccountId,
+  canTakeOverAccount = true,
   isCollapsed = false,
   currentEmployee,
   currentEmployeeId,
@@ -231,6 +233,7 @@ export function AccountRail({
                   }}
                   onTakeOverAccount={onTakeOverAccount}
                   takeoverStatus={takeoverStatusByAccountId[account.id] ?? "idle"}
+                  canTakeOverAccount={canTakeOverAccount}
                   variant="compact"
                 />
               );
@@ -349,6 +352,7 @@ export function AccountRail({
                 }}
                 onTakeOverAccount={onTakeOverAccount}
                 takeoverStatus={takeoverStatusByAccountId[account.id] ?? "idle"}
+                canTakeOverAccount={canTakeOverAccount}
               />
             );
           })}

@@ -59,7 +59,6 @@ describe("workbench revoke state", () => {
             }),
           ],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: 9999,
           seatChanges: [],
         };
@@ -125,7 +124,6 @@ describe("workbench revoke state", () => {
             }),
           ],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: 9999,
           seatChanges: [],
         };
@@ -168,7 +166,6 @@ describe("workbench revoke state", () => {
             }),
           ],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: 9999,
           seatChanges: [],
         };
@@ -201,7 +198,6 @@ describe("workbench revoke state", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           messageUpdateEvents: [
             {
               conversationId: "conv-001",
@@ -267,7 +263,6 @@ describe("workbench revoke state", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           messageUpdateEvents: [
             {
               conversationId: "conv-001",

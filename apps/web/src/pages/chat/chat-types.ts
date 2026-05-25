@@ -55,7 +55,7 @@ export type Conversation = {
   /** 会话托管模式：full 全托管，semi 半托管 */
   custodyMode: ConversationCustodyMode;
   accountId: string;
-  /** 关联联系人或群席位业务状态；0 表示会话对象已失效 */
+  /** 关联客户绑定或群席位业务状态；非 1 表示会话对象已失效 */
   bizStatus?: number;
   customerId: string;
   customerName: string;

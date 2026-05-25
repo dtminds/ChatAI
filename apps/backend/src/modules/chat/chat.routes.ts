@@ -2,6 +2,7 @@ import type {
   WorkbenchMessageQueryByIdsRequest,
   WorkbenchPollRequest,
   WorkbenchSendMessagePayload,
+  WorkbenchGetOrCreateConversationRequestDto,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -91,6 +92,7 @@ const PollQuerySchema = Type.Object({
   current_seat_id: Type.Optional(Type.String()),
   fresh_baseline: Type.Optional(Type.Union([Type.Literal("0"), Type.Literal("1")])),
   message_update_cursor: Type.Optional(NumericStringSchema),
+  seat_update_cursor: Type.Optional(NumericStringSchema),
   since_version: Type.Optional(NumericStringSchema),
 });
 
@@ -99,6 +101,7 @@ const SendMessageBodySchema = Type.Object({
   content: Type.Optional(Type.String()),
   contentType: Type.Optional(Type.Literal("text")),
   conversationId: Type.String(),
+  failMsgId: Type.Optional(Type.String()),
   mention: Type.Optional(
     Type.Object({
       all: Type.Optional(Type.Boolean()),
@@ -188,6 +191,18 @@ const SidebarIframeParamsBodySchema = Type.Object({
   seatId: Type.String(),
 });
 
+const SearchQuerySchema = Type.Object({
+  seatId: Type.String({ minLength: 1 }),
+  keyword: Type.String({ minLength: 1 }),
+});
+
+const GetOrCreateConversationBodySchema = Type.Object({
+  seatId: Type.String({ minLength: 1 }),
+  chatType: Type.Union([Type.Literal(1), Type.Literal(2)]),
+  thirdExternalUserId: Type.Optional(Type.String()),
+  thirdGroupId: Type.Optional(Type.String()),
+});
+
 type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
 type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
@@ -201,6 +216,9 @@ type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
 type SidebarIframeParamsBody = Static<typeof SidebarIframeParamsBodySchema>;
+type SearchQuery = Static<typeof SearchQuerySchema>;
+type GetOrCreateConversationBody = Static<typeof GetOrCreateConversationBodySchema>;
+
 
 export async function registerChatRoutes(app: FastifyInstance) {
   app.get("/api/server/me", { preHandler: app.authenticate }, async (request) =>
@@ -468,6 +486,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
         currentSeatId: request.query.current_seat_id,
         freshBaseline: request.query.fresh_baseline === "1",
         messageUpdateCursor: parseOptionalInteger(request.query.message_update_cursor),
+        seatUpdateCursor: parseOptionalInteger(request.query.seat_update_cursor),
         sinceVersion: parseOptionalInteger(request.query.since_version) ?? 0,
       } satisfies WorkbenchPollRequest;
 
@@ -544,6 +563,40 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).takeOverSeat(
         getSubUserId(request),
         request.params.seatId,
+      );
+    },
+  );
+
+  app.get<{ Querystring: SearchQuery }>(
+    "/api/server/search",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: SearchQuerySchema,
+      },
+    },
+    async (request) => {
+      return getWorkbenchService(app, request).search(
+        getSubUserId(request),
+        request.query.seatId,
+        request.query.keyword,
+      );
+    },
+  );
+
+  app.post<{ Body: GetOrCreateConversationBody }>(
+    "/api/server/conversations/get-or-create",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: GetOrCreateConversationBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).getOrCreateConversation(
+        getSubUserId(request),
+        request.body satisfies WorkbenchGetOrCreateConversationRequestDto,
       );
     },
   );

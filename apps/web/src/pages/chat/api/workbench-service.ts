@@ -30,7 +30,6 @@ import {
   type WorkbenchMessageFileDownloadStatusResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchMessageStatus,
-  type WorkbenchMessageStatusChangeDto,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
   type WorkbenchMessageUpdateEventDto,
@@ -40,6 +39,8 @@ import {
   type WorkbenchSendMessageResponse,
   type WorkbenchTakeOverSeatResponse,
   type WorkbenchUploadCredentialResponse,
+  type WorkbenchSearchResponseDto,
+  type WorkbenchGetOrCreateConversationRequestDto,
 } from "@chatai/contracts";
 import type {
   ChatMode,
@@ -97,6 +98,8 @@ export type WorkbenchService = {
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
+  search: (seatId: string, keyword: string) => Promise<WorkbenchSearchResponseDto>;
+  getOrCreateConversation: (payload: WorkbenchGetOrCreateConversationRequestDto) => Promise<WorkbenchConversationSummaryDto>;
 };
 
 export type WorkbenchServiceMode = "mock" | "http";
@@ -116,11 +119,6 @@ type WorkbenchEvent =
       version: number;
       type: "message";
       payload: WorkbenchMessageDto;
-    }
-    | {
-      version: number;
-      type: "message-status";
-      payload: WorkbenchMessageStatusChangeDto;
     }
   | {
       version: number;
@@ -422,10 +420,24 @@ export function createMockWorkbenchService(): WorkbenchService {
         request.sinceVersion - (request.freshBaseline ? 0 : MOCK_POLL_OVERLAP_MS),
       );
       const relevantEvents = state.events.filter((event) => event.version > sinceVersion);
-      const seatChanges = collapseLatest(
-        relevantEvents.filter((event): event is Extract<WorkbenchEvent, { type: "seat" }> => event.type === "seat"),
+      const seatUpdateCursor = request.seatUpdateCursor ?? request.sinceVersion;
+      const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
+      const seatUpdateEvents = collapseLatest(
+        state.events.filter(
+          (event): event is Extract<WorkbenchEvent, { type: "seat" }> =>
+            event.type === "seat" && event.version > seatUpdateCursor,
+        ),
         (event) => event.payload.seatId,
-      ).map((event) => event.payload);
+      );
+      const seatChanges = seatUpdateEvents.map((event) => event.payload);
+
+      const messageUpdateEventRecords = state.events.filter(
+        (event): event is Extract<WorkbenchEvent, { type: "message-update" }> =>
+          event.type === "message-update" &&
+          event.payload.conversationId === request.activeConversationId &&
+          event.version > messageUpdateCursor,
+      );
+      const messageUpdateEvents = messageUpdateEventRecords.map((event) => event.payload);
 
       const conversationChanges = collapseLatest(
         relevantEvents.filter(
@@ -445,26 +457,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         )
         .map((event) => event.payload);
 
-      const messageStatusChanges = relevantEvents
-        .filter(
-          (event): event is Extract<WorkbenchEvent, { type: "message-status" }> =>
-            event.type === "message-status",
-        )
-        .map((event) => event.payload);
-      const messageUpdateEvents = relevantEvents
-        .filter(
-          (event): event is Extract<WorkbenchEvent, { type: "message-update" }> =>
-            event.type === "message-update" &&
-            event.payload.conversationId === request.activeConversationId,
-        )
-        .map((event) => event.payload);
-
       return {
         seatChanges: clone(seatChanges),
         activeConversationMessages: clone(activeConversationMessages),
         conversationChanges: clone(conversationChanges),
         messageUpdateEvents: clone(messageUpdateEvents),
-        messageStatusChanges: clone(messageStatusChanges),
+        nextMessageUpdateCursor: getNextMockEventCursor(
+          messageUpdateCursor,
+          messageUpdateEventRecords,
+        ),
+        nextSeatUpdateCursor: getNextMockEventCursor(seatUpdateCursor, seatUpdateEvents),
         nextVersion: state.version,
       };
     },
@@ -494,6 +496,7 @@ export function createMockWorkbenchService(): WorkbenchService {
           conversationId: payload.conversationId,
           createdAt: now + index,
           customerId: conversation.customerId,
+          failReason: outcome.reason,
           messageId,
           senderType: "agent" as const,
           seq: nextSeq,
@@ -518,13 +521,7 @@ export function createMockWorkbenchService(): WorkbenchService {
       pushConversationEvent(state, nextConversation);
       pushAccountEvent(state, payload.seatId);
       backendMessages.forEach((message) => {
-        pushMessageStatusEvent(state, {
-          clientMessageId: message.clientMessageId,
-          conversationId: message.conversationId,
-          messageId: message.messageId,
-          reason: outcome.reason,
-          status: outcome.status,
-        });
+        pushMessageEvent(state, message);
       });
 
       return {
@@ -556,6 +553,15 @@ export function createMockWorkbenchService(): WorkbenchService {
       pushAccountEvent(state, seatId);
 
       return { seat: clone(nextAccount) };
+    },
+    async search(seatId, keyword) {
+      return {
+        contacts: [],
+        groups: [],
+      };
+    },
+    async getOrCreateConversation(payload) {
+      throw new Error("Mock not implemented");
     },
   };
 }
@@ -678,6 +684,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
           current_seat_id: request.currentSeatId,
           fresh_baseline: request.freshBaseline ? "1" : undefined,
           message_update_cursor: request.messageUpdateCursor,
+          seat_update_cursor: request.seatUpdateCursor,
           since_version: request.sinceVersion,
         },
       });
@@ -696,6 +703,17 @@ export function createHttpWorkbenchService(): WorkbenchService {
     unpinConversation(conversationId) {
       return http.post<WorkbenchConversationUnpinResponse>(
         `/server/conversations/${conversationId}/unpin`,
+      );
+    },
+    search(seatId, keyword) {
+      return http.get<WorkbenchSearchResponseDto>("/server/search", {
+        params: { seatId, keyword },
+      });
+    },
+    getOrCreateConversation(payload) {
+      return http.post<WorkbenchConversationSummaryDto>(
+        "/server/conversations/get-or-create",
+        payload,
       );
     },
   };
@@ -874,6 +892,7 @@ function buildInitialState(): MockState {
         conversations.map((conversation) => ({
           seatId: conversation.accountId,
           conversationId: conversation.id,
+          bizStatus: conversation.bizStatus ?? 1,
           custodyMode: conversation.custodyMode,
           customerAvatar: conversation.customerAvatarUrl,
           customerId: conversation.customerId,
@@ -884,6 +903,10 @@ function buildInitialState(): MockState {
           mode: conversation.mode,
           priority: conversation.priority,
           unreadCount: conversation.unread,
+          thirdUserId: `third-user-${seatId}`,
+          ...(conversation.mode === "group"
+            ? { thirdGroupId: `third-group-${conversation.id}` }
+            : {}),
         })),
       ),
     ]),
@@ -1289,14 +1312,11 @@ function pushConversationRemoveEvent(
   });
 }
 
-function pushMessageStatusEvent(
-  state: MockState,
-  change: WorkbenchMessageStatusChangeDto,
-) {
-  state.version = Math.max(state.version + 1, Date.now());
+function pushMessageEvent(state: MockState, message: WorkbenchMessageDto) {
+  state.version = Math.max(state.version + 1, Date.now(), message.createdAt ?? 0);
   state.events.push({
-    payload: change,
-    type: "message-status",
+    payload: message,
+    type: "message",
     version: state.version,
   });
 }
@@ -1311,6 +1331,22 @@ function pushMessageUpdateEvent(
     type: "message-update",
     version: state.version,
   });
+}
+
+function getNextMockEventCursor(
+  currentCursor: number,
+  events: Array<{
+    version?: number;
+  }>,
+) {
+  if (!Number.isFinite(currentCursor)) {
+    return undefined;
+  }
+
+  return events.reduce(
+    (latest, event) => Math.max(latest, event.version ?? currentCursor),
+    currentCursor,
+  );
 }
 
 function revokeMessage(

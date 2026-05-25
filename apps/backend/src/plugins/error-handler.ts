@@ -38,7 +38,7 @@ export async function registerErrorHandler(app: FastifyInstance) {
 
     request.log.error(
       {
-        error,
+        err: error,
         requestId: request.id,
         url: request.url,
       },

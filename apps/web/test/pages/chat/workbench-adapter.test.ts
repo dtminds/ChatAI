@@ -45,7 +45,18 @@ describe("workbench adapter", () => {
     expect(
       adaptConversation({
         ...conversationDto,
-        bizStatus: 0,
+        bizStatus: 2,
+      }),
+    ).toMatchObject({
+      bizStatus: 2,
+    });
+  });
+
+  it("defaults missing conversation biz status to hidden (0)", () => {
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        bizStatus: undefined,
       }),
     ).toMatchObject({
       bizStatus: 0,

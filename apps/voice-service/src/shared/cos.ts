@@ -1,5 +1,5 @@
 import COS from "cos-nodejs-sdk-v5";
-import { Readable } from "node:stream";
+import { buffer as consumeStream } from "node:stream/consumers";
 
 export type CosClient = Pick<
   COS,
@@ -104,17 +104,5 @@ async function toUint8Array(body: unknown) {
     return new Uint8Array(body);
   }
 
-  return streamToUint8Array(body as NodeJS.ReadableStream);
-}
-
-function streamToUint8Array(stream: NodeJS.ReadableStream) {
-  return new Promise<Uint8Array>((resolve, reject) => {
-    const chunks: Buffer[] = [];
-
-    stream.on("data", (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
-    stream.on("end", () => resolve(new Uint8Array(Buffer.concat(chunks))));
-    stream.on("error", reject);
-  });
+  return new Uint8Array(await consumeStream(body as NodeJS.ReadableStream));
 }

@@ -25,6 +25,9 @@ export function useSettingsLocalPagination<T>(
 ) {
   const [page, setPage] = React.useState(1);
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  if (page > totalPages) {
+    setPage(totalPages);
+  }
   const currentPage = Math.min(page, totalPages);
   const pagedItems = React.useMemo(
     () => items.slice((currentPage - 1) * pageSize, currentPage * pageSize),

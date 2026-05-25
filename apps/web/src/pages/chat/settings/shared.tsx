@@ -115,8 +115,8 @@ export function SettingsPagination({
   }, [page, totalPages]);
 
   return (
-    <Pagination>
-      <PaginationContent className="justify-end">
+    <Pagination className="justify-end">
+      <PaginationContent>
         <PaginationItem>
           <Button
             aria-label="上一页"

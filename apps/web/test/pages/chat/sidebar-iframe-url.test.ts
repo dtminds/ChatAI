@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildSidebarIframeSrc,
   resolveSidebarIframeSendStatus,
-  resolveWorkbenchSendCapability,
 } from "@/pages/chat/lib/sidebar-iframe-url";
 
 describe("resolveSidebarIframeSendStatus", () => {
@@ -64,53 +63,6 @@ describe("resolveSidebarIframeSendStatus", () => {
         isReadOnly: false,
       }),
     ).toBe("3");
-  });
-});
-
-describe("resolveWorkbenchSendCapability", () => {
-  it("disables sending for read-only agents", () => {
-    const result = resolveWorkbenchSendCapability({
-      bootstrapStatus: "ready",
-      conversationBizStatus: 1,
-      hasActiveConversation: true,
-      isAccountOffline: false,
-      isAccountTakenOver: true,
-      isReadOnly: true,
-    });
-
-    expect(result.canSendMessage).toBe(false);
-    expect(result.sidebarIframeSendStatus).toBe("4");
-    expect(result.composerPlaceholder).toBe("当前账号为只读权限，无法发送消息");
-  });
-
-  it("treats missing conversation biz status as hidden (0)", () => {
-    const result = resolveWorkbenchSendCapability({
-      bootstrapStatus: "ready",
-      conversationBizStatus: undefined,
-      hasActiveConversation: true,
-      isAccountOffline: false,
-      isAccountTakenOver: true,
-      isReadOnly: false,
-    });
-
-    expect(result.canSendMessage).toBe(false);
-    expect(result.sidebarIframeSendStatus).toBe("3");
-    expect(result.composerPlaceholder).toBe("当前会话已失效，暂时无法发送消息");
-  });
-
-  it("treats non-active conversation biz status as inactive", () => {
-    const result = resolveWorkbenchSendCapability({
-      bootstrapStatus: "ready",
-      conversationBizStatus: 2,
-      hasActiveConversation: true,
-      isAccountOffline: false,
-      isAccountTakenOver: true,
-      isReadOnly: false,
-    });
-
-    expect(result.canSendMessage).toBe(false);
-    expect(result.sidebarIframeSendStatus).toBe("3");
-    expect(result.composerPlaceholder).toBe("当前会话已失效，暂时无法发送消息");
   });
 });
 

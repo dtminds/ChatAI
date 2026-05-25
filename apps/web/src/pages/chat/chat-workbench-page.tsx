@@ -48,11 +48,7 @@ import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
-import {
-  isChatReadOnlySubUser,
-} from "@/pages/chat/hooks/use-auth-sub-user";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
-import { resolveWorkbenchSendCapability } from "@/pages/chat/lib/sidebar-iframe-url";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
@@ -332,15 +328,8 @@ function ChatWorkbenchContent({
     composerPlaceholder,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled,
+    sidebarIframeSendStatus,
   } = workbenchPermissions;
-  const { sidebarIframeSendStatus } = resolveWorkbenchSendCapability({
-    bootstrapStatus,
-    conversationBizStatus: activeConversation?.bizStatus,
-    hasActiveConversation: !!activeConversation,
-    isAccountOffline: workbenchPermissions.isAccountOffline,
-    isAccountTakenOver: isAccountTakenOverByCurrentUser,
-    isReadOnly: isChatReadOnlySubUser(subUser),
-  });
   const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";
 
   const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;

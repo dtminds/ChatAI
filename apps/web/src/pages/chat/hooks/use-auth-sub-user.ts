@@ -10,7 +10,6 @@ import {
 export function useAuthSubUser() {
   const [subUser, setSubUser] = useState<AuthSubUser | undefined>(getCachedAuthSubUser);
   const isMountedRef = useRef(false);
-  const sessionGenerationRef = useRef(getAuthSessionGeneration());
 
   const applySnapshot = useCallback((generation: number) => {
     if (!isMountedRef.current) {
@@ -21,7 +20,6 @@ export function useAuthSubUser() {
       return;
     }
 
-    sessionGenerationRef.current = generation;
     setSubUser(getCachedAuthSubUser());
   }, []);
 
@@ -44,7 +42,7 @@ export function useAuthSubUser() {
 
 export function isChatReadOnlySubUser(subUser: AuthSubUser | undefined) {
   if (!subUser) {
-    return false;
+    return true;
   }
 
   return subUser.role === "viewer" || !subUser.permissions?.includes("chat.send");

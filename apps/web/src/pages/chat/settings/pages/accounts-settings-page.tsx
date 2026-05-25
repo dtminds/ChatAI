@@ -46,7 +46,7 @@ import {
   PageHeader,
   SettingsPagination,
   StatusText,
-  settingsPageSize,
+  useSettingsLocalPagination,
 } from "@/pages/chat/settings/shared";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 import { cn } from "@/lib/utils";
@@ -66,7 +66,6 @@ export function AccountsSettingsPage() {
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [page, setPage] = useState(1);
   const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
@@ -112,16 +111,13 @@ export function AccountsSettingsPage() {
       account.name.toLowerCase().includes(normalizedQuery),
     );
   }, [data.managedAccounts, query]);
-  const totalPages = Math.max(1, Math.ceil(filteredAccounts.length / settingsPageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pagedAccounts = filteredAccounts.slice(
-    (currentPage - 1) * settingsPageSize,
-    currentPage * settingsPageSize,
-  );
-
-  useEffect(() => {
-    setPage(1);
-  }, [query]);
+  const {
+    currentPage,
+    pagedItems: pagedAccounts,
+    resetPage,
+    setPage,
+    totalPages,
+  } = useSettingsLocalPagination(filteredAccounts);
 
   async function handleSubmit(managedAccount: SettingsManagedAccount, subAccountIds: string[]) {
     setPendingAccountId(managedAccount.id);
@@ -166,7 +162,10 @@ export function AccountsSettingsPage() {
           <Input
             aria-label="搜索托管账号"
             className="h-10 rounded-[8px] pl-9"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              resetPage();
+            }}
             placeholder="搜索托管账号"
             value={query}
           />

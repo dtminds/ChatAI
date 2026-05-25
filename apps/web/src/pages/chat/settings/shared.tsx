@@ -19,6 +19,30 @@ import { cn } from "@/lib/utils";
 
 export const settingsPageSize = 10;
 
+export function useSettingsLocalPagination<T>(
+  items: T[],
+  pageSize = settingsPageSize,
+) {
+  const [page, setPage] = React.useState(1);
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedItems = React.useMemo(
+    () => items.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [currentPage, items, pageSize],
+  );
+  const resetPage = React.useCallback(() => {
+    setPage(1);
+  }, []);
+
+  return {
+    currentPage,
+    pagedItems,
+    resetPage,
+    setPage,
+    totalPages,
+  };
+}
+
 export function PageHeader({
   title,
   eyebrow,

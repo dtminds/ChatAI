@@ -96,7 +96,7 @@ import {
   PageHeader,
   SettingsPagination,
   StatusText,
-  settingsPageSize,
+  useSettingsLocalPagination,
 } from "@/pages/chat/settings/shared";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 import { cn } from "@/lib/utils";
@@ -157,7 +157,6 @@ export function SubAccountsSettingsPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -204,16 +203,13 @@ export function SubAccountsSettingsPage() {
       ),
     );
   }, [data.subAccounts, query]);
-  const totalPages = Math.max(1, Math.ceil(filteredSubAccounts.length / settingsPageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pagedSubAccounts = filteredSubAccounts.slice(
-    (currentPage - 1) * settingsPageSize,
-    currentPage * settingsPageSize,
-  );
-
-  useEffect(() => {
-    setPage(1);
-  }, [query]);
+  const {
+    currentPage,
+    pagedItems: pagedSubAccounts,
+    resetPage,
+    setPage,
+    totalPages,
+  } = useSettingsLocalPagination(filteredSubAccounts);
 
   async function handleSubmit(values: FormValues, mode: FormMode) {
     const actionKey =
@@ -339,7 +335,10 @@ export function SubAccountsSettingsPage() {
           <Input
             aria-label="搜索子账号"
             className="h-10 rounded-[8px] pl-9"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              resetPage();
+            }}
             placeholder="搜索子账号"
             value={query}
           />

@@ -24,7 +24,7 @@ export type SmartReplySuggestion = {
   assistantAvatarUrl?: string;
   assistantName: string;
   content: string;
-  status?: "thinking" | "ready";
+  status?: "thinking" | "processing" | "ready";
   versionCount: number;
   versionIndex: number;
 };
@@ -149,18 +149,19 @@ export function SmartReplyMessageAnchor({
   const [dismissed, setDismissed] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
-  const resolvedSuggestion = suggestion ?? createDemoSuggestion(message);
+  if (!suggestion || dismissed) {
+    return null;
+  }
+
+  const resolvedSuggestion = suggestion;
   const displayContent = resolvedSuggestion.content;
   const isThinking = resolvedSuggestion.status === "thinking";
+  const isProcessing = resolvedSuggestion.status === "processing";
 
   const handleDismiss = () => {
     setDismissed(true);
     setIsEditDialogOpen(false);
   };
-
-  if (dismissed) {
-    return null;
-  }
 
   return (
     <>
@@ -169,6 +170,7 @@ export function SmartReplyMessageAnchor({
         assistantName={resolvedSuggestion.assistantName}
         content={displayContent}
         isThinking={isThinking}
+        isProcessing={isProcessing}
         onEdit={() => setIsEditDialogOpen(true)}
         onMakeShorter={
           onMakeShorter
@@ -212,12 +214,31 @@ export function SmartReplyMessageAnchor({
   );
 }
 
-export function SmartReplyTriggerIcon() {
+export function isSmartReplyBusy(
+  suggestion?: SmartReplySuggestion | null,
+): boolean {
+  return (
+    suggestion?.status === "thinking" || suggestion?.status === "processing"
+  );
+}
+
+export function SmartReplyTriggerIcon({
+  isProcessing = false,
+  isThinking = false,
+}: {
+  isProcessing?: boolean;
+  isThinking?: boolean;
+}) {
+  if (isProcessing || isThinking) {
+    return null;
+  }
+
   return (
     <img
       alt=""
       aria-hidden
       className="size-[14px] object-contain"
+      data-testid="smart-reply-trigger-icon"
       src={SMART_REPLY_TRIGGER_ICON}
     />
   );
@@ -384,24 +405,3 @@ function SmartReplyActions({
     </div>
   );
 }
-function createDemoSuggestion(message: ChatMessage): SmartReplySuggestion {
-  const preview =
-    message.content.type === "text"
-      ? message.content.text.slice(0, 80)
-      : "已根据客户消息生成建议回复";
-
-  return {
-    assistantName: "护肤小助手",
-    content: [
-      "111",
-      preview ? `参考客户消息：${preview}` : "",
-      "建议从肤质与当前季节切入，先确认是否敏感肌，再推荐温和修护类产品 太好用了",
-    ]
-      .filter(Boolean)
-      .join("\n\n"),
-    status: "ready",
-    versionCount: 6,
-    versionIndex: 0,
-  };
-}
-

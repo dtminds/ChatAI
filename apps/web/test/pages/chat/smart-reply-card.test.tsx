@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   SmartReplyCard,
   SmartReplyMessageAnchor,
+  SmartReplyTriggerIcon,
 } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
@@ -211,6 +212,18 @@ describe("SmartReplyCard", () => {
     const violationPanel = await screen.findByTestId("smart-reply-violation-result");
     expect(violationPanel).toHaveTextContent("广告法_通用禁用极限词");
     expect(violationPanel).toHaveTextContent("太好用了");
+  });
+
+  it("hides trigger icon while thinking or processing", () => {
+    const { rerender } = render(<SmartReplyTriggerIcon />);
+
+    expect(screen.getByTestId("smart-reply-trigger-icon")).toBeInTheDocument();
+
+    rerender(<SmartReplyTriggerIcon isThinking />);
+    expect(screen.queryByTestId("smart-reply-trigger-icon")).not.toBeInTheDocument();
+
+    rerender(<SmartReplyTriggerIcon isProcessing />);
+    expect(screen.queryByTestId("smart-reply-trigger-icon")).not.toBeInTheDocument();
   });
 
   it("renders smart reply card inline below the message anchor", () => {

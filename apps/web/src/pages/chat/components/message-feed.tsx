@@ -19,9 +19,11 @@ import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
+import { getSmartReplyLookupKey } from "@/pages/chat/api/smart-reply-adapter";
 import {
   SmartReplyMessageAnchor,
   SmartReplyTriggerIcon,
+  isSmartReplyBusy,
   type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
@@ -97,7 +99,7 @@ export function ChatMessageList({
               onQuoteMessage={onQuoteMessage}
               onRetryMessage={onRetryMessage}
               isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
-              smartReply={smartReplyByMessageId?.[item.message.id]}
+              smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
             />
           </div>
         ),
@@ -164,6 +166,7 @@ export function MessageRow({
   const isGroupConversation = Boolean(message.isGroupConversation);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
   const inlineDeliveryState = getInlineDeliveryState(message);
+  const smartReplyBusy = isSmartReplyBusy(smartReply);
   const messageActions = (
     <MessageActionAvatar
       message={message}
@@ -234,15 +237,15 @@ export function MessageRow({
                     onDownloadMessageFile={onDownloadMessageFile}
                     onOpenQuotedMessage={onOpenQuotedMessage}
                   />
-                  {!isAgent && !message.isRevoked ? (
+                  {!isAgent && !message.isRevoked && !smartReplyBusy ? (
                     <div className="ml-[16px] cursor-pointer">
-                      <SmartReplyTriggerIcon/>
+                      <SmartReplyTriggerIcon />
                     </div>
                   ) : null}
                 </div>
               )}
               {message.isRevoked ? <MessageRevokedState /> : null}
-              {!isAgent && !message.isRevoked ? (
+              {!isAgent && !message.isRevoked && smartReply ? (
                 <SmartReplyMessageAnchor message={message} suggestion={smartReply} />
               ) : null}
               {showTimestamp ? (

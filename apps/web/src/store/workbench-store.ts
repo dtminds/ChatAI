@@ -19,6 +19,7 @@ import {
   markConversationUnread,
   pinConversation,
   pollWorkbench,
+  pollSmartReplies,
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
   unpinConversation,
@@ -34,9 +35,12 @@ import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-p
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
+  SMART_REPLY_POLL_INTERVAL_MS,
   type SettingsSidebarItem,
   type WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
+import { shouldPollSmartReplies } from "@/pages/chat/lib/smart-reply-polling";
+import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type {
   Account,
   ChatMessage,
@@ -130,6 +134,11 @@ type WorkbenchState = {
   groupMembersLoadedAtByConversationId: Record<string, number>;
   groupMembersLoadingByConversationId: Record<string, boolean>;
   messagesByConversationId: Record<string, Message[]>;
+  smartReplyByMessageIdByConversationId: Record<
+    string,
+    Record<string, SmartReplySuggestion>
+  >;
+  smartReplyLastPolledAtByConversationId: Record<string, number>;
   activeAccountId: string;
   activeConversationId: string;
   activeMode: ChatMode;
@@ -295,6 +304,8 @@ function createInitialState(): Omit<
     me: undefined,
     messagePaginationByConversationId: {},
     messagesByConversationId: {},
+    smartReplyByMessageIdByConversationId: {},
+    smartReplyLastPolledAtByConversationId: {},
     pendingMessages: [],
     pollState: {
       intervalMs: 2500,
@@ -1033,6 +1044,14 @@ function clearConversationMessageState(
     ),
     messagesByConversationId: omitByKeys(
       state.messagesByConversationId,
+      clearedConversationIds,
+    ),
+    smartReplyByMessageIdByConversationId: omitByKeys(
+      state.smartReplyByMessageIdByConversationId,
+      clearedConversationIds,
+    ),
+    smartReplyLastPolledAtByConversationId: omitByKeys(
+      state.smartReplyLastPolledAtByConversationId,
       clearedConversationIds,
     ),
   };
@@ -2091,6 +2110,55 @@ export function createWorkbenchStore() {
             sinceVersion: response.nextVersion,
           };
         });
+
+        const polledConversationId = response.request.activeConversationId;
+
+        if (polledConversationId) {
+          const stateAfterPoll = get();
+          const lastSmartReplyPolledAt =
+            stateAfterPoll.smartReplyLastPolledAtByConversationId[polledConversationId];
+
+          if (
+            shouldPollSmartReplies(
+              lastSmartReplyPolledAt,
+              Date.now(),
+              SMART_REPLY_POLL_INTERVAL_MS,
+            )
+          ) {
+            const messagesAfterPoll =
+              stateAfterPoll.messagesByConversationId[polledConversationId] ?? [];
+
+            set((currentState) => ({
+              smartReplyLastPolledAtByConversationId: {
+                ...currentState.smartReplyLastPolledAtByConversationId,
+                [polledConversationId]: Date.now(),
+              },
+            }));
+
+            void pollSmartReplies(
+              {
+                conversationId: polledConversationId,
+                msgIds: [],
+              },
+              messagesAfterPoll,
+            )
+              .then((smartReplyByMessageId) => {
+                set((currentState) => {
+                  if (currentState.activeConversationId !== polledConversationId) {
+                    return currentState;
+                  }
+
+                  return {
+                    smartReplyByMessageIdByConversationId: {
+                      ...currentState.smartReplyByMessageIdByConversationId,
+                      [polledConversationId]: smartReplyByMessageId,
+                    },
+                  };
+                });
+              })
+              .catch(() => undefined);
+          }
+        }
       } catch (error) {
         if (isCursorInvalidationError(error)) {
           try {

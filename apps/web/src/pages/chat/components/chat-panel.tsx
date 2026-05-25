@@ -22,6 +22,7 @@ import type {
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 
 type ChatPanelProps = {
   accountName?: string;
@@ -92,6 +93,7 @@ type ChatPanelProps = {
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   retryingMessageIds?: ReadonlySet<string>;
+  smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
   onSendDraft: (segments: ComposerSegment[]) => void;
   onDismissScopeTransitionError: () => void;
   scopeTransitionError?: string;
@@ -152,6 +154,7 @@ export function ChatPanel({
   onMessageViewportScroll,
   onRetryMessage,
   retryingMessageIds,
+  smartReplyByMessageId,
   onSendDraft,
   onDismissScopeTransitionError,
   scopeTransitionError,
@@ -190,6 +193,7 @@ export function ChatPanel({
                 historyLoadLabel={historyLoadLabel}
                 isConversationLoading={isConversationLoading}
                 messages={messages}
+                smartReplyByMessageId={smartReplyByMessageId}
                 messageViewportRef={messageViewportRef}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}

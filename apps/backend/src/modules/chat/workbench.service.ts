@@ -17,6 +17,8 @@ import type {
   WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
+  WorkbenchSmartReplyPollRequest,
+  WorkbenchSmartReplyPollResponse,
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -29,7 +31,7 @@ import type {
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchConversationSummaryDto,
 } from "@chatai/contracts";
-import { CHAT_TYPE } from "@chatai/contracts";
+import { CHAT_TYPE, SMART_REPLY_MSG_IDS_LIMIT } from "@chatai/contracts";
 import {
   BadRequestError,
   ForbiddenError,
@@ -49,6 +51,7 @@ import {
   JAVA_SEND_TYPE,
 } from "./workbench-java-client.js";
 import { buildSidebarIframeTuseCipherTexts } from "../../lib/tuse-crypto.js";
+import { normalizeSmartReplyMsgIds } from "./smart-reply-mappers.js";
 import {
   decodeConversationListCursor,
   parseMySqlId,
@@ -131,6 +134,12 @@ export type WorkbenchService = {
     subUserId: string,
     request: WorkbenchPollRequest,
   ): Promise<WorkbenchPollResponse> | WorkbenchPollResponse;
+  pollSmartReplies(
+    subUserId: string,
+    request: WorkbenchSmartReplyPollRequest,
+  ):
+    | Promise<WorkbenchSmartReplyPollResponse>
+    | WorkbenchSmartReplyPollResponse;
   sendMessage(
     subUserId: string,
     payload: WorkbenchSendMessagePayload,
@@ -649,6 +658,87 @@ export class MysqlWorkbenchService implements WorkbenchService {
           unreadCount: seat.unreadCount,
         })),
     };
+  }
+
+  async pollSmartReplies(
+    subUserId: string,
+    request: WorkbenchSmartReplyPollRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const javaMsgIds = normalizeSmartReplyMsgIds(
+      request.msgIds.slice(0, SMART_REPLY_MSG_IDS_LIMIT),
+    );
+
+    if (javaMsgIds.length === 0) {
+      this.logger.info(
+        {
+          conversationId: conversation.id,
+          incomingMsgIds: request.msgIds,
+          operation: "poll-smart-replies",
+          subUserId,
+        },
+        "智能回复轮询跳过：msgIds 为空",
+      );
+      return { suggestions: [] };
+    }
+
+    const thirdExternalId = conversation.thirdGroupId
+      ? conversation.thirdGroupId
+      : conversation.thirdExternalUserId;
+
+    if (!thirdExternalId) {
+      throw new BadRequestError(
+        "SMART_REPLY_SCOPE_INVALID",
+        "当前会话缺少智能回复所需的外部标识",
+      );
+    }
+
+    const javaRequest = {
+      chatType: conversation.thirdGroupId ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
+      msgIds: javaMsgIds,
+      thirdExternalId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    };
+
+    this.logger.info(
+      {
+        conversationId: conversation.id,
+        incomingMsgIds: request.msgIds,
+        javaRequest,
+        msgIdCount: javaMsgIds.length,
+        operation: "poll-smart-replies",
+        seatId: conversation.seatId,
+        subUserId,
+      },
+      "智能回复轮询请求参数（msgIds 为消息 seq）",
+    );
+
+    const response = await this.javaClient.listUserHistoryAnswers(javaRequest);
+
+    this.logger.info(
+      {
+        conversationId: conversation.id,
+        msgIdCount: javaMsgIds.length,
+        operation: "poll-smart-replies",
+        seatId: conversation.seatId,
+        subUserId,
+        suggestionCount: response.suggestions.length,
+        suggestions: response.suggestions,
+        uid: conversation.uid,
+      },
+      "工作台智能回复轮询完成",
+    );
+    return response;
   }
 
   async sendMessage(subUserId: string, payload: WorkbenchSendMessagePayload) {

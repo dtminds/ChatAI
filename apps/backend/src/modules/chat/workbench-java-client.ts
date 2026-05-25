@@ -1,11 +1,16 @@
 import type {
   WorkbenchSendMessageResponse,
+  WorkbenchSmartReplyPollResponse,
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import {
   BadGatewayError,
   ServiceUnavailableError,
 } from "../../shared/errors.js";
+import {
+  mapJavaUserHistoryAnswerList,
+  summarizeJavaUserHistoryAnswerRawData,
+} from "./smart-reply-mappers.js";
 import {
   getLoggerRequestId,
   noopLogger,
@@ -89,6 +94,13 @@ type JavaSendMessageResponse = {
 };
 
 export type WorkbenchJavaClient = {
+  listUserHistoryAnswers(input: {
+    chatType: number;
+    msgIds: number[];
+    thirdExternalId: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<WorkbenchSmartReplyPollResponse>;
   createConversation(input: {
     chatType: number;
     platform: number;
@@ -146,6 +158,39 @@ export function createWorkbenchJavaClient(
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
   return {
+    listUserHistoryAnswers(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-msg-audit-recommend-answer/user-history-answer-list",
+        {
+          chatType: input.chatType,
+          msgIds: input.msgIds,
+          thirdExternalId: input.thirdExternalId,
+          thirdUserId: input.thirdUserId,
+          uid: input.uid,
+        },
+        logger,
+        "list-user-history-answers",
+      ).then((data) => {
+        logger.info(
+          {
+            ...buildJavaLogContext({
+              chatType: input.chatType,
+              msgIds: input.msgIds,
+              thirdExternalId: input.thirdExternalId,
+              thirdUserId: input.thirdUserId,
+              uid: input.uid,
+            }),
+            operation: "list-user-history-answers",
+            ...summarizeJavaUserHistoryAnswerRawData(data),
+          },
+          "Java user-history-answer-list 原始 data",
+        );
+
+        return mapJavaUserHistoryAnswerList(data);
+      });
+    },
     createConversation(input) {
       return postJavaEnvelope<number | string>(
         baseUrl,
@@ -407,14 +452,16 @@ async function postJavaEnvelope<T>(
     operation,
   );
 
-  if (!response.success) {
+  if (!isJavaEnvelopeSuccessful(response)) {
     logger.error(
       {
         ...buildJavaLogContext(body),
         error: response.error,
+        errorMsg: response.errorMsg,
         requestId: getLoggerRequestId(logger),
         operation,
         path,
+        success: response.success,
       },
       "Java 内部工作台接口业务失败",
     );
@@ -430,6 +477,15 @@ async function postJavaEnvelope<T>(
   return response.data as T;
 }
 
+function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
+  if (response.success === true) {
+    return true;
+  }
+
+  // SCRM 部分内部接口用 numeric error 表示结果：0 为成功。个别接口在空结果时仍会返回 success:false。
+  return response.error === 0;
+}
+
 function buildJavaLogContext(body: unknown) {
   if (!isRecord(body)) {
     return {};
@@ -438,9 +494,12 @@ function buildJavaLogContext(body: unknown) {
   const context: Record<string, unknown> = {};
 
   for (const key of [
+    "chatType",
     "conversationId",
     "msgid",
+    "msgIds",
     "platform",
+    "thirdExternalId",
     "sendType",
     "subId",
     "thirdExternalUserid",

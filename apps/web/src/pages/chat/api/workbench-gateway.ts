@@ -21,8 +21,14 @@ import type {
   WorkbenchUploadCredentialResponse,
   WorkbenchMessageQueryByIdsRequest,
   WorkbenchMessageUpdateEventDto,
+  WorkbenchSmartReplyPollRequest,
 } from "@chatai/contracts";
+import {
+  adaptSmartReplySuggestions,
+  collectSmartReplyMsgIds,
+} from "@/pages/chat/api/smart-reply-adapter";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
+import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type {
   Account,
   ChatMode,
@@ -462,6 +468,30 @@ export async function pollWorkbench(
     nextVersion: response.nextVersion,
     request,
   };
+}
+
+export async function pollSmartReplies(
+  request: WorkbenchSmartReplyPollRequest,
+  messages: Message[],
+): Promise<Record<string, SmartReplySuggestion>> {
+  const msgIds =
+    request.msgIds.length > 0
+      ? request.msgIds
+      : collectSmartReplyMsgIds(messages);
+
+  if (msgIds.length === 0) {
+    return {};
+  }
+
+  const pollRequest = {
+    conversationId: request.conversationId,
+    msgIds,
+  };
+
+
+  const response = await getWorkbenchService().pollSmartReplies(pollRequest);
+
+  return adaptSmartReplySuggestions(response.suggestions);
 }
 
 function adaptMessages(

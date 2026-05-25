@@ -19,6 +19,8 @@ import type {
   WorkbenchMessageStatus,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
+  WorkbenchSmartReplyPollRequest,
+  WorkbenchSmartReplyPollResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSidebarIframeParamsRequest,
@@ -324,6 +326,12 @@ export function createMemoryWorkbenchService() {
         nextSeatUpdateCursor: getNextMemoryEventCursor(seatUpdateCursor, seatUpdateEvents),
         nextVersion: state.version,
       };
+    },
+    pollSmartReplies(
+      _subUserId: string,
+      _request: WorkbenchSmartReplyPollRequest,
+    ): WorkbenchSmartReplyPollResponse {
+      return { suggestions: [] };
     },
     sendMessage(
       _subUserId: string,

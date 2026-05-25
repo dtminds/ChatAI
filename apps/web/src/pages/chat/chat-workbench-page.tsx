@@ -170,6 +170,7 @@ function ChatWorkbenchContent({
     me,
     messagePaginationByConversationId,
     messagesByConversationId,
+    smartReplyByMessageIdByConversationId,
     pollState,
     pollWorkbench,
     readReceiptError,
@@ -286,6 +287,9 @@ function ChatWorkbenchContent({
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
     [];
+  const activeSmartReplyByMessageId = activeConversation
+    ? (smartReplyByMessageIdByConversationId[activeConversation.id] ?? {})
+    : {};
   const activeGroupMembers =
     activeConversation?.mode === "group"
       ? (groupMembersByConversationId[activeConversation.id] ?? [])
@@ -1107,6 +1111,7 @@ function ChatWorkbenchContent({
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
                 messages={activeMessages}
+                smartReplyByMessageId={activeSmartReplyByMessageId}
                 messageViewportRef={messageViewportRef}
                 quotedMessage={quotedMessage}
                 sidebarItems={sidebarItems}

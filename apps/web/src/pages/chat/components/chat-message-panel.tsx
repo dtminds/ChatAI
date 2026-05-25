@@ -2,6 +2,7 @@ import { startTransition, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { ChatMessageList } from "@/pages/chat/components/message-feed";
+import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 
 type ChatMessagePanelProps = {
@@ -21,6 +22,7 @@ type ChatMessagePanelProps = {
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   retryingMessageIds?: ReadonlySet<string>;
+  smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
 
@@ -41,6 +43,7 @@ export function ChatMessagePanel({
   onMessageViewportScroll,
   onRetryMessage,
   retryingMessageIds,
+  smartReplyByMessageId,
   messageViewportRef,
 }: ChatMessagePanelProps) {
   return (
@@ -94,6 +97,7 @@ export function ChatMessagePanel({
                   });
                 }}
                 retryingMessageIds={retryingMessageIds}
+                smartReplyByMessageId={smartReplyByMessageId}
               />
             </div>
           </div>

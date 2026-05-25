@@ -575,6 +575,94 @@ describe("createWorkbenchJavaClient", () => {
       }),
     );
   });
+
+  it("requests user history answer list with conversation scope fields", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              answerContent: "您好",
+              answerStatus: 2,
+              assistantName: "护肤小助手",
+              msgId: "msg-001",
+              versionCount: 1,
+              versionIndex: 0,
+            },
+          ],
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().listUserHistoryAnswers({
+        chatType: 1,
+        msgIds: [1001],
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      suggestions: [
+        {
+          assistantName: "护肤小助手",
+          content: "您好",
+          messageId: "msg-001",
+          status: "ready",
+          versionCount: 1,
+          versionIndex: 0,
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/user-history-answer-list",
+      expect.objectContaining({
+        body: JSON.stringify({
+          chatType: 1,
+          msgIds: [1001],
+          thirdExternalId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("treats error:0 as success when Java returns success:false for empty smart reply list", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [],
+          error: 0,
+          success: false,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().listUserHistoryAnswers({
+        chatType: 1,
+        msgIds: [1001],
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({ suggestions: [] });
+  });
 });
 
 function createLoggerMock() {

@@ -263,6 +263,32 @@ export type WorkbenchPollResponse = {
   messageUpdateEvents?: WorkbenchMessageUpdateEventDto[];
 };
 
+export const SMART_REPLY_MSG_IDS_LIMIT = 100;
+/** 智能回复轮询最小间隔（毫秒），与工作台主 poll 解耦 */
+export const SMART_REPLY_POLL_INTERVAL_MS = 5000;
+
+export type WorkbenchSmartReplyStatus = "thinking" | "processing" | "ready";
+
+export type WorkbenchSmartReplySuggestionDto = {
+  messageId: string;
+  assistantName: string;
+  assistantAvatarUrl?: string;
+  content: string;
+  status?: WorkbenchSmartReplyStatus;
+  versionCount: number;
+  versionIndex: number;
+};
+
+/** msgIds 传消息 seq（非 messageId / msgid） */
+export type WorkbenchSmartReplyPollRequest = {
+  conversationId: string;
+  msgIds: number[];
+};
+
+export type WorkbenchSmartReplyPollResponse = {
+  suggestions: WorkbenchSmartReplySuggestionDto[];
+};
+
 export type WorkbenchOutgoingMessageTextSegment = {
   type: "text";
   text: string;

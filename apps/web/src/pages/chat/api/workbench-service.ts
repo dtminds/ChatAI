@@ -32,6 +32,8 @@ import {
   type WorkbenchMessageStatus,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
+  type WorkbenchSmartReplyPollRequest,
+  type WorkbenchSmartReplyPollResponse,
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSendMessagePayload,
   type SettingsSidebarItemsResponse,
@@ -95,6 +97,9 @@ export type WorkbenchService = {
   markConversationUnread: (conversationId: string) => Promise<WorkbenchConversationUnreadResponse>;
   pinConversation: (conversationId: string) => Promise<WorkbenchConversationPinResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
+  pollSmartReplies: (
+    request: WorkbenchSmartReplyPollRequest,
+  ) => Promise<WorkbenchSmartReplyPollResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
@@ -470,6 +475,9 @@ export function createMockWorkbenchService(): WorkbenchService {
         nextVersion: state.version,
       };
     },
+    async pollSmartReplies() {
+      return { suggestions: [] };
+    },
     async sendMessage(payload) {
       const conversation = findConversation(state, payload.conversationId);
 
@@ -688,6 +696,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
           since_version: request.sinceVersion,
         },
       });
+    },
+    pollSmartReplies(request) {
+      return http.post<WorkbenchSmartReplyPollResponse, WorkbenchSmartReplyPollRequest>(
+        "/server/smart-reply/poll",
+        request,
+      );
     },
     sendMessage(payload) {
       return http.post<WorkbenchSendMessageResponse, WorkbenchSendMessagePayload>(

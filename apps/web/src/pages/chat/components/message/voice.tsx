@@ -26,6 +26,7 @@ export function VoiceMessageCard({
   const bubbleTone = isAgent ? "bg-primary/10" : "bg-secondary";
   const playbackIdRef = useRef(Symbol("voice-message-playback"));
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mountedRef = useRef(true);
   const [playbackState, setPlaybackState] = useState<
     "idle" | "playing" | "error" | "not-ready"
   >("idle");
@@ -38,21 +39,43 @@ export function VoiceMessageCard({
     }
   }, []);
 
-  const stopPlayback = useCallback(() => {
-    audioRef.current?.pause();
-    clearActivePlayback();
-    setPlaybackState("idle");
-  }, [clearActivePlayback]);
-
   const finishPlayback = useCallback(() => {
+    if (!mountedRef.current) {
+      return;
+    }
+
     clearActivePlayback();
     setPlaybackState("idle");
   }, [clearActivePlayback]);
 
   const failPlayback = useCallback(() => {
+    if (!mountedRef.current) {
+      return;
+    }
+
     clearActivePlayback();
     setPlaybackState("error");
   }, [clearActivePlayback]);
+
+  const releaseAudio = useCallback(() => {
+    if (!audioRef.current) {
+      return;
+    }
+
+    audioRef.current.pause();
+    audioRef.current.removeEventListener("ended", finishPlayback);
+    audioRef.current.removeEventListener("error", failPlayback);
+    audioRef.current = null;
+  }, [failPlayback, finishPlayback]);
+
+  const stopPlayback = useCallback(() => {
+    releaseAudio();
+    clearActivePlayback();
+
+    if (mountedRef.current) {
+      setPlaybackState("idle");
+    }
+  }, [clearActivePlayback, releaseAudio]);
 
   const claimActivePlayback = useCallback(() => {
     if (activeVoicePlayback?.id !== playbackIdRef.current) {
@@ -75,6 +98,7 @@ export function VoiceMessageCard({
 
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
       stopPlayback();
     };
   }, [stopPlayback]);
@@ -112,13 +136,13 @@ export function VoiceMessageCard({
 
   const playNativeAudio = async (audioUrl: string, generation: number) => {
     if (!audioRef.current || audioRef.current.src !== audioUrl) {
-      audioRef.current?.pause();
+      releaseAudio();
       audioRef.current = new Audio(audioUrl);
       audioRef.current.addEventListener("ended", finishPlayback);
       audioRef.current.addEventListener("error", failPlayback);
     }
 
-    if (!isCurrentPlayback(generation)) {
+    if (!mountedRef.current || !isCurrentPlayback(generation)) {
       return;
     }
 

@@ -295,7 +295,8 @@ describe("voice message playback", () => {
   it("stops playback when the voice message unmounts", async () => {
     const user = userEvent.setup();
     const pause = vi.fn();
-    stubAudio({ pause });
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances, pause });
     const { unmount } = render(
       <VoiceMessageCard
         content={{
@@ -316,6 +317,81 @@ describe("voice message playback", () => {
     unmount();
 
     expect(pause).toHaveBeenCalledTimes(1);
+    expect(audioInstances[0]?.removeEventListener).toHaveBeenCalledWith(
+      "ended",
+      expect.any(Function),
+    );
+    expect(audioInstances[0]?.removeEventListener).toHaveBeenCalledWith(
+      "error",
+      expect.any(Function),
+    );
+  });
+
+  it("removes listeners from the previous audio element when the URL changes", async () => {
+    const user = userEvent.setup();
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({
+      instances: audioInstances,
+      playSequence: [
+        vi.fn().mockResolvedValue(undefined),
+        vi.fn().mockResolvedValue(undefined),
+      ],
+    });
+    mocks.request
+      .mockResolvedValueOnce({
+        data: {
+          playable: true,
+          playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/first.wav",
+        },
+        success: true,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          playable: true,
+          playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/second.wav",
+        },
+        success: true,
+      });
+
+    const { rerender } = render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/first.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+    await waitFor(() => {
+      expect(audioInstances).toHaveLength(1);
+    });
+
+    rerender(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/second.amr",
+          durationLabel: "12\"",
+        }}
+        isAgent={false}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "播放语音消息 12\"" }));
+
+    await waitFor(() => {
+      expect(audioInstances).toHaveLength(2);
+    });
+    expect(audioInstances[0]?.removeEventListener).toHaveBeenCalledWith(
+      "ended",
+      expect.any(Function),
+    );
+    expect(audioInstances[0]?.removeEventListener).toHaveBeenCalledWith(
+      "error",
+      expect.any(Function),
+    );
   });
 
   it("plays browser-supported voice message URLs with native Audio", async () => {

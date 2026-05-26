@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   AlertCircleIcon,
   Chat01Icon,
@@ -185,7 +186,7 @@ export function CustomerPage({
       setNextCursor(response.nextCursor);
     } catch (error) {
       if (isMountedRef.current) {
-        setErrorMessage(error instanceof Error ? error.message : "客户列表加载失败");
+        toast.error(error instanceof Error ? error.message : "加载更多客户失败");
       }
     } finally {
       if (isMountedRef.current) {
@@ -445,7 +446,7 @@ function CustomerAvatar({
         />
       ) : null}
       <AvatarFallback className="rounded-[inherit] bg-primary/12 text-primary">
-        {displayName.trim().slice(0, 1) || "客"}
+        {getFirstGrapheme(displayName, "客")}
       </AvatarFallback>
     </Avatar>
   );
@@ -707,7 +708,7 @@ function SeatConversationAvatar({
     <Avatar className="size-7 rounded-full border border-surface">
       {avatarUrl ? <AvatarImage alt={`${displayName}头像`} src={avatarUrl} /> : null}
       <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">
-        {displayName.trim().slice(0, 1) || "托"}
+        {getFirstGrapheme(displayName, "托")}
       </AvatarFallback>
     </Avatar>
   );
@@ -913,7 +914,7 @@ function SeatRelationAvatar({
     >
       {avatarUrl ? <AvatarImage alt={`${seatName}头像`} src={avatarUrl} /> : null}
       <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">
-        {seatName.trim().slice(0, 1) || "席"}
+        {getFirstGrapheme(seatName, "席")}
       </AvatarFallback>
     </Avatar>
   );
@@ -933,6 +934,10 @@ function canStartSeatChat(account: Account | undefined, currentEmployeeId: strin
 
 function uniqueStrings(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function getFirstGrapheme(value: string, fallback: string) {
+  return [...value.trim()][0] || fallback;
 }
 
 function LoadingState() {

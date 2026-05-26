@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routerConfig } from "@/router";
 import {
@@ -12,6 +13,18 @@ import {
 } from "@/pages/chat/api/workbench-service";
 import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      error: vi.fn(),
+    },
+  };
+});
 
 const customerResponse = {
   hasMore: false,
@@ -436,6 +449,67 @@ describe("CustomerPage", () => {
     });
     expect(await screen.findByText("客户B（李四）")).toBeInTheDocument();
     expect(screen.getByText("客户A（张三）")).toBeInTheDocument();
+  });
+
+  it("keeps loaded customers visible when loading the next page fails", async () => {
+    const user = userEvent.setup();
+    const service = createCustomerPageService();
+    vi.mocked(service.getCustomers)
+      .mockResolvedValueOnce({
+        ...customerResponse,
+        hasMore: true,
+        nextCursor: "cursor-2",
+      })
+      .mockRejectedValueOnce(new Error("下一页加载失败"));
+    setWorkbenchService(service);
+
+    renderRoute("/chat/customers");
+
+    await screen.findByRole("heading", { name: "客户" });
+    await user.click(screen.getByRole("tab", { name: "全部客户" }));
+    expect(await screen.findByText("客户A（张三）")).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "加载更多客户" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("下一页加载失败");
+    });
+    expect(screen.getByText("客户A（张三）")).toBeInTheDocument();
+    expect(screen.queryByText("下一页加载失败")).not.toBeInTheDocument();
+  });
+
+  it("uses a full unicode character for avatar fallbacks", async () => {
+    const user = userEvent.setup();
+    const service = createCustomerPageService();
+    vi.mocked(service.getCustomers).mockResolvedValue({
+      hasMore: false,
+      items: [
+        {
+          avatar: "",
+          bizStatus: 1,
+          customerKey: "9001:5:external-emoji",
+          gender: null,
+          name: "😀客户",
+          platform: 5,
+          realName: "",
+          relationCount: 0,
+          seatRelations: [],
+          thirdExternalUserId: "external-emoji",
+          uid: 9001,
+        },
+      ],
+      total: 1,
+    });
+    setWorkbenchService(service);
+
+    renderRoute("/chat/customers");
+
+    await screen.findByRole("heading", { name: "客户" });
+    await user.type(screen.getByLabelText("搜索客户"), "😀客户");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+
+    expect(await screen.findByText("😀客户")).toBeInTheDocument();
+    expect(screen.getByText("😀")).toBeInTheDocument();
   });
 
   it("falls back when a recent conversation timestamp is invalid", async () => {

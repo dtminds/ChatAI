@@ -206,7 +206,7 @@ describe("CustomerPage", () => {
       ["seat-user-drc", "seat-user-support"],
     );
     expect(screen.getByText("销售一号")).toBeInTheDocument();
-    expect(screen.getByText("5月24日 13:20")).toBeInTheDocument();
+    expect(await screen.findByText("5月24日 13:20")).toBeInTheDocument();
     expect(screen.getByText("销售二号")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "向 销售一号 继续会话" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "销售二号 不可发起会话" })).toBeDisabled();

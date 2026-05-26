@@ -371,8 +371,10 @@ export function VoiceMessageCard({
     );
     const clampedTime = Math.max(0, Math.min(nextTime, seekMax));
 
-    if (audioRef.current) {
-      audioRef.current.currentTime = clampedTime;
+    const audio = audioRef.current;
+
+    if (audio && audio.readyState >= HAVE_METADATA_READY_STATE) {
+      audio.currentTime = clampedTime;
     }
 
     setCurrentTime(clampedTime);
@@ -400,7 +402,9 @@ export function VoiceMessageCard({
       return;
     }
 
-    audioRef.current.currentTime = 0;
+    if (audioRef.current.readyState >= HAVE_METADATA_READY_STATE) {
+      audioRef.current.currentTime = 0;
+    }
     setCurrentTime(0);
     loadTimeoutRef.current = window.setTimeout(() => {
       const audio = audioRef.current;

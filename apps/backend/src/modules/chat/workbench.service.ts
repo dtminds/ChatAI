@@ -33,6 +33,7 @@ import type {
 } from "@chatai/contracts";
 import { CHAT_TYPE } from "@chatai/contracts";
 import {
+  BadGatewayError,
   BadRequestError,
   ForbiddenError,
   AppError,
@@ -1064,7 +1065,7 @@ async function checkPlayableVoiceExists(playbackUrl: string) {
       signal: controller.signal,
     });
   } catch (error) {
-    throw new AppError("PLAYABLE_VOICE_CHECK_FAILED", "语音转码文件检查失败", 502, {
+    throw new BadGatewayError("PLAYABLE_VOICE_CHECK_FAILED", "语音转码文件检查失败", {
       reason: error instanceof Error ? error.name : "unknown",
     });
   } finally {
@@ -1076,7 +1077,7 @@ async function checkPlayableVoiceExists(playbackUrl: string) {
   }
 
   if (!response.ok) {
-    throw new AppError("PLAYABLE_VOICE_CHECK_FAILED", "语音转码文件检查失败", 502, {
+    throw new BadGatewayError("PLAYABLE_VOICE_CHECK_FAILED", "语音转码文件检查失败", {
       status: response.status,
     });
   }

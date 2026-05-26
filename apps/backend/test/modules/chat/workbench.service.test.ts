@@ -332,6 +332,52 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
   });
 
+  it("reports converted WAV check failures as bad gateway errors", async () => {
+    const originalFetch = globalThis.fetch;
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    await expect(
+      service.confirmVoicePlaybackReady("101", {
+        conversationId: "88",
+        messageSeq: 538,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      }),
+    ).rejects.toBeInstanceOf(BadGatewayError);
+    await expect(
+      service.confirmVoicePlaybackReady("101", {
+        conversationId: "88",
+        messageSeq: 538,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAYABLE_VOICE_CHECK_FAILED",
+      statusCode: 502,
+    });
+    expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
+
+    vi.stubGlobal("fetch", originalFetch);
+  });
+
   it("rejects mark-unread when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(

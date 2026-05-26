@@ -460,6 +460,31 @@ describe("voice message playback", () => {
     expect(audioInstances[0]?.currentTime).toBe(32);
   });
 
+  it("does not fail playback when audio metadata is not ready yet", async () => {
+    const user = userEvent.setup();
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances, throwOnCurrentTimeBeforeMetadata: true });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button")).toHaveTextContent("准备播放");
+    });
+    expect(audioInstances[0]?.currentTime).toBe(0);
+  });
+
   it("pauses and resumes the same voice message from the player button", async () => {
     const user = userEvent.setup();
     const pause = vi.fn();
@@ -883,11 +908,13 @@ function stubAudio({
   pause = vi.fn(),
   play = vi.fn().mockResolvedValue(undefined),
   playSequence,
+  throwOnCurrentTimeBeforeMetadata = false,
 }: {
   instances?: AudioMockInstance[];
   pause?: ReturnType<typeof vi.fn>;
   play?: ReturnType<typeof vi.fn>;
   playSequence?: Array<ReturnType<typeof vi.fn>>;
+  throwOnCurrentTimeBeforeMetadata?: boolean;
 } = {}) {
   const listeners = new WeakMap<AudioMockInstance, Map<string, EventListener[]>>();
   const AudioMock = vi.fn(function AudioMock(this: AudioMockInstance, src: string) {
@@ -896,7 +923,17 @@ function stubAudio({
     this.addEventListener = vi.fn((event: string, listener: EventListener) => {
       instanceListeners.set(event, [...(instanceListeners.get(event) ?? []), listener]);
     });
-    this.currentTime = 0;
+    let currentTime = 0;
+    Object.defineProperty(this, "currentTime", {
+      configurable: true,
+      get: () => currentTime,
+      set: (value: number) => {
+        if (throwOnCurrentTimeBeforeMetadata && this.readyState < 1) {
+          throw new DOMException("The media resource is not ready", "InvalidStateError");
+        }
+        currentTime = value;
+      },
+    });
     this.dispatch = (event: string) => {
       if (event === "loadedmetadata") {
         this.paused = false;

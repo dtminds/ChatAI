@@ -408,7 +408,9 @@ function ChatWorkbenchContent({
 
   useEffect(() => {
     if (activeView !== "chat") {
-      clearActiveConversation();
+      if (activeConversationId) {
+        clearActiveConversation();
+      }
       return;
     }
 

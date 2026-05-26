@@ -718,6 +718,119 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("uses Date cursor bounds and encodes Date add time for my customer pages", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const cursorDate = new Date("2026-05-20T10:00:00.000Z");
+    const nextCursorDate = new Date("2026-05-19T09:30:00.000Z");
+    const cursor = Buffer.from(
+      JSON.stringify({
+        addTime: cursorDate.getTime(),
+        bindId: 302,
+      }),
+      "utf8",
+    ).toString("base64url");
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder([
+              {
+                id: 12,
+                platform: 5,
+                third_avatar: "",
+                third_user_name: "销售一号",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([
+              {
+                add_time: nextCursorDate,
+                biz_status: 1,
+                bind_type: 1,
+                description: null,
+                id: 301,
+                platform: 5,
+                third_external_userid: "external-a",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+              {
+                add_time: new Date("2026-05-18T09:30:00.000Z"),
+                biz_status: 1,
+                bind_type: 1,
+                description: null,
+                id: 300,
+                platform: 5,
+                third_external_userid: "external-b",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_contact as contact") {
+            const query = createQueryBuilder([
+              {
+                avatar: "",
+                biz_status: 1,
+                gender: null,
+                name: "客户A",
+                platform: 5,
+                real_name: "",
+                third_external_userid: "external-a",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const result = await repository.listCustomers({
+      cursor,
+      limit: 1,
+      scope: "mine",
+      seatIds: ["12"],
+      subUserId: "101",
+    });
+
+    const bindQuery = queries.find(
+      (item) => item.table === "xy_wap_embed_customer_bind_relation as bind",
+    )?.query;
+    expect(bindQuery?.whereExpressions).toContainEqual({
+      type: "or",
+      expressions: [
+        { column: "bind.add_time", operator: "<", value: cursorDate },
+        {
+          type: "and",
+          expressions: [
+            { column: "bind.add_time", operator: "=", value: cursorDate },
+            { column: "bind.id", operator: "<", value: "302" },
+          ],
+        },
+      ],
+    });
+    expect(result.nextCursor).toBeTruthy();
+    expect(
+      JSON.parse(Buffer.from(result.nextCursor ?? "", "base64url").toString("utf8")),
+    ).toEqual({
+      addTime: nextCursorDate.getTime(),
+      bindId: 301,
+    });
+  });
+
   it("searches all visible managed accounts with only a contact join", async () => {
     const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
     const repository = new WorkbenchRepository(

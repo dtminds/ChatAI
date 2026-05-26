@@ -78,6 +78,15 @@ export function CustomerPage({
   const [errorMessage, setErrorMessage] = useState<string>();
   const [nextCursor, setNextCursor] = useState<string>();
   const [hasMore, setHasMore] = useState(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -167,13 +176,21 @@ export function CustomerPage({
             : undefined,
       });
 
+      if (!isMountedRef.current) {
+        return;
+      }
+
       setCustomers((currentCustomers) => [...currentCustomers, ...response.items]);
       setHasMore(response.hasMore);
       setNextCursor(response.nextCursor);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "客户列表加载失败");
+      if (isMountedRef.current) {
+        setErrorMessage(error instanceof Error ? error.message : "客户列表加载失败");
+      }
     } finally {
-      setIsLoadingMore(false);
+      if (isMountedRef.current) {
+        setIsLoadingMore(false);
+      }
     }
   }
 
@@ -446,6 +463,7 @@ function CustomerLastConversationPopover({
   onStartChat?: CustomerPageProps["onStartChat"];
 }) {
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
   const [isOpen, setIsOpen] = useState(false);
   const [lastConversation, setLastConversation] = useState<
     WorkbenchCustomerLastConversationDto | undefined
@@ -465,6 +483,7 @@ function CustomerLastConversationPopover({
 
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
       if (closeTimerRef.current) {
         clearTimeout(closeTimerRef.current);
       }
@@ -493,13 +512,19 @@ function CustomerLastConversationPopover({
           void getWorkbenchService()
             .getCustomerLastConversation(customer.thirdExternalUserId)
             .then((response) => {
+              if (!isMountedRef.current) {
+                return;
+              }
+
               setLastConversation(response.lastConversation);
               setMessages([]);
               setPreviewStatus("idle");
               setRefreshStatus(response.lastConversation ? "idle" : "empty");
             })
             .catch(() => {
-              setRefreshStatus("error");
+              if (isMountedRef.current) {
+                setRefreshStatus("error");
+              }
             });
         }}
         type="button"
@@ -533,6 +558,10 @@ function CustomerLastConversationPopover({
         limit: RECENT_MESSAGE_PREVIEW_LIMIT,
       })
       .then((page) => {
+        if (!isMountedRef.current) {
+          return;
+        }
+
         const accountsById = Object.fromEntries(
           accounts.map((item) => [item.id, item]),
         );
@@ -563,8 +592,10 @@ function CustomerLastConversationPopover({
         setPreviewStatus("loaded");
       })
       .catch(() => {
-        setMessages([]);
-        setPreviewStatus("error");
+        if (isMountedRef.current) {
+          setMessages([]);
+          setPreviewStatus("error");
+        }
       });
   }
 
@@ -691,6 +722,7 @@ function CustomerSeatRelationsPopover({
   currentEmployeeId?: string;
   onStartChat?: CustomerPageProps["onStartChat"];
 }) {
+  const isMountedRef = useRef(true);
   const [isOpen, setIsOpen] = useState(false);
   const [conversationTimes, setConversationTimes] = useState<Record<string, number>>({});
   const [conversationStatus, setConversationStatus] = useState<
@@ -700,6 +732,12 @@ function CustomerSeatRelationsPopover({
   const visibleRelations = relations.slice(0, 3);
   const hiddenCount = Math.max(relations.length - visibleRelations.length, 0);
   const customerName = getCustomerDisplayName(customer);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     setConversationTimes({});
@@ -725,6 +763,10 @@ function CustomerSeatRelationsPopover({
     void getWorkbenchService()
       .getCustomerRelationConversations(customer.thirdExternalUserId, thirdUserIds)
       .then((response) => {
+        if (!isMountedRef.current) {
+          return;
+        }
+
         setConversationTimes(
           Object.fromEntries(
             response.items.map((item) => [item.thirdUserId, item.lastMessageTime]),
@@ -733,8 +775,10 @@ function CustomerSeatRelationsPopover({
         setConversationStatus("loaded");
       })
       .catch(() => {
-        setConversationTimes({});
-        setConversationStatus("error");
+        if (isMountedRef.current) {
+          setConversationTimes({});
+          setConversationStatus("error");
+        }
       });
   }
 
@@ -932,9 +976,13 @@ function getCustomerDisplayName(customer: WorkbenchCustomerSummaryDto) {
 }
 
 function formatCustomerTimestamp(value?: number) {
-  if (!value) {
+  if (!value || !Number.isFinite(value)) {
     return "-";
   }
 
-  return formatMessageDividerLabel(new Date(value).toISOString()) || "-";
+  try {
+    return formatMessageDividerLabel(new Date(value).toISOString()) || "-";
+  } catch {
+    return "-";
+  }
 }

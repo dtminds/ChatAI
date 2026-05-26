@@ -437,6 +437,38 @@ describe("CustomerPage", () => {
     expect(screen.getByText("客户A（张三）")).toBeInTheDocument();
   });
 
+  it("falls back when a recent conversation timestamp is invalid", async () => {
+    const user = userEvent.setup();
+    const service = createCustomerPageService();
+    vi.mocked(service.getCustomerLastConversation).mockResolvedValueOnce({
+      lastConversation: {
+        conversationId: "conv-invalid",
+        lastMessageTime: Number.POSITIVE_INFINITY,
+        seatAvatar: "",
+        seatId: "drc",
+        seatName: "销售一号",
+      },
+    });
+    setWorkbenchService(service);
+
+    renderRoute("/chat/customers");
+
+    await screen.findByRole("heading", { name: "客户" });
+    await user.type(screen.getByLabelText("搜索客户"), "客户A");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "刷新 客户A（张三） 的最近会话时间",
+      }),
+    );
+
+    expect(await screen.findByText("-")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "查看 客户A（张三） 的最近会话记录" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
+  });
+
   it("navigates back to chat and settings from the account rail", async () => {
     const user = userEvent.setup();
     const service = createCustomerPageService();

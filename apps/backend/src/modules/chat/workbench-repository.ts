@@ -180,7 +180,7 @@ type CustomerListScope =
     };
 
 type CustomerRow = {
-  add_time: number | string | null;
+  add_time: Date | number | string | null;
   avatar: string | null;
   bind_id: number | string;
   bind_status: number | null;
@@ -192,7 +192,7 @@ type CustomerRow = {
   last_conversation_seat_avatar: string | null;
   last_conversation_seat_id: number | string | null;
   last_conversation_seat_name: string | null;
-  last_message_time: number | string | null;
+  last_message_time: Date | number | string | null;
   name: string | null;
   platform: number | string;
   real_name: string | null;
@@ -218,7 +218,7 @@ type CustomerContactPageRow = {
 
 type CustomerLastMessageRow = {
   conversation_id: number | string | null;
-  last_message_time: number | string | null;
+  last_message_time: Date | number | string | null;
   platform: number | string;
   third_external_userid: string;
   third_userid: string;
@@ -232,7 +232,7 @@ type CustomerLastConversationHydratedRow = CustomerLastMessageRow & {
 };
 
 type CustomerRelationConversationRow = {
-  last_message_time: number | string | null;
+  last_message_time: Date | number | string | null;
   third_userid: string;
 };
 
@@ -247,7 +247,7 @@ type MineCustomerListCursor = {
 };
 
 type CustomerBindPageRow = {
-  add_time: number | string | null;
+  add_time: Date | number | string | null;
   bind_type: number | null;
   biz_status: number | null;
   description: string | null;
@@ -851,11 +851,12 @@ export class WorkbenchRepository {
     }
 
     if (cursor) {
+      const cursorDate = new Date(cursor.addTime);
       query = query.where((expressionBuilder) =>
         expressionBuilder.or([
-          expressionBuilder("bind.add_time", "<", cursor.addTime),
+          expressionBuilder("bind.add_time", "<", asSchemaDate(cursorDate)),
           expressionBuilder.and([
-            expressionBuilder("bind.add_time", "=", cursor.addTime),
+            expressionBuilder("bind.add_time", "=", asSchemaDate(cursorDate)),
             expressionBuilder("bind.id", "<", asSchemaBigIntId(String(cursor.bindId))),
           ]),
         ]),
@@ -879,7 +880,7 @@ export class WorkbenchRepository {
       nextCursor:
         rows.length > limit && pageRows.at(-1)
           ? encodeMineCustomerListCursor({
-              addTime: toNumber(pageRows.at(-1)?.add_time) ?? 0,
+              addTime: normalizeCursorTime(pageRows.at(-1)?.add_time),
               bindId: toNumber(pageRows.at(-1)?.id) ?? 0,
             })
           : undefined,
@@ -1303,7 +1304,10 @@ export class WorkbenchRepository {
       .execute()) as CustomerRelationConversationRow[];
 
     return rows.flatMap((row) => {
-      const lastMessageTime = toNumber(row.last_message_time);
+      const lastMessageTime =
+        row.last_message_time == null
+          ? undefined
+          : normalizeCursorTime(row.last_message_time);
 
       return lastMessageTime == null
         ? []
@@ -2953,6 +2957,10 @@ function asSchemaBigIntIds(values: string[]) {
   return values as unknown as number[];
 }
 
+function asSchemaDate(value: Date) {
+  return value as unknown as number;
+}
+
 function uniqueNumbers(values: Array<number | undefined>) {
   return Array.from(
     new Set(
@@ -3297,7 +3305,10 @@ function groupCustomerRows(rows: CustomerRow[]): WorkbenchCustomerSummaryDto[] {
         bizStatus: row.contact_status ?? 0,
         customerKey,
         lastConversation: mapCustomerLastConversation(row),
-        lastMessageTime: toNumber(row.last_message_time),
+        lastMessageTime:
+          row.last_message_time == null
+            ? undefined
+            : normalizeCursorTime(row.last_message_time),
         gender: row.gender ?? null,
         name: row.name ?? "",
         platform,
@@ -3313,7 +3324,10 @@ function groupCustomerRows(rows: CustomerRow[]): WorkbenchCustomerSummaryDto[] {
       current.relationCount = current.seatRelations.length;
     }
 
-    const lastMessageTime = toNumber(row.last_message_time);
+    const lastMessageTime =
+      row.last_message_time == null
+        ? undefined
+        : normalizeCursorTime(row.last_message_time);
     if (lastMessageTime != null) {
       const lastConversation = mapCustomerLastConversation(row);
       if (
@@ -3335,8 +3349,12 @@ function groupCustomerRows(rows: CustomerRow[]): WorkbenchCustomerSummaryDto[] {
 }
 
 function mapCustomerSeatRelation(row: CustomerRow): WorkbenchCustomerSeatRelationDto {
-  const addTime = toNumber(row.add_time);
-  const lastMessageTime = toNumber(row.last_message_time);
+  const addTime =
+    row.add_time == null ? undefined : normalizeCursorTime(row.add_time);
+  const lastMessageTime =
+    row.last_message_time == null
+      ? undefined
+      : normalizeCursorTime(row.last_message_time);
 
   return {
     ...(addTime == null ? {} : { addTime }),
@@ -3359,7 +3377,10 @@ function mapCustomerLastConversation(
   const rawConversationId = isLastMessageRow
     ? row.conversation_id
     : row.last_conversation_id;
-  const lastMessageTime = toNumber(row.last_message_time);
+  const lastMessageTime =
+    row.last_message_time == null
+      ? undefined
+      : normalizeCursorTime(row.last_message_time);
   const rawSeatId = isLastMessageRow ? row.seat_id : row.last_conversation_seat_id;
 
   if (rawConversationId == null || lastMessageTime == null || rawSeatId == null) {

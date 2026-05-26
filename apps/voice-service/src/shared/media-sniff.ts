@@ -39,18 +39,28 @@ export function detectVoiceFormat(data: Uint8Array): DetectedVoiceFormat {
   };
 }
 
-export function isAllowedSourceObject(key: string) {
-  return key.startsWith("s5/voice/");
+export function isAllowedSourceObject(key: string, inputPrefix = "s5/voice") {
+  return key.startsWith(`${normalizePrefix(inputPrefix)}/`);
 }
 
-export function buildPlayableObjectKey(sourceKey: string) {
-  if (!isAllowedSourceObject(sourceKey)) {
+export function buildPlayableObjectKey(
+  sourceKey: string,
+  inputPrefix = "s5/voice",
+  outputPrefix = "s5/playable-voice",
+) {
+  const normalizedInputPrefix = normalizePrefix(inputPrefix);
+
+  if (!isAllowedSourceObject(sourceKey, normalizedInputPrefix)) {
     throw new Error(`Invalid source key: ${sourceKey}`);
   }
 
   return sourceKey
-    .replace(/^s5\/voice\//, "s5/playable-voice/")
+    .replace(`${normalizedInputPrefix}/`, `${normalizePrefix(outputPrefix)}/`)
     .replace(/\.[^/.]+$/u, ".wav");
+}
+
+function normalizePrefix(prefix: string) {
+  return prefix.replace(/^\/+/, "").replace(/\/+$/, "");
 }
 
 function startsWithAscii(data: Uint8Array, text: string) {

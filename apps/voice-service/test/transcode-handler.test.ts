@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  buildPlayableObjectKey: vi.fn((key: string) =>
-    key.replace(/^s5\/voice\//, "s5/playable-voice/").replace(/\.amr$/i, ".wav"),
+  buildPlayableObjectKey: vi.fn((key: string, inputPrefix = "s5/voice", outputPrefix = "s5/playable-voice") =>
+    key.replace(`${inputPrefix}/`, `${outputPrefix}/`).replace(/\.amr$/i, ".wav"),
   ),
   createCosClientFromEnv: vi.fn(),
   fetchCosObject: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock("../src/shared/config.js", () => ({
 vi.mock("../src/shared/media-sniff.js", () => ({
   buildPlayableObjectKey: mocks.buildPlayableObjectKey,
   detectVoiceFormat: vi.fn(() => ({ format: "silk-v3", headerOffset: 1 })),
-  isAllowedSourceObject: vi.fn(() => true),
+  isAllowedSourceObject: vi.fn((key: string, inputPrefix = "s5/voice") => key.startsWith(`${inputPrefix}/`)),
 }));
 
 vi.mock("../src/shared/transcode.js", () => ({
@@ -227,6 +227,57 @@ describe("transcode-on-cos-event handler", () => {
       "scrm-msg-audit-1304132716",
       "ap-shanghai",
       "s5/voice/16559c8f42de41d890823bf8016617e7.amr",
+    );
+  });
+
+  it("uses configured input and output prefixes when validating and writing objects", async () => {
+    mocks.readVoiceServiceConfig.mockReturnValue({
+      bucket: "scrm-msg-audit-1304132716",
+      inputPrefix: "s5/msg",
+      outputPrefix: "s5/playable-voice",
+      maxBytes: 1024 * 1024,
+      maxDurationMs: 60_000,
+      sampleRate: 16000,
+    });
+    const { main_handler } = await import("../src/functions/transcode-on-cos-event.js");
+
+    await expect(
+      main_handler({
+        Records: [
+          {
+            cos: {
+              cosBucket: { name: "scrm-msg-audit-1304132716" },
+              cosObject: {
+                key: encodeURIComponent("s5/msg/20260513/272/voice.amr"),
+              },
+              cosRegion: { region: "ap-shanghai" },
+            },
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      bucket: "scrm-msg-audit-1304132716",
+      key: "s5/msg/20260513/272/voice.amr",
+      playableKey: "s5/playable-voice/20260513/272/voice.wav",
+    });
+
+    expect(mocks.fetchCosObject).toHaveBeenCalledWith(
+      expect.any(Object),
+      "scrm-msg-audit-1304132716",
+      "ap-shanghai",
+      "s5/msg/20260513/272/voice.amr",
+    );
+    expect(mocks.buildPlayableObjectKey).toHaveBeenCalledWith(
+      "s5/msg/20260513/272/voice.amr",
+      "s5/msg",
+      "s5/playable-voice",
+    );
+    expect(mocks.putCosObject).toHaveBeenCalledWith(
+      expect.any(Object),
+      "scrm-msg-audit-1304132716",
+      "ap-shanghai",
+      "s5/playable-voice/20260513/272/voice.wav",
+      new Uint8Array([0x52, 0x49, 0x46, 0x46]),
     );
   });
 });

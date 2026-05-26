@@ -44,7 +44,7 @@ export async function main_handler(event: CosObjectEvent) {
     throw new Error(`Unexpected bucket: ${bucket}`);
   }
 
-  if (!isAllowedSourceObject(key)) {
+  if (!isAllowedSourceObject(key, config.inputPrefix)) {
     throw new Error(`Unexpected source key: ${key}`);
   }
 
@@ -55,7 +55,7 @@ export async function main_handler(event: CosObjectEvent) {
     throw new Error(`Unsupported voice format: ${detected.format}`);
   }
 
-  const playableKey = buildPlayableObjectKey(key);
+  const playableKey = buildPlayableObjectKey(key, config.inputPrefix, config.outputPrefix);
   const transcoded = await transcodeVoiceToWav(source.body, {
     maxBytes: config.maxBytes,
     maxDurationMs: config.maxDurationMs,

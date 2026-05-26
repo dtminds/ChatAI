@@ -6,7 +6,7 @@ import { noopLogger, type AppLogger } from "../../shared/logger.js";
 
 const ALLOWED_MEDIA_HOST = "b5.bokr.com.cn";
 const DEFAULT_MEDIA_PROXY_TIMEOUT_MS = 8000;
-const SOURCE_VOICE_PREFIX = "/s5/voice/";
+const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
 const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 
 export type PlayableVoiceStatus = {
@@ -91,13 +91,17 @@ function parseAllowedMediaUrl(rawUrl: string) {
 }
 
 function buildPlayableVoiceUrl(sourceUrl: URL) {
-  if (!sourceUrl.pathname.startsWith(SOURCE_VOICE_PREFIX)) {
+  const sourcePrefix = SOURCE_VOICE_PREFIXES.find((prefix) =>
+    sourceUrl.pathname.startsWith(prefix),
+  );
+
+  if (!sourcePrefix) {
     throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "媒体资源地址不允许访问");
   }
 
   const playableUrl = new URL(sourceUrl);
   playableUrl.pathname = sourceUrl.pathname
-    .replace(SOURCE_VOICE_PREFIX, PLAYABLE_VOICE_PREFIX)
+    .replace(sourcePrefix, PLAYABLE_VOICE_PREFIX)
     .replace(/\.[^/.]+$/u, ".wav");
   playableUrl.search = "";
   playableUrl.hash = "";

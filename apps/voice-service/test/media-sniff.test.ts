@@ -39,6 +39,11 @@ describe("voice media sniffing", () => {
     expect(isAllowedSourceObject("s5/image/20260513/272/a.amr")).toBe(false);
   });
 
+  it("accepts source objects under a configured input prefix", () => {
+    expect(isAllowedSourceObject("s5/msg/20260513/272/a.amr", "s5/msg")).toBe(true);
+    expect(isAllowedSourceObject("s5/voice/20260513/272/a.amr", "s5/msg")).toBe(false);
+  });
+
   it("maps source object keys to playable wav keys", () => {
     expect(buildPlayableObjectKey("s5/voice/20260513/272/a.amr")).toBe(
       "s5/playable-voice/20260513/272/a.wav",
@@ -47,6 +52,12 @@ describe("voice media sniffing", () => {
       "s5/playable-voice/20260513/272/a.wav",
     );
     expect(buildPlayableObjectKey("s5/voice/20260513/272/a.awb")).toBe(
+      "s5/playable-voice/20260513/272/a.wav",
+    );
+  });
+
+  it("maps configured input prefixes to configured playable wav prefixes", () => {
+    expect(buildPlayableObjectKey("s5/msg/20260513/272/a.amr", "s5/msg", "s5/playable-voice")).toBe(
       "s5/playable-voice/20260513/272/a.wav",
     );
   });

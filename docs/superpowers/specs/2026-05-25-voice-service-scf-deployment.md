@@ -1,6 +1,6 @@
 # Voice Service SCF Deployment Guide
 
-**Goal:** package and deploy a Tencent Cloud SCF voice conversion service that turns uploaded `.amr` voice objects under `s5/voice/` into playable `.wav` objects under `s5/playable-voice/`.
+**Goal:** package and deploy a Tencent Cloud SCF voice conversion service that turns uploaded `.amr` voice objects under the configured source prefix into playable `.wav` objects under `s5/playable-voice/`.
 
 **Architecture:** COS uploads trigger a Node.js 22 SCF handler. The handler validates the bucket and key prefix, downloads the source object from COS, detects the voice format, converts supported SILK/AMR input into PCM WAV, and writes the result back to the same bucket under the playable prefix. The first manual validation step is COS upload -> SCF trigger -> `HEAD` the generated WAV object.
 
@@ -28,7 +28,7 @@ Use these values for the first manual SCF validation:
 ```txt
 Region: ap-shanghai
 Bucket: scrm-msg-audit-1304132716
-Input prefix: s5/voice
+Input prefix: s5/msg
 Output prefix: s5/playable-voice
 Output format: wav
 Runtime: Node.js 22.21
@@ -41,7 +41,7 @@ Environment variables:
 
 ```txt
 VOICE_SERVICE_BUCKET=scrm-msg-audit-1304132716
-VOICE_SERVICE_INPUT_PREFIX=s5/voice
+VOICE_SERVICE_INPUT_PREFIX=s5/msg
 VOICE_SERVICE_OUTPUT_PREFIX=s5/playable-voice
 VOICE_SERVICE_MAX_DURATION_MS=60000
 VOICE_SERVICE_MAX_BYTES=10485760
@@ -77,6 +77,9 @@ detectVoiceFormat(new Uint8Array([0x02, ...ascii("#!SILK_V3"), 0x14, 0x00]))
 // => { format: "silk-v3", headerOffset: 1 }
 
 buildPlayableObjectKey("s5/voice/20260513/272/a.amr")
+// => "s5/playable-voice/20260513/272/a.wav"
+
+buildPlayableObjectKey("s5/msg/20260513/272/a.amr", "s5/msg", "s5/playable-voice")
 // => "s5/playable-voice/20260513/272/a.wav"
 
 createPcm16MonoWav(new Uint8Array([0x00, 0x00, 0xff, 0x7f]), 16000)
@@ -138,7 +141,7 @@ The handler test should assert that an event like this:
     {
       cos: {
         cosBucket: { name: "scrm-msg-audit-1304132716" },
-        cosObject: { key: encodeURIComponent("s5/voice/20260513/272/voice.amr") },
+        cosObject: { key: encodeURIComponent("s5/msg/20260513/272/voice.amr") },
         cosRegion: { region: "ap-shanghai" }
       }
     }
@@ -146,7 +149,7 @@ The handler test should assert that an event like this:
 }
 ```
 
-is transformed into a COS `getObject` call for `s5/voice/.../voice.amr`, a `putObject` call for `s5/playable-voice/.../voice.wav`, and a successful return payload.
+is transformed into a COS `getObject` call for `s5/msg/.../voice.amr`, a `putObject` call for `s5/playable-voice/.../voice.wav`, and a successful return payload.
 
 - [x] **Step 2: Run the test to verify it fails**
 
@@ -172,7 +175,7 @@ The handler should:
 ```ts
 1. read config
 2. validate bucket == scrm-msg-audit-1304132716
-3. validate source key starts with s5/voice/
+3. validate source key starts with the configured input prefix
 4. download the object
 5. transcode it
 6. write the wav to s5/playable-voice/.../*.wav
@@ -264,7 +267,7 @@ Document these runtime values:
 ```txt
 Region: ap-shanghai
 Bucket: scrm-msg-audit-1304132716
-Input prefix: s5/voice
+Input prefix: s5/msg
 Output prefix: s5/playable-voice
 Output format: wav
 Runtime: Node.js 22.21
@@ -276,7 +279,7 @@ Entry: index.main_handler
 Document the exact manual check:
 
 ```txt
-1. upload an .amr object to COS under s5/voice/
+1. upload an .amr object to COS under the configured input prefix
 2. let COS trigger SCF
 3. wait for the function to finish
 4. HEAD the generated s5/playable-voice/.../*.wav object

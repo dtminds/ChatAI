@@ -482,6 +482,8 @@ function CustomerLastConversationPopover({
   const canContinueChat = canStartSeatChat(account, currentEmployeeId);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
       isMountedRef.current = false;
       if (closeTimerRef.current) {
@@ -734,6 +736,8 @@ function CustomerSeatRelationsPopover({
   const customerName = getCustomerDisplayName(customer);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
       isMountedRef.current = false;
     };

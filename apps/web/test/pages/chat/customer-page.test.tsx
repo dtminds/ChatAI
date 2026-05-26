@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
@@ -469,6 +470,38 @@ describe("CustomerPage", () => {
     expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
   });
 
+  it("loads customer popover data after StrictMode remount", async () => {
+    const user = userEvent.setup();
+    const service = createCustomerPageService();
+    setWorkbenchService(service);
+
+    renderRoute("/chat/customers", { strictMode: true });
+
+    await screen.findByRole("heading", { name: "客户" });
+    await user.type(screen.getByLabelText("搜索客户"), "客户A");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "刷新 客户A（张三） 的最近会话时间",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "查看 客户A（张三） 的最近会话记录" }),
+    ).toBeInTheDocument();
+
+    await user.hover(
+      screen.getByRole("button", { name: "查看 客户A（张三） 的好友关系" }),
+    );
+
+    expect(await screen.findByRole("button", { name: "向 销售一号 继续会话" })).toBeInTheDocument();
+    expect(service.getCustomerLastConversation).toHaveBeenCalledWith("external-a");
+    expect(service.getCustomerRelationConversations).toHaveBeenCalledWith(
+      "external-a",
+      ["seat-user-drc", "seat-user-support"],
+    );
+  });
+
   it("navigates back to chat and settings from the account rail", async () => {
     const user = userEvent.setup();
     const service = createCustomerPageService();
@@ -528,7 +561,7 @@ describe("CustomerPage", () => {
   });
 });
 
-function renderRoute(path: string) {
+function renderRoute(path: string, options: { strictMode?: boolean } = {}) {
   useAuthStore.getState().setSession({
     accountType: "sub",
     displayName: "客服一号",
@@ -540,7 +573,15 @@ function renderRoute(path: string) {
     initialEntries: [path],
   });
 
-  render(<RouterProvider router={router} />);
+  render(
+    options.strictMode ? (
+      <StrictMode>
+        <RouterProvider router={router} />
+      </StrictMode>
+    ) : (
+      <RouterProvider router={router} />
+    ),
+  );
 
   return router;
 }

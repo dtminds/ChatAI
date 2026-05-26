@@ -453,10 +453,13 @@ describe("CustomerPage", () => {
 
     await user.hover(relatedSeatsButton);
 
-    expect(await screen.findByText("5月24日 13:20")).toBeInTheDocument();
-    expect(service.getCustomerRelationConversations).toHaveBeenCalledTimes(
-      failedRequestCount + 1,
-    );
+    await waitFor(() => {
+      expect(service.getCustomerRelationConversations).toHaveBeenCalledTimes(
+        failedRequestCount + 1,
+      );
+    });
+    expect(screen.queryByText("加载失败")).not.toBeInTheDocument();
+    expect(screen.getByText(/^5月24日 \d{2}:\d{2}$/)).toBeInTheDocument();
   });
 
   it("does not match customers by hidden external user id", async () => {

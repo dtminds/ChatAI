@@ -125,6 +125,92 @@ describe("voice message playback", () => {
     });
   });
 
+  it("shows a preparing state while checking the converted voice URL", async () => {
+    const user = userEvent.setup();
+    let resolveCheck!: (value: unknown) => void;
+    const playableCheck = new Promise((resolve) => {
+      resolveCheck = resolve;
+    });
+    const play = vi.fn().mockResolvedValue(undefined);
+    stubAudio({ play });
+    mocks.request.mockReturnValueOnce(playableCheck);
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    expect(screen.getByRole("button")).toHaveTextContent("准备播放");
+    expect(play).not.toHaveBeenCalled();
+
+    resolveCheck({
+      data: {
+        playable: true,
+        playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+      },
+      success: true,
+    });
+
+    await waitFor(() => {
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("shows a playback error when the playable voice check is rejected", async () => {
+    const user = userEvent.setup();
+    stubAudio();
+    mocks.request.mockRejectedValueOnce(new Error("MEDIA_URL_NOT_ALLOWED"));
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/image/20260513/272/image.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button")).toHaveTextContent("暂不可播放");
+    });
+  });
+
+  it("keeps showing playing after the converted WAV starts", async () => {
+    const user = userEvent.setup();
+    const play = vi.fn().mockResolvedValue(undefined);
+    stubAudio({ play });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    await waitFor(() => {
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByRole("button")).toHaveTextContent("播放中");
+  });
+
   it("shows a retry-later message when converted voice is not ready", async () => {
     const user = userEvent.setup();
     const play = vi.fn().mockResolvedValue(undefined);

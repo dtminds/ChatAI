@@ -28,7 +28,7 @@ export function VoiceMessageCard({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mountedRef = useRef(true);
   const [playbackState, setPlaybackState] = useState<
-    "idle" | "playing" | "error" | "not-ready"
+    "idle" | "preparing" | "playing" | "error" | "not-ready"
   >("idle");
   const canPlay = Boolean(content.audioUrl);
   const label = content.durationLabel || "语音";
@@ -112,6 +112,7 @@ export function VoiceMessageCard({
 
     try {
       generation = claimActivePlayback();
+      setPlaybackState("preparing");
       const playableUrl = isAmrUrl(content.audioUrl)
         ? await resolvePlayableVoiceUrl(content.audioUrl)
         : content.audioUrl;
@@ -176,9 +177,11 @@ export function VoiceMessageCard({
           ? "暂不可播放"
           : playbackState === "not-ready"
             ? "暂不支持播放，请稍后重试"
-            : playbackState === "playing"
-              ? "播放中"
-              : label}
+            : playbackState === "preparing"
+              ? "准备播放"
+              : playbackState === "playing"
+                ? "播放中"
+                : label}
       </span>
     </button>
   );

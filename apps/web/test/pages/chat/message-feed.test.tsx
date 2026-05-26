@@ -1,10 +1,15 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageRow, getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
 describe("message feed row actions", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it("opens an avatar anchored action menu with quote and mention actions for group messages", async () => {
     const user = userEvent.setup();
     const onMentionMessage = vi.fn();
@@ -169,7 +174,88 @@ describe("message feed row actions", () => {
       getMessageFeedItemKey(reconciledMessage),
     );
   });
+
+  it("passes voice playback readiness with the source message", async () => {
+    const user = userEvent.setup();
+    const onVoicePlaybackReady = vi.fn();
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances });
+    const message = {
+      ...createTextMessage("语音"),
+      content: {
+        audioUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
+        durationLabel: "11\"",
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+        transFileUrlPersisted: false,
+        type: "voice" as const,
+      },
+      id: "voice-message-1",
+      seq: 538,
+    } satisfies ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onVoicePlaybackReady={onVoicePlaybackReady}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+    audioInstances[0]!.duration = 11;
+    audioInstances[0]!.dispatch("loadedmetadata");
+
+    await waitFor(() => {
+      expect(onVoicePlaybackReady).toHaveBeenCalledTimes(1);
+    });
+    expect(onVoicePlaybackReady).toHaveBeenCalledWith(message, {
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    });
+  });
 });
+
+type AudioMockInstance = {
+  addEventListener: ReturnType<typeof vi.fn>;
+  currentTime: number;
+  dispatch: (event: string) => void;
+  duration: number;
+  ended: boolean;
+  load: ReturnType<typeof vi.fn>;
+  pause: ReturnType<typeof vi.fn>;
+  paused: boolean;
+  play: ReturnType<typeof vi.fn>;
+  removeEventListener: ReturnType<typeof vi.fn>;
+  src: string;
+};
+
+function stubAudio({
+  instances = [],
+  play = vi.fn().mockResolvedValue(undefined),
+}: {
+  instances?: AudioMockInstance[];
+  play?: ReturnType<typeof vi.fn>;
+} = {}) {
+  vi.stubGlobal("Audio", function AudioMock(this: AudioMockInstance, src: string) {
+    const instanceListeners = new Map<string, EventListener[]>();
+    this.addEventListener = vi.fn((event: string, listener: EventListener) => {
+      instanceListeners.set(event, [...(instanceListeners.get(event) ?? []), listener]);
+    });
+    this.currentTime = 0;
+    this.dispatch = (event: string) => {
+      for (const listener of instanceListeners.get(event) ?? []) {
+        listener(new Event(event));
+      }
+    };
+    this.duration = 0;
+    this.ended = false;
+    this.load = vi.fn();
+    this.pause = vi.fn();
+    this.paused = true;
+    this.play = play;
+    this.removeEventListener = vi.fn();
+    this.src = src;
+    instances.push(this);
+  });
+}
 
 function createTextMessage(text: string) {
   return {

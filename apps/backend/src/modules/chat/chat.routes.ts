@@ -3,6 +3,7 @@ import type {
   WorkbenchPollRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
+  WorkbenchVoicePlaybackConfirmRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -51,6 +52,12 @@ const PlayableVoiceQuerySchema = Type.Object({
 
 const MediaUploadCredentialBodySchema = Type.Object({
   conversationId: Type.String(),
+});
+
+const VoicePlaybackConfirmBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeq: Type.Number(),
+  playbackUrl: Type.String({ minLength: 1 }),
 });
 
 const MessageDownloadParamsSchema = Type.Object({
@@ -209,6 +216,7 @@ type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
 type HistoryMessagesQuery = Static<typeof HistoryMessagesQuerySchema>;
 type PlayableVoiceQuery = Static<typeof PlayableVoiceQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
+type VoicePlaybackConfirmBody = Static<typeof VoicePlaybackConfirmBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
 type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
@@ -271,6 +279,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).getUploadCredential(
         getSubUserId(request),
         request.body.conversationId,
+      );
+    },
+  );
+
+  app.post<{ Body: VoicePlaybackConfirmBody }>(
+    "/api/server/media/voice-playback-confirmed",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: VoicePlaybackConfirmBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).confirmVoicePlaybackReady(
+        getSubUserId(request),
+        request.body satisfies WorkbenchVoicePlaybackConfirmRequest,
       );
     },
   );

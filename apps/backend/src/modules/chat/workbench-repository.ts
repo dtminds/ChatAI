@@ -260,6 +260,39 @@ export class WorkbenchRepository {
     return readMessageFileDownloadStatus(row.content);
   }
 
+  async getMessageRawContent(input: {
+    auditId: number;
+    platform: number;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }) {
+    if (!Number.isInteger(input.auditId) || input.auditId <= 0) {
+      return undefined;
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info")
+      .select(["content"])
+      .where("id", "=", input.auditId)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("third_user_id", "=", input.thirdUserId);
+
+    if (input.thirdGroupId) {
+      query = query.where("third_group_id", "=", input.thirdGroupId);
+    } else if (input.thirdExternalUserId) {
+      query = query.where("third_external_id", "=", input.thirdExternalUserId);
+    } else {
+      return undefined;
+    }
+
+    const row = await query.executeTakeFirst();
+
+    return row?.content ?? undefined;
+  }
+
   async listMessageUpdateEvents(
     conversationId: string,
     options: {

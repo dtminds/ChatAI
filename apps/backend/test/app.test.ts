@@ -1389,6 +1389,39 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("confirms voice playback readiness for an authenticated conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const confirmVoicePlaybackReady = vi.spyOn(
+      app.workbenchService,
+      "confirmVoicePlaybackReady",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      },
+      url: "/api/server/media/voice-playback-confirmed",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      messageSeq: 7,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      transFileUrlPersisted: true,
+    });
+    expect(confirmVoicePlaybackReady).toHaveBeenCalledWith("101", {
+      conversationId: "conv-001",
+      messageSeq: 7,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    });
+
+    await app.close();
+  });
+
   it("returns an empty message page when limit is zero", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

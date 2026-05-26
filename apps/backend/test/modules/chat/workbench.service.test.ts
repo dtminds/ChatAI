@@ -200,6 +200,138 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("persists confirmed voice playback URL by merging message content with audit id updateId", async () => {
+    const javaClient = createJavaClient();
+    const getMessageRawContent = vi.fn().mockResolvedValue(JSON.stringify({
+      downloadStatus: "finished",
+      fileSerialNo: "serial-001",
+      fileUrl: "s5/msg/20260525/272/voice.amr",
+      optSerNo: "opt-001",
+      transFileUrl: "",
+      transVoiceText: "",
+    }));
+    const playableVoiceExists = vi.fn().mockResolvedValue(true);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      playableVoiceExists,
+    );
+
+    await service.confirmVoicePlaybackReady("101", {
+      conversationId: "88",
+      messageSeq: 538,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    });
+
+    expect(getMessageRawContent).toHaveBeenCalledWith({
+      auditId: 538,
+      platform: 5,
+      thirdExternalUserId: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    expect(playableVoiceExists).toHaveBeenCalledWith(
+      "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    );
+    expect(javaClient.updateMessageContent).toHaveBeenCalledWith({
+      content: JSON.stringify({
+        downloadStatus: "finished",
+        fileSerialNo: "serial-001",
+        fileUrl: "s5/msg/20260525/272/voice.amr",
+        optSerNo: "opt-001",
+        transFileUrl: "s5/playable-voice/20260525/272/voice.wav",
+        transVoiceText: "",
+      }),
+      platform: 5,
+      uid: 9001,
+      updateId: 538,
+    });
+  });
+
+  it("rejects confirmed voice playback URLs outside playable voice storage", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      vi.fn().mockResolvedValue(true),
+    );
+
+    await expect(
+      service.confirmVoicePlaybackReady("101", {
+        conversationId: "88",
+        messageSeq: 538,
+        playbackUrl: "https://evil.example.com/s5/playable-voice/voice.wav",
+      }),
+    ).rejects.toMatchObject({
+      code: "MEDIA_URL_NOT_ALLOWED",
+      statusCode: 400,
+    });
+    expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
+  });
+
+  it("rejects confirmed voice playback when the converted WAV does not exist", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      vi.fn().mockResolvedValue(false),
+    );
+
+    await expect(
+      service.confirmVoicePlaybackReady("101", {
+        conversationId: "88",
+        messageSeq: 538,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/missing.wav",
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAYABLE_VOICE_NOT_READY",
+      statusCode: 404,
+    });
+    expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
+  });
+
   it("rejects mark-unread when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
@@ -1818,6 +1950,7 @@ function createJavaClient(): WorkbenchJavaClient {
     pinConversation: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi.fn(),
     takeOverSeat: vi.fn().mockResolvedValue(undefined),
+    updateMessageContent: vi.fn().mockResolvedValue(undefined),
     unpinConversation: vi.fn().mockResolvedValue(undefined),
   };
 }

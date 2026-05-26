@@ -102,6 +102,10 @@ export type VoiceMessageContent = {
   type: "voice";
   audioUrl?: string;
   durationLabel: string;
+  playbackUrl?: string;
+  transFileUrl?: string;
+  transFileUrlPersisted?: boolean;
+  transVoiceText?: string;
 };
 
 export type ImageMessageContent = {

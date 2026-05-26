@@ -28,6 +28,8 @@ import type {
   WorkbenchSearchResponseDto,
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchConversationSummaryDto,
+  WorkbenchVoicePlaybackConfirmRequest,
+  WorkbenchVoicePlaybackConfirmResponse,
 } from "@chatai/contracts";
 import { CHAT_TYPE } from "@chatai/contracts";
 import {
@@ -59,6 +61,11 @@ const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
 const POLL_SEAT_UPDATE_LIMIT = 200;
+const PLAYABLE_VOICE_HOST = "b5.bokr.com.cn";
+const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
+const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
+
+type PlayableVoiceExistsChecker = (playbackUrl: string) => Promise<boolean>;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -98,6 +105,12 @@ export type WorkbenchService = {
     conversationId: string,
     messageId: string,
   ): Promise<WorkbenchMessageFileDownloadResponse> | WorkbenchMessageFileDownloadResponse;
+  confirmVoicePlaybackReady(
+    subUserId: string,
+    input: WorkbenchVoicePlaybackConfirmRequest,
+  ):
+    | Promise<WorkbenchVoicePlaybackConfirmResponse>
+    | WorkbenchVoicePlaybackConfirmResponse;
   getMessageFileDownloadStatus(
     subUserId: string,
     conversationId: string,
@@ -159,6 +172,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     private readonly repository: WorkbenchRepository,
     private readonly javaClient: WorkbenchJavaClient,
     private readonly logger: AppLogger = noopLogger,
+    private readonly playableVoiceExists: PlayableVoiceExistsChecker =
+      checkPlayableVoiceExists,
   ) {}
 
   async deleteConversation(subUserId: string, conversationId: string) {
@@ -452,6 +467,65 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return status;
+  }
+
+  async confirmVoicePlaybackReady(
+    subUserId: string,
+    input: WorkbenchVoicePlaybackConfirmRequest,
+  ): Promise<WorkbenchVoicePlaybackConfirmResponse> {
+    const conversation = await this.repository.getConversationLookup(input.conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
+      throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
+    }
+
+    const rawContent = await this.repository.getMessageRawContent({
+      auditId: input.messageSeq,
+      platform: conversation.platform,
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdGroupId: conversation.thirdGroupId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    if (!rawContent) {
+      throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
+    }
+
+    const content = parseMessageContentRecord(rawContent);
+    const nextTransFileUrl = toPlayableVoiceCosObjectPath(input.playbackUrl);
+    const playableExists = await this.playableVoiceExists(
+      toPlayableVoiceAbsoluteUrl(nextTransFileUrl),
+    );
+
+    if (!playableExists) {
+      throw new NotFoundError("PLAYABLE_VOICE_NOT_READY", "语音转码文件尚未就绪");
+    }
+
+    const nextContent = {
+      ...content,
+      transFileUrl: nextTransFileUrl,
+      transVoiceText: readStringValue(content.transVoiceText),
+    };
+
+    await this.javaClient.updateMessageContent({
+      content: JSON.stringify(nextContent),
+      platform: conversation.platform,
+      uid: conversation.uid,
+      updateId: input.messageSeq,
+    });
+
+    return {
+      messageSeq: input.messageSeq,
+      playbackUrl: input.playbackUrl,
+      transFileUrlPersisted: true,
+    };
   }
 
   async markConversationRead(subUserId: string, conversationId: string) {
@@ -920,6 +994,94 @@ function getNextEventCursor(
 
 function uniqueStrings(values: string[]) {
   return Array.from(new Set(values));
+}
+
+function parseMessageContentRecord(rawContent: string) {
+  try {
+    const parsed: unknown = JSON.parse(rawContent);
+
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readStringValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function toPlayableVoiceCosObjectPath(rawUrl: string) {
+  let url: URL;
+
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    const objectPath = rawUrl.replace(/^\/+/, "");
+
+    if (isPlayableVoiceObjectPath(objectPath)) {
+      return objectPath;
+    }
+
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音播放地址不允许");
+  }
+
+  if (
+    url.protocol === "https:" &&
+    url.hostname === PLAYABLE_VOICE_HOST &&
+    isPlayableVoiceObjectPath(url.pathname)
+  ) {
+    return url.pathname.replace(/^\/+/, "");
+  }
+
+  throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音播放地址不允许");
+}
+
+function isPlayableVoiceObjectPath(pathname: string) {
+  const normalizedPathname = pathname.startsWith("/") ? pathname : `/${pathname}`;
+
+  return (
+    normalizedPathname.startsWith(PLAYABLE_VOICE_PREFIX) &&
+    /\.wav$/i.test(normalizedPathname)
+  );
+}
+
+function toPlayableVoiceAbsoluteUrl(objectPath: string) {
+  return `https://${PLAYABLE_VOICE_HOST}/${objectPath.replace(/^\/+/, "")}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+async function checkPlayableVoiceExists(playbackUrl: string) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PLAYABLE_VOICE_HEAD_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch(playbackUrl, {
+      method: "HEAD",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new AppError("PLAYABLE_VOICE_CHECK_FAILED", "语音转码文件检查失败", 502, {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (response.status === 404) {
+    return false;
+  }
+
+  if (!response.ok) {
+    throw new AppError("PLAYABLE_VOICE_CHECK_FAILED", "语音转码文件检查失败", 502, {
+      status: response.status,
+    });
+  }
+
+  return true;
 }
 
 function getSingleSendSegment(

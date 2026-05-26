@@ -19,6 +19,7 @@ import {
   markConversationUnread,
   pinConversation,
   pollWorkbench,
+  confirmVoicePlaybackReady as confirmVoicePlaybackReadyRequest,
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
   unpinConversation,
@@ -46,6 +47,7 @@ import type {
   EmployeeProfile,
   GroupMember,
   Message,
+  VoiceMessageContent,
 } from "@/pages/chat/chat-types";
 
 type AsyncStatus = "idle" | "loading" | "ready" | "error";
@@ -206,6 +208,11 @@ type WorkbenchState = {
     messageId: string,
     contentPatch: DownloadContentPatch,
   ) => void;
+  confirmVoicePlaybackReady: (
+    conversationId: string,
+    messageId: string,
+    playbackUrl: string,
+  ) => Promise<void>;
   searchKeyword: string;
   searchResults: import("@chatai/contracts").WorkbenchSearchResponseDto | null;
   isSearchLoading: boolean;
@@ -224,6 +231,12 @@ type DownloadContentPatch = {
   downloadStatus?: "ing" | "finished" | "failed";
   fileUrlExpireTime?: number;
   fileUrl?: string;
+};
+
+type VoicePlaybackContentPatch = {
+  playbackUrl: string;
+  transFileUrl: string;
+  transFileUrlPersisted: true;
 };
 
 const defaultCustomerProfiles = seedCustomerProfiles;
@@ -260,6 +273,7 @@ function createInitialState(): Omit<
   | "refreshSeatSummaries"
   | "pollWorkbench"
   | "updateMessageDownloadContent"
+  | "confirmVoicePlaybackReady"
   | "dismissScopeTransitionError"
   | "dismissReadReceiptError"
   | "setSearchKeyword"
@@ -685,6 +699,36 @@ function patchDownloadMessage(
   };
 }
 
+function patchVoicePlaybackMessageList(
+  currentMessages: Message[],
+  messageId: string,
+  contentPatch: VoicePlaybackContentPatch,
+) {
+  return currentMessages.map((message) =>
+    patchVoicePlaybackMessage(message, messageId, contentPatch),
+  );
+}
+
+function patchVoicePlaybackMessage(
+  message: Message,
+  messageId: string,
+  contentPatch: VoicePlaybackContentPatch,
+): Message {
+  if (message.id !== messageId || !isVoiceMessage(message)) {
+    return message;
+  }
+
+  return {
+    ...message,
+    content: {
+      ...message.content,
+      playbackUrl: contentPatch.playbackUrl,
+      transFileUrl: contentPatch.transFileUrl,
+      transFileUrlPersisted: contentPatch.transFileUrlPersisted,
+    },
+  };
+}
+
 function isRevokeSignalMessage(message: Message) {
   return (
     message.role === "system" &&
@@ -1089,6 +1133,7 @@ export function createWorkbenchStore() {
   let latestTakeoverRequestId = 0;
   let latestGroupMembersRequestId = 0;
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const pendingVoicePlaybackConfirmKeys = new Set<string>();
   const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
   const latestGroupMembersRequestIdByConversationId: Record<string, number> = {};
 
@@ -3262,6 +3307,72 @@ export function createWorkbenchStore() {
           };
         });
       },
+      async confirmVoicePlaybackReady(conversationId, messageId, playbackUrl) {
+        const currentState = get();
+        const message = findVoiceMessageById(
+          [
+            ...(currentState.messagesByConversationId[conversationId] ?? []),
+            ...(currentState.historyPanelByConversationId[conversationId]?.messages ?? []),
+          ],
+          messageId,
+        );
+
+        if (!message || !message.seq || message.content.transFileUrlPersisted) {
+          return;
+        }
+
+        const pendingKey = `${conversationId}:${message.seq}:${playbackUrl}`;
+
+        if (pendingVoicePlaybackConfirmKeys.has(pendingKey)) {
+          return;
+        }
+
+        pendingVoicePlaybackConfirmKeys.add(pendingKey);
+
+        try {
+          await confirmVoicePlaybackReadyRequest({
+            conversationId,
+            messageSeq: message.seq,
+            playbackUrl,
+          });
+
+          set((currentState) => {
+            const messages = currentState.messagesByConversationId[conversationId] ?? [];
+            const historyPanel = currentState.historyPanelByConversationId[conversationId];
+            const contentPatch = {
+              playbackUrl,
+              transFileUrl: playbackUrl,
+              transFileUrlPersisted: true,
+            } satisfies VoicePlaybackContentPatch;
+
+            return {
+              historyPanelByConversationId: historyPanel
+                ? {
+                    ...currentState.historyPanelByConversationId,
+                    [conversationId]: {
+                      ...historyPanel,
+                      messages: patchVoicePlaybackMessageList(
+                        historyPanel.messages,
+                        messageId,
+                        contentPatch,
+                      ),
+                    },
+                  }
+                : currentState.historyPanelByConversationId,
+              messagesByConversationId: {
+                ...currentState.messagesByConversationId,
+                [conversationId]: patchVoicePlaybackMessageList(
+                  messages,
+                  messageId,
+                  contentPatch,
+                ),
+              },
+            };
+          });
+        } finally {
+          pendingVoicePlaybackConfirmKeys.delete(pendingKey);
+        }
+      },
     };
   });
 }
@@ -3283,6 +3394,22 @@ function isDownloadableMessage(message: Message): message is ChatMessage {
   return (
     message.role !== "system" &&
     (message.content.type === "file" || message.content.type === "video")
+  );
+}
+
+function isVoiceMessage(
+  message: Message,
+): message is ChatMessage & { content: VoiceMessageContent } {
+  return message.role !== "system" && message.content.type === "voice";
+}
+
+function findVoiceMessageById(
+  messages: Message[],
+  messageId: string,
+): (ChatMessage & { content: VoiceMessageContent }) | undefined {
+  return messages.find(
+    (message): message is ChatMessage & { content: VoiceMessageContent } =>
+      isVoiceMessage(message) && message.id === messageId,
   );
 }
 

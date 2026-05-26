@@ -275,6 +275,36 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts message content update payload to the Java internal API using audit id as updateId", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: "", error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await createWorkbenchJavaClient().updateMessageContent({
+      content: "{\"fileUrl\":\"s5/msg/voice.amr\",\"transFileUrl\":\"s5/playable-voice/voice.wav\"}",
+      platform: 5,
+      uid: 9001,
+      updateId: 538,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/update-message-content",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "{\"fileUrl\":\"s5/msg/voice.amr\",\"transFileUrl\":\"s5/playable-voice/voice.wav\"}",
+          platform: 5,
+          uid: 9001,
+          updateId: 538,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("posts conversation delete payload to the Java internal API", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

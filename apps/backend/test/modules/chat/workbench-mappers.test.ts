@@ -337,6 +337,47 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("derives voice playback URL and exposes whether transFileUrl was persisted", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/e58b363da0294e87b55472ce471394ff.amr",
+          transFileUrl: "",
+          transVoiceText: "",
+        }),
+        msgtype: "voice",
+      })),
+    ).toMatchObject({
+      content: {
+        audioUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/e58b363da0294e87b55472ce471394ff.amr",
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/e58b363da0294e87b55472ce471394ff.wav",
+        transFileUrl: "",
+        transFileUrlPersisted: false,
+        transVoiceText: "",
+      },
+      contentType: "voice",
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/e58b363da0294e87b55472ce471394ff.amr",
+          transFileUrl: "s5/playable-voice/20260525/272/persisted.wav",
+          transVoiceText: "语音文本",
+        }),
+        msgtype: "voice",
+      })),
+    ).toMatchObject({
+      content: {
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/persisted.wav",
+        transFileUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/persisted.wav",
+        transFileUrlPersisted: true,
+        transVoiceText: "语音文本",
+      },
+      contentType: "voice",
+    });
+  });
+
   it("maps quote messages to normalized quote content", () => {
     expect(
       mapMessageRow(messageRow({

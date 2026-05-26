@@ -1983,6 +1983,48 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("reads message raw content within the single conversation key", async () => {
+    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info");
+          const query = createQueryBuilder({
+            content: JSON.stringify({
+              fileUrl: "s5/msg/20260525/272/voice.amr",
+            }),
+          });
+          queries.push({ table, wheres: query.wheres });
+
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getMessageRawContent({
+        auditId: 538,
+        platform: 5,
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toBe(JSON.stringify({
+      fileUrl: "s5/msg/20260525/272/voice.amr",
+    }));
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toMatchObject({
+      table: "xy_wap_embed_msg_audit_info",
+      wheres: [
+        ["id", "=", 538],
+        ["uid", "=", 9001],
+        ["platform", "=", 5],
+        ["third_user_id", "=", "seat-user-001"],
+        ["third_external_id", "=", "external-001"],
+      ],
+    });
+  });
+
   it("calculates seat unread after mark-read with a lightweight aggregate query", async () => {
     const repository = new WorkbenchRepository(
       {

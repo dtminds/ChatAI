@@ -32,6 +32,8 @@ import {
   type WorkbenchMessageStatus,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
+  type WorkbenchVoicePlaybackConfirmRequest,
+  type WorkbenchVoicePlaybackConfirmResponse,
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSendMessagePayload,
   type SettingsSidebarItemsResponse,
@@ -89,6 +91,9 @@ export type WorkbenchService = {
     conversationId: string;
     messageSeq: number;
   }) => Promise<WorkbenchMessageFileDownloadStatusResponse | undefined>;
+  confirmVoicePlaybackReady: (
+    input: WorkbenchVoicePlaybackConfirmRequest,
+  ) => Promise<WorkbenchVoicePlaybackConfirmResponse>;
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
   getUploadCredential: (conversationId: string) => Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
@@ -315,6 +320,19 @@ export function createMockWorkbenchService(): WorkbenchService {
         fileUrlExpireTime: content.type === "video" ? content.fileUrlExpireTime : undefined,
         fileSerialNo: content.fileSerialNo,
         fileUrl: content.type === "file" ? content.fileUrl : content.videoUrl,
+      };
+    },
+    async confirmVoicePlaybackReady(input) {
+      updateVoicePlaybackContent(state, input.conversationId, input.messageSeq, {
+        playbackUrl: input.playbackUrl,
+        transFileUrl: input.playbackUrl,
+        transFileUrlPersisted: true,
+      });
+
+      return {
+        messageSeq: input.messageSeq,
+        playbackUrl: input.playbackUrl,
+        transFileUrlPersisted: true,
       };
     },
     async getGroupMembers(conversationId) {
@@ -647,6 +665,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
         conversationId: input.conversationId,
         messageSeq: input.messageSeq,
       });
+    },
+    confirmVoicePlaybackReady(input) {
+      return http.post<
+        WorkbenchVoicePlaybackConfirmResponse,
+        WorkbenchVoicePlaybackConfirmRequest
+      >("/server/media/voice-playback-confirmed", input);
     },
     getGroupMembers(conversationId) {
       return http.get<WorkbenchGroupMembersResponse>(
@@ -1472,6 +1496,33 @@ function updateMessageDownloadContent(
       content: {
         ...message.content,
         ...stripUndefinedFields(patch),
+      },
+    };
+  });
+}
+
+function updateVoicePlaybackContent(
+  state: MockState,
+  conversationId: string,
+  messageSeq: number,
+  patch: {
+    playbackUrl: string;
+    transFileUrl: string;
+    transFileUrlPersisted: true;
+  },
+) {
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+
+  state.messagesByConversationId[conversationId] = messages.map((message) => {
+    if (message.seq !== messageSeq || message.contentType !== "voice") {
+      return message;
+    }
+
+    return {
+      ...message,
+      content: {
+        ...message.content,
+        ...patch,
       },
     };
   });

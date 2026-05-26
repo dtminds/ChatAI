@@ -1825,6 +1825,171 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("confirms unpersisted voice playback with message seq and patches local content", async () => {
+    const baseService = createMockWorkbenchService();
+    const confirmVoicePlaybackReady = vi.fn(async (input) => ({
+      messageSeq: input.messageSeq,
+      playbackUrl: input.playbackUrl,
+      transFileUrlPersisted: true as const,
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      confirmVoicePlaybackReady,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const voiceMessage = {
+      author: "客户",
+      content: {
+        audioUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
+        durationLabel: "11\"",
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+        transFileUrlPersisted: false,
+        type: "voice" as const,
+      },
+      conversationId: "conv-001",
+      id: "voice-local-1",
+      remoteMessageId: "msgid-should-not-be-used",
+      role: "customer" as const,
+      sender: {
+        id: "cust-001",
+        name: "客户",
+      },
+      sentAt: "2026-05-25 17:32",
+      seq: 538,
+      status: "sent" as const,
+    };
+
+    useWorkbenchStore.setState((state) => ({
+      historyPanelByConversationId: {
+        ...state.historyPanelByConversationId,
+        "conv-001": {
+          hasNext: false,
+          hasPrev: false,
+          messages: [voiceMessage],
+        },
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...state.messagesByConversationId["conv-001"],
+          voiceMessage,
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().confirmVoicePlaybackReady(
+      "conv-001",
+      "voice-local-1",
+      "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    );
+
+    expect(confirmVoicePlaybackReady).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 538,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    });
+
+    const patchedMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (message) => message.id === "voice-local-1",
+      );
+    const patchedHistoryMessage = useWorkbenchStore
+      .getState()
+      .historyPanelByConversationId["conv-001"]
+      ?.messages.find((message) => message.id === "voice-local-1");
+
+    expect(patchedMessage?.content).toMatchObject({
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      transFileUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      transFileUrlPersisted: true,
+      type: "voice",
+    });
+    expect(patchedHistoryMessage?.content).toMatchObject({
+      transFileUrlPersisted: true,
+      type: "voice",
+    });
+  });
+
+  it("confirms voice playback for history-only messages", async () => {
+    const baseService = createMockWorkbenchService();
+    const confirmVoicePlaybackReady = vi.fn(async (input) => ({
+      messageSeq: input.messageSeq,
+      playbackUrl: input.playbackUrl,
+      transFileUrlPersisted: true as const,
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      confirmVoicePlaybackReady,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const voiceMessage = {
+      author: "客户",
+      content: {
+        audioUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/history-voice.amr",
+        durationLabel: "11\"",
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/history-voice.wav",
+        transFileUrlPersisted: false,
+        type: "voice" as const,
+      },
+      conversationId: "conv-001",
+      id: "history-voice-1",
+      role: "customer" as const,
+      sender: {
+        id: "cust-001",
+        name: "客户",
+      },
+      sentAt: "2026-05-25 17:32",
+      seq: 539,
+      status: "sent" as const,
+    };
+
+    useWorkbenchStore.setState((state) => ({
+      historyPanelByConversationId: {
+        ...state.historyPanelByConversationId,
+        "conv-001": {
+          hasNext: false,
+          hasPrev: false,
+          messages: [voiceMessage],
+        },
+      },
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": state.messagesByConversationId["conv-001"].filter(
+          (message) => message.id !== "history-voice-1",
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().confirmVoicePlaybackReady(
+      "conv-001",
+      "history-voice-1",
+      "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/history-voice.wav",
+    );
+
+    expect(confirmVoicePlaybackReady).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 539,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/history-voice.wav",
+    });
+
+    const patchedHistoryMessage = useWorkbenchStore
+      .getState()
+      .historyPanelByConversationId["conv-001"]
+      ?.messages.find((message) => message.id === "history-voice-1");
+
+    expect(patchedHistoryMessage?.content).toMatchObject({
+      transFileUrlPersisted: true,
+      type: "voice",
+    });
+  });
+
   it("ignores refreshed message details when the message is not already in store", async () => {
     const baseService = createMockWorkbenchService();
 

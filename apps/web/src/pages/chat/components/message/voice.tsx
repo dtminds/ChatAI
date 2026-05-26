@@ -1,14 +1,18 @@
-import { Loading03Icon, PauseIcon, PlayIcon } from "@hugeicons/core-free-icons";
+import {
+  Loading03Icon,
+  PauseIcon,
+  PlayIcon,
+  VolumeHighIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
-import { request } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import type { VoiceMessageContent } from "@/pages/chat/chat-types";
-import type { WorkbenchPlayableVoiceResponse } from "@chatai/contracts";
 
 type VoiceMessageCardProps = {
   content: VoiceMessageContent;
   isAgent: boolean;
+  onPlaybackReady?: (payload: { playbackUrl: string }) => void;
 };
 
 type ActiveVoicePlayback = {
@@ -24,10 +28,8 @@ type PlaybackState =
   | "error"
   | "not-ready";
 
-const PLAYABLE_MEDIA_HOST = "b5.bokr.com.cn";
-const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
-const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 const MEDIA_LOAD_TIMEOUT_MS = 8000;
+const HAVE_METADATA_READY_STATE = 1;
 
 let activeVoicePlayback: ActiveVoicePlayback | null = null;
 let playbackGeneration = 0;
@@ -35,6 +37,7 @@ let playbackGeneration = 0;
 export function VoiceMessageCard({
   content,
   isAgent,
+  onPlaybackReady,
 }: VoiceMessageCardProps) {
   const bubbleTone = isAgent ? "bg-primary/10" : "bg-secondary";
   const playbackIdRef = useRef(Symbol("voice-message-playback"));
@@ -43,7 +46,10 @@ export function VoiceMessageCard({
   const isReleasingAudioRef = useRef(false);
   const loadTimeoutRef = useRef<number | undefined>(undefined);
   const mountedRef = useRef(true);
+  const playbackReadyNotifiedUrlRef = useRef<string | undefined>(undefined);
+  const audioPlaybackUrlRef = useRef<string | null>(null);
   const previousAudioUrlRef = useRef(content.audioUrl);
+  const stopPlaybackRef = useRef<() => void>(() => undefined);
   const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -59,6 +65,10 @@ export function VoiceMessageCard({
   const sliderValue = Math.min(currentTime, sliderMax);
   const progressPercent = sliderMax > 0 ? (sliderValue / sliderMax) * 100 : 0;
   const isPlaying = playbackState === "playing";
+  const isActivePlayer =
+    playbackState === "preparing" ||
+    playbackState === "playing" ||
+    playbackState === "paused";
   const isStatusVisible =
     playbackState === "preparing" ||
     playbackState === "error" ||
@@ -122,7 +132,9 @@ export function VoiceMessageCard({
       return;
     }
 
-    clearLoadTimeout();
+    if (hasAudioMetadata(audio)) {
+      clearLoadTimeout();
+    }
     const nextDuration = getFiniteAudioTime(audio.duration);
     const nextCurrentTime = getFiniteAudioTime(audio.currentTime);
 
@@ -131,6 +143,47 @@ export function VoiceMessageCard({
     }
     setCurrentTime(nextCurrentTime);
   }, [clearLoadTimeout]);
+
+  const confirmPlaybackReady = useCallback(() => {
+    if (
+      content.playbackUrl &&
+      audioPlaybackUrlRef.current === content.playbackUrl &&
+      !content.transFileUrlPersisted &&
+      playbackReadyNotifiedUrlRef.current !== content.playbackUrl
+    ) {
+      playbackReadyNotifiedUrlRef.current = content.playbackUrl;
+      onPlaybackReady?.({ playbackUrl: content.playbackUrl });
+    }
+  }, [
+    content.playbackUrl,
+    content.transFileUrlPersisted,
+    onPlaybackReady,
+  ]);
+
+  const handleLoadedMetadata = useCallback(() => {
+    if (!audioRef.current || !mountedRef.current) {
+      return;
+    }
+
+    syncAudioProgress();
+    setPlaybackState("playing");
+    confirmPlaybackReady();
+  }, [confirmPlaybackReady, syncAudioProgress]);
+
+  const failOrRejectPendingPlayback = useCallback(() => {
+    const audio = audioRef.current;
+
+    if (
+      content.playbackUrl &&
+      audioPlaybackUrlRef.current === content.playbackUrl &&
+      !hasAudioMetadata(audio)
+    ) {
+      rejectPlaybackAsNotReady();
+      return;
+    }
+
+    failPlayback();
+  }, [content.playbackUrl, failPlayback, rejectPlaybackAsNotReady]);
 
   const finishPlaybackIfEnded = useCallback(() => {
     const audio = audioRef.current;
@@ -160,6 +213,10 @@ export function VoiceMessageCard({
       return;
     }
 
+    if (!hasAudioMetadata(audio)) {
+      return;
+    }
+
     const hasReachedEnd =
       Number.isFinite(audio.duration) &&
       audio.duration > 0 &&
@@ -185,17 +242,19 @@ export function VoiceMessageCard({
     audio.removeEventListener("pause", pausePlayback);
     isReleasingAudioRef.current = true;
     audio.pause();
-    audio.removeEventListener("loadedmetadata", syncAudioProgress);
+    audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
     audio.removeEventListener("timeupdate", syncAudioProgress);
     audio.removeEventListener("ended", finishPlayback);
-    audio.removeEventListener("error", failPlayback);
+    audio.removeEventListener("error", failOrRejectPendingPlayback);
     isReleasingAudioRef.current = false;
     audioRef.current = null;
     audioOriginalUrlRef.current = null;
+    audioPlaybackUrlRef.current = null;
   }, [
     clearLoadTimeout,
-    failPlayback,
+    failOrRejectPendingPlayback,
     finishPlayback,
+    handleLoadedMetadata,
     pausePlayback,
     syncAudioProgress,
   ]);
@@ -209,6 +268,8 @@ export function VoiceMessageCard({
       setPlaybackState("idle");
     }
   }, [clearActivePlayback, releaseAudio]);
+
+  stopPlaybackRef.current = stopPlayback;
 
   const claimActivePlayback = useCallback(() => {
     if (activeVoicePlayback?.id !== playbackIdRef.current) {
@@ -234,9 +295,9 @@ export function VoiceMessageCard({
 
     return () => {
       mountedRef.current = false;
-      stopPlayback();
+      stopPlaybackRef.current();
     };
-  }, [stopPlayback]);
+  }, []);
 
   useEffect(() => {
     if (previousAudioUrlRef.current === content.audioUrl) {
@@ -244,6 +305,7 @@ export function VoiceMessageCard({
     }
 
     previousAudioUrlRef.current = content.audioUrl;
+    playbackReadyNotifiedUrlRef.current = undefined;
     stopPlayback();
     setDuration(0);
   }, [content.audioUrl, stopPlayback]);
@@ -276,37 +338,17 @@ export function VoiceMessageCard({
       }
 
       setPlaybackState("preparing");
-      const immediateAudioUrl = getImmediateAudioUrl(content.audioUrl);
+      const immediateAudioUrl = getImmediateAudioUrl(content);
 
       if (immediateAudioUrl) {
-        const playPromise = playNativeAudio(
+        await playNativeAudio(
           immediateAudioUrl,
           content.audioUrl,
           generation,
         );
-
-        if (isAmrUrl(content.audioUrl)) {
-          void verifyPlayableVoiceUrl(content.audioUrl, generation);
-        }
-
-        await playPromise;
         return;
       }
-
-      const playableUrl = await resolvePlayableVoiceUrl(content.audioUrl);
-
-      if (!isCurrentPlayback(generation)) {
-        return;
-      }
-
-      if (!playableUrl) {
-        clearActivePlayback();
-        setPlaybackState("not-ready");
-        return;
-      }
-
-      setPlaybackState("playing");
-      await playNativeAudio(playableUrl, content.audioUrl, generation);
+      rejectPlaybackAsNotReady();
     } catch {
       if (generation == null || isCurrentPlayback(generation)) {
         failPlayback();
@@ -336,27 +378,6 @@ export function VoiceMessageCard({
     setCurrentTime(clampedTime);
   };
 
-  const verifyPlayableVoiceUrl = async (
-    sourceUrl: string,
-    generation: number,
-  ) => {
-    try {
-      const playableUrl = await resolvePlayableVoiceUrl(sourceUrl);
-
-      if (!isCurrentPlayback(generation)) {
-        return;
-      }
-
-      if (!playableUrl) {
-        releaseAudio();
-        rejectPlaybackAsNotReady();
-      }
-    } catch {
-      // Native audio loading is the source of truth after direct playback starts.
-      // Backend HEAD failures should not stop a media element that may still load.
-    }
-  };
-
   const playNativeAudio = async (
     audioUrl: string,
     originalUrl: string,
@@ -367,10 +388,11 @@ export function VoiceMessageCard({
       audioRef.current = new Audio(audioUrl);
       audioRef.current.preload = "auto";
       audioOriginalUrlRef.current = originalUrl;
-      audioRef.current.addEventListener("loadedmetadata", syncAudioProgress);
+      audioPlaybackUrlRef.current = audioUrl;
+      audioRef.current.addEventListener("loadedmetadata", handleLoadedMetadata);
       audioRef.current.addEventListener("timeupdate", syncAudioProgress);
       audioRef.current.addEventListener("ended", finishPlayback);
-      audioRef.current.addEventListener("error", failPlayback);
+      audioRef.current.addEventListener("error", failOrRejectPendingPlayback);
       audioRef.current.addEventListener("pause", pausePlayback);
     }
 
@@ -386,17 +408,51 @@ export function VoiceMessageCard({
       if (
         mountedRef.current &&
         isCurrentPlayback(generation) &&
-        (!audio || audio.readyState < HTMLMediaElement.HAVE_METADATA)
+        (!audio || audio.readyState < HAVE_METADATA_READY_STATE)
       ) {
-        failPlayback();
+        failOrRejectPendingPlayback();
       }
     }, MEDIA_LOAD_TIMEOUT_MS);
     audioRef.current.load();
     const playPromise = audioRef.current.play();
-    setPlaybackState("playing");
     await playPromise;
+    if (
+      mountedRef.current &&
+      isCurrentPlayback(generation) &&
+      hasAudioMetadata(audioRef.current)
+    ) {
+      handleLoadedMetadata();
+    }
     finishPlaybackIfEnded();
   };
+
+  if (!isActivePlayer) {
+    return (
+      <button
+        aria-label={controlLabel}
+        className={cn(
+          "relative inline-flex min-h-10 min-w-28 items-center gap-2.5 rounded-[12px] px-3.5 py-1.5 outline-none transition-[filter] focus-visible:ring-4 focus-visible:ring-ring/25",
+          canPlay ? "cursor-pointer hover:brightness-[0.98]" : "cursor-not-allowed opacity-70",
+          bubbleTone,
+        )}
+        disabled={!canPlay}
+        onClick={handleControlClick}
+        type="button"
+      >
+        <HugeiconsIcon
+          className="relative z-1 shrink-0 text-foreground"
+          data-testid="voice-volume-icon"
+          data-volume-icon="high"
+          icon={VolumeHighIcon}
+          size={18}
+          strokeWidth={1.9}
+        />
+        <span className="relative z-1 shrink-0 text-[14px] leading-none text-foreground">
+          {statusLabel}
+        </span>
+      </button>
+    );
+  }
 
   return (
     <div
@@ -477,42 +533,25 @@ function isAmrUrl(url: string) {
   return /\.amr(?:[?#].*)?$/i.test(url);
 }
 
-function getImmediateAudioUrl(url: string) {
-  if (!isAmrUrl(url)) {
-    return url;
+function getImmediateAudioUrl(content: VoiceMessageContent) {
+  if (content.playbackUrl) {
+    return content.playbackUrl;
   }
 
-  return buildPlayableVoiceUrl(url);
+  if (!content.audioUrl || isAmrUrl(content.audioUrl)) {
+    return undefined;
+  }
+
+  return content.audioUrl;
 }
 
-function buildPlayableVoiceUrl(rawUrl: string) {
-  let url: URL;
-
-  try {
-    url = new URL(rawUrl);
-  } catch {
-    return undefined;
-  }
-
-  if (url.protocol !== "https:" || url.hostname !== PLAYABLE_MEDIA_HOST) {
-    return undefined;
-  }
-
-  const sourcePrefix = SOURCE_VOICE_PREFIXES.find((prefix) =>
-    url.pathname.startsWith(prefix),
+function hasAudioMetadata(audio: HTMLAudioElement | null) {
+  return Boolean(
+    audio &&
+      audio.readyState >= HAVE_METADATA_READY_STATE &&
+      Number.isFinite(audio.duration) &&
+      audio.duration > 0,
   );
-
-  if (!sourcePrefix) {
-    return undefined;
-  }
-
-  url.pathname = url.pathname
-    .replace(sourcePrefix, PLAYABLE_VOICE_PREFIX)
-    .replace(/\.[^/.]+$/u, ".wav");
-  url.search = "";
-  url.hash = "";
-
-  return url.toString();
 }
 
 function getFiniteAudioTime(value: number) {
@@ -568,16 +607,4 @@ function formatVoiceDuration(seconds: number) {
   const remainingSeconds = String(roundedSeconds % 60).padStart(2, "0");
 
   return `${minutes}'${remainingSeconds}"`;
-}
-
-async function resolvePlayableVoiceUrl(url: string) {
-  const response = await request<{ data: WorkbenchPlayableVoiceResponse }>({
-    method: "GET",
-    params: {
-      url,
-    },
-    url: "/server/media/playable-voice",
-  });
-
-  return response.data.playable ? response.data.playableUrl : undefined;
 }

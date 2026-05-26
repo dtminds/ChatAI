@@ -98,6 +98,9 @@ export type MessageHydrationSources = {
 };
 
 const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
+const PLAYABLE_MEDIA_HOST = "b5.bokr.com.cn";
+const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
+const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
@@ -358,6 +361,7 @@ function parseMessageContent(
       return {
         audioUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
         durationLabel: "",
+        ...buildVoiceTranscodeContent(parsed),
       };
     case "video":
       return {
@@ -457,6 +461,49 @@ function parseMessageContent(
         text: formatMessagePreview(msgtype, rawContent),
       };
   }
+}
+
+function buildVoiceTranscodeContent(parsed: unknown) {
+  const transFileUrl = normalizeMediaAssetUrl(readStringField(parsed, "transFileUrl"));
+  const audioUrl = normalizeMediaAssetUrl(readStringField(parsed, "fileUrl"));
+  const playbackUrl = transFileUrl || buildDerivedVoicePlaybackUrl(audioUrl);
+
+  return {
+    ...(playbackUrl ? { playbackUrl } : {}),
+    transFileUrl,
+    transFileUrlPersisted: Boolean(transFileUrl),
+    transVoiceText: readStringField(parsed, "transVoiceText"),
+  };
+}
+
+function buildDerivedVoicePlaybackUrl(rawUrl: string) {
+  let url: URL;
+
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return undefined;
+  }
+
+  if (url.protocol !== "https:" || url.hostname !== PLAYABLE_MEDIA_HOST) {
+    return undefined;
+  }
+
+  const sourcePrefix = SOURCE_VOICE_PREFIXES.find((prefix) =>
+    url.pathname.startsWith(prefix),
+  );
+
+  if (!sourcePrefix) {
+    return undefined;
+  }
+
+  url.pathname = url.pathname
+    .replace(sourcePrefix, PLAYABLE_VOICE_PREFIX)
+    .replace(/\.[^/.]+$/u, ".wav");
+  url.search = "";
+  url.hash = "";
+
+  return url.toString();
 }
 
 function formatMessagePreview(msgtype: string | null, rawContent: string | null) {

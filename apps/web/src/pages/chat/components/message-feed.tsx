@@ -37,6 +37,10 @@ type ChatMessageListProps = {
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
   retryingMessageIds?: ReadonlySet<string>;
 };
 
@@ -61,6 +65,7 @@ export function ChatMessageList({
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
+  onVoicePlaybackReady,
   retryingMessageIds,
 }: ChatMessageListProps) {
   const items = useMemo(
@@ -89,6 +94,7 @@ export function ChatMessageList({
               onOpenQuotedMessage={onOpenQuotedMessage}
               onQuoteMessage={onQuoteMessage}
               onRetryMessage={onRetryMessage}
+              onVoicePlaybackReady={onVoicePlaybackReady}
               isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
             />
           </div>
@@ -134,6 +140,7 @@ export function MessageRow({
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
+  onVoicePlaybackReady,
   isRetryingMessage = false,
 }: {
   message: Message;
@@ -145,6 +152,10 @@ export function MessageRow({
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
 }) {
   if (message.role === "system") {
     return <SystemMessageNotice text={message.content.text} />;
@@ -222,6 +233,7 @@ export function MessageRow({
                   message={message}
                   onDownloadMessageFile={onDownloadMessageFile}
                   onOpenQuotedMessage={onOpenQuotedMessage}
+                  onVoicePlaybackReady={onVoicePlaybackReady}
                 />
               )}
               {message.isRevoked ? <MessageRevokedState /> : null}

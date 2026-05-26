@@ -292,6 +292,69 @@ describe("CustomerPage", () => {
     expect(animationFrameSpy).not.toHaveBeenCalled();
   });
 
+  it("retries recent message preview after a transient failure", async () => {
+    const user = userEvent.setup();
+    const service = createCustomerPageService();
+    let shouldLoadMessages = false;
+    vi.mocked(service.getMessages).mockImplementation(async (conversationId) => {
+      if (!shouldLoadMessages) {
+        throw new Error("最近消息加载失败");
+      }
+
+      return {
+        filteredCount: 0,
+        hasMore: false,
+        messages: [
+          {
+            content: { text: "重试后消息" },
+            contentType: "text",
+            conversationId,
+            createdAt: 1_779_600_000_000,
+            customerId: "cust-001",
+            messageId: "msg-retry-1",
+            seatId: "drc",
+            senderName: "客户A",
+            senderType: "customer",
+            seq: 102,
+            status: "sent",
+          },
+        ],
+        scannedCount: 1,
+      };
+    });
+    setWorkbenchService(service);
+
+    renderRoute("/chat/customers");
+
+    await screen.findByRole("heading", { name: "客户" });
+    await user.type(screen.getByLabelText("搜索客户"), "客户A");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "刷新 客户A（张三） 的最近会话时间",
+      }),
+    );
+
+    const recentConversationButton = await screen.findByRole("button", {
+      name: "查看 客户A（张三） 的最近会话记录",
+    });
+
+    await user.hover(recentConversationButton);
+    expect(await screen.findByText("最近会话加载失败")).toBeInTheDocument();
+    const failedRequestCount = vi.mocked(service.getMessages).mock.calls.length;
+    shouldLoadMessages = true;
+    await waitFor(() => {
+      expect(failedRequestCount).toBeGreaterThan(0);
+    });
+    await user.unhover(recentConversationButton);
+    await vi.advanceTimersByTimeAsync(150);
+
+    await user.hover(recentConversationButton);
+
+    expect(await screen.findByText("重试后消息")).toBeInTheDocument();
+    expect(service.getMessages).toHaveBeenCalledTimes(failedRequestCount + 1);
+  });
+
   it("disables recent conversation continue chat when the seat is not operable", async () => {
     const user = userEvent.setup();
     const service = createCustomerPageService();
@@ -343,6 +406,57 @@ describe("CustomerPage", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/chat");
     });
+  });
+
+  it("retries relation conversation timestamps after a transient failure", async () => {
+    const user = userEvent.setup();
+    const service = createCustomerPageService();
+    let shouldLoadRelationConversations = false;
+    vi.mocked(service.getCustomerRelationConversations).mockImplementation(async () => {
+      if (!shouldLoadRelationConversations) {
+        throw new Error("好友关系加载失败");
+      }
+
+      return {
+        items: [
+          {
+            lastMessageTime: 1_779_600_000_000,
+            thirdUserId: "seat-user-drc",
+          },
+        ],
+      };
+    });
+    setWorkbenchService(service);
+
+    renderRoute("/chat/customers");
+
+    await screen.findByRole("heading", { name: "客户" });
+    await user.type(screen.getByLabelText("搜索客户"), "客户A");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+
+    const relatedSeatsButton = await screen.findByRole("button", {
+      name: "查看 客户A（张三） 的好友关系",
+    });
+    await user.hover(relatedSeatsButton);
+
+    expect(await screen.findAllByText("加载失败")).not.toHaveLength(0);
+    const failedRequestCount = vi.mocked(
+      service.getCustomerRelationConversations,
+    ).mock.calls.length;
+    shouldLoadRelationConversations = true;
+    expect(failedRequestCount).toBeGreaterThan(0);
+    await user.unhover(relatedSeatsButton);
+    await vi.advanceTimersByTimeAsync(150);
+    await waitFor(() => {
+      expect(screen.queryByText("好友关系 · 2")).not.toBeInTheDocument();
+    });
+
+    await user.hover(relatedSeatsButton);
+
+    expect(await screen.findByText("5月24日 13:20")).toBeInTheDocument();
+    expect(service.getCustomerRelationConversations).toHaveBeenCalledTimes(
+      failedRequestCount + 1,
+    );
   });
 
   it("does not match customers by hidden external user id", async () => {

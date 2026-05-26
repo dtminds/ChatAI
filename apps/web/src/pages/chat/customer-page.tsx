@@ -551,7 +551,7 @@ function CustomerLastConversationPopover({
     }
     setIsOpen(true);
 
-    if (previewStatus !== "idle" || !lastConversation) {
+    if ((previewStatus !== "idle" && previewStatus !== "error") || !lastConversation) {
       return;
     }
 
@@ -754,7 +754,7 @@ function CustomerSeatRelationsPopover({
   }
 
   function loadRelationConversations() {
-    if (conversationStatus !== "idle") {
+    if (conversationStatus !== "idle" && conversationStatus !== "error") {
       return;
     }
 

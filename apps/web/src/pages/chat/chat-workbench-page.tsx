@@ -50,6 +50,7 @@ import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-re
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
+import { useSmartHeartbeat } from "@/pages/chat/hooks/use-smart-heartbeat";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
@@ -504,6 +505,14 @@ function ChatWorkbenchContent({
     onPollingPaused: handlePollingPaused,
     refreshSeatSummaries,
     pollWorkbench,
+  });
+
+  useSmartHeartbeat({
+    conversationId: activeConversation?.id,
+    enabled:
+      bootstrapStatus === "ready" &&
+      isAccountTakenOverByCurrentUser &&
+      activeConversation?.mode === "single",
   });
 
   const clearComposer = (options?: { keepQuote?: boolean }) => {

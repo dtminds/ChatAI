@@ -1806,6 +1806,96 @@ describe("MysqlWorkbenchService", () => {
     });
     expect(javaClient.sendMessage).not.toHaveBeenCalled();
   });
+
+  it("forwards smart heartbeat for an operable single chat conversation", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-customer-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.sendSmartHeartbeat("101", { conversationId: "88" }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(javaClient.sendSmartHeartbeat).toHaveBeenCalledWith({
+      platform: 5,
+      thirdExternalUserId: "external-customer-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("rejects smart heartbeat for group conversations", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "external-customer-001",
+          thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.sendSmartHeartbeat("101", { conversationId: "88" }),
+    ).rejects.toMatchObject({
+      code: "SMART_HEARTBEAT_GROUP_UNSUPPORTED",
+      statusCode: 400,
+    });
+    expect(javaClient.sendSmartHeartbeat).not.toHaveBeenCalled();
+  });
+
+  it("rejects smart heartbeat when customer external id is missing", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.sendSmartHeartbeat("101", { conversationId: "88" }),
+    ).rejects.toMatchObject({
+      code: "SMART_HEARTBEAT_CUSTOMER_MISSING",
+      statusCode: 400,
+    });
+    expect(javaClient.sendSmartHeartbeat).not.toHaveBeenCalled();
+  });
 });
 
 function createJavaClient(): WorkbenchJavaClient {
@@ -1817,6 +1907,7 @@ function createJavaClient(): WorkbenchJavaClient {
     markConversationUnread: vi.fn().mockResolvedValue(undefined),
     pinConversation: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi.fn(),
+    sendSmartHeartbeat: vi.fn().mockResolvedValue(undefined),
     takeOverSeat: vi.fn().mockResolvedValue(undefined),
     unpinConversation: vi.fn().mockResolvedValue(undefined),
   };

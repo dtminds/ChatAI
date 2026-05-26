@@ -50,6 +50,8 @@ import {
   type WorkbenchKnowledgeDocPageResponse,
   type WorkbenchKnowledgeFaqAddRequest,
   type WorkbenchKnowledgeFaqAddResponse,
+  type WorkbenchSmartHeartbeatRequest,
+  type WorkbenchSmartHeartbeatResponse,
   type WorkbenchSmartReplyTextModerationRequest,
   type WorkbenchSmartReplyTextModerationResponse,
   type WorkbenchMessageUpdateEventDto,
@@ -145,6 +147,9 @@ export type WorkbenchService = {
   addSmartReplyKnowledgeFaq: (
     request: WorkbenchKnowledgeFaqAddRequest,
   ) => Promise<WorkbenchKnowledgeFaqAddResponse>;
+  sendSmartHeartbeat: (
+    request: WorkbenchSmartHeartbeatRequest,
+  ) => Promise<WorkbenchSmartHeartbeatResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
@@ -600,6 +605,9 @@ export function createMockWorkbenchService(): WorkbenchService {
         docId: request.docId,
       };
     },
+    async sendSmartHeartbeat() {
+      return { ok: true };
+    },
     async sendMessage(payload) {
       const conversation = findConversation(state, payload.conversationId);
 
@@ -876,6 +884,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
     addSmartReplyKnowledgeFaq(request) {
       return http.post<WorkbenchKnowledgeFaqAddResponse, WorkbenchKnowledgeFaqAddRequest>(
         "/server/smart-reply/knowledge-faq/add",
+        request,
+      );
+    },
+    sendSmartHeartbeat(request) {
+      return http.post<WorkbenchSmartHeartbeatResponse, WorkbenchSmartHeartbeatRequest>(
+        "/server/conversations/smart-heartbeat",
         request,
       );
     },

@@ -183,6 +183,12 @@ export type WorkbenchJavaClient = {
     source: number;
     uid: number;
   }): Promise<WorkbenchKnowledgeFaqAddResponse>;
+  sendSmartHeartbeat(input: {
+    platform: number;
+    thirdExternalUserId: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<void>;
   createConversation(input: {
     chatType: number;
     platform: number;
@@ -435,6 +441,21 @@ export function createWorkbenchJavaClient(
         logger,
         "add-knowledge-faq",
       ).then((data) => mapJavaKnowledgeFaqAdd(data));
+    },
+    sendSmartHeartbeat(input) {
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-customer-bind-relation/smart-heartbeat",
+        {
+          platform: input.platform,
+          thirdExternalUserId: input.thirdExternalUserId,
+          thirdUserId: input.thirdUserId,
+          uid: input.uid,
+        },
+        logger,
+        "smart-heartbeat",
+      ).then(() => undefined);
     },
     createConversation(input) {
       return postJavaEnvelope<number | string>(

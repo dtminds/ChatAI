@@ -37,6 +37,8 @@ import type {
   WorkbenchKnowledgeDocPageResponse,
   WorkbenchKnowledgeFaqAddRequest,
   WorkbenchKnowledgeFaqAddResponse,
+  WorkbenchSmartHeartbeatRequest,
+  WorkbenchSmartHeartbeatResponse,
   WorkbenchSmartReplyTextModerationRequest,
   WorkbenchSmartReplyTextModerationResponse,
   WorkbenchSendMessagePayload,
@@ -412,6 +414,12 @@ export function createMemoryWorkbenchService() {
       return {
         docId: request.docId,
       };
+    },
+    sendSmartHeartbeat(
+      _subUserId: string,
+      _request: WorkbenchSmartHeartbeatRequest,
+    ): WorkbenchSmartHeartbeatResponse {
+      return { ok: true };
     },
     checkSmartReplyTextModeration(
       _subUserId: string,

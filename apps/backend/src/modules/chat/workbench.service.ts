@@ -31,6 +31,8 @@ import type {
   WorkbenchKnowledgeDocPageResponse,
   WorkbenchKnowledgeFaqAddRequest,
   WorkbenchKnowledgeFaqAddResponse,
+  WorkbenchSmartHeartbeatRequest,
+  WorkbenchSmartHeartbeatResponse,
   WorkbenchSmartReplyTextModerationRequest,
   WorkbenchSmartReplyTextModerationResponse,
   WorkbenchSmartReplyMakeShorterRequest,
@@ -210,6 +212,10 @@ export type WorkbenchService = {
     subUserId: string,
     request: WorkbenchKnowledgeFaqAddRequest,
   ): Promise<WorkbenchKnowledgeFaqAddResponse> | WorkbenchKnowledgeFaqAddResponse;
+  sendSmartHeartbeat(
+    subUserId: string,
+    request: WorkbenchSmartHeartbeatRequest,
+  ): Promise<WorkbenchSmartHeartbeatResponse> | WorkbenchSmartHeartbeatResponse;
   sendMessage(
     subUserId: string,
     payload: WorkbenchSendMessagePayload,
@@ -1090,6 +1096,41 @@ export class MysqlWorkbenchService implements WorkbenchService {
       source: JAVA_KNOWLEDGE_FAQ_SOURCE,
       uid: conversation.uid,
     });
+  }
+
+  async sendSmartHeartbeat(
+    subUserId: string,
+    request: WorkbenchSmartHeartbeatRequest,
+  ) {
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      request.conversationId,
+    );
+
+    if (conversation.thirdGroupId) {
+      throw new BadRequestError(
+        "SMART_HEARTBEAT_GROUP_UNSUPPORTED",
+        "群聊不支持沟通心跳",
+      );
+    }
+
+    const thirdExternalUserId = conversation.thirdExternalUserId?.trim();
+
+    if (!thirdExternalUserId) {
+      throw new BadRequestError(
+        "SMART_HEARTBEAT_CUSTOMER_MISSING",
+        "客户信息缺失",
+      );
+    }
+
+    await this.javaClient.sendSmartHeartbeat({
+      platform: conversation.platform,
+      thirdExternalUserId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    return { ok: true as const };
   }
 
   async sendMessage(subUserId: string, payload: WorkbenchSendMessagePayload) {

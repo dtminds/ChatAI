@@ -441,6 +441,14 @@ export type WorkbenchKnowledgeFaqAddResponse = {
   docId: string;
 };
 
+export type WorkbenchSmartHeartbeatRequest = {
+  conversationId: string;
+};
+
+export type WorkbenchSmartHeartbeatResponse = {
+  ok: true;
+};
+
 export type WorkbenchOutgoingMessageTextSegment = {
   type: "text";
   text: string;

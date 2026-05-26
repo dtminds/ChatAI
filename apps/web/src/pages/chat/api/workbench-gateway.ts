@@ -583,6 +583,10 @@ export async function addSmartReplyKnowledgeFaq(
   return getWorkbenchService().addSmartReplyKnowledgeFaq(request);
 }
 
+export async function sendSmartHeartbeat(conversationId: string) {
+  return getWorkbenchService().sendSmartHeartbeat({ conversationId });
+}
+
 export async function listSmartReplyAttachments(
   conversationId: string,
   ids: string[],

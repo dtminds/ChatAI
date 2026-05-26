@@ -12,6 +12,7 @@ import type {
   WorkbenchKnowledgeConfigRequest,
   WorkbenchKnowledgeDocPageRequest,
   WorkbenchKnowledgeFaqAddRequest,
+  WorkbenchSmartHeartbeatRequest,
   WorkbenchSmartReplyTextModerationRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
@@ -134,6 +135,10 @@ const SmartReplyKnowledgeFaqAddBodySchema = Type.Object({
   conversationId: Type.String(),
   docId: Type.String(),
   list: Type.Array(SmartReplyKnowledgeFaqAddItemBodySchema, { minItems: 1 }),
+});
+
+const SmartHeartbeatBodySchema = Type.Object({
+  conversationId: Type.String(),
 });
 
 const WorkbenchMessageContentTypeSchema = Type.Union([
@@ -711,6 +716,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
         getSubUserId(request),
         request.body satisfies WorkbenchKnowledgeFaqAddRequest,
       ),
+  );
+
+  app.post<{ Body: Static<typeof SmartHeartbeatBodySchema> }>(
+    "/api/server/conversations/smart-heartbeat",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartHeartbeatBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).sendSmartHeartbeat(
+        getSubUserId(request),
+        request.body satisfies WorkbenchSmartHeartbeatRequest,
+      );
+    },
   );
 
   app.post<{ Body: SendMessageBody }>(

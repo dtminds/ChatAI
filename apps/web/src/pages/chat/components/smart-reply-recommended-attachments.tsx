@@ -8,6 +8,8 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { getFileExtension } from "@/pages/chat/lib/composer-file-files";
 
 export type SmartReplyRecommendedAttachment = {
   id: string;
@@ -136,12 +138,21 @@ function RecommendedAttachmentPreview({
   const uiType = getAttachmentUiType(attachment.fileType);
   const previewUrl = getAttachmentPreviewUrl(attachment);
 
-  if (uiType === "image" && previewUrl) {
+  if (previewUrl) {
     return (
       <img
         alt=""
         className="size-10 shrink-0 rounded-[6px] object-cover"
         src={previewUrl}
+      />
+    );
+  }
+
+  if (uiType === "file") {
+    return (
+      <FileExtensionBadge
+        className="size-10 shrink-0 rounded-[6px]"
+        extension={getFileExtension(attachment.fileName)}
       />
     );
   }
@@ -206,16 +217,12 @@ function resolveAttachmentMediaUrl(path?: string) {
 function getAttachmentPreviewUrl(attachment: SmartReplyRecommendedAttachment) {
   const uiType = getAttachmentUiType(attachment.fileType);
 
-  if (uiType === "image") {
+  if (uiType !== "file") {
     return (
       resolveAttachmentMediaUrl(attachment.coverUrl) ??
       resolveAttachmentMediaUrl(attachment.localPath) ??
       resolveAttachmentMediaUrl(attachment.slocalPath)
     );
-  }
-
-  if (uiType === "video") {
-    return resolveAttachmentMediaUrl(attachment.coverUrl);
   }
 
   return undefined;

@@ -614,6 +614,7 @@ describe("createWorkbenchJavaClient", () => {
           content: "您好",
           generateStatus: 2,
           messageId: "1001",
+          pollComplete: true,
           status: "ready",
         },
       ],
@@ -974,6 +975,157 @@ describe("createWorkbenchJavaClient", () => {
         body: JSON.stringify({
           content: "这是最好的产品",
           type: "plus",
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("loads ai helper template config param id", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            configData: [{ id: 30, name: "content" }],
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const configParamId = await client.getAiHelperTemplate({
+      templateId: 17,
+      uid: 9001,
+    });
+
+    expect(configParamId).toBe(30);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/ai-helper/get-template",
+      expect.objectContaining({
+        body: JSON.stringify({
+          templateId: 17,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("submits ai helper generate ask and returns generateId", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            generateId: "gen-001",
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.submitAiHelperGenerateAsk({
+      params: [
+        {
+          id: 30,
+          value: ["当前智能回答内容"],
+        },
+      ],
+      templateId: 17,
+      uid: 9001,
+    });
+
+    expect(response).toEqual({ generateId: "gen-001" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/ai-helper/generate-ask?uid=9001",
+      expect.objectContaining({
+        body: JSON.stringify({
+          params: [
+            {
+              id: 30,
+              value: ["当前智能回答内容"],
+            },
+          ],
+          templateId: 17,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts send-answer requests with real answer and attach ids", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    await client.sendRecommendAnswer({
+      realAnswer: "您好，这是发送的话术",
+      realAttachIds: ["101", "102"],
+      recordId: "88001",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/send-answer",
+      expect.objectContaining({
+        body: JSON.stringify({
+          realAnswer: "您好，这是发送的话术",
+          realAttachIds: ["101", "102"],
+          recordId: 88001,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("streams ai helper ask and returns trimmed content", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("  更短的话术  ", {
+        headers: { "content-type": "text/event-stream;charset=UTF-8" },
+        status: 200,
+      }),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const content = await client.streamAiHelperAsk({
+      generateId: "2571",
+      uid: 9001,
+    });
+
+    expect(content).toBe("更短的话术");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/ai-helper/ask?uid=9001",
+      expect.objectContaining({
+        body: JSON.stringify({ generateId: 2571 }),
+        headers: expect.objectContaining({
+          accept: "text/event-stream",
         }),
         method: "POST",
       }),

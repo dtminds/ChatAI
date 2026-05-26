@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Cancel01Icon,
-  FileEmpty01Icon,
+  BookOpen01Icon,
   Loading03Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
@@ -38,7 +38,6 @@ export type SmartReplyEditDialogProps = {
   faqInitialQuestion?: string;
   recommendedAttachments?: SmartReplyRecommendedAttachment[];
   isRecommendedAttachmentsLoading?: boolean;
-  refAttachIds?: string[];
   onSend?: (payload: {
     content: string;
     selectedAttachmentIds: string[];
@@ -47,8 +46,6 @@ export type SmartReplyEditDialogProps = {
 };
 
 const DEMO_VIOLATION_WORDS = ["太好用了", "最好", "第一", "极致"];
-
-const DEMO_RECOMMENDED_ATTACHMENTS: SmartReplyRecommendedAttachment[] = [];
 
 export function SmartReplyEditDialog({
   open,
@@ -60,11 +57,8 @@ export function SmartReplyEditDialog({
   isRecommendedAttachmentsLoading = false,
   onSend,
   onCheckViolations,
-  refAttachIds,
 }: SmartReplyEditDialogProps) {
-  const recommendedAttachments =
-    recommendedAttachmentsProp ??
-    (refAttachIds?.length ? [] : DEMO_RECOMMENDED_ATTACHMENTS);
+  const recommendedAttachments = recommendedAttachmentsProp ?? [];
   const [draftContent, setDraftContent] = useState(initialContent);
   const [violationResult, setViolationResult] =
     useState<SmartReplyViolationResult | null>(null);
@@ -201,7 +195,7 @@ export function SmartReplyEditDialog({
 
          <div className="mt-[20px] flex justify-end gap-2">
             <Button
-              className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
+              className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px] border-none bg-[rgba(38,127,240,0.06)] text-[#666]"
               disabled={isCheckingViolations || !draftContent.trim()}
               onClick={() => void handleCheckViolations()}
               type="button"
@@ -220,13 +214,13 @@ export function SmartReplyEditDialog({
               {isCheckingViolations ? "违规词检测中" : "违规词检测"}
             </Button>
             <Button
-              className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
+              className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px] bg-[rgba(38,127,240,0.06)] text-[#666] border-none"
               disabled={!draftContent.trim()}
               onClick={() => setIsFaqDialogOpen(true)}
               type="button"
               variant="outline"
             >
-              <HugeiconsIcon icon={FileEmpty01Icon} size={14} strokeWidth={2} />
+              <HugeiconsIcon icon={BookOpen01Icon} size={14} strokeWidth={2} />
               添加到FAQ
             </Button>
           </div>

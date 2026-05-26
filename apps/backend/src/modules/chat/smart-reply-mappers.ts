@@ -1,9 +1,27 @@
-import { SMART_REPLY_MSG_IDS_LIMIT } from "@chatai/contracts";
+import {
+  SMART_REPLY_MSG_IDS_LIMIT,
+  SMART_REPLY_TERMINAL_GENERATE_STATUSES,
+} from "@chatai/contracts";
 import type {
   WorkbenchSmartReplyPollResponse,
   WorkbenchSmartReplyStatus,
   WorkbenchSmartReplySuggestionDto,
 } from "@chatai/contracts";
+
+const SMART_REPLY_TERMINAL_GENERATE_STATUS_SET = new Set<number>(
+  SMART_REPLY_TERMINAL_GENERATE_STATUSES,
+);
+
+export function isSmartReplyPollTerminalGenerateStatus(
+  rawStatus: number | string | undefined,
+) {
+  const numericStatus = readNonNegativeInteger(rawStatus);
+
+  return (
+    numericStatus != null &&
+    SMART_REPLY_TERMINAL_GENERATE_STATUS_SET.has(numericStatus)
+  );
+}
 
 export function normalizeSmartReplyMsgIds(
   messageIds: number[],
@@ -113,8 +131,9 @@ function mapJavaAnswerItem(
   }
 
   const content = readString(item.recommendAnswer) ?? readString(item.realAnswer) ?? "";
+  const pollComplete = isSmartReplyPollTerminalGenerateStatus(item.status);
 
-  if (!content.trim()) {
+  if (!content.trim() && !pollComplete) {
     const status = mapSmartReplyStatus(item.status);
 
     if (status !== "thinking" && status !== "processing") {
@@ -128,8 +147,10 @@ function mapJavaAnswerItem(
     failReason: readString(item.failReason),
     generateStatus: item.status,
     messageId,
+    pollComplete: pollComplete ? true : undefined,
     refAttachIds: parseRefAttachIds(item.refAttachIds),
     status: mapSmartReplyStatus(item.status),
+    recordId: readMessageId(item.id),
   };
 }
 
@@ -178,6 +199,10 @@ function mapSmartReplyStatus(
 
   if (numericStatus === 1) {
     return "processing";
+  }
+
+  if (numericStatus === 3) {
+    return undefined;
   }
 
   return "ready";

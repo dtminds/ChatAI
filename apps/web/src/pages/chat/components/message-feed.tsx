@@ -50,6 +50,7 @@ type ChatMessageListProps = {
   onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
+  onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
@@ -79,6 +80,7 @@ export function ChatMessageList({
   onQuoteMessage,
   onRetryMessage,
   onSendSmartReply,
+  onMakeShorterSmartReply,
   onTriggerSmartReply,
   retryingMessageIds,
   smartReplyByMessageId,
@@ -111,6 +113,7 @@ export function ChatMessageList({
               onQuoteMessage={onQuoteMessage}
               onRetryMessage={onRetryMessage}
               onSendSmartReply={onSendSmartReply}
+              onMakeShorterSmartReply={onMakeShorterSmartReply}
               onTriggerSmartReply={onTriggerSmartReply}
               isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
               smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
@@ -160,6 +163,7 @@ export function MessageRow({
   onQuoteMessage,
   onRetryMessage,
   onSendSmartReply,
+  onMakeShorterSmartReply,
   onTriggerSmartReply,
   isRetryingMessage = false,
   smartReply,
@@ -175,6 +179,7 @@ export function MessageRow({
   onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
+  onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   smartReply?: SmartReplySuggestion;
 }) {
@@ -272,6 +277,7 @@ export function MessageRow({
                 <SmartReplyMessageAnchor
                   conversationId={conversationId}
                   message={message}
+                  onMakeShorter={onMakeShorterSmartReply}
                   onRegenerate={onTriggerSmartReply}
                   suggestion={smartReply}
                   onSend={onSendSmartReply}

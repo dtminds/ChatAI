@@ -94,6 +94,7 @@ type ChatPanelProps = {
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
+  onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
@@ -157,6 +158,7 @@ export function ChatPanel({
   onMessageViewportScroll,
   onRetryMessage,
   onSendSmartReply,
+  onMakeShorterSmartReply,
   onTriggerSmartReply,
   retryingMessageIds,
   smartReplyByMessageId,
@@ -207,6 +209,7 @@ export function ChatPanel({
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
                 onSendSmartReply={onSendSmartReply}
+                onMakeShorterSmartReply={onMakeShorterSmartReply}
                 onTriggerSmartReply={onTriggerSmartReply}
                 onMessageViewportScroll={onMessageViewportScroll}
                 onRetryMessage={onRetryMessage}

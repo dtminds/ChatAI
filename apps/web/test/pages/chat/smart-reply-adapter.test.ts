@@ -4,17 +4,22 @@ import {
   adaptSmartReplyAttachments,
   adaptSmartReplySuggestions,
   adaptSmartReplyViolationResult,
+  buildSmartReplyRealAttachIds,
   buildSmartReplySendSegments,
   collectNewSmartReplyPendingKeys,
   collectQuestionImgs,
   collectSmartReplyMsgIds,
+  collectSmartReplyPollMsgIds,
+  createMakeShorterSmartReplySuggestion,
   createPendingSmartReplySuggestion,
   createTriggeredSmartReplySuggestion,
   getSmartReplyCustomerQuestion,
   getSmartReplyLookupKey,
   getSmartReplyProcessingLabel,
+  isSmartReplyKnowledgeMiss,
+  isSmartReplyPollActiveGenerateStatus,
+  isSmartReplyPollComplete,
   isSmartReplyReady,
-  mergeSmartReplySuggestionsWithPending,
   resolveSmartReplyProcessingLabel,
   shouldShowSmartReplyCard,
   shouldShowSmartReplyTriggerIcon,
@@ -103,8 +108,6 @@ describe("smart-reply-adapter", () => {
         assistantName: "护肤小助手",
         content: "建议回复",
         status: "ready",
-        versionCount: 1,
-        versionIndex: 0,
       }),
     ).toBe(true);
     expect(
@@ -112,8 +115,6 @@ describe("smart-reply-adapter", () => {
         assistantName: "护肤小助手",
         content: "",
         status: "thinking",
-        versionCount: 1,
-        versionIndex: 0,
       }),
     ).toBe(false);
   });
@@ -178,8 +179,6 @@ describe("smart-reply-adapter", () => {
         assistantName: "护肤小助手",
         content: "建议回复",
         status: "ready",
-        versionCount: 1,
-        versionIndex: 0,
       }),
     ).toBe(false);
     expect(
@@ -187,8 +186,6 @@ describe("smart-reply-adapter", () => {
         assistantName: "护肤小助手",
         content: "",
         status: "processing",
-        versionCount: 1,
-        versionIndex: 0,
       }),
     ).toBe(false);
     expect(
@@ -202,22 +199,49 @@ describe("smart-reply-adapter", () => {
     ).toBe(false);
   });
 
-  it("merges pending placeholders until suggestions are ready", () => {
-    const merged = mergeSmartReplySuggestionsWithPending(
-      {},
-      { "1090": true },
-    );
+  it("shows smart reply card when poll returns knowledge miss", () => {
+    const suggestion = {
+      assistantName: "护肤小助手",
+      content: "",
+      failReason: "knowledge_miss",
+      generateStatus: 3,
+      pollComplete: true,
+    };
 
-    expect(merged["1090"]).toEqual(createPendingSmartReplySuggestion());
+    expect(isSmartReplyKnowledgeMiss(suggestion)).toBe(true);
+    expect(isSmartReplyReady(suggestion)).toBe(false);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
+    expect(shouldShowSmartReplyTriggerIcon(
+      {
+        content: { text: "客户消息", type: "text" },
+        id: "msg-1",
+        role: "customer",
+      } as ChatMessage,
+      suggestion,
+    )).toBe(false);
+  });
+
+  it("shows smart reply card while poll is still active", () => {
+    expect(shouldShowSmartReplyCard(undefined)).toBe(false);
     expect(
       shouldShowSmartReplyCard({
         assistantName: "护肤小助手",
         content: "",
-        status: "processing",
-        versionCount: 1,
-        versionIndex: 0,
+        generateStatus: 0,
+        status: "thinking",
       }),
     ).toBe(true);
+    expect(
+      shouldShowSmartReplyCard({
+        assistantName: "护肤小助手",
+        content: "",
+        generateStatus: 1,
+        status: "processing",
+      }),
+    ).toBe(true);
+    expect(isSmartReplyPollActiveGenerateStatus(0)).toBe(true);
+    expect(isSmartReplyPollActiveGenerateStatus(1)).toBe(true);
+    expect(isSmartReplyPollActiveGenerateStatus(2)).toBe(false);
   });
 
   it("adapts suggestions into a message id map", () => {
@@ -268,7 +292,7 @@ describe("smart-reply-adapter", () => {
       {
         content: undefined,
         coverUrl: undefined,
-        defaultSelected: true,
+        defaultSelected: false,
         fileName: "品牌小程序",
         fileType: "7",
         id: "102",
@@ -357,5 +381,95 @@ describe("smart-reply-adapter", () => {
         selectedAttachmentIds: ["101"],
       }),
     ).toEqual([]);
+  });
+
+  it("builds realAttachIds for send-answer requests", () => {
+    expect(buildSmartReplyRealAttachIds(["101", "102"])).toEqual(["101", "102"]);
+    expect(buildSmartReplyRealAttachIds([])).toEqual([]);
+  });
+
+  it("creates make shorter suggestions that stop polling", () => {
+    expect(
+      createMakeShorterSmartReplySuggestion(
+        {
+          assistantName: "智能助手",
+          content: "原来很长的话术内容",
+          generateStatus: 2,
+          pollComplete: true,
+          refAttachIds: ["101"],
+          status: "ready",
+        },
+        "  更短话术  ",
+      ),
+    ).toEqual({
+      assistantName: "智能助手",
+      busyRequestId: undefined,
+      content: "更短话术",
+      generateStatus: 2,
+      pollComplete: true,
+      refAttachIds: ["101"],
+      status: "ready",
+    });
+  });
+
+  it("collects poll msg ids excluding terminal statuses", () => {
+    expect(
+      collectSmartReplyPollMsgIds(
+        [
+          { id: "msg-1", seq: 1 },
+          { id: "msg-2", seq: 2 },
+          { id: "msg-3", seq: 3 },
+        ],
+        {
+          "2": {
+            assistantName: "智能助手",
+            content: "已完成",
+            generateStatus: 2,
+            pollComplete: true,
+            status: "ready",
+          },
+        },
+      ),
+    ).toEqual([1, 3]);
+  });
+
+  it("marks terminal generate statuses", () => {
+    expect(isSmartReplyPollComplete({
+      assistantName: "智能助手",
+      content: "",
+      generateStatus: 3,
+      pollComplete: true,
+    })).toBe(true);
+    expect(isSmartReplyPollComplete({
+      assistantName: "智能助手",
+      content: "生成中",
+      generateStatus: 1,
+      status: "processing",
+    })).toBe(false);
+  });
+
+  it("adapts poll complete fields from dto", () => {
+    expect(
+      adaptSmartReplySuggestions([
+        {
+          assistantName: "智能助手",
+          content: "推荐话术",
+          generateStatus: 4,
+          messageId: "1001",
+          pollComplete: true,
+          status: "ready",
+        },
+      ]),
+    ).toEqual({
+      "1001": {
+        assistantName: "智能助手",
+        content: "推荐话术",
+        failReason: undefined,
+        generateStatus: 4,
+        pollComplete: true,
+        refAttachIds: undefined,
+        status: "ready",
+      },
+    });
   });
 });

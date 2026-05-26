@@ -2,6 +2,10 @@ import type {
   WorkbenchAttachmentDto,
   WorkbenchSmartReplySuggestionDto,
 } from "@chatai/contracts";
+import {
+  SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS,
+  SMART_REPLY_TERMINAL_GENERATE_STATUSES,
+} from "@chatai/contracts";
 import type { ChatMessage, Message, MessageContent } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import {
@@ -131,12 +135,46 @@ export function createPendingSmartReplySuggestion(
   };
 }
 
+export function isSmartReplyPollActiveGenerateStatus(
+  rawStatus: SmartReplySuggestion["generateStatus"],
+) {
+  const numericStatus = readNonNegativeInteger(rawStatus);
+
+  return numericStatus === 0 || numericStatus === 1;
+}
+
+export function isSmartReplyKnowledgeMiss(
+  suggestion?: SmartReplySuggestion | null,
+) {
+  return (
+    suggestion?.failReason?.trim().toLowerCase() ===
+    SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS
+  );
+}
+
 export function shouldShowSmartReplyCard(suggestion?: SmartReplySuggestion | null) {
   if (!suggestion) {
     return false;
   }
 
-  return isSmartReplyBusy(suggestion) || isSmartReplyReady(suggestion);
+  if (isSmartReplyKnowledgeMiss(suggestion)) {
+    return true;
+  }
+
+  if (isSmartReplyReady(suggestion)) {
+    return true;
+  }
+
+  if (!isSmartReplyBusy(suggestion)) {
+    return false;
+  }
+
+  if (isSmartReplyPollActiveGenerateStatus(suggestion.generateStatus)) {
+    return true;
+  }
+
+  // 用户手动触发 general-answer 时，轮询尚未回填 generateStatus
+  return suggestion.generateStatus == null;
 }
 
 export function shouldShowSmartReplyTriggerIcon(
@@ -148,27 +186,6 @@ export function shouldShowSmartReplyTriggerIcon(
   }
 
   return !shouldShowSmartReplyCard(suggestion);
-}
-
-export function mergeSmartReplySuggestionsWithPending(
-  suggestions: Record<string, SmartReplySuggestion>,
-  pendingKeys: Record<string, true>,
-): Record<string, SmartReplySuggestion> {
-  const merged = { ...suggestions };
-
-  for (const messageId of Object.keys(pendingKeys)) {
-    const existing = merged[messageId];
-
-    if (existing && (isSmartReplyReady(existing) || isSmartReplyBusy(existing))) {
-      continue;
-    }
-
-    merged[messageId] = createPendingSmartReplySuggestion(
-      existing?.assistantName,
-    );
-  }
-
-  return merged;
 }
 
 export function collectNewSmartReplyPendingKeys(
@@ -232,6 +249,45 @@ export function isSmartReplyReady(suggestion?: SmartReplySuggestion | null) {
   return suggestion.content.trim().length > 0;
 }
 
+export function createMakeShorterSmartReplySuggestion(
+  previous: SmartReplySuggestion,
+  content: string,
+): SmartReplySuggestion {
+  return {
+    ...previous,
+    busyRequestId: undefined,
+    content: content.trim(),
+    pollComplete: true,
+    status: "ready",
+  };
+}
+
+export function isSmartReplyPollComplete(suggestion?: SmartReplySuggestion | null) {
+  if (!suggestion) {
+    return false;
+  }
+
+  if (suggestion.pollComplete) {
+    return true;
+  }
+
+  return isSmartReplyTerminalGenerateStatus(suggestion.generateStatus);
+}
+
+export function isSmartReplyTerminalGenerateStatus(
+  rawStatus: SmartReplySuggestion["generateStatus"],
+) {
+  const numericStatus = readNonNegativeInteger(rawStatus);
+
+  if (numericStatus == null) {
+    return false;
+  }
+
+  return (SMART_REPLY_TERMINAL_GENERATE_STATUSES as readonly number[]).includes(
+    numericStatus,
+  );
+}
+
 export function adaptSmartReplySuggestions(
   suggestions: WorkbenchSmartReplySuggestionDto[],
 ): Record<string, SmartReplySuggestion> {
@@ -241,8 +297,12 @@ export function adaptSmartReplySuggestions(
       {
         assistantName: suggestion.assistantName,
         content: suggestion.content,
+        failReason: suggestion.failReason,
+        generateStatus: suggestion.generateStatus,
+        pollComplete: suggestion.pollComplete,
         refAttachIds: suggestion.refAttachIds,
         status: suggestion.status,
+        recordId: suggestion.recordId,
       },
     ]),
   );
@@ -270,6 +330,30 @@ export function collectSmartReplyMsgIds(
   return msgIds;
 }
 
+export function collectSmartReplyPollMsgIds(
+  messages: Array<{ id: string; seq?: number }>,
+  suggestions: Record<string, SmartReplySuggestion>,
+  limit = 100,
+) {
+  return collectSmartReplyMsgIds(messages, limit).filter((seq) => {
+    const suggestion = suggestions[String(seq)];
+
+    return !isSmartReplyPollComplete(suggestion);
+  });
+}
+
+function readNonNegativeInteger(value: unknown) {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    return Number.parseInt(value, 10);
+  }
+
+  return undefined;
+}
+
 export function getSmartReplyLookupKey(message: { id: string; seq?: number }) {
   return message.seq != null ? String(message.seq) : message.id;
 }
@@ -281,6 +365,12 @@ export type SmartReplySendPayload = {
   recommendedAttachments: SmartReplyRecommendedAttachment[];
   selectedAttachmentIds: string[];
 };
+
+export function buildSmartReplyRealAttachIds(selectedAttachmentIds: string[]) {
+  return selectedAttachmentIds
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+}
 
 export function adaptKnowledgeSetOptions(
   items: Array<{ id: string; name: string }>,
@@ -466,15 +556,22 @@ function getSmartReplyAttachmentExtension(fileName: string) {
 export function adaptSmartReplyAttachments(
   attachments: WorkbenchAttachmentDto[],
 ): SmartReplyRecommendedAttachment[] {
-  return attachments.flatMap((attachment) => {
-    const mapped = mapSmartReplyAttachment(attachment);
+  const mapped: SmartReplyRecommendedAttachment[] = [];
 
-    return mapped ? [mapped] : [];
-  });
+  for (const attachment of attachments) {
+    const item = mapSmartReplyAttachment(attachment, mapped.length === 0);
+
+    if (item) {
+      mapped.push(item);
+    }
+  }
+
+  return mapped;
 }
 
 function mapSmartReplyAttachment(
   attachment: WorkbenchAttachmentDto,
+  defaultSelected = false,
 ): SmartReplyRecommendedAttachment | null {
   const id = String(attachment.id);
   const fileName =
@@ -487,7 +584,7 @@ function mapSmartReplyAttachment(
   return {
     content: attachment.content?.trim(),
     coverUrl: attachment.coverUrl?.trim(),
-    defaultSelected: true,
+    defaultSelected,
     fileName,
     fileType:
       attachment.fileType != null ? String(attachment.fileType) : "",

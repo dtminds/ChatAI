@@ -10,6 +10,12 @@ import type {
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import { mapJavaAttachmentList } from "./attachment-mappers.js";
+import {
+  buildAiHelperAskRequestBody,
+  collectAiHelperAskStreamText,
+  extractAiHelperTemplateConfigParamId,
+  mapJavaAiHelperGenerateId,
+} from "./ai-helper-mappers.js";
 import { mapJavaKnowledgePage } from "./knowledge-mappers.js";
 import { mapJavaKnowledgeDocPage } from "./knowledge-doc-mappers.js";
 import { mapJavaKnowledgeFaqAdd } from "./knowledge-faq-mappers.js";
@@ -128,6 +134,28 @@ export type WorkbenchJavaClient = {
     content: string;
     uid: number;
   }): Promise<WorkbenchSmartReplyTextModerationResponse>;
+  getAiHelperTemplate(input: {
+    templateId: number;
+    uid: number;
+  }): Promise<number | undefined>;
+  submitAiHelperGenerateAsk(input: {
+    params: Array<{
+      id: number;
+      value: string[];
+    }>;
+    templateId: number;
+    uid: number;
+  }): Promise<{ generateId: string }>;
+  streamAiHelperAsk(input: {
+    generateId: string;
+    uid: number;
+  }): Promise<string>;
+  sendRecommendAnswer(input: {
+    realAnswer: string;
+    realAttachIds: string[];
+    recordId: string;
+    uid: number;
+  }): Promise<void>;
   listKnowledgePage(input: {
     page: number;
     pageSize: number;
@@ -271,6 +299,83 @@ export function createWorkbenchJavaClient(
         logger,
         "text-moderation-plus",
       ).then((data) => mapJavaTextModerationPlus(data));
+    },
+    getAiHelperTemplate(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/ai-helper/get-template",
+        {
+          templateId: input.templateId,
+          uid: input.uid,
+        },
+        logger,
+        "get-ai-helper-template",
+      ).then((data) => {
+        return extractAiHelperTemplateConfigParamId(data);
+      });
+    },
+    submitAiHelperGenerateAsk(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        `/third-internal/ai-helper/generate-ask?uid=${input.uid}`,
+        {
+          params: input.params,
+          templateId: input.templateId,
+        },
+        logger,
+        "submit-ai-helper-generate-ask",
+      ).then((data) => {
+        const generateId = mapJavaAiHelperGenerateId(data);
+
+        if (!generateId) {
+          throw new BadGatewayError(
+            WORKBENCH_INTERNAL_API_FAILED_CODE,
+            JAVA_INTERNAL_API_USER_MESSAGE,
+          );
+        }
+
+        return { generateId };
+      });
+    },
+    streamAiHelperAsk(input) {
+      return streamJavaPostText(
+        baseUrl,
+        token,
+        `/third-internal/ai-helper/ask?uid=${input.uid}`,
+        buildAiHelperAskRequestBody(input.generateId),
+        logger,
+        "stream-ai-helper-ask",
+      ).then((raw) => {
+        const content = collectAiHelperAskStreamText(raw);
+
+        if (!content) {
+          throw new BadGatewayError(
+            WORKBENCH_INTERNAL_API_FAILED_CODE,
+            JAVA_INTERNAL_API_USER_MESSAGE,
+          );
+        }
+
+        return content;
+      });
+    },
+    sendRecommendAnswer(input) {
+      const numericRecordId = readJavaRecommendAnswerRecordId(input.recordId);
+
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-msg-audit-recommend-answer/send-answer",
+        {
+          realAnswer: input.realAnswer,
+          realAttachIds: input.realAttachIds,
+          recordId: numericRecordId ?? input.recordId,
+          uid: input.uid,
+        },
+        logger,
+        "send-recommend-answer",
+      ).then(() => undefined);
     },
     listKnowledgePage(input) {
       return postJavaPageEnvelope(
@@ -560,6 +665,137 @@ async function postJava<T>(
   return (await response.json()) as T;
 }
 
+async function streamJavaPostText(
+  baseUrl: string | undefined,
+  token: string | undefined,
+  path: string,
+  body: unknown,
+  logger: AppLogger,
+  operation: string,
+): Promise<string> {
+  if (!baseUrl) {
+    logger.error(
+      {
+        operation,
+        path,
+      },
+      "Java 内部工作台接口未配置",
+    );
+    throw new ServiceUnavailableError(
+      WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+    );
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), readJavaApiTimeoutMs());
+  let response: Response;
+  const requestId = getLoggerRequestId(logger);
+
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      body: JSON.stringify(body),
+      headers: {
+        accept: "text/event-stream",
+        "content-type": "application/json",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(requestId ? { "x-request-id": requestId } : {}),
+      },
+      method: "POST",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    logger.error(
+      {
+        ...buildJavaLogContext(body),
+        requestId,
+        operation,
+        path,
+        reason: error instanceof Error ? error.name : "unknown",
+      },
+      "Java 内部工作台接口调用失败",
+    );
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_FAILED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+      {
+        reason: error instanceof Error ? error.name : "unknown",
+      },
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok) {
+    logger.error(
+      {
+        ...buildJavaLogContext(body),
+        requestId,
+        operation,
+        path,
+        status: response.status,
+      },
+      "Java 内部工作台接口返回异常状态",
+    );
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_FAILED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+      {
+        status: response.status,
+      },
+    );
+  }
+
+  if (!response.body) {
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_FAILED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+    );
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let raw = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      if (value) {
+        raw += decoder.decode(value, { stream: true });
+      }
+    }
+
+    raw += decoder.decode();
+  } catch (error) {
+    logger.error(
+      {
+        ...buildJavaLogContext(body),
+        requestId,
+        operation,
+        path,
+        reason: error instanceof Error ? error.name : "unknown",
+      },
+      "Java 内部工作台流式接口读取失败",
+    );
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_FAILED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+      {
+        reason: error instanceof Error ? error.name : "unknown",
+      },
+    );
+  } finally {
+    reader.releaseLock();
+  }
+
+  return raw;
+}
+
 async function postJavaEnvelope<T>(
   baseUrl: string | undefined,
   token: string | undefined,
@@ -714,4 +950,16 @@ function readJavaApiTimeoutMs() {
   return Number.isSafeInteger(value) && value > 0
     ? value
     : DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS;
+}
+
+function readJavaRecommendAnswerRecordId(value: string) {
+  const trimmed = value.trim();
+
+  if (!/^\d+$/.test(trimmed)) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(trimmed, 10);
+
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }

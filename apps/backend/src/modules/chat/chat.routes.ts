@@ -5,7 +5,9 @@ import type {
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchSmartReplyAttachmentsRequest,
   WorkbenchSmartReplyGeneralAnswerRequest,
+  WorkbenchSmartReplyMakeShorterRequest,
   WorkbenchSmartReplyPollRequest,
+  WorkbenchSmartReplySendAnswerRequest,
   WorkbenchKnowledgePageRequest,
   WorkbenchKnowledgeDocPageRequest,
   WorkbenchKnowledgeFaqAddRequest,
@@ -83,6 +85,18 @@ const SmartReplyGeneralAnswerBodySchema = Type.Object({
   conversationId: Type.String(),
   msgId: Type.Integer({ minimum: 1 }),
   questionImgs: Type.Optional(Type.Array(Type.String())),
+});
+
+const SmartReplyMakeShorterBodySchema = Type.Object({
+  conversationId: Type.String(),
+  content: Type.String({ minLength: 1 }),
+});
+
+const SmartReplySendAnswerBodySchema = Type.Object({
+  conversationId: Type.String(),
+  realAnswer: Type.String({ minLength: 1 }),
+  realAttachIds: Type.Array(Type.String()),
+  recordId: Type.String({ minLength: 1 }),
 });
 
 const SmartReplyAttachmentsBodySchema = Type.Object({
@@ -571,6 +585,36 @@ export async function registerChatRoutes(app: FastifyInstance) {
       getWorkbenchService(app, request).requestSmartReplyGeneralAnswer(
         getSubUserId(request),
         request.body satisfies WorkbenchSmartReplyGeneralAnswerRequest,
+      ),
+  );
+
+  app.post<{ Body: Static<typeof SmartReplyMakeShorterBodySchema> }>(
+    "/api/server/smart-reply/make-shorter",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartReplyMakeShorterBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).requestSmartReplyMakeShorter(
+        getSubUserId(request),
+        request.body satisfies WorkbenchSmartReplyMakeShorterRequest,
+      ),
+  );
+
+  app.post<{ Body: Static<typeof SmartReplySendAnswerBodySchema> }>(
+    "/api/server/smart-reply/send-answer",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartReplySendAnswerBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).sendSmartReplyAnswer(
+        getSubUserId(request),
+        request.body satisfies WorkbenchSmartReplySendAnswerRequest,
       ),
   );
 

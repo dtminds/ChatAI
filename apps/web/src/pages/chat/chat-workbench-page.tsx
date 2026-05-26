@@ -62,8 +62,6 @@ import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
 import {
-  buildSmartReplySendSegments,
-  mergeSmartReplySuggestionsWithPending,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import {
@@ -177,10 +175,10 @@ function ChatWorkbenchContent({
     messagePaginationByConversationId,
     messagesByConversationId,
     smartReplyByMessageIdByConversationId,
-    smartReplyPendingMessageKeysByConversationId,
     pollState,
     pollWorkbench,
     requestSmartReplyGeneralAnswer,
+    requestSmartReplyMakeShorter,
     readReceiptError,
     pinConversation,
     retryFailedMessage,
@@ -193,6 +191,7 @@ function ChatWorkbenchContent({
     setHistoryPanelSenderId,
     scopeTransitionError,
     sendAgentMessageSegments,
+    sendSmartReply,
     setActiveAccount,
     setActiveConversation,
     setActiveMode,
@@ -300,15 +299,8 @@ function ChatWorkbenchContent({
       return {};
     }
 
-    return mergeSmartReplySuggestionsWithPending(
-      smartReplyByMessageIdByConversationId[activeConversation.id] ?? {},
-      smartReplyPendingMessageKeysByConversationId[activeConversation.id] ?? {},
-    );
-  }, [
-    activeConversation,
-    smartReplyByMessageIdByConversationId,
-    smartReplyPendingMessageKeysByConversationId,
-  ]);
+    return smartReplyByMessageIdByConversationId[activeConversation.id] ?? {};
+  }, [activeConversation, smartReplyByMessageIdByConversationId]);
   const activeGroupMembers =
     activeConversation?.mode === "group"
       ? (groupMembersByConversationId[activeConversation.id] ?? [])
@@ -904,13 +896,12 @@ function ChatWorkbenchContent({
   };
 
   const handleSendSmartReply = async (
-    _message: ChatMessage,
+    message: ChatMessage,
     payload: SmartReplySendPayload,
   ) => {
     const sendConversationId = activeConversation?.id;
-    const segments = buildSmartReplySendSegments(payload);
 
-    if (segments.length === 0 || !canSendMessage) {
+    if (!canSendMessage) {
       return;
     }
 
@@ -922,7 +913,7 @@ function ChatWorkbenchContent({
     setIsSendingDraft(true);
 
     try {
-      const result = await sendAgentMessageSegments(segments);
+      const result = await sendSmartReply(message, payload);
 
       if (
         !isMountedRef.current ||
@@ -950,6 +941,10 @@ function ChatWorkbenchContent({
 
   const handleTriggerSmartReply = (message: ChatMessage) => {
     void requestSmartReplyGeneralAnswer(message);
+  };
+
+  const handleMakeShorterSmartReply = (message: ChatMessage) => {
+    void requestSmartReplyMakeShorter(message);
   };
 
   const handleMentionMessage = (message: ChatMessage) => {
@@ -1241,6 +1236,7 @@ function ChatWorkbenchContent({
                 onOpenQuotedMessage={handleOpenQuotedMessage}
                 onQuoteMessage={handleQuoteMessage}
                 onSendSmartReply={handleSendSmartReply}
+                onMakeShorterSmartReply={handleMakeShorterSmartReply}
                 onTriggerSmartReply={handleTriggerSmartReply}
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={handleRetryFailedMessage}

@@ -3,6 +3,8 @@ import {
   ArrowRight01Icon,
   ArrowDown01Icon,
   Loading03Icon,
+  Edit03Icon,
+  Sent02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -17,6 +19,7 @@ import { Separator } from "@/components/ui/separator";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
   getSmartReplyCustomerQuestion,
+  isSmartReplyKnowledgeMiss,
   isSmartReplyMediaContentType,
   resolveSmartReplyProcessingLabel,
   SMART_REPLY_BUSY_TIMEOUT_MS,
@@ -43,8 +46,12 @@ export type SmartReplySuggestion = {
   assistantName: string;
   busyRequestId?: number;
   content: string;
+  failReason?: string;
+  generateStatus?: number | string;
+  pollComplete?: boolean;
   status?: "thinking" | "processing" | "ready";
   refAttachIds?: string[];
+  recordId?: string;
 };
 
 export type SmartReplyCardProps = {
@@ -88,7 +95,7 @@ export function SmartReplyCard({
         <SmartReplyAssistantAvatar
           avatarUrl={
             assistantAvatarUrl ||
-            "https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/customer/小luna@2x.png!tiny.webp"
+            "https://b1.dtminds.com/fe-utility-tools/scrm/assests/AImarketing/小luna@2x.png!tiny.webp"
           }
           name={assistantName}
         />
@@ -123,6 +130,7 @@ export function SmartReplyCard({
             isThinking={isThinking}
             isProcessing={isProcessing}
             isKnowledgeHit={isKnowledgeHit}
+            onRetry={onRegenerate}
             processingLabel={processingLabel}
           />
           {
@@ -256,6 +264,7 @@ export function SmartReplyMessageAnchor({
 
   const resolvedSuggestion = suggestion;
   const displayContent = resolvedSuggestion.content;
+  const isKnowledgeHit = !isSmartReplyKnowledgeMiss(resolvedSuggestion);
 
   return (
     <>
@@ -264,6 +273,7 @@ export function SmartReplyMessageAnchor({
         assistantAvatarUrl={resolvedSuggestion.assistantAvatarUrl}
         assistantName={resolvedSuggestion.assistantName}
         content={displayContent}
+        isKnowledgeHit={isKnowledgeHit}
         isThinking={isThinking}
         isProcessing={isProcessing}
         processingLabel={processingLabel}
@@ -316,7 +326,6 @@ export function SmartReplyMessageAnchor({
         }
         onOpenChange={handleEditDialogOpenChange}
         recommendedAttachments={recommendedAttachments}
-        refAttachIds={refAttachIds}
         onSend={
           onSend
             ? ({ content, selectedAttachmentIds }) => {
@@ -463,12 +472,14 @@ function SmartReplyContentBody({
   isThinking,
   isProcessing,
   isKnowledgeHit,
+  onRetry,
   processingLabel,
 }: {
   content: string;
   isThinking: boolean;
   isProcessing: boolean;
   isKnowledgeHit: boolean;
+  onRetry?: () => void;
   processingLabel?: string;
 }) {
   return (
@@ -478,6 +489,7 @@ function SmartReplyContentBody({
           isKnowledgeHit={isKnowledgeHit}
           isProcessing={isProcessing}
           isThinking={isThinking}
+          onRetry={onRetry}
           processingLabel={processingLabel}
         />
       ) : (
@@ -493,11 +505,13 @@ function SmartReplyReadonlyContent({
   isThinking,
   isProcessing,
   isKnowledgeHit,
+  onRetry,
   processingLabel,
 }: {
   isThinking: boolean;
   isProcessing: boolean;
   isKnowledgeHit: boolean;
+  onRetry?: () => void;
   processingLabel?: string;
 }) {
   return (
@@ -519,9 +533,15 @@ function SmartReplyReadonlyContent({
       {!isKnowledgeHit ? (
         <div className="flex items-center">
           <p className="text-[13px] text-[#3D3D3D]">🤔未命中知识集，暂无推荐话术</p>
-          <span className="ml-[10px] cursor-pointer text-[13px] text-[#267FF0]">
-            重试
-          </span>
+          {onRetry ? (
+            <button
+              className="ml-[10px] text-[13px] text-[#267FF0] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/20"
+              onClick={onRetry}
+              type="button"
+            >
+              重试
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -605,7 +625,7 @@ function SmartReplyActions({
           type="button"
           variant="outline"
         >
-          {/* <HugeiconsIcon icon={Edit02Icon} size={14} strokeWidth={2} /> */}
+          <HugeiconsIcon icon={Edit03Icon} size={14} strokeWidth={2} />
           编辑
         </Button>
         <Button
@@ -614,7 +634,11 @@ function SmartReplyActions({
           onClick={onSend}
           type="button"
         >
-          {/* <HugeiconsIcon icon={ArrowUp02Icon} size={14} strokeWidth={2} /> */}
+          <HugeiconsIcon
+            icon={Sent02Icon}
+            size={14} strokeWidth={2}
+            color="currentColor"
+          />
           发送
         </Button>
     </div>

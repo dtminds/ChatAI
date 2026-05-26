@@ -36,6 +36,10 @@ import {
   type WorkbenchSmartReplyAttachmentsResponse,
   type WorkbenchSmartReplyGeneralAnswerRequest,
   type WorkbenchSmartReplyGeneralAnswerResponse,
+  type WorkbenchSmartReplyMakeShorterRequest,
+  type WorkbenchSmartReplyMakeShorterResponse,
+  type WorkbenchSmartReplySendAnswerRequest,
+  type WorkbenchSmartReplySendAnswerResponse,
   type WorkbenchSmartReplyPollRequest,
   type WorkbenchSmartReplyPollResponse,
   type WorkbenchKnowledgePageRequest,
@@ -115,6 +119,12 @@ export type WorkbenchService = {
   requestSmartReplyGeneralAnswer: (
     request: WorkbenchSmartReplyGeneralAnswerRequest,
   ) => Promise<WorkbenchSmartReplyGeneralAnswerResponse>;
+  requestSmartReplyMakeShorter: (
+    request: WorkbenchSmartReplyMakeShorterRequest,
+  ) => Promise<WorkbenchSmartReplyMakeShorterResponse>;
+  sendSmartReplyAnswer: (
+    request: WorkbenchSmartReplySendAnswerRequest,
+  ) => Promise<WorkbenchSmartReplySendAnswerResponse>;
   listSmartReplyAttachments: (
     request: WorkbenchSmartReplyAttachmentsRequest,
   ) => Promise<WorkbenchSmartReplyAttachmentsResponse>;
@@ -511,6 +521,14 @@ export function createMockWorkbenchService(): WorkbenchService {
     async requestSmartReplyGeneralAnswer() {
       return { suggestion: null };
     },
+    async requestSmartReplyMakeShorter(request) {
+      const trimmed = request.content.trim();
+
+      return { content: trimmed ? `${trimmed.slice(0, Math.max(8, Math.floor(trimmed.length / 2)))}…` : "更短的话术" };
+    },
+    async sendSmartReplyAnswer() {
+      return { ok: true };
+    },
     async listSmartReplyAttachments(request) {
       return {
         attachments: request.ids.flatMap((id) => {
@@ -800,6 +818,18 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchSmartReplyGeneralAnswerResponse,
         WorkbenchSmartReplyGeneralAnswerRequest
       >("/server/smart-reply/general-answer", request);
+    },
+    requestSmartReplyMakeShorter(request) {
+      return http.post<
+        WorkbenchSmartReplyMakeShorterResponse,
+        WorkbenchSmartReplyMakeShorterRequest
+      >("/server/smart-reply/make-shorter", request);
+    },
+    sendSmartReplyAnswer(request) {
+      return http.post<
+        WorkbenchSmartReplySendAnswerResponse,
+        WorkbenchSmartReplySendAnswerRequest
+      >("/server/smart-reply/send-answer", request);
     },
     listSmartReplyAttachments(request) {
       return http.post<

@@ -22,13 +22,15 @@ import type {
   WorkbenchMessageQueryByIdsRequest,
   WorkbenchMessageUpdateEventDto,
   WorkbenchSmartReplyPollRequest,
+  WorkbenchSmartReplySendAnswerRequest,
   WorkbenchKnowledgeFaqAddRequest,
 } from "@chatai/contracts";
 import {
   adaptSmartReplySuggestions,
   collectQuestionImgs,
-  collectSmartReplyMsgIds,
+  collectSmartReplyPollMsgIds,
   createTriggeredSmartReplySuggestion,
+  isSmartReplyPollComplete,
   adaptSmartReplyAttachments,
 } from "@/pages/chat/api/smart-reply-adapter";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
@@ -479,11 +481,12 @@ export async function pollWorkbench(
 export async function pollSmartReplies(
   request: WorkbenchSmartReplyPollRequest,
   messages: Message[],
+  suggestions: Record<string, SmartReplySuggestion> = {},
 ): Promise<Record<string, SmartReplySuggestion>> {
   const msgIds =
     request.msgIds.length > 0
-      ? request.msgIds
-      : collectSmartReplyMsgIds(messages);
+      ? request.msgIds.filter((seq) => !isSmartReplyPollComplete(suggestions[String(seq)]))
+      : collectSmartReplyPollMsgIds(messages, suggestions);
 
   if (msgIds.length === 0) {
     return {};
@@ -522,6 +525,28 @@ export async function requestSmartReplyGeneralAnswer(
   );
 
   return suggestion ?? createTriggeredSmartReplySuggestion(message);
+}
+
+export async function requestSmartReplyMakeShorter(
+  conversationId: string,
+  content: string,
+) {
+  const trimmedContent = content.trim();
+
+  if (!trimmedContent) {
+    throw new Error("智能回复内容不能为空");
+  }
+
+  return getWorkbenchService().requestSmartReplyMakeShorter({
+    conversationId,
+    content: trimmedContent,
+  });
+}
+
+export async function sendSmartReplyAnswer(
+  request: WorkbenchSmartReplySendAnswerRequest,
+) {
+  return getWorkbenchService().sendSmartReplyAnswer(request);
 }
 
 export async function checkSmartReplyTextModeration(

@@ -31,6 +31,10 @@ import type {
   WorkbenchKnowledgeFaqAddResponse,
   WorkbenchSmartReplyTextModerationRequest,
   WorkbenchSmartReplyTextModerationResponse,
+  WorkbenchSmartReplyMakeShorterRequest,
+  WorkbenchSmartReplyMakeShorterResponse,
+  WorkbenchSmartReplySendAnswerRequest,
+  WorkbenchSmartReplySendAnswerResponse,
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -46,6 +50,7 @@ import type {
 import { CHAT_TYPE } from "@chatai/contracts";
 import {
   BadRequestError,
+  BadGatewayError,
   ForbiddenError,
   AppError,
   NotFoundError,
@@ -61,10 +66,13 @@ import {
   JAVA_MENTION_HIT_TYPE,
   JAVA_MENTION_LOCATION,
   JAVA_SEND_TYPE,
+  WORKBENCH_INTERNAL_API_FAILED_CODE,
 } from "./workbench-java-client.js";
 import { buildSidebarIframeTuseCipherTexts } from "../../lib/tuse-crypto.js";
 import { normalizeAttachmentIds } from "./attachment-mappers.js";
 import { normalizeKnowledgeId } from "./knowledge-doc-mappers.js";
+import { JAVA_KNOWLEDGE_FAQ_SOURCE } from "./knowledge-faq-mappers.js";
+import { SMART_REPLY_MAKE_SHORTER_TEMPLATE_ID } from "./ai-helper-mappers.js";
 import { normalizeSmartReplyMsgIds } from "./smart-reply-mappers.js";
 import {
   decodeConversationListCursor,
@@ -160,6 +168,18 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchSmartReplyGeneralAnswerResponse>
     | WorkbenchSmartReplyGeneralAnswerResponse;
+  requestSmartReplyMakeShorter(
+    subUserId: string,
+    request: WorkbenchSmartReplyMakeShorterRequest,
+  ):
+    | Promise<WorkbenchSmartReplyMakeShorterResponse>
+    | WorkbenchSmartReplyMakeShorterResponse;
+  sendSmartReplyAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplySendAnswerRequest,
+  ):
+    | Promise<WorkbenchSmartReplySendAnswerResponse>
+    | WorkbenchSmartReplySendAnswerResponse;
   listSmartReplyAttachments(
     subUserId: string,
     request: WorkbenchSmartReplyAttachmentsRequest,
@@ -785,6 +805,92 @@ export class MysqlWorkbenchService implements WorkbenchService {
     });
   }
 
+  async requestSmartReplyMakeShorter(
+    subUserId: string,
+    request: WorkbenchSmartReplyMakeShorterRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const content = request.content.trim();
+
+    if (!content) {
+      throw new BadRequestError("SMART_REPLY_CONTENT_EMPTY", "智能回复内容不能为空");
+    }
+
+    const configParamId = await this.javaClient.getAiHelperTemplate({
+      templateId: SMART_REPLY_MAKE_SHORTER_TEMPLATE_ID,
+      uid: conversation.uid,
+    });
+
+    if (configParamId == null) {
+      throw new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        "智能回复模板配置无效",
+      );
+    }
+
+    const { generateId } = await this.javaClient.submitAiHelperGenerateAsk({
+      params: [
+        {
+          id: configParamId,
+          value: [content],
+        },
+      ],
+      templateId: SMART_REPLY_MAKE_SHORTER_TEMPLATE_ID,
+      uid: conversation.uid,
+    });
+
+    const shortenedContent = await this.javaClient.streamAiHelperAsk({
+      generateId,
+      uid: conversation.uid,
+    });
+
+    return { content: shortenedContent };
+  }
+
+  async sendSmartReplyAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplySendAnswerRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const realAnswer = request.realAnswer.trim();
+    const recordId = request.recordId.trim();
+
+    if (!realAnswer) {
+      throw new BadRequestError("SMART_REPLY_CONTENT_EMPTY", "智能回复内容不能为空");
+    }
+
+    if (!recordId) {
+      throw new BadRequestError("SMART_REPLY_RECORD_INVALID", "智能回复记录无效");
+    }
+
+    await this.javaClient.sendRecommendAnswer({
+      realAnswer,
+      realAttachIds: request.realAttachIds,
+      recordId,
+      uid: conversation.uid,
+    });
+
+    return { ok: true as const };
+  }
+
   async listSmartReplyAttachments(
     subUserId: string,
     request: WorkbenchSmartReplyAttachmentsRequest,
@@ -954,7 +1060,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         question: item.question,
         similarQuestion: item.similarQuestion,
       })),
-      source: 1,
+      source: JAVA_KNOWLEDGE_FAQ_SOURCE,
       uid: conversation.uid,
     });
   }

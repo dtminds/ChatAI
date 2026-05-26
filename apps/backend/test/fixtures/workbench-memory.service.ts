@@ -23,6 +23,10 @@ import type {
   WorkbenchSmartReplyAttachmentsResponse,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerResponse,
+  WorkbenchSmartReplyMakeShorterRequest,
+  WorkbenchSmartReplyMakeShorterResponse,
+  WorkbenchSmartReplySendAnswerRequest,
+  WorkbenchSmartReplySendAnswerResponse,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplyPollResponse,
   WorkbenchKnowledgePageRequest,
@@ -350,6 +354,18 @@ export function createMemoryWorkbenchService() {
       _request: WorkbenchSmartReplyGeneralAnswerRequest,
     ): WorkbenchSmartReplyGeneralAnswerResponse {
       return { suggestion: null };
+    },
+    requestSmartReplyMakeShorter(
+      _subUserId: string,
+      _request: WorkbenchSmartReplyMakeShorterRequest,
+    ): WorkbenchSmartReplyMakeShorterResponse {
+      return { content: _request.content.trim() || "更短的话术" };
+    },
+    sendSmartReplyAnswer(
+      _subUserId: string,
+      _request: WorkbenchSmartReplySendAnswerRequest,
+    ): WorkbenchSmartReplySendAnswerResponse {
+      return { ok: true };
     },
     listKnowledgePage(
       _subUserId: string,

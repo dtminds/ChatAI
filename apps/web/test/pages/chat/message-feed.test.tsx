@@ -207,8 +207,6 @@ describe("message feed row actions", () => {
           assistantName: "护肤小助手",
           content: "建议先确认肤质",
           status: "ready",
-          versionCount: 1,
-          versionIndex: 0,
         }}
       />,
     );
@@ -238,8 +236,6 @@ describe("message feed row actions", () => {
           assistantName: "护肤小助手",
           content: "建议先确认肤质",
           status: "ready",
-          versionCount: 1,
-          versionIndex: 0,
         }}
       />,
     );

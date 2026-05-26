@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isSmartReplyPollTerminalGenerateStatus,
   mapJavaGeneralAnswer,
   mapJavaUserHistoryAnswerList,
   normalizeSmartReplyMsgIds,
@@ -23,6 +24,7 @@ describe("mapJavaUserHistoryAnswerList", () => {
       {
         analyseMsgId: 1022692,
         assistantName: "护肤小助手",
+        id: 88001,
         recommendAnswer: "您好，可以先告诉我肤质吗",
         status: 2,
       },
@@ -34,7 +36,9 @@ describe("mapJavaUserHistoryAnswerList", () => {
         content: "您好，可以先告诉我肤质吗",
         generateStatus: 2,
         messageId: "1022692",
+        pollComplete: true,
         status: "ready",
+        recordId: "88001",
       },
     ]);
   });
@@ -55,9 +59,69 @@ describe("mapJavaUserHistoryAnswerList", () => {
         content: "您好，请问您具体是遇到了什么问题呢",
         generateStatus: 2,
         messageId: "1121",
+        pollComplete: true,
         status: "ready",
       },
     ]);
+  });
+
+  it("marks failed and sent statuses as poll complete", () => {
+    expect(
+      mapJavaUserHistoryAnswerList([
+        {
+          analyseMsgId: 2001,
+          assistantName: "护肤小助手",
+          failReason: "生成失败",
+          status: 3,
+        },
+        {
+          analyseMsgId: 2003,
+          assistantName: "护肤小助手",
+          failReason: "knowledge_miss",
+          status: 3,
+        },
+        {
+          analyseMsgId: 2002,
+          assistantName: "护肤小助手",
+          recommendAnswer: "已发送的话术",
+          status: 4,
+        },
+      ]).suggestions,
+    ).toEqual([
+      {
+        assistantName: "护肤小助手",
+        content: "",
+        failReason: "生成失败",
+        generateStatus: 3,
+        messageId: "2001",
+        pollComplete: true,
+        status: undefined,
+      },
+      {
+        assistantName: "护肤小助手",
+        content: "",
+        failReason: "knowledge_miss",
+        generateStatus: 3,
+        messageId: "2003",
+        pollComplete: true,
+        status: undefined,
+      },
+      {
+        assistantName: "护肤小助手",
+        content: "已发送的话术",
+        generateStatus: 4,
+        messageId: "2002",
+        pollComplete: true,
+        status: "ready",
+      },
+    ]);
+  });
+
+  it("detects terminal generate statuses", () => {
+    expect(isSmartReplyPollTerminalGenerateStatus(2)).toBe(true);
+    expect(isSmartReplyPollTerminalGenerateStatus(3)).toBe(true);
+    expect(isSmartReplyPollTerminalGenerateStatus(4)).toBe(true);
+    expect(isSmartReplyPollTerminalGenerateStatus(1)).toBe(false);
   });
 
   it("maps nested list payloads and thinking status", () => {
@@ -95,6 +159,7 @@ describe("mapJavaUserHistoryAnswerList", () => {
       content: "您好",
       generateStatus: 2,
       messageId: "1121",
+      pollComplete: true,
       status: "ready",
     });
   });

@@ -264,6 +264,10 @@ export type WorkbenchPollResponse = {
 };
 
 export const SMART_REPLY_MSG_IDS_LIMIT = 100;
+/** Java user-history-answer-list 终态：2 推荐成功、3 推荐失败、4 已发送 */
+export const SMART_REPLY_TERMINAL_GENERATE_STATUSES = [2, 3, 4] as const;
+/** Java user-history-answer-list 失败原因：未命中知识集 */
+export const SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS = "knowledge_miss";
 /** 智能回复轮询最小间隔（毫秒），与工作台主 poll 解耦 */
 export const SMART_REPLY_POLL_INTERVAL_MS = 5000;
 
@@ -275,8 +279,11 @@ export type WorkbenchSmartReplySuggestionDto = {
   content: string;
   failReason?: string;
   generateStatus?: number | string;
+  pollComplete?: boolean;
   refAttachIds?: string[];
   status?: WorkbenchSmartReplyStatus;
+  /** Java recommend-answer 记录 id，send-answer 的 recordId 参数 */
+  recordId?: string;
 };
 
 /** msgIds 传消息 seq（非 messageId / msgid） */
@@ -298,6 +305,26 @@ export type WorkbenchSmartReplyGeneralAnswerRequest = {
 
 export type WorkbenchSmartReplyGeneralAnswerResponse = {
   suggestion: WorkbenchSmartReplySuggestionDto | null;
+};
+
+export type WorkbenchSmartReplyMakeShorterRequest = {
+  content: string;
+  conversationId: string;
+};
+
+export type WorkbenchSmartReplyMakeShorterResponse = {
+  content: string;
+};
+
+export type WorkbenchSmartReplySendAnswerRequest = {
+  conversationId: string;
+  realAnswer: string;
+  realAttachIds: string[];
+  recordId: string;
+};
+
+export type WorkbenchSmartReplySendAnswerResponse = {
+  ok: true;
 };
 
 export type WorkbenchAttachmentAppInfoDto = {

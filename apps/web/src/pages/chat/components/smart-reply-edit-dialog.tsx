@@ -34,6 +34,7 @@ export type SmartReplyEditDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialContent: string;
+  canSendMessage?: boolean;
   conversationId?: string;
   faqInitialQuestion?: string;
   recommendedAttachments?: SmartReplyRecommendedAttachment[];
@@ -41,7 +42,7 @@ export type SmartReplyEditDialogProps = {
   onSend?: (payload: {
     content: string;
     selectedAttachmentIds: string[];
-  }) => void;
+  }) => void | Promise<boolean>;
   onCheckViolations?: (content: string) => Promise<SmartReplyViolationResult | null>;
 };
 
@@ -51,6 +52,7 @@ export function SmartReplyEditDialog({
   open,
   onOpenChange,
   initialContent,
+  canSendMessage = true,
   conversationId,
   faqInitialQuestion: faqInitialQuestionProp,
   recommendedAttachments: recommendedAttachmentsProp,
@@ -160,16 +162,20 @@ export function SmartReplyEditDialog({
     });
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = draftContent.trim();
     if (!trimmed) {
       return;
     }
-    onSend?.({
+
+    const shouldClose = await onSend?.({
       content: trimmed,
       selectedAttachmentIds,
     });
-    onOpenChange(false);
+
+    if (shouldClose !== false) {
+      onOpenChange(false);
+    }
   };
 
   return (
@@ -267,7 +273,7 @@ export function SmartReplyEditDialog({
           </Button>
           <Button
             className="h-9 min-w-[72px] rounded-[8px] px-4 text-[13px]"
-            disabled={!draftContent.trim()}
+            disabled={!canSendMessage || !draftContent.trim()}
             onClick={handleSend}
             type="button"
           >

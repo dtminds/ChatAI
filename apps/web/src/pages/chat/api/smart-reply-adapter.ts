@@ -169,12 +169,7 @@ export function shouldShowSmartReplyCard(suggestion?: SmartReplySuggestion | nul
     return false;
   }
 
-  if (isSmartReplyPollActiveGenerateStatus(suggestion.generateStatus)) {
-    return true;
-  }
-
-  // 用户手动触发 general-answer 时，轮询尚未回填 generateStatus
-  return suggestion.generateStatus == null;
+  return true;
 }
 
 export function shouldShowSmartReplyTriggerIcon(
@@ -257,6 +252,24 @@ export function createMakeShorterSmartReplySuggestion(
     ...previous,
     busyRequestId: undefined,
     content: content.trim(),
+    pollComplete: true,
+    status: "ready",
+  };
+}
+
+export function isSmartReplySent(suggestion?: SmartReplySuggestion | null) {
+  return readNonNegativeInteger(suggestion?.generateStatus) === 4;
+}
+
+export function createSentSmartReplySuggestion(
+  previous: SmartReplySuggestion,
+  content: string,
+): SmartReplySuggestion {
+  return {
+    ...previous,
+    busyRequestId: undefined,
+    content: content.trim(),
+    generateStatus: 4,
     pollComplete: true,
     status: "ready",
   };

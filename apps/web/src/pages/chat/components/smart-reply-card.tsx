@@ -21,6 +21,7 @@ import {
   getSmartReplyCustomerQuestion,
   isSmartReplyKnowledgeMiss,
   isSmartReplyMediaContentType,
+  isSmartReplySent,
   resolveSmartReplyProcessingLabel,
   SMART_REPLY_BUSY_TIMEOUT_MS,
   SMART_REPLY_MEDIA_PROCESSING_HINT_MS,
@@ -61,6 +62,8 @@ export type SmartReplyCardProps = {
   isThinking?: boolean;
   isProcessing?: boolean;
   isKnowledgeHit?: boolean;
+  isSent?: boolean;
+  canSendMessage?: boolean;
   onEdit?: () => void;
   onMakeShorter?: () => void;
   onRegenerate?: () => void;
@@ -76,6 +79,8 @@ export function SmartReplyCard({
   isThinking = false,
   isProcessing = false,
   isKnowledgeHit = true,
+  isSent = false,
+  canSendMessage = true,
   onEdit,
   onMakeShorter,
   onRegenerate,
@@ -134,7 +139,7 @@ export function SmartReplyCard({
             processingLabel={processingLabel}
           />
           {
-            isKnowledgeHit && !isThinking && !isProcessing ? 
+            isKnowledgeHit && !isThinking && !isProcessing && !isSent ?
             <footer className="flex items-center justify-between px-[16px] pb-[12px]">
               <SmartReplyToolbar
                 onMakeShorter={onMakeShorter}
@@ -143,6 +148,7 @@ export function SmartReplyCard({
                 onEdit={onEdit}
               />
               <SmartReplyActions
+                canSendMessage={canSendMessage}
                 content={content}
                 isThinking={isThinking}
                 onEdit={onEdit}
@@ -157,17 +163,22 @@ export function SmartReplyCard({
 }
 
 type SmartReplyMessageAnchorProps = {
+  canSendMessage?: boolean;
   conversationId?: string;
   message: ChatMessage;
   onEdit?: (message: ChatMessage, content: string) => void;
   onMakeShorter?: (message: ChatMessage) => void;
   onRegenerate?: (message: ChatMessage) => void;
-  onSend?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
+  onSend?: (
+    message: ChatMessage,
+    payload: SmartReplySendPayload,
+  ) => void | Promise<{ ok: boolean }>;
   onBusyTimeout?: () => void;
   suggestion?: SmartReplySuggestion | null;
 };
 
 export function SmartReplyMessageAnchor({
+  canSendMessage = true,
   conversationId,
   message,
   onEdit,
@@ -177,7 +188,6 @@ export function SmartReplyMessageAnchor({
   onBusyTimeout,
   suggestion,
 }: SmartReplyMessageAnchorProps) {
-  const [dismissed, setDismissed] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [recommendedAttachments, setRecommendedAttachments] = useState<
     SmartReplyRecommendedAttachment[]
@@ -194,7 +204,7 @@ export function SmartReplyMessageAnchor({
   );
 
   useSmartReplyBusyTimeout(
-    Boolean(suggestion) && !dismissed && isBusy,
+    Boolean(suggestion) && isBusy,
     onBusyTimeout,
     suggestion?.busyRequestId,
   );
@@ -253,18 +263,14 @@ export function SmartReplyMessageAnchor({
     handleEditDialogOpenChange(true);
   }, [handleEditDialogOpenChange]);
 
-  const handleDismiss = useCallback(() => {
-    setDismissed(true);
-    setIsEditDialogOpen(false);
-  }, []);
-
-  if (!suggestion || dismissed) {
+  if (!suggestion) {
     return null;
   }
 
   const resolvedSuggestion = suggestion;
   const displayContent = resolvedSuggestion.content;
   const isKnowledgeHit = !isSmartReplyKnowledgeMiss(resolvedSuggestion);
+  const isSent = isSmartReplySent(resolvedSuggestion);
 
   return (
     <>
@@ -272,8 +278,10 @@ export function SmartReplyMessageAnchor({
         refAttachIds={resolvedSuggestion.refAttachIds}
         assistantAvatarUrl={resolvedSuggestion.assistantAvatarUrl}
         assistantName={resolvedSuggestion.assistantName}
+        canSendMessage={canSendMessage}
         content={displayContent}
         isKnowledgeHit={isKnowledgeHit}
+        isSent={isSent}
         isThinking={isThinking}
         isProcessing={isProcessing}
         processingLabel={processingLabel}
@@ -308,6 +316,7 @@ export function SmartReplyMessageAnchor({
         }
       />
       <SmartReplyEditDialog
+        canSendMessage={canSendMessage}
         conversationId={conversationId}
         faqInitialQuestion={getSmartReplyCustomerQuestion(message)}
         initialContent={displayContent}
@@ -328,13 +337,18 @@ export function SmartReplyMessageAnchor({
         recommendedAttachments={recommendedAttachments}
         onSend={
           onSend
-            ? ({ content, selectedAttachmentIds }) => {
-                onSend(message, {
+            ? async ({ content, selectedAttachmentIds }) => {
+                const result = await onSend(message, {
                   content,
                   recommendedAttachments,
                   selectedAttachmentIds,
                 });
-                handleDismiss();
+
+                if (result?.ok === true) {
+                  setIsEditDialogOpen(false);
+                }
+
+                return result?.ok === true;
               }
             : undefined
         }
@@ -607,11 +621,13 @@ function SmartReplyToolbar({
 }
 
 function SmartReplyActions({
+  canSendMessage = true,
   content,
   isThinking,
   onEdit,
   onSend,
 }: {
+  canSendMessage?: boolean;
   content: string;
   isThinking: boolean;
   onEdit?: () => void;
@@ -630,7 +646,7 @@ function SmartReplyActions({
         </Button>
         <Button
           className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
-          disabled={isThinking || !content.trim()}
+          disabled={!canSendMessage || isThinking || !content.trim()}
           onClick={onSend}
           type="button"
         >

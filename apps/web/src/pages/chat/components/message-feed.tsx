@@ -275,6 +275,7 @@ export function MessageRow({
               {message.isRevoked ? <MessageRevokedState /> : null}
               {showSmartReplyCard ? (
                 <SmartReplyMessageAnchor
+                  canSendMessage={canUseMessageActions}
                   conversationId={conversationId}
                   message={message}
                   onMakeShorter={onMakeShorterSmartReply}

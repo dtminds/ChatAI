@@ -919,7 +919,7 @@ function ChatWorkbenchContent({
         !isMountedRef.current ||
         activeConversationIdRef.current !== sendConversationId
       ) {
-        return;
+        return result;
       }
 
       if (!result.ok) {
@@ -931,6 +931,8 @@ function ChatWorkbenchContent({
           ),
         );
       }
+
+      return result;
     } finally {
       isSendingDraftRef.current = false;
       if (isMountedRef.current) {

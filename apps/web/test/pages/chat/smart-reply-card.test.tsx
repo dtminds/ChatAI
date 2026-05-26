@@ -332,6 +332,19 @@ describe("SmartReplyCard", () => {
     expect(onRegenerate).toHaveBeenCalledWith(message);
   });
 
+  it("disables send actions when the workbench cannot send messages", () => {
+    render(
+      <SmartReplyCard
+        assistantName="护肤小助手"
+        canSendMessage={false}
+        content="建议先确认是否敏感肌"
+        onSend={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+  });
+
   it("renders smart reply card inline below the message anchor", () => {
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },

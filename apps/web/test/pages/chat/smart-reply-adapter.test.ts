@@ -12,6 +12,7 @@ import {
   collectSmartReplyPollMsgIds,
   createMakeShorterSmartReplySuggestion,
   createPendingSmartReplySuggestion,
+  createSentSmartReplySuggestion,
   createTriggeredSmartReplySuggestion,
   getSmartReplyCustomerQuestion,
   getSmartReplyLookupKey,
@@ -20,6 +21,7 @@ import {
   isSmartReplyPollActiveGenerateStatus,
   isSmartReplyPollComplete,
   isSmartReplyReady,
+  isSmartReplySent,
   resolveSmartReplyProcessingLabel,
   shouldShowSmartReplyCard,
   shouldShowSmartReplyTriggerIcon,
@@ -239,6 +241,15 @@ describe("smart-reply-adapter", () => {
         status: "processing",
       }),
     ).toBe(true);
+    expect(
+      shouldShowSmartReplyCard({
+        assistantName: "护肤小助手",
+        content: "建议先确认是否敏感肌",
+        generateStatus: 2,
+        pollComplete: true,
+        status: "thinking",
+      }),
+    ).toBe(true);
     expect(isSmartReplyPollActiveGenerateStatus(0)).toBe(true);
     expect(isSmartReplyPollActiveGenerateStatus(1)).toBe(true);
     expect(isSmartReplyPollActiveGenerateStatus(2)).toBe(false);
@@ -446,6 +457,32 @@ describe("smart-reply-adapter", () => {
       generateStatus: 1,
       status: "processing",
     })).toBe(false);
+  });
+
+  it("marks sent suggestions as poll complete and keeps the card visible", () => {
+    const sentSuggestion = createSentSmartReplySuggestion(
+      {
+        assistantName: "护肤小助手",
+        content: "旧话术",
+        generateStatus: 2,
+        pollComplete: true,
+        recordId: "88001",
+        status: "ready",
+      },
+      "已发送话术",
+    );
+
+    expect(sentSuggestion).toEqual({
+      assistantName: "护肤小助手",
+      content: "已发送话术",
+      generateStatus: 4,
+      pollComplete: true,
+      recordId: "88001",
+      status: "ready",
+    });
+    expect(isSmartReplySent(sentSuggestion)).toBe(true);
+    expect(isSmartReplyPollComplete(sentSuggestion)).toBe(true);
+    expect(shouldShowSmartReplyCard(sentSuggestion)).toBe(true);
   });
 
   it("adapts poll complete fields from dto", () => {

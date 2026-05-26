@@ -48,10 +48,12 @@ import {
   collectNewSmartReplyPendingKeys,
   collectSmartReplyPollMsgIds,
   createMakeShorterSmartReplySuggestion,
+  createSentSmartReplySuggestion,
   createTriggeredSmartReplySuggestion,
   getSmartReplyLookupKey,
   isSmartReplyPollComplete,
   isSmartReplyReady,
+  isSmartReplySent,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
@@ -1743,7 +1745,11 @@ export function createWorkbenchStore() {
         const previousSuggestion =
           state.smartReplyByMessageIdByConversationId[conversationId]?.[lookupKey];
 
-        if (!previousSuggestion || !isSmartReplyReady(previousSuggestion)) {
+        if (
+          !previousSuggestion ||
+          !isSmartReplyReady(previousSuggestion) ||
+          isSmartReplySent(previousSuggestion)
+        ) {
           return;
         }
 
@@ -1892,12 +1898,22 @@ export function createWorkbenchStore() {
 
           const previousSuggestions =
             currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {};
-          const { [lookupKey]: _removed, ...restSuggestions } = previousSuggestions;
+          const previousSuggestion = previousSuggestions[lookupKey];
+
+          if (!previousSuggestion) {
+            return currentState;
+          }
 
           return {
             smartReplyByMessageIdByConversationId: {
               ...currentState.smartReplyByMessageIdByConversationId,
-              [conversationId]: restSuggestions,
+              [conversationId]: {
+                ...previousSuggestions,
+                [lookupKey]: createSentSmartReplySuggestion(
+                  previousSuggestion,
+                  payload.content,
+                ),
+              },
             },
             smartReplyPendingMessageKeysByConversationId: {
               ...currentState.smartReplyPendingMessageKeysByConversationId,

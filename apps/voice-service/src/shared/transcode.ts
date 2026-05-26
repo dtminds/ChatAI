@@ -46,15 +46,23 @@ export async function transcodeVoiceToWav(
       throw new VoiceTranscodeError("UNSUPPORTED_VOICE_FORMAT", "语音格式暂未接入转码");
     }
 
-    const decoded = await decodeAudio(input);
+    let decoded: DecodedAudioBuffer;
+
+    try {
+      decoded = await decodeAudio(input);
+    } catch {
+      throw new VoiceTranscodeError("DECODE_FAILED", "音频解码失败");
+    }
+
     const sampleRate = decoded.sampleRate;
-    const durationMs = Math.ceil(((decoded.channelData[0]?.length ?? 0) / sampleRate) * 1000);
+    const channelData = readAudioBufferChannelData(decoded);
+    const durationMs = Math.ceil(((channelData[0]?.length ?? 0) / sampleRate) * 1000);
 
     if (durationMs > options.maxDurationMs) {
       throw new VoiceTranscodeError("VOICE_DURATION_TOO_LONG", "语音时长超出限制");
     }
 
-    const pcm = mixDownToPcm16(decoded.channelData);
+    const pcm = mixDownToPcm16(channelData);
     const wav = createPcm16MonoWav(pcm, sampleRate);
 
     return {
@@ -82,6 +90,31 @@ export async function transcodeVoiceToWav(
     sampleRate: options.sampleRate,
     wav,
   };
+}
+
+type DecodedAudioBuffer = {
+  channelData?: Float32Array[];
+  getChannelData?: (channel: number) => Float32Array;
+  numberOfChannels?: number;
+  sampleRate: number;
+};
+
+function readAudioBufferChannelData(decoded: DecodedAudioBuffer) {
+  if (Array.isArray(decoded.channelData)) {
+    return decoded.channelData;
+  }
+
+  if (typeof decoded.getChannelData !== "function" || typeof decoded.numberOfChannels !== "number") {
+    throw new VoiceTranscodeError("DECODE_FAILED", "音频解码失败");
+  }
+
+  const channelData: Float32Array[] = [];
+
+  for (let channelIndex = 0; channelIndex < decoded.numberOfChannels; channelIndex += 1) {
+    channelData.push(decoded.getChannelData(channelIndex));
+  }
+
+  return channelData;
 }
 
 function mixDownToPcm16(channelData: Float32Array[]) {

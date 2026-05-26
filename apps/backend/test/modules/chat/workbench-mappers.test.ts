@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getGroupMemberHydrationKey,
   hydrateMessageRows,
@@ -8,6 +8,10 @@ import {
 } from "../../../src/modules/chat/workbench-mappers.js";
 
 describe("workbench MySQL mappers", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("maps a user seat row into the public seat DTO", () => {
     expect(
       mapSeatRow({
@@ -391,6 +395,30 @@ describe("workbench MySQL mappers", () => {
       content: {
         audioUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/s5/msg/voice.amr",
         playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/s5/msg/voice.wav",
+      },
+      contentType: "voice",
+    });
+  });
+
+  it("derives voice playback URLs from the configured media host", async () => {
+    vi.stubEnv("PLAYABLE_MEDIA_HOST", "media.example.com");
+    vi.resetModules();
+    const { mapMessageRow: mapMessageRowWithEnv } = await import(
+      "../../../src/modules/chat/workbench-mappers.js"
+    );
+
+    expect(
+      mapMessageRowWithEnv(messageRow({
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+        }),
+        msgtype: "voice",
+      })),
+    ).toMatchObject({
+      content: {
+        audioUrl: "https://media.example.com/s5/msg/20260525/272/voice.amr",
+        playbackUrl: "https://media.example.com/s5/playable-voice/20260525/272/voice.wav",
       },
       contentType: "voice",
     });

@@ -49,4 +49,27 @@ describe("COS client credentials", () => {
       },
     });
   });
+
+  it("keeps Uint8Array COS bodies as zero-copy views", async () => {
+    const source = Buffer.from([1, 2, 3, 4]);
+    const view = new Uint8Array(source.buffer, source.byteOffset + 1, 2);
+    const client = {
+      getObject: async () => ({
+        Body: view,
+        headers: {},
+      }),
+    };
+
+    const result = await fetchCosObject(
+      client as never,
+      "scrm-msg-audit-1304132716",
+      "ap-shanghai",
+      "s5/voice/view.amr",
+    );
+
+    expect(result.body).toEqual(new Uint8Array([2, 3]));
+    expect(result.body.buffer).toBe(view.buffer);
+    expect(result.body.byteOffset).toBe(view.byteOffset);
+    expect(result.body.byteLength).toBe(view.byteLength);
+  });
 });

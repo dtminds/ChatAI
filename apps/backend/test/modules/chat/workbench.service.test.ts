@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   JAVA_INTERNAL_API_USER_MESSAGE,
   WORKBENCH_INTERNAL_API_FAILED_CODE,
@@ -9,6 +9,10 @@ import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-re
 import { BadGatewayError } from "../../../src/shared/errors.js";
 
 describe("MysqlWorkbenchService", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("rejects invalid conversation list cursors before querying conversations", async () => {
     const javaClient = createJavaClient();
     const listConversations = vi.fn();
@@ -294,6 +298,46 @@ describe("MysqlWorkbenchService", () => {
       statusCode: 400,
     });
     expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
+  });
+
+  it("accepts confirmed voice playback URLs from the configured media host", async () => {
+    vi.stubEnv("PLAYABLE_MEDIA_HOST", "media.example.com");
+    vi.resetModules();
+    const { MysqlWorkbenchService: MysqlWorkbenchServiceWithEnv } = await import(
+      "../../../src/modules/chat/workbench.service.js"
+    );
+    const javaClient = createJavaClient();
+    const playableVoiceExists = vi.fn().mockResolvedValue(true);
+    const service = new MysqlWorkbenchServiceWithEnv(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      playableVoiceExists,
+    );
+
+    await service.confirmVoicePlaybackReady("101", {
+      conversationId: "88",
+      messageSeq: 538,
+      playbackUrl: "https://media.example.com/s5/playable-voice/20260525/272/voice.wav",
+    });
+
+    expect(javaClient.updateMessageContent).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("\"transFileUrl\":\"s5/playable-voice/20260525/272/voice.wav\""),
+    }));
   });
 
   it("rejects confirmed voice playback URLs that do not belong to the current message file", async () => {

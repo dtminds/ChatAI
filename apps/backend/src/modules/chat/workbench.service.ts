@@ -57,12 +57,13 @@ import {
   parseMySqlId,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
+import { getPlayableMediaHost } from "./media-config.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
 const POLL_SEAT_UPDATE_LIMIT = 200;
-const PLAYABLE_VOICE_HOST = "b5.bokr.com.cn";
+const PLAYABLE_VOICE_HOST = getPlayableMediaHost();
 const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
 const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;

@@ -12,6 +12,7 @@ import {
   readRecordNumber,
   readRecordString,
 } from "./workbench-content-utils.js";
+import { getPlayableMediaHost } from "./media-config.js";
 
 export type SeatRow = {
   avatar: string | null;
@@ -98,7 +99,7 @@ export type MessageHydrationSources = {
 };
 
 const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
-const PLAYABLE_MEDIA_HOST = "b5.bokr.com.cn";
+const PLAYABLE_MEDIA_HOST = getPlayableMediaHost();
 const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
 const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 

@@ -101,11 +101,7 @@ async function toUint8Array(body: unknown) {
   }
 
   if (body instanceof Uint8Array) {
-    return new Uint8Array(body);
-  }
-
-  if (Buffer.isBuffer(body)) {
-    return new Uint8Array(body);
+    return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
   }
 
   return new Uint8Array(await consumeStream(body as NodeJS.ReadableStream));

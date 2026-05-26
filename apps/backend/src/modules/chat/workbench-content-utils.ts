@@ -1,4 +1,6 @@
-const mediaAssetBaseUrl = "https://b5.bokr.com.cn";
+import { getPlayableMediaHost } from "./media-config.js";
+
+const mediaAssetBaseUrl = `https://${getPlayableMediaHost()}`;
 
 export function normalizeMediaAssetUrl(value: string) {
   const url = value.trim();

@@ -302,13 +302,9 @@ describe("MysqlWorkbenchService", () => {
 
   it("accepts confirmed voice playback URLs from the configured media host", async () => {
     vi.stubEnv("PLAYABLE_MEDIA_HOST", "media.example.com");
-    vi.resetModules();
-    const { MysqlWorkbenchService: MysqlWorkbenchServiceWithEnv } = await import(
-      "../../../src/modules/chat/workbench.service.js"
-    );
     const javaClient = createJavaClient();
     const playableVoiceExists = vi.fn().mockResolvedValue(true);
-    const service = new MysqlWorkbenchServiceWithEnv(
+    const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({

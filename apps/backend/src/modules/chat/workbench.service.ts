@@ -63,7 +63,6 @@ const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
 const POLL_SEAT_UPDATE_LIMIT = 200;
-const PLAYABLE_VOICE_HOST = getPlayableMediaHost();
 const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
 const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
@@ -1038,7 +1037,7 @@ function toPlayableVoiceCosObjectPath(rawUrl: string) {
 
   if (
     url.protocol === "https:" &&
-    url.hostname === PLAYABLE_VOICE_HOST &&
+    url.hostname === getPlayableMediaHost() &&
     isPlayableVoiceObjectPath(url.pathname)
   ) {
     return url.pathname.replace(/^\/+/, "");
@@ -1059,7 +1058,7 @@ function toExpectedPlayableVoiceCosObjectPath(rawUrl: string) {
     );
   }
 
-  if (url.protocol !== "https:" || url.hostname !== PLAYABLE_VOICE_HOST) {
+  if (url.protocol !== "https:" || url.hostname !== getPlayableMediaHost()) {
     throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
   }
 
@@ -1091,7 +1090,7 @@ function isPlayableVoiceObjectPath(pathname: string) {
 }
 
 function toPlayableVoiceAbsoluteUrl(objectPath: string) {
-  return `https://${PLAYABLE_VOICE_HOST}/${objectPath.replace(/^\/+/, "")}`;
+  return `https://${getPlayableMediaHost()}/${objectPath.replace(/^\/+/, "")}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

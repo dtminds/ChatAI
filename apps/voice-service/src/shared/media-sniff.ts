@@ -40,6 +40,10 @@ export function detectVoiceFormat(data: Uint8Array): DetectedVoiceFormat {
 }
 
 export function isAllowedSourceObject(key: string, inputPrefix = "s5/voice") {
+  if (key.split("/").includes("..")) {
+    return false;
+  }
+
   return key.startsWith(`${normalizePrefix(inputPrefix)}/`);
 }
 

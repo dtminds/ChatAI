@@ -243,16 +243,16 @@ export function VoiceMessageCard({
 
     clearLoadTimeout();
     audio.removeEventListener("pause", pausePlayback);
+    audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+    audio.removeEventListener("timeupdate", syncAudioProgress);
+    audio.removeEventListener("ended", finishPlayback);
+    audio.removeEventListener("error", failOrRejectPendingPlayback);
     isReleasingAudioRef.current = true;
     audio.pause();
     audio.src = "";
     try {
       audio.load();
     } catch {}
-    audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
-    audio.removeEventListener("timeupdate", syncAudioProgress);
-    audio.removeEventListener("ended", finishPlayback);
-    audio.removeEventListener("error", failOrRejectPendingPlayback);
     isReleasingAudioRef.current = false;
     audioRef.current = null;
     audioOriginalUrlRef.current = null;

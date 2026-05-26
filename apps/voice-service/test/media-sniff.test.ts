@@ -37,6 +37,7 @@ describe("voice media sniffing", () => {
     expect(isAllowedSourceObject("s5/voice/20260513/272/a.amr")).toBe(true);
     expect(isAllowedSourceObject("s5/playable-voice/20260513/272/a.wav")).toBe(false);
     expect(isAllowedSourceObject("s5/image/20260513/272/a.amr")).toBe(false);
+    expect(isAllowedSourceObject("s5/voice/../playable-voice/a.amr")).toBe(false);
   });
 
   it("accepts source objects under a configured input prefix", () => {

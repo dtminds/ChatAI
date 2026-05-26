@@ -62,6 +62,32 @@ export function collectQuestionImgs(message: ChatMessage) {
   return [];
 }
 
+/** FAQ「问题」默认取触发智能回复的客户消息，而非回复话术首行 */
+export function getSmartReplyCustomerQuestion(message: ChatMessage) {
+  switch (message.content.type) {
+    case "text":
+      return message.content.text.trim();
+    case "quote":
+      return message.content.text.trim();
+    case "voice":
+      return message.content.durationLabel
+        ? `[语音 ${message.content.durationLabel}]`
+        : "[语音]";
+    case "image":
+      return "[图片]";
+    case "video":
+      return message.content.alt?.trim() || "[视频]";
+    case "file":
+      return message.content.fileName?.trim() || "[文件]";
+    case "h5":
+      return message.content.title?.trim() || message.content.url?.trim() || "[链接]";
+    case "mini-program":
+      return message.content.title?.trim() || message.content.appName?.trim() || "[小程序]";
+    default:
+      return "";
+  }
+}
+
 export function isSmartReplyMediaContentType(contentType: MessageContent["type"]) {
   return contentType === "voice" || contentType === "image";
 }
@@ -255,6 +281,43 @@ export type SmartReplySendPayload = {
   recommendedAttachments: SmartReplyRecommendedAttachment[];
   selectedAttachmentIds: string[];
 };
+
+export function adaptKnowledgeSetOptions(
+  items: Array<{ id: string; name: string }>,
+) {
+  return items.map((item) => ({
+    id: item.id,
+    name: item.name,
+  }));
+}
+
+export function adaptKnowledgeDocOptions(
+  list: Array<{ id: string; name: string }>,
+) {
+  return adaptKnowledgeSetOptions(list);
+}
+
+export function buildSmartReplyKnowledgeFaqAddRequest(input: {
+  conversationId: string;
+  docId: string;
+  question: string;
+  answer: string;
+  similarQuestions: string[];
+  attachIds: string[];
+}) {
+  return {
+    conversationId: input.conversationId,
+    docId: input.docId,
+    list: [
+      {
+        answer: input.answer,
+        attachIds: input.attachIds.length > 0 ? input.attachIds.join(",") : "",
+        question: input.question,
+        similarQuestion: input.similarQuestions.join("\n"),
+      },
+    ],
+  };
+}
 
 export function adaptSmartReplyViolationResult(
   response: WorkbenchSmartReplyTextModerationResponse,

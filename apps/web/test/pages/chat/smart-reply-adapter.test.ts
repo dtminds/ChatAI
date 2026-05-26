@@ -10,6 +10,7 @@ import {
   collectSmartReplyMsgIds,
   createPendingSmartReplySuggestion,
   createTriggeredSmartReplySuggestion,
+  getSmartReplyCustomerQuestion,
   getSmartReplyLookupKey,
   getSmartReplyProcessingLabel,
   isSmartReplyReady,
@@ -275,6 +276,16 @@ describe("smart-reply-adapter", () => {
         slocalPath: undefined,
       },
     ]);
+  });
+
+  it("uses customer message text as FAQ question source", () => {
+    expect(
+      getSmartReplyCustomerQuestion({
+        content: { text: "  客户想了解敏感肌护理  ", type: "text" },
+        id: "msg-1",
+        role: "customer",
+      } as ChatMessage),
+    ).toBe("客户想了解敏感肌护理");
   });
 
   it("adapts text moderation response into violation result", () => {

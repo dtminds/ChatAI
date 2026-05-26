@@ -25,6 +25,12 @@ import type {
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplyPollResponse,
+  WorkbenchKnowledgePageRequest,
+  WorkbenchKnowledgePageResponse,
+  WorkbenchKnowledgeDocPageRequest,
+  WorkbenchKnowledgeDocPageResponse,
+  WorkbenchKnowledgeFaqAddRequest,
+  WorkbenchKnowledgeFaqAddResponse,
   WorkbenchSmartReplyTextModerationRequest,
   WorkbenchSmartReplyTextModerationResponse,
   WorkbenchSendMessagePayload,
@@ -344,6 +350,40 @@ export function createMemoryWorkbenchService() {
       _request: WorkbenchSmartReplyGeneralAnswerRequest,
     ): WorkbenchSmartReplyGeneralAnswerResponse {
       return { suggestion: null };
+    },
+    listKnowledgePage(
+      _subUserId: string,
+      _request: WorkbenchKnowledgePageRequest,
+    ): WorkbenchKnowledgePageResponse {
+      return {
+        list: [
+          {
+            id: "ks-default",
+            name: "默认知识集",
+          },
+        ],
+      };
+    },
+    listKnowledgeDocPage(
+      _subUserId: string,
+      _request: WorkbenchKnowledgeDocPageRequest,
+    ): WorkbenchKnowledgeDocPageResponse {
+      return {
+        list: [
+          {
+            id: "faq-default",
+            name: "默认 FAQ",
+          },
+        ],
+      };
+    },
+    addKnowledgeFaq(
+      _subUserId: string,
+      request: WorkbenchKnowledgeFaqAddRequest,
+    ): WorkbenchKnowledgeFaqAddResponse {
+      return {
+        docId: request.docId,
+      };
     },
     checkSmartReplyTextModeration(
       _subUserId: string,

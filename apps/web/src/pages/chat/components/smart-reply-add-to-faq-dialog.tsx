@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import { Add01Icon } from "@hugeicons/core-free-icons";
+import { Add01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,6 +19,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  adaptKnowledgeDocOptions,
+  adaptKnowledgeSetOptions,
+  buildSmartReplyKnowledgeFaqAddRequest,
+} from "@/pages/chat/api/smart-reply-adapter";
+import {
+  addSmartReplyKnowledgeFaq,
+  listKnowledgeDocPage,
+  listKnowledgePage,
+} from "@/pages/chat/api/workbench-gateway";
+import { isRequestError } from "@/lib/request";
+import {
+  SmartReplyRecommendedAttachmentsSection,
+  type SmartReplyRecommendedAttachment,
+} from "@/pages/chat/components/smart-reply-recommended-attachments";
 
 export type SmartReplyFaqOption = {
   id: string;
@@ -35,48 +51,128 @@ export type SmartReplyAddToFaqPayload = {
 export type SmartReplyAddToFaqDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  conversationId?: string;
   initialQuestion?: string;
   initialAnswer?: string;
-  knowledgeSets?: SmartReplyFaqOption[];
-  faqOptions?: SmartReplyFaqOption[];
-  onSave?: (payload: SmartReplyAddToFaqPayload) => void;
+  recommendedAttachments?: SmartReplyRecommendedAttachment[];
+  isRecommendedAttachmentsLoading?: boolean;
+  initialSelectedAttachmentIds?: string[];
+  onSaved?: () => void;
 };
-
-const DEMO_KNOWLEDGE_SETS: SmartReplyFaqOption[] = [
-  { id: "ks-default", name: "默认知识集" },
-];
-
-const DEMO_FAQ_OPTIONS: SmartReplyFaqOption[] = [
-  { id: "faq-default", name: "默认 FAQ" },
-];
 
 export function SmartReplyAddToFaqDialog({
   open,
   onOpenChange,
+  conversationId,
   initialQuestion = "",
   initialAnswer = "",
-  knowledgeSets = DEMO_KNOWLEDGE_SETS,
-  faqOptions = DEMO_FAQ_OPTIONS,
-  onSave,
+  recommendedAttachments = [],
+  isRecommendedAttachmentsLoading = false,
+  initialSelectedAttachmentIds = [],
+  onSaved,
 }: SmartReplyAddToFaqDialogProps) {
-  const [knowledgeSetId, setKnowledgeSetId] = useState(
-    () => knowledgeSets[0]?.id ?? "",
-  );
-  const [faqId, setFaqId] = useState(() => faqOptions[0]?.id ?? "");
+  const [knowledgeSets, setKnowledgeSets] = useState<SmartReplyFaqOption[]>([]);
+  const [isKnowledgeSetsLoading, setIsKnowledgeSetsLoading] = useState(false);
+  const [knowledgeSetId, setKnowledgeSetId] = useState("");
+  const [faqOptions, setFaqOptions] = useState<SmartReplyFaqOption[]>([]);
+  const [isFaqsLoading, setIsFaqsLoading] = useState(false);
+  const [faqId, setFaqId] = useState("");
   const [question, setQuestion] = useState(initialQuestion);
   const [answer, setAnswer] = useState(initialAnswer);
   const [similarQuestions, setSimilarQuestions] = useState<string[]>([""]);
+  const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<string[]>(
+    initialSelectedAttachmentIds,
+  );
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!open) {
       return;
     }
-    setKnowledgeSetId(knowledgeSets[0]?.id ?? "");
-    setFaqId(faqOptions[0]?.id ?? "");
+
     setQuestion(initialQuestion);
     setAnswer(initialAnswer);
     setSimilarQuestions([""]);
-  }, [faqOptions, initialAnswer, initialQuestion, knowledgeSets, open]);
+    setSelectedAttachmentIds(initialSelectedAttachmentIds);
+    setKnowledgeSets([]);
+    setKnowledgeSetId("");
+    setFaqOptions([]);
+    setFaqId("");
+
+    if (!conversationId) {
+      setKnowledgeSets([]);
+      setKnowledgeSetId("");
+      setIsKnowledgeSetsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsKnowledgeSetsLoading(true);
+
+    void listKnowledgePage(conversationId)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        const options = adaptKnowledgeSetOptions(response.list);
+        setKnowledgeSets(options);
+        setKnowledgeSetId(options[0]?.id ?? "");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setKnowledgeSets([]);
+          setKnowledgeSetId("");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsKnowledgeSetsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, initialAnswer, initialQuestion, initialSelectedAttachmentIds, open]);
+
+  useEffect(() => {
+    if (!open || !conversationId || !knowledgeSetId) {
+      setFaqOptions([]);
+      setFaqId("");
+      setIsFaqsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsFaqsLoading(true);
+
+    void listKnowledgeDocPage(conversationId, knowledgeSetId)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        const options = adaptKnowledgeDocOptions(response.list);
+        setFaqOptions(options);
+        setFaqId(options[0]?.id ?? "");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFaqOptions([]);
+          setFaqId("");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsFaqsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, knowledgeSetId, open]);
 
   const handleAddSimilarQuestion = useCallback(() => {
     setSimilarQuestions((current) => [...current, ""]);
@@ -88,30 +184,63 @@ export function SmartReplyAddToFaqDialog({
     );
   }, []);
 
+  const handleToggleAttachment = useCallback((attachmentId: string, checked: boolean) => {
+    setSelectedAttachmentIds((current) => {
+      if (checked) {
+        return current.includes(attachmentId)
+          ? current
+          : [...current, attachmentId];
+      }
+
+      return current.filter((id) => id !== attachmentId);
+    });
+  }, []);
+
   const handleSave = () => {
     const trimmedQuestion = question.trim();
     const trimmedAnswer = answer.trim();
-    if (!knowledgeSetId || !faqId || !trimmedQuestion || !trimmedAnswer) {
+
+    if (!conversationId || !faqId || !trimmedQuestion || !trimmedAnswer || isSaving) {
       return;
     }
 
-    onSave?.({
-      knowledgeSetId,
-      faqId,
-      question: trimmedQuestion,
-      similarQuestions: similarQuestions
-        .map((item) => item.trim())
-        .filter(Boolean),
-      answer: trimmedAnswer,
-    });
-    onOpenChange(false);
+    setIsSaving(true);
+
+    void addSmartReplyKnowledgeFaq(
+      buildSmartReplyKnowledgeFaqAddRequest({
+        attachIds: selectedAttachmentIds,
+        answer: trimmedAnswer,
+        conversationId,
+        docId: faqId,
+        question: trimmedQuestion,
+        similarQuestions: similarQuestions
+          .map((item) => item.trim())
+          .filter(Boolean),
+      }),
+    )
+      .then(() => {
+        toast.success("已添加至 FAQ");
+        onSaved?.();
+        onOpenChange(false);
+      })
+      .catch((error) => {
+        toast.error(
+          isRequestError(error) ? error.message : "添加至 FAQ 失败",
+        );
+      })
+      .finally(() => {
+        setIsSaving(false);
+      });
   };
 
   const canSave =
-    Boolean(knowledgeSetId) &&
+    Boolean(conversationId) &&
     Boolean(faqId) &&
     Boolean(question.trim()) &&
-    Boolean(answer.trim());
+    Boolean(answer.trim()) &&
+    !isKnowledgeSetsLoading &&
+    !isFaqsLoading &&
+    !isSaving;
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -128,14 +257,18 @@ export function SmartReplyAddToFaqDialog({
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-4">
           <FaqSelectField
+            isLoading={isKnowledgeSetsLoading}
             label="知识集"
+            loadingLabel="正在加载知识集"
             onValueChange={setKnowledgeSetId}
             options={knowledgeSets}
             required
             value={knowledgeSetId}
           />
           <FaqSelectField
+            isLoading={isFaqsLoading}
             label="选择FAQ"
+            loadingLabel="正在加载 FAQ"
             onValueChange={setFaqId}
             options={faqOptions}
             required
@@ -159,6 +292,20 @@ export function SmartReplyAddToFaqDialog({
             rows={6}
             value={answer}
           />
+          {isRecommendedAttachmentsLoading ? (
+            <SmartReplyRecommendedAttachmentsSection
+              isLoading
+              onSelectedAttachmentIdsChange={() => undefined}
+              recommendedAttachments={[]}
+              selectedAttachmentIds={[]}
+            />
+          ) : recommendedAttachments.length > 0 ? (
+            <SmartReplyRecommendedAttachmentsSection
+              onSelectedAttachmentIdsChange={handleToggleAttachment}
+              recommendedAttachments={recommendedAttachments}
+              selectedAttachmentIds={selectedAttachmentIds}
+            />
+          ) : null}
         </div>
 
         <DialogFooter className="gap-2 px-6 py-4 sm:justify-end">
@@ -176,7 +323,7 @@ export function SmartReplyAddToFaqDialog({
             onClick={handleSave}
             type="button"
           >
-            保存
+            {isSaving ? "保存中" : "保存"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -190,25 +337,41 @@ function FaqSelectField({
   onValueChange,
   options,
   required = false,
+  isLoading = false,
+  loadingLabel = "正在加载",
 }: {
   label: string;
   value: string;
   onValueChange: (value: string) => void;
   options: SmartReplyFaqOption[];
   required?: boolean;
+  isLoading?: boolean;
+  loadingLabel?: string;
 }) {
   const fieldId = useId();
 
   return (
     <div className="space-y-2">
       <FaqFieldLabel htmlFor={fieldId} label={label} required={required} />
-      <Select onValueChange={onValueChange} value={value}>
+      <Select disabled={isLoading || options.length === 0} onValueChange={onValueChange} value={value}>
         <SelectTrigger
           aria-label={label}
           className="h-9 w-full rounded-[8px] px-3 text-[13px] shadow-none"
           id={fieldId}
         >
-          <SelectValue placeholder="请选择" />
+          {isLoading ? (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <HugeiconsIcon
+                className="animate-spin"
+                icon={Loading03Icon}
+                size={14}
+                strokeWidth={2}
+              />
+              {loadingLabel}
+            </span>
+          ) : (
+            <SelectValue placeholder="请选择" />
+          )}
         </SelectTrigger>
         <SelectContent>
           {options.map((option) => (

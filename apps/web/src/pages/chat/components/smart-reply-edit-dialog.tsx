@@ -2,15 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Cancel01Icon,
   FileEmpty01Icon,
-  Image01Icon,
-  Link04Icon,
   Loading03Icon,
-  PlayCircle02Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -21,20 +17,13 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   SmartReplyAddToFaqDialog,
-  type SmartReplyAddToFaqPayload,
 } from "@/pages/chat/components/smart-reply-add-to-faq-dialog";
-import { cn } from "@/lib/utils";
+import {
+  SmartReplyRecommendedAttachmentsSection,
+  type SmartReplyRecommendedAttachment,
+} from "@/pages/chat/components/smart-reply-recommended-attachments";
 
-export type SmartReplyRecommendedAttachment = {
-  id: string;
-  fileName: string;
-  fileType: string;
-  defaultSelected?: boolean;
-  localPath?: string;
-  slocalPath?: string;
-  content?: string;
-  coverUrl?: string;
-};
+export type { SmartReplyRecommendedAttachment };
 
 export type SmartReplyViolationResult = {
   categoryLabel: string;
@@ -45,6 +34,8 @@ export type SmartReplyEditDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialContent: string;
+  conversationId?: string;
+  faqInitialQuestion?: string;
   recommendedAttachments?: SmartReplyRecommendedAttachment[];
   isRecommendedAttachmentsLoading?: boolean;
   refAttachIds?: string[];
@@ -52,7 +43,6 @@ export type SmartReplyEditDialogProps = {
     content: string;
     selectedAttachmentIds: string[];
   }) => void;
-  onAddToFaq?: (payload: SmartReplyAddToFaqPayload) => void;
   onCheckViolations?: (content: string) => Promise<SmartReplyViolationResult | null>;
 };
 
@@ -64,10 +54,11 @@ export function SmartReplyEditDialog({
   open,
   onOpenChange,
   initialContent,
+  conversationId,
+  faqInitialQuestion: faqInitialQuestionProp,
   recommendedAttachments: recommendedAttachmentsProp,
   isRecommendedAttachmentsLoading = false,
   onSend,
-  onAddToFaq,
   onCheckViolations,
   refAttachIds,
 }: SmartReplyEditDialogProps) {
@@ -104,10 +95,15 @@ export function SmartReplyEditDialog({
     );
   }, [initialContent, open, recommendedAttachments]);
 
-  const faqInitialQuestion = useMemo(
-    () => draftContent.split("\n").find((line) => line.trim())?.trim() ?? draftContent.trim(),
-    [draftContent],
-  );
+  const faqInitialQuestion = useMemo(() => {
+    const customerQuestion = faqInitialQuestionProp?.trim();
+
+    if (customerQuestion) {
+      return customerQuestion;
+    }
+
+    return draftContent.split("\n").find((line) => line.trim())?.trim() ?? draftContent.trim();
+  }, [draftContent, faqInitialQuestionProp]);
 
   const highlightedWords = useMemo(
     () => violationResult?.words ?? [],
@@ -182,9 +178,6 @@ export function SmartReplyEditDialog({
     onOpenChange(false);
   };
 
-  const selectedCount = selectedAttachmentIds.length;
-  const totalAttachments = recommendedAttachments.length;
-
   return (
     <>
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -252,38 +245,21 @@ export function SmartReplyEditDialog({
           ) : null}
 
           {isRecommendedAttachmentsLoading ? (
-            <section className="mt-[24px]">
-              <p className="flex items-center gap-1 text-[13px] leading-[22px] text-[#3d3d3d]">
-                <HugeiconsIcon
-                  className="animate-spin"
-                  icon={Loading03Icon}
-                  size={14}
-                  strokeWidth={2}
-                />
-                正在加载推荐附件
-              </p>
-            </section>
+            <SmartReplyRecommendedAttachmentsSection
+              className="mt-[24px]"
+              isLoading
+              onSelectedAttachmentIdsChange={() => undefined}
+              recommendedAttachments={[]}
+              selectedAttachmentIds={[]}
+            />
+          ) : recommendedAttachments.length > 0 ? (
+            <SmartReplyRecommendedAttachmentsSection
+              className="mt-[24px]"
+              onSelectedAttachmentIdsChange={handleToggleAttachment}
+              recommendedAttachments={recommendedAttachments}
+              selectedAttachmentIds={selectedAttachmentIds}
+            />
           ) : null}
-          {!isRecommendedAttachmentsLoading && recommendedAttachments.length > 0 ? (
-            <section className="mt-[24px]">
-              <p className="text-[13px] leading-[22px] ">
-                <span aria-hidden className="text-[#3d3d3d]">📎</span> 推荐附件：<span className="text-[#999]">请按需勾选需要发送的附件 (
-                  {selectedCount}/{totalAttachments})</span>
-              </p>
-              <ul>
-                {recommendedAttachments.map((attachment) => (
-                  <RecommendedAttachmentRow
-                    attachment={attachment}
-                    checked={selectedAttachmentIds.includes(attachment.id)}
-                    key={attachment.id}
-                    onCheckedChange={(checked) =>
-                      handleToggleAttachment(attachment.id, checked)
-                    }
-                  />
-                ))}
-              </ul>
-            </section>
-          ) : null} 
         </div>
 
         <DialogFooter className="gap-2 py-4 sm:justify-end">
@@ -307,11 +283,15 @@ export function SmartReplyEditDialog({
       </DialogContent>
     </Dialog>
     <SmartReplyAddToFaqDialog
+      conversationId={conversationId}
       initialAnswer={draftContent.trim()}
       initialQuestion={faqInitialQuestion}
+      initialSelectedAttachmentIds={selectedAttachmentIds}
+      isRecommendedAttachmentsLoading={isRecommendedAttachmentsLoading}
       onOpenChange={setIsFaqDialogOpen}
-      onSave={onAddToFaq}
+      onSaved={() => onOpenChange(false)}
       open={isFaqDialogOpen}
+      recommendedAttachments={recommendedAttachments}
     />
     </>
   );
@@ -440,167 +420,6 @@ function ViolationResultPanel({
       </div>
     </section>
   );
-}
-
-const ATTACHMENT_MEDIA_CDN_PREFIX = "https://b1.dtminds.com";
-
-const ATTACHMENT_FILE_TYPE_LABELS: Record<number, string> = {
-  1: "图片",
-  2: "音频",
-  3: "视频",
-  4: "图文",
-  5: "文件",
-  6: "文本",
-  7: "小程序",
-};
-
-type RecommendedAttachmentUiType = "image" | "video" | "link" | "file";
-
-function parseAttachmentFileType(fileType: string) {
-  const parsed = Number.parseInt(fileType, 10);
-
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function getAttachmentUiType(fileType: string): RecommendedAttachmentUiType {
-  switch (parseAttachmentFileType(fileType)) {
-    case 1:
-      return "image";
-    case 3:
-      return "video";
-    case 4:
-    case 7:
-      return "link";
-    default:
-      return "file";
-  }
-}
-
-function getAttachmentTypeLabel(fileType: string) {
-  const numericType = parseAttachmentFileType(fileType);
-
-  return (
-    (numericType != null ? ATTACHMENT_FILE_TYPE_LABELS[numericType] : undefined) ??
-    "附件"
-  );
-}
-
-function resolveAttachmentMediaUrl(path?: string) {
-  const trimmed = path?.trim();
-
-  if (!trimmed) {
-    return undefined;
-  }
-
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-    return trimmed;
-  }
-
-  return ATTACHMENT_MEDIA_CDN_PREFIX + trimmed;
-}
-
-function getAttachmentPreviewUrl(attachment: SmartReplyRecommendedAttachment) {
-  const uiType = getAttachmentUiType(attachment.fileType);
-
-  if (uiType === "image") {
-    return (
-      resolveAttachmentMediaUrl(attachment.coverUrl) ??
-      resolveAttachmentMediaUrl(attachment.localPath) ??
-      resolveAttachmentMediaUrl(attachment.slocalPath)
-    );
-  }
-
-  if (uiType === "video") {
-    return resolveAttachmentMediaUrl(attachment.coverUrl);
-  }
-
-  return undefined;
-}
-
-function RecommendedAttachmentRow({
-  attachment,
-  checked,
-  onCheckedChange,
-}: {
-  attachment: SmartReplyRecommendedAttachment;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-}) {
-  const typeLabel = getAttachmentTypeLabel(attachment.fileType);
-
-  return (
-    <li className="flex items-center gap-[16px] rounded-[6px] px-[22px] py-[16px] border border-[#EEEFF0] mt-[12px]">
-      <Checkbox
-        aria-label={`选择附件 ${attachment.fileName}`}
-        checked={checked}
-        onCheckedChange={(value) => onCheckedChange(value === true)}
-      />
-      <RecommendedAttachmentPreview attachment={attachment} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] leading-[22px] text-[#101419]">
-          {attachment.fileName}
-        </p>
-        <p className="text-[12px] leading-5 text-[#267FF0]">{typeLabel}</p>
-      </div>
-    </li>
-  );
-}
-
-function RecommendedAttachmentPreview({
-  attachment,
-}: {
-  attachment: SmartReplyRecommendedAttachment;
-}) {
-  const uiType = getAttachmentUiType(attachment.fileType);
-  const previewUrl = getAttachmentPreviewUrl(attachment);
-
-  if (uiType === "image" && previewUrl) {
-    return (
-      <img
-        alt=""
-        className="size-10 shrink-0 rounded-[6px] object-cover"
-        src={previewUrl}
-      />
-    );
-  }
-
-  const icon = getAttachmentTypeIcon(uiType);
-  return (
-    <div
-      className={cn(
-        "flex size-10 shrink-0 items-center justify-center rounded-[6px]",
-        getAttachmentPreviewTone(uiType),
-      )}
-    >
-      <HugeiconsIcon icon={icon} size={18} strokeWidth={1.8} />
-    </div>
-  );
-}
-
-function getAttachmentTypeIcon(type: RecommendedAttachmentUiType) {
-  switch (type) {
-    case "image":
-      return Image01Icon;
-    case "video":
-      return PlayCircle02Icon;
-    case "link":
-      return Link04Icon;
-    default:
-      return FileEmpty01Icon;
-  }
-}
-
-function getAttachmentPreviewTone(type: RecommendedAttachmentUiType) {
-  switch (type) {
-    case "video":
-      return "bg-[#F2F3F5] text-[#4E5969]";
-    case "file":
-      return "bg-[#FFF1F0] text-[#F53F3F]";
-    case "link":
-      return "bg-[#F2F3F5] text-[#86909C]";
-    default:
-      return "bg-[#F2F3F5] text-[#4E5969]";
-  }
 }
 
 function splitByHighlights(

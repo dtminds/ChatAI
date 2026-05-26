@@ -3,10 +3,16 @@ import type {
   WorkbenchSmartReplyAttachmentsResponse,
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollResponse,
+  WorkbenchKnowledgePageResponse,
+  WorkbenchKnowledgeDocPageResponse,
+  WorkbenchKnowledgeFaqAddResponse,
   WorkbenchSmartReplyTextModerationResponse,
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
 import { mapJavaAttachmentList } from "./attachment-mappers.js";
+import { mapJavaKnowledgePage } from "./knowledge-mappers.js";
+import { mapJavaKnowledgeDocPage } from "./knowledge-doc-mappers.js";
+import { mapJavaKnowledgeFaqAdd } from "./knowledge-faq-mappers.js";
 import { mapJavaTextModerationPlus } from "./text-moderation-mappers.js";
 import {
   BadGatewayError,
@@ -122,6 +128,28 @@ export type WorkbenchJavaClient = {
     content: string;
     uid: number;
   }): Promise<WorkbenchSmartReplyTextModerationResponse>;
+  listKnowledgePage(input: {
+    page: number;
+    pageSize: number;
+    uid: number;
+  }): Promise<WorkbenchKnowledgePageResponse>;
+  listKnowledgeDocPage(input: {
+    knowledgeId: string;
+    page: number;
+    pageSize: number;
+    uid: number;
+  }): Promise<WorkbenchKnowledgeDocPageResponse>;
+  addKnowledgeFaq(input: {
+    docId: string;
+    list: Array<{
+      answer: string;
+      attachIds: string;
+      question: string;
+      similarQuestion: string;
+    }>;
+    source: number;
+    uid: number;
+  }): Promise<WorkbenchKnowledgeFaqAddResponse>;
   createConversation(input: {
     chatType: number;
     platform: number;
@@ -242,9 +270,51 @@ export function createWorkbenchJavaClient(
         },
         logger,
         "text-moderation-plus",
-      ).then((data) => {
-       return mapJavaTextModerationPlus(data);
-      });
+      ).then((data) => mapJavaTextModerationPlus(data));
+    },
+    listKnowledgePage(input) {
+      return postJavaPageEnvelope(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-knowledge/page",
+        {
+          page: input.page,
+          pageSize: input.pageSize,
+          uid: input.uid,
+        },
+        logger,
+        "list-knowledge-page",
+      ).then((response) => mapJavaKnowledgePage(response));
+    },
+    listKnowledgeDocPage(input) {
+      return postJavaPageEnvelope(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-knowledge-doc/page",
+        {
+          knowledgeId: input.knowledgeId,
+          page: input.page,
+          pageSize: input.pageSize,
+          uid: input.uid,
+        },
+        logger,
+        "list-knowledge-doc-page",
+      ).then((response) => mapJavaKnowledgeDocPage(response));
+    },
+    addKnowledgeFaq(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-knowledge-faq/add",
+        {
+          docId: input.docId,
+          list: input.list,
+          source: input.source,
+          uid: input.uid,
+        },
+        logger,
+        "add-knowledge-faq",
+      ).then((data) => mapJavaKnowledgeFaqAdd(data));
     },
     createConversation(input) {
       return postJavaEnvelope<number | string>(
@@ -532,6 +602,62 @@ async function postJavaEnvelope<T>(
   return response.data as T;
 }
 
+async function postJavaPageEnvelope(
+  baseUrl: string | undefined,
+  token: string | undefined,
+  path: string,
+  body: unknown,
+  logger: AppLogger,
+  operation: string,
+) {
+  const response = await postJava<JavaApiResponse<unknown> & Record<string, unknown>>(
+    baseUrl,
+    token,
+    path,
+    body,
+    logger,
+    operation,
+  );
+
+  if (!isJavaEnvelopeSuccessful(response)) {
+    logger.error(
+      {
+        ...buildJavaLogContext(body),
+        error: response.error,
+        errorMsg: response.errorMsg,
+        requestId: getLoggerRequestId(logger),
+        operation,
+        path,
+        success: response.success,
+      },
+      "Java 内部工作台接口业务失败",
+    );
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_FAILED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+      {
+        error: response.error,
+      },
+    );
+  }
+
+  logger.info(
+    {
+      ...buildJavaLogContext(body),
+      count: response.count,
+      list: response.list,
+      listLength: Array.isArray(response.list) ? response.list.length : undefined,
+      operation,
+      path,
+      requestId: getLoggerRequestId(logger),
+      response,
+    },
+    "Java 分页接口原始响应",
+  );
+
+  return response;
+}
+
 function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
   if (response.success === true) {
     return true;
@@ -563,6 +689,7 @@ function buildJavaLogContext(body: unknown) {
     "thirdGroupId",
     "thirdUserId",
     "uid",
+    "knowledgeId",
   ]) {
     if (body[key] != null) {
       context[key] = body[key];

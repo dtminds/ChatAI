@@ -16,6 +16,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
+  getSmartReplyCustomerQuestion,
   isSmartReplyMediaContentType,
   resolveSmartReplyProcessingLabel,
   SMART_REPLY_BUSY_TIMEOUT_MS,
@@ -176,23 +177,21 @@ export function SmartReplyMessageAnchor({
   const [isRecommendedAttachmentsLoading, setIsRecommendedAttachmentsLoading] =
     useState(false);
 
-  if (!suggestion || dismissed) {
-    return null;
-  }
-
-  const resolvedSuggestion = suggestion;
-  const displayContent = resolvedSuggestion.content;
-  const isThinking = resolvedSuggestion.status === "thinking";
-  const isProcessing = resolvedSuggestion.status === "processing";
+  const isThinking = suggestion?.status === "thinking";
+  const isProcessing = suggestion?.status === "processing";
   const isBusy = isThinking || isProcessing;
   const processingLabel = useSmartReplyProcessingLabel(
     message.content.type,
-    resolvedSuggestion.status,
+    suggestion?.status,
   );
 
-  useSmartReplyBusyTimeout(isBusy, onBusyTimeout, resolvedSuggestion.busyRequestId);
+  useSmartReplyBusyTimeout(
+    Boolean(suggestion) && !dismissed && isBusy,
+    onBusyTimeout,
+    suggestion?.busyRequestId,
+  );
 
-  const refAttachIds = resolvedSuggestion.refAttachIds;
+  const refAttachIds = suggestion?.refAttachIds;
   const refAttachIdsKey = refAttachIds?.join(",") ?? "";
 
   useEffect(() => {
@@ -246,10 +245,17 @@ export function SmartReplyMessageAnchor({
     handleEditDialogOpenChange(true);
   }, [handleEditDialogOpenChange]);
 
-  const handleDismiss = () => {
+  const handleDismiss = useCallback(() => {
     setDismissed(true);
     setIsEditDialogOpen(false);
-  };
+  }, []);
+
+  if (!suggestion || dismissed) {
+    return null;
+  }
+
+  const resolvedSuggestion = suggestion;
+  const displayContent = resolvedSuggestion.content;
 
   return (
     <>
@@ -292,6 +298,8 @@ export function SmartReplyMessageAnchor({
         }
       />
       <SmartReplyEditDialog
+        conversationId={conversationId}
+        faqInitialQuestion={getSmartReplyCustomerQuestion(message)}
         initialContent={displayContent}
         isRecommendedAttachmentsLoading={isRecommendedAttachmentsLoading}
         onCheckViolations={

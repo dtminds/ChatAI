@@ -22,6 +22,7 @@ import type {
   WorkbenchMessageQueryByIdsRequest,
   WorkbenchMessageUpdateEventDto,
   WorkbenchSmartReplyPollRequest,
+  WorkbenchKnowledgeFaqAddRequest,
 } from "@chatai/contracts";
 import {
   adaptSmartReplySuggestions,
@@ -531,6 +532,26 @@ export async function checkSmartReplyTextModeration(
     conversationId,
     content,
   });
+}
+
+export async function listKnowledgePage(conversationId: string) {
+  return getWorkbenchService().listKnowledgePage({ conversationId });
+}
+
+export async function listKnowledgeDocPage(
+  conversationId: string,
+  knowledgeId: string,
+) {
+  return getWorkbenchService().listKnowledgeDocPage({
+    conversationId,
+    knowledgeId,
+  });
+}
+
+export async function addSmartReplyKnowledgeFaq(
+  request: WorkbenchKnowledgeFaqAddRequest,
+) {
+  return getWorkbenchService().addSmartReplyKnowledgeFaq(request);
 }
 
 export async function listSmartReplyAttachments(

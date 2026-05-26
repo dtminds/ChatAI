@@ -6,6 +6,9 @@ import type {
   WorkbenchSmartReplyAttachmentsRequest,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyPollRequest,
+  WorkbenchKnowledgePageRequest,
+  WorkbenchKnowledgeDocPageRequest,
+  WorkbenchKnowledgeFaqAddRequest,
   WorkbenchSmartReplyTextModerationRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
@@ -90,6 +93,28 @@ const SmartReplyAttachmentsBodySchema = Type.Object({
 const SmartReplyTextModerationBodySchema = Type.Object({
   conversationId: Type.String(),
   content: Type.String(),
+});
+
+const SmartReplyKnowledgePageBodySchema = Type.Object({
+  conversationId: Type.String(),
+});
+
+const SmartReplyKnowledgeDocPageBodySchema = Type.Object({
+  conversationId: Type.String(),
+  knowledgeId: Type.String(),
+});
+
+const SmartReplyKnowledgeFaqAddItemBodySchema = Type.Object({
+  answer: Type.String(),
+  attachIds: Type.String(),
+  question: Type.String(),
+  similarQuestion: Type.String(),
+});
+
+const SmartReplyKnowledgeFaqAddBodySchema = Type.Object({
+  conversationId: Type.String(),
+  docId: Type.String(),
+  list: Type.Array(SmartReplyKnowledgeFaqAddItemBodySchema, { minItems: 1 }),
 });
 
 const WorkbenchMessageContentTypeSchema = Type.Union([
@@ -576,6 +601,51 @@ export async function registerChatRoutes(app: FastifyInstance) {
       getWorkbenchService(app, request).checkSmartReplyTextModeration(
         getSubUserId(request),
         request.body satisfies WorkbenchSmartReplyTextModerationRequest,
+      ),
+  );
+
+  app.post<{ Body: Static<typeof SmartReplyKnowledgePageBodySchema> }>(
+    "/api/server/smart-reply/knowledge-page",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartReplyKnowledgePageBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).listKnowledgePage(
+        getSubUserId(request),
+        request.body satisfies WorkbenchKnowledgePageRequest,
+      ),
+  );
+
+  app.post<{ Body: Static<typeof SmartReplyKnowledgeDocPageBodySchema> }>(
+    "/api/server/smart-reply/knowledge-doc-page",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartReplyKnowledgeDocPageBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).listKnowledgeDocPage(
+        getSubUserId(request),
+        request.body satisfies WorkbenchKnowledgeDocPageRequest,
+      ),
+  );
+
+  app.post<{ Body: Static<typeof SmartReplyKnowledgeFaqAddBodySchema> }>(
+    "/api/server/smart-reply/knowledge-faq/add",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartReplyKnowledgeFaqAddBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).addKnowledgeFaq(
+        getSubUserId(request),
+        request.body satisfies WorkbenchKnowledgeFaqAddRequest,
       ),
   );
 

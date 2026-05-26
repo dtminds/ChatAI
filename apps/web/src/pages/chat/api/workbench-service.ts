@@ -38,6 +38,12 @@ import {
   type WorkbenchSmartReplyGeneralAnswerResponse,
   type WorkbenchSmartReplyPollRequest,
   type WorkbenchSmartReplyPollResponse,
+  type WorkbenchKnowledgePageRequest,
+  type WorkbenchKnowledgePageResponse,
+  type WorkbenchKnowledgeDocPageRequest,
+  type WorkbenchKnowledgeDocPageResponse,
+  type WorkbenchKnowledgeFaqAddRequest,
+  type WorkbenchKnowledgeFaqAddResponse,
   type WorkbenchSmartReplyTextModerationRequest,
   type WorkbenchSmartReplyTextModerationResponse,
   type WorkbenchMessageUpdateEventDto,
@@ -115,6 +121,15 @@ export type WorkbenchService = {
   checkSmartReplyTextModeration: (
     request: WorkbenchSmartReplyTextModerationRequest,
   ) => Promise<WorkbenchSmartReplyTextModerationResponse>;
+  listKnowledgePage: (
+    request: WorkbenchKnowledgePageRequest,
+  ) => Promise<WorkbenchKnowledgePageResponse>;
+  listKnowledgeDocPage: (
+    request: WorkbenchKnowledgeDocPageRequest,
+  ) => Promise<WorkbenchKnowledgeDocPageResponse>;
+  addSmartReplyKnowledgeFaq: (
+    request: WorkbenchKnowledgeFaqAddRequest,
+  ) => Promise<WorkbenchKnowledgeFaqAddResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
@@ -530,6 +545,31 @@ export function createMockWorkbenchService(): WorkbenchService {
         },
       };
     },
+    async listKnowledgePage() {
+      return {
+        list: [
+          {
+            id: "ks-default",
+            name: "默认知识集",
+          },
+        ],
+      };
+    },
+    async listKnowledgeDocPage() {
+      return {
+        list: [
+          {
+            id: "faq-default",
+            name: "默认 FAQ",
+          },
+        ],
+      };
+    },
+    async addSmartReplyKnowledgeFaq(request) {
+      return {
+        docId: request.docId,
+      };
+    },
     async sendMessage(payload) {
       const conversation = findConversation(state, payload.conversationId);
 
@@ -772,6 +812,24 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchSmartReplyTextModerationResponse,
         WorkbenchSmartReplyTextModerationRequest
       >("/server/smart-reply/text-moderation", request);
+    },
+    listKnowledgePage(request) {
+      return http.post<WorkbenchKnowledgePageResponse, WorkbenchKnowledgePageRequest>(
+        "/server/smart-reply/knowledge-page",
+        request,
+      );
+    },
+    listKnowledgeDocPage(request) {
+      return http.post<WorkbenchKnowledgeDocPageResponse, WorkbenchKnowledgeDocPageRequest>(
+        "/server/smart-reply/knowledge-doc-page",
+        request,
+      );
+    },
+    addSmartReplyKnowledgeFaq(request) {
+      return http.post<WorkbenchKnowledgeFaqAddResponse, WorkbenchKnowledgeFaqAddRequest>(
+        "/server/smart-reply/knowledge-faq/add",
+        request,
+      );
     },
     sendMessage(payload) {
       return http.post<WorkbenchSendMessageResponse, WorkbenchSendMessagePayload>(

@@ -766,6 +766,167 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts knowledge page requests with page, pageSize and uid", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 1,
+          error: 0,
+          list: [
+            {
+              id: 101,
+              name: "护肤知识集",
+            },
+          ],
+          page: 1,
+          pageSize: 9999,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.listKnowledgePage({
+      page: 1,
+      pageSize: 9999,
+      uid: 9001,
+    });
+
+    expect(response).toEqual({
+      list: [
+        {
+          id: "101",
+          name: "护肤知识集",
+        },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-knowledge/page",
+      expect.objectContaining({
+        body: JSON.stringify({
+          page: 1,
+          pageSize: 9999,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts knowledge doc page requests with knowledgeId, page, pageSize and uid", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 1,
+          error: 0,
+          list: [
+            {
+              id: 1001,
+              title: "敏感肌如何护理",
+            },
+          ],
+          page: 1,
+          pageSize: 9999,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.listKnowledgeDocPage({
+      knowledgeId: "W7zU2fWkVSp65OTAjDd3-w",
+      page: 1,
+      pageSize: 9999,
+      uid: 9001,
+    });
+
+    expect(response).toEqual({
+      list: [
+        {
+          id: "1001",
+          name: "敏感肌如何护理",
+        },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-knowledge-doc/page",
+      expect.objectContaining({
+        body: JSON.stringify({
+          knowledgeId: "W7zU2fWkVSp65OTAjDd3-w",
+          page: 1,
+          pageSize: 9999,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts knowledge faq add requests with docId, source, uid and list", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: "zJd3NJJ8B9PmN2vpdbmUKg",
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.addKnowledgeFaq({
+      docId: "zJd3NJJ8B9PmN2vpdbmUKg",
+      list: [
+        {
+          answer: "测试答案",
+          attachIds: "101,102",
+          question: "测试问题",
+          similarQuestion: "相似1\n相似2",
+        },
+      ],
+      source: 1,
+      uid: 9001,
+    });
+
+    expect(response).toEqual({
+      docId: "zJd3NJJ8B9PmN2vpdbmUKg",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-knowledge-faq/add",
+      expect.objectContaining({
+        body: JSON.stringify({
+          docId: "zJd3NJJ8B9PmN2vpdbmUKg",
+          list: [
+            {
+              answer: "测试答案",
+              attachIds: "101,102",
+              question: "测试问题",
+              similarQuestion: "相似1\n相似2",
+            },
+          ],
+          source: 1,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("calls text moderation plus with content and type", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

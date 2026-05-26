@@ -351,6 +351,53 @@ export type WorkbenchSmartReplyTextModerationResponse = {
   result: WorkbenchSmartReplyTextModerationDto | null;
 };
 
+export type WorkbenchKnowledgeSetDto = {
+  createTimestamp?: number;
+  docNum?: number;
+  id: string;
+  name: string;
+  remark?: string;
+};
+
+export type WorkbenchKnowledgePageRequest = {
+  conversationId: string;
+};
+
+export type WorkbenchKnowledgePageResponse = {
+  list: WorkbenchKnowledgeSetDto[];
+};
+
+export type WorkbenchKnowledgeDocDto = {
+  id: string;
+  name: string;
+};
+
+export type WorkbenchKnowledgeDocPageRequest = {
+  conversationId: string;
+  knowledgeId: string;
+};
+
+export type WorkbenchKnowledgeDocPageResponse = {
+  list: WorkbenchKnowledgeDocDto[];
+};
+
+export type WorkbenchKnowledgeFaqAddItemDto = {
+  answer: string;
+  attachIds: string;
+  question: string;
+  similarQuestion: string;
+};
+
+export type WorkbenchKnowledgeFaqAddRequest = {
+  conversationId: string;
+  docId: string;
+  list: WorkbenchKnowledgeFaqAddItemDto[];
+};
+
+export type WorkbenchKnowledgeFaqAddResponse = {
+  docId: string;
+};
+
 export type WorkbenchOutgoingMessageTextSegment = {
   type: "text";
   text: string;

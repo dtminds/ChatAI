@@ -191,7 +191,7 @@ describe("SmartReplyCard", () => {
     expect(screen.getByText("相似问法")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "问题" })).toHaveValue(
-      "建议先确认是否敏感肌",
+      "客户想了解敏感肌护理",
     );
     expect(screen.getByRole("textbox", { name: "答案" })).toHaveValue(
       "建议先确认是否敏感肌\n这款产品适合温和修护",

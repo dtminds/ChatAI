@@ -23,6 +23,12 @@ import type {
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplyPollResponse,
+  WorkbenchKnowledgePageRequest,
+  WorkbenchKnowledgePageResponse,
+  WorkbenchKnowledgeDocPageRequest,
+  WorkbenchKnowledgeDocPageResponse,
+  WorkbenchKnowledgeFaqAddRequest,
+  WorkbenchKnowledgeFaqAddResponse,
   WorkbenchSmartReplyTextModerationRequest,
   WorkbenchSmartReplyTextModerationResponse,
   WorkbenchSeatDto,
@@ -58,6 +64,7 @@ import {
 } from "./workbench-java-client.js";
 import { buildSidebarIframeTuseCipherTexts } from "../../lib/tuse-crypto.js";
 import { normalizeAttachmentIds } from "./attachment-mappers.js";
+import { normalizeKnowledgeId } from "./knowledge-doc-mappers.js";
 import { normalizeSmartReplyMsgIds } from "./smart-reply-mappers.js";
 import {
   decodeConversationListCursor,
@@ -165,6 +172,18 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchSmartReplyTextModerationResponse>
     | WorkbenchSmartReplyTextModerationResponse;
+  listKnowledgePage(
+    subUserId: string,
+    request: WorkbenchKnowledgePageRequest,
+  ): Promise<WorkbenchKnowledgePageResponse> | WorkbenchKnowledgePageResponse;
+  listKnowledgeDocPage(
+    subUserId: string,
+    request: WorkbenchKnowledgeDocPageRequest,
+  ): Promise<WorkbenchKnowledgeDocPageResponse> | WorkbenchKnowledgeDocPageResponse;
+  addKnowledgeFaq(
+    subUserId: string,
+    request: WorkbenchKnowledgeFaqAddRequest,
+  ): Promise<WorkbenchKnowledgeFaqAddResponse> | WorkbenchKnowledgeFaqAddResponse;
   sendMessage(
     subUserId: string,
     payload: WorkbenchSendMessagePayload,
@@ -814,6 +833,128 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     return this.javaClient.checkTextModerationPlus({
       content,
+      uid: conversation.uid,
+    });
+  }
+
+  async listKnowledgePage(
+    subUserId: string,
+    request: WorkbenchKnowledgePageRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const response = await this.javaClient.listKnowledgePage({
+      page: 1,
+      pageSize: 9999,
+      uid: conversation.uid,
+    });
+
+    this.logger.info(
+      {
+        conversationId: request.conversationId,
+        list: response.list,
+        listLength: response.list.length,
+        operation: "list-knowledge-page",
+        uid: conversation.uid,
+      },
+      "知识集列表映射结果",
+    );
+
+    return response;
+  }
+
+  async listKnowledgeDocPage(
+    subUserId: string,
+    request: WorkbenchKnowledgeDocPageRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const knowledgeId = normalizeKnowledgeId(request.knowledgeId);
+
+    if (knowledgeId == null) {
+      this.logger.warn(
+        {
+          conversationId: request.conversationId,
+          knowledgeId: request.knowledgeId,
+          operation: "list-knowledge-doc-page",
+          uid: conversation.uid,
+        },
+        "知识集 ID 无效",
+      );
+      throw new BadRequestError("INVALID_KNOWLEDGE_ID", "知识集 ID 无效");
+    }
+
+    const response = await this.javaClient.listKnowledgeDocPage({
+      knowledgeId,
+      page: 1,
+      pageSize: 9999,
+      uid: conversation.uid,
+    });
+
+    this.logger.info(
+      {
+        conversationId: request.conversationId,
+        knowledgeId,
+        list: response.list,
+        listLength: response.list.length,
+        operation: "list-knowledge-doc-page",
+        uid: conversation.uid,
+      },
+      "知识集 FAQ 列表映射结果",
+    );
+
+    return response;
+  }
+
+  async addKnowledgeFaq(
+    subUserId: string,
+    request: WorkbenchKnowledgeFaqAddRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const docId = normalizeKnowledgeId(request.docId);
+
+    if (docId == null) {
+      throw new BadRequestError("INVALID_KNOWLEDGE_DOC_ID", "FAQ ID 无效");
+    }
+
+    if (request.list.length === 0) {
+      throw new BadRequestError("INVALID_KNOWLEDGE_FAQ_LIST", "FAQ 内容不能为空");
+    }
+
+    return this.javaClient.addKnowledgeFaq({
+      docId,
+      list: request.list.map((item) => ({
+        answer: item.answer,
+        attachIds: item.attachIds,
+        question: item.question,
+        similarQuestion: item.similarQuestion,
+      })),
+      source: 1,
       uid: conversation.uid,
     });
   }

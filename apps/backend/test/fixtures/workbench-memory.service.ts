@@ -31,6 +31,8 @@ import type {
   WorkbenchSmartReplyPollResponse,
   WorkbenchKnowledgePageRequest,
   WorkbenchKnowledgePageResponse,
+  WorkbenchKnowledgeConfigRequest,
+  WorkbenchKnowledgeConfigResponse,
   WorkbenchKnowledgeDocPageRequest,
   WorkbenchKnowledgeDocPageResponse,
   WorkbenchKnowledgeFaqAddRequest,
@@ -378,6 +380,16 @@ export function createMemoryWorkbenchService() {
             name: "默认知识集",
           },
         ],
+      };
+    },
+    getKnowledgeConfig(
+      _subUserId: string,
+      _request: WorkbenchKnowledgeConfigRequest,
+    ): WorkbenchKnowledgeConfigResponse {
+      return {
+        config: {
+          automaticCheckIllegalWords: 0,
+        },
       };
     },
     listKnowledgeDocPage(

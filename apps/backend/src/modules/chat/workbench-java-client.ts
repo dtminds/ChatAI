@@ -6,6 +6,7 @@ import type {
   WorkbenchKnowledgePageResponse,
   WorkbenchKnowledgeDocPageResponse,
   WorkbenchKnowledgeFaqAddResponse,
+  WorkbenchKnowledgeConfigResponse,
   WorkbenchSmartReplyTextModerationResponse,
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
@@ -19,6 +20,7 @@ import {
 import { mapJavaKnowledgePage } from "./knowledge-mappers.js";
 import { mapJavaKnowledgeDocPage } from "./knowledge-doc-mappers.js";
 import { mapJavaKnowledgeFaqAdd } from "./knowledge-faq-mappers.js";
+import { mapJavaKnowledgeConfig } from "./knowledge-config-mappers.js";
 import { mapJavaTextModerationPlus } from "./text-moderation-mappers.js";
 import {
   BadGatewayError,
@@ -161,6 +163,9 @@ export type WorkbenchJavaClient = {
     pageSize: number;
     uid: number;
   }): Promise<WorkbenchKnowledgePageResponse>;
+  getKnowledgeConfig(input: {
+    uid: number;
+  }): Promise<WorkbenchKnowledgeConfigResponse>;
   listKnowledgeDocPage(input: {
     knowledgeId: string;
     page: number;
@@ -390,6 +395,16 @@ export function createWorkbenchJavaClient(
         logger,
         "list-knowledge-page",
       ).then((response) => mapJavaKnowledgePage(response));
+    },
+    getKnowledgeConfig(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        `/third-internal/msg-audit-knowledge/get-knowledge-config?uid=${input.uid}`,
+        {},
+        logger,
+        "get-knowledge-config",
+      ).then((data) => mapJavaKnowledgeConfig(data));
     },
     listKnowledgeDocPage(input) {
       return postJavaPageEnvelope(

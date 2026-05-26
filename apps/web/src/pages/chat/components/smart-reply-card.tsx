@@ -32,6 +32,7 @@ import {
 } from "@/pages/chat/api/smart-reply-adapter";
 import {
   checkSmartReplyTextModeration,
+  getSmartReplyKnowledgeConfig,
   listSmartReplyAttachments,
 } from "@/pages/chat/api/workbench-gateway";
 import {
@@ -189,6 +190,9 @@ export function SmartReplyMessageAnchor({
   suggestion,
 }: SmartReplyMessageAnchorProps) {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [automaticCheckIllegalWords, setAutomaticCheckIllegalWords] = useState<
+    number | null
+  >(null);
   const [recommendedAttachments, setRecommendedAttachments] = useState<
     SmartReplyRecommendedAttachment[]
   >([]);
@@ -250,12 +254,43 @@ export function SmartReplyMessageAnchor({
     };
   }, [conversationId, isEditDialogOpen, refAttachIdsKey]);
 
+  useEffect(() => {
+    if (!isEditDialogOpen) {
+      setAutomaticCheckIllegalWords(null);
+      return;
+    }
+
+    if (!conversationId) {
+      setAutomaticCheckIllegalWords(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    void getSmartReplyKnowledgeConfig(conversationId)
+      .then((response) => {
+        if (!cancelled) {
+          setAutomaticCheckIllegalWords(response.config.automaticCheckIllegalWords);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAutomaticCheckIllegalWords(0);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, isEditDialogOpen]);
+
   const handleEditDialogOpenChange = useCallback((open: boolean) => {
     setIsEditDialogOpen(open);
 
     if (!open) {
       setRecommendedAttachments([]);
       setIsRecommendedAttachmentsLoading(false);
+      setAutomaticCheckIllegalWords(null);
     }
   }, []);
 
@@ -316,6 +351,7 @@ export function SmartReplyMessageAnchor({
         }
       />
       <SmartReplyEditDialog
+        automaticCheckIllegalWords={automaticCheckIllegalWords}
         canSendMessage={canSendMessage}
         conversationId={conversationId}
         faqInitialQuestion={getSmartReplyCustomerQuestion(message)}

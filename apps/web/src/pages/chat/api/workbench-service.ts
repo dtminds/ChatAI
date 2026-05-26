@@ -44,6 +44,8 @@ import {
   type WorkbenchSmartReplyPollResponse,
   type WorkbenchKnowledgePageRequest,
   type WorkbenchKnowledgePageResponse,
+  type WorkbenchKnowledgeConfigRequest,
+  type WorkbenchKnowledgeConfigResponse,
   type WorkbenchKnowledgeDocPageRequest,
   type WorkbenchKnowledgeDocPageResponse,
   type WorkbenchKnowledgeFaqAddRequest,
@@ -134,6 +136,9 @@ export type WorkbenchService = {
   listKnowledgePage: (
     request: WorkbenchKnowledgePageRequest,
   ) => Promise<WorkbenchKnowledgePageResponse>;
+  getKnowledgeConfig: (
+    request: WorkbenchKnowledgeConfigRequest,
+  ) => Promise<WorkbenchKnowledgeConfigResponse>;
   listKnowledgeDocPage: (
     request: WorkbenchKnowledgeDocPageRequest,
   ) => Promise<WorkbenchKnowledgeDocPageResponse>;
@@ -573,6 +578,13 @@ export function createMockWorkbenchService(): WorkbenchService {
         ],
       };
     },
+    async getKnowledgeConfig() {
+      return {
+        config: {
+          automaticCheckIllegalWords: 0,
+        },
+      };
+    },
     async listKnowledgeDocPage() {
       return {
         list: [
@@ -846,6 +858,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
     listKnowledgePage(request) {
       return http.post<WorkbenchKnowledgePageResponse, WorkbenchKnowledgePageRequest>(
         "/server/smart-reply/knowledge-page",
+        request,
+      );
+    },
+    getKnowledgeConfig(request) {
+      return http.post<WorkbenchKnowledgeConfigResponse, WorkbenchKnowledgeConfigRequest>(
+        "/server/smart-reply/knowledge-config",
         request,
       );
     },

@@ -563,6 +563,10 @@ export async function listKnowledgePage(conversationId: string) {
   return getWorkbenchService().listKnowledgePage({ conversationId });
 }
 
+export async function getSmartReplyKnowledgeConfig(conversationId: string) {
+  return getWorkbenchService().getKnowledgeConfig({ conversationId });
+}
+
 export async function listKnowledgeDocPage(
   conversationId: string,
   knowledgeId: string,

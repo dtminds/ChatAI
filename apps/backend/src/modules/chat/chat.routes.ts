@@ -9,6 +9,7 @@ import type {
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplySendAnswerRequest,
   WorkbenchKnowledgePageRequest,
+  WorkbenchKnowledgeConfigRequest,
   WorkbenchKnowledgeDocPageRequest,
   WorkbenchKnowledgeFaqAddRequest,
   WorkbenchSmartReplyTextModerationRequest,
@@ -110,6 +111,10 @@ const SmartReplyTextModerationBodySchema = Type.Object({
 });
 
 const SmartReplyKnowledgePageBodySchema = Type.Object({
+  conversationId: Type.String(),
+});
+
+const SmartReplyKnowledgeConfigBodySchema = Type.Object({
   conversationId: Type.String(),
 });
 
@@ -660,6 +665,21 @@ export async function registerChatRoutes(app: FastifyInstance) {
       getWorkbenchService(app, request).listKnowledgePage(
         getSubUserId(request),
         request.body satisfies WorkbenchKnowledgePageRequest,
+      ),
+  );
+
+  app.post<{ Body: Static<typeof SmartReplyKnowledgeConfigBodySchema> }>(
+    "/api/server/smart-reply/knowledge-config",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartReplyKnowledgeConfigBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getKnowledgeConfig(
+        getSubUserId(request),
+        request.body satisfies WorkbenchKnowledgeConfigRequest,
       ),
   );
 

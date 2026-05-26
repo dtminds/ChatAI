@@ -35,6 +35,7 @@ export type SmartReplyEditDialogProps = {
   onOpenChange: (open: boolean) => void;
   initialContent: string;
   canSendMessage?: boolean;
+  automaticCheckIllegalWords?: number | null;
   conversationId?: string;
   faqInitialQuestion?: string;
   recommendedAttachments?: SmartReplyRecommendedAttachment[];
@@ -47,12 +48,14 @@ export type SmartReplyEditDialogProps = {
 };
 
 const DEMO_VIOLATION_WORDS = ["太好用了", "最好", "第一", "极致"];
+const EMPTY_RECOMMENDED_ATTACHMENTS: SmartReplyRecommendedAttachment[] = [];
 
 export function SmartReplyEditDialog({
   open,
   onOpenChange,
   initialContent,
   canSendMessage = true,
+  automaticCheckIllegalWords = null,
   conversationId,
   faqInitialQuestion: faqInitialQuestionProp,
   recommendedAttachments: recommendedAttachmentsProp,
@@ -60,7 +63,7 @@ export function SmartReplyEditDialog({
   onSend,
   onCheckViolations,
 }: SmartReplyEditDialogProps) {
-  const recommendedAttachments = recommendedAttachmentsProp ?? [];
+  const recommendedAttachments = recommendedAttachmentsProp ?? EMPTY_RECOMMENDED_ATTACHMENTS;
   const [draftContent, setDraftContent] = useState(initialContent);
   const [violationResult, setViolationResult] =
     useState<SmartReplyViolationResult | null>(null);
@@ -106,6 +109,33 @@ export function SmartReplyEditDialog({
     [violationResult],
   );
 
+  const trimmedDraftContent = draftContent.trim();
+  const trimmedInitialContent = initialContent.trim();
+  const isContentChanged = trimmedDraftContent !== trimmedInitialContent;
+  const shouldAutoCheckIllegalWords = automaticCheckIllegalWords === 1;
+  const isSendBlockedByViolations = violationCheckPhase === "found";
+
+  const runViolationCheck = useCallback(async () => {
+    if (onCheckViolations) {
+      return onCheckViolations(draftContent);
+    }
+
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, 400);
+    });
+
+    const words = DEMO_VIOLATION_WORDS.filter((word) => draftContent.includes(word));
+
+    if (words.length > 0) {
+      return {
+        categoryLabel: "广告法_通用禁用极限词",
+        words,
+      };
+    }
+
+    return null;
+  }, [draftContent, onCheckViolations]);
+
   const handleDraftContentChange = useCallback((value: string) => {
     setDraftContent(value);
     setViolationResult(null);
@@ -117,34 +147,13 @@ export function SmartReplyEditDialog({
     setViolationCheckPhase("loading");
     setViolationResult(null);
     try {
-      if (onCheckViolations) {
-        const result = await onCheckViolations(draftContent);
-        setViolationResult(result);
-        setViolationCheckPhase(result ? "found" : "clean");
-        return;
-      }
-
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, 400);
-      });
-
-      const words = DEMO_VIOLATION_WORDS.filter((word) =>
-        draftContent.includes(word),
-      );
-      if (words.length > 0) {
-        setViolationResult({
-          categoryLabel: "广告法_通用禁用极限词",
-          words,
-        });
-        setViolationCheckPhase("found");
-      } else {
-        setViolationResult(null);
-        setViolationCheckPhase("clean");
-      }
+      const result = await runViolationCheck();
+      setViolationResult(result);
+      setViolationCheckPhase(result ? "found" : "clean");
     } finally {
       setIsCheckingViolations(false);
     }
-  }, [draftContent, onCheckViolations]);
+  }, [runViolationCheck]);
 
   const handleDismissViolationStatus = useCallback(() => {
     setViolationResult(null);
@@ -163,8 +172,30 @@ export function SmartReplyEditDialog({
   };
 
   const handleSend = async () => {
-    const trimmed = draftContent.trim();
+    const trimmed = trimmedDraftContent;
     if (!trimmed) {
+      return;
+    }
+
+    if (shouldAutoCheckIllegalWords && isContentChanged) {
+      setIsCheckingViolations(true);
+      setViolationCheckPhase("loading");
+      setViolationResult(null);
+      try {
+        const result = await runViolationCheck();
+        setViolationResult(result);
+        setViolationCheckPhase(result ? "found" : "clean");
+        if (result) {
+          return;
+        }
+      } finally {
+        setIsCheckingViolations(false);
+      }
+    } else if (
+      !shouldAutoCheckIllegalWords &&
+      isContentChanged &&
+      violationCheckPhase === "found"
+    ) {
       return;
     }
 
@@ -177,6 +208,12 @@ export function SmartReplyEditDialog({
       onOpenChange(false);
     }
   };
+
+  const isSendDisabled =
+    !canSendMessage ||
+    !trimmedDraftContent ||
+    isCheckingViolations ||
+    isSendBlockedByViolations;
 
   return (
     <>
@@ -273,7 +310,7 @@ export function SmartReplyEditDialog({
           </Button>
           <Button
             className="h-9 min-w-[72px] rounded-[8px] px-4 text-[13px]"
-            disabled={!canSendMessage || !draftContent.trim()}
+            disabled={isSendDisabled}
             onClick={handleSend}
             type="button"
           >

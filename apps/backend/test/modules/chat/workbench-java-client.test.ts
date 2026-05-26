@@ -981,6 +981,43 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("loads msg audit knowledge config by uid", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            automaticCheckIllegalWords: 1,
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.getKnowledgeConfig({
+      uid: 9001,
+    });
+
+    expect(response).toEqual({
+      config: {
+        automaticCheckIllegalWords: 1,
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/msg-audit-knowledge/get-knowledge-config?uid=9001",
+      expect.objectContaining({
+        body: JSON.stringify({}),
+        method: "POST",
+      }),
+    );
+  });
+
   it("loads ai helper template config param id", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

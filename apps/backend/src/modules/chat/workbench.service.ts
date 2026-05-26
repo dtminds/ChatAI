@@ -25,6 +25,8 @@ import type {
   WorkbenchSmartReplyPollResponse,
   WorkbenchKnowledgePageRequest,
   WorkbenchKnowledgePageResponse,
+  WorkbenchKnowledgeConfigRequest,
+  WorkbenchKnowledgeConfigResponse,
   WorkbenchKnowledgeDocPageRequest,
   WorkbenchKnowledgeDocPageResponse,
   WorkbenchKnowledgeFaqAddRequest,
@@ -196,6 +198,10 @@ export type WorkbenchService = {
     subUserId: string,
     request: WorkbenchKnowledgePageRequest,
   ): Promise<WorkbenchKnowledgePageResponse> | WorkbenchKnowledgePageResponse;
+  getKnowledgeConfig(
+    subUserId: string,
+    request: WorkbenchKnowledgeConfigRequest,
+  ): Promise<WorkbenchKnowledgeConfigResponse> | WorkbenchKnowledgeConfigResponse;
   listKnowledgeDocPage(
     subUserId: string,
     request: WorkbenchKnowledgeDocPageRequest,
@@ -975,6 +981,25 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return response;
+  }
+
+  async getKnowledgeConfig(
+    subUserId: string,
+    request: WorkbenchKnowledgeConfigRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    return this.javaClient.getKnowledgeConfig({
+      uid: conversation.uid,
+    });
   }
 
   async listKnowledgeDocPage(

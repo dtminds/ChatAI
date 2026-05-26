@@ -394,6 +394,18 @@ export type WorkbenchKnowledgePageResponse = {
   list: WorkbenchKnowledgeSetDto[];
 };
 
+export type WorkbenchKnowledgeConfigRequest = {
+  conversationId: string;
+};
+
+export type WorkbenchKnowledgeConfigDto = {
+  automaticCheckIllegalWords: number;
+};
+
+export type WorkbenchKnowledgeConfigResponse = {
+  config: WorkbenchKnowledgeConfigDto;
+};
+
 export type WorkbenchKnowledgeDocDto = {
   id: string;
   name: string;

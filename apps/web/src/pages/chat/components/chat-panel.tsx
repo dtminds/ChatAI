@@ -286,13 +286,6 @@ export function ChatPanel({
                   accountName={accountName}
                   conversationMode={activeConversation.mode}
                   customer={customer}
-                  sidebarIframeQd={
-                    activeConversation.mode === "group" &&
-                    activeConversation.thirdGroupId !== undefined &&
-                    activeConversation.thirdGroupId !== ""
-                      ? activeConversation.thirdGroupId
-                      : undefined
-                  }
                   sidebarIframeConversationId={activeConversation.id}
                   sidebarIframeSeatId={activeConversation.accountId}
                   sidebarIframeTos={sidebarIframeTos}

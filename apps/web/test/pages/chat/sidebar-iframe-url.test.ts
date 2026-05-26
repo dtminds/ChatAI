@@ -136,4 +136,31 @@ describe("buildSidebarIframeSrc", () => {
       }),
     ).toBe("https://example.com/embed?mid=app-xyz");
   });
+
+  it("appends encrypted group identifiers when provided", () => {
+    vi.stubGlobal("window", { location: { origin: "http://localhost:5173" } });
+
+    expect(
+      buildSidebarIframeSrc("https://example.com/group", {
+        thirdGroupId: "cipher-group-id",
+        thirdGroupName: "cipher-group-name",
+        tos: "1",
+      }),
+    ).toBe(
+      "https://example.com/group?tos=1&thirdGroupId=cipher-group-id&thirdGroupName=cipher-group-name",
+    );
+  });
+
+  it("always appends thirdGroupName when thirdGroupId is present", () => {
+    vi.stubGlobal("window", { location: { origin: "http://localhost:5173" } });
+
+    expect(
+      buildSidebarIframeSrc("https://example.com/group", {
+        thirdGroupId: "cipher-group-id",
+        tos: "1",
+      }),
+    ).toBe(
+      "https://example.com/group?tos=1&thirdGroupId=cipher-group-id&thirdGroupName=cipher-group-id",
+    );
+  });
 });

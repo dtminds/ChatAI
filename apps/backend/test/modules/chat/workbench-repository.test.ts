@@ -1895,9 +1895,79 @@ describe("WorkbenchRepository", () => {
       seatUnreadCount: 6,
       thirdExternalUserId: "external-001",
       thirdGroupId: undefined,
+      thirdGroupName: undefined,
       thirdUserId: "seat-user-001",
       uid: 9001,
       unreadCount: 2,
+    });
+  });
+
+  it("returns group name from group seat lookup for sidebar iframe params", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_conversation as conversation");
+
+          return createQueryBuilder({
+            group_name: "原始群名",
+            group_remark: "备注群名",
+            id: 99,
+            platform: 5,
+            seat_host_sub_id: 101,
+            seat_id: 12,
+            seat_unread_count: 3,
+            third_external_userid: null,
+            third_group_id: "group-001",
+            third_userid: "seat-user-001",
+            uid: 9001,
+            unread_cnt: 1,
+          });
+        },
+      } as never,
+    );
+
+    await expect(repository.getConversationLookup("99")).resolves.toEqual({
+      id: "99",
+      platform: 5,
+      seatHostSubUserId: "101",
+      seatId: "12",
+      seatUnreadCount: 6,
+      thirdExternalUserId: undefined,
+      thirdGroupId: "group-001",
+      thirdGroupName: "备注群名",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+      unreadCount: 1,
+    });
+  });
+
+  it("falls back to third group id when group seat name is missing", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_conversation as conversation");
+
+          return createQueryBuilder({
+            group_name: null,
+            group_remark: null,
+            id: 100,
+            platform: 5,
+            seat_host_sub_id: 101,
+            seat_id: 12,
+            seat_unread_count: 6,
+            third_external_userid: null,
+            third_group_id: "group-002",
+            third_userid: "seat-user-001",
+            uid: 9001,
+            unread_cnt: 1,
+          });
+        },
+      } as never,
+    );
+
+    await expect(repository.getConversationLookup("100")).resolves.toMatchObject({
+      thirdGroupId: "group-002",
+      thirdGroupName: "group-002",
     });
   });
 

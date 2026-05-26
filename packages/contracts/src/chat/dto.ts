@@ -103,6 +103,10 @@ export type WorkbenchSidebarIframeParamsDto = {
   mid: string;
   rd?: string;
   ts: string;
+  /** 群聊时服务端签发的 AES 密文（明文为 `thirdGroupId` UTF-8 字符串本身） */
+  thirdGroupId?: string;
+  /** 群聊时服务端签发的 AES 密文（明文为群名称 UTF-8 字符串本身） */
+  thirdGroupName?: string;
 };
 
 export type WorkbenchSeatDto = {

@@ -307,6 +307,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
       aesIvUtf8Secret: secrets.ivParameter,
       aesKeyUtf8Secret: secrets.secret,
       thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdGroupId: conversation.thirdGroupId,
+      thirdGroupName: conversation.thirdGroupName,
       thirdUserId: conversation.thirdUserId,
       unixSeconds: Math.floor(Date.now() / 1000),
     });

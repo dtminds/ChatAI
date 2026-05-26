@@ -34,6 +34,8 @@ type SidebarIframeParamsPayload = {
   mid?: string;
   rd?: string;
   ts?: string;
+  thirdGroupId?: string;
+  thirdGroupName?: string;
 };
 
 type ScopedSidebarIframeParams = {
@@ -59,8 +61,6 @@ type CustomerSidePanelProps = {
   sidebarIframeTos?: "0" | "1";
   /** `sendStatus`：`0` 可发送，`1` 未接管，`2` 离线，`3` 会话已失效，`4` 只读 */
   sidebarIframeSendStatus?: SidebarIframeSendStatus;
-  /** `qd`：群聊时为三方群 ID */
-  sidebarIframeQd?: string;
   customer?: CustomerProfile;
   groupMembers: GroupMember[];
   isGroupMembersLoading: boolean;
@@ -79,7 +79,6 @@ export function CustomerSidePanel({
   sidebarIframeSeatId,
   sidebarIframeTos,
   sidebarIframeSendStatus,
-  sidebarIframeQd,
   groupMembers,
   isGroupMembersLoading,
   isResizing,
@@ -162,6 +161,12 @@ export function CustomerSidePanel({
                   ...(dto.fsw ? { fsw: dto.fsw } : {}),
                   ts: dto.ts,
                   ...(dto.mid ? { mid: dto.mid } : {}),
+                  ...(dto.thirdGroupId
+                    ? {
+                        thirdGroupId: dto.thirdGroupId,
+                        thirdGroupName: dto.thirdGroupName ?? dto.thirdGroupId,
+                      }
+                    : {}),
                 }
               : null,
           });
@@ -211,9 +216,8 @@ export function CustomerSidePanel({
         ...(sidebarIframeParamsForScope ?? {}),
         ...(sidebarIframeTos ? { tos: sidebarIframeTos } : {}),
         ...(sidebarIframeSendStatus ? { sendStatus: sidebarIframeSendStatus } : {}),
-        ...(sidebarIframeQd ? { qd: sidebarIframeQd } : {}),
       }),
-    [sidebarIframeParamsForScope, sidebarIframeQd, sidebarIframeSendStatus, sidebarIframeTos],
+    [sidebarIframeParamsForScope, sidebarIframeSendStatus, sidebarIframeTos],
   );
   const activeSidebarItems = sortSidebarItems(scopedSidebarItems).filter(
     (item) => item.status === "active",
@@ -357,7 +361,7 @@ export function CustomerSidePanel({
                 <CustomSidebarIframe
                   isSrcPending={!canRenderSidebarIframeSrc}
                   itemName={item.name}
-                  loadKey={`${item.id}:${sidebarIframeParamsScopeKey}:${sidebarIframeTos ?? ""}:${sidebarIframeQd ?? ""}`}
+                  loadKey={`${item.id}:${sidebarIframeParamsScopeKey}:${sidebarIframeTos ?? ""}:${sidebarIframeParamsForScope?.thirdGroupId ?? ""}:${sidebarIframeParamsForScope?.thirdGroupName ?? ""}`}
                   src={
                     canRenderSidebarIframeSrc
                       ? sidebarIframeSrcForUrl(item.url)

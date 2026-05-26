@@ -66,6 +66,7 @@ export type ConversationLookup = {
   seatUnreadCount: number;
   thirdExternalUserId?: string;
   thirdGroupId?: string;
+  thirdGroupName?: string;
   thirdUserId: string;
   uid: number;
   unreadCount: number;
@@ -971,6 +972,14 @@ export class WorkbenchRepository {
           .onRef("seat.uid", "=", "conversation.uid")
           .onRef("seat.platform", "=", "conversation.platform"),
       )
+      .leftJoin("xy_wap_embed_group_seat as group_seat", (join) =>
+        join
+          .onRef("group_seat.third_group_id", "=", "conversation.third_group_id")
+          .onRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .onRef("group_seat.uid", "=", "conversation.uid")
+          .onRef("group_seat.platform", "=", "conversation.platform")
+          .on("group_seat.biz_status", "=", BIZ_STATUS_ACTIVE),
+      )
       .select([
         "conversation.id as id",
         "conversation.platform as platform",
@@ -979,6 +988,8 @@ export class WorkbenchRepository {
         "conversation.third_userid as third_userid",
         "conversation.unread_cnt as unread_cnt",
         "conversation.uid as uid",
+        "group_seat.name as group_name",
+        "group_seat.remark as group_remark",
         "seat.host_sub_id as seat_host_sub_id",
         "seat.id as seat_id",
       ])
@@ -1016,6 +1027,10 @@ export class WorkbenchRepository {
           seatUnreadCount: Number(row.seat_unread_count ?? 0),
           thirdExternalUserId: row.third_external_userid || undefined,
           thirdGroupId: row.third_group_id || undefined,
+          thirdGroupName: row.third_group_id
+            ? firstNonEmptyString(row.group_remark, row.group_name, row.third_group_id) ??
+              "未命名群聊"
+            : undefined,
           thirdUserId: row.third_userid,
           uid: row.uid,
           unreadCount: Number(row.unread_cnt ?? 0),

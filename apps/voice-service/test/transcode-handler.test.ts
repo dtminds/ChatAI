@@ -239,6 +239,39 @@ describe("transcode-on-cos-event handler", () => {
     );
   });
 
+  it("does not strip bucket-like text from the middle of a COS object key", async () => {
+    const { main_handler } = await import("../src/functions/transcode-on-cos-event.js");
+
+    await expect(
+      main_handler({
+        Records: [
+          {
+            cos: {
+              cosBucket: { name: "scrm-msg-audit" },
+              cosObject: {
+                key: encodeURIComponent(
+                  "s5/voice/scrm-msg-audit/16559c8f42de41d890823bf8016617e7.amr",
+                ),
+              },
+              cosRegion: { region: "ap-shanghai" },
+            },
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      bucket: "scrm-msg-audit-1304132716",
+      key: "s5/voice/scrm-msg-audit/16559c8f42de41d890823bf8016617e7.amr",
+      playableKey: "s5/playable-voice/scrm-msg-audit/16559c8f42de41d890823bf8016617e7.wav",
+    });
+
+    expect(mocks.fetchCosObject).toHaveBeenCalledWith(
+      expect.any(Object),
+      "scrm-msg-audit-1304132716",
+      "ap-shanghai",
+      "s5/voice/scrm-msg-audit/16559c8f42de41d890823bf8016617e7.amr",
+    );
+  });
+
   it("uses configured input and output prefixes when validating and writing objects", async () => {
     mocks.readVoiceServiceConfig.mockReturnValue({
       bucket: "scrm-msg-audit-1304132716",

@@ -115,6 +115,7 @@ function normalizeEventObjectKey(
   bucket: string,
 ) {
   const normalizedKey = objectKey.replace(/^\/+/, "");
+  const appid = getBucketAppid(bucket);
   const bucketNames = [
     eventBucketName,
     bucket,
@@ -122,17 +123,24 @@ function normalizeEventObjectKey(
   ].filter((value): value is string => Boolean(value));
 
   for (const bucketName of bucketNames) {
-    const marker = `/${bucketName}/`;
-    const markerIndex = normalizedKey.indexOf(marker);
+    if (appid) {
+      const appidBucketPrefix = `${appid}/${bucketName}/`;
 
-    if (markerIndex >= 0) {
-      return normalizedKey.slice(markerIndex + marker.length);
+      if (normalizedKey.startsWith(appidBucketPrefix)) {
+        return normalizedKey.slice(appidBucketPrefix.length);
+      }
     }
 
-    if (normalizedKey.startsWith(`${bucketName}/`)) {
-      return normalizedKey.slice(bucketName.length + 1);
+    const bucketPrefix = `${bucketName}/`;
+
+    if (normalizedKey.startsWith(bucketPrefix)) {
+      return normalizedKey.slice(bucketPrefix.length);
     }
   }
 
   return normalizedKey;
+}
+
+function getBucketAppid(bucket: string) {
+  return /-(\d+)$/.exec(bucket)?.[1];
 }

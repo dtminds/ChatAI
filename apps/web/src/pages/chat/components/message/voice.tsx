@@ -49,6 +49,7 @@ export function VoiceMessageCard({
   const playbackReadyNotifiedUrlRef = useRef<string | undefined>(undefined);
   const audioPlaybackUrlRef = useRef<string | null>(null);
   const previousAudioUrlRef = useRef(content.audioUrl);
+  const releaseAudioRef = useRef<() => void>(() => undefined);
   const stopPlaybackRef = useRef<() => void>(() => undefined);
   const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
   const [currentTime, setCurrentTime] = useState(0);
@@ -110,6 +111,7 @@ export function VoiceMessageCard({
     }
 
     clearLoadTimeout();
+    releaseAudioRef.current();
     clearActivePlayback();
     setPlaybackState("error");
   }, [clearActivePlayback, clearLoadTimeout]);
@@ -120,6 +122,7 @@ export function VoiceMessageCard({
     }
 
     clearLoadTimeout();
+    releaseAudioRef.current();
     clearActivePlayback();
     setCurrentTime(0);
     setPlaybackState("not-ready");
@@ -258,6 +261,8 @@ export function VoiceMessageCard({
     pausePlayback,
     syncAudioProgress,
   ]);
+
+  releaseAudioRef.current = releaseAudio;
 
   const stopPlayback = useCallback(() => {
     releaseAudio();

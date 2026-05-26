@@ -24,6 +24,7 @@ type AudioMockInstance = {
 describe("voice message playback", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     vi.unstubAllEnvs();
   });
 
@@ -638,6 +639,41 @@ describe("voice message playback", () => {
       expect(screen.getByRole("button")).toHaveTextContent("暂不支持播放，请稍后重试");
     });
     expect(play).not.toHaveBeenCalled();
+  });
+
+  it("releases audio when converted voice fails before metadata loads", async () => {
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    expect(screen.getByRole("button")).toHaveTextContent("准备播放");
+    audioInstances[0]!.dispatch("error");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button")).toHaveTextContent("暂不支持播放，请稍后重试");
+    });
+    expect(audioInstances[0]?.pause).toHaveBeenCalledTimes(1);
+    expect(audioInstances[0]?.removeEventListener).toHaveBeenCalledWith(
+      "loadedmetadata",
+      expect.any(Function),
+    );
+    expect(audioInstances[0]?.removeEventListener).toHaveBeenCalledWith(
+      "error",
+      expect.any(Function),
+    );
   });
 
   it("does not attempt native playback for SILK voice messages without converted URL", async () => {

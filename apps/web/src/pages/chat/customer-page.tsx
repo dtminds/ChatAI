@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -930,8 +931,8 @@ function getSeatRelationName(relation: WorkbenchCustomerSeatRelationDto) {
 function canStartSeatChat(account: Account | undefined, currentEmployeeId: string | undefined) {
   return (
     account?.loginStatus === "online" &&
-    !!account.takenOverEmployeeId &&
-    account.takenOverEmployeeId === currentEmployeeId
+    !!account?.takenOverEmployeeId &&
+    account?.takenOverEmployeeId === currentEmployeeId
   );
 }
 
@@ -965,7 +966,7 @@ function StatusRow({
   icon,
   text,
 }: {
-  icon: typeof AlertCircleIcon;
+  icon: ComponentProps<typeof HugeiconsIcon>["icon"];
   text: string;
 }) {
   return (

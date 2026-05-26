@@ -962,9 +962,8 @@ export class WorkbenchRepository {
       input.platform,
       thirdExternalUserIds,
     );
-    const relationsByCustomerKey = relationCustomers.reduce(
-      (map, customer) => map.set(customer.customerKey, customer),
-      new Map<string, WorkbenchCustomerSummaryDto>(),
+    const relationsByCustomerKey = new Map(
+      relationCustomers.map((customer) => [customer.customerKey, customer]),
     );
 
     return {

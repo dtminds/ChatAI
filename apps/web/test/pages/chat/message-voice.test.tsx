@@ -8,7 +8,11 @@ import { VoiceMessageCard } from "@/pages/chat/components/message";
 type AudioMockInstance = {
   addEventListener: ReturnType<typeof vi.fn>;
   currentTime: number;
+  dispatch: (event: string) => void;
+  duration: number;
+  ended: boolean;
   pause: ReturnType<typeof vi.fn>;
+  paused: boolean;
   play: ReturnType<typeof vi.fn>;
   removeEventListener: ReturnType<typeof vi.fn>;
   src: string;
@@ -233,6 +237,66 @@ describe("voice message playback", () => {
       expect(play).toHaveBeenCalledTimes(1);
     });
     expect(screen.getByRole("button")).toHaveTextContent("播放中");
+  });
+
+  it("returns to the duration label when playback ends", async () => {
+    const user = userEvent.setup();
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button")).toHaveTextContent("播放中");
+    });
+
+    audioInstances[0]?.dispatch("ended");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button")).toHaveTextContent("11\"");
+    });
+  });
+
+  it("returns to the duration label when audio is paused at the end", async () => {
+    const user = userEvent.setup();
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button")).toHaveTextContent("播放中");
+    });
+
+    audioInstances[0]!.currentTime = 11;
+    audioInstances[0]!.duration = 11;
+    audioInstances[0]!.dispatch("pause");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button")).toHaveTextContent("11\"");
+    });
   });
 
   it("shows a retry-later message when converted voice is not ready", async () => {
@@ -554,12 +618,37 @@ function stubAudio({
   play?: ReturnType<typeof vi.fn>;
   playSequence?: Array<ReturnType<typeof vi.fn>>;
 } = {}) {
+  const listeners = new WeakMap<AudioMockInstance, Map<string, EventListener[]>>();
   const AudioMock = vi.fn(function AudioMock(this: AudioMockInstance, src: string) {
-    this.addEventListener = vi.fn();
+    const instanceListeners = new Map<string, EventListener[]>();
+    listeners.set(this, instanceListeners);
+    this.addEventListener = vi.fn((event: string, listener: EventListener) => {
+      instanceListeners.set(event, [...(instanceListeners.get(event) ?? []), listener]);
+    });
     this.currentTime = 0;
+    this.dispatch = (event: string) => {
+      if (event === "ended") {
+        this.ended = true;
+        this.paused = true;
+      }
+      if (event === "pause") {
+        this.paused = true;
+      }
+      for (const listener of instanceListeners.get(event) ?? []) {
+        listener(new Event(event));
+      }
+    };
+    this.duration = 0;
+    this.ended = false;
     this.pause = instances.length === 0 ? pause : vi.fn();
+    this.paused = true;
     this.play = playSequence?.[instances.length] ?? play;
-    this.removeEventListener = vi.fn();
+    this.removeEventListener = vi.fn((event: string, listener: EventListener) => {
+      instanceListeners.set(
+        event,
+        (instanceListeners.get(event) ?? []).filter((candidate) => candidate !== listener),
+      );
+    });
     this.src = src;
     instances.push(this);
   });

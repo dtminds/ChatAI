@@ -57,6 +57,23 @@ export function VoiceMessageCard({
     setPlaybackState("error");
   }, [clearActivePlayback]);
 
+  const finishPlaybackIfEnded = useCallback(() => {
+    const audio = audioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    const hasReachedEnd =
+      Number.isFinite(audio.duration) &&
+      audio.duration > 0 &&
+      audio.currentTime >= audio.duration;
+
+    if (audio.ended || hasReachedEnd) {
+      finishPlayback();
+    }
+  }, [finishPlayback]);
+
   const releaseAudio = useCallback(() => {
     if (!audioRef.current) {
       return;
@@ -65,8 +82,9 @@ export function VoiceMessageCard({
     audioRef.current.pause();
     audioRef.current.removeEventListener("ended", finishPlayback);
     audioRef.current.removeEventListener("error", failPlayback);
+    audioRef.current.removeEventListener("pause", finishPlaybackIfEnded);
     audioRef.current = null;
-  }, [failPlayback, finishPlayback]);
+  }, [failPlayback, finishPlayback, finishPlaybackIfEnded]);
 
   const stopPlayback = useCallback(() => {
     releaseAudio();
@@ -142,6 +160,7 @@ export function VoiceMessageCard({
       audioRef.current = new Audio(audioUrl);
       audioRef.current.addEventListener("ended", finishPlayback);
       audioRef.current.addEventListener("error", failPlayback);
+      audioRef.current.addEventListener("pause", finishPlaybackIfEnded);
     }
 
     if (!mountedRef.current || !isCurrentPlayback(generation)) {
@@ -150,6 +169,7 @@ export function VoiceMessageCard({
 
     audioRef.current.currentTime = 0;
     await audioRef.current.play();
+    finishPlaybackIfEnded();
   };
 
   return (

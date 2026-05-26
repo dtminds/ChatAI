@@ -211,6 +211,30 @@ describe("voice message playback", () => {
     expect(screen.getByRole("button")).toHaveTextContent("播放中");
   });
 
+  it("shows playing even when browser audio play is still pending", async () => {
+    const user = userEvent.setup();
+    const play = vi.fn(() => new Promise<void>(() => undefined));
+    stubAudio({ play });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    await waitFor(() => {
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByRole("button")).toHaveTextContent("播放中");
+  });
+
   it("shows a retry-later message when converted voice is not ready", async () => {
     const user = userEvent.setup();
     const play = vi.fn().mockResolvedValue(undefined);

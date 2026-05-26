@@ -127,6 +127,7 @@ export function VoiceMessageCard({
         return;
       }
 
+      setPlaybackState("playing");
       await playNativeAudio(playableUrl, generation);
     } catch {
       if (generation == null || isCurrentPlayback(generation)) {
@@ -148,7 +149,6 @@ export function VoiceMessageCard({
     }
 
     audioRef.current.currentTime = 0;
-    setPlaybackState("playing");
     await audioRef.current.play();
   };
 

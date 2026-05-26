@@ -1,5 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkbenchMessageDto } from "@chatai/contracts";
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
@@ -11,6 +12,7 @@ type AudioMockInstance = {
   dispatch: (event: string) => void;
   duration: number;
   ended: boolean;
+  load: ReturnType<typeof vi.fn>;
   pause: ReturnType<typeof vi.fn>;
   paused: boolean;
   play: ReturnType<typeof vi.fn>;
@@ -129,7 +131,7 @@ describe("voice message playback", () => {
     });
   });
 
-  it("shows a preparing state while checking the converted voice URL", async () => {
+  it("starts playing the converted WAV before the playable check finishes", async () => {
     const user = userEvent.setup();
     let resolveCheck!: (value: unknown) => void;
     const playableCheck = new Promise((resolve) => {
@@ -152,8 +154,10 @@ describe("voice message playback", () => {
 
     await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
 
-    expect(screen.getByRole("button")).toHaveTextContent("准备播放");
-    expect(play).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByRole("button")).toHaveTextContent("播放中");
 
     resolveCheck({
       data: {
@@ -168,6 +172,32 @@ describe("voice message playback", () => {
     });
   });
 
+  it("plays after the StrictMode effect remount check", async () => {
+    const user = userEvent.setup();
+    const play = vi.fn().mockResolvedValue(undefined);
+    stubAudio({ play });
+
+    render(
+      <StrictMode>
+        <VoiceMessageCard
+          content={{
+            type: "voice",
+            audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+            durationLabel: "11\"",
+          }}
+          isAgent={false}
+        />
+      </StrictMode>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    await waitFor(() => {
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByRole("button")).toHaveTextContent("播放中");
+  });
+
   it("shows a playback error when the playable voice check is rejected", async () => {
     const user = userEvent.setup();
     stubAudio();
@@ -178,6 +208,29 @@ describe("voice message playback", () => {
         content={{
           type: "voice",
           audioUrl: "https://b5.bokr.com.cn/s5/image/20260513/272/image.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button")).toHaveTextContent("暂不可播放");
+    });
+  });
+
+  it("shows a playback error when browser audio playback is rejected", async () => {
+    const user = userEvent.setup();
+    const play = vi.fn().mockRejectedValue(new Error("NotAllowedError"));
+    stubAudio({ play });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
           durationLabel: "11\"",
         }}
         isAgent={false}
@@ -213,6 +266,126 @@ describe("voice message playback", () => {
       expect(play).toHaveBeenCalledTimes(1);
     });
     expect(screen.getByRole("button")).toHaveTextContent("播放中");
+  });
+
+  it("renders a compact progress player after playback starts", async () => {
+    const user = userEvent.setup();
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    audioInstances[0]!.duration = 58;
+    audioInstances[0]!.dispatch("loadedmetadata");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "暂停语音消息 11\"" })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("slider", { name: "语音播放进度" })).toBeInTheDocument();
+    expect(screen.getByText("58\"")).toBeInTheDocument();
+  });
+
+  it("updates the progress bar as audio time changes", async () => {
+    const user = userEvent.setup();
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    audioInstances[0]!.duration = 58;
+    audioInstances[0]!.currentTime = 32;
+    audioInstances[0]!.dispatch("loadedmetadata");
+    audioInstances[0]!.dispatch("timeupdate");
+
+    await waitFor(() => {
+      expect(screen.getByRole("slider", { name: "语音播放进度" })).toHaveValue("32");
+    });
+  });
+
+  it("seeks audio when dragging the progress control", async () => {
+    const user = userEvent.setup();
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    audioInstances[0]!.duration = 58;
+    audioInstances[0]!.dispatch("loadedmetadata");
+
+    const slider = await screen.findByRole("slider", { name: "语音播放进度" });
+    await waitFor(() => {
+      expect(slider).toHaveAttribute("max", "58");
+    });
+    fireEvent.change(slider, {
+      target: { value: "32" },
+    });
+
+    expect(audioInstances[0]?.currentTime).toBe(32);
+  });
+
+  it("pauses and resumes the same voice message from the player button", async () => {
+    const user = userEvent.setup();
+    const pause = vi.fn();
+    const play = vi.fn().mockResolvedValue(undefined);
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances, pause, play });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+    audioInstances[0]!.duration = 58;
+    audioInstances[0]!.dispatch("loadedmetadata");
+
+    await user.click(screen.getByRole("button", { name: "暂停语音消息 11\"" }));
+
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "播放语音消息 11\"" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    expect(play).toHaveBeenCalledTimes(2);
   });
 
   it("shows playing even when browser audio play is still pending", async () => {
@@ -314,7 +487,7 @@ describe("voice message playback", () => {
       <VoiceMessageCard
         content={{
           type: "voice",
-          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
           durationLabel: "11\"",
         }}
         isAgent={false}
@@ -326,11 +499,13 @@ describe("voice message playback", () => {
     await waitFor(() => {
       expect(screen.getByRole("button")).toHaveTextContent("暂不支持播放，请稍后重试");
     });
-    expect(play).not.toHaveBeenCalled();
+    expect(play).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the volume icon static while a voice message is playing", async () => {
+  it("switches the voice control icon between play and pause states", async () => {
     const user = userEvent.setup();
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances });
 
     render(
       <VoiceMessageCard
@@ -343,17 +518,28 @@ describe("voice message playback", () => {
       />,
     );
 
+    expect(screen.getByTestId("voice-playback-icon")).toHaveAttribute(
+      "data-playback-icon",
+      "play",
+    );
+
     await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+    audioInstances[0]!.duration = 11;
+    audioInstances[0]!.dispatch("loadedmetadata");
 
     await waitFor(() => {
-      expect(mocks.request).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("voice-playback-icon")).toHaveAttribute(
+        "data-playback-icon",
+        "pause",
+      );
     });
 
-    const icon = screen.getByTestId("voice-volume-icon");
+    await user.click(screen.getByRole("button", { name: "暂停语音消息 11\"" }));
 
-    expect(icon).toHaveAttribute("data-volume-icon", "high");
-    await new Promise((resolve) => window.setTimeout(resolve, 350));
-    expect(icon).toHaveAttribute("data-volume-icon", "high");
+    expect(screen.getByTestId("voice-playback-icon")).toHaveAttribute(
+      "data-playback-icon",
+      "play",
+    );
   });
 
   it("stops the previous voice message before playing another one", async () => {
@@ -627,6 +813,12 @@ function stubAudio({
     });
     this.currentTime = 0;
     this.dispatch = (event: string) => {
+      if (event === "loadedmetadata") {
+        this.paused = false;
+      }
+      if (event === "timeupdate") {
+        this.paused = false;
+      }
       if (event === "ended") {
         this.ended = true;
         this.paused = true;
@@ -640,6 +832,7 @@ function stubAudio({
     };
     this.duration = 0;
     this.ended = false;
+    this.load = vi.fn();
     this.pause = instances.length === 0 ? pause : vi.fn();
     this.paused = true;
     this.play = playSequence?.[instances.length] ?? play;

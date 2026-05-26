@@ -596,6 +596,39 @@ describe("CustomerPage", () => {
     expect(screen.getByText("客户A（张三）")).toBeInTheDocument();
   });
 
+  it("shows a spinning icon while loading more customers", async () => {
+    const user = userEvent.setup();
+    const service = createCustomerPageService();
+    let resolveNextPage: ((value: typeof nextCustomerResponse) => void) | undefined;
+    vi.mocked(service.getCustomers)
+      .mockResolvedValueOnce({
+        ...customerResponse,
+        hasMore: true,
+        nextCursor: "cursor-2",
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise<typeof nextCustomerResponse>((resolve) => {
+            resolveNextPage = resolve;
+          }),
+      );
+    setWorkbenchService(service);
+
+    renderRoute("/chat/customers");
+
+    await screen.findByRole("heading", { name: "客户" });
+    await user.click(screen.getByRole("tab", { name: "全部客户" }));
+
+    await user.click(await screen.findByRole("button", { name: "加载更多客户" }));
+
+    const loadMoreButton = screen.getByRole("button", { name: "加载更多客户" });
+    expect(loadMoreButton).toBeDisabled();
+    expect(loadMoreButton.querySelector("svg")).toHaveClass("animate-spin");
+
+    resolveNextPage?.(nextCustomerResponse);
+    expect(await screen.findByText("客户B（李四）")).toBeInTheDocument();
+  });
+
   it("keeps loaded customers visible when loading the next page fails", async () => {
     const user = userEvent.setup();
     const service = createCustomerPageService();

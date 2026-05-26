@@ -341,6 +341,7 @@ export function CustomerPage({
                         >
                           {isLoadingMore ? (
                             <HugeiconsIcon
+                              className="animate-spin"
                               color="currentColor"
                               icon={Loading03Icon}
                               size={14}

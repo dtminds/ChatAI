@@ -10,8 +10,14 @@ export type VoiceServiceConfig = {
 export function readVoiceServiceConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): VoiceServiceConfig {
+  const bucket = env.VOICE_SERVICE_BUCKET?.trim();
+
+  if (!bucket) {
+    throw new Error("Missing required environment variable: VOICE_SERVICE_BUCKET");
+  }
+
   return {
-    bucket: env.VOICE_SERVICE_BUCKET ?? "scrm-msg-audit-1304132716",
+    bucket,
     inputPrefix: normalizePrefix(env.VOICE_SERVICE_INPUT_PREFIX ?? "s5/voice"),
     outputPrefix: normalizePrefix(
       env.VOICE_SERVICE_OUTPUT_PREFIX ?? "s5/playable-voice",

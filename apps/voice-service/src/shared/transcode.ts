@@ -128,7 +128,7 @@ function mixDownToPcm16(channelData: Float32Array[]) {
     let mixed = 0;
 
     for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
-      mixed += validChannels[channelIndex]![sampleIndex]!;
+      mixed += validChannels[channelIndex]![sampleIndex] ?? 0;
     }
 
     const normalized = channels > 0 ? Math.max(-1, Math.min(1, mixed / channels)) : 0;

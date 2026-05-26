@@ -311,9 +311,9 @@ export function VoiceMessageCard({
 
     previousAudioUrlRef.current = content.audioUrl;
     playbackReadyNotifiedUrlRef.current = undefined;
-    stopPlayback();
+    stopPlaybackRef.current();
     setDuration(0);
-  }, [content.audioUrl, stopPlayback]);
+  }, [content.audioUrl]);
 
   const handleControlClick = async () => {
     if (!content.audioUrl) {

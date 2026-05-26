@@ -41,6 +41,32 @@ describe("AMR audio buffer transcoding", () => {
     expect(new TextDecoder().decode(result.wav.slice(0, 4))).toBe("RIFF");
   });
 
+  it("treats missing samples in shorter channels as silence", async () => {
+    const { transcodeVoiceToWav } = await import("../src/shared/transcode.js");
+
+    mocks.decodeAudio.mockResolvedValue({
+      getChannelData: vi.fn((channel: number) => (
+        channel === 0
+          ? new Float32Array([0, 0.5, -0.5])
+          : new Float32Array([0.25])
+      )),
+      numberOfChannels: 2,
+      sampleRate: 8000,
+    });
+
+    const result = await transcodeVoiceToWav(new TextEncoder().encode("#!AMR\nvoice"), {
+      maxBytes: 1024,
+      maxDurationMs: 60_000,
+      sampleRate: 16000,
+    });
+    const pcm = new DataView(result.wav.buffer, result.wav.byteOffset + 44, result.wav.byteLength - 44);
+
+    expect(Array.from(result.wav.slice(0, 4))).toEqual(Array.from(new TextEncoder().encode("RIFF")));
+    expect(pcm.getInt16(0, true)).toBeGreaterThan(0);
+    expect(pcm.getInt16(2, true)).toBeGreaterThan(0);
+    expect(pcm.getInt16(4, true)).toBeLessThan(0);
+  });
+
   it("wraps audio decode failures in a transcode error", async () => {
     const { transcodeVoiceToWav } = await import("../src/shared/transcode.js");
 

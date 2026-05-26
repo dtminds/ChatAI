@@ -292,6 +292,34 @@ describe("CustomerPage", () => {
     expect(animationFrameSpy).not.toHaveBeenCalled();
   });
 
+  it("keeps the recent conversation popover open when the trigger is clicked", async () => {
+    const user = userEvent.setup();
+    const service = createCustomerPageService();
+    setWorkbenchService(service);
+
+    renderRoute("/chat/customers");
+
+    await screen.findByRole("heading", { name: "客户" });
+    await user.type(screen.getByLabelText("搜索客户"), "客户A");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "刷新 客户A（张三） 的最近会话时间",
+      }),
+    );
+
+    const recentConversationButton = await screen.findByRole("button", {
+      name: "查看 客户A（张三） 的最近会话记录",
+    });
+
+    await user.hover(recentConversationButton);
+    expect(await screen.findByText("最近会话")).toBeInTheDocument();
+
+    await user.click(recentConversationButton);
+
+    expect(screen.getByText("最近会话")).toBeInTheDocument();
+  });
+
   it("retries recent message preview after a transient failure", async () => {
     const user = userEvent.setup();
     const service = createCustomerPageService();

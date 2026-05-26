@@ -619,6 +619,7 @@ function CustomerLastConversationPopover({
           aria-label={`查看 ${displayName} 的最近会话记录`}
           className="h-8 justify-start gap-2 px-0 text-sm font-normal hover:bg-transparent"
           onBlur={scheduleClosePopover}
+          onClick={(event) => event.preventDefault()}
           onFocus={openPopover}
           onMouseEnter={openPopover}
           onMouseLeave={scheduleClosePopover}

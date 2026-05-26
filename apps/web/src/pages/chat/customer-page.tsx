@@ -608,7 +608,9 @@ function CustomerLastConversationPopover({
     }
 
     closeTimerRef.current = setTimeout(() => {
-      setIsOpen(false);
+      if (isMountedRef.current) {
+        setIsOpen(false);
+      }
     }, 120);
   }
 

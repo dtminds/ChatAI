@@ -868,7 +868,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     activeMessageSeq: number,
   ) {
-    const conversation = await this.repository.getConversationLookup(conversationId);
+    const conversation = await this.repository.getConversationLookup(conversationId, {
+      includeHidden: true,
+    });
 
     if (!conversation) {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
@@ -878,6 +880,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const page = await this.repository.listMessages(conversationId, {
       beforeSeq: undefined,
+      includeHiddenConversation: true,
       limit: 50,
     });
 

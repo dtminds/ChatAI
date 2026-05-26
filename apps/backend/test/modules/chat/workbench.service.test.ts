@@ -914,6 +914,7 @@ describe("MysqlWorkbenchService", () => {
     });
     expect(listMessages).toHaveBeenCalledWith("88", {
       beforeSeq: undefined,
+      includeHiddenConversation: true,
       limit: 50,
     });
     expect(getSeatsByIds).toHaveBeenCalledWith(["12"]);
@@ -1082,6 +1083,13 @@ describe("MysqlWorkbenchService", () => {
 
   it("polls active conversation messages through the shared message page query", async () => {
     const javaClient = createJavaClient();
+    const getConversationLookup = vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      seatHostSubUserId: "101",
+      uid: 9001,
+    });
     const listMessages = vi.fn().mockResolvedValue({
       filteredCount: 0,
       hasMore: false,
@@ -1119,13 +1127,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          uid: 9001,
-        }),
+        getConversationLookup,
         getSeatsByIds: vi.fn().mockResolvedValue([]),
         listMessages,
         listChangedConversations: vi.fn().mockResolvedValue({
@@ -1156,8 +1158,12 @@ describe("MysqlWorkbenchService", () => {
         },
       ],
     });
+    expect(getConversationLookup).toHaveBeenCalledWith("88", {
+      includeHidden: true,
+    });
     expect(listMessages).toHaveBeenCalledWith("88", {
       beforeSeq: undefined,
+      includeHiddenConversation: true,
       limit: 50,
     });
   });

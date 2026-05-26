@@ -27,12 +27,24 @@ type CosObjectEvent = {
 export async function main_handler(event: CosObjectEvent) {
   const config = readVoiceServiceConfig();
   const client = createCosClientFromEnv();
-  const record = event.Records?.[0];
+  const records = event.Records ?? [];
 
-  if (!record) {
+  if (records.length === 0) {
     throw new Error("No records found in COS event");
   }
 
+  const results = await Promise.all(
+    records.map((record) => transcodeRecord(record, config, client)),
+  );
+
+  return results.length === 1 ? results[0] : results;
+}
+
+async function transcodeRecord(
+  record: NonNullable<CosObjectEvent["Records"]>[number],
+  config: ReturnType<typeof readVoiceServiceConfig>,
+  client: ReturnType<typeof createCosClientFromEnv>,
+) {
   const bucket = normalizeEventBucket(
     record?.cos?.cosBucket?.name,
     record?.cos?.cosRegion?.appid,

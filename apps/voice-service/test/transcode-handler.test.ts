@@ -111,6 +111,63 @@ describe("transcode-on-cos-event handler", () => {
     expect(mocks.putCosObject).not.toHaveBeenCalled();
   });
 
+  it("transcodes every COS record in a batch event", async () => {
+    const { main_handler } = await import("../src/functions/transcode-on-cos-event.js");
+
+    await expect(
+      main_handler({
+        Records: [
+          {
+            cos: {
+              cosBucket: { name: "scrm-msg-audit-1304132716" },
+              cosObject: {
+                key: encodeURIComponent("s5/voice/20260513/272/first.amr"),
+              },
+              cosRegion: { region: "ap-shanghai" },
+            },
+          },
+          {
+            cos: {
+              cosBucket: { name: "scrm-msg-audit-1304132716" },
+              cosObject: {
+                key: encodeURIComponent("s5/voice/20260513/272/second.amr"),
+              },
+              cosRegion: { region: "ap-shanghai" },
+            },
+          },
+        ],
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        key: "s5/voice/20260513/272/first.amr",
+        playableKey: "s5/playable-voice/20260513/272/first.wav",
+      }),
+      expect.objectContaining({
+        key: "s5/voice/20260513/272/second.amr",
+        playableKey: "s5/playable-voice/20260513/272/second.wav",
+      }),
+    ]);
+
+    expect(mocks.fetchCosObject).toHaveBeenCalledTimes(2);
+    expect(mocks.putCosObject).toHaveBeenCalledTimes(2);
+    expect(mocks.putCosObject).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Object),
+      "scrm-msg-audit-1304132716",
+      "ap-shanghai",
+      "s5/playable-voice/20260513/272/first.wav",
+      new Uint8Array([0x52, 0x49, 0x46, 0x46]),
+    );
+    expect(mocks.putCosObject).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Object),
+      "scrm-msg-audit-1304132716",
+      "ap-shanghai",
+      "s5/playable-voice/20260513/272/second.wav",
+      new Uint8Array([0x52, 0x49, 0x46, 0x46]),
+    );
+  });
+
   it("normalizes short COS event bucket names with the event appid", async () => {
     const { main_handler } = await import("../src/functions/transcode-on-cos-event.js");
 

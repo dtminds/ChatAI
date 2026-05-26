@@ -28,6 +28,11 @@ export async function main_handler(event: CosObjectEvent) {
   const config = readVoiceServiceConfig();
   const client = createCosClientFromEnv();
   const record = event.Records?.[0];
+
+  if (!record) {
+    throw new Error("No records found in COS event");
+  }
+
   const bucket = normalizeEventBucket(
     record?.cos?.cosBucket?.name,
     record?.cos?.cosRegion?.appid,

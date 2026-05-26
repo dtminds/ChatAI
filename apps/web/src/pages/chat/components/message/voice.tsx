@@ -533,8 +533,8 @@ export function VoiceMessageCard({
   );
 }
 
-function isAmrUrl(url: string) {
-  return /\.amr(?:[?#].*)?$/i.test(url);
+function isUnplayableNativeUrl(url: string) {
+  return /\.(?:amr|silk)(?:[?#].*)?$/i.test(url);
 }
 
 function getImmediateAudioUrl(content: VoiceMessageContent) {
@@ -542,7 +542,7 @@ function getImmediateAudioUrl(content: VoiceMessageContent) {
     return content.playbackUrl;
   }
 
-  if (!content.audioUrl || isAmrUrl(content.audioUrl)) {
+  if (!content.audioUrl || isUnplayableNativeUrl(content.audioUrl)) {
     return undefined;
   }
 

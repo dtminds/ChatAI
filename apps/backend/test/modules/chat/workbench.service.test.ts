@@ -296,6 +296,44 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
   });
 
+  it("rejects confirmed voice playback URLs that do not belong to the current message file", async () => {
+    const javaClient = createJavaClient();
+    const playableVoiceExists = vi.fn().mockResolvedValue(true);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/current-message.amr",
+          transFileUrl: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      playableVoiceExists,
+    );
+
+    await expect(
+      service.confirmVoicePlaybackReady("101", {
+        conversationId: "88",
+        messageSeq: 538,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/other-message.wav",
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAYABLE_VOICE_URL_MISMATCH",
+      statusCode: 400,
+    });
+    expect(playableVoiceExists).not.toHaveBeenCalled();
+    expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
+  });
+
   it("rejects confirmed voice playback when the converted WAV does not exist", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
@@ -310,7 +348,7 @@ describe("MysqlWorkbenchService", () => {
           uid: 9001,
         }),
         getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
-          fileUrl: "s5/msg/20260525/272/voice.amr",
+          fileUrl: "s5/msg/20260525/272/missing.amr",
           transFileUrl: "",
         })),
       } as unknown as WorkbenchRepository,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createCosClientFromEnv } from "../src/shared/cos.js";
+import { createCosClientFromEnv, fetchCosObject } from "../src/shared/cos.js";
 
 describe("COS client credentials", () => {
   it("uses SCF runtime temporary credentials when available", () => {
@@ -25,6 +25,28 @@ describe("COS client credentials", () => {
     expect(client.options).toMatchObject({
       SecretId: "manual-secret-id",
       SecretKey: "manual-secret-key",
+    });
+  });
+
+  it("treats an empty COS object body as an empty byte array", async () => {
+    const client = {
+      getObject: async () => ({
+        Body: undefined,
+        headers: {
+          "content-length": "0",
+          "content-type": "application/octet-stream",
+        },
+      }),
+    };
+
+    await expect(
+      fetchCosObject(client as never, "scrm-msg-audit-1304132716", "ap-shanghai", "s5/voice/empty.amr"),
+    ).resolves.toEqual({
+      body: new Uint8Array(0),
+      metadata: {
+        contentLength: "0",
+        contentType: "application/octet-stream",
+      },
     });
   });
 });

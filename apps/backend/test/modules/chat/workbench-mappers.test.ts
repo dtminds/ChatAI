@@ -378,6 +378,24 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("derives voice playback URLs without replacing matching filename segments", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/s5/msg/voice.amr",
+          transFileUrl: "",
+        }),
+        msgtype: "voice",
+      })),
+    ).toMatchObject({
+      content: {
+        audioUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/s5/msg/voice.amr",
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/s5/msg/voice.wav",
+      },
+      contentType: "voice",
+    });
+  });
+
   it("maps quote messages to normalized quote content", () => {
     expect(
       mapMessageRow(messageRow({

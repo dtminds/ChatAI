@@ -100,8 +100,7 @@ function buildPlayableVoiceUrl(sourceUrl: URL) {
   }
 
   const playableUrl = new URL(sourceUrl);
-  playableUrl.pathname = sourceUrl.pathname
-    .replace(sourcePrefix, PLAYABLE_VOICE_PREFIX)
+  playableUrl.pathname = `${PLAYABLE_VOICE_PREFIX}${sourceUrl.pathname.slice(sourcePrefix.length)}`
     .replace(/\.[^/.]+$/u, ".wav");
   playableUrl.search = "";
   playableUrl.hash = "";

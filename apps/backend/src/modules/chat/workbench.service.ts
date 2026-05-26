@@ -63,6 +63,7 @@ const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
 const POLL_SEAT_UPDATE_LIMIT = 200;
 const PLAYABLE_VOICE_HOST = "b5.bokr.com.cn";
+const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
 const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
 
@@ -501,6 +502,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const content = parseMessageContentRecord(rawContent);
     const nextTransFileUrl = toPlayableVoiceCosObjectPath(input.playbackUrl);
+    const expectedTransFileUrl = toExpectedPlayableVoiceCosObjectPath(
+      readStringValue(content.fileUrl),
+    );
+
+    if (nextTransFileUrl !== expectedTransFileUrl) {
+      throw new BadRequestError("PLAYABLE_VOICE_URL_MISMATCH", "语音播放地址与当前消息不匹配");
+    }
+
     const playableExists = await this.playableVoiceExists(
       toPlayableVoiceAbsoluteUrl(nextTransFileUrl),
     );
@@ -1035,6 +1044,40 @@ function toPlayableVoiceCosObjectPath(rawUrl: string) {
   }
 
   throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音播放地址不允许");
+}
+
+function toExpectedPlayableVoiceCosObjectPath(rawUrl: string) {
+  let url: URL;
+
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return toExpectedPlayableVoicePathname(`/${rawUrl.replace(/^\/+/, "")}`).replace(
+      /^\/+/,
+      "",
+    );
+  }
+
+  if (url.protocol !== "https:" || url.hostname !== PLAYABLE_VOICE_HOST) {
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+  }
+
+  return toExpectedPlayableVoicePathname(url.pathname).replace(/^\/+/, "");
+}
+
+function toExpectedPlayableVoicePathname(pathname: string) {
+  const sourcePrefix = SOURCE_VOICE_PREFIXES.find((prefix) =>
+    pathname.startsWith(prefix),
+  );
+
+  if (!sourcePrefix) {
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+  }
+
+  return `${PLAYABLE_VOICE_PREFIX}${pathname.slice(sourcePrefix.length)}`.replace(
+    /\.[^/.]+$/u,
+    ".wav",
+  );
 }
 
 function isPlayableVoiceObjectPath(pathname: string) {

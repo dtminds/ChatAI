@@ -497,8 +497,7 @@ function buildDerivedVoicePlaybackUrl(rawUrl: string) {
     return undefined;
   }
 
-  url.pathname = url.pathname
-    .replace(sourcePrefix, PLAYABLE_VOICE_PREFIX)
+  url.pathname = `${PLAYABLE_VOICE_PREFIX}${url.pathname.slice(sourcePrefix.length)}`
     .replace(/\.[^/.]+$/u, ".wav");
   url.search = "";
   url.hash = "";

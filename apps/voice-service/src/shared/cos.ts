@@ -96,6 +96,10 @@ export async function putCosObject(
 }
 
 async function toUint8Array(body: unknown) {
+  if (!body) {
+    return new Uint8Array(0);
+  }
+
   if (body instanceof Uint8Array) {
     return new Uint8Array(body);
   }

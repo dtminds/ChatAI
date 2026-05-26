@@ -33,6 +33,7 @@ vi.mock("../src/shared/transcode.js", () => ({
 
 describe("transcode-on-cos-event handler", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mocks.createCosClientFromEnv.mockReturnValue({});
     mocks.fetchCosObject.mockResolvedValue({
       body: new Uint8Array([1, 2, 3]),
@@ -100,6 +101,14 @@ describe("transcode-on-cos-event handler", () => {
       "s5/playable-voice/20260513/272/voice.wav",
       new Uint8Array([0x52, 0x49, 0x46, 0x46]),
     );
+  });
+
+  it("rejects empty COS event records before reading objects", async () => {
+    const { main_handler } = await import("../src/functions/transcode-on-cos-event.js");
+
+    await expect(main_handler({ Records: [] })).rejects.toThrow("No records found in COS event");
+    expect(mocks.fetchCosObject).not.toHaveBeenCalled();
+    expect(mocks.putCosObject).not.toHaveBeenCalled();
   });
 
   it("normalizes short COS event bucket names with the event appid", async () => {

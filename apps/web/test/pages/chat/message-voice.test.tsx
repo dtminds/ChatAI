@@ -640,6 +640,30 @@ describe("voice message playback", () => {
     expect(play).not.toHaveBeenCalled();
   });
 
+  it("does not attempt native playback for SILK voice messages without converted URL", async () => {
+    const user = userEvent.setup();
+    const play = vi.fn().mockResolvedValue(undefined);
+    stubAudio({ play });
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.silk",
+          durationLabel: "11\"",
+        }}
+        isAgent={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button")).toHaveTextContent("暂不支持播放，请稍后重试");
+    });
+    expect(play).not.toHaveBeenCalled();
+  });
+
   it("switches the voice control icon between play and pause states", async () => {
     const user = userEvent.setup();
     const audioInstances: AudioMockInstance[] = [];

@@ -85,8 +85,9 @@ export async function transcodeVoiceToWav(
 }
 
 function mixDownToPcm16(channelData: Float32Array[]) {
-  const channels = channelData.length;
-  const samples = channelData[0]?.length ?? 0;
+  const validChannels = channelData.filter((channel) => channel instanceof Float32Array);
+  const channels = validChannels.length;
+  const samples = validChannels[0]?.length ?? 0;
   const pcm = new Uint8Array(samples * 2);
   const view = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
 
@@ -94,7 +95,7 @@ function mixDownToPcm16(channelData: Float32Array[]) {
     let mixed = 0;
 
     for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
-      mixed += channelData[channelIndex]?.[sampleIndex] ?? 0;
+      mixed += validChannels[channelIndex]![sampleIndex]!;
     }
 
     const normalized = channels > 0 ? Math.max(-1, Math.min(1, mixed / channels)) : 0;

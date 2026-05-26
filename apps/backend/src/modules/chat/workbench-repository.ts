@@ -287,12 +287,6 @@ type CustomerSeatHydrationRow = {
   uid: number | string;
 };
 
-type SeatSubRelationScopeRow = {
-  platform: number | string;
-  uid: number | string;
-  user_seat_id: number | string;
-};
-
 export class WorkbenchRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
@@ -1009,30 +1003,11 @@ export class WorkbenchRepository {
     subUserId: number,
     seatIds?: number[],
   ): Promise<CustomerSeatContext[]> {
-    let relationQuery = this.db
-      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .select([
-        "relation.user_seat_id as user_seat_id",
-        "relation.uid as uid",
-        "relation.platform as platform",
-      ])
-      .where("relation.sub_id", "=", subUserId);
-
-    if (seatIds && seatIds.length > 0) {
-      relationQuery = relationQuery.where("relation.user_seat_id", "in", seatIds);
-    }
-
-    const relationRows = (await relationQuery.execute()) as SeatSubRelationScopeRow[];
-    const normalizedSeatIds = asSchemaBigIntIds(
-      uniqueIds(relationRows.map((row) => row.user_seat_id)),
-    );
-
-    if (normalizedSeatIds.length === 0) {
-      return [];
-    }
-
-    const seatRows = (await this.db
+    let seatQuery = this.db
       .selectFrom("xy_wap_embed_user_seat as seat")
+      .innerJoin("xy_wap_embed_user_seat_sub_relation as relation", (join) =>
+        join.onRef("relation.user_seat_id", "=", "seat.id"),
+      )
       .select([
         "seat.id as id",
         "seat.uid as uid",
@@ -1041,9 +1016,18 @@ export class WorkbenchRepository {
         "seat.third_avatar as third_avatar",
         "seat.third_user_name as third_user_name",
       ])
-      .where("seat.id", "in", normalizedSeatIds)
-      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
-      .execute()) as CustomerSeatHydrationRow[];
+      .where("relation.sub_id", "=", subUserId)
+      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE);
+
+    if (seatIds && seatIds.length > 0) {
+      seatQuery = seatQuery.where(
+        "seat.id",
+        "in",
+        asSchemaBigIntIds(seatIds.map((seatId) => String(seatId))),
+      );
+    }
+
+    const seatRows = (await seatQuery.execute()) as CustomerSeatHydrationRow[];
 
     return seatRows
       .map((row) => {
@@ -3372,15 +3356,13 @@ function mapCustomerLastConversation(
   row: CustomerLastConversationHydratedRow | CustomerRow,
 ): WorkbenchCustomerLastConversationDto | undefined {
   const isLastMessageRow = "conversation_id" in row;
-  const conversationId = toNumber(
-    isLastMessageRow ? row.conversation_id : row.last_conversation_id,
-  );
+  const rawConversationId = isLastMessageRow
+    ? row.conversation_id
+    : row.last_conversation_id;
   const lastMessageTime = toNumber(row.last_message_time);
-  const seatId = toNumber(
-    isLastMessageRow ? row.seat_id : row.last_conversation_seat_id,
-  );
+  const rawSeatId = isLastMessageRow ? row.seat_id : row.last_conversation_seat_id;
 
-  if (conversationId == null || lastMessageTime == null || seatId == null) {
+  if (rawConversationId == null || lastMessageTime == null || rawSeatId == null) {
     return undefined;
   }
 
@@ -3392,10 +3374,10 @@ function mapCustomerLastConversation(
     : row.last_conversation_seat_name;
 
   return {
-    conversationId: String(conversationId),
+    conversationId: String(rawConversationId),
     lastMessageTime,
     seatAvatar: seatAvatar ?? "",
-    seatId: String(seatId),
+    seatId: String(rawSeatId),
     seatName: seatName ?? "",
   };
 }

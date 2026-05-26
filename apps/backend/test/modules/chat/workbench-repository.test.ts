@@ -499,17 +499,6 @@ describe("WorkbenchRepository", () => {
             queries.push({ table, query });
             return query;
           }
-
-          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
-            const query = createQueryBuilder({
-              platform: 5,
-              uid: 9001,
-              user_seat_id: 12,
-            });
-            queries.push({ table, query });
-            return query;
-          }
-
           if (table === "xy_wap_embed_customer_bind_relation as bind") {
             const query = createQueryBuilder([
               {
@@ -637,6 +626,17 @@ describe("WorkbenchRepository", () => {
     const bindQuery = queries.find(
       (item) => item.table === "xy_wap_embed_customer_bind_relation as bind",
     )?.query;
+    const accessibleSeatQuery = queries.find(
+      (item) => item.table === "xy_wap_embed_user_seat as seat",
+    )?.query;
+    expect(accessibleSeatQuery?.joins).toEqual(["innerJoin"]);
+    expect(accessibleSeatQuery?.joinConditions).toContainEqual({
+      conditions: [["relation.user_seat_id", "=", "seat.id"]],
+      table: "xy_wap_embed_user_seat_sub_relation as relation",
+      type: "innerJoin",
+    });
+    expect(accessibleSeatQuery?.wheres).toContainEqual(["relation.sub_id", "=", 101]);
+    expect(accessibleSeatQuery?.wheres).toContainEqual(["seat.biz_status", "=", 1]);
     expect(bindQuery?.joins).toEqual([]);
     expect(bindQuery?.wheres).toContainEqual(["bind.uid", "=", 9001]);
     expect(bindQuery?.wheres).toContainEqual(["bind.platform", "=", 5]);
@@ -662,17 +662,6 @@ describe("WorkbenchRepository", () => {
             queries.push({ table, query });
             return query;
           }
-
-          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
-            const query = createQueryBuilder({
-              platform: 5,
-              uid: 9001,
-              user_seat_id: 12,
-            });
-            queries.push({ table, query });
-            return query;
-          }
-
           if (table === "xy_wap_embed_customer_bind_relation as bind") {
             const query = createQueryBuilder([]);
             queries.push({ table, query });
@@ -1124,7 +1113,7 @@ describe("WorkbenchRepository", () => {
           if (table === "xy_wap_embed_conversation as conversation") {
             const query = createQueryBuilder([
               {
-                conversation_id: 701,
+                conversation_id: "9007199254740993",
                 last_message_time: 1_779_600_000_000,
                 platform: 5,
                 third_external_userid: "external-b",
@@ -1139,7 +1128,7 @@ describe("WorkbenchRepository", () => {
           if (table === "xy_wap_embed_user_seat as seat") {
             const query = createQueryBuilder([
               {
-                id: 12,
+                id: "9007199254740995",
                 platform: 5,
                 third_avatar: "",
                 third_user_name: "销售一号",
@@ -1163,10 +1152,10 @@ describe("WorkbenchRepository", () => {
         uid: 9001,
       }),
     ).resolves.toEqual({
-      conversationId: "701",
+      conversationId: "9007199254740993",
       lastMessageTime: 1_779_600_000_000,
       seatAvatar: "",
-      seatId: "12",
+      seatId: "9007199254740995",
       seatName: "销售一号",
     });
     expect(queries[0]?.query.wheres).toContainEqual(["conversation.uid", "=", 9001]);

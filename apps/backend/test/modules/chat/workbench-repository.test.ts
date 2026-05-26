@@ -483,6 +483,771 @@ describe("WorkbenchRepository", () => {
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
   });
 
+  it("lists my customers grouped by contact identity and scoped by visible seats", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    let seatQueryCount = 0;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            const query = createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-12",
+              uid: 9001,
+            });
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+              user_seat_id: 12,
+            });
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([
+              {
+                add_time: 100,
+                biz_status: 1,
+                bind_type: 1,
+                description: "重点客户",
+                id: 301,
+                platform: 5,
+                third_external_userid: "external-a",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+              {
+                add_time: 200,
+                biz_status: 1,
+                bind_type: 2,
+                description: "",
+                id: 302,
+                platform: 5,
+                third_external_userid: "external-a",
+                third_userid: "seat-user-13",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_contact as contact") {
+            const query = createQueryBuilder([
+              {
+                avatar: "https://example.com/customer-a.png",
+                biz_status: 0,
+                gender: 1,
+                name: "客户A",
+                platform: 5,
+                real_name: "张三",
+                third_external_userid: "external-a",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_user_seat as seat") {
+            seatQueryCount += 1;
+            const query = createQueryBuilder(
+              seatQueryCount === 1
+                ? [
+                    {
+                      id: 12,
+                      platform: 5,
+                      third_avatar: "https://example.com/seat-12.png",
+                      third_user_name: "销售一号",
+                      third_userid: "seat-user-12",
+                      uid: 9001,
+                    },
+                  ]
+                : [
+                    {
+                      id: 12,
+                      platform: 5,
+                      third_avatar: "https://example.com/seat-12.png",
+                      third_user_name: "销售一号",
+                      third_userid: "seat-user-12",
+                      uid: 9001,
+                    },
+                    {
+                      id: 13,
+                      platform: 5,
+                      third_avatar: "https://example.com/seat-13.png",
+                      third_user_name: "销售二号",
+                      third_userid: "seat-user-13",
+                      uid: 9001,
+                    },
+                  ],
+            );
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listCustomers({
+        scope: "mine",
+        seatIds: ["12"],
+        subUserId: "101",
+      }),
+    ).resolves.toEqual({
+      hasMore: false,
+      items: [
+        {
+          avatar: "https://example.com/customer-a.png",
+          bizStatus: 0,
+          customerKey: "9001:5:external-a",
+          gender: 1,
+          name: "客户A",
+          platform: 5,
+          realName: "张三",
+          relationCount: 2,
+          seatRelations: [
+            expect.objectContaining({
+              bindId: "301",
+              seatId: "12",
+              seatName: "销售一号",
+            }),
+            expect.objectContaining({
+              bindId: "302",
+              seatId: "13",
+              seatName: "销售二号",
+            }),
+          ],
+          thirdExternalUserId: "external-a",
+          uid: 9001,
+        },
+      ],
+      total: 1,
+    });
+    const bindQuery = queries.find(
+      (item) => item.table === "xy_wap_embed_customer_bind_relation as bind",
+    )?.query;
+    expect(bindQuery?.joins).toEqual([]);
+    expect(bindQuery?.wheres).toContainEqual(["bind.uid", "=", 9001]);
+    expect(bindQuery?.wheres).toContainEqual(["bind.platform", "=", 5]);
+    expect(bindQuery?.wheres).toContainEqual(["bind.third_userid", "=", "seat-user-12"]);
+    expect(bindQuery?.orderBys).toEqual([
+      ["bind.add_time", "desc"],
+      ["bind.id", "desc"],
+    ]);
+  });
+
+  it("applies keyword and limit to my customer seat lists", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            const query = createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-12",
+              uid: 9001,
+            });
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+              user_seat_id: 12,
+            });
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_contact as contact") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder([
+              {
+                id: 12,
+                platform: 5,
+                third_avatar: "",
+                third_user_name: "销售一号",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await repository.listCustomers({
+      keyword: "张三",
+      limit: 50,
+      scope: "mine",
+      seatIds: ["12"],
+      subUserId: "101",
+    });
+
+    const bindQuery = queries.find(
+      (item) => item.table === "xy_wap_embed_customer_bind_relation as bind",
+    )?.query;
+    expect(bindQuery?.limits).toEqual([51]);
+    expect(bindQuery?.joins).toEqual(["innerJoin"]);
+    expect(bindQuery?.joinConditions[0]?.table).toBe("xy_wap_embed_contact as contact");
+    expect(bindQuery?.whereExpressions).toContainEqual({
+      type: "or",
+      expressions: [
+        { column: "contact.name", operator: "like", value: "%张三%" },
+        { column: "contact.real_name", operator: "like", value: "%张三%" },
+        { column: "bind.remark", operator: "like", value: "%张三%" },
+      ],
+    });
+  });
+
+  it("searches all visible managed accounts with only a contact join", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createQueryBuilder([
+              {
+                platform: 5,
+                uid: 9001,
+                user_seat_id: 12,
+              },
+              {
+                platform: 5,
+                uid: 9001,
+                user_seat_id: 13,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_contact as contact") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder([
+              {
+                id: 12,
+                platform: 5,
+                third_avatar: "",
+                third_user_name: "销售一号",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+              {
+                id: 13,
+                platform: 5,
+                third_avatar: "",
+                third_user_name: "销售二号",
+                third_userid: "seat-user-13",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await repository.listCustomers({
+      keyword: "张三",
+      limit: 50,
+      scope: "mine",
+      seatIds: [],
+      subUserId: "101",
+    });
+
+    const bindQuery = queries.find(
+      (item) => item.table === "xy_wap_embed_customer_bind_relation as bind",
+    )?.query;
+    expect(bindQuery?.joins).toEqual(["innerJoin"]);
+    expect(bindQuery?.joinConditions[0]?.table).toBe("xy_wap_embed_contact as contact");
+    expect(bindQuery?.wheres).toContainEqual([
+      "bind.third_userid",
+      "in",
+      ["seat-user-12", "seat-user-13"],
+    ]);
+    expect(bindQuery?.joinConditions.some((join) =>
+      join.table.includes("user_seat") || join.table.includes("conversation"),
+    )).toBe(false);
+  });
+
+  it("lists all customers without sub-user or seat filters", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_contact as contact") {
+            const query = createQueryBuilder([
+              {
+                avatar: "",
+                biz_status: 1,
+                gender: null,
+                name: "客户B",
+                platform: 5,
+                real_name: "",
+                third_external_userid: "external-b",
+                uid: 9001,
+                update_time: new Date("2026-05-20T10:00:00.000Z"),
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder([
+              {
+                id: 12,
+                platform: 5,
+                third_avatar: "",
+                third_user_name: "销售一号",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listCustomers({
+        platform: 5,
+        scope: "all",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      hasMore: false,
+      items: [
+        {
+          bizStatus: 1,
+          customerKey: "9001:5:external-b",
+          relationCount: 0,
+          thirdExternalUserId: "external-b",
+        },
+      ],
+      total: 1,
+    });
+    expect(queries[0]?.table).toBe("xy_wap_embed_contact as contact");
+    expect(queries[0]?.query.wheres).not.toContainEqual(["relation.sub_id", "=", 101]);
+    expect(queries[0]?.query.wheres.some(([column]) => column === "seat.id")).toBe(false);
+  });
+
+  it("paginates all customers from contact rows before hydrating relations", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_contact as contact") {
+            const query = createQueryBuilder([
+              {
+                avatar: "",
+                biz_status: 1,
+                gender: null,
+                name: "客户B",
+                platform: 5,
+                real_name: "",
+                third_external_userid: "external-b",
+                uid: 9001,
+                update_time: new Date("2026-05-20T10:00:00.000Z"),
+              },
+              {
+                avatar: "",
+                biz_status: 1,
+                gender: null,
+                name: "客户C",
+                platform: 5,
+                real_name: "",
+                third_external_userid: "external-c",
+                uid: 9001,
+                update_time: new Date("2026-05-19T10:00:00.000Z"),
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([
+              {
+                add_time: 100,
+                biz_status: 1,
+                bind_type: 1,
+                description: null,
+                id: 301,
+                platform: 5,
+                third_external_userid: "external-b",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder([
+              {
+                id: 12,
+                platform: 5,
+                third_avatar: "",
+                third_user_name: "销售一号",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const result = await repository.listCustomers({
+      limit: 1,
+      platform: 5,
+      scope: "all",
+      uid: 9001,
+    });
+
+    expect(result).toMatchObject({
+      hasMore: true,
+      items: [
+        {
+          customerKey: "9001:5:external-b",
+          relationCount: 1,
+          seatRelations: [
+            expect.objectContaining({
+              seatId: "12",
+            }),
+          ],
+        },
+      ],
+      nextCursor: expect.any(String),
+    });
+    expect(queries.map((item) => item.table)).toEqual([
+      "xy_wap_embed_contact as contact",
+      "xy_wap_embed_customer_bind_relation as bind",
+      "xy_wap_embed_user_seat as seat",
+    ]);
+    expect(queries[0]?.query.joins).toEqual([]);
+    expect(queries[0]?.query.wheres).toContainEqual(["contact.uid", "=", 9001]);
+    expect(queries[0]?.query.wheres).toContainEqual(["contact.platform", "=", 5]);
+    expect(queries[0]?.query.limits).toEqual([2]);
+    expect(queries[1]?.query.wheres).toContainEqual([
+      "bind.third_external_userid",
+      "in",
+      ["external-b"],
+    ]);
+    expect(queries.some((item) => item.table === "xy_wap_embed_conversation as conversation")).toBe(false);
+  });
+
+  it("does not hydrate customer recent conversation display while listing customers", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_contact as contact") {
+            const query = createQueryBuilder([
+              {
+                avatar: "",
+                biz_status: 1,
+                gender: null,
+                name: "客户B",
+                platform: 5,
+                real_name: "",
+                third_external_userid: "external-b",
+                uid: 9001,
+                update_time: new Date("2026-05-20T10:00:00.000Z"),
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listCustomers({
+        platform: 5,
+        scope: "all",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          customerKey: "9001:5:external-b",
+        },
+      ],
+    });
+    expect(queries.some((item) => item.table === "xy_wap_embed_conversation as conversation")).toBe(false);
+  });
+
+  it("applies all customer cursors to contact pagination", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_contact as contact") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (
+            table === "xy_wap_embed_customer_bind_relation as bind" ||
+            table === "xy_wap_embed_conversation as conversation"
+          ) {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+    const cursor = Buffer.from(
+      JSON.stringify({
+        thirdExternalUserId: "external-b",
+        updateTime: 1_779_600_000_000,
+      }),
+      "utf8",
+    ).toString("base64url");
+
+    await repository.listCustomers({
+      cursor,
+      limit: 50,
+      platform: 5,
+      scope: "all",
+      uid: 9001,
+    });
+
+    expect(queries[0]?.query.whereExpressions).toContainEqual({
+      type: "or",
+      expressions: [
+        { column: "contact.update_time", operator: "<", value: new Date(1_779_600_000_000) },
+        {
+          type: "and",
+          expressions: [
+            {
+              column: "contact.update_time",
+              operator: "=",
+              value: new Date(1_779_600_000_000),
+            },
+            {
+              column: "contact.third_external_userid",
+              operator: "<",
+              value: "external-b",
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("loads one tenant-level recent customer conversation on demand", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([
+              {
+                conversation_id: 701,
+                last_message_time: 1_779_600_000_000,
+                platform: 5,
+                third_external_userid: "external-b",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder([
+              {
+                id: 12,
+                platform: 5,
+                third_avatar: "",
+                third_user_name: "销售一号",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getCustomerLastConversation({
+        platform: 5,
+        thirdExternalUserId: "external-b",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      conversationId: "701",
+      lastMessageTime: 1_779_600_000_000,
+      seatAvatar: "",
+      seatId: "12",
+      seatName: "销售一号",
+    });
+    expect(queries[0]?.query.wheres).toContainEqual(["conversation.uid", "=", 9001]);
+    expect(queries[0]?.query.wheres).toContainEqual(["conversation.platform", "=", 5]);
+    expect(queries[0]?.query.wheres).toContainEqual([
+      "conversation.third_external_userid",
+      "=",
+      "external-b",
+    ]);
+    expect(queries[0]?.query.orderBys).toEqual([
+      ["conversation.last_msgtime", "desc"],
+      ["conversation.id", "desc"],
+    ]);
+    expect(queries[0]?.query.limits).toEqual([1]);
+    expect(queries[0]?.query.joins).toEqual([]);
+    expect(queries[1]?.query.wheres).toContainEqual(["seat.uid", "=", 9001]);
+    expect(queries[1]?.query.wheres).toContainEqual(["seat.platform", "=", 5]);
+    expect(queries[1]?.query.wheres).toContainEqual([
+      "seat.third_userid",
+      "in",
+      ["seat-user-12"],
+    ]);
+  });
+
+  it("loads tenant-level relation conversation timestamps on demand", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([
+              {
+                last_message_time: 1_779_600_000_000,
+                third_userid: "seat-user-12",
+              },
+              {
+                last_message_time: 1_779_500_000_000,
+                third_userid: "seat-user-13",
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listCustomerRelationConversations({
+        platform: 5,
+        thirdExternalUserId: "external-b",
+        thirdUserIds: ["seat-user-12", "seat-user-13"],
+        uid: 9001,
+      }),
+    ).resolves.toEqual([
+      {
+        lastMessageTime: 1_779_600_000_000,
+        thirdUserId: "seat-user-12",
+      },
+      {
+        lastMessageTime: 1_779_500_000_000,
+        thirdUserId: "seat-user-13",
+      },
+    ]);
+    expect(queries[0]?.query.joins).toEqual([]);
+    expect(queries[0]?.query.wheres).toContainEqual(["conversation.uid", "=", 9001]);
+    expect(queries[0]?.query.wheres).toContainEqual(["conversation.platform", "=", 5]);
+    expect(queries[0]?.query.wheres).toContainEqual([
+      "conversation.third_external_userid",
+      "=",
+      "external-b",
+    ]);
+    expect(queries[0]?.query.wheres).toContainEqual([
+      "conversation.third_userid",
+      "in",
+      ["seat-user-12", "seat-user-13"],
+    ]);
+  });
+
   it("lists seats by ids with one batched query", async () => {
     const seatQueryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
     const repository = new WorkbenchRepository(

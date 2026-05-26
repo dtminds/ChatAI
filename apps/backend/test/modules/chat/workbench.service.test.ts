@@ -9,6 +9,184 @@ import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-re
 import { BadGatewayError } from "../../../src/shared/errors.js";
 
 describe("MysqlWorkbenchService", () => {
+  it("lists my customers with visible seat filters", async () => {
+    const javaClient = createJavaClient();
+    const listCustomers = vi.fn().mockResolvedValue({
+      hasMore: false,
+      items: [],
+      total: 0,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          subUserId: "101",
+        }),
+        listCustomers,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getCustomers("101", { scope: "mine", seatIds: ["12", "13"] }),
+    ).resolves.toEqual({ hasMore: false, items: [], total: 0 });
+    expect(listCustomers).toHaveBeenCalledWith({
+      scope: "mine",
+      seatIds: ["12", "13"],
+      subUserId: "101",
+    });
+  });
+
+  it("lists all customers without seat filters", async () => {
+    const javaClient = createJavaClient();
+    const listCustomers = vi.fn().mockResolvedValue({
+      hasMore: false,
+      items: [],
+      total: 0,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 5,
+          subUserId: "101",
+          uid: 9001,
+        }),
+        listCustomers,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getCustomers("101", { scope: "all", seatIds: ["12"] }),
+    ).resolves.toEqual({ hasMore: false, items: [], total: 0 });
+    expect(listCustomers).toHaveBeenCalledWith({
+      cursor: undefined,
+      keyword: undefined,
+      limit: undefined,
+      platform: 5,
+      scope: "all",
+      uid: 9001,
+    });
+  });
+
+  it("loads tenant-level customer recent conversation", async () => {
+    const javaClient = createJavaClient();
+    const getCustomerLastConversation = vi.fn().mockResolvedValue({
+      conversationId: "701",
+      lastMessageTime: 1_779_600_000_000,
+      seatAvatar: "",
+      seatId: "12",
+      seatName: "销售一号",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        getCustomerLastConversation,
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 5,
+          subUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getCustomerLastConversation("101", "external-b"),
+    ).resolves.toEqual({
+      lastConversation: {
+        conversationId: "701",
+        lastMessageTime: 1_779_600_000_000,
+        seatAvatar: "",
+        seatId: "12",
+        seatName: "销售一号",
+      },
+    });
+    expect(getCustomerLastConversation).toHaveBeenCalledWith({
+      platform: 5,
+      thirdExternalUserId: "external-b",
+      uid: 9001,
+    });
+  });
+
+  it("loads tenant-level customer relation conversation timestamps", async () => {
+    const javaClient = createJavaClient();
+    const listCustomerRelationConversations = vi.fn().mockResolvedValue([
+      {
+        lastMessageTime: 1_779_600_000_000,
+        thirdUserId: "seat-user-12",
+      },
+    ]);
+    const service = new MysqlWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 5,
+          subUserId: "101",
+          uid: 9001,
+        }),
+        listCustomerRelationConversations,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getCustomerRelationConversations("101", "external-b", [
+        "seat-user-12",
+      ]),
+    ).resolves.toEqual({
+      items: [
+        {
+          lastMessageTime: 1_779_600_000_000,
+          thirdUserId: "seat-user-12",
+        },
+      ],
+    });
+    expect(listCustomerRelationConversations).toHaveBeenCalledWith({
+      platform: 5,
+      thirdExternalUserId: "external-b",
+      thirdUserIds: ["seat-user-12"],
+      uid: 9001,
+    });
+  });
+
+  it("loads display messages from hidden conversations", async () => {
+    const javaClient = createJavaClient();
+    const getConversationLookup = vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      seatHostSubUserId: "101",
+      uid: 9001,
+    });
+    const listMessages = vi.fn().mockResolvedValue({
+      filteredCount: 0,
+      hasMore: false,
+      messages: [],
+      scannedCount: 0,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup,
+        listMessages,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.getMessages("101", "88", { limit: 10 });
+
+    expect(getConversationLookup).toHaveBeenCalledWith("88", {
+      includeHidden: true,
+    });
+    expect(listMessages).toHaveBeenCalledWith("88", {
+      beforeSeq: undefined,
+      includeHiddenConversation: true,
+      limit: 10,
+    });
+  });
+
   it("rejects invalid conversation list cursors before querying conversations", async () => {
     const javaClient = createJavaClient();
     const listConversations = vi.fn();

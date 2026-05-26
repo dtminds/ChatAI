@@ -18,6 +18,9 @@ import {
   type WorkbenchConversationUnpinResponse,
   type WorkbenchConversationUnreadResponse,
   type WorkbenchConversationSummaryDto,
+  type WorkbenchCustomerListResponse,
+  type WorkbenchCustomerLastConversationResponse,
+  type WorkbenchCustomerRelationConversationsResponse,
   type WorkbenchHistoryMessagePageDto,
   type WorkbenchHistoryMessageQuery,
   type WorkbenchHistoryMessageScope,
@@ -66,6 +69,20 @@ export type WorkbenchService = {
     options?: WorkbenchConversationListOptions,
   ) => Promise<WorkbenchConversationListResponse>;
   getMe: () => Promise<WorkbenchSubUserDto>;
+  getCustomers: (options: {
+    cursor?: string;
+    keyword?: string;
+    limit?: number;
+    scope: "all" | "mine";
+    seatIds?: string[];
+  }) => Promise<WorkbenchCustomerListResponse>;
+  getCustomerLastConversation: (
+    thirdExternalUserId: string,
+  ) => Promise<WorkbenchCustomerLastConversationResponse>;
+  getCustomerRelationConversations: (
+    thirdExternalUserId: string,
+    thirdUserIds: string[],
+  ) => Promise<WorkbenchCustomerRelationConversationsResponse>;
   /** 未配置或未接入数据库时可为 `null` */
   getSidebarIframeParams: (input: {
     conversationId: string;
@@ -195,6 +212,19 @@ export function createMockWorkbenchService(): WorkbenchService {
     },
     async getMe() {
       return clone(state.subUser);
+    },
+    async getCustomers() {
+      return {
+        hasMore: false,
+        items: [],
+        total: 0,
+      };
+    },
+    async getCustomerLastConversation() {
+      return {};
+    },
+    async getCustomerRelationConversations() {
+      return { items: [] };
     },
     async getSidebarIframeParams() {
       return null;
@@ -561,7 +591,51 @@ export function createMockWorkbenchService(): WorkbenchService {
       };
     },
     async getOrCreateConversation(payload) {
-      throw new Error("Mock not implemented");
+      const conversations = state.conversationsByAccount[payload.seatId] ?? [];
+      const existingConversation = conversations.find((conversation) =>
+        payload.chatType === 2
+          ? conversation.thirdGroupId === payload.thirdGroupId
+          : conversation.thirdExternalUserId === payload.thirdExternalUserId,
+      );
+
+      if (existingConversation) {
+        return {
+          bizStatus: existingConversation.bizStatus ?? 1,
+          conversationId: existingConversation.conversationId,
+          customerAvatar: existingConversation.customerAvatar,
+          customerId: existingConversation.customerId,
+          customerName: existingConversation.customerName,
+          lastMessage: existingConversation.lastMessage,
+          lastMessageTime: existingConversation.lastMessageTime,
+          mode: existingConversation.mode,
+          priority: existingConversation.priority,
+          seatId: existingConversation.seatId,
+          thirdExternalUserId: existingConversation.thirdExternalUserId,
+          thirdGroupId: existingConversation.thirdGroupId,
+          thirdUserId: existingConversation.thirdUserId,
+          unreadCount: existingConversation.unreadCount,
+        };
+      }
+
+      const now = Date.now();
+      const conversationId = `mock-conversation-${state.nextId++}`;
+
+      return {
+        bizStatus: 1,
+        conversationId,
+        customerAvatar: "",
+        customerId: payload.thirdExternalUserId ?? payload.thirdGroupId ?? conversationId,
+        customerName: payload.thirdExternalUserId ?? payload.thirdGroupId ?? "新会话",
+        lastMessage: "",
+        lastMessageTime: now,
+        mode: payload.chatType === 2 ? "group" : "single",
+        priority: "medium",
+        seatId: payload.seatId,
+        thirdExternalUserId: payload.thirdExternalUserId,
+        thirdGroupId: payload.thirdGroupId,
+        thirdUserId: `third-user-${payload.seatId}`,
+        unreadCount: 0,
+      };
     },
   };
 }
@@ -588,6 +662,35 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     getMe() {
       return http.get<WorkbenchSubUserDto>("/server/me");
+    },
+    getCustomers(options) {
+      return http.get<WorkbenchCustomerListResponse>("/server/customers", {
+        params: {
+          cursor: options.cursor,
+          keyword: options.keyword,
+          limit: options.limit,
+          scope: options.scope,
+          seat_ids:
+            options.scope === "mine" && options.seatIds?.length
+              ? options.seatIds.join(",")
+              : undefined,
+        },
+      });
+    },
+    getCustomerLastConversation(thirdExternalUserId) {
+      return http.get<WorkbenchCustomerLastConversationResponse>(
+        `/server/customers/${encodeURIComponent(thirdExternalUserId)}/last-conversation`,
+      );
+    },
+    getCustomerRelationConversations(thirdExternalUserId, thirdUserIds) {
+      return http.get<WorkbenchCustomerRelationConversationsResponse>(
+        `/server/customers/${encodeURIComponent(thirdExternalUserId)}/relation-conversations`,
+        {
+          params: {
+            third_userids: thirdUserIds.join(","),
+          },
+        },
+      );
     },
     getSidebarIframeParams(input) {
       return fetchWorkbenchSidebarIframeParams(input);
@@ -677,10 +780,14 @@ export function createHttpWorkbenchService(): WorkbenchService {
       );
     },
     poll(request) {
+      const activeConversationId = request.activeConversationId || undefined;
       return http.get<WorkbenchPollResponse>("/server/poll", {
         params: {
-          active_conversation_id: request.activeConversationId,
-          active_message_seq: request.activeMessageSeq,
+          active_conversation_id: activeConversationId,
+          active_message_seq:
+            activeConversationId && request.activeMessageSeq != null
+              ? request.activeMessageSeq
+              : undefined,
           current_seat_id: request.currentSeatId,
           fresh_baseline: request.freshBaseline ? "1" : undefined,
           message_update_cursor: request.messageUpdateCursor,

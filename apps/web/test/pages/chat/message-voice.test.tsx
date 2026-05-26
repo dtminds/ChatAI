@@ -660,6 +660,7 @@ describe("voice message playback", () => {
     fireEvent.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
 
     expect(screen.getByRole("button")).toHaveTextContent("准备播放");
+    const loadCallsBeforeRelease = audioInstances[0]?.load.mock.calls.length;
     audioInstances[0]!.dispatch("error");
 
     await waitFor(() => {
@@ -674,6 +675,8 @@ describe("voice message playback", () => {
       "error",
       expect.any(Function),
     );
+    expect(audioInstances[0]?.src).toBe("");
+    expect(audioInstances[0]?.load).toHaveBeenCalledTimes((loadCallsBeforeRelease ?? 0) + 1);
   });
 
   it("does not attempt native playback for SILK voice messages without converted URL", async () => {
@@ -858,6 +861,7 @@ describe("voice message playback", () => {
       expect(audioInstances).toHaveLength(1);
     });
 
+    const loadCallsBeforeRelease = audioInstances[0]?.load.mock.calls.length;
     unmount();
 
     expect(pause).toHaveBeenCalledTimes(1);
@@ -869,6 +873,8 @@ describe("voice message playback", () => {
       "error",
       expect.any(Function),
     );
+    expect(audioInstances[0]?.src).toBe("");
+    expect(audioInstances[0]?.load).toHaveBeenCalledTimes((loadCallsBeforeRelease ?? 0) + 1);
   });
 
   it("removes listeners from the previous audio element when the URL changes", async () => {

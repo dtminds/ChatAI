@@ -12,7 +12,7 @@ describe("COS client credentials", () => {
     expect(client.options).toMatchObject({
       SecretId: "scf-secret-id",
       SecretKey: "scf-secret-key",
-      XCosSecurityToken: "scf-session-token",
+      SecurityToken: "scf-session-token",
     });
   });
 

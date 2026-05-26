@@ -245,6 +245,10 @@ export function VoiceMessageCard({
     audio.removeEventListener("pause", pausePlayback);
     isReleasingAudioRef.current = true;
     audio.pause();
+    audio.src = "";
+    try {
+      audio.load();
+    } catch {}
     audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
     audio.removeEventListener("timeupdate", syncAudioProgress);
     audio.removeEventListener("ended", finishPlayback);

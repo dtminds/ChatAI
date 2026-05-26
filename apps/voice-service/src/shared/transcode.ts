@@ -20,8 +20,8 @@ export type TranscodeResult = {
 export class VoiceTranscodeError extends Error {
   readonly code: string;
 
-  constructor(code: string, message: string) {
-    super(message);
+  constructor(code: string, message: string, options?: ErrorOptions) {
+    super(message, options);
     this.code = code;
     this.name = "VoiceTranscodeError";
   }
@@ -54,6 +54,10 @@ export async function transcodeVoiceToWav(
       throw new VoiceTranscodeError("DECODE_FAILED", "音频解码失败");
     }
 
+    if (!decoded) {
+      throw new VoiceTranscodeError("DECODE_FAILED", "音频解码失败");
+    }
+
     const sampleRate = decoded.sampleRate;
     const channelData = readAudioBufferChannelData(decoded);
     const durationMs = Math.ceil(((channelData[0]?.length ?? 0) / sampleRate) * 1000);
@@ -80,7 +84,14 @@ export async function transcodeVoiceToWav(
     throw new VoiceTranscodeError("VOICE_DURATION_TOO_LONG", "语音时长超出限制");
   }
 
-  const decoded = await decode(input, options.sampleRate);
+  let decoded: Awaited<ReturnType<typeof decode>>;
+
+  try {
+    decoded = await decode(input, options.sampleRate);
+  } catch (error) {
+    throw new VoiceTranscodeError("DECODE_FAILED", "音频解码失败", { cause: error });
+  }
+
   const wav = createPcm16MonoWav(decoded.data, options.sampleRate);
 
   return {

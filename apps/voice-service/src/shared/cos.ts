@@ -8,7 +8,7 @@ export type CosClient = Pick<
   options?: {
     SecretId?: string;
     SecretKey?: string;
-    XCosSecurityToken?: string;
+    SecurityToken?: string;
   };
 };
 
@@ -31,7 +31,7 @@ export function createCosClientFromEnv(env: NodeJS.ProcessEnv = process.env) {
   return new COS({
     SecretId: secretId,
     SecretKey: secretKey,
-    XCosSecurityToken: securityToken,
+    SecurityToken: securityToken,
   }) as CosClient;
 }
 

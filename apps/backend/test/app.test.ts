@@ -102,6 +102,7 @@ describe("backend app", () => {
     delete process.env.JWT_PRIVATE_KEY;
     delete process.env.JWT_PUBLIC_KEY;
     delete process.env.NODE_ENV;
+    delete process.env.PLAYABLE_MEDIA_HOST;
   });
 
   it("serves health and readiness endpoints", async () => {
@@ -1277,6 +1278,38 @@ describe("backend app", () => {
     });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
+      expect.objectContaining({
+        method: "HEAD",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("checks playable voice availability with configured media host", async () => {
+    process.env.PLAYABLE_MEDIA_HOST = "https://media.example.com/";
+    const { app, authorization } = await createAuthenticatedApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 200 }),
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://media.example.com/s5/voice/20260513/272/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        playable: true,
+        playableUrl: "https://media.example.com/s5/playable-voice/20260513/272/voice.wav",
+      },
+      success: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://media.example.com/s5/playable-voice/20260513/272/voice.wav",
       expect.objectContaining({
         method: "HEAD",
         signal: expect.any(AbortSignal),

@@ -3,8 +3,8 @@ import {
   BadRequestError,
 } from "../../shared/errors.js";
 import { noopLogger, type AppLogger } from "../../shared/logger.js";
+import { getPlayableMediaHost } from "./media-config.js";
 
-const ALLOWED_MEDIA_HOST = "b5.bokr.com.cn";
 const DEFAULT_MEDIA_PROXY_TIMEOUT_MS = 8000;
 const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
 const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
@@ -83,7 +83,7 @@ function parseAllowedMediaUrl(rawUrl: string) {
     throw new BadRequestError("INVALID_MEDIA_URL", "媒体资源地址无效");
   }
 
-  if (url.protocol !== "https:" || url.hostname !== ALLOWED_MEDIA_HOST) {
+  if (url.protocol !== "https:" || url.hostname !== getPlayableMediaHost()) {
     throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "媒体资源地址不允许访问");
   }
 

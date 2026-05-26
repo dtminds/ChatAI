@@ -11,50 +11,53 @@ const outputDir = join(rootDir, "../../artifacts/voice-service");
 const zipPath = join(outputDir, "voice-service-scf.zip");
 const stagingDir = await mkdtemp(join(tmpdir(), "voice-service-scf-"));
 
-await run("pnpm", ["--dir", rootDir, "build"]);
+try {
+  await run("pnpm", ["--dir", rootDir, "build"]);
 
-await mkdir(stagingDir, { recursive: true });
-await mkdir(outputDir, { recursive: true });
+  await mkdir(stagingDir, { recursive: true });
+  await mkdir(outputDir, { recursive: true });
 
-await run("pnpm", [
-  "exec",
-  "esbuild",
-  join(rootDir, "src/index.ts"),
-  "--bundle",
-  "--platform=node",
-  "--target=node22",
-  "--format=cjs",
-  `--outfile=${join(stagingDir, "index.js")}`,
-  "--external:audio-decode",
-  "--external:cos-nodejs-sdk-v5",
-  "--external:silk-wasm",
-]);
+  await run("pnpm", [
+    "exec",
+    "esbuild",
+    join(rootDir, "src/index.ts"),
+    "--bundle",
+    "--platform=node",
+    "--target=node22",
+    "--format=cjs",
+    `--outfile=${join(stagingDir, "index.js")}`,
+    "--external:audio-decode",
+    "--external:cos-nodejs-sdk-v5",
+    "--external:silk-wasm",
+  ]);
 
-await writeFile(
-  join(stagingDir, "package.json"),
-  JSON.stringify(
-    {
-      name: "voice-service-scf",
-      private: true,
-      main: "index.js",
-      dependencies: {
-        "audio-decode": "^3.10.1",
-        "cos-nodejs-sdk-v5": "^2.15.4",
-        "silk-wasm": "^3.7.1",
+  await writeFile(
+    join(stagingDir, "package.json"),
+    JSON.stringify(
+      {
+        name: "voice-service-scf",
+        private: true,
+        main: "index.js",
+        dependencies: {
+          "audio-decode": "^3.10.1",
+          "cos-nodejs-sdk-v5": "^2.15.4",
+          "silk-wasm": "^3.7.1",
+        },
       },
-    },
-    null,
-    2,
-  ),
-);
-await run(
-  "pnpm",
-  ["install", "--prod", "--ignore-scripts", "--no-lockfile", "--node-linker=hoisted"],
-  stagingDir,
-);
-await rm(zipPath, { force: true });
-await run("zip", ["-q", "-r", zipPath, "."], stagingDir);
-await rm(stagingDir, { force: true, recursive: true });
+      null,
+      2,
+    ),
+  );
+  await run(
+    "pnpm",
+    ["install", "--prod", "--ignore-scripts", "--no-lockfile", "--node-linker=hoisted"],
+    stagingDir,
+  );
+  await rm(zipPath, { force: true });
+  await run("zip", ["-q", "-r", zipPath, "."], stagingDir);
+} finally {
+  await rm(stagingDir, { force: true, recursive: true });
+}
 
 console.log(zipPath);
 

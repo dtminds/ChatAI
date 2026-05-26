@@ -17,10 +17,14 @@ import type {
   WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
+  WorkbenchSmartReplyAttachmentsRequest,
+  WorkbenchSmartReplyAttachmentsResponse,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplyPollResponse,
+  WorkbenchSmartReplyTextModerationRequest,
+  WorkbenchSmartReplyTextModerationResponse,
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -53,6 +57,7 @@ import {
   JAVA_SEND_TYPE,
 } from "./workbench-java-client.js";
 import { buildSidebarIframeTuseCipherTexts } from "../../lib/tuse-crypto.js";
+import { normalizeAttachmentIds } from "./attachment-mappers.js";
 import { normalizeSmartReplyMsgIds } from "./smart-reply-mappers.js";
 import {
   decodeConversationListCursor,
@@ -148,6 +153,18 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchSmartReplyGeneralAnswerResponse>
     | WorkbenchSmartReplyGeneralAnswerResponse;
+  listSmartReplyAttachments(
+    subUserId: string,
+    request: WorkbenchSmartReplyAttachmentsRequest,
+  ):
+    | Promise<WorkbenchSmartReplyAttachmentsResponse>
+    | WorkbenchSmartReplyAttachmentsResponse;
+  checkSmartReplyTextModeration(
+    subUserId: string,
+    request: WorkbenchSmartReplyTextModerationRequest,
+  ):
+    | Promise<WorkbenchSmartReplyTextModerationResponse>
+    | WorkbenchSmartReplyTextModerationResponse;
   sendMessage(
     subUserId: string,
     payload: WorkbenchSendMessagePayload,
@@ -745,6 +762,58 @@ export class MysqlWorkbenchService implements WorkbenchService {
       questionImgs: request.questionImgs ?? [],
       thirdExternalId,
       thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+  }
+
+  async listSmartReplyAttachments(
+    subUserId: string,
+    request: WorkbenchSmartReplyAttachmentsRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const ids = normalizeAttachmentIds(request.ids);
+
+    if (ids.length === 0) {
+      return { attachments: [] };
+    }
+
+    return this.javaClient.listAttachments({
+      ids,
+      uid: conversation.uid,
+    });
+  }
+
+  async checkSmartReplyTextModeration(
+    subUserId: string,
+    request: WorkbenchSmartReplyTextModerationRequest,
+  ) {
+    const content = request.content.trim();
+
+    if (!content) {
+      throw new BadRequestError("TEXT_MODERATION_CONTENT_EMPTY", "检测内容不能为空");
+    }
+
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    return this.javaClient.checkTextModerationPlus({
+      content,
       uid: conversation.uid,
     });
   }

@@ -22,6 +22,7 @@ import type {
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 
 type ChatPanelProps = {
@@ -92,6 +93,7 @@ type ChatPanelProps = {
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
@@ -154,6 +156,7 @@ export function ChatPanel({
   onClearQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  onSendSmartReply,
   onTriggerSmartReply,
   retryingMessageIds,
   smartReplyByMessageId,
@@ -181,6 +184,7 @@ export function ChatPanel({
             <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
               <ChatMessagePanel
                 activeHistoryStatus={activeHistoryStatus}
+                conversationId={activeConversation?.id}
                 bottomOverlay={
                   hasActiveFileUpload ? (
                     <FileUploadQueueBar
@@ -202,6 +206,7 @@ export function ChatPanel({
                 onLoadOlderMessages={onLoadOlderMessages}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
+                onSendSmartReply={onSendSmartReply}
                 onTriggerSmartReply={onTriggerSmartReply}
                 onMessageViewportScroll={onMessageViewportScroll}
                 onRetryMessage={onRetryMessage}

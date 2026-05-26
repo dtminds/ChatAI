@@ -19,10 +19,14 @@ import type {
   WorkbenchMessageStatus,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
+  WorkbenchSmartReplyAttachmentsRequest,
+  WorkbenchSmartReplyAttachmentsResponse,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplyPollResponse,
+  WorkbenchSmartReplyTextModerationRequest,
+  WorkbenchSmartReplyTextModerationResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSidebarIframeParamsRequest,
@@ -340,6 +344,46 @@ export function createMemoryWorkbenchService() {
       _request: WorkbenchSmartReplyGeneralAnswerRequest,
     ): WorkbenchSmartReplyGeneralAnswerResponse {
       return { suggestion: null };
+    },
+    checkSmartReplyTextModeration(
+      _subUserId: string,
+      request: WorkbenchSmartReplyTextModerationRequest,
+    ): WorkbenchSmartReplyTextModerationResponse {
+      const demoWords = ["太好用了", "最好", "第一", "极致"];
+      const words = demoWords.filter((word) => request.content.includes(word));
+
+      if (words.length === 0) {
+        return { result: null };
+      }
+
+      return {
+        result: {
+          categoryLabel: "广告法_通用禁用极限词",
+          words,
+        },
+      };
+    },
+    listSmartReplyAttachments(
+      _subUserId: string,
+      request: WorkbenchSmartReplyAttachmentsRequest,
+    ): WorkbenchSmartReplyAttachmentsResponse {
+      return {
+        attachments: request.ids.flatMap((id) => {
+          const numericId = Number.parseInt(id, 10);
+
+          if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+            return [];
+          }
+
+          return [
+            {
+              fileName: `素材-${id}`,
+              fileType: 1,
+              id: numericId,
+            },
+          ];
+        }),
+      };
     },
     sendMessage(
       _subUserId: string,

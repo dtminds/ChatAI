@@ -23,6 +23,7 @@ import {
   getSmartReplyLookupKey,
   shouldShowSmartReplyCard,
   shouldShowSmartReplyTriggerIcon,
+  type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import {
   SmartReplyMessageAnchor,
@@ -39,6 +40,7 @@ const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 
 type ChatMessageListProps = {
   canUseMessageActions?: boolean;
+  conversationId?: string;
   messages: Message[];
   showTimeDividers?: boolean;
   showTimestamps?: boolean;
@@ -47,6 +49,7 @@ type ChatMessageListProps = {
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
+  onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
@@ -66,6 +69,7 @@ type FeedItem =
 
 export function ChatMessageList({
   canUseMessageActions = true,
+  conversationId,
   messages,
   showTimeDividers = true,
   showTimestamps = false,
@@ -74,6 +78,7 @@ export function ChatMessageList({
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
+  onSendSmartReply,
   onTriggerSmartReply,
   retryingMessageIds,
   smartReplyByMessageId,
@@ -96,6 +101,7 @@ export function ChatMessageList({
             key={getMessageFeedItemKey(item.message)}
           >
             <MessageRow
+              conversationId={conversationId}
               message={item.message}
               canUseMessageActions={canUseMessageActions}
               showTimestamp={showTimestamps}
@@ -104,6 +110,7 @@ export function ChatMessageList({
               onOpenQuotedMessage={onOpenQuotedMessage}
               onQuoteMessage={onQuoteMessage}
               onRetryMessage={onRetryMessage}
+              onSendSmartReply={onSendSmartReply}
               onTriggerSmartReply={onTriggerSmartReply}
               isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
               smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
@@ -143,6 +150,7 @@ function SystemMessageNotice({ text }: { text: string }) {
 }
 
 export function MessageRow({
+  conversationId,
   message,
   canUseMessageActions = true,
   showTimestamp = false,
@@ -151,10 +159,12 @@ export function MessageRow({
   onOpenQuotedMessage,
   onQuoteMessage,
   onRetryMessage,
+  onSendSmartReply,
   onTriggerSmartReply,
   isRetryingMessage = false,
   smartReply,
 }: {
+  conversationId?: string;
   message: Message;
   canUseMessageActions?: boolean;
   isRetryingMessage?: boolean;
@@ -164,6 +174,7 @@ export function MessageRow({
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
+  onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   smartReply?: SmartReplySuggestion;
 }) {
@@ -185,10 +196,6 @@ export function MessageRow({
       onQuoteMessage={onQuoteMessage}
     />
   );
-
-  const onSendSmartReply = (message: ChatMessage, content: string) => {
-    console.log(message, content, 'onSendSmartReply');
-  };
 
   return (
     <div
@@ -263,6 +270,7 @@ export function MessageRow({
               {message.isRevoked ? <MessageRevokedState /> : null}
               {showSmartReplyCard ? (
                 <SmartReplyMessageAnchor
+                  conversationId={conversationId}
                   message={message}
                   onRegenerate={onTriggerSmartReply}
                   suggestion={smartReply}

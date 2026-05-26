@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
+  adaptSmartReplyAttachments,
   adaptSmartReplySuggestions,
+  adaptSmartReplyViolationResult,
+  buildSmartReplySendSegments,
   collectNewSmartReplyPendingKeys,
   collectQuestionImgs,
   collectSmartReplyMsgIds,
@@ -233,5 +236,115 @@ describe("smart-reply-adapter", () => {
       refAttachIds: ["101", "102"],
       status: "ready",
     });
+  });
+
+  it("adapts attachment list into recommended attachments", () => {
+    expect(
+      adaptSmartReplyAttachments([
+        {
+          coverUrl: "https://example.com/cover.png",
+          fileName: "产品图.png",
+          fileType: 1,
+          id: 101,
+        },
+        {
+          appInfo: { nickName: "品牌小程序" },
+          fileType: 7,
+          id: 102,
+        },
+      ]),
+    ).toEqual([
+      {
+        content: undefined,
+        coverUrl: "https://example.com/cover.png",
+        defaultSelected: true,
+        fileName: "产品图.png",
+        fileType: "1",
+        id: "101",
+        localPath: undefined,
+        slocalPath: undefined,
+      },
+      {
+        content: undefined,
+        coverUrl: undefined,
+        defaultSelected: true,
+        fileName: "品牌小程序",
+        fileType: "7",
+        id: "102",
+        localPath: undefined,
+        slocalPath: undefined,
+      },
+    ]);
+  });
+
+  it("adapts text moderation response into violation result", () => {
+    expect(
+      adaptSmartReplyViolationResult({
+        result: {
+          categoryLabel: "广告法_通用禁用极限词",
+          words: ["最好"],
+        },
+      }),
+    ).toEqual({
+      categoryLabel: "广告法_通用禁用极限词",
+      words: ["最好"],
+    });
+    expect(adaptSmartReplyViolationResult({ result: null })).toBeNull();
+  });
+
+  it("builds send segments from edited text and selected attachments", () => {
+    expect(
+      buildSmartReplySendSegments({
+        content: "您好，请查收资料",
+        recommendedAttachments: [
+          {
+            coverUrl: "https://example.com/cover.png",
+            fileName: "产品图.png",
+            fileType: "1",
+            id: "101",
+          },
+          {
+            fileName: "说明.pdf",
+            fileType: "5",
+            id: "102",
+            localPath: "/files/guide.pdf",
+          },
+        ],
+        selectedAttachmentIds: ["101", "102"],
+      }),
+    ).toEqual([
+      {
+        text: "您好，请查收资料",
+        type: "text",
+      },
+      {
+        alt: "产品图.png",
+        type: "image",
+        url: "https://example.com/cover.png",
+      },
+      {
+        extension: "pdf",
+        fileName: "说明.pdf",
+        fileSizeLabel: "",
+        type: "file",
+        url: "https://b1.dtminds.com/files/guide.pdf",
+      },
+    ]);
+  });
+
+  it("skips selected attachments that cannot be sent", () => {
+    expect(
+      buildSmartReplySendSegments({
+        content: "",
+        recommendedAttachments: [
+          {
+            fileName: "缺地址图.png",
+            fileType: "1",
+            id: "101",
+          },
+        ],
+        selectedAttachmentIds: ["101"],
+      }),
+    ).toEqual([]);
   });
 });

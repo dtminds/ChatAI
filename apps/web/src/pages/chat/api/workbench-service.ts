@@ -32,10 +32,14 @@ import {
   type WorkbenchMessageStatus,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
+  type WorkbenchSmartReplyAttachmentsRequest,
+  type WorkbenchSmartReplyAttachmentsResponse,
   type WorkbenchSmartReplyGeneralAnswerRequest,
   type WorkbenchSmartReplyGeneralAnswerResponse,
   type WorkbenchSmartReplyPollRequest,
   type WorkbenchSmartReplyPollResponse,
+  type WorkbenchSmartReplyTextModerationRequest,
+  type WorkbenchSmartReplyTextModerationResponse,
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSendMessagePayload,
   type SettingsSidebarItemsResponse,
@@ -105,6 +109,12 @@ export type WorkbenchService = {
   requestSmartReplyGeneralAnswer: (
     request: WorkbenchSmartReplyGeneralAnswerRequest,
   ) => Promise<WorkbenchSmartReplyGeneralAnswerResponse>;
+  listSmartReplyAttachments: (
+    request: WorkbenchSmartReplyAttachmentsRequest,
+  ) => Promise<WorkbenchSmartReplyAttachmentsResponse>;
+  checkSmartReplyTextModeration: (
+    request: WorkbenchSmartReplyTextModerationRequest,
+  ) => Promise<WorkbenchSmartReplyTextModerationResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
@@ -486,6 +496,40 @@ export function createMockWorkbenchService(): WorkbenchService {
     async requestSmartReplyGeneralAnswer() {
       return { suggestion: null };
     },
+    async listSmartReplyAttachments(request) {
+      return {
+        attachments: request.ids.flatMap((id) => {
+          const numericId = Number.parseInt(id, 10);
+
+          if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+            return [];
+          }
+
+          return [
+            {
+              fileName: `素材-${id}`,
+              fileType: 1,
+              id: numericId,
+            },
+          ];
+        }),
+      };
+    },
+    async checkSmartReplyTextModeration(request) {
+      const demoWords = ["太好用了", "最好", "第一", "极致"];
+      const words = demoWords.filter((word) => request.content.includes(word));
+
+      if (words.length === 0) {
+        return { result: null };
+      }
+
+      return {
+        result: {
+          categoryLabel: "广告法_通用禁用极限词",
+          words,
+        },
+      };
+    },
     async sendMessage(payload) {
       const conversation = findConversation(state, payload.conversationId);
 
@@ -716,6 +760,18 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchSmartReplyGeneralAnswerResponse,
         WorkbenchSmartReplyGeneralAnswerRequest
       >("/server/smart-reply/general-answer", request);
+    },
+    listSmartReplyAttachments(request) {
+      return http.post<
+        WorkbenchSmartReplyAttachmentsResponse,
+        WorkbenchSmartReplyAttachmentsRequest
+      >("/server/smart-reply/attachments", request);
+    },
+    checkSmartReplyTextModeration(request) {
+      return http.post<
+        WorkbenchSmartReplyTextModerationResponse,
+        WorkbenchSmartReplyTextModerationRequest
+      >("/server/smart-reply/text-moderation", request);
     },
     sendMessage(payload) {
       return http.post<WorkbenchSendMessageResponse, WorkbenchSendMessagePayload>(

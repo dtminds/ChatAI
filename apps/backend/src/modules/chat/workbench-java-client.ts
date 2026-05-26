@@ -1,9 +1,13 @@
 import type {
   WorkbenchSendMessageResponse,
+  WorkbenchSmartReplyAttachmentsResponse,
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollResponse,
+  WorkbenchSmartReplyTextModerationResponse,
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
+import { mapJavaAttachmentList } from "./attachment-mappers.js";
+import { mapJavaTextModerationPlus } from "./text-moderation-mappers.js";
 import {
   BadGatewayError,
   ServiceUnavailableError,
@@ -110,6 +114,14 @@ export type WorkbenchJavaClient = {
     thirdUserId: string;
     uid: number;
   }): Promise<WorkbenchSmartReplyGeneralAnswerResponse>;
+  listAttachments(input: {
+    ids: number[];
+    uid: number;
+  }): Promise<WorkbenchSmartReplyAttachmentsResponse>;
+  checkTextModerationPlus(input: {
+    content: string;
+    uid: number;
+  }): Promise<WorkbenchSmartReplyTextModerationResponse>;
   createConversation(input: {
     chatType: number;
     platform: number;
@@ -204,6 +216,34 @@ export function createWorkbenchJavaClient(
         return {
           suggestion: mapJavaGeneralAnswer(data),
         };
+      });
+    },
+    listAttachments(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/attachment/list",
+        {
+          ids: input.ids,
+          uid: input.uid,
+        },
+        logger,
+        "list-attachments",
+      ).then((data) => mapJavaAttachmentList(data));
+    },
+    checkTextModerationPlus(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        `/third-internal/ai-helper/text-moderation-plus?uid=${input.uid}`,
+        {
+          content: input.content,
+          type: "plus",
+        },
+        logger,
+        "text-moderation-plus",
+      ).then((data) => {
+       return mapJavaTextModerationPlus(data);
       });
     },
     createConversation(input) {
@@ -513,6 +553,7 @@ function buildJavaLogContext(body: unknown) {
     "conversationId",
     "msgid",
     "msgId",
+    "ids",
     "msgIds",
     "platform",
     "thirdExternalId",

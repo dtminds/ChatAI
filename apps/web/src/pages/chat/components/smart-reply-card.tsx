@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRight01Icon,
   ArrowDown01Icon,
@@ -20,8 +20,19 @@ import {
   resolveSmartReplyProcessingLabel,
   SMART_REPLY_BUSY_TIMEOUT_MS,
   SMART_REPLY_MEDIA_PROCESSING_HINT_MS,
+  type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
-import { SmartReplyEditDialog } from "@/pages/chat/components/smart-reply-edit-dialog";
+import {
+  adaptSmartReplyViolationResult,
+} from "@/pages/chat/api/smart-reply-adapter";
+import {
+  checkSmartReplyTextModeration,
+  listSmartReplyAttachments,
+} from "@/pages/chat/api/workbench-gateway";
+import {
+  SmartReplyEditDialog,
+  type SmartReplyRecommendedAttachment,
+} from "@/pages/chat/components/smart-reply-edit-dialog";
 
 const SMART_REPLY_TRIGGER_ICON =
   "https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/customer/容器@2x (1).png!tiny.webp";
@@ -137,16 +148,18 @@ export function SmartReplyCard({
 }
 
 type SmartReplyMessageAnchorProps = {
+  conversationId?: string;
   message: ChatMessage;
   onEdit?: (message: ChatMessage, content: string) => void;
   onMakeShorter?: (message: ChatMessage) => void;
   onRegenerate?: (message: ChatMessage) => void;
-  onSend?: (message: ChatMessage, content: string) => void;
+  onSend?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onBusyTimeout?: () => void;
   suggestion?: SmartReplySuggestion | null;
 };
 
 export function SmartReplyMessageAnchor({
+  conversationId,
   message,
   onEdit,
   onMakeShorter,
@@ -157,6 +170,11 @@ export function SmartReplyMessageAnchor({
 }: SmartReplyMessageAnchorProps) {
   const [dismissed, setDismissed] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [recommendedAttachments, setRecommendedAttachments] = useState<
+    SmartReplyRecommendedAttachment[]
+  >([]);
+  const [isRecommendedAttachmentsLoading, setIsRecommendedAttachmentsLoading] =
+    useState(false);
 
   if (!suggestion || dismissed) {
     return null;
@@ -174,6 +192,60 @@ export function SmartReplyMessageAnchor({
 
   useSmartReplyBusyTimeout(isBusy, onBusyTimeout, resolvedSuggestion.busyRequestId);
 
+  const refAttachIds = resolvedSuggestion.refAttachIds;
+  const refAttachIdsKey = refAttachIds?.join(",") ?? "";
+
+  useEffect(() => {
+    if (!isEditDialogOpen) {
+      return;
+    }
+
+    if (!conversationId || !refAttachIdsKey) {
+      setRecommendedAttachments([]);
+      setIsRecommendedAttachmentsLoading(false);
+      return;
+    }
+
+    const ids = refAttachIdsKey.split(",");
+
+    let cancelled = false;
+    setIsRecommendedAttachmentsLoading(true);
+
+    void listSmartReplyAttachments(conversationId, ids)
+      .then((attachments) => {
+        if (!cancelled) {
+          setRecommendedAttachments(attachments);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRecommendedAttachments([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsRecommendedAttachmentsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, isEditDialogOpen, refAttachIdsKey]);
+
+  const handleEditDialogOpenChange = useCallback((open: boolean) => {
+    setIsEditDialogOpen(open);
+
+    if (!open) {
+      setRecommendedAttachments([]);
+      setIsRecommendedAttachmentsLoading(false);
+    }
+  }, []);
+
+  const openEditDialog = useCallback(() => {
+    handleEditDialogOpenChange(true);
+  }, [handleEditDialogOpenChange]);
+
   const handleDismiss = () => {
     setDismissed(true);
     setIsEditDialogOpen(false);
@@ -189,7 +261,7 @@ export function SmartReplyMessageAnchor({
         isThinking={isThinking}
         isProcessing={isProcessing}
         processingLabel={processingLabel}
-        onEdit={() => setIsEditDialogOpen(true)}
+        onEdit={openEditDialog}
         onMakeShorter={
           onMakeShorter
             ? () => {
@@ -207,21 +279,44 @@ export function SmartReplyMessageAnchor({
         onSend={
           resolvedSuggestion.refAttachIds?.length &&
           resolvedSuggestion.refAttachIds.length > 0
-            ? () => setIsEditDialogOpen(true)
+            ? openEditDialog
             : onSend
               ? () => {
-                  onSend(message, displayContent.trim());
+                  onSend(message, {
+                    content: displayContent.trim(),
+                    recommendedAttachments: [],
+                    selectedAttachmentIds: [],
+                  });
                 }
               : undefined
         }
       />
       <SmartReplyEditDialog
         initialContent={displayContent}
-        onOpenChange={setIsEditDialogOpen}
+        isRecommendedAttachmentsLoading={isRecommendedAttachmentsLoading}
+        onCheckViolations={
+          conversationId
+            ? async (content) => {
+                const response = await checkSmartReplyTextModeration(
+                  conversationId,
+                  content,
+                );
+
+                return adaptSmartReplyViolationResult(response);
+              }
+            : undefined
+        }
+        onOpenChange={handleEditDialogOpenChange}
+        recommendedAttachments={recommendedAttachments}
+        refAttachIds={refAttachIds}
         onSend={
           onSend
-            ? ({ content }) => {
-                onSend(message, content);
+            ? ({ content, selectedAttachmentIds }) => {
+                onSend(message, {
+                  content,
+                  recommendedAttachments,
+                  selectedAttachmentIds,
+                });
                 handleDismiss();
               }
             : undefined

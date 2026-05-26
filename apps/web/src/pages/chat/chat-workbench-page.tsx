@@ -61,7 +61,11 @@ import type {
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
-import { mergeSmartReplySuggestionsWithPending } from "@/pages/chat/api/smart-reply-adapter";
+import {
+  buildSmartReplySendSegments,
+  mergeSmartReplySuggestionsWithPending,
+  type SmartReplySendPayload,
+} from "@/pages/chat/api/smart-reply-adapter";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -899,6 +903,51 @@ function ChatWorkbenchContent({
     composerRef.current?.focus();
   };
 
+  const handleSendSmartReply = async (
+    _message: ChatMessage,
+    payload: SmartReplySendPayload,
+  ) => {
+    const sendConversationId = activeConversation?.id;
+    const segments = buildSmartReplySendSegments(payload);
+
+    if (segments.length === 0 || !canSendMessage) {
+      return;
+    }
+
+    if (isSendingDraftRef.current) {
+      return;
+    }
+
+    isSendingDraftRef.current = true;
+    setIsSendingDraft(true);
+
+    try {
+      const result = await sendAgentMessageSegments(segments);
+
+      if (
+        !isMountedRef.current ||
+        activeConversationIdRef.current !== sendConversationId
+      ) {
+        return;
+      }
+
+      if (!result.ok) {
+        setSendFailureDialog(
+          getSendFailureDialogCopy(
+            result.reason,
+            result.errorCode,
+            result.errorMessage,
+          ),
+        );
+      }
+    } finally {
+      isSendingDraftRef.current = false;
+      if (isMountedRef.current) {
+        setIsSendingDraft(false);
+      }
+    }
+  };
+
   const handleTriggerSmartReply = (message: ChatMessage) => {
     void requestSmartReplyGeneralAnswer(message);
   };
@@ -1191,6 +1240,7 @@ function ChatWorkbenchContent({
                 onMentionMessage={handleMentionMessage}
                 onOpenQuotedMessage={handleOpenQuotedMessage}
                 onQuoteMessage={handleQuoteMessage}
+                onSendSmartReply={handleSendSmartReply}
                 onTriggerSmartReply={handleTriggerSmartReply}
                 onMessageViewportScroll={handleMessageViewportScroll}
                 onRetryMessage={handleRetryFailedMessage}

@@ -1,9 +1,16 @@
-import type { WorkbenchSmartReplySuggestionDto } from "@chatai/contracts";
+import type {
+  WorkbenchAttachmentDto,
+  WorkbenchSmartReplySuggestionDto,
+} from "@chatai/contracts";
 import type { ChatMessage, Message, MessageContent } from "@/pages/chat/chat-types";
+import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import {
   isSmartReplyBusy,
   type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
+import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
+import type { SmartReplyViolationResult } from "@/pages/chat/components/smart-reply-edit-dialog";
+import type { WorkbenchSmartReplyTextModerationResponse } from "@chatai/contracts";
 
 const DEFAULT_SMART_REPLY_ASSISTANT_NAME = "智能助手";
 
@@ -239,4 +246,190 @@ export function collectSmartReplyMsgIds(
 
 export function getSmartReplyLookupKey(message: { id: string; seq?: number }) {
   return message.seq != null ? String(message.seq) : message.id;
+}
+
+const SMART_REPLY_ATTACHMENT_MEDIA_CDN_PREFIX = "https://b1.dtminds.com";
+
+export type SmartReplySendPayload = {
+  content: string;
+  recommendedAttachments: SmartReplyRecommendedAttachment[];
+  selectedAttachmentIds: string[];
+};
+
+export function adaptSmartReplyViolationResult(
+  response: WorkbenchSmartReplyTextModerationResponse,
+): SmartReplyViolationResult | null {
+  return response.result;
+}
+
+export function buildSmartReplySendSegments({
+  content,
+  recommendedAttachments,
+  selectedAttachmentIds,
+}: SmartReplySendPayload): ComposerSegment[] {
+  const segments: ComposerSegment[] = [];
+  const trimmedContent = content.trim();
+
+  if (trimmedContent) {
+    segments.push({
+      text: trimmedContent,
+      type: "text",
+    });
+  }
+
+  const selectedIdSet = new Set(selectedAttachmentIds);
+
+  for (const attachment of recommendedAttachments) {
+    if (!selectedIdSet.has(attachment.id)) {
+      continue;
+    }
+
+    const segment = mapSmartReplyAttachmentToComposerSegment(attachment);
+
+    if (segment) {
+      segments.push(segment);
+    }
+  }
+
+  return segments;
+}
+
+function mapSmartReplyAttachmentToComposerSegment(
+  attachment: SmartReplyRecommendedAttachment,
+): ComposerSegment | null {
+  const fileType = parseSmartReplyAttachmentFileType(attachment.fileType);
+
+  if (fileType === 1) {
+    const imageUrl = resolveSmartReplyAttachmentImageUrl(attachment);
+
+    if (!imageUrl) {
+      return null;
+    }
+
+    return {
+      alt: attachment.fileName,
+      type: "image",
+      url: imageUrl,
+    };
+  }
+
+  if (fileType === 6) {
+    const text = attachment.content?.trim();
+
+    if (!text) {
+      return null;
+    }
+
+    return {
+      text,
+      type: "text",
+    };
+  }
+
+  const fileUrl = resolveSmartReplyAttachmentSendUrl(attachment);
+
+  if (!fileUrl) {
+    return null;
+  }
+
+  return {
+    extension: getSmartReplyAttachmentExtension(attachment.fileName),
+    fileName: attachment.fileName,
+    fileSizeLabel: "",
+    type: "file",
+    url: fileUrl,
+  };
+}
+
+function parseSmartReplyAttachmentFileType(fileType: string) {
+  const parsed = Number.parseInt(fileType, 10);
+
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function resolveSmartReplyMediaUrl(path?: string) {
+  const trimmed = path?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+
+  return SMART_REPLY_ATTACHMENT_MEDIA_CDN_PREFIX + trimmed;
+}
+
+function resolveSmartReplyAttachmentImageUrl(
+  attachment: SmartReplyRecommendedAttachment,
+) {
+  return (
+    resolveSmartReplyMediaUrl(attachment.coverUrl) ??
+    resolveSmartReplyMediaUrl(attachment.localPath) ??
+    resolveSmartReplyMediaUrl(attachment.slocalPath)
+  );
+}
+
+function resolveSmartReplyAttachmentSendUrl(
+  attachment: SmartReplyRecommendedAttachment,
+) {
+  for (const candidate of [
+    attachment.localPath,
+    attachment.slocalPath,
+    attachment.coverUrl,
+    attachment.content,
+  ]) {
+    const url = resolveSmartReplyMediaUrl(candidate);
+
+    if (url) {
+      return url;
+    }
+  }
+
+  return undefined;
+}
+
+function getSmartReplyAttachmentExtension(fileName: string) {
+  const dotIndex = fileName.lastIndexOf(".");
+
+  if (dotIndex < 0 || dotIndex === fileName.length - 1) {
+    return "";
+  }
+
+  return fileName.slice(dotIndex + 1).toLowerCase();
+}
+
+export function adaptSmartReplyAttachments(
+  attachments: WorkbenchAttachmentDto[],
+): SmartReplyRecommendedAttachment[] {
+  return attachments.flatMap((attachment) => {
+    const mapped = mapSmartReplyAttachment(attachment);
+
+    return mapped ? [mapped] : [];
+  });
+}
+
+function mapSmartReplyAttachment(
+  attachment: WorkbenchAttachmentDto,
+): SmartReplyRecommendedAttachment | null {
+  const id = String(attachment.id);
+  const fileName =
+    attachment.fileName?.trim() ||
+    attachment.textContent?.trim() ||
+    attachment.content?.trim() ||
+    attachment.appInfo?.nickName?.trim() ||
+    `素材 ${id}`;
+
+  return {
+    content: attachment.content?.trim(),
+    coverUrl: attachment.coverUrl?.trim(),
+    defaultSelected: true,
+    fileName,
+    fileType:
+      attachment.fileType != null ? String(attachment.fileType) : "",
+    id,
+    localPath: attachment.localPath?.trim(),
+    slocalPath: attachment.slocalPath?.trim(),
+  };
 }

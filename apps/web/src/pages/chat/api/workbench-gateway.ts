@@ -28,9 +28,11 @@ import {
   collectQuestionImgs,
   collectSmartReplyMsgIds,
   createTriggeredSmartReplySuggestion,
+  adaptSmartReplyAttachments,
 } from "@/pages/chat/api/smart-reply-adapter";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
+import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
 import type {
   Account,
   ChatMessage,
@@ -519,6 +521,32 @@ export async function requestSmartReplyGeneralAnswer(
   );
 
   return suggestion ?? createTriggeredSmartReplySuggestion(message);
+}
+
+export async function checkSmartReplyTextModeration(
+  conversationId: string,
+  content: string,
+) {
+  return getWorkbenchService().checkSmartReplyTextModeration({
+    conversationId,
+    content,
+  });
+}
+
+export async function listSmartReplyAttachments(
+  conversationId: string,
+  ids: string[],
+): Promise<SmartReplyRecommendedAttachment[]> {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const response = await getWorkbenchService().listSmartReplyAttachments({
+    conversationId,
+    ids,
+  });
+
+  return adaptSmartReplyAttachments(response.attachments);
 }
 
 function adaptMessages(

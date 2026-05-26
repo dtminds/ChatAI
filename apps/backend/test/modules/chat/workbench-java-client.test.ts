@@ -716,6 +716,108 @@ describe("createWorkbenchJavaClient", () => {
       }),
     );
   });
+
+  it("posts attachment list requests with ids and uid", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              fileName: "产品图.png",
+              fileType: 1,
+              id: 101,
+            },
+          ],
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().listAttachments({
+        ids: [101, 102],
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      attachments: [
+        {
+          fileName: "产品图.png",
+          fileType: 1,
+          id: 101,
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/attachment/list",
+      expect.objectContaining({
+        body: JSON.stringify({
+          ids: [101, 102],
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("calls text moderation plus with content and type", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            riskItems: [
+              {
+                customizedHit: {
+                  keyWords: "最好",
+                  libName: "广告法_通用禁用极限词",
+                },
+                description: "广告法_通用禁用极限词",
+                label: "customized",
+                riskWords: "最好",
+              },
+            ],
+            riskLevel: "high",
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.checkTextModerationPlus({
+      content: "这是最好的产品",
+      uid: 9001,
+    });
+
+    expect(response).toEqual({
+      result: {
+        categoryLabel: "广告法_通用禁用极限词",
+        words: ["最好"],
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/ai-helper/text-moderation-plus?uid=9001",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "这是最好的产品",
+          type: "plus",
+        }),
+        method: "POST",
+      }),
+    );
+  });
 });
 
 function createLoggerMock() {

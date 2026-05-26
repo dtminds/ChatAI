@@ -3,8 +3,10 @@ import type {
   WorkbenchPollRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
+  WorkbenchSmartReplyAttachmentsRequest,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyPollRequest,
+  WorkbenchSmartReplyTextModerationRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -78,6 +80,16 @@ const SmartReplyGeneralAnswerBodySchema = Type.Object({
   conversationId: Type.String(),
   msgId: Type.Integer({ minimum: 1 }),
   questionImgs: Type.Optional(Type.Array(Type.String())),
+});
+
+const SmartReplyAttachmentsBodySchema = Type.Object({
+  conversationId: Type.String(),
+  ids: Type.Array(Type.String()),
+});
+
+const SmartReplyTextModerationBodySchema = Type.Object({
+  conversationId: Type.String(),
+  content: Type.String(),
 });
 
 const WorkbenchMessageContentTypeSchema = Type.Union([
@@ -534,6 +546,36 @@ export async function registerChatRoutes(app: FastifyInstance) {
       getWorkbenchService(app, request).requestSmartReplyGeneralAnswer(
         getSubUserId(request),
         request.body satisfies WorkbenchSmartReplyGeneralAnswerRequest,
+      ),
+  );
+
+  app.post<{ Body: Static<typeof SmartReplyAttachmentsBodySchema> }>(
+    "/api/server/smart-reply/attachments",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartReplyAttachmentsBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).listSmartReplyAttachments(
+        getSubUserId(request),
+        request.body satisfies WorkbenchSmartReplyAttachmentsRequest,
+      ),
+  );
+
+  app.post<{ Body: Static<typeof SmartReplyTextModerationBodySchema> }>(
+    "/api/server/smart-reply/text-moderation",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartReplyTextModerationBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).checkSmartReplyTextModeration(
+        getSubUserId(request),
+        request.body satisfies WorkbenchSmartReplyTextModerationRequest,
       ),
   );
 

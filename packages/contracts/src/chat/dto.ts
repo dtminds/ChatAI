@@ -300,6 +300,57 @@ export type WorkbenchSmartReplyGeneralAnswerResponse = {
   suggestion: WorkbenchSmartReplySuggestionDto | null;
 };
 
+export type WorkbenchAttachmentAppInfoDto = {
+  appOriginId?: string;
+  appPath?: string;
+  appid?: string;
+  headImg?: string;
+  nickName?: string;
+};
+
+export type WorkbenchAttachmentDto = {
+  appId?: string;
+  appInfo?: WorkbenchAttachmentAppInfoDto;
+  content?: string;
+  coverUrl?: string;
+  fileContentType?: string;
+  fileDuration?: string;
+  fileHeight?: number;
+  fileLength?: number;
+  fileName?: string;
+  /** 1 图片 2 音频 3 视频 4 图文 5 文件 6 文本 7 小程序 */
+  fileType?: number;
+  fileWidth?: number;
+  id: number;
+  jumpUrl?: string;
+  localPath?: string;
+  slocalPath?: string;
+  textContent?: string;
+};
+
+export type WorkbenchSmartReplyAttachmentsRequest = {
+  conversationId: string;
+  ids: string[];
+};
+
+export type WorkbenchSmartReplyAttachmentsResponse = {
+  attachments: WorkbenchAttachmentDto[];
+};
+
+export type WorkbenchSmartReplyTextModerationRequest = {
+  conversationId: string;
+  content: string;
+};
+
+export type WorkbenchSmartReplyTextModerationDto = {
+  categoryLabel: string;
+  words: string[];
+};
+
+export type WorkbenchSmartReplyTextModerationResponse = {
+  result: WorkbenchSmartReplyTextModerationDto | null;
+};
+
 export type WorkbenchOutgoingMessageTextSegment = {
   type: "text";
   text: string;

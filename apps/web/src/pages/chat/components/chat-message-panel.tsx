@@ -2,6 +2,7 @@ import { startTransition, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { ChatMessageList } from "@/pages/chat/components/message-feed";
+import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 
@@ -9,6 +10,7 @@ type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
   bottomOverlay?: ReactNode;
   canUseMessageActions?: boolean;
+  conversationId?: string;
   hasBottomOverlay?: boolean;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
@@ -21,6 +23,7 @@ type ChatMessagePanelProps = {
   onQuoteMessage?: (message: ChatMessage) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
@@ -31,6 +34,7 @@ export function ChatMessagePanel({
   activeHistoryStatus,
   bottomOverlay,
   canUseMessageActions = true,
+  conversationId,
   hasBottomOverlay = false,
   hasMoreHistory,
   historyLoadLabel,
@@ -43,6 +47,7 @@ export function ChatMessagePanel({
   onQuoteMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  onSendSmartReply,
   onTriggerSmartReply,
   retryingMessageIds,
   smartReplyByMessageId,
@@ -88,11 +93,13 @@ export function ChatMessagePanel({
               ) : null}
               <ChatMessageList
                 canUseMessageActions={canUseMessageActions}
+                conversationId={conversationId}
                 messages={messages}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
+                onSendSmartReply={onSendSmartReply}
                 onTriggerSmartReply={onTriggerSmartReply}
                 onRetryMessage={(messageId) => {
                   startTransition(() => {

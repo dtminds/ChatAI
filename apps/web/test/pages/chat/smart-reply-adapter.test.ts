@@ -10,6 +10,7 @@ import {
   collectQuestionImgs,
   collectSmartReplyMsgIds,
   collectSmartReplyPollMsgIds,
+  canRequestSmartReplyMakeShorter,
   createMakeShorterSmartReplySuggestion,
   createPendingSmartReplySuggestion,
   createSentSmartReplySuggestion,
@@ -451,6 +452,32 @@ describe("smart-reply-adapter", () => {
   it("builds realAttachIds for send-answer requests", () => {
     expect(buildSmartReplyRealAttachIds(["101", "102"])).toEqual(["101", "102"]);
     expect(buildSmartReplyRealAttachIds([])).toEqual([]);
+  });
+
+  it("allows make shorter only for ready suggestions with content", () => {
+    expect(
+      canRequestSmartReplyMakeShorter({
+        assistantName: "护肤小助手",
+        content: "建议回复",
+        generateStatus: 2,
+        status: "ready",
+      }),
+    ).toBe(true);
+    expect(
+      canRequestSmartReplyMakeShorter({
+        assistantName: "护肤小助手",
+        content: "已发送话术",
+        generateStatus: 4,
+        status: "ready",
+      }),
+    ).toBe(true);
+    expect(
+      canRequestSmartReplyMakeShorter({
+        assistantName: "护肤小助手",
+        content: "生成中",
+        status: "processing",
+      }),
+    ).toBe(false);
   });
 
   it("creates make shorter suggestions that stop polling", () => {

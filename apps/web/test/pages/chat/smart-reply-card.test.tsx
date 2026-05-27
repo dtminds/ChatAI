@@ -123,6 +123,62 @@ describe("SmartReplyCard", () => {
     expect(onRegenerate).toHaveBeenCalledWith(message);
   });
 
+  it("calls onMakeShorter with the anchor message", async () => {
+    const user = userEvent.setup();
+    const onMakeShorter = vi.fn();
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        onMakeShorter={onMakeShorter}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌",
+          generateStatus: 2,
+          status: "ready",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "智能回复调整" }));
+    await user.click(screen.getByRole("menuitem", { name: "简短一点" }));
+
+    expect(onMakeShorter).toHaveBeenCalledWith(message);
+  });
+
+  it("allows make shorter after the suggestion was sent", async () => {
+    const user = userEvent.setup();
+    const onMakeShorter = vi.fn();
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        onMakeShorter={onMakeShorter}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "已发送话术",
+          generateStatus: 4,
+          status: "ready",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "智能回复调整" }));
+    await user.click(screen.getByRole("menuitem", { name: "简短一点" }));
+
+    expect(onMakeShorter).toHaveBeenCalledWith(message);
+  });
+
   it("opens edit dialog from message anchor", async () => {
     const user = userEvent.setup();
     const message = {

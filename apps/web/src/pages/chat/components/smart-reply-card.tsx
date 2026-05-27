@@ -19,6 +19,7 @@ import { Separator } from "@/components/ui/separator";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
   getSmartReplyCustomerQuestion,
+  canRequestSmartReplyMakeShorter,
   isSmartReplyKnowledgeMiss,
   isSmartReplyMediaContentType,
   isSmartReplySent,
@@ -67,6 +68,7 @@ export type SmartReplyCardProps = {
   canSendMessage?: boolean;
   onEdit?: () => void;
   onMakeShorter?: () => void;
+  canMakeShorter?: boolean;
   onRegenerate?: () => void;
   onSend?: () => void;
   processingLabel?: string;
@@ -84,6 +86,7 @@ export function SmartReplyCard({
   canSendMessage = true,
   onEdit,
   onMakeShorter,
+  canMakeShorter = true,
   onRegenerate,
   onSend,
   processingLabel,
@@ -143,6 +146,7 @@ export function SmartReplyCard({
             isKnowledgeHit && !isThinking && !isProcessing ?
             <footer className="flex items-center justify-between px-[16px] pb-[12px]">
               <SmartReplyToolbar
+                canMakeShorter={canMakeShorter}
                 onMakeShorter={onMakeShorter}
                 onRegenerate={onRegenerate}
                 refAttachIds={refAttachIds}
@@ -306,6 +310,7 @@ export function SmartReplyMessageAnchor({
   const displayContent = resolvedSuggestion.content;
   const isKnowledgeHit = !isSmartReplyKnowledgeMiss(resolvedSuggestion);
   const isSent = isSmartReplySent(resolvedSuggestion);
+  const canMakeShorter = canRequestSmartReplyMakeShorter(resolvedSuggestion);
 
   return (
     <>
@@ -313,6 +318,7 @@ export function SmartReplyMessageAnchor({
         refAttachIds={resolvedSuggestion.refAttachIds}
         assistantAvatarUrl={resolvedSuggestion.assistantAvatarUrl}
         assistantName={resolvedSuggestion.assistantName}
+        canMakeShorter={canMakeShorter}
         canSendMessage={canSendMessage}
         content={displayContent}
         isKnowledgeHit={isKnowledgeHit}
@@ -508,7 +514,7 @@ function SmartReplyAssistantAvatar({
   name: string;
 }) {
   return (
-    <Avatar className="size-7 rounded-full">
+    <Avatar className="size-5 rounded-full">
       {avatarUrl ? <AvatarImage alt={name} src={avatarUrl} /> : null}
       <AvatarFallback className="rounded-full bg-transparent text-[11px] text-white">
         AI
@@ -599,11 +605,13 @@ function SmartReplyReadonlyContent({
 }
 
 function SmartReplyToolbar({
+  canMakeShorter = true,
   onMakeShorter,
   onRegenerate,
   refAttachIds,
   onEdit,
 }: {
+  canMakeShorter?: boolean;
   onMakeShorter?: () => void;
   onRegenerate?: () => void;
   refAttachIds?: string[];
@@ -630,8 +638,21 @@ function SmartReplyToolbar({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="min-w-[128px]" side="top">
-          <DropdownMenuItem onSelect={onMakeShorter}>简短一点</DropdownMenuItem>
-          <DropdownMenuItem onSelect={onRegenerate}>重新生成</DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!canMakeShorter || !onMakeShorter}
+            onSelect={() => {
+              onMakeShorter?.();
+            }}
+          >
+            简短一点
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              onRegenerate?.();
+            }}
+          >
+            重新生成
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       {

@@ -250,6 +250,27 @@ export function isSmartReplyReady(suggestion?: SmartReplySuggestion | null) {
   return suggestion.content.trim().length > 0;
 }
 
+export function canRequestSmartReplyMakeShorter(
+  suggestion?: SmartReplySuggestion | null,
+) {
+  if (!suggestion) {
+    return false;
+  }
+
+  if (
+    suggestion.status === "thinking" ||
+    suggestion.status === "processing"
+  ) {
+    return false;
+  }
+
+  if (isSmartReplyKnowledgeMiss(suggestion)) {
+    return false;
+  }
+
+  return suggestion.content.trim().length > 0;
+}
+
 export function createMakeShorterSmartReplySuggestion(
   previous: SmartReplySuggestion,
   content: string,

@@ -21,7 +21,7 @@ import {
   pollWorkbench,
   pollSmartReplies,
   requestSmartReplyGeneralAnswer,
-  requestSmartReplyMakeShorter,
+  requestSmartReplyMakeShorter as requestSmartReplyMakeShorterApi,
   sendSmartReplyAnswer,
   confirmVoicePlaybackReady as confirmVoicePlaybackReadyRequest,
   sendTextMessage,
@@ -49,12 +49,11 @@ import {
   collectNewSmartReplyPendingKeys,
   collectSmartReplyPollMsgIds,
   createMakeShorterSmartReplySuggestion,
+  canRequestSmartReplyMakeShorter,
   createSentSmartReplySuggestion,
   createTriggeredSmartReplySuggestion,
   getSmartReplyLookupKey,
   isSmartReplyPollComplete,
-  isSmartReplyReady,
-  isSmartReplySent,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
@@ -1812,19 +1811,11 @@ export function createWorkbenchStore() {
         const previousSuggestion =
           state.smartReplyByMessageIdByConversationId[conversationId]?.[lookupKey];
 
-        if (
-          !previousSuggestion ||
-          !isSmartReplyReady(previousSuggestion) ||
-          isSmartReplySent(previousSuggestion)
-        ) {
+        if (!canRequestSmartReplyMakeShorter(previousSuggestion)) {
           return;
         }
 
         const content = previousSuggestion.content.trim();
-
-        if (!content) {
-          return;
-        }
 
         const optimisticSuggestion: SmartReplySuggestion = {
           ...previousSuggestion,
@@ -1843,7 +1834,7 @@ export function createWorkbenchStore() {
         }));
 
         try {
-          const response = await requestSmartReplyMakeShorter(conversationId, content);
+          const response = await requestSmartReplyMakeShorterApi(conversationId, content);
 
           set((currentState) => {
             if (currentState.activeConversationId !== conversationId) {

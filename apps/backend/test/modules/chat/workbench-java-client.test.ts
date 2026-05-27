@@ -9,7 +9,6 @@ describe("createWorkbenchJavaClient", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     delete process.env.JAVA_INTERNAL_API_BASE_URL;
-    delete process.env.JAVA_INTERNAL_API_MOCK_VOICE_TRANSCRIPTION;
     delete process.env.JAVA_INTERNAL_API_TOKEN;
   });
 
@@ -306,15 +305,12 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
-  it("posts voice transcription payload to the Java internal API using audit id as updateId", async () => {
+  it("posts sentence recognition payload to the Java internal API using the voice URL", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          data: {
-            transVoiceText: "这是一条语音识别文本",
-            updateId: 538,
-          },
+          data: "这是一条语音识别文本",
           error: 0,
           errorMsg: "",
           success: true,
@@ -327,42 +323,20 @@ describe("createWorkbenchJavaClient", () => {
     );
 
     await expect(
-      createWorkbenchJavaClient().transcribeVoice({
-        platform: 5,
-        uid: 9001,
-        updateId: 538,
+      createWorkbenchJavaClient().recognizeSentence({
+        voiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
       }),
-    ).resolves.toEqual({
-      transVoiceText: "这是一条语音识别文本",
-      updateId: 538,
-    });
+    ).resolves.toBe("这是一条语音识别文本");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed/conversation/transcribe-voice",
+      "https://java.internal/third-internal/tencent-cloud/sentence-recognition",
       expect.objectContaining({
         body: JSON.stringify({
-          platform: 5,
-          uid: 9001,
-          updateId: 538,
+          voiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
         }),
         method: "POST",
       }),
     );
-  });
-
-  it("can mock Java voice transcription while the Java endpoint is unavailable", async () => {
-    process.env.JAVA_INTERNAL_API_MOCK_VOICE_TRANSCRIPTION = "true";
-
-    await expect(
-      createWorkbenchJavaClient().transcribeVoice({
-        platform: 5,
-        uid: 9001,
-        updateId: 538,
-      }),
-    ).resolves.toEqual({
-      transVoiceText: "这是一段语音转文字测试文本",
-      updateId: 538,
-    });
   });
 
   it("posts conversation hide payload to the Java internal API", async () => {

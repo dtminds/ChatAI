@@ -515,15 +515,12 @@ describe("MysqlWorkbenchService", () => {
       transVoiceText: "已经识别过的文本",
       transVoiceTextPersisted: true,
     });
-    expect(javaClient.transcribeVoice).not.toHaveBeenCalled();
+    expect(javaClient.recognizeSentence).not.toHaveBeenCalled();
   });
 
-  it("requests Java voice transcription with audit id and returns persisted text", async () => {
+  it("recognizes the voice URL, persists message content, and returns persisted text", async () => {
     const javaClient = createJavaClient();
-    vi.mocked(javaClient.transcribeVoice).mockResolvedValue({
-      transVoiceText: "新识别出来的文本",
-      updateId: 538,
-    });
+    vi.mocked(javaClient.recognizeSentence).mockResolvedValue("新识别出来的文本");
     const getMessageRawContent = vi.fn().mockResolvedValue(JSON.stringify({
       fileUrl: "s5/msg/20260525/272/voice.amr",
       transFileUrl: "",
@@ -563,11 +560,56 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
-    expect(javaClient.transcribeVoice).toHaveBeenCalledWith({
+    expect(javaClient.recognizeSentence).toHaveBeenCalledWith({
+      voiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
+    });
+    expect(javaClient.updateMessageContent).toHaveBeenCalledWith({
+      content: JSON.stringify({
+        fileUrl: "s5/msg/20260525/272/voice.amr",
+        transFileUrl: "",
+        transVoiceText: "新识别出来的文本",
+      }),
       platform: 5,
       uid: 9001,
       updateId: 538,
     });
+  });
+
+  it("rejects empty Java voice transcription results without persisting content", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.recognizeSentence).mockResolvedValue(
+      null as unknown as string,
+    );
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+          transVoiceText: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.transcribeVoiceMessage("101", {
+        conversationId: "88",
+        messageSeq: 538,
+      }),
+    ).rejects.toMatchObject({
+      code: "VOICE_TRANSCRIPTION_EMPTY",
+      statusCode: 502,
+    });
+    expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
   });
 
   it("rejects voice transcription when the target message is not a voice message", async () => {
@@ -599,7 +641,7 @@ describe("MysqlWorkbenchService", () => {
       code: "VOICE_TRANSCRIPTION_UNSUPPORTED",
       statusCode: 400,
     });
-    expect(javaClient.transcribeVoice).not.toHaveBeenCalled();
+    expect(javaClient.recognizeSentence).not.toHaveBeenCalled();
   });
 
   it("rejects confirmed voice playback URLs outside playable voice storage", async () => {
@@ -2601,13 +2643,10 @@ function createJavaClient(): WorkbenchJavaClient {
     markConversationRead: vi.fn().mockResolvedValue(undefined),
     markConversationUnread: vi.fn().mockResolvedValue(undefined),
     pinConversation: vi.fn().mockResolvedValue(undefined),
+    recognizeSentence: vi.fn().mockResolvedValue("这是一段语音转文字测试文本"),
     revokeMessage: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi.fn(),
     takeOverSeat: vi.fn().mockResolvedValue(undefined),
-    transcribeVoice: vi.fn().mockResolvedValue({
-      transVoiceText: "这是一段语音转文字测试文本",
-      updateId: 538,
-    }),
     updateMessageContent: vi.fn().mockResolvedValue(undefined),
     unpinConversation: vi.fn().mockResolvedValue(undefined),
   };

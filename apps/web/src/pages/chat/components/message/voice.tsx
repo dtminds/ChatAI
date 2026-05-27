@@ -1,14 +1,18 @@
-import { VolumeHighIcon } from "@hugeicons/core-free-icons";
+import {
+  Loading03Icon,
+  PauseIcon,
+  PlayIcon,
+  VolumeHighIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import BenzAMRRecorder from "benz-amr-recorder";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { request } from "@/lib/request";
+import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { VoiceMessageContent } from "@/pages/chat/chat-types";
 
 type VoiceMessageCardProps = {
   content: VoiceMessageContent;
   isAgent: boolean;
+  onPlaybackReady?: (payload: { playbackUrl: string }) => void;
 };
 
 type ActiveVoicePlayback = {
@@ -16,9 +20,25 @@ type ActiveVoicePlayback = {
   stop: () => void;
 };
 
-type CleanupOptions = {
-  destroyAmr?: boolean;
+type AudioListenerHandlers = {
+  error: () => void;
+  ended: () => void;
+  loadedmetadata: () => void;
+  pause: () => void;
+  timeupdate: () => void;
 };
+
+type PlaybackState =
+  | "idle"
+  | "preparing"
+  | "playing"
+  | "paused"
+  | "error"
+  | "not-ready";
+
+// Covers slow COS/CDN availability and weak-network metadata loading before showing retry.
+const MEDIA_LOAD_TIMEOUT_MS = 8000;
+const HAVE_METADATA_READY_STATE = 1;
 
 let activeVoicePlayback: ActiveVoicePlayback | null = null;
 let playbackGeneration = 0;
@@ -26,18 +46,61 @@ let playbackGeneration = 0;
 export function VoiceMessageCard({
   content,
   isAgent,
+  onPlaybackReady,
 }: VoiceMessageCardProps) {
   const bubbleTone = isAgent ? "bg-primary/10" : "bg-secondary";
   const playbackIdRef = useRef(Symbol("voice-message-playback"));
-  const amrBlobRef = useRef<Blob | null>(null);
-  const amrUrlRef = useRef<string | null>(null);
-  const amrRef = useRef<BenzAMRRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [playbackState, setPlaybackState] = useState<
-    "idle" | "playing" | "error"
-  >("idle");
+  const audioOriginalUrlRef = useRef<string | null>(null);
+  const isReleasingAudioRef = useRef(false);
+  const loadTimeoutRef = useRef<number | undefined>(undefined);
+  const mountedRef = useRef(true);
+  const playbackReadyNotifiedUrlRef = useRef<string | undefined>(undefined);
+  const audioPlaybackUrlRef = useRef<string | null>(null);
+  const previousAudioUrlRef = useRef(content.audioUrl);
+  const audioListenerHandlersRef = useRef<AudioListenerHandlers>({
+    error: () => undefined,
+    ended: () => undefined,
+    loadedmetadata: () => undefined,
+    pause: () => undefined,
+    timeupdate: () => undefined,
+  });
+  const audioListenersRef = useRef<AudioListenerHandlers>({
+    error: () => audioListenerHandlersRef.current.error(),
+    ended: () => audioListenerHandlersRef.current.ended(),
+    loadedmetadata: () => audioListenerHandlersRef.current.loadedmetadata(),
+    pause: () => audioListenerHandlersRef.current.pause(),
+    timeupdate: () => audioListenerHandlersRef.current.timeupdate(),
+  });
+  const releaseAudioRef = useRef<() => void>(() => undefined);
+  const stopPlaybackRef = useRef<() => void>(() => undefined);
+  const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const canPlay = Boolean(content.audioUrl);
   const label = content.durationLabel || "语音";
+  const fallbackDuration = parseDurationLabel(content.durationLabel);
+  const displayDuration = duration > 0 ? duration : fallbackDuration;
+  const durationLabel =
+    displayDuration && displayDuration > 0
+      ? formatVoiceDuration(displayDuration)
+      : label;
+  const sliderMax = Math.max(displayDuration ?? 0, currentTime, 1);
+  const sliderValue = Math.min(currentTime, sliderMax);
+  const progressPercent = sliderMax > 0 ? (sliderValue / sliderMax) * 100 : 0;
+  const isPlaying = playbackState === "playing";
+  const isActivePlayer =
+    playbackState === "preparing" ||
+    playbackState === "playing" ||
+    playbackState === "paused";
+  const isStatusVisible =
+    playbackState === "preparing" ||
+    playbackState === "error" ||
+    playbackState === "not-ready";
+  const statusLabel = getPlaybackStatusLabel(playbackState, label);
+  const controlLabel = canPlay
+    ? `${isPlaying ? "暂停" : "播放"}语音消息 ${label}`
+    : "语音消息不可播放";
 
   const clearActivePlayback = useCallback(() => {
     if (activeVoicePlayback?.id === playbackIdRef.current) {
@@ -45,30 +108,204 @@ export function VoiceMessageCard({
     }
   }, []);
 
-  const stopPlayback = useCallback((options: CleanupOptions = {}) => {
-    audioRef.current?.pause();
-    if (options.destroyAmr) {
-      destroyAmrRecorder(amrRef.current);
-      amrRef.current = null;
-      amrBlobRef.current = null;
-      amrUrlRef.current = null;
-    } else {
-      amrRef.current?.stop();
+  const clearLoadTimeout = useCallback(() => {
+    if (loadTimeoutRef.current === undefined) {
+      return;
     }
 
-    clearActivePlayback();
-    setPlaybackState("idle");
-  }, [clearActivePlayback]);
+    window.clearTimeout(loadTimeoutRef.current);
+    loadTimeoutRef.current = undefined;
+  }, []);
 
   const finishPlayback = useCallback(() => {
+    if (!mountedRef.current) {
+      return;
+    }
+
+    clearLoadTimeout();
     clearActivePlayback();
+    setCurrentTime(0);
     setPlaybackState("idle");
-  }, [clearActivePlayback]);
+  }, [clearActivePlayback, clearLoadTimeout]);
 
   const failPlayback = useCallback(() => {
+    if (!mountedRef.current) {
+      return;
+    }
+
+    clearLoadTimeout();
+    releaseAudioRef.current();
     clearActivePlayback();
     setPlaybackState("error");
-  }, [clearActivePlayback]);
+  }, [clearActivePlayback, clearLoadTimeout]);
+
+  const rejectPlaybackAsNotReady = useCallback(() => {
+    if (!mountedRef.current) {
+      return;
+    }
+
+    clearLoadTimeout();
+    releaseAudioRef.current();
+    clearActivePlayback();
+    setCurrentTime(0);
+    setPlaybackState("not-ready");
+  }, [clearActivePlayback, clearLoadTimeout]);
+
+  const syncAudioProgress = useCallback(() => {
+    const audio = audioRef.current;
+
+    if (!audio || !mountedRef.current) {
+      return;
+    }
+
+    if (hasAudioMetadata(audio)) {
+      clearLoadTimeout();
+    }
+    const nextDuration = getFiniteAudioTime(audio.duration);
+    const nextCurrentTime = getFiniteAudioTime(audio.currentTime);
+
+    if (nextDuration > 0) {
+      setDuration(nextDuration);
+    }
+    setCurrentTime(nextCurrentTime);
+  }, [clearLoadTimeout]);
+
+  const confirmPlaybackReady = useCallback(() => {
+    if (
+      content.playbackUrl &&
+      audioPlaybackUrlRef.current === content.playbackUrl &&
+      !content.transFileUrlPersisted &&
+      playbackReadyNotifiedUrlRef.current !== content.playbackUrl
+    ) {
+      playbackReadyNotifiedUrlRef.current = content.playbackUrl;
+      onPlaybackReady?.({ playbackUrl: content.playbackUrl });
+    }
+  }, [
+    content.playbackUrl,
+    content.transFileUrlPersisted,
+    onPlaybackReady,
+  ]);
+
+  const handleLoadedMetadata = useCallback(() => {
+    if (!audioRef.current || !mountedRef.current) {
+      return;
+    }
+
+    syncAudioProgress();
+    setPlaybackState("playing");
+    confirmPlaybackReady();
+  }, [confirmPlaybackReady, syncAudioProgress]);
+
+  const failOrRejectPendingPlayback = useCallback(() => {
+    const audio = audioRef.current;
+
+    if (
+      content.playbackUrl &&
+      audioPlaybackUrlRef.current === content.playbackUrl &&
+      !hasAudioMetadata(audio)
+    ) {
+      rejectPlaybackAsNotReady();
+      return;
+    }
+
+    failPlayback();
+  }, [content.playbackUrl, failPlayback, rejectPlaybackAsNotReady]);
+
+  const finishPlaybackIfEnded = useCallback(() => {
+    const audio = audioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    const hasReachedEnd =
+      Number.isFinite(audio.duration) &&
+      audio.duration > 0 &&
+      audio.currentTime >= audio.duration;
+
+    if (audio.ended || hasReachedEnd) {
+      finishPlayback();
+    }
+  }, [finishPlayback]);
+
+  const pausePlayback = useCallback(() => {
+    if (!mountedRef.current || isReleasingAudioRef.current) {
+      return;
+    }
+
+    const audio = audioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    if (!hasAudioMetadata(audio)) {
+      return;
+    }
+
+    const hasReachedEnd =
+      Number.isFinite(audio.duration) &&
+      audio.duration > 0 &&
+      audio.currentTime >= audio.duration;
+
+    if (audio.ended || hasReachedEnd) {
+      finishPlayback();
+      return;
+    }
+
+    syncAudioProgress();
+    setPlaybackState("paused");
+  }, [finishPlayback, syncAudioProgress]);
+
+  const releaseAudio = useCallback(() => {
+    clearLoadTimeout();
+
+    if (!audioRef.current) {
+      return;
+    }
+
+    const audio = audioRef.current;
+    const listeners = audioListenersRef.current;
+
+    audio.removeEventListener("pause", listeners.pause);
+    audio.removeEventListener("loadedmetadata", listeners.loadedmetadata);
+    audio.removeEventListener("timeupdate", listeners.timeupdate);
+    audio.removeEventListener("ended", listeners.ended);
+    audio.removeEventListener("error", listeners.error);
+    isReleasingAudioRef.current = true;
+    audio.pause();
+    audio.src = "";
+    try {
+      audio.load();
+    } catch {}
+    isReleasingAudioRef.current = false;
+    audioRef.current = null;
+    audioOriginalUrlRef.current = null;
+    audioPlaybackUrlRef.current = null;
+  }, [
+    clearLoadTimeout,
+  ]);
+
+  releaseAudioRef.current = releaseAudio;
+  audioListenerHandlersRef.current = {
+    error: failOrRejectPendingPlayback,
+    ended: finishPlayback,
+    loadedmetadata: handleLoadedMetadata,
+    pause: pausePlayback,
+    timeupdate: syncAudioProgress,
+  };
+
+  const stopPlayback = useCallback(() => {
+    releaseAudio();
+    clearActivePlayback();
+
+    if (mountedRef.current) {
+      setCurrentTime(0);
+      setPlaybackState("idle");
+    }
+  }, [clearActivePlayback, releaseAudio]);
+
+  stopPlaybackRef.current = stopPlayback;
 
   const claimActivePlayback = useCallback(() => {
     if (activeVoicePlayback?.id !== playbackIdRef.current) {
@@ -90,13 +327,33 @@ export function VoiceMessageCard({
   ), []);
 
   useEffect(() => {
-    return () => {
-      stopPlayback({ destroyAmr: true });
-    };
-  }, [stopPlayback]);
+    mountedRef.current = true;
 
-  const handlePlayClick = async () => {
+    return () => {
+      mountedRef.current = false;
+      stopPlaybackRef.current();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (previousAudioUrlRef.current === content.audioUrl) {
+      return;
+    }
+
+    previousAudioUrlRef.current = content.audioUrl;
+    playbackReadyNotifiedUrlRef.current = undefined;
+    stopPlaybackRef.current();
+    setDuration(0);
+  }, [content.audioUrl]);
+
+  const handleControlClick = async () => {
     if (!content.audioUrl) {
+      return;
+    }
+
+    if (playbackState === "playing") {
+      audioRef.current?.pause();
+      pausePlayback();
       return;
     }
 
@@ -105,26 +362,29 @@ export function VoiceMessageCard({
     try {
       generation = claimActivePlayback();
 
-      if (isAmrUrl(content.audioUrl)) {
-        await playAmrVoice(content.audioUrl);
+      if (
+        playbackState === "paused" &&
+        audioRef.current &&
+        audioOriginalUrlRef.current === content.audioUrl
+      ) {
+        setPlaybackState("playing");
+        await audioRef.current.play();
+        finishPlaybackIfEnded();
         return;
       }
 
-      if (!audioRef.current || audioRef.current.src !== content.audioUrl) {
-        amrRef.current?.stop();
-        audioRef.current?.pause();
-        audioRef.current = new Audio(content.audioUrl);
-        audioRef.current.addEventListener("ended", finishPlayback);
-        audioRef.current.addEventListener("error", failPlayback);
-      }
+      setPlaybackState("preparing");
+      const immediateAudioUrl = getImmediateAudioUrl(content);
 
-      if (!isCurrentPlayback(generation)) {
+      if (immediateAudioUrl) {
+        await playNativeAudio(
+          immediateAudioUrl,
+          content.audioUrl,
+          generation,
+        );
         return;
       }
-
-      audioRef.current.currentTime = 0;
-      setPlaybackState("playing");
-      await audioRef.current.play();
+      rejectPlaybackAsNotReady();
     } catch {
       if (generation == null || isCurrentPlayback(generation)) {
         failPlayback();
@@ -132,105 +392,264 @@ export function VoiceMessageCard({
     }
   };
 
-  const playAmrVoice = async (audioUrl: string) => {
-    audioRef.current?.pause();
-    const generation = playbackGeneration;
+  const handleSeekChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextTime = Number(event.target.value);
 
-    if (amrUrlRef.current !== audioUrl) {
-      destroyAmrRecorder(amrRef.current);
-      amrBlobRef.current = null;
-      amrRef.current = null;
-      amrUrlRef.current = null;
-    }
-
-    if (!amrRef.current) {
-      amrRef.current = new BenzAMRRecorder();
-      amrRef.current.onEnded(finishPlayback);
-      amrRef.current.onStop(finishPlayback);
-    }
-
-    if (!amrRef.current.isInit()) {
-      if (shouldProxyAmrAudio()) {
-        amrBlobRef.current ??= await downloadAmrVoice(audioUrl);
-        await amrRef.current.initWithBlob(amrBlobRef.current);
-      } else {
-        await amrRef.current.initWithUrl(audioUrl);
-      }
-
-      amrUrlRef.current = audioUrl;
-    }
-
-    if (!isCurrentPlayback(generation)) {
+    if (!Number.isFinite(nextTime)) {
       return;
     }
 
-    setPlaybackState("playing");
-    amrRef.current.play();
+    const seekMax = Math.max(
+      getFiniteAudioTime(audioRef.current?.duration ?? 0),
+      displayDuration ?? 0,
+      currentTime,
+      1,
+    );
+    const clampedTime = Math.max(0, Math.min(nextTime, seekMax));
+
+    const audio = audioRef.current;
+
+    if (audio && audio.readyState >= HAVE_METADATA_READY_STATE) {
+      audio.currentTime = clampedTime;
+    }
+
+    setCurrentTime(clampedTime);
   };
 
+  const playNativeAudio = async (
+    audioUrl: string,
+    originalUrl: string,
+    generation: number,
+  ) => {
+    clearLoadTimeout();
+
+    if (!audioRef.current || audioRef.current.src !== audioUrl) {
+      releaseAudio();
+      audioRef.current = new Audio(audioUrl);
+      audioRef.current.preload = "auto";
+      audioOriginalUrlRef.current = originalUrl;
+      audioPlaybackUrlRef.current = audioUrl;
+      audioRef.current.addEventListener(
+        "loadedmetadata",
+        audioListenersRef.current.loadedmetadata,
+      );
+      audioRef.current.addEventListener("timeupdate", audioListenersRef.current.timeupdate);
+      audioRef.current.addEventListener("ended", audioListenersRef.current.ended);
+      audioRef.current.addEventListener("error", audioListenersRef.current.error);
+      audioRef.current.addEventListener("pause", audioListenersRef.current.pause);
+    }
+
+    if (!mountedRef.current || !isCurrentPlayback(generation)) {
+      return;
+    }
+
+    if (audioRef.current.readyState >= HAVE_METADATA_READY_STATE) {
+      audioRef.current.currentTime = 0;
+    }
+    setCurrentTime(0);
+    loadTimeoutRef.current = window.setTimeout(() => {
+      const audio = audioRef.current;
+
+      if (
+        mountedRef.current &&
+        isCurrentPlayback(generation) &&
+        (!audio || audio.readyState < HAVE_METADATA_READY_STATE)
+      ) {
+        failOrRejectPendingPlayback();
+      }
+    }, MEDIA_LOAD_TIMEOUT_MS);
+    audioRef.current.load();
+    const playPromise = audioRef.current.play();
+    await playPromise;
+    if (
+      mountedRef.current &&
+      isCurrentPlayback(generation) &&
+      hasAudioMetadata(audioRef.current)
+    ) {
+      handleLoadedMetadata();
+    }
+    finishPlaybackIfEnded();
+  };
+
+  if (!isActivePlayer) {
+    return (
+      <button
+        aria-label={controlLabel}
+        className={cn(
+          "relative inline-flex min-h-10 min-w-28 items-center gap-2.5 rounded-[12px] px-3.5 py-1.5 outline-none transition-[filter] focus-visible:ring-4 focus-visible:ring-ring/25",
+          canPlay ? "cursor-pointer hover:brightness-[0.98]" : "cursor-not-allowed opacity-70",
+          bubbleTone,
+        )}
+        disabled={!canPlay}
+        onClick={handleControlClick}
+        type="button"
+      >
+        <HugeiconsIcon
+          className="relative z-1 shrink-0 text-foreground"
+          data-testid="voice-volume-icon"
+          data-volume-icon="high"
+          icon={VolumeHighIcon}
+          size={18}
+          strokeWidth={1.9}
+        />
+        <span className="relative z-1 shrink-0 text-[14px] leading-none text-foreground">
+          {statusLabel}
+        </span>
+      </button>
+    );
+  }
+
   return (
-    <button
-      aria-label={canPlay ? `播放语音消息 ${label}` : "语音消息不可播放"}
+    <div
       className={cn(
-        "relative inline-flex min-h-10 min-w-28 items-center gap-2.5 rounded-[12px] px-3.5 py-1.5 outline-none transition-[filter] focus-visible:ring-4 focus-visible:ring-ring/25",
-        canPlay ? "cursor-pointer hover:brightness-[0.98]" : "cursor-not-allowed opacity-70",
+        "relative inline-flex min-h-10 w-[216px] max-w-full items-center gap-2.5 rounded-[12px] px-3 py-2",
+        !canPlay && "opacity-70",
         bubbleTone,
       )}
-      disabled={!canPlay}
-      onClick={handlePlayClick}
-      type="button"
     >
-      <HugeiconsIcon
-        className="relative z-1 shrink-0 text-foreground"
-        data-testid="voice-volume-icon"
-        data-volume-icon="high"
-        icon={VolumeHighIcon}
-        size={18}
-        strokeWidth={1.9}
-      />
-      <span className="relative z-1 shrink-0 text-[14px] leading-none text-foreground">
-        {playbackState === "error"
-          ? "暂不可播放"
-          : playbackState === "playing"
-            ? "播放中"
-            : label}
-      </span>
-    </button>
+      <button
+        aria-label={controlLabel}
+        className={cn(
+          "inline-flex size-6 shrink-0 items-center justify-center rounded-full text-foreground outline-none transition-colors hover:bg-foreground/5 focus-visible:ring-4 focus-visible:ring-ring/25",
+          !canPlay || playbackState === "preparing"
+            ? "cursor-not-allowed opacity-70"
+            : "cursor-pointer",
+        )}
+        disabled={!canPlay || playbackState === "preparing"}
+        onClick={handleControlClick}
+        type="button"
+      >
+        <HugeiconsIcon
+          className={cn(playbackState === "preparing" && "animate-spin")}
+          data-playback-icon={isPlaying ? "pause" : "play"}
+          data-testid="voice-playback-icon"
+          icon={
+            playbackState === "preparing"
+              ? Loading03Icon
+              : isPlaying
+                ? PauseIcon
+                : PlayIcon
+          }
+          size={17}
+          strokeWidth={2}
+        />
+        <span className="sr-only">{statusLabel}</span>
+      </button>
+
+      {isStatusVisible ? (
+        <span className="min-w-0 flex-1 truncate text-[14px] leading-none text-foreground">
+          {statusLabel}
+        </span>
+      ) : (
+        <>
+          <div className="relative h-5 min-w-0 flex-1">
+            <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-foreground/15">
+              <span
+                className="block h-full rounded-full bg-primary"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <span
+              className="pointer-events-none absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow-[0_0_0_2px_var(--background)]"
+              style={{ left: `${progressPercent}%` }}
+            />
+            <input
+              aria-label="语音播放进度"
+              className="absolute inset-0 h-5 w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+              disabled={!canPlay}
+              max={sliderMax}
+              min={0}
+              onChange={handleSeekChange}
+              step={0.1}
+              type="range"
+              value={sliderValue}
+            />
+          </div>
+          <span className="shrink-0 text-[13px] leading-none text-muted-foreground tabular-nums">
+            {durationLabel}
+          </span>
+        </>
+      )}
+    </div>
   );
 }
 
-function isAmrUrl(url: string) {
-  return /\.amr(?:[?#].*)?$/i.test(url);
+function isUnplayableNativeUrl(url: string) {
+  return /\.(?:amr|silk)(?:[?#].*)?$/i.test(url);
 }
 
-function shouldProxyAmrAudio() {
-  return import.meta.env.DEV;
-}
-
-function downloadAmrVoice(url: string) {
-  return request<Blob>({
-    method: "GET",
-    params: {
-      url,
-    },
-    responseType: "blob",
-    url: "/server/media/proxy",
-  });
-}
-
-function destroyAmrRecorder(recorder: BenzAMRRecorder | null) {
-  try {
-    recorder?.destroy();
-  } catch (error) {
-    if (!isKnownAmrDestroyError(error)) {
-      throw error;
-    }
+function getImmediateAudioUrl(content: VoiceMessageContent) {
+  if (content.playbackUrl) {
+    return content.playbackUrl;
   }
+
+  if (!content.audioUrl || isUnplayableNativeUrl(content.audioUrl)) {
+    return undefined;
+  }
+
+  return content.audioUrl;
 }
 
-function isKnownAmrDestroyError(error: unknown) {
-  return (
-    error instanceof TypeError &&
-    error.message.includes("Cannot set properties of null")
+function hasAudioMetadata(audio: HTMLAudioElement | null) {
+  return Boolean(
+    audio &&
+      audio.readyState >= HAVE_METADATA_READY_STATE &&
+      Number.isFinite(audio.duration) &&
+      audio.duration > 0,
   );
+}
+
+function getFiniteAudioTime(value: number) {
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function getPlaybackStatusLabel(playbackState: PlaybackState, label: string) {
+  if (playbackState === "error") {
+    return "暂不可播放";
+  }
+  if (playbackState === "not-ready") {
+    return "暂不支持播放，请稍后重试";
+  }
+  if (playbackState === "preparing") {
+    return "准备播放";
+  }
+  if (playbackState === "playing") {
+    return "播放中";
+  }
+
+  return label;
+}
+
+function parseDurationLabel(label?: string) {
+  if (!label) {
+    return undefined;
+  }
+
+  const normalizedLabel = label.trim();
+  const minuteMatch = /^(\d+)'(\d{1,2})"?$/.exec(normalizedLabel);
+
+  if (minuteMatch) {
+    return Number(minuteMatch[1]) * 60 + Number(minuteMatch[2]);
+  }
+
+  const secondMatch = /^(\d+(?:\.\d+)?)"?$/.exec(normalizedLabel);
+
+  if (secondMatch) {
+    return Number(secondMatch[1]);
+  }
+
+  return undefined;
+}
+
+function formatVoiceDuration(seconds: number) {
+  const roundedSeconds = Math.max(0, Math.round(seconds));
+
+  if (roundedSeconds < 60) {
+    return `${roundedSeconds}"`;
+  }
+
+  const minutes = Math.floor(roundedSeconds / 60);
+  const remainingSeconds = String(roundedSeconds % 60).padStart(2, "0");
+
+  return `${minutes}'${remainingSeconds}"`;
 }

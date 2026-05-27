@@ -1,6 +1,6 @@
 import { Download04Icon, Loading03Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type SyntheticEvent } from "react";
 import type { VideoMessageContent } from "@/pages/chat/chat-types";
 import {
   LoadableMessageImage,
@@ -11,6 +11,9 @@ import { canUseExpiringUrl, isExpiringUrlExpired } from "@/pages/chat/lib/messag
 
 const DEFAULT_VIDEO_WIDTH = 320;
 const DEFAULT_VIDEO_HEIGHT = 240;
+const MAX_VIDEO_WIDTH = 300;
+const MAX_VIDEO_HEIGHT = 360;
+const MIN_VIDEO_WIDTH = 120;
 
 type VideoMessageCardProps = {
   content: VideoMessageContent;
@@ -23,8 +26,10 @@ export function VideoMessageCard({
   onDownloadClick,
   onPlayClick,
 }: VideoMessageCardProps) {
-  const mediaSize = getValidVideoSize(content);
   const coverImageUrl = content.coverImageUrl?.trim() ?? "";
+  const [loadedCoverSize, setLoadedCoverSize] = useState<VideoSize | null>(null);
+  const mediaSize = loadedCoverSize ?? getValidVideoSize(content);
+  const frameStyle = getVideoFrameStyle(mediaSize);
   const isDownloading = content.downloadStatus === "ing";
   const needsTransfer = Boolean(
     content.fileSerialNo &&
@@ -42,18 +47,35 @@ export function VideoMessageCard({
       window.open(content.videoUrl, "_blank", "noopener,noreferrer");
     }
   };
+  const handleCoverLoad = (event: SyntheticEvent<HTMLImageElement>) => {
+    const { naturalHeight, naturalWidth } = event.currentTarget;
+
+    if (!isPositiveFiniteNumber(naturalWidth) || !isPositiveFiniteNumber(naturalHeight)) {
+      return;
+    }
+
+    setLoadedCoverSize({
+      height: naturalHeight,
+      width: naturalWidth,
+    });
+  };
+
+  useEffect(() => {
+    setLoadedCoverSize(null);
+  }, [coverImageUrl]);
 
   return (
     <div
       className="relative isolate inline-block overflow-hidden rounded-[8px] bg-muted-foreground/10 shadow-sm"
-      style={videoConstraintStyle}
+      style={frameStyle}
     >
       {coverImageUrl ? (
         <LoadableMessageImage
           alt={content.alt}
-          className="block h-auto max-h-[360px] w-auto max-w-full object-cover"
+          className="block h-full w-full object-cover"
           fallback={<VideoCoverFallback alt={content.alt} />}
           loading="lazy"
+          onLoad={handleCoverLoad}
           src={getOptimizedMessageImageUrl(coverImageUrl)}
           width={mediaSize.width}
           height={mediaSize.height}
@@ -123,11 +145,39 @@ function VideoCoverFallback({ alt }: { alt: string }) {
   );
 }
 
-const videoConstraintStyle = {
-  maxWidth: "min(300px, 60%)",
-  maxHeight: "360px",
-  minWidth: "120px",
-} satisfies CSSProperties;
+type VideoSize = {
+  height: number;
+  width: number;
+};
+
+function getVideoFrameStyle(size: VideoSize) {
+  const frameSize = getConstrainedVideoFrameSize(size);
+
+  return {
+    aspectRatio: `${frameSize.width} / ${frameSize.height}`,
+    maxWidth: "100%",
+    width: `${frameSize.width}px`,
+  } satisfies CSSProperties;
+}
+
+function getConstrainedVideoFrameSize(size: VideoSize) {
+  const width = isPositiveFiniteNumber(size.width) ? size.width : DEFAULT_VIDEO_WIDTH;
+  const height = isPositiveFiniteNumber(size.height) ? size.height : DEFAULT_VIDEO_HEIGHT;
+  const aspectRatio = width / height;
+  const scale = Math.min(MAX_VIDEO_WIDTH / width, MAX_VIDEO_HEIGHT / height, 1);
+  const scaledWidth = width * scale;
+  const frameWidth = Math.max(MIN_VIDEO_WIDTH, scaledWidth);
+  const frameHeight = Math.min(MAX_VIDEO_HEIGHT, frameWidth / aspectRatio);
+
+  return {
+    height: roundVideoFrameDimension(frameHeight),
+    width: roundVideoFrameDimension(frameWidth),
+  };
+}
+
+function roundVideoFrameDimension(value: number) {
+  return Math.round(value * 100) / 100;
+}
 
 function getValidVideoSize(content: VideoMessageContent) {
   return {

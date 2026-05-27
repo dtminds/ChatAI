@@ -1,10 +1,29 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageRow, getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      success: vi.fn(),
+      warning: vi.fn(),
+    },
+  };
+});
+
 describe("message feed row actions", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it("opens an avatar anchored action menu with quote and mention actions for group messages", async () => {
     const user = userEvent.setup();
     const onMentionMessage = vi.fn();
@@ -56,6 +75,32 @@ describe("message feed row actions", () => {
 
     expect(screen.getByRole("menuitem", { name: "引用消息" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();
+  });
+
+  it("copies the remote message id from the action menu", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const message = {
+      ...createTextMessage("可复制消息"),
+      id: "local-message-id",
+      remoteMessageId: " remote-message-id ",
+    } satisfies ChatMessage;
+
+    render(<MessageRow message={message} onQuoteMessage={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    const menuItems = screen.getAllByRole("menuitem").map((item) => item.textContent);
+
+    expect(menuItems).toEqual(["引用消息", "复制消息ID"]);
+
+    await user.click(screen.getByRole("menuitem", { name: "复制消息ID" }));
+
+    expect(writeText).toHaveBeenCalledWith("remote-message-id");
+    expect(toast.success).toHaveBeenCalledWith("已复制消息ID");
   });
 
   it("keeps eligible message actions visible but disabled when actions are locked", async () => {
@@ -169,7 +214,88 @@ describe("message feed row actions", () => {
       getMessageFeedItemKey(reconciledMessage),
     );
   });
+
+  it("passes voice playback readiness with the source message", async () => {
+    const user = userEvent.setup();
+    const onVoicePlaybackReady = vi.fn();
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances });
+    const message = {
+      ...createTextMessage("语音"),
+      content: {
+        audioUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
+        durationLabel: "11\"",
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+        transFileUrlPersisted: false,
+        type: "voice" as const,
+      },
+      id: "voice-message-1",
+      seq: 538,
+    } satisfies ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onVoicePlaybackReady={onVoicePlaybackReady}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+    audioInstances[0]!.duration = 11;
+    audioInstances[0]!.dispatch("loadedmetadata");
+
+    await waitFor(() => {
+      expect(onVoicePlaybackReady).toHaveBeenCalledTimes(1);
+    });
+    expect(onVoicePlaybackReady).toHaveBeenCalledWith(message, {
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    });
+  });
 });
+
+type AudioMockInstance = {
+  addEventListener: ReturnType<typeof vi.fn>;
+  currentTime: number;
+  dispatch: (event: string) => void;
+  duration: number;
+  ended: boolean;
+  load: ReturnType<typeof vi.fn>;
+  pause: ReturnType<typeof vi.fn>;
+  paused: boolean;
+  play: ReturnType<typeof vi.fn>;
+  removeEventListener: ReturnType<typeof vi.fn>;
+  src: string;
+};
+
+function stubAudio({
+  instances = [],
+  play = vi.fn().mockResolvedValue(undefined),
+}: {
+  instances?: AudioMockInstance[];
+  play?: ReturnType<typeof vi.fn>;
+} = {}) {
+  vi.stubGlobal("Audio", function AudioMock(this: AudioMockInstance, src: string) {
+    const instanceListeners = new Map<string, EventListener[]>();
+    this.addEventListener = vi.fn((event: string, listener: EventListener) => {
+      instanceListeners.set(event, [...(instanceListeners.get(event) ?? []), listener]);
+    });
+    this.currentTime = 0;
+    this.dispatch = (event: string) => {
+      for (const listener of instanceListeners.get(event) ?? []) {
+        listener(new Event(event));
+      }
+    };
+    this.duration = 0;
+    this.ended = false;
+    this.load = vi.fn();
+    this.pause = vi.fn();
+    this.paused = true;
+    this.play = play;
+    this.removeEventListener = vi.fn();
+    this.src = src;
+    instances.push(this);
+  });
+}
 
 function createTextMessage(text: string) {
   return {

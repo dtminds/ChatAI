@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   JAVA_INTERNAL_API_USER_MESSAGE,
   WORKBENCH_INTERNAL_API_FAILED_CODE,
@@ -9,6 +9,10 @@ import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-re
 import { BadGatewayError } from "../../../src/shared/errors.js";
 
 describe("MysqlWorkbenchService", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("lists my customers with visible seat filters", async () => {
     const javaClient = createJavaClient();
     const listCustomers = vi.fn().mockResolvedValue({
@@ -177,14 +181,52 @@ describe("MysqlWorkbenchService", () => {
 
     await service.getMessages("101", "88", { limit: 10 });
 
-    expect(getConversationLookup).toHaveBeenCalledWith("88", {
-      includeHidden: true,
-    });
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
     expect(listMessages).toHaveBeenCalledWith("88", {
       beforeSeq: undefined,
       includeHiddenConversation: true,
       limit: 10,
     });
+  });
+
+  it("signs sidebar iframe params from hidden conversations", async () => {
+    const javaClient = createJavaClient();
+    const getConversationLookup = vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      thirdExternalUserId: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    const getEmbedUserRelationTuseSecrets = vi.fn().mockResolvedValue({
+      appId: "mid-001",
+      ivParameter: "1234567890abcdef",
+      secret: "abcdef1234567890",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup,
+        getEmbedUserRelationTuseSecrets,
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          subUserId: "101",
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getSidebarIframeParams("101", {
+        conversationId: "88",
+        seatId: "12",
+      }),
+    ).resolves.toMatchObject({
+      mid: "mid-001",
+    });
+
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
   });
 
   it("rejects invalid conversation list cursors before querying conversations", async () => {
@@ -348,16 +390,17 @@ describe("MysqlWorkbenchService", () => {
 
   it("passes conversation tenant scope to Java when marking a taken-over conversation read", async () => {
     const javaClient = createJavaClient();
+    const getConversationLookup = vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      seatHostSubUserId: "101",
+      uid: 9001,
+    });
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          uid: 9001,
-        }),
+        getConversationLookup,
         getSeatUnreadCountAfterMarkRead: vi.fn().mockResolvedValue(5),
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -370,12 +413,265 @@ describe("MysqlWorkbenchService", () => {
       platform: 5,
       uid: 9001,
     });
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
     expect(result).toEqual({
       conversationId: "88",
       seatId: "12",
       seatUnreadCount: 5,
       unreadCount: 0,
     });
+  });
+
+  it("persists confirmed voice playback URL by merging message content with audit id updateId", async () => {
+    const javaClient = createJavaClient();
+    const getMessageRawContent = vi.fn().mockResolvedValue(JSON.stringify({
+      downloadStatus: "finished",
+      fileSerialNo: "serial-001",
+      fileUrl: "s5/msg/20260525/272/voice.amr",
+      optSerNo: "opt-001",
+      transFileUrl: "",
+      transVoiceText: "",
+    }));
+    const playableVoiceExists = vi.fn().mockResolvedValue(true);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      playableVoiceExists,
+    );
+
+    await service.confirmVoicePlaybackReady("101", {
+      conversationId: "88",
+      messageSeq: 538,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    });
+
+    expect(getMessageRawContent).toHaveBeenCalledWith({
+      auditId: 538,
+      platform: 5,
+      thirdExternalUserId: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    expect(playableVoiceExists).toHaveBeenCalledWith(
+      "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    );
+    expect(javaClient.updateMessageContent).toHaveBeenCalledWith({
+      content: JSON.stringify({
+        downloadStatus: "finished",
+        fileSerialNo: "serial-001",
+        fileUrl: "s5/msg/20260525/272/voice.amr",
+        optSerNo: "opt-001",
+        transFileUrl: "s5/playable-voice/20260525/272/voice.wav",
+        transVoiceText: "",
+      }),
+      platform: 5,
+      uid: 9001,
+      updateId: 538,
+    });
+  });
+
+  it("rejects confirmed voice playback URLs outside playable voice storage", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      vi.fn().mockResolvedValue(true),
+    );
+
+    await expect(
+      service.confirmVoicePlaybackReady("101", {
+        conversationId: "88",
+        messageSeq: 538,
+        playbackUrl: "https://evil.example.com/s5/playable-voice/voice.wav",
+      }),
+    ).rejects.toMatchObject({
+      code: "MEDIA_URL_NOT_ALLOWED",
+      statusCode: 400,
+    });
+    expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
+  });
+
+  it("accepts confirmed voice playback URLs from the configured media host", async () => {
+    vi.stubEnv("PLAYABLE_MEDIA_HOST", "media.example.com:8443");
+    const javaClient = createJavaClient();
+    const playableVoiceExists = vi.fn().mockResolvedValue(true);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      playableVoiceExists,
+    );
+
+    await service.confirmVoicePlaybackReady("101", {
+      conversationId: "88",
+      messageSeq: 538,
+      playbackUrl: "https://media.example.com:8443/s5/playable-voice/20260525/272/voice.wav",
+    });
+
+    expect(javaClient.updateMessageContent).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("\"transFileUrl\":\"s5/playable-voice/20260525/272/voice.wav\""),
+    }));
+  });
+
+  it("rejects confirmed voice playback URLs that do not belong to the current message file", async () => {
+    const javaClient = createJavaClient();
+    const playableVoiceExists = vi.fn().mockResolvedValue(true);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/current-message.amr",
+          transFileUrl: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      playableVoiceExists,
+    );
+
+    await expect(
+      service.confirmVoicePlaybackReady("101", {
+        conversationId: "88",
+        messageSeq: 538,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/other-message.wav",
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAYABLE_VOICE_URL_MISMATCH",
+      statusCode: 400,
+    });
+    expect(playableVoiceExists).not.toHaveBeenCalled();
+    expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
+  });
+
+  it("rejects confirmed voice playback when the converted WAV does not exist", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/missing.amr",
+          transFileUrl: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      vi.fn().mockResolvedValue(false),
+    );
+
+    await expect(
+      service.confirmVoicePlaybackReady("101", {
+        conversationId: "88",
+        messageSeq: 538,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/missing.wav",
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAYABLE_VOICE_NOT_READY",
+      statusCode: 404,
+    });
+    expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
+  });
+
+  it("reports converted WAV check failures as bad gateway errors", async () => {
+    const originalFetch = globalThis.fetch;
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    await expect(
+      service.confirmVoicePlaybackReady("101", {
+        conversationId: "88",
+        messageSeq: 538,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      }),
+    ).rejects.toBeInstanceOf(BadGatewayError);
+    await expect(
+      service.confirmVoicePlaybackReady("101", {
+        conversationId: "88",
+        messageSeq: 538,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAYABLE_VOICE_CHECK_FAILED",
+      statusCode: 502,
+    });
+    expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
+
+    vi.stubGlobal("fetch", originalFetch);
   });
 
   it("rejects mark-unread when the conversation seat is not taken over by the current sub-user", async () => {
@@ -1158,9 +1454,7 @@ describe("MysqlWorkbenchService", () => {
         },
       ],
     });
-    expect(getConversationLookup).toHaveBeenCalledWith("88", {
-      includeHidden: true,
-    });
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
     expect(listMessages).toHaveBeenCalledWith("88", {
       beforeSeq: undefined,
       includeHiddenConversation: true,
@@ -1465,20 +1759,21 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-001",
       status: "accepted",
     });
+    const getConversationLookup = vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      seatHostSubUserId: "101",
+      seatUnreadCount: 0,
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+      unreadCount: 0,
+    });
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          seatUnreadCount: 0,
-          thirdGroupId: "group-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-          unreadCount: 0,
-        }),
+        getConversationLookup,
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -1519,6 +1814,7 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
   });
 
   it("maps a group text send with mention-all to the Java send-message payload", async () => {
@@ -2002,6 +2298,7 @@ function createJavaClient(): WorkbenchJavaClient {
     pinConversation: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi.fn(),
     takeOverSeat: vi.fn().mockResolvedValue(undefined),
+    updateMessageContent: vi.fn().mockResolvedValue(undefined),
     unpinConversation: vi.fn().mockResolvedValue(undefined),
   };
 }

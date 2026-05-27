@@ -90,7 +90,7 @@ export interface XyWapEmbedContact {
 
 export interface XyWapEmbedConversation {
   /**
-   * 会话状态：1、正常，0、删除
+   * 会话状态：1、正常，0、隐藏
    */
   biz_status: Generated<number | null>;
   /**

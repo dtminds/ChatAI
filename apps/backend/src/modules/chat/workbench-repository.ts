@@ -395,6 +395,39 @@ export class WorkbenchRepository {
     return readMessageFileDownloadStatus(row.content);
   }
 
+  async getMessageRawContent(input: {
+    auditId: number;
+    platform: number;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }) {
+    if (!Number.isInteger(input.auditId) || input.auditId <= 0) {
+      return undefined;
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info")
+      .select(["content"])
+      .where("id", "=", input.auditId)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("third_user_id", "=", input.thirdUserId);
+
+    if (input.thirdGroupId) {
+      query = query.where("third_group_id", "=", input.thirdGroupId);
+    } else if (input.thirdExternalUserId) {
+      query = query.where("third_external_id", "=", input.thirdExternalUserId);
+    } else {
+      return undefined;
+    }
+
+    const row = await query.executeTakeFirst();
+
+    return row?.content ?? undefined;
+  }
+
   async listMessageUpdateEvents(
     conversationId: string,
     options: {
@@ -1659,7 +1692,7 @@ export class WorkbenchRepository {
 
   async getConversationLookup(
     conversationId: string,
-    options: { includeHidden?: boolean } = {},
+    options: { activeOnly?: boolean } = {},
   ): Promise<ConversationLookup | undefined> {
     const conversationNumericId = parseMySqlId(conversationId);
 
@@ -1706,7 +1739,7 @@ export class WorkbenchRepository {
       .where("conversation.id", "=", conversationNumericId)
       .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE);
 
-    if (!options.includeHidden) {
+    if (options.activeOnly) {
       query = query.where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE);
     }
 
@@ -2767,7 +2800,6 @@ export class WorkbenchRepository {
       .where("conversation.platform", "=", platform)
       .where("conversation.third_userid", "=", seatThirdUserId)
       .where("conversation.id", "=", conversationNumericId)
-      .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
       .executeTakeFirst();
 
     if (!row) {
@@ -2798,8 +2830,7 @@ export class WorkbenchRepository {
       .where("uid", "=", uid)
       .where("platform", "=", platform)
       .where("third_userid", "=", seatThirdUserId)
-      .where("chat_type", "=", chatType)
-      .where("biz_status", "=", BIZ_STATUS_ACTIVE);
+      .where("chat_type", "=", chatType);
 
     if (chatType === CHAT_TYPE_GROUP) {
       query = query.where("third_group_id", "=", targetId);

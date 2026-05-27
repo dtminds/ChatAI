@@ -2733,12 +2733,13 @@ describe("WorkbenchRepository", () => {
   });
 
   it("returns conversation tenant scope and takeover sub-user for Java write operations", async () => {
+    let conversationQuery: ReturnType<typeof createQueryBuilder> | undefined;
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
           expect(table).toBe("xy_wap_embed_conversation as conversation");
 
-          return createQueryBuilder({
+          conversationQuery = createQueryBuilder({
             id: 88,
             platform: 5,
             seat_host_sub_id: 101,
@@ -2750,6 +2751,7 @@ describe("WorkbenchRepository", () => {
             uid: 9001,
             unread_cnt: 2,
           });
+          return conversationQuery;
         },
       } as never,
     );
@@ -2766,6 +2768,48 @@ describe("WorkbenchRepository", () => {
       uid: 9001,
       unreadCount: 2,
     });
+    expect(conversationQuery?.wheres).not.toContainEqual([
+      "conversation.biz_status",
+      "=",
+      1,
+    ]);
+  });
+
+  it("filters conversation lookup by active status when explicitly requested", async () => {
+    let conversationQuery: ReturnType<typeof createQueryBuilder> | undefined;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_conversation as conversation");
+
+          conversationQuery = createQueryBuilder({
+            id: 88,
+            platform: 5,
+            seat_host_sub_id: 101,
+            seat_id: 12,
+            seat_unread_count: 6,
+            third_external_userid: "external-001",
+            third_group_id: null,
+            third_userid: "seat-user-001",
+            uid: 9001,
+            unread_cnt: 2,
+          });
+          return conversationQuery;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getConversationLookup("88", { activeOnly: true }),
+    ).resolves.toMatchObject({
+      id: "88",
+      seatId: "12",
+    });
+    expect(conversationQuery?.wheres).toContainEqual([
+      "conversation.biz_status",
+      "=",
+      1,
+    ]);
   });
 
   it("reads quote content base64 from audit extend origin data", async () => {
@@ -2846,6 +2890,48 @@ describe("WorkbenchRepository", () => {
         ["id", "=", 321],
         ["uid", "=", 9001],
         ["platform", "=", 5],
+      ],
+    });
+  });
+
+  it("reads message raw content within the single conversation key", async () => {
+    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info");
+          const query = createQueryBuilder({
+            content: JSON.stringify({
+              fileUrl: "s5/msg/20260525/272/voice.amr",
+            }),
+          });
+          queries.push({ table, wheres: query.wheres });
+
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getMessageRawContent({
+        auditId: 538,
+        platform: 5,
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toBe(JSON.stringify({
+      fileUrl: "s5/msg/20260525/272/voice.amr",
+    }));
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toMatchObject({
+      table: "xy_wap_embed_msg_audit_info",
+      wheres: [
+        ["id", "=", 538],
+        ["uid", "=", 9001],
+        ["platform", "=", 5],
+        ["third_user_id", "=", "seat-user-001"],
+        ["third_external_id", "=", "external-001"],
       ],
     });
   });
@@ -3726,11 +3812,85 @@ describe("WorkbenchRepository", () => {
       "=",
       "seat-user-001",
     ]);
-    expect(conversationQuery?.wheres).toContainEqual([
+    expect(conversationQuery?.wheres).not.toContainEqual([
       "conversation.biz_status",
       "=",
       1,
     ]);
+  });
+
+  it("hydrates a hidden conversation for get-or-create target reuse", async () => {
+    let conversationQuery: ReturnType<typeof createQueryBuilder> | undefined;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            conversationQuery = createQueryBuilder(
+              createConversationRow({
+                id: 88,
+                third_external_userid: "external-001",
+                third_userid: "seat-user-001",
+              }),
+            );
+            return conversationQuery;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_contact" ||
+            table === "xy_wap_embed_customer_bind_relation" ||
+            table === "xy_wap_embed_group_seat"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getHydratedConversation(9001, 5, "seat-user-001", "88"),
+    ).resolves.toMatchObject({
+      conversationId: "88",
+    });
+
+    expect(conversationQuery?.wheres).not.toContainEqual([
+      "conversation.biz_status",
+      "=",
+      1,
+    ]);
+  });
+
+  it("finds hidden conversation ids by target for get-or-create reuse", async () => {
+    let conversationQuery: ReturnType<typeof createQueryBuilder> | undefined;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_conversation") {
+            conversationQuery = createQueryBuilder({ id: 88 });
+            return conversationQuery;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findConversationIdByTarget(9001, 5, "seat-user-001", 1, "external-001"),
+    ).resolves.toBe("88");
+
+    expect(conversationQuery?.wheres).not.toContainEqual(["biz_status", "=", 1]);
   });
 });
 

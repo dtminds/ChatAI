@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getGroupMemberHydrationKey,
   hydrateMessageRows,
@@ -8,6 +8,10 @@ import {
 } from "../../../src/modules/chat/workbench-mappers.js";
 
 describe("workbench MySQL mappers", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("maps a user seat row into the public seat DTO", () => {
     expect(
       mapSeatRow({
@@ -334,6 +338,85 @@ describe("workbench MySQL mappers", () => {
       messageId: "remote-msg-failed-001",
       optNo: "opt-failed-001",
       status: "failed",
+    });
+  });
+
+  it("derives voice playback URL and exposes whether transFileUrl was persisted", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/e58b363da0294e87b55472ce471394ff.amr",
+          transFileUrl: "",
+          transVoiceText: "",
+        }),
+        msgtype: "voice",
+      })),
+    ).toMatchObject({
+      content: {
+        audioUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/e58b363da0294e87b55472ce471394ff.amr",
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/e58b363da0294e87b55472ce471394ff.wav",
+        transFileUrl: "",
+        transFileUrlPersisted: false,
+        transVoiceText: "",
+      },
+      contentType: "voice",
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/e58b363da0294e87b55472ce471394ff.amr",
+          transFileUrl: "s5/playable-voice/20260525/272/persisted.wav",
+          transVoiceText: "语音文本",
+        }),
+        msgtype: "voice",
+      })),
+    ).toMatchObject({
+      content: {
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/persisted.wav",
+        transFileUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/persisted.wav",
+        transFileUrlPersisted: true,
+        transVoiceText: "语音文本",
+      },
+      contentType: "voice",
+    });
+  });
+
+  it("derives voice playback URLs without replacing matching filename segments", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/s5/msg/voice.amr",
+          transFileUrl: "",
+        }),
+        msgtype: "voice",
+      })),
+    ).toMatchObject({
+      content: {
+        audioUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/s5/msg/voice.amr",
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/s5/msg/voice.wav",
+      },
+      contentType: "voice",
+    });
+  });
+
+  it("derives voice playback URLs from the configured media host", async () => {
+    vi.stubEnv("PLAYABLE_MEDIA_HOST", "media.example.com:8443");
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+        }),
+        msgtype: "voice",
+      })),
+    ).toMatchObject({
+      content: {
+        audioUrl: "https://media.example.com:8443/s5/msg/20260525/272/voice.amr",
+        playbackUrl: "https://media.example.com:8443/s5/playable-voice/20260525/272/voice.wav",
+      },
+      contentType: "voice",
     });
   });
 

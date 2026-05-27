@@ -21,6 +21,8 @@ import type {
   WorkbenchUploadCredentialResponse,
   WorkbenchMessageQueryByIdsRequest,
   WorkbenchMessageUpdateEventDto,
+  WorkbenchVoicePlaybackConfirmRequest,
+  WorkbenchVoicePlaybackConfirmResponse,
 } from "@chatai/contracts";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import type {
@@ -416,6 +418,12 @@ export async function getMessageFileDownloadStatus(input: {
   messageSeq: number;
 }): Promise<WorkbenchMessageFileDownloadStatusResponse | undefined> {
   return getWorkbenchService().getMessageFileDownloadStatus(input);
+}
+
+export async function confirmVoicePlaybackReady(
+  input: WorkbenchVoicePlaybackConfirmRequest,
+): Promise<WorkbenchVoicePlaybackConfirmResponse> {
+  return getWorkbenchService().confirmVoicePlaybackReady(input);
 }
 
 export async function takeOverAccount(accountId: string): Promise<Account> {

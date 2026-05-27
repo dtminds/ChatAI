@@ -3,11 +3,12 @@ import type {
   WorkbenchPollRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
+  WorkbenchVoicePlaybackConfirmRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WorkbenchService } from "./workbench.service.js";
-import { fetchProxiedMediaAsset } from "./media-proxy.service.js";
+import { checkPlayableVoiceAsset } from "./media-proxy.service.js";
 import { ForbiddenError } from "../../shared/errors.js";
 import { withRequestId } from "../../shared/logger.js";
 
@@ -45,12 +46,18 @@ const HistoryMessagesQuerySchema = Type.Object({
   sender_id: Type.Optional(Type.String()),
 });
 
-const MediaProxyQuerySchema = Type.Object({
+const PlayableVoiceQuerySchema = Type.Object({
   url: Type.String({ minLength: 1 }),
 });
 
 const MediaUploadCredentialBodySchema = Type.Object({
   conversationId: Type.String(),
+});
+
+const VoicePlaybackConfirmBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeq: Type.Integer({ minimum: 1 }),
+  playbackUrl: Type.String({ minLength: 1 }),
 });
 
 const MessageDownloadParamsSchema = Type.Object({
@@ -223,8 +230,9 @@ type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
 type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
 type HistoryMessagesQuery = Static<typeof HistoryMessagesQuerySchema>;
-type MediaProxyQuery = Static<typeof MediaProxyQuerySchema>;
+type PlayableVoiceQuery = Static<typeof PlayableVoiceQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
+type VoicePlaybackConfirmBody = Static<typeof VoicePlaybackConfirmBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
 type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
@@ -318,26 +326,18 @@ export async function registerChatRoutes(app: FastifyInstance) {
       ),
   );
 
-  app.get<{ Querystring: MediaProxyQuery }>(
-    "/api/server/media/proxy",
+  app.get<{ Querystring: PlayableVoiceQuery }>(
+    "/api/server/media/playable-voice",
     {
       preHandler: app.authenticate,
       schema: {
-        querystring: MediaProxyQuerySchema,
+        querystring: PlayableVoiceQuerySchema,
       },
     },
-    async (request, reply) => {
-      const media = await fetchProxiedMediaAsset(request.query.url, request.log);
-
-      reply.header("cache-control", "private, max-age=300");
-      reply.header("content-type", media.contentType);
-
-      if (media.contentLength) {
-        reply.header("content-length", media.contentLength);
-      }
-
-      return reply.send(media.body);
-    },
+    async (request) => ({
+      data: await checkPlayableVoiceAsset(request.query.url, request.log),
+      success: true,
+    }),
   );
 
   app.post<{ Body: MediaUploadCredentialBody }>(
@@ -353,6 +353,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).getUploadCredential(
         getSubUserId(request),
         request.body.conversationId,
+      );
+    },
+  );
+
+  app.post<{ Body: VoicePlaybackConfirmBody }>(
+    "/api/server/media/voice-playback-confirmed",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: VoicePlaybackConfirmBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).confirmVoicePlaybackReady(
+        getSubUserId(request),
+        request.body satisfies WorkbenchVoicePlaybackConfirmRequest,
       );
     },
   );

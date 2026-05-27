@@ -20,6 +20,10 @@ type ChatMessagePanelProps = {
   onQuoteMessage?: (message: ChatMessage) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
   retryingMessageIds?: ReadonlySet<string>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
@@ -40,6 +44,7 @@ export function ChatMessagePanel({
   onQuoteMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  onVoicePlaybackReady,
   retryingMessageIds,
   messageViewportRef,
 }: ChatMessagePanelProps) {
@@ -88,6 +93,7 @@ export function ChatMessagePanel({
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
+                onVoicePlaybackReady={onVoicePlaybackReady}
                 onRetryMessage={(messageId) => {
                   startTransition(() => {
                     void onRetryMessage(messageId);

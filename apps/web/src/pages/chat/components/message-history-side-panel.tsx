@@ -81,6 +81,10 @@ type HistoryMessageHistoryPanelProps = {
   onLoadMoreNext: () => void;
   onLoadMorePrev: () => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
   onRefresh: () => void;
   onSetDay: (day?: string) => void;
   onSetScope: (scope: HistoryPanelScope) => void;
@@ -103,6 +107,7 @@ export function MessageHistorySidePanel({
   onLoadMoreNext,
   onLoadMorePrev,
   onDownloadMessageFile,
+  onVoicePlaybackReady,
   onRefresh,
   onSetDay,
   onSetScope,
@@ -215,6 +220,7 @@ export function MessageHistorySidePanel({
                 <HistoryCompactMessageList
                   messages={activeHistory?.messages ?? []}
                   onDownloadMessageFile={onDownloadMessageFile}
+                  onVoicePlaybackReady={onVoicePlaybackReady}
                 />
               </HistoryMessageViewport>
             </TabsContent>
@@ -470,9 +476,14 @@ function HistoryEdgeLoader({
 export function HistoryCompactMessageList({
   messages,
   onDownloadMessageFile,
+  onVoicePlaybackReady,
 }: {
   messages: Message[];
   onDownloadMessageFile?: (message: ChatMessage) => void;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
 }) {
   const chatMessages = messages.filter(isChatMessage);
 
@@ -506,6 +517,7 @@ export function HistoryCompactMessageList({
           <HistoryCompactMessageContent
             message={message}
             onDownloadMessageFile={onDownloadMessageFile}
+            onVoicePlaybackReady={onVoicePlaybackReady}
           />
           {message.isRevoked ? <HistoryCompactRevokedState /> : null}
         </div>
@@ -522,9 +534,14 @@ export function HistoryCompactMessageList({
 function HistoryCompactMessageContent({
   message,
   onDownloadMessageFile,
+  onVoicePlaybackReady,
 }: {
   message: ChatMessage;
   onDownloadMessageFile?: (message: ChatMessage) => void;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
 }) {
   if (message.content.type === "text") {
     return <HistoryCompactText text={message.content.text} />;
@@ -548,6 +565,7 @@ function HistoryCompactMessageContent({
         isAgent={message.role === "agent"}
         message={message}
         onDownloadMessageFile={onDownloadMessageFile}
+        onVoicePlaybackReady={onVoicePlaybackReady}
       />
     </div>
   );

@@ -102,6 +102,7 @@ describe("backend app", () => {
     delete process.env.JWT_PRIVATE_KEY;
     delete process.env.JWT_PUBLIC_KEY;
     delete process.env.NODE_ENV;
+    delete process.env.PLAYABLE_MEDIA_HOST;
   });
 
   it("serves health and readiness endpoints", async () => {
@@ -153,8 +154,8 @@ describe("backend app", () => {
     );
   });
 
-  it("disables request logging for the media proxy route", async () => {
-    expect(shouldDisableRequestLogging({ url: "/api/server/media/proxy?url=https%3A%2F%2Fb5.bokr.com.cn%2Ffoo" })).toBe(true);
+  it("disables request logging for playable voice checks", async () => {
+    expect(shouldDisableRequestLogging({ url: "/api/server/media/playable-voice?url=https%3A%2F%2Fb5.bokr.com.cn%2Ffoo" })).toBe(true);
     expect(shouldDisableRequestLogging({ url: "/api/server/conversations" })).toBe(false);
   });
 
@@ -1236,12 +1237,26 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("proxies allowlisted media through the authenticated server API", async () => {
+  it("does not expose the old media proxy route", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/proxy?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/voice/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("checks playable voice availability through a HEAD request", async () => {
     const { app, authorization } = await createAuthenticatedApp();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(new Uint8Array([1, 2, 3]), {
+      new Response(null, {
         headers: {
-          "content-type": "audio/amr",
+          "content-type": "audio/wav",
         },
         status: 200,
       }),
@@ -1250,15 +1265,21 @@ describe("backend app", () => {
     const response = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: `/api/server/media/proxy?url=${encodeURIComponent("https://b5.bokr.com.cn/bilin/20260421/272/voice.amr")}`,
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/voice/20260513/272/voice.amr")}`,
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.headers["content-type"]).toContain("audio/amr");
-    expect(response.body).toBe("\u0001\u0002\u0003");
+    expect(response.json()).toEqual({
+      data: {
+        playable: true,
+        playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
+      },
+      success: true,
+    });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://b5.bokr.com.cn/bilin/20260421/272/voice.amr",
+      "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
       expect.objectContaining({
+        method: "HEAD",
         signal: expect.any(AbortSignal),
       }),
     );
@@ -1266,13 +1287,138 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("rejects media proxy requests to non-allowlisted origins", async () => {
+  it("checks playable voice availability with configured media host", async () => {
+    process.env.PLAYABLE_MEDIA_HOST = "https://media.example.com:8443/";
+    const { app, authorization } = await createAuthenticatedApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 200 }),
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://media.example.com:8443/s5/voice/20260513/272/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        playable: true,
+        playableUrl: "https://media.example.com:8443/s5/playable-voice/20260513/272/voice.wav",
+      },
+      success: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://media.example.com:8443/s5/playable-voice/20260513/272/voice.wav",
+      expect.objectContaining({
+        method: "HEAD",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("checks playable voice availability for legacy s5 msg voice URLs", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, {
+        headers: {
+          "content-type": "audio/wav",
+        },
+        status: 200,
+      }),
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        playable: true,
+        playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
+      },
+      success: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
+      expect.objectContaining({
+        method: "HEAD",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("derives playable voice URL by slicing the matched source prefix", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, {
+        headers: {
+          "content-type": "audio/wav",
+        },
+        status: 200,
+      }),
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/msg/20260513/272/s5/msg/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        playable: true,
+        playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/s5/msg/voice.wav",
+      },
+      success: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/s5/msg/voice.wav",
+      expect.objectContaining({
+        method: "HEAD",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("reports voice as not playable when the converted wav is missing", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 404 }));
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/voice/20260513/272/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        playable: false,
+      },
+      success: true,
+    });
+
+    await app.close();
+  });
+
+  it("rejects playable voice checks for non-voice source URLs", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
     const response = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: `/api/server/media/proxy?url=${encodeURIComponent("https://example.com/voice.amr")}`,
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/image/20260513/272/image.jpg")}`,
     });
 
     expect(response.statusCode).toBe(400);
@@ -1308,6 +1454,63 @@ describe("backend app", () => {
       },
       region: expect.any(String),
     });
+
+    await app.close();
+  });
+
+  it("confirms voice playback readiness for an authenticated conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const confirmVoicePlaybackReady = vi.spyOn(
+      app.workbenchService,
+      "confirmVoicePlaybackReady",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      },
+      url: "/api/server/media/voice-playback-confirmed",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      messageSeq: 7,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      transFileUrlPersisted: true,
+    });
+    expect(confirmVoicePlaybackReady).toHaveBeenCalledWith("101", {
+      conversationId: "conv-001",
+      messageSeq: 7,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    });
+
+    await app.close();
+  });
+
+  it("rejects invalid voice playback message sequence before reaching the service", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const confirmVoicePlaybackReady = vi.spyOn(
+      app.workbenchService,
+      "confirmVoicePlaybackReady",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7.5,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      },
+      url: "/api/server/media/voice-playback-confirmed",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(confirmVoicePlaybackReady).not.toHaveBeenCalled();
 
     await app.close();
   });

@@ -91,6 +91,10 @@ type ChatPanelProps = {
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
   retryingMessageIds?: ReadonlySet<string>;
   onSendDraft: (segments: ComposerSegment[]) => void;
   onDismissScopeTransitionError: () => void;
@@ -151,6 +155,7 @@ export function ChatPanel({
   onClearQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  onVoicePlaybackReady,
   retryingMessageIds,
   onSendDraft,
   onDismissScopeTransitionError,
@@ -198,6 +203,7 @@ export function ChatPanel({
                 onQuoteMessage={onQuoteMessage}
                 onMessageViewportScroll={onMessageViewportScroll}
                 onRetryMessage={onRetryMessage}
+                onVoicePlaybackReady={onVoicePlaybackReady}
                 retryingMessageIds={retryingMessageIds}
               />
 
@@ -301,6 +307,7 @@ export function ChatPanel({
                   activeHistoryFilters={historyPanel.activeHistoryFilters}
                   activeHistoryLoading={historyPanel.activeHistoryLoading}
                   onDownloadMessageFile={onDownloadMessageFile}
+                  onVoicePlaybackReady={onVoicePlaybackReady}
                   scrollMode={historyPanel.scrollMode}
                   customer={customer}
                   groupMembers={groupMembers}

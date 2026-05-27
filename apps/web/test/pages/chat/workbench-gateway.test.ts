@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
@@ -7,6 +7,7 @@ import {
   loadGroupMembers,
   loadAccountConversations,
   loadAccountScope,
+  confirmVoicePlaybackReady,
   pollWorkbench,
 } from "@/pages/chat/api/workbench-gateway";
 import {
@@ -29,6 +30,32 @@ describe("workbench gateway message paging", () => {
     await bootstrapWorkbench("single", {});
 
     expect(observedLimits).toEqual([50]);
+  });
+
+  it("forwards voice playback confirmation to the active service", async () => {
+    const baseService = createMockWorkbenchService();
+    const confirmVoicePlayback = {
+      conversationId: "conv-001",
+      messageSeq: 538,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    };
+    const confirmVoicePlaybackReadySpy = vi.fn(async () => ({
+      messageSeq: confirmVoicePlayback.messageSeq,
+      playbackUrl: confirmVoicePlayback.playbackUrl,
+      transFileUrlPersisted: true as const,
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      confirmVoicePlaybackReady: confirmVoicePlaybackReadySpy,
+    });
+
+    await expect(confirmVoicePlaybackReady(confirmVoicePlayback)).resolves.toEqual({
+      messageSeq: 538,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      transFileUrlPersisted: true,
+    });
+    expect(confirmVoicePlaybackReadySpy).toHaveBeenCalledWith(confirmVoicePlayback);
   });
 
   it("loads single and group conversations separately during bootstrap", async () => {

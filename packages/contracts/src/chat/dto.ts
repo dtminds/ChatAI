@@ -76,6 +76,23 @@ export type WorkbenchMessageFileDownloadStatusResponse = {
   fileUrl?: string;
 };
 
+export type WorkbenchPlayableVoiceResponse = {
+  playable: boolean;
+  playableUrl?: string;
+};
+
+export type WorkbenchVoicePlaybackConfirmRequest = {
+  conversationId: string;
+  messageSeq: number;
+  playbackUrl: string;
+};
+
+export type WorkbenchVoicePlaybackConfirmResponse = {
+  messageSeq: number;
+  playbackUrl: string;
+  transFileUrlPersisted: true;
+};
+
 export type WorkbenchMessageFileDownloadStatusRequest = {
   conversationId: string;
   messageSeq: number;

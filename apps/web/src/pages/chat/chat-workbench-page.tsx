@@ -213,6 +213,7 @@ function ChatWorkbenchContent({
     takeoverStatusByAccountId,
     unpinConversation,
     updateMessageDownloadContent,
+    confirmVoicePlaybackReady,
   } = useWorkbenchStore();
   const subUser = useAuthStore((state) => state.subUser);
 
@@ -831,6 +832,21 @@ function ChatWorkbenchContent({
       });
   };
 
+  const handleVoicePlaybackReady = (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => {
+    if (message.content.type !== "voice" || !message.seq) {
+      return;
+    }
+
+    void confirmVoicePlaybackReady(
+      message.conversationId,
+      message.id,
+      payload.playbackUrl,
+    );
+  };
+
   const handleDraftChange = (nextDraft: string) => {
     setDraft(nextDraft);
   };
@@ -1199,6 +1215,7 @@ function ChatWorkbenchContent({
                   onCancelFileUpload={handleCancelFileUpload}
                   onClearQuotedMessage={() => setQuotedMessage(null)}
                   onDownloadMessageFile={handleDownloadMessageFile}
+                  onVoicePlaybackReady={handleVoicePlaybackReady}
                   onDraftChange={handleDraftChange}
                   onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                   onEnterBehaviorChange={setInputEnterBehavior}

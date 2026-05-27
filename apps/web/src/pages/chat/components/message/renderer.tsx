@@ -18,6 +18,10 @@ type MessageContentRendererProps = {
   message: ChatMessage;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
 };
 
 export function MessageContentRenderer({
@@ -25,6 +29,7 @@ export function MessageContentRenderer({
   message,
   onDownloadMessageFile,
   onOpenQuotedMessage,
+  onVoicePlaybackReady,
 }: MessageContentRendererProps) {
   switch (message.content.type) {
     case "text":
@@ -36,7 +41,13 @@ export function MessageContentRenderer({
         />
       );
     case "voice":
-      return <VoiceMessageCard content={message.content} isAgent={isAgent} />;
+      return (
+        <VoiceMessageCard
+          content={message.content}
+          isAgent={isAgent}
+          onPlaybackReady={(payload) => onVoicePlaybackReady?.(message, payload)}
+        />
+      );
     case "image":
       return <ImageMessageCard content={message.content} />;
     case "video":

@@ -357,6 +357,33 @@ describe("useWorkbenchStore", () => {
     expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(false);
   });
 
+  it("omits active conversation parameters from poll when no conversation is bound", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedPollRequests: Parameters<typeof baseService.poll>[0][] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        observedPollRequests.push(request);
+
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.getState().clearActiveConversation();
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedPollRequests[0]).not.toHaveProperty("activeConversationId");
+    expect(observedPollRequests[0]).not.toHaveProperty("activeMessageSeq");
+  });
+
   it("clears removed conversation resources from poll changes", async () => {
     const baseService = createMockWorkbenchService();
 
@@ -2291,6 +2318,93 @@ describe("useWorkbenchStore", () => {
     expect(state.activeConversationId).toBe("conv-005");
     expect(state.isConversationLoading).toBe(false);
     expect(state.messagesByConversationId["conv-005"]).toBeDefined();
+  });
+
+  it("selects the target account immediately while loading its conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const accountSwitchConversationsStarted = createDeferred();
+    const accountSwitchConversationsGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId, options) {
+        if (accountId === "ndt" && options?.mode === "single") {
+          accountSwitchConversationsStarted.resolve();
+          await accountSwitchConversationsGate.promise;
+        }
+
+        return baseService.getConversations(accountId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const accountSwitchPromise = useWorkbenchStore.getState().setActiveAccount("ndt");
+    await accountSwitchConversationsStarted.promise;
+
+    const loadingState = useWorkbenchStore.getState();
+    expect(loadingState.activeAccountId).toBe("ndt");
+    expect(loadingState.activeConversationId).toBe("");
+    expect(loadingState.isConversationLoading).toBe(true);
+
+    accountSwitchConversationsGate.resolve();
+    await accountSwitchPromise;
+
+    const loadedState = useWorkbenchStore.getState();
+    expect(loadedState.activeAccountId).toBe("ndt");
+    expect(loadedState.activeConversationId).toBe("conv-005");
+    expect(loadedState.isConversationLoading).toBe(false);
+  });
+
+  it("shows the switched account conversation list before the first message page finishes loading", async () => {
+    const baseService = createMockWorkbenchService();
+    let ndtConversationRequestCount = 0;
+    const firstMessagePageStarted = createDeferred();
+    const firstMessagePageGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId, options) {
+        const response = await baseService.getConversations(accountId, options);
+
+        if (accountId === "ndt") {
+          ndtConversationRequestCount += 1;
+        }
+
+        return response;
+      },
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-005" && options?.beforeSeq == null) {
+          firstMessagePageStarted.resolve();
+          await firstMessagePageGate.promise;
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const accountSwitchPromise = useWorkbenchStore.getState().setActiveAccount("ndt");
+    await firstMessagePageStarted.promise;
+
+    const loadingState = useWorkbenchStore.getState();
+    expect(ndtConversationRequestCount).toBe(2);
+    expect(loadingState.activeAccountId).toBe("ndt");
+    expect(loadingState.activeConversationId).toBe("conv-005");
+    expect(loadingState.conversationListsByScope.ndt.map((item) => item.id)).toEqual([
+      "conv-005",
+      "conv-006",
+    ]);
+    expect(loadingState.messagesByConversationId["conv-005"]).toBeUndefined();
+    expect(loadingState.isConversationLoading).toBe(true);
+
+    firstMessagePageGate.resolve();
+    await accountSwitchPromise;
+
+    const loadedState = useWorkbenchStore.getState();
+    expect(loadedState.messagesByConversationId["conv-005"]).toBeDefined();
+    expect(loadedState.isConversationLoading).toBe(false);
   });
 
   it("isolates scope request tracking across store instances", async () => {

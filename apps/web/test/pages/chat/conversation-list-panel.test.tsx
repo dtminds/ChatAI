@@ -138,6 +138,24 @@ describe("ConversationListPanel", () => {
     expect(screen.queryByText("当前账号下暂无单聊占位数据。")).not.toBeInTheDocument();
   });
 
+  it("shows loading instead of empty state when conversations are loading", () => {
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={[]}
+        isConversationLoading
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "正在加载会话" })).toBeInTheDocument();
+    expect(screen.getByText("正在加载会话")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "暂无数据" })).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无数据")).not.toBeInTheDocument();
+  });
+
   it("keeps inactive mode conversation cards mounted while switching tabs", () => {
     const { rerender } = render(
       <ConversationListPanel

@@ -30,6 +30,9 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchVoicePlaybackConfirmRequest,
   WorkbenchVoicePlaybackConfirmResponse,
+  WorkbenchCustomerListResponse,
+  WorkbenchCustomerLastConversationResponse,
+  WorkbenchCustomerRelationConversationsResponse,
 } from "@chatai/contracts";
 import { CHAT_TYPE } from "@chatai/contracts";
 import {
@@ -130,6 +133,29 @@ export type WorkbenchService = {
     conversationId: string,
   ): Promise<WorkbenchUploadCredentialResponse> | WorkbenchUploadCredentialResponse;
   getSeats(subUserId: string): Promise<WorkbenchSeatDto[]> | WorkbenchSeatDto[];
+  getCustomers(
+    subUserId: string,
+    options: {
+      cursor?: string;
+      keyword?: string;
+      limit?: number;
+      scope: "all" | "mine";
+      seatIds?: string[];
+    },
+  ): Promise<WorkbenchCustomerListResponse> | WorkbenchCustomerListResponse;
+  getCustomerLastConversation(
+    subUserId: string,
+    thirdExternalUserId: string,
+  ):
+    | Promise<WorkbenchCustomerLastConversationResponse>
+    | WorkbenchCustomerLastConversationResponse;
+  getCustomerRelationConversations(
+    subUserId: string,
+    thirdExternalUserId: string,
+    thirdUserIds: string[],
+  ):
+    | Promise<WorkbenchCustomerRelationConversationsResponse>
+    | WorkbenchCustomerRelationConversationsResponse;
   markConversationRead(
     subUserId: string,
     conversationId: string,
@@ -261,6 +287,79 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return this.repository.listSeats(subUserId);
   }
 
+  async getCustomers(
+    subUserId: string,
+    options: {
+      cursor?: string;
+      keyword?: string;
+      limit?: number;
+      scope: "all" | "mine";
+      seatIds?: string[];
+    },
+  ): Promise<WorkbenchCustomerListResponse> {
+    const subUser = await this.getMe(subUserId);
+
+    if (options.scope === "all") {
+      return this.repository.listCustomers({
+        cursor: options.cursor,
+        keyword: options.keyword,
+        limit: options.limit,
+        platform: subUser.platform,
+        scope: "all",
+        uid: subUser.uid,
+      });
+    }
+
+    return this.repository.listCustomers({
+      cursor: options.cursor,
+      keyword: options.keyword,
+      limit: options.limit,
+      scope: "mine",
+      seatIds: options.seatIds,
+      subUserId,
+    });
+  }
+
+  async getCustomerLastConversation(
+    subUserId: string,
+    thirdExternalUserId: string,
+  ): Promise<WorkbenchCustomerLastConversationResponse> {
+    const subUser = await this.getMe(subUserId);
+
+    if (subUser.uid == null || subUser.platform == null) {
+      return {};
+    }
+
+    return {
+      lastConversation: await this.repository.getCustomerLastConversation({
+        platform: subUser.platform,
+        thirdExternalUserId,
+        uid: subUser.uid,
+      }),
+    };
+  }
+
+  async getCustomerRelationConversations(
+    subUserId: string,
+    thirdExternalUserId: string,
+    thirdUserIds: string[],
+  ): Promise<WorkbenchCustomerRelationConversationsResponse> {
+    const subUser = await this.getMe(subUserId);
+
+    if (subUser.uid == null || subUser.platform == null) {
+      return { items: [] };
+    }
+
+    return {
+      items: await this.repository.listCustomerRelationConversations({
+        platform: subUser.platform,
+        thirdExternalUserId,
+        thirdUserIds,
+        uid: subUser.uid,
+      }),
+    };
+  }
+
   async getConversations(
     subUserId: string,
     seatId: string,
@@ -287,7 +386,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ) {
-    const conversation = await this.repository.getConversationLookup(conversationId);
+    const conversation = await this.repository.getConversationLookup(conversationId, {
+      includeHidden: true,
+    });
 
     if (!conversation) {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
@@ -297,6 +398,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     return this.repository.listMessages(conversationId, {
       beforeSeq: options?.beforeSeq,
+      includeHiddenConversation: true,
       limit: options?.limit ?? 30,
     });
   }
@@ -616,11 +718,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const activeConversationMessages =
       request.activeConversationId && request.activeMessageSeq != null
-        ? await this.getMessages(subUserId, request.activeConversationId, {
-            beforeSeq: undefined,
-            limit: 50,
-          }).then((page) =>
-            page.messages.filter((message) => message.seq > (request.activeMessageSeq ?? 0)),
+        ? await this.getActiveConversationMessages(
+            subUserId,
+            request.activeConversationId,
+            request.activeMessageSeq,
           )
         : [];
     const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
@@ -844,6 +945,30 @@ export class MysqlWorkbenchService implements WorkbenchService {
     if (!canAccess) {
       throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
     }
+  }
+
+  private async getActiveConversationMessages(
+    subUserId: string,
+    conversationId: string,
+    activeMessageSeq: number,
+  ) {
+    const conversation = await this.repository.getConversationLookup(conversationId, {
+      includeHidden: true,
+    });
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const page = await this.repository.listMessages(conversationId, {
+      beforeSeq: undefined,
+      includeHiddenConversation: true,
+      limit: 50,
+    });
+
+    return page.messages.filter((message) => message.seq > activeMessageSeq);
   }
 
   private async getOperableConversation(subUserId: string, conversationId: string) {

@@ -22,6 +22,10 @@ export const routerConfig = [
         element: <ChatWorkbenchRoutePage />,
       },
       {
+        path: "chat/customers",
+        element: <ChatWorkbenchRoutePage />,
+      },
+      {
         path: "chat/settings",
         element: <ChatSettingsPage />,
       },

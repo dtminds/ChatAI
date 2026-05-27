@@ -158,12 +158,35 @@ export function isSmartReplyKnowledgeMiss(
   );
 }
 
+export function isSmartReplyGenerationFailed(
+  suggestion?: SmartReplySuggestion | null,
+) {
+  if (!suggestion || isSmartReplyKnowledgeMiss(suggestion)) {
+    return false;
+  }
+
+  if (isSmartReplyBusy(suggestion) || isSmartReplyReady(suggestion)) {
+    return false;
+  }
+
+  const failReason = suggestion.failReason?.trim();
+
+  if (failReason) {
+    return true;
+  }
+
+  return readNonNegativeInteger(suggestion.generateStatus) === 3;
+}
+
 export function shouldShowSmartReplyCard(suggestion?: SmartReplySuggestion | null) {
   if (!suggestion) {
     return false;
   }
 
-  if (isSmartReplyKnowledgeMiss(suggestion)) {
+  if (
+    isSmartReplyKnowledgeMiss(suggestion) ||
+    isSmartReplyGenerationFailed(suggestion)
+  ) {
     return true;
   }
 

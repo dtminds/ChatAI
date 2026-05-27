@@ -20,6 +20,7 @@ import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
   getSmartReplyCustomerQuestion,
   canRequestSmartReplyMakeShorter,
+  isSmartReplyGenerationFailed,
   isSmartReplyKnowledgeMiss,
   isSmartReplyMediaContentType,
   isSmartReplySent,
@@ -63,7 +64,9 @@ export type SmartReplyCardProps = {
   content: string;
   isThinking?: boolean;
   isProcessing?: boolean;
+  isGenerationFailed?: boolean;
   isKnowledgeHit?: boolean;
+  isKnowledgeMiss?: boolean;
   isSent?: boolean;
   canSendMessage?: boolean;
   onEdit?: () => void;
@@ -81,7 +84,9 @@ export function SmartReplyCard({
   content,
   isThinking = false,
   isProcessing = false,
+  isGenerationFailed = false,
   isKnowledgeHit = true,
+  isKnowledgeMiss = false,
   isSent = false,
   canSendMessage = true,
   onEdit,
@@ -136,9 +141,11 @@ export function SmartReplyCard({
         <>
           <SmartReplyContentBody
             content={content}
-            isThinking={isThinking}
-            isProcessing={isProcessing}
+            isGenerationFailed={isGenerationFailed}
             isKnowledgeHit={isKnowledgeHit}
+            isKnowledgeMiss={isKnowledgeMiss}
+            isProcessing={isProcessing}
+            isThinking={isThinking}
             onRetry={onRegenerate}
             processingLabel={processingLabel}
           />
@@ -308,7 +315,9 @@ export function SmartReplyMessageAnchor({
 
   const resolvedSuggestion = suggestion;
   const displayContent = resolvedSuggestion.content;
-  const isKnowledgeHit = !isSmartReplyKnowledgeMiss(resolvedSuggestion);
+  const isKnowledgeMiss = isSmartReplyKnowledgeMiss(resolvedSuggestion);
+  const isGenerationFailed = isSmartReplyGenerationFailed(resolvedSuggestion);
+  const isKnowledgeHit = !isKnowledgeMiss && !isGenerationFailed;
   const isSent = isSmartReplySent(resolvedSuggestion);
   const canMakeShorter = canRequestSmartReplyMakeShorter(resolvedSuggestion);
 
@@ -321,7 +330,9 @@ export function SmartReplyMessageAnchor({
         canMakeShorter={canMakeShorter}
         canSendMessage={canSendMessage}
         content={displayContent}
+        isGenerationFailed={isGenerationFailed}
         isKnowledgeHit={isKnowledgeHit}
+        isKnowledgeMiss={isKnowledgeMiss}
         isSent={isSent}
         isThinking={isThinking}
         isProcessing={isProcessing}
@@ -525,16 +536,20 @@ function SmartReplyAssistantAvatar({
 
 function SmartReplyContentBody({
   content,
-  isThinking,
-  isProcessing,
+  isGenerationFailed,
   isKnowledgeHit,
+  isKnowledgeMiss,
+  isProcessing,
+  isThinking,
   onRetry,
   processingLabel,
 }: {
   content: string;
-  isThinking: boolean;
-  isProcessing: boolean;
+  isGenerationFailed: boolean;
   isKnowledgeHit: boolean;
+  isKnowledgeMiss: boolean;
+  isProcessing: boolean;
+  isThinking: boolean;
   onRetry?: () => void;
   processingLabel?: string;
 }) {
@@ -542,7 +557,8 @@ function SmartReplyContentBody({
     <div className="px-[16px] py-[12px]">
       {isThinking || isProcessing || !isKnowledgeHit ? (
         <SmartReplyReadonlyContent
-          isKnowledgeHit={isKnowledgeHit}
+          isGenerationFailed={isGenerationFailed}
+          isKnowledgeMiss={isKnowledgeMiss}
           isProcessing={isProcessing}
           isThinking={isThinking}
           onRetry={onRetry}
@@ -558,15 +574,17 @@ function SmartReplyContentBody({
 }
 
 function SmartReplyReadonlyContent({
-  isThinking,
+  isGenerationFailed,
+  isKnowledgeMiss,
   isProcessing,
-  isKnowledgeHit,
+  isThinking,
   onRetry,
   processingLabel,
 }: {
-  isThinking: boolean;
+  isGenerationFailed: boolean;
+  isKnowledgeMiss: boolean;
   isProcessing: boolean;
-  isKnowledgeHit: boolean;
+  isThinking: boolean;
   onRetry?: () => void;
   processingLabel?: string;
 }) {
@@ -586,9 +604,23 @@ function SmartReplyReadonlyContent({
           </p>
         </div>
       ) : null}
-      {!isKnowledgeHit ? (
+      {isKnowledgeMiss ? (
         <div className="flex items-center">
           <p className="text-[13px] text-[#3D3D3D]">🤔未命中知识集，暂无推荐话术</p>
+          {onRetry ? (
+            <button
+              className="ml-[10px] text-[13px] text-[#267FF0] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/20"
+              onClick={onRetry}
+              type="button"
+            >
+              重试
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {isGenerationFailed ? (
+        <div className="flex items-center">
+          <p className="text-[13px] text-[#3D3D3D]">生成失败，请重试</p>
           {onRetry ? (
             <button
               className="ml-[10px] text-[13px] text-[#267FF0] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/20"

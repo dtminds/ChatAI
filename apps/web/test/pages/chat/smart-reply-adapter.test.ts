@@ -18,6 +18,7 @@ import {
   getSmartReplyCustomerQuestion,
   getSmartReplyLookupKey,
   getSmartReplyProcessingLabel,
+  isSmartReplyGenerationFailed,
   isSmartReplyKnowledgeMiss,
   isSmartReplyPollActiveGenerateStatus,
   isSmartReplyPollComplete,
@@ -266,11 +267,38 @@ describe("smart-reply-adapter", () => {
     };
 
     expect(isSmartReplyKnowledgeMiss(suggestion)).toBe(true);
+    expect(isSmartReplyGenerationFailed(suggestion)).toBe(false);
     expect(isSmartReplyReady(suggestion)).toBe(false);
     expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
     expect(shouldShowSmartReplyTriggerIcon(
       {
         content: { text: "客户消息", type: "text" },
+        id: "msg-1",
+        role: "customer",
+      } as ChatMessage,
+      suggestion,
+    )).toBe(false);
+  });
+
+  it("shows smart reply card when poll returns generation failure", () => {
+    const suggestion = {
+      assistantName: "护肤小助手",
+      content: "",
+      failReason: "model_error",
+      generateStatus: 3,
+      pollComplete: true,
+    };
+
+    expect(isSmartReplyGenerationFailed(suggestion)).toBe(true);
+    expect(isSmartReplyKnowledgeMiss(suggestion)).toBe(false);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
+    expect(shouldShowSmartReplyTriggerIcon(
+      {
+        content: {
+          alt: "产品图",
+          imageUrl: "https://example.com/image.png",
+          type: "image",
+        },
         id: "msg-1",
         role: "customer",
       } as ChatMessage,

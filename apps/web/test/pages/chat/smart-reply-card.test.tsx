@@ -388,6 +388,42 @@ describe("SmartReplyCard", () => {
     expect(onRegenerate).toHaveBeenCalledWith(message);
   });
 
+  it("shows generation failure state and retries from the card", async () => {
+    const user = userEvent.setup();
+    const onRegenerate = vi.fn();
+    const message = {
+      content: {
+        alt: "产品图",
+        imageUrl: "https://example.com/image.png",
+        type: "image",
+      },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        onRegenerate={onRegenerate}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "",
+          failReason: "model_error",
+          generateStatus: 3,
+          pollComplete: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("生成失败，请重试")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "发送" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "重试" }));
+
+    expect(onRegenerate).toHaveBeenCalledWith(message);
+  });
+
   it("disables send actions when the workbench cannot send messages", () => {
     render(
       <SmartReplyCard

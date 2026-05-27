@@ -199,9 +199,9 @@ export function CustomerPage({
   return (
     <>
       <main className="h-full min-h-0 overflow-hidden bg-surface">
-        <div className="h-full min-h-0 overflow-y-auto">
+        <div className="h-full min-h-0">
           <section className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col bg-background">
-            <div className="px-8 py-6">
+            <div className="sticky top-0 z-10 bg-background px-8 py-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h1 className="text-xl font-semibold leading-tight text-foreground">

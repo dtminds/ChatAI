@@ -99,7 +99,6 @@ export type MessageHydrationSources = {
 };
 
 const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
-const PLAYABLE_MEDIA_HOST = getPlayableMediaHost();
 const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
 const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 
@@ -486,7 +485,7 @@ function buildDerivedVoicePlaybackUrl(rawUrl: string) {
     return undefined;
   }
 
-  if (url.protocol !== "https:" || url.hostname !== PLAYABLE_MEDIA_HOST) {
+  if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
     return undefined;
   }
 

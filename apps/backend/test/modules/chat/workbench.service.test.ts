@@ -479,7 +479,7 @@ describe("MysqlWorkbenchService", () => {
   });
 
   it("accepts confirmed voice playback URLs from the configured media host", async () => {
-    vi.stubEnv("PLAYABLE_MEDIA_HOST", "media.example.com");
+    vi.stubEnv("PLAYABLE_MEDIA_HOST", "media.example.com:8443");
     const javaClient = createJavaClient();
     const playableVoiceExists = vi.fn().mockResolvedValue(true);
     const service = new MysqlWorkbenchService(
@@ -506,7 +506,7 @@ describe("MysqlWorkbenchService", () => {
     await service.confirmVoicePlaybackReady("101", {
       conversationId: "88",
       messageSeq: 538,
-      playbackUrl: "https://media.example.com/s5/playable-voice/20260525/272/voice.wav",
+      playbackUrl: "https://media.example.com:8443/s5/playable-voice/20260525/272/voice.wav",
     });
 
     expect(javaClient.updateMessageContent).toHaveBeenCalledWith(expect.objectContaining({

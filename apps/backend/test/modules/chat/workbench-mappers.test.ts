@@ -401,14 +401,10 @@ describe("workbench MySQL mappers", () => {
   });
 
   it("derives voice playback URLs from the configured media host", async () => {
-    vi.stubEnv("PLAYABLE_MEDIA_HOST", "media.example.com");
-    vi.resetModules();
-    const { mapMessageRow: mapMessageRowWithEnv } = await import(
-      "../../../src/modules/chat/workbench-mappers.js"
-    );
+    vi.stubEnv("PLAYABLE_MEDIA_HOST", "media.example.com:8443");
 
     expect(
-      mapMessageRowWithEnv(messageRow({
+      mapMessageRow(messageRow({
         content: JSON.stringify({
           fileUrl: "s5/msg/20260525/272/voice.amr",
           transFileUrl: "",
@@ -417,8 +413,8 @@ describe("workbench MySQL mappers", () => {
       })),
     ).toMatchObject({
       content: {
-        audioUrl: "https://media.example.com/s5/msg/20260525/272/voice.amr",
-        playbackUrl: "https://media.example.com/s5/playable-voice/20260525/272/voice.wav",
+        audioUrl: "https://media.example.com:8443/s5/msg/20260525/272/voice.amr",
+        playbackUrl: "https://media.example.com:8443/s5/playable-voice/20260525/272/voice.wav",
       },
       contentType: "voice",
     });

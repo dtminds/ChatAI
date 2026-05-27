@@ -394,6 +394,8 @@ export function VoiceMessageCard({
     originalUrl: string,
     generation: number,
   ) => {
+    clearLoadTimeout();
+
     if (!audioRef.current || audioRef.current.src !== audioUrl) {
       releaseAudio();
       audioRef.current = new Audio(audioUrl);

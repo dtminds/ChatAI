@@ -1162,7 +1162,7 @@ function toPlayableVoiceCosObjectPath(rawUrl: string) {
 
   if (
     url.protocol === "https:" &&
-    url.hostname === getPlayableMediaHost() &&
+    url.host === getPlayableMediaHost() &&
     isPlayableVoiceObjectPath(url.pathname)
   ) {
     return url.pathname.replace(/^\/+/, "");
@@ -1183,7 +1183,7 @@ function toExpectedPlayableVoiceCosObjectPath(rawUrl: string) {
     );
   }
 
-  if (url.protocol !== "https:" || url.hostname !== getPlayableMediaHost()) {
+  if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
     throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
   }
 

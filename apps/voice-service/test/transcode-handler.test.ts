@@ -111,6 +111,28 @@ describe("transcode-on-cos-event handler", () => {
     expect(mocks.putCosObject).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed percent-encoded COS object keys", async () => {
+    const { main_handler } = await import("../src/functions/transcode-on-cos-event.js");
+
+    await expect(
+      main_handler({
+        Records: [
+          {
+            cos: {
+              cosBucket: { name: "scrm-msg-audit-1304132716" },
+              cosObject: {
+                key: "s5%2Fvoice%2Fbad%ZZ.amr",
+              },
+              cosRegion: { region: "ap-shanghai" },
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow("Malformed COS object key: s5%2Fvoice%2Fbad%ZZ.amr");
+    expect(mocks.fetchCosObject).not.toHaveBeenCalled();
+    expect(mocks.putCosObject).not.toHaveBeenCalled();
+  });
+
   it("transcodes every COS record in a batch event", async () => {
     const { main_handler } = await import("../src/functions/transcode-on-cos-event.js");
 

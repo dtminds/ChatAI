@@ -1,7 +1,5 @@
 import { getPlayableMediaHost } from "./media-config.js";
 
-const mediaAssetBaseUrl = `https://${getPlayableMediaHost()}`;
-
 export function normalizeMediaAssetUrl(value: string) {
   const url = value.trim();
 
@@ -14,7 +12,7 @@ export function normalizeMediaAssetUrl(value: string) {
 
     return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:" ? url : "";
   } catch {
-    return `${mediaAssetBaseUrl}/${url.replace(/^\/+/, "")}`;
+    return `https://${getPlayableMediaHost()}/${url.replace(/^\/+/, "")}`;
   }
 }
 

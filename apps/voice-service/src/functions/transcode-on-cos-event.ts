@@ -51,11 +51,18 @@ async function transcodeRecord(
     config.bucket,
   );
   const region = record?.cos?.cosRegion?.region ?? "ap-shanghai";
-  const key = normalizeEventObjectKey(
-    decodeURIComponent(record?.cos?.cosObject?.key ?? ""),
-    record?.cos?.cosBucket?.name,
-    bucket,
-  );
+  const rawKey = record?.cos?.cosObject?.key ?? "";
+  let key: string;
+
+  try {
+    key = normalizeEventObjectKey(
+      decodeURIComponent(rawKey),
+      record?.cos?.cosBucket?.name,
+      bucket,
+    );
+  } catch {
+    throw new Error(`Malformed COS object key: ${rawKey}`);
+  }
 
   if (bucket !== config.bucket) {
     throw new Error(`Unexpected bucket: ${bucket}`);

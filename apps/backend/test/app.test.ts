@@ -1288,7 +1288,7 @@ describe("backend app", () => {
   });
 
   it("checks playable voice availability with configured media host", async () => {
-    process.env.PLAYABLE_MEDIA_HOST = "https://media.example.com/";
+    process.env.PLAYABLE_MEDIA_HOST = "https://media.example.com:8443/";
     const { app, authorization } = await createAuthenticatedApp();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(null, { status: 200 }),
@@ -1297,19 +1297,19 @@ describe("backend app", () => {
     const response = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://media.example.com/s5/voice/20260513/272/voice.amr")}`,
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://media.example.com:8443/s5/voice/20260513/272/voice.amr")}`,
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       data: {
         playable: true,
-        playableUrl: "https://media.example.com/s5/playable-voice/20260513/272/voice.wav",
+        playableUrl: "https://media.example.com:8443/s5/playable-voice/20260513/272/voice.wav",
       },
       success: true,
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://media.example.com/s5/playable-voice/20260513/272/voice.wav",
+      "https://media.example.com:8443/s5/playable-voice/20260513/272/voice.wav",
       expect.objectContaining({
         method: "HEAD",
         signal: expect.any(AbortSignal),

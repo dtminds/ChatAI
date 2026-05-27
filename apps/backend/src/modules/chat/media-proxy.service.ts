@@ -83,7 +83,7 @@ function parseAllowedMediaUrl(rawUrl: string) {
     throw new BadRequestError("INVALID_MEDIA_URL", "媒体资源地址无效");
   }
 
-  if (url.protocol !== "https:" || url.hostname !== getPlayableMediaHost()) {
+  if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
     throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "媒体资源地址不允许访问");
   }
 

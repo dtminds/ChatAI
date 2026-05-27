@@ -30,6 +30,8 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchVoicePlaybackConfirmRequest,
   WorkbenchVoicePlaybackConfirmResponse,
+  WorkbenchVoiceTranscriptionRequest,
+  WorkbenchVoiceTranscriptionResponse,
   WorkbenchCustomerListResponse,
   WorkbenchCustomerLastConversationResponse,
   WorkbenchCustomerRelationConversationsResponse,
@@ -118,6 +120,12 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchVoicePlaybackConfirmResponse>
     | WorkbenchVoicePlaybackConfirmResponse;
+  transcribeVoiceMessage(
+    subUserId: string,
+    input: WorkbenchVoiceTranscriptionRequest,
+  ):
+    | Promise<WorkbenchVoiceTranscriptionResponse>
+    | WorkbenchVoiceTranscriptionResponse;
   getMessageFileDownloadStatus(
     subUserId: string,
     conversationId: string,
@@ -637,6 +645,71 @@ export class MysqlWorkbenchService implements WorkbenchService {
       messageSeq: input.messageSeq,
       playbackUrl: input.playbackUrl,
       transFileUrlPersisted: true,
+    };
+  }
+
+  async transcribeVoiceMessage(
+    subUserId: string,
+    input: WorkbenchVoiceTranscriptionRequest,
+  ): Promise<WorkbenchVoiceTranscriptionResponse> {
+    const conversation = await this.repository.getConversationLookup(input.conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
+      throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
+    }
+
+    const rawContent = await this.repository.getMessageRawContent({
+      auditId: input.messageSeq,
+      platform: conversation.platform,
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdGroupId: conversation.thirdGroupId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    if (!rawContent) {
+      throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
+    }
+
+    const content = parseMessageContentRecord(rawContent);
+    const existingTransVoiceText = readStringValue(content.transVoiceText).trim();
+
+    if (existingTransVoiceText) {
+      return {
+        messageSeq: input.messageSeq,
+        transVoiceText: existingTransVoiceText,
+        transVoiceTextPersisted: true,
+      };
+    }
+
+    if (!readStringValue(content.fileUrl)) {
+      throw new BadRequestError(
+        "VOICE_TRANSCRIPTION_UNSUPPORTED",
+        "当前消息不支持语音转文字",
+      );
+    }
+
+    const response = await this.javaClient.transcribeVoice({
+      platform: conversation.platform,
+      uid: conversation.uid,
+      updateId: input.messageSeq,
+    });
+    const transVoiceText = response.transVoiceText.trim();
+
+    if (!transVoiceText) {
+      throw new BadGatewayError("VOICE_TRANSCRIPTION_EMPTY", "语音识别结果为空");
+    }
+
+    return {
+      messageSeq: input.messageSeq,
+      transVoiceText,
+      transVoiceTextPersisted: true,
     };
   }
 

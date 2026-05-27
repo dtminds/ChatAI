@@ -132,6 +132,11 @@ export type WorkbenchJavaClient = {
     thirdUserId: string;
     uid: number;
   }): Promise<void>;
+  transcribeVoice(input: {
+    platform: number;
+    uid: number;
+    updateId: number;
+  }): Promise<JavaVoiceTranscriptionResponse>;
   updateMessageContent(input: {
     content: string;
     platform: number;
@@ -143,6 +148,11 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+};
+
+export type JavaVoiceTranscriptionResponse = {
+  transVoiceText: string;
+  updateId: number;
 };
 
 export function createWorkbenchJavaClient(
@@ -264,6 +274,25 @@ export function createWorkbenchJavaClient(
         logger,
         "take-over-seat",
       ).then(() => undefined);
+    },
+    transcribeVoice(input) {
+      if (process.env.JAVA_INTERNAL_API_MOCK_VOICE_TRANSCRIPTION === "true") {
+        return Promise.resolve({
+          transVoiceText:
+            process.env.JAVA_INTERNAL_API_MOCK_VOICE_TRANSCRIPTION_TEXT ??
+            "这是一段语音转文字测试文本",
+          updateId: input.updateId,
+        });
+      }
+
+      return postJavaEnvelope<JavaVoiceTranscriptionResponse>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/transcribe-voice",
+        input,
+        logger,
+        "transcribe-voice",
+      );
     },
     updateMessageContent(input) {
       return postJavaEnvelope<string>(

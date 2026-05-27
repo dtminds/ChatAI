@@ -24,6 +24,7 @@ type ChatMessagePanelProps = {
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
@@ -45,6 +46,7 @@ export function ChatMessagePanel({
   onMessageViewportScroll,
   onRetryMessage,
   onVoicePlaybackReady,
+  onTranscribeVoice,
   retryingMessageIds,
   messageViewportRef,
 }: ChatMessagePanelProps) {
@@ -93,6 +95,7 @@ export function ChatMessagePanel({
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
+                onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}
                 onRetryMessage={(messageId) => {
                   startTransition(() => {

@@ -22,6 +22,7 @@ import {
   confirmVoicePlaybackReady as confirmVoicePlaybackReadyRequest,
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
+  transcribeVoiceMessage as transcribeVoiceMessageRequest,
   unpinConversation,
 } from "@/pages/chat/api/workbench-gateway";
 import {
@@ -214,6 +215,10 @@ type WorkbenchState = {
     messageId: string,
     playbackUrl: string,
   ) => Promise<void>;
+  transcribeVoiceMessage: (
+    conversationId: string,
+    messageId: string,
+  ) => Promise<string>;
   searchKeyword: string;
   searchResults: import("@chatai/contracts").WorkbenchSearchResponseDto | null;
   isSearchLoading: boolean;
@@ -238,6 +243,10 @@ type VoicePlaybackContentPatch = {
   playbackUrl: string;
   transFileUrl: string;
   transFileUrlPersisted: true;
+};
+
+type VoiceTranscriptionContentPatch = {
+  transVoiceText: string;
 };
 
 const defaultCustomerProfiles = seedCustomerProfiles;
@@ -276,6 +285,7 @@ function createInitialState(): Omit<
   | "pollWorkbench"
   | "updateMessageDownloadContent"
   | "confirmVoicePlaybackReady"
+  | "transcribeVoiceMessage"
   | "dismissScopeTransitionError"
   | "dismissReadReceiptError"
   | "setSearchKeyword"
@@ -747,6 +757,34 @@ function patchVoicePlaybackMessage(
       playbackUrl: contentPatch.playbackUrl,
       transFileUrl: contentPatch.transFileUrl,
       transFileUrlPersisted: contentPatch.transFileUrlPersisted,
+    },
+  };
+}
+
+function patchVoiceTranscriptionMessageList(
+  currentMessages: Message[],
+  messageId: string,
+  contentPatch: VoiceTranscriptionContentPatch,
+) {
+  return currentMessages.map((message) =>
+    patchVoiceTranscriptionMessage(message, messageId, contentPatch),
+  );
+}
+
+function patchVoiceTranscriptionMessage(
+  message: Message,
+  messageId: string,
+  contentPatch: VoiceTranscriptionContentPatch,
+): Message {
+  if (message.id !== messageId || !isVoiceMessage(message)) {
+    return message;
+  }
+
+  return {
+    ...message,
+    content: {
+      ...message.content,
+      transVoiceText: contentPatch.transVoiceText,
     },
   };
 }
@@ -3440,6 +3478,64 @@ export function createWorkbenchStore() {
         } finally {
           pendingVoicePlaybackConfirmKeys.delete(pendingKey);
         }
+      },
+      async transcribeVoiceMessage(conversationId, messageId) {
+        const currentState = get();
+        const message = findVoiceMessageById(
+          [
+            ...(currentState.messagesByConversationId[conversationId] ?? []),
+            ...(currentState.historyPanelByConversationId[conversationId]?.messages ?? []),
+          ],
+          messageId,
+        );
+
+        if (!message || !message.seq) {
+          throw new Error("语音消息不存在");
+        }
+
+        if (message.content.transVoiceText?.trim()) {
+          return message.content.transVoiceText.trim();
+        }
+
+        const response = await transcribeVoiceMessageRequest({
+          conversationId,
+          messageSeq: message.seq,
+        });
+        const transVoiceText = response.transVoiceText;
+
+        set((state) => {
+          const messages = state.messagesByConversationId[conversationId] ?? [];
+          const historyPanel = state.historyPanelByConversationId[conversationId];
+          const contentPatch = {
+            transVoiceText,
+          } satisfies VoiceTranscriptionContentPatch;
+
+          return {
+            historyPanelByConversationId: historyPanel
+              ? {
+                  ...state.historyPanelByConversationId,
+                  [conversationId]: {
+                    ...historyPanel,
+                    messages: patchVoiceTranscriptionMessageList(
+                      historyPanel.messages,
+                      messageId,
+                      contentPatch,
+                    ),
+                  },
+                }
+              : state.historyPanelByConversationId,
+            messagesByConversationId: {
+              ...state.messagesByConversationId,
+              [conversationId]: patchVoiceTranscriptionMessageList(
+                messages,
+                messageId,
+                contentPatch,
+              ),
+            },
+          };
+        });
+
+        return transVoiceText;
       },
     };
   });

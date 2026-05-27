@@ -44,6 +44,7 @@ type ChatMessageListProps = {
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
 };
 
@@ -69,6 +70,7 @@ export function ChatMessageList({
   onQuoteMessage,
   onRetryMessage,
   onVoicePlaybackReady,
+  onTranscribeVoice,
   retryingMessageIds,
 }: ChatMessageListProps) {
   const items = useMemo(
@@ -97,6 +99,7 @@ export function ChatMessageList({
               onOpenQuotedMessage={onOpenQuotedMessage}
               onQuoteMessage={onQuoteMessage}
               onRetryMessage={onRetryMessage}
+              onTranscribeVoice={onTranscribeVoice}
               onVoicePlaybackReady={onVoicePlaybackReady}
               isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
             />
@@ -144,6 +147,7 @@ export function MessageRow({
   onQuoteMessage,
   onRetryMessage,
   onVoicePlaybackReady,
+  onTranscribeVoice,
   isRetryingMessage = false,
 }: {
   message: Message;
@@ -159,6 +163,7 @@ export function MessageRow({
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
 }) {
   if (message.role === "system") {
     return <SystemMessageNotice text={message.content.text} />;
@@ -237,6 +242,7 @@ export function MessageRow({
                   message={message}
                   onDownloadMessageFile={onDownloadMessageFile}
                   onOpenQuotedMessage={onOpenQuotedMessage}
+                  onTranscribeVoice={onTranscribeVoice}
                   onVoicePlaybackReady={onVoicePlaybackReady}
                 />
               )}

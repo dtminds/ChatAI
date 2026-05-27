@@ -214,6 +214,7 @@ function ChatWorkbenchContent({
     unpinConversation,
     updateMessageDownloadContent,
     confirmVoicePlaybackReady,
+    transcribeVoiceMessage,
   } = useWorkbenchStore();
   const subUser = useAuthStore((state) => state.subUser);
 
@@ -847,6 +848,14 @@ function ChatWorkbenchContent({
     );
   };
 
+  const handleTranscribeVoice = async (message: ChatMessage) => {
+    if (message.content.type !== "voice") {
+      throw new Error("当前消息不支持转文字");
+    }
+
+    return transcribeVoiceMessage(message.conversationId, message.id);
+  };
+
   const handleDraftChange = (nextDraft: string) => {
     setDraft(nextDraft);
   };
@@ -1215,6 +1224,7 @@ function ChatWorkbenchContent({
                   onCancelFileUpload={handleCancelFileUpload}
                   onClearQuotedMessage={() => setQuotedMessage(null)}
                   onDownloadMessageFile={handleDownloadMessageFile}
+                  onTranscribeVoice={handleTranscribeVoice}
                   onVoicePlaybackReady={handleVoicePlaybackReady}
                   onDraftChange={handleDraftChange}
                   onEmojiPickerOpenChange={setIsEmojiPickerOpen}

@@ -9,6 +9,7 @@ describe("createWorkbenchJavaClient", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     delete process.env.JAVA_INTERNAL_API_BASE_URL;
+    delete process.env.JAVA_INTERNAL_API_MOCK_VOICE_TRANSCRIPTION;
     delete process.env.JAVA_INTERNAL_API_TOKEN;
   });
 
@@ -303,6 +304,65 @@ describe("createWorkbenchJavaClient", () => {
         method: "POST",
       }),
     );
+  });
+
+  it("posts voice transcription payload to the Java internal API using audit id as updateId", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            transVoiceText: "这是一条语音识别文本",
+            updateId: 538,
+          },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().transcribeVoice({
+        platform: 5,
+        uid: 9001,
+        updateId: 538,
+      }),
+    ).resolves.toEqual({
+      transVoiceText: "这是一条语音识别文本",
+      updateId: 538,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/transcribe-voice",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platform: 5,
+          uid: 9001,
+          updateId: 538,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("can mock Java voice transcription while the Java endpoint is unavailable", async () => {
+    process.env.JAVA_INTERNAL_API_MOCK_VOICE_TRANSCRIPTION = "true";
+
+    await expect(
+      createWorkbenchJavaClient().transcribeVoice({
+        platform: 5,
+        uid: 9001,
+        updateId: 538,
+      }),
+    ).resolves.toEqual({
+      transVoiceText: "这是一段语音转文字测试文本",
+      updateId: 538,
+    });
   });
 
   it("posts conversation hide payload to the Java internal API", async () => {

@@ -23,6 +23,8 @@ import type {
   WorkbenchMessageUpdateEventDto,
   WorkbenchVoicePlaybackConfirmRequest,
   WorkbenchVoicePlaybackConfirmResponse,
+  WorkbenchVoiceTranscriptionRequest,
+  WorkbenchVoiceTranscriptionResponse,
 } from "@chatai/contracts";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import type {
@@ -424,6 +426,12 @@ export async function confirmVoicePlaybackReady(
   input: WorkbenchVoicePlaybackConfirmRequest,
 ): Promise<WorkbenchVoicePlaybackConfirmResponse> {
   return getWorkbenchService().confirmVoicePlaybackReady(input);
+}
+
+export async function transcribeVoiceMessage(
+  input: WorkbenchVoiceTranscriptionRequest,
+): Promise<WorkbenchVoiceTranscriptionResponse> {
+  return getWorkbenchService().transcribeVoiceMessage(input);
 }
 
 export async function takeOverAccount(accountId: string): Promise<Account> {

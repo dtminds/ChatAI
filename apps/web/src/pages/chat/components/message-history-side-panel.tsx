@@ -85,6 +85,7 @@ type HistoryMessageHistoryPanelProps = {
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   onRefresh: () => void;
   onSetDay: (day?: string) => void;
   onSetScope: (scope: HistoryPanelScope) => void;
@@ -108,6 +109,7 @@ export function MessageHistorySidePanel({
   onLoadMorePrev,
   onDownloadMessageFile,
   onVoicePlaybackReady,
+  onTranscribeVoice,
   onRefresh,
   onSetDay,
   onSetScope,
@@ -220,6 +222,7 @@ export function MessageHistorySidePanel({
                 <HistoryCompactMessageList
                   messages={activeHistory?.messages ?? []}
                   onDownloadMessageFile={onDownloadMessageFile}
+                  onTranscribeVoice={onTranscribeVoice}
                   onVoicePlaybackReady={onVoicePlaybackReady}
                 />
               </HistoryMessageViewport>
@@ -477,6 +480,7 @@ export function HistoryCompactMessageList({
   messages,
   onDownloadMessageFile,
   onVoicePlaybackReady,
+  onTranscribeVoice,
 }: {
   messages: Message[];
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -484,6 +488,7 @@ export function HistoryCompactMessageList({
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
 }) {
   const chatMessages = messages.filter(isChatMessage);
 
@@ -517,6 +522,7 @@ export function HistoryCompactMessageList({
           <HistoryCompactMessageContent
             message={message}
             onDownloadMessageFile={onDownloadMessageFile}
+            onTranscribeVoice={onTranscribeVoice}
             onVoicePlaybackReady={onVoicePlaybackReady}
           />
           {message.isRevoked ? <HistoryCompactRevokedState /> : null}
@@ -535,6 +541,7 @@ function HistoryCompactMessageContent({
   message,
   onDownloadMessageFile,
   onVoicePlaybackReady,
+  onTranscribeVoice,
 }: {
   message: ChatMessage;
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -542,6 +549,7 @@ function HistoryCompactMessageContent({
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
 }) {
   if (message.content.type === "text") {
     return <HistoryCompactText text={message.content.text} />;
@@ -565,6 +573,7 @@ function HistoryCompactMessageContent({
         isAgent={message.role === "agent"}
         message={message}
         onDownloadMessageFile={onDownloadMessageFile}
+        onTranscribeVoice={onTranscribeVoice}
         onVoicePlaybackReady={onVoicePlaybackReady}
       />
     </div>

@@ -37,6 +37,8 @@ import {
   type WorkbenchPollResponse,
   type WorkbenchVoicePlaybackConfirmRequest,
   type WorkbenchVoicePlaybackConfirmResponse,
+  type WorkbenchVoiceTranscriptionRequest,
+  type WorkbenchVoiceTranscriptionResponse,
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSendMessagePayload,
   type SettingsSidebarItemsResponse,
@@ -111,6 +113,9 @@ export type WorkbenchService = {
   confirmVoicePlaybackReady: (
     input: WorkbenchVoicePlaybackConfirmRequest,
   ) => Promise<WorkbenchVoicePlaybackConfirmResponse>;
+  transcribeVoiceMessage: (
+    input: WorkbenchVoiceTranscriptionRequest,
+  ) => Promise<WorkbenchVoiceTranscriptionResponse>;
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
   getUploadCredential: (conversationId: string) => Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
@@ -363,6 +368,19 @@ export function createMockWorkbenchService(): WorkbenchService {
         messageSeq: input.messageSeq,
         playbackUrl: input.playbackUrl,
         transFileUrlPersisted: true,
+      };
+    },
+    async transcribeVoiceMessage(input) {
+      const transVoiceText = "这是一段语音转文字测试文本";
+
+      updateVoiceTranscriptionContent(state, input.conversationId, input.messageSeq, {
+        transVoiceText,
+      });
+
+      return {
+        messageSeq: input.messageSeq,
+        transVoiceText,
+        transVoiceTextPersisted: true,
       };
     },
     async getGroupMembers(conversationId) {
@@ -774,6 +792,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchVoicePlaybackConfirmResponse,
         WorkbenchVoicePlaybackConfirmRequest
       >("/server/media/voice-playback-confirmed", input);
+    },
+    transcribeVoiceMessage(input) {
+      return http.post<
+        WorkbenchVoiceTranscriptionResponse,
+        WorkbenchVoiceTranscriptionRequest
+      >("/server/media/voice-transcription", input);
     },
     getGroupMembers(conversationId) {
       return http.get<WorkbenchGroupMembersResponse>(
@@ -1616,6 +1640,31 @@ function updateVoicePlaybackContent(
     playbackUrl: string;
     transFileUrl: string;
     transFileUrlPersisted: true;
+  },
+) {
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+
+  state.messagesByConversationId[conversationId] = messages.map((message) => {
+    if (message.seq !== messageSeq || message.contentType !== "voice") {
+      return message;
+    }
+
+    return {
+      ...message,
+      content: {
+        ...message.content,
+        ...patch,
+      },
+    };
+  });
+}
+
+function updateVoiceTranscriptionContent(
+  state: MockState,
+  conversationId: string,
+  messageSeq: number,
+  patch: {
+    transVoiceText: string;
   },
 ) {
   const messages = state.messagesByConversationId[conversationId] ?? [];

@@ -1515,6 +1515,60 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("transcribes voice messages for authenticated conversations", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const transcribeVoiceMessage = vi.spyOn(
+      app.workbenchService,
+      "transcribeVoiceMessage",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7,
+      },
+      url: "/api/server/media/voice-transcription",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      messageSeq: 7,
+      transVoiceText: "这是一段语音转文字测试文本",
+      transVoiceTextPersisted: true,
+    });
+    expect(transcribeVoiceMessage).toHaveBeenCalledWith("101", {
+      conversationId: "conv-001",
+      messageSeq: 7,
+    });
+
+    await app.close();
+  });
+
+  it("rejects invalid voice transcription message sequence before reaching the service", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const transcribeVoiceMessage = vi.spyOn(
+      app.workbenchService,
+      "transcribeVoiceMessage",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7.5,
+      },
+      url: "/api/server/media/voice-transcription",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(transcribeVoiceMessage).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
   it("returns an empty message page when limit is zero", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

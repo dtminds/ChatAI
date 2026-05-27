@@ -8,6 +8,7 @@ import {
   loadAccountConversations,
   loadAccountScope,
   confirmVoicePlaybackReady,
+  transcribeVoiceMessage,
   pollWorkbench,
 } from "@/pages/chat/api/workbench-gateway";
 import {
@@ -56,6 +57,31 @@ describe("workbench gateway message paging", () => {
       transFileUrlPersisted: true,
     });
     expect(confirmVoicePlaybackReadySpy).toHaveBeenCalledWith(confirmVoicePlayback);
+  });
+
+  it("forwards voice transcription to the active service", async () => {
+    const baseService = createMockWorkbenchService();
+    const request = {
+      conversationId: "conv-001",
+      messageSeq: 538,
+    };
+    const transcribeVoiceMessageSpy = vi.fn(async () => ({
+      messageSeq: request.messageSeq,
+      transVoiceText: "识别文本",
+      transVoiceTextPersisted: true as const,
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      transcribeVoiceMessage: transcribeVoiceMessageSpy,
+    });
+
+    await expect(transcribeVoiceMessage(request)).resolves.toEqual({
+      messageSeq: 538,
+      transVoiceText: "识别文本",
+      transVoiceTextPersisted: true,
+    });
+    expect(transcribeVoiceMessageSpy).toHaveBeenCalledWith(request);
   });
 
   it("loads single and group conversations separately during bootstrap", async () => {

@@ -26,6 +26,8 @@ import type {
   WorkbenchUploadCredentialResponse,
   WorkbenchVoicePlaybackConfirmRequest,
   WorkbenchVoicePlaybackConfirmResponse,
+  WorkbenchVoiceTranscriptionRequest,
+  WorkbenchVoiceTranscriptionResponse,
 } from "@chatai/contracts";
 import { NotFoundError } from "../../src/shared/errors.js";
 
@@ -251,6 +253,36 @@ export function createMemoryWorkbenchService() {
         messageSeq: input.messageSeq,
         playbackUrl: input.playbackUrl,
         transFileUrlPersisted: true,
+      };
+    },
+    transcribeVoiceMessage(
+      _subUserId: string,
+      input: WorkbenchVoiceTranscriptionRequest,
+    ): WorkbenchVoiceTranscriptionResponse {
+      const conversation = findConversation(state, input.conversationId);
+
+      if (!conversation) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      state.messagesByConversationId[input.conversationId] = (
+        state.messagesByConversationId[input.conversationId] ?? []
+      ).map((item) =>
+        item.seq === input.messageSeq && item.contentType === "voice"
+          ? {
+              ...item,
+              content: {
+                ...item.content,
+                transVoiceText: "这是一段语音转文字测试文本",
+              },
+            }
+          : item,
+      );
+
+      return {
+        messageSeq: input.messageSeq,
+        transVoiceText: "这是一段语音转文字测试文本",
+        transVoiceTextPersisted: true,
       };
     },
     markConversationRead(

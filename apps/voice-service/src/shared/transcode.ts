@@ -78,7 +78,13 @@ export async function transcodeVoiceToWav(
     };
   }
 
-  const durationMs = getDuration(input, 20);
+  let durationMs: number;
+
+  try {
+    durationMs = getDuration(input, 20);
+  } catch (error) {
+    throw new VoiceTranscodeError("DECODE_FAILED", "音频解码失败", { cause: error });
+  }
 
   if (durationMs > options.maxDurationMs) {
     throw new VoiceTranscodeError("VOICE_DURATION_TOO_LONG", "语音时长超出限制");

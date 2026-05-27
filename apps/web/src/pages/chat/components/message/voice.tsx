@@ -235,13 +235,14 @@ export function VoiceMessageCard({
   }, [finishPlayback, syncAudioProgress]);
 
   const releaseAudio = useCallback(() => {
+    clearLoadTimeout();
+
     if (!audioRef.current) {
       return;
     }
 
     const audio = audioRef.current;
 
-    clearLoadTimeout();
     audio.removeEventListener("pause", pausePlayback);
     audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
     audio.removeEventListener("timeupdate", syncAudioProgress);

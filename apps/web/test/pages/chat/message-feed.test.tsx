@@ -204,7 +204,9 @@ describe("message feed row actions", () => {
           role: "customer",
           sender: { id: "cus-1", name: "客户甲" },
           sentAt: "2026-05-25T10:00:00+08:00",
-        }}
+          author: "客户甲",
+          status: "sent",
+        } as ChatMessage}
       />,
     );
 
@@ -247,7 +249,9 @@ describe("message feed row actions", () => {
           role: "customer",
           sender: { id: "cus-1", name: "客户甲" },
           sentAt: "2026-05-25T10:00:00+08:00",
-        }}
+          author: "客户甲",
+          status: "sent",
+        } as ChatMessage}
         smartReply={{
           assistantName: "护肤小助手",
           content: "建议先确认肤质",

@@ -1587,6 +1587,7 @@ function createConversation(): Conversation {
     customerId: "customer-1",
     customerName: "测试客户",
     id: "conversation-1",
+    custodyMode: "semi",
     mode: "single",
     preview: "",
     priority: "medium",

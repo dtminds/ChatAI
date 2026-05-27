@@ -230,6 +230,7 @@ function createConversation(overrides: Partial<Conversation> = {}): Conversation
     customerId: "customer-001",
     customerName: "客户一号",
     id: "conv-001",
+    custodyMode: "semi",
     mode: "single",
     preview: "",
     priority: "medium",

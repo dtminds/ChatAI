@@ -3402,6 +3402,7 @@ describe("useWorkbenchStore", () => {
       priority: "medium",
       thirdExternalUserId: "external-search-001",
       thirdUserId: "third-user-drc",
+      custodyMode: "semi",
     };
     const observedPayloads: unknown[] = [];
 
@@ -3458,6 +3459,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
+        custodyMode: "semi",
       },
     });
 
@@ -3507,6 +3509,7 @@ describe("useWorkbenchStore", () => {
       thirdExternalUserId: "external-search-stale",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
+      custodyMode: "semi",
     });
     await selectPromise;
 
@@ -3607,6 +3610,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
+        custodyMode: "semi",
       },
     });
 
@@ -3638,6 +3642,7 @@ describe("useWorkbenchStore", () => {
       thirdGroupId: "group-search-001",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
+      custodyMode: "semi",
     };
 
     setWorkbenchService({
@@ -3709,6 +3714,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
+        custodyMode: "semi",
       },
     });
 

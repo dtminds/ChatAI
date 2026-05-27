@@ -7,6 +7,7 @@ import {
 import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { http } from "@/lib/request";
 import {
+  CONVERSATION_CUSTODY_MODE,
   type ApiSuccessEnvelope,
   type WorkbenchConversationDeleteResponse,
   type WorkbenchConversationListResponse,
@@ -770,6 +771,8 @@ export function createMockWorkbenchService(): WorkbenchService {
           thirdGroupId: existingConversation.thirdGroupId,
           thirdUserId: existingConversation.thirdUserId,
           unreadCount: existingConversation.unreadCount,
+          custodyMode:
+            existingConversation.custodyMode ?? CONVERSATION_CUSTODY_MODE.SEMI,
         };
       }
 
@@ -791,6 +794,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         thirdGroupId: payload.thirdGroupId,
         thirdUserId: `third-user-${payload.seatId}`,
         unreadCount: 0,
+        custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
       };
     },
   };

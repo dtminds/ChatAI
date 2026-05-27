@@ -46,8 +46,8 @@ describe("smart-reply-adapter", () => {
   it("drops messages without seq", () => {
     expect(
       collectSmartReplyMsgIds([
-        { id: "msg-001" },
-        { id: "msg-002", seq: 1022692 },
+        {} as { seq?: number },
+        { seq: 1022692 },
       ]),
     ).toEqual([1022692]);
   });
@@ -172,7 +172,7 @@ describe("smart-reply-adapter", () => {
       content: { text: "客户消息", type: "text" },
       id: "msg-1",
       role: "customer",
-    } as const;
+    } as ChatMessage;
 
     expect(
       shouldShowSmartReplyTriggerIcon(customerMessage, undefined),

@@ -14,11 +14,12 @@ import type {
   WorkbenchKnowledgeFaqAddRequest,
   WorkbenchSmartHeartbeatRequest,
   WorkbenchSmartReplyTextModerationRequest,
+  WorkbenchVoicePlaybackConfirmRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WorkbenchService } from "./workbench.service.js";
-import { fetchProxiedMediaAsset } from "./media-proxy.service.js";
+import { checkPlayableVoiceAsset } from "./media-proxy.service.js";
 import { ForbiddenError } from "../../shared/errors.js";
 import { withRequestId } from "../../shared/logger.js";
 
@@ -56,12 +57,18 @@ const HistoryMessagesQuerySchema = Type.Object({
   sender_id: Type.Optional(Type.String()),
 });
 
-const MediaProxyQuerySchema = Type.Object({
+const PlayableVoiceQuerySchema = Type.Object({
   url: Type.String({ minLength: 1 }),
 });
 
 const MediaUploadCredentialBodySchema = Type.Object({
   conversationId: Type.String(),
+});
+
+const VoicePlaybackConfirmBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeq: Type.Integer({ minimum: 1 }),
+  playbackUrl: Type.String({ minLength: 1 }),
 });
 
 const MessageDownloadParamsSchema = Type.Object({
@@ -260,6 +267,22 @@ const SeatParamsSchema = Type.Object({
   seatId: Type.String(),
 });
 
+const CustomersQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String()),
+  keyword: Type.Optional(Type.String()),
+  limit: Type.Optional(NumericStringSchema),
+  scope: Type.Optional(Type.Union([Type.Literal("mine"), Type.Literal("all")])),
+  seat_ids: Type.Optional(Type.String()),
+});
+
+const CustomerParamsSchema = Type.Object({
+  thirdExternalUserId: Type.String({ minLength: 1 }),
+});
+
+const CustomerRelationConversationsQuerySchema = Type.Object({
+  third_userids: Type.String({ minLength: 1 }),
+});
+
 const SidebarIframeParamsBodySchema = Type.Object({
   conversationId: Type.String(),
   seatId: Type.String(),
@@ -281,14 +304,20 @@ type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
 type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
 type HistoryMessagesQuery = Static<typeof HistoryMessagesQuerySchema>;
-type MediaProxyQuery = Static<typeof MediaProxyQuerySchema>;
+type PlayableVoiceQuery = Static<typeof PlayableVoiceQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
+type VoicePlaybackConfirmBody = Static<typeof VoicePlaybackConfirmBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
 type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
+type CustomersQuery = Static<typeof CustomersQuerySchema>;
+type CustomerParams = Static<typeof CustomerParamsSchema>;
+type CustomerRelationConversationsQuery = Static<
+  typeof CustomerRelationConversationsQuerySchema
+>;
 type SidebarIframeParamsBody = Static<typeof SidebarIframeParamsBodySchema>;
 type SearchQuery = Static<typeof SearchQuerySchema>;
 type GetOrCreateConversationBody = Static<typeof GetOrCreateConversationBodySchema>;
@@ -318,26 +347,71 @@ export async function registerChatRoutes(app: FastifyInstance) {
     getWorkbenchService(app, request).getSeats(getSubUserId(request)),
   );
 
-  app.get<{ Querystring: MediaProxyQuery }>(
-    "/api/server/media/proxy",
+  app.get<{ Querystring: CustomersQuery }>(
+    "/api/server/customers",
     {
       preHandler: app.authenticate,
       schema: {
-        querystring: MediaProxyQuerySchema,
+        querystring: CustomersQuerySchema,
       },
     },
-    async (request, reply) => {
-      const media = await fetchProxiedMediaAsset(request.query.url, request.log);
+    async (request) =>
+      getWorkbenchService(app, request).getCustomers(getSubUserId(request), {
+        cursor: request.query.cursor,
+        keyword: request.query.keyword,
+        limit: parseOptionalInteger(request.query.limit),
+        scope: request.query.scope ?? "mine",
+        seatIds: parseSeatIdsQuery(request.query.seat_ids),
+      }),
+  );
 
-      reply.header("cache-control", "private, max-age=300");
-      reply.header("content-type", media.contentType);
-
-      if (media.contentLength) {
-        reply.header("content-length", media.contentLength);
-      }
-
-      return reply.send(media.body);
+  app.get<{ Params: CustomerParams }>(
+    "/api/server/customers/:thirdExternalUserId/last-conversation",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: CustomerParamsSchema,
+      },
     },
+    async (request) =>
+      getWorkbenchService(app, request).getCustomerLastConversation(
+        getSubUserId(request),
+        request.params.thirdExternalUserId,
+      ),
+  );
+
+  app.get<{
+    Params: CustomerParams;
+    Querystring: CustomerRelationConversationsQuery;
+  }>(
+    "/api/server/customers/:thirdExternalUserId/relation-conversations",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: CustomerParamsSchema,
+        querystring: CustomerRelationConversationsQuerySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getCustomerRelationConversations(
+        getSubUserId(request),
+        request.params.thirdExternalUserId,
+        parseCommaSeparatedQuery(request.query.third_userids),
+      ),
+  );
+
+  app.get<{ Querystring: PlayableVoiceQuery }>(
+    "/api/server/media/playable-voice",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: PlayableVoiceQuerySchema,
+      },
+    },
+    async (request) => ({
+      data: await checkPlayableVoiceAsset(request.query.url, request.log),
+      success: true,
+    }),
   );
 
   app.post<{ Body: MediaUploadCredentialBody }>(
@@ -353,6 +427,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).getUploadCredential(
         getSubUserId(request),
         request.body.conversationId,
+      );
+    },
+  );
+
+  app.post<{ Body: VoicePlaybackConfirmBody }>(
+    "/api/server/media/voice-playback-confirmed",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: VoicePlaybackConfirmBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).confirmVoicePlaybackReady(
+        getSubUserId(request),
+        request.body satisfies WorkbenchVoicePlaybackConfirmRequest,
       );
     },
   );
@@ -855,6 +946,17 @@ function parseOptionalInteger(value: string | undefined) {
   const parsed = Number.parseInt(value, 10);
 
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseSeatIdsQuery(value: string | undefined) {
+  return parseCommaSeparatedQuery(value);
+}
+
+function parseCommaSeparatedQuery(value: string | undefined) {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function assertChatSendAccess(request: FastifyRequest) {

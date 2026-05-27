@@ -232,6 +232,12 @@ export type WorkbenchJavaClient = {
     thirdUserId: string;
     uid: number;
   }): Promise<void>;
+  updateMessageContent(input: {
+    content: string;
+    platform: number;
+    uid: number;
+    updateId: number;
+  }): Promise<void>;
   unpinConversation(input: {
     conversationId: string;
     platform: number;
@@ -486,7 +492,7 @@ export function createWorkbenchJavaClient(
       return postConversationOperate(
         baseUrl,
         token,
-        "/third-internal/wap-embed/conversation/delete",
+        "/third-internal/wap-embed/conversation/hide",
         input,
         logger,
         "delete-conversation",
@@ -568,6 +574,16 @@ export function createWorkbenchJavaClient(
         input,
         logger,
         "take-over-seat",
+      ).then(() => undefined);
+    },
+    updateMessageContent(input) {
+      return postJavaEnvelope<string>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/update-message-content",
+        input,
+        logger,
+        "update-message-content",
       ).then(() => undefined);
     },
     unpinConversation(input) {
@@ -962,6 +978,7 @@ function buildJavaLogContext(body: unknown) {
     "thirdUserId",
     "uid",
     "knowledgeId",
+    "updateId",
   ]) {
     if (body[key] != null) {
       context[key] = body[key];

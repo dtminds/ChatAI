@@ -24,6 +24,8 @@ import type {
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplySendAnswerRequest,
   WorkbenchKnowledgeFaqAddRequest,
+  WorkbenchVoicePlaybackConfirmRequest,
+  WorkbenchVoicePlaybackConfirmResponse,
 } from "@chatai/contracts";
 import {
   adaptSmartReplySuggestions,
@@ -55,8 +57,8 @@ type GatewayContext = {
 };
 
 export type WorkbenchScopeRequest = {
-  activeConversationId: string;
-  activeMessageSeq: number;
+  activeConversationId?: string;
+  activeMessageSeq?: number;
   currentAccountId: string;
   freshBaseline?: boolean;
   messageUpdateCursor?: number;
@@ -432,6 +434,12 @@ export async function getMessageFileDownloadStatus(input: {
   return getWorkbenchService().getMessageFileDownloadStatus(input);
 }
 
+export async function confirmVoicePlaybackReady(
+  input: WorkbenchVoicePlaybackConfirmRequest,
+): Promise<WorkbenchVoicePlaybackConfirmResponse> {
+  return getWorkbenchService().confirmVoicePlaybackReady(input);
+}
+
 export async function takeOverAccount(accountId: string): Promise<Account> {
   const response = await getWorkbenchService().takeOverSeat(accountId);
   return adaptAccount(response.seat, response.seat.unreadCount);
@@ -442,8 +450,12 @@ export async function pollWorkbench(
   context: GatewayContext,
 ): Promise<WorkbenchPollResult> {
   const response = await getWorkbenchService().poll({
-    activeConversationId: request.activeConversationId,
-    activeMessageSeq: request.activeMessageSeq,
+    ...(request.activeConversationId
+      ? {
+          activeConversationId: request.activeConversationId,
+          activeMessageSeq: request.activeMessageSeq,
+        }
+      : {}),
     currentSeatId: request.currentAccountId,
     freshBaseline: request.freshBaseline,
     messageUpdateCursor: request.messageUpdateCursor,

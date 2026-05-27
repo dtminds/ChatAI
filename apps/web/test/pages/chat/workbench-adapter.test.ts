@@ -155,6 +155,34 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("adapts voice playback URL and persisted transcode state", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+            durationLabel: "11\"",
+            playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+            transFileUrlPersisted: false,
+          },
+          contentType: "voice",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+        durationLabel: "11\"",
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+        transFileUrlPersisted: false,
+        type: "voice",
+      },
+    });
+  });
+
   it("treats system content as a system message even when sender type is agent", () => {
     expect(
       adaptMessage(

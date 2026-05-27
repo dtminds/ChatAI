@@ -129,6 +129,25 @@ describe("AccountRail", () => {
     expect(handleLogout).toHaveBeenCalledTimes(1);
   });
 
+  it("notifies when the customer nav item is selected", async () => {
+    const user = userEvent.setup();
+    const handleNavItemSelect = vi.fn();
+
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onNavItemSelect={handleNavItemSelect}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "客户" }));
+
+    expect(handleNavItemSelect).toHaveBeenCalledWith("客户");
+  });
+
   it("shows account takeover state and takes over from the status popover", async () => {
     const user = userEvent.setup();
     const handleTakeOverAccount = vi.fn();

@@ -247,6 +247,10 @@ function adaptChatMessageContent(
       return {
         audioUrl: asOptionalString(content.audioUrl),
         durationLabel: String(content.durationLabel ?? ""),
+        playbackUrl: asOptionalString(content.playbackUrl),
+        transFileUrl: asOptionalString(content.transFileUrl),
+        transFileUrlPersisted: Boolean(content.transFileUrlPersisted),
+        transVoiceText: asOptionalString(content.transVoiceText),
         type: "voice",
       };
     case "image":

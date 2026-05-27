@@ -50,11 +50,16 @@ import type {
   WorkbenchSearchResponseDto,
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchConversationSummaryDto,
+  WorkbenchVoicePlaybackConfirmRequest,
+  WorkbenchVoicePlaybackConfirmResponse,
+  WorkbenchCustomerListResponse,
+  WorkbenchCustomerLastConversationResponse,
+  WorkbenchCustomerRelationConversationsResponse,
 } from "@chatai/contracts";
 import { CHAT_TYPE } from "@chatai/contracts";
 import {
-  BadRequestError,
   BadGatewayError,
+  BadRequestError,
   ForbiddenError,
   AppError,
   NotFoundError,
@@ -83,11 +88,19 @@ import {
   parseMySqlId,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
+import {
+  getPlayableMediaHost,
+  isPlayableVoicePathname,
+  toPlayableVoicePathname,
+} from "./media-config.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
 const POLL_SEAT_UPDATE_LIMIT = 200;
+const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
+
+type PlayableVoiceExistsChecker = (playbackUrl: string) => Promise<boolean>;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -127,6 +140,12 @@ export type WorkbenchService = {
     conversationId: string,
     messageId: string,
   ): Promise<WorkbenchMessageFileDownloadResponse> | WorkbenchMessageFileDownloadResponse;
+  confirmVoicePlaybackReady(
+    subUserId: string,
+    input: WorkbenchVoicePlaybackConfirmRequest,
+  ):
+    | Promise<WorkbenchVoicePlaybackConfirmResponse>
+    | WorkbenchVoicePlaybackConfirmResponse;
   getMessageFileDownloadStatus(
     subUserId: string,
     conversationId: string,
@@ -144,6 +163,29 @@ export type WorkbenchService = {
     conversationId: string,
   ): Promise<WorkbenchUploadCredentialResponse> | WorkbenchUploadCredentialResponse;
   getSeats(subUserId: string): Promise<WorkbenchSeatDto[]> | WorkbenchSeatDto[];
+  getCustomers(
+    subUserId: string,
+    options: {
+      cursor?: string;
+      keyword?: string;
+      limit?: number;
+      scope: "all" | "mine";
+      seatIds?: string[];
+    },
+  ): Promise<WorkbenchCustomerListResponse> | WorkbenchCustomerListResponse;
+  getCustomerLastConversation(
+    subUserId: string,
+    thirdExternalUserId: string,
+  ):
+    | Promise<WorkbenchCustomerLastConversationResponse>
+    | WorkbenchCustomerLastConversationResponse;
+  getCustomerRelationConversations(
+    subUserId: string,
+    thirdExternalUserId: string,
+    thirdUserIds: string[],
+  ):
+    | Promise<WorkbenchCustomerRelationConversationsResponse>
+    | WorkbenchCustomerRelationConversationsResponse;
   markConversationRead(
     subUserId: string,
     conversationId: string,
@@ -244,6 +286,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     private readonly repository: WorkbenchRepository,
     private readonly javaClient: WorkbenchJavaClient,
     private readonly logger: AppLogger = noopLogger,
+    private readonly playableVoiceExists: PlayableVoiceExistsChecker =
+      checkPlayableVoiceExists,
   ) {}
 
   async deleteConversation(subUserId: string, conversationId: string) {
@@ -331,6 +375,79 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return this.repository.listSeats(subUserId);
   }
 
+  async getCustomers(
+    subUserId: string,
+    options: {
+      cursor?: string;
+      keyword?: string;
+      limit?: number;
+      scope: "all" | "mine";
+      seatIds?: string[];
+    },
+  ): Promise<WorkbenchCustomerListResponse> {
+    const subUser = await this.getMe(subUserId);
+
+    if (options.scope === "all") {
+      return this.repository.listCustomers({
+        cursor: options.cursor,
+        keyword: options.keyword,
+        limit: options.limit,
+        platform: subUser.platform,
+        scope: "all",
+        uid: subUser.uid,
+      });
+    }
+
+    return this.repository.listCustomers({
+      cursor: options.cursor,
+      keyword: options.keyword,
+      limit: options.limit,
+      scope: "mine",
+      seatIds: options.seatIds,
+      subUserId,
+    });
+  }
+
+  async getCustomerLastConversation(
+    subUserId: string,
+    thirdExternalUserId: string,
+  ): Promise<WorkbenchCustomerLastConversationResponse> {
+    const subUser = await this.getMe(subUserId);
+
+    if (subUser.uid == null || subUser.platform == null) {
+      return {};
+    }
+
+    return {
+      lastConversation: await this.repository.getCustomerLastConversation({
+        platform: subUser.platform,
+        thirdExternalUserId,
+        uid: subUser.uid,
+      }),
+    };
+  }
+
+  async getCustomerRelationConversations(
+    subUserId: string,
+    thirdExternalUserId: string,
+    thirdUserIds: string[],
+  ): Promise<WorkbenchCustomerRelationConversationsResponse> {
+    const subUser = await this.getMe(subUserId);
+
+    if (subUser.uid == null || subUser.platform == null) {
+      return { items: [] };
+    }
+
+    return {
+      items: await this.repository.listCustomerRelationConversations({
+        platform: subUser.platform,
+        thirdExternalUserId,
+        thirdUserIds,
+        uid: subUser.uid,
+      }),
+    };
+  }
+
   async getConversations(
     subUserId: string,
     seatId: string,
@@ -367,6 +484,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     return this.repository.listMessages(conversationId, {
       beforeSeq: options?.beforeSeq,
+      includeHiddenConversation: true,
       limit: options?.limit ?? 30,
     });
   }
@@ -541,6 +659,73 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return status;
   }
 
+  async confirmVoicePlaybackReady(
+    subUserId: string,
+    input: WorkbenchVoicePlaybackConfirmRequest,
+  ): Promise<WorkbenchVoicePlaybackConfirmResponse> {
+    const conversation = await this.repository.getConversationLookup(input.conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
+      throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
+    }
+
+    const rawContent = await this.repository.getMessageRawContent({
+      auditId: input.messageSeq,
+      platform: conversation.platform,
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdGroupId: conversation.thirdGroupId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    if (!rawContent) {
+      throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
+    }
+
+    const content = parseMessageContentRecord(rawContent);
+    const nextTransFileUrl = toPlayableVoiceCosObjectPath(input.playbackUrl);
+    const expectedTransFileUrl = toExpectedPlayableVoiceCosObjectPath(
+      readStringValue(content.fileUrl),
+    );
+
+    if (nextTransFileUrl !== expectedTransFileUrl) {
+      throw new BadRequestError("PLAYABLE_VOICE_URL_MISMATCH", "语音播放地址与当前消息不匹配");
+    }
+
+    const playableExists = await this.playableVoiceExists(
+      toPlayableVoiceAbsoluteUrl(nextTransFileUrl),
+    );
+
+    if (!playableExists) {
+      throw new NotFoundError("PLAYABLE_VOICE_NOT_READY", "语音转码文件尚未就绪");
+    }
+
+    const nextContent = {
+      ...content,
+      transFileUrl: nextTransFileUrl,
+      transVoiceText: readStringValue(content.transVoiceText),
+    };
+
+    await this.javaClient.updateMessageContent({
+      content: JSON.stringify(nextContent),
+      platform: conversation.platform,
+      uid: conversation.uid,
+      updateId: input.messageSeq,
+    });
+
+    return {
+      messageSeq: input.messageSeq,
+      playbackUrl: input.playbackUrl,
+      transFileUrlPersisted: true,
+    };
+  }
+
   async markConversationRead(subUserId: string, conversationId: string) {
     const conversation = await this.getOperableConversation(subUserId, conversationId);
 
@@ -619,11 +804,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const activeConversationMessages =
       request.activeConversationId && request.activeMessageSeq != null
-        ? await this.getMessages(subUserId, request.activeConversationId, {
-            beforeSeq: undefined,
-            limit: 50,
-          }).then((page) =>
-            page.messages.filter((message) => message.seq > (request.activeMessageSeq ?? 0)),
+        ? await this.getActiveConversationMessages(
+            subUserId,
+            request.activeConversationId,
+            request.activeMessageSeq,
           )
         : [];
     const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
@@ -1244,6 +1428,28 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
   }
 
+  private async getActiveConversationMessages(
+    subUserId: string,
+    conversationId: string,
+    activeMessageSeq: number,
+  ) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const page = await this.repository.listMessages(conversationId, {
+      beforeSeq: undefined,
+      includeHiddenConversation: true,
+      limit: 50,
+    });
+
+    return page.messages.filter((message) => message.seq > activeMessageSeq);
+  }
+
   private async getOperableConversation(subUserId: string, conversationId: string) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
@@ -1402,6 +1608,118 @@ function getNextEventCursor(
 
 function uniqueStrings(values: string[]) {
   return Array.from(new Set(values));
+}
+
+function parseMessageContentRecord(rawContent: string) {
+  try {
+    const parsed: unknown = JSON.parse(rawContent);
+
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readStringValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function toPlayableVoiceCosObjectPath(rawUrl: string) {
+  let url: URL;
+
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    const objectPath = rawUrl.replace(/^\/+/, "");
+
+    if (isPlayableVoiceObjectPath(objectPath)) {
+      return objectPath;
+    }
+
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音播放地址不允许");
+  }
+
+  if (
+    url.protocol === "https:" &&
+    url.host === getPlayableMediaHost() &&
+    isPlayableVoiceObjectPath(url.pathname)
+  ) {
+    return url.pathname.replace(/^\/+/, "");
+  }
+
+  throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音播放地址不允许");
+}
+
+function toExpectedPlayableVoiceCosObjectPath(rawUrl: string) {
+  let url: URL;
+
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return toExpectedPlayableVoicePathname(`/${rawUrl.replace(/^\/+/, "")}`).replace(
+      /^\/+/,
+      "",
+    );
+  }
+
+  if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+  }
+
+  return toExpectedPlayableVoicePathname(url.pathname).replace(/^\/+/, "");
+}
+
+function toExpectedPlayableVoicePathname(pathname: string) {
+  const playablePathname = toPlayableVoicePathname(pathname);
+
+  if (!playablePathname) {
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+  }
+
+  return playablePathname;
+}
+
+function isPlayableVoiceObjectPath(pathname: string) {
+  return isPlayableVoicePathname(pathname);
+}
+
+function toPlayableVoiceAbsoluteUrl(objectPath: string) {
+  return `https://${getPlayableMediaHost()}/${objectPath.replace(/^\/+/, "")}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+async function checkPlayableVoiceExists(playbackUrl: string) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PLAYABLE_VOICE_HEAD_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch(playbackUrl, {
+      method: "HEAD",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new BadGatewayError("PLAYABLE_VOICE_CHECK_FAILED", "语音转码文件检查失败", {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (response.status === 404) {
+    return false;
+  }
+
+  if (!response.ok) {
+    throw new BadGatewayError("PLAYABLE_VOICE_CHECK_FAILED", "语音转码文件检查失败", {
+      status: response.status,
+    });
+  }
+
+  return true;
 }
 
 function getSingleSendSegment(

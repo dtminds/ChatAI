@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Empty, EmptyMedia } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
@@ -42,6 +43,7 @@ type ConversationListPanelProps = {
   activeMode: ChatMode;
   conversations: Conversation[];
   isConversationActionDisabled?: boolean;
+  isConversationLoading?: boolean;
   onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
   onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
   onDeleteConversation?: (conversationId: string) => void | Promise<void>;
@@ -57,6 +59,7 @@ export function ConversationListPanel({
   activeMode,
   conversations,
   isConversationActionDisabled = false,
+  isConversationLoading = false,
   onMarkConversationRead,
   onMarkConversationUnread,
   onDeleteConversation,
@@ -261,7 +264,18 @@ export function ConversationListPanel({
                     }
                   >
                     <div className="bg-surface px-2 py-1.5">
-                      {modeConversations.length === 0 ? (
+                      {modeConversations.length === 0 && isConversationLoading ? (
+                        <div className="flex min-h-40 items-center justify-center gap-2 px-2 py-6 text-[13px] text-muted-foreground">
+                          <DotMatrixLoader
+                            ariaLabel="正在加载会话"
+                            className="text-foreground"
+                            dotSize={3}
+                            size={22}
+                          />
+                          <span>正在加载会话</span>
+                        </div>
+                      ) : null}
+                      {modeConversations.length === 0 && !isConversationLoading ? (
                         <Empty
                           aria-label="暂无数据"
                           className="min-h-40 gap-2 px-2 py-6 text-[13px] text-muted-foreground"

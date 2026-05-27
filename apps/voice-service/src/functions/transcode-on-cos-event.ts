@@ -1,0 +1,165 @@
+import { createCosClientFromEnv, fetchCosObject, putCosObject } from "../shared/cos.js";
+import { readVoiceServiceConfig } from "../shared/config.js";
+import {
+  buildPlayableObjectKey,
+  detectVoiceFormat,
+  isAllowedSourceObject,
+} from "../shared/media-sniff.js";
+import { transcodeVoiceToWav } from "../shared/transcode.js";
+
+type CosObjectEvent = {
+  Records?: Array<{
+    cos?: {
+      cosBucket?: {
+        name?: string;
+      };
+      cosObject?: {
+        key?: string;
+      };
+      cosRegion?: {
+        appid?: string;
+        region?: string;
+      };
+    };
+  }>;
+};
+
+export async function main_handler(event: CosObjectEvent) {
+  const config = readVoiceServiceConfig();
+  const client = createCosClientFromEnv();
+  const records = event.Records ?? [];
+
+  if (records.length === 0) {
+    throw new Error("No records found in COS event");
+  }
+
+  const results = await Promise.all(
+    records.map((record) => transcodeRecord(record, config, client)),
+  );
+
+  return results.length === 1 ? results[0] : results;
+}
+
+async function transcodeRecord(
+  record: NonNullable<CosObjectEvent["Records"]>[number],
+  config: ReturnType<typeof readVoiceServiceConfig>,
+  client: ReturnType<typeof createCosClientFromEnv>,
+) {
+  const bucket = normalizeEventBucket(
+    record?.cos?.cosBucket?.name,
+    record?.cos?.cosRegion?.appid,
+    config.bucket,
+  );
+  const region = record?.cos?.cosRegion?.region ?? "ap-shanghai";
+  const rawKey = record?.cos?.cosObject?.key ?? "";
+  let key: string;
+
+  try {
+    key = normalizeEventObjectKey(
+      decodeURIComponent(rawKey),
+      record?.cos?.cosBucket?.name,
+      bucket,
+    );
+  } catch {
+    throw new Error(`Malformed COS object key: ${rawKey}`);
+  }
+
+  if (bucket !== config.bucket) {
+    throw new Error(`Unexpected bucket: ${bucket}`);
+  }
+
+  if (!isAllowedSourceObject(key, config.inputPrefix)) {
+    throw new Error(`Unexpected source key: ${key}`);
+  }
+
+  const source = await fetchCosObject(client, bucket, region, key);
+  const detected = detectVoiceFormat(source.body);
+
+  if (detected.format !== "silk-v3" && detected.format !== "amr-nb" && detected.format !== "amr-wb") {
+    throw new Error(`Unsupported voice format: ${detected.format}`);
+  }
+
+  const playableKey = buildPlayableObjectKey(key, config.inputPrefix, config.outputPrefix);
+  const transcoded = await transcodeVoiceToWav(source.body, {
+    maxBytes: config.maxBytes,
+    maxDurationMs: config.maxDurationMs,
+    sampleRate: config.sampleRate,
+  });
+
+  await putCosObject(client, bucket, region, playableKey, transcoded.wav);
+
+  return {
+    bucket,
+    contentType: transcoded.contentType,
+    durationMs: transcoded.durationMs,
+    format: transcoded.format,
+    key,
+    playableKey,
+  };
+}
+
+function normalizeEventBucket(
+  bucketName: string | undefined,
+  appid: string | undefined,
+  fallbackBucket: string,
+) {
+  if (!bucketName) {
+    return fallbackBucket;
+  }
+
+  if (bucketName === fallbackBucket) {
+    return bucketName;
+  }
+
+  if (bucketName === getBucketBaseName(fallbackBucket)) {
+    return fallbackBucket;
+  }
+
+  if (!appid) {
+    return bucketName;
+  }
+
+  const appidSuffix = `-${appid}`;
+
+  return bucketName.endsWith(appidSuffix) ? bucketName : `${bucketName}${appidSuffix}`;
+}
+
+function getBucketBaseName(bucket: string) {
+  return bucket.replace(/-\d+$/, "");
+}
+
+function normalizeEventObjectKey(
+  objectKey: string,
+  eventBucketName: string | undefined,
+  bucket: string,
+) {
+  const normalizedKey = objectKey.replace(/^\/+/, "");
+  const appid = getBucketAppid(bucket);
+  const bucketNames = [
+    eventBucketName,
+    bucket,
+    getBucketBaseName(bucket),
+  ].filter((value): value is string => Boolean(value));
+
+  for (const bucketName of bucketNames) {
+    if (appid) {
+      const appidBucketPrefix = `${appid}/${bucketName}/`;
+
+      if (normalizedKey.startsWith(appidBucketPrefix)) {
+        return normalizedKey.slice(appidBucketPrefix.length);
+      }
+    }
+
+    const bucketPrefix = `${bucketName}/`;
+
+    if (normalizedKey.startsWith(bucketPrefix)) {
+      return normalizedKey.slice(bucketPrefix.length);
+    }
+  }
+
+  return normalizedKey;
+}
+
+function getBucketAppid(bucket: string) {
+  return /-(\d+)$/.exec(bucket)?.[1];
+}

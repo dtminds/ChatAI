@@ -27,9 +27,9 @@ describe("MessageContentRenderer video messages", () => {
       "/covers/stage.jpg",
     );
     expect(screen.getByRole("img", { name: "舞台活动视频封面" }).parentElement).toHaveStyle({
-      maxHeight: "360px",
-      maxWidth: "min(300px, 60%)",
-      minWidth: "120px",
+      aspectRatio: "300 / 168.75",
+      maxWidth: "100%",
+      width: "300px",
     });
     expect(screen.getByRole("button", { name: "播放视频：舞台活动视频封面" })).toBeInTheDocument();
     expect(screen.getByText("1:01")).toBeInTheDocument();
@@ -77,9 +77,9 @@ describe("MessageContentRenderer video messages", () => {
     expect(cover).toHaveAttribute("height", "640");
     expect(cover).toHaveAttribute("width", "360");
     expect(cover.parentElement).toHaveStyle({
-      maxHeight: "360px",
-      maxWidth: "min(300px, 60%)",
-      minWidth: "120px",
+      aspectRatio: "202.5 / 360",
+      maxWidth: "100%",
+      width: "202.5px",
     });
     expect(cover).toHaveClass("object-cover");
     expect(screen.getByRole("button", { name: "播放视频：湖面竖版视频封面" })).toBeInTheDocument();
@@ -293,11 +293,49 @@ describe("MessageContentRenderer video messages", () => {
     const frame = cover.parentElement;
 
     expect(frame).toHaveStyle({
-      maxHeight: "360px",
-      maxWidth: "min(300px, 60%)",
-      minWidth: "120px",
+      aspectRatio: "300 / 225",
+      maxWidth: "100%",
+      width: "300px",
     });
-    expect(cover).toHaveClass("h-auto", "max-h-[360px]", "w-auto", "max-w-full");
+    expect(cover).toHaveClass("h-full", "w-full");
+  });
+
+  it("uses loaded cover dimensions when message video dimensions are invalid", () => {
+    render(
+      <VideoMessageCard
+        content={{
+          ...createVideoContent({
+            alt: "自然尺寸视频封面",
+            durationLabel: "1:01",
+            height: Number.NaN,
+            width: 0,
+          }),
+        }}
+      />,
+    );
+
+    const cover = screen.getByRole("img", { name: "自然尺寸视频封面" }) as HTMLImageElement;
+    const frame = cover.parentElement;
+
+    expect(frame).toHaveStyle({
+      aspectRatio: "300 / 225",
+      width: "300px",
+    });
+
+    Object.defineProperty(cover, "naturalWidth", {
+      configurable: true,
+      value: 360,
+    });
+    Object.defineProperty(cover, "naturalHeight", {
+      configurable: true,
+      value: 640,
+    });
+    fireEvent.load(cover);
+
+    expect(frame).toHaveStyle({
+      aspectRatio: "202.5 / 360",
+      width: "202.5px",
+    });
   });
 
   it("does not render an empty duration badge", () => {

@@ -1,18 +1,21 @@
 import {
   AtIcon,
+  Bug02Icon,
   ExclamationMarkIcon,
   Loading03Icon,
   MoreHorizontalIcon,
-  QuoteUpIcon,
+  QuoteUpSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMemo } from "react";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -52,6 +55,10 @@ type ChatMessageListProps = {
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
 };
@@ -82,6 +89,7 @@ export function ChatMessageList({
   onSendSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
+  onVoicePlaybackReady,
   retryingMessageIds,
   smartReplyByMessageId,
 }: ChatMessageListProps) {
@@ -115,6 +123,7 @@ export function ChatMessageList({
               onSendSmartReply={onSendSmartReply}
               onMakeShorterSmartReply={onMakeShorterSmartReply}
               onTriggerSmartReply={onTriggerSmartReply}
+              onVoicePlaybackReady={onVoicePlaybackReady}
               isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
               smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
             />
@@ -165,6 +174,7 @@ export function MessageRow({
   onSendSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
+  onVoicePlaybackReady,
   isRetryingMessage = false,
   smartReply,
 }: {
@@ -181,6 +191,10 @@ export function MessageRow({
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
   smartReply?: SmartReplySuggestion;
 }) {
   if (message.role === "system") {
@@ -219,9 +233,10 @@ export function MessageRow({
         <div className={cn("flex min-w-0 flex-col", isAgent ? "items-end" : "items-start")}>
           <div
             className={cn(
-              "flex min-w-0 max-w-full items-end gap-2",
+              "flex min-w-0 w-fit max-w-full items-end gap-2",
               isAgent ? "flex-row" : "flex-row-reverse",
             )}
+            data-testid="message-inline-content-row"
           >
             {isAgent && message.content.type !== "quote" ? (
               <MessageInlineStatusSlot
@@ -234,7 +249,7 @@ export function MessageRow({
             ) : null}
             <div
               className={cn(
-                "flex min-w-0 max-w-full flex-col gap-1.5",
+                "flex min-w-0 w-fit max-w-full flex-col gap-1.5",
                 isAgent ? "items-end" : "items-start",
               )}
               data-testid="message-content-stack"
@@ -262,6 +277,7 @@ export function MessageRow({
                     message={message}
                     onDownloadMessageFile={onDownloadMessageFile}
                     onOpenQuotedMessage={onOpenQuotedMessage}
+                    onVoicePlaybackReady={onVoicePlaybackReady}
                   />
                   {showSmartReplyTriggerIcon ? (
                     <div className="ml-[16px] cursor-pointer">
@@ -376,6 +392,7 @@ function MessageActionAvatar({
     canUseMessageActions &&
     !message.isRevoked &&
     message.content.type !== "contact-card";
+  const messageIdForCopy = (message.remoteMessageId ?? message.id).trim();
 
   return (
     <div className="relative shrink-0">
@@ -433,17 +450,45 @@ function MessageActionAvatar({
             >
               <HugeiconsIcon
                 aria-hidden="true"
-                icon={QuoteUpIcon}
+                icon={QuoteUpSquareIcon}
                 size={15}
                 strokeWidth={2}
               />
               引用消息
             </DropdownMenuItem>
           ) : null}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => {
+              void copyMessageId(messageIdForCopy);
+            }}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={Bug02Icon}
+              size={15}
+              strokeWidth={2}
+            />
+            复制消息ID
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
   );
+}
+
+async function copyMessageId(messageId: string) {
+  if (!messageId || !navigator.clipboard) {
+    toast.warning("复制失败，请稍后重试");
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(messageId);
+    toast.success("已复制消息ID");
+  } catch {
+    toast.warning("复制失败，请稍后重试");
+  }
 }
 
 function MessageInlineStatusSlot({

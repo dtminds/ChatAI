@@ -46,6 +46,8 @@ import type {
   WorkbenchSidebarIframeParamsRequest,
   WorkbenchTakeOverSeatResponse,
   WorkbenchUploadCredentialResponse,
+  WorkbenchVoicePlaybackConfirmRequest,
+  WorkbenchVoicePlaybackConfirmResponse,
 } from "@chatai/contracts";
 import { NotFoundError } from "../../src/shared/errors.js";
 
@@ -239,6 +241,38 @@ export function createMemoryWorkbenchService() {
       return {
         messageId,
         status: "accepted",
+      };
+    },
+    confirmVoicePlaybackReady(
+      _subUserId: string,
+      input: WorkbenchVoicePlaybackConfirmRequest,
+    ): WorkbenchVoicePlaybackConfirmResponse {
+      const conversation = findConversation(state, input.conversationId);
+
+      if (!conversation) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      state.messagesByConversationId[input.conversationId] = (
+        state.messagesByConversationId[input.conversationId] ?? []
+      ).map((item) =>
+        item.seq === input.messageSeq && item.contentType === "voice"
+          ? {
+              ...item,
+              content: {
+                ...item.content,
+                playbackUrl: input.playbackUrl,
+                transFileUrl: input.playbackUrl,
+                transFileUrlPersisted: true,
+              },
+            }
+          : item,
+      );
+
+      return {
+        messageSeq: input.messageSeq,
+        playbackUrl: input.playbackUrl,
+        transFileUrlPersisted: true,
       };
     },
     markConversationRead(

@@ -13,6 +13,7 @@ import {
   readRecordNumber,
   readRecordString,
 } from "./workbench-content-utils.js";
+import { getPlayableMediaHost, toPlayableVoicePathname } from "./media-config.js";
 
 export type SeatRow = {
   avatar: string | null;
@@ -360,6 +361,7 @@ function parseMessageContent(
       return {
         audioUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
         durationLabel: "",
+        ...buildVoiceTranscodeContent(parsed),
       };
     case "video":
       return {
@@ -459,6 +461,45 @@ function parseMessageContent(
         text: formatMessagePreview(msgtype, rawContent),
       };
   }
+}
+
+function buildVoiceTranscodeContent(parsed: unknown) {
+  const transFileUrl = normalizeMediaAssetUrl(readStringField(parsed, "transFileUrl"));
+  const audioUrl = normalizeMediaAssetUrl(readStringField(parsed, "fileUrl"));
+  const playbackUrl = transFileUrl || buildDerivedVoicePlaybackUrl(audioUrl);
+
+  return {
+    ...(playbackUrl ? { playbackUrl } : {}),
+    transFileUrl,
+    transFileUrlPersisted: Boolean(transFileUrl),
+    transVoiceText: readStringField(parsed, "transVoiceText"),
+  };
+}
+
+function buildDerivedVoicePlaybackUrl(rawUrl: string) {
+  let url: URL;
+
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return undefined;
+  }
+
+  if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
+    return undefined;
+  }
+
+  const playablePathname = toPlayableVoicePathname(url.pathname);
+
+  if (!playablePathname) {
+    return undefined;
+  }
+
+  url.pathname = playablePathname;
+  url.search = "";
+  url.hash = "";
+
+  return url.toString();
 }
 
 function formatMessagePreview(msgtype: string | null, rawContent: string | null) {

@@ -26,6 +26,10 @@ type ChatMessagePanelProps = {
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
@@ -51,6 +55,7 @@ export function ChatMessagePanel({
   onSendSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
+  onVoicePlaybackReady,
   retryingMessageIds,
   smartReplyByMessageId,
   messageViewportRef,
@@ -104,6 +109,7 @@ export function ChatMessagePanel({
                 onSendSmartReply={onSendSmartReply}
                 onMakeShorterSmartReply={onMakeShorterSmartReply}
                 onTriggerSmartReply={onTriggerSmartReply}
+                onVoicePlaybackReady={onVoicePlaybackReady}
                 onRetryMessage={(messageId) => {
                   startTransition(() => {
                     void onRetryMessage(messageId);

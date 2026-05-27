@@ -181,14 +181,52 @@ describe("MysqlWorkbenchService", () => {
 
     await service.getMessages("101", "88", { limit: 10 });
 
-    expect(getConversationLookup).toHaveBeenCalledWith("88", {
-      includeHidden: true,
-    });
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
     expect(listMessages).toHaveBeenCalledWith("88", {
       beforeSeq: undefined,
       includeHiddenConversation: true,
       limit: 10,
     });
+  });
+
+  it("signs sidebar iframe params from hidden conversations", async () => {
+    const javaClient = createJavaClient();
+    const getConversationLookup = vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      thirdExternalUserId: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    const getEmbedUserRelationTuseSecrets = vi.fn().mockResolvedValue({
+      appId: "mid-001",
+      ivParameter: "1234567890abcdef",
+      secret: "abcdef1234567890",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup,
+        getEmbedUserRelationTuseSecrets,
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          subUserId: "101",
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getSidebarIframeParams("101", {
+        conversationId: "88",
+        seatId: "12",
+      }),
+    ).resolves.toMatchObject({
+      mid: "mid-001",
+    });
+
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
   });
 
   it("rejects invalid conversation list cursors before querying conversations", async () => {
@@ -352,16 +390,17 @@ describe("MysqlWorkbenchService", () => {
 
   it("passes conversation tenant scope to Java when marking a taken-over conversation read", async () => {
     const javaClient = createJavaClient();
+    const getConversationLookup = vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      seatHostSubUserId: "101",
+      uid: 9001,
+    });
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          uid: 9001,
-        }),
+        getConversationLookup,
         getSeatUnreadCountAfterMarkRead: vi.fn().mockResolvedValue(5),
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -374,6 +413,7 @@ describe("MysqlWorkbenchService", () => {
       platform: 5,
       uid: 9001,
     });
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
     expect(result).toEqual({
       conversationId: "88",
       seatId: "12",
@@ -1414,9 +1454,7 @@ describe("MysqlWorkbenchService", () => {
         },
       ],
     });
-    expect(getConversationLookup).toHaveBeenCalledWith("88", {
-      includeHidden: true,
-    });
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
     expect(listMessages).toHaveBeenCalledWith("88", {
       beforeSeq: undefined,
       includeHiddenConversation: true,
@@ -1721,20 +1759,21 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-001",
       status: "accepted",
     });
+    const getConversationLookup = vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      seatHostSubUserId: "101",
+      seatUnreadCount: 0,
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+      unreadCount: 0,
+    });
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          seatUnreadCount: 0,
-          thirdGroupId: "group-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-          unreadCount: 0,
-        }),
+        getConversationLookup,
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -1775,6 +1814,7 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
+    expect(getConversationLookup).toHaveBeenCalledWith("88");
   });
 
   it("maps a group text send with mention-all to the Java send-message payload", async () => {

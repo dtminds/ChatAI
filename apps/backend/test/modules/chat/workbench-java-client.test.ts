@@ -305,7 +305,7 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
-  it("posts conversation delete payload to the Java internal API", async () => {
+  it("posts conversation hide payload to the Java internal API", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
@@ -321,7 +321,7 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed/conversation/delete",
+      "https://java.internal/third-internal/wap-embed/conversation/hide",
       expect.objectContaining({
         body: JSON.stringify({
           conversationId: 88,

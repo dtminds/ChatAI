@@ -1692,7 +1692,7 @@ export class WorkbenchRepository {
 
   async getConversationLookup(
     conversationId: string,
-    options: { includeHidden?: boolean } = {},
+    options: { activeOnly?: boolean } = {},
   ): Promise<ConversationLookup | undefined> {
     const conversationNumericId = parseMySqlId(conversationId);
 
@@ -1739,7 +1739,7 @@ export class WorkbenchRepository {
       .where("conversation.id", "=", conversationNumericId)
       .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE);
 
-    if (!options.includeHidden) {
+    if (options.activeOnly) {
       query = query.where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE);
     }
 
@@ -2800,7 +2800,6 @@ export class WorkbenchRepository {
       .where("conversation.platform", "=", platform)
       .where("conversation.third_userid", "=", seatThirdUserId)
       .where("conversation.id", "=", conversationNumericId)
-      .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
       .executeTakeFirst();
 
     if (!row) {
@@ -2831,8 +2830,7 @@ export class WorkbenchRepository {
       .where("uid", "=", uid)
       .where("platform", "=", platform)
       .where("third_userid", "=", seatThirdUserId)
-      .where("chat_type", "=", chatType)
-      .where("biz_status", "=", BIZ_STATUS_ACTIVE);
+      .where("chat_type", "=", chatType);
 
     if (chatType === CHAT_TYPE_GROUP) {
       query = query.where("third_group_id", "=", targetId);

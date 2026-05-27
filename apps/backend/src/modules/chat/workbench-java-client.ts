@@ -181,7 +181,7 @@ export function createWorkbenchJavaClient(
       return postConversationOperate(
         baseUrl,
         token,
-        "/third-internal/wap-embed/conversation/delete",
+        "/third-internal/wap-embed/conversation/hide",
         input,
         logger,
         "delete-conversation",

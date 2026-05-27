@@ -17,6 +17,7 @@ import type {
   WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
+  WorkbenchRevokeMessageResponse,
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -25,8 +26,20 @@ import type {
   WorkbenchSubUserDto,
   WorkbenchTakeOverSeatResponse,
   WorkbenchUploadCredentialResponse,
+  WorkbenchSearchResponseDto,
+  WorkbenchGetOrCreateConversationRequestDto,
+  WorkbenchConversationSummaryDto,
+  WorkbenchVoicePlaybackConfirmRequest,
+  WorkbenchVoicePlaybackConfirmResponse,
+  WorkbenchVoiceTranscriptionRequest,
+  WorkbenchVoiceTranscriptionResponse,
+  WorkbenchCustomerListResponse,
+  WorkbenchCustomerLastConversationResponse,
+  WorkbenchCustomerRelationConversationsResponse,
 } from "@chatai/contracts";
+import { CHAT_TYPE } from "@chatai/contracts";
 import {
+  BadGatewayError,
   BadRequestError,
   ForbiddenError,
   AppError,
@@ -50,10 +63,21 @@ import {
   parseMySqlId,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
+import {
+  getPlayableMediaHost,
+  isPlayableVoicePathname,
+  toPlayableVoicePathname,
+} from "./media-config.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
+const POLL_SEAT_UPDATE_LIMIT = 200;
+const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
+const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
+const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
+
+type PlayableVoiceExistsChecker = (playbackUrl: string) => Promise<boolean>;
 
 export type WorkbenchService = {
   deleteConversation(
@@ -93,6 +117,18 @@ export type WorkbenchService = {
     conversationId: string,
     messageId: string,
   ): Promise<WorkbenchMessageFileDownloadResponse> | WorkbenchMessageFileDownloadResponse;
+  confirmVoicePlaybackReady(
+    subUserId: string,
+    input: WorkbenchVoicePlaybackConfirmRequest,
+  ):
+    | Promise<WorkbenchVoicePlaybackConfirmResponse>
+    | WorkbenchVoicePlaybackConfirmResponse;
+  transcribeVoiceMessage(
+    subUserId: string,
+    input: WorkbenchVoiceTranscriptionRequest,
+  ):
+    | Promise<WorkbenchVoiceTranscriptionResponse>
+    | WorkbenchVoiceTranscriptionResponse;
   getMessageFileDownloadStatus(
     subUserId: string,
     conversationId: string,
@@ -110,6 +146,29 @@ export type WorkbenchService = {
     conversationId: string,
   ): Promise<WorkbenchUploadCredentialResponse> | WorkbenchUploadCredentialResponse;
   getSeats(subUserId: string): Promise<WorkbenchSeatDto[]> | WorkbenchSeatDto[];
+  getCustomers(
+    subUserId: string,
+    options: {
+      cursor?: string;
+      keyword?: string;
+      limit?: number;
+      scope: "all" | "mine";
+      seatIds?: string[];
+    },
+  ): Promise<WorkbenchCustomerListResponse> | WorkbenchCustomerListResponse;
+  getCustomerLastConversation(
+    subUserId: string,
+    thirdExternalUserId: string,
+  ):
+    | Promise<WorkbenchCustomerLastConversationResponse>
+    | WorkbenchCustomerLastConversationResponse;
+  getCustomerRelationConversations(
+    subUserId: string,
+    thirdExternalUserId: string,
+    thirdUserIds: string[],
+  ):
+    | Promise<WorkbenchCustomerRelationConversationsResponse>
+    | WorkbenchCustomerRelationConversationsResponse;
   markConversationRead(
     subUserId: string,
     conversationId: string,
@@ -126,6 +185,11 @@ export type WorkbenchService = {
     subUserId: string,
     request: WorkbenchPollRequest,
   ): Promise<WorkbenchPollResponse> | WorkbenchPollResponse;
+  revokeMessage(
+    subUserId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<WorkbenchRevokeMessageResponse> | WorkbenchRevokeMessageResponse;
   sendMessage(
     subUserId: string,
     payload: WorkbenchSendMessagePayload,
@@ -138,6 +202,15 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchConversationUnpinResponse> | WorkbenchConversationUnpinResponse;
+  search(
+    subUserId: string,
+    seatId: string,
+    keyword: string,
+  ): Promise<WorkbenchSearchResponseDto> | WorkbenchSearchResponseDto;
+  getOrCreateConversation(
+    subUserId: string,
+    payload: WorkbenchGetOrCreateConversationRequestDto,
+  ): Promise<WorkbenchConversationSummaryDto> | WorkbenchConversationSummaryDto;
 };
 
 export class MysqlWorkbenchService implements WorkbenchService {
@@ -145,6 +218,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     private readonly repository: WorkbenchRepository,
     private readonly javaClient: WorkbenchJavaClient,
     private readonly logger: AppLogger = noopLogger,
+    private readonly playableVoiceExists: PlayableVoiceExistsChecker =
+      checkPlayableVoiceExists,
   ) {}
 
   async deleteConversation(subUserId: string, conversationId: string) {
@@ -230,6 +305,79 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return this.repository.listSeats(subUserId);
   }
 
+  async getCustomers(
+    subUserId: string,
+    options: {
+      cursor?: string;
+      keyword?: string;
+      limit?: number;
+      scope: "all" | "mine";
+      seatIds?: string[];
+    },
+  ): Promise<WorkbenchCustomerListResponse> {
+    const subUser = await this.getMe(subUserId);
+
+    if (options.scope === "all") {
+      return this.repository.listCustomers({
+        cursor: options.cursor,
+        keyword: options.keyword,
+        limit: options.limit,
+        platform: subUser.platform,
+        scope: "all",
+        uid: subUser.uid,
+      });
+    }
+
+    return this.repository.listCustomers({
+      cursor: options.cursor,
+      keyword: options.keyword,
+      limit: options.limit,
+      scope: "mine",
+      seatIds: options.seatIds,
+      subUserId,
+    });
+  }
+
+  async getCustomerLastConversation(
+    subUserId: string,
+    thirdExternalUserId: string,
+  ): Promise<WorkbenchCustomerLastConversationResponse> {
+    const subUser = await this.getMe(subUserId);
+
+    if (subUser.uid == null || subUser.platform == null) {
+      return {};
+    }
+
+    return {
+      lastConversation: await this.repository.getCustomerLastConversation({
+        platform: subUser.platform,
+        thirdExternalUserId,
+        uid: subUser.uid,
+      }),
+    };
+  }
+
+  async getCustomerRelationConversations(
+    subUserId: string,
+    thirdExternalUserId: string,
+    thirdUserIds: string[],
+  ): Promise<WorkbenchCustomerRelationConversationsResponse> {
+    const subUser = await this.getMe(subUserId);
+
+    if (subUser.uid == null || subUser.platform == null) {
+      return { items: [] };
+    }
+
+    return {
+      items: await this.repository.listCustomerRelationConversations({
+        platform: subUser.platform,
+        thirdExternalUserId,
+        thirdUserIds,
+        uid: subUser.uid,
+      }),
+    };
+  }
+
   async getConversations(
     subUserId: string,
     seatId: string,
@@ -266,6 +414,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     return this.repository.listMessages(conversationId, {
       beforeSeq: options?.beforeSeq,
+      includeHiddenConversation: true,
       limit: options?.limit ?? 30,
     });
   }
@@ -440,6 +589,149 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return status;
   }
 
+  async confirmVoicePlaybackReady(
+    subUserId: string,
+    input: WorkbenchVoicePlaybackConfirmRequest,
+  ): Promise<WorkbenchVoicePlaybackConfirmResponse> {
+    const conversation = await this.repository.getConversationLookup(input.conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
+      throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
+    }
+
+    const rawContent = await this.repository.getMessageRawContent({
+      auditId: input.messageSeq,
+      platform: conversation.platform,
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdGroupId: conversation.thirdGroupId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    if (!rawContent) {
+      throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
+    }
+
+    const content = parseMessageContentRecord(rawContent);
+    const nextTransFileUrl = toPlayableVoiceCosObjectPath(input.playbackUrl);
+    const expectedTransFileUrl = toExpectedPlayableVoiceCosObjectPath(
+      readStringValue(content.fileUrl),
+    );
+
+    if (nextTransFileUrl !== expectedTransFileUrl) {
+      throw new BadRequestError("PLAYABLE_VOICE_URL_MISMATCH", "语音播放地址与当前消息不匹配");
+    }
+
+    const playableExists = await this.playableVoiceExists(
+      toPlayableVoiceAbsoluteUrl(nextTransFileUrl),
+    );
+
+    if (!playableExists) {
+      throw new NotFoundError("PLAYABLE_VOICE_NOT_READY", "语音转码文件尚未就绪");
+    }
+
+    const nextContent = {
+      ...content,
+      transFileUrl: nextTransFileUrl,
+      transVoiceText: readStringValue(content.transVoiceText),
+    };
+
+    await this.javaClient.updateMessageContent({
+      content: JSON.stringify(nextContent),
+      platform: conversation.platform,
+      uid: conversation.uid,
+      updateId: input.messageSeq,
+    });
+
+    return {
+      messageSeq: input.messageSeq,
+      playbackUrl: input.playbackUrl,
+      transFileUrlPersisted: true,
+    };
+  }
+
+  async transcribeVoiceMessage(
+    subUserId: string,
+    input: WorkbenchVoiceTranscriptionRequest,
+  ): Promise<WorkbenchVoiceTranscriptionResponse> {
+    const conversation = await this.repository.getConversationLookup(input.conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
+      throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
+    }
+
+    const rawContent = await this.repository.getMessageRawContent({
+      auditId: input.messageSeq,
+      platform: conversation.platform,
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdGroupId: conversation.thirdGroupId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    if (!rawContent) {
+      throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
+    }
+
+    const content = parseMessageContentRecord(rawContent);
+    const existingTransVoiceText = readStringValue(content.transVoiceText).trim();
+
+    if (existingTransVoiceText) {
+      return {
+        messageSeq: input.messageSeq,
+        transVoiceText: existingTransVoiceText,
+        transVoiceTextPersisted: true,
+      };
+    }
+
+    const voiceUrl = toVoiceRecognitionUrl(readStringValue(content.fileUrl));
+
+    if (!voiceUrl) {
+      throw new BadRequestError(
+        "VOICE_TRANSCRIPTION_UNSUPPORTED",
+        "当前消息不支持语音转文字",
+      );
+    }
+
+    const transVoiceText = (
+      (await this.javaClient.recognizeSentence({ voiceUrl })) ?? ""
+    ).trim();
+
+    if (!transVoiceText) {
+      throw new BadGatewayError("VOICE_TRANSCRIPTION_EMPTY", "语音识别结果为空");
+    }
+
+    const nextContent = {
+      ...content,
+      transVoiceText,
+    };
+
+    await this.javaClient.updateMessageContent({
+      content: JSON.stringify(nextContent),
+      platform: conversation.platform,
+      uid: conversation.uid,
+      updateId: input.messageSeq,
+    });
+
+    return {
+      messageSeq: input.messageSeq,
+      transVoiceText,
+      transVoiceTextPersisted: true,
+    };
+  }
+
   async markConversationRead(subUserId: string, conversationId: string) {
     const conversation = await this.getOperableConversation(subUserId, conversationId);
 
@@ -518,20 +810,34 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const activeConversationMessages =
       request.activeConversationId && request.activeMessageSeq != null
-        ? await this.getMessages(subUserId, request.activeConversationId, {
-            beforeSeq: undefined,
-            limit: 50,
-          }).then((page) =>
-            page.messages.filter((message) => message.seq > (request.activeMessageSeq ?? 0)),
+        ? await this.getActiveConversationMessages(
+            subUserId,
+            request.activeConversationId,
+            request.activeMessageSeq,
           )
         : [];
     const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
+    const seatUpdateCursor = request.seatUpdateCursor ?? request.sinceVersion;
     const messageUpdateEvents =
       request.activeConversationId &&
       typeof this.repository.listMessageUpdateEvents === "function"
         ? await this.repository.listMessageUpdateEvents(request.activeConversationId, {
             afterCreateTime: messageUpdateCursor,
             limit: POLL_MESSAGE_UPDATE_LIMIT,
+          })
+        : [];
+    const seatEventScope =
+      typeof this.repository.getSeatEventScope === "function"
+        ? await this.repository.getSeatEventScope(subUserId)
+        : undefined;
+    const seatUpdateEvents =
+      seatEventScope && typeof this.repository.listSeatUpdateEvents === "function"
+        ? await this.repository.listSeatUpdateEvents({
+            afterCreateTime: seatUpdateCursor,
+            limit: POLL_SEAT_UPDATE_LIMIT,
+            platform: seatEventScope.platform,
+            seatIds: seatEventScope.seatIds,
+            uid: seatEventScope.uid,
           })
         : [];
     const sinceLastMsgTime = Math.max(
@@ -582,9 +888,19 @@ export class MysqlWorkbenchService implements WorkbenchService {
           ? latestChangedLastMessageTime
           : request.sinceVersion + POLL_LAST_MESSAGE_OVERLAP_MS;
 
-    const seatChange = request.currentSeatId
-      ? await this.repository.getSeat(request.currentSeatId)
-      : undefined;
+    const changedSeatIds = uniqueStrings([
+      ...(request.currentSeatId ? [request.currentSeatId] : []),
+      ...seatUpdateEvents.map((event) => event.seatId),
+    ]);
+    const changedSeats = await this.repository.getSeatsByIds(changedSeatIds);
+    const changedSeatsById = new Map(
+      changedSeats
+        .filter((seat): seat is WorkbenchSeatDto => Boolean(seat))
+        .map((seat) => [seat.seatId, seat] as const),
+    );
+    const orderedChangedSeats = changedSeatIds
+      .map((seatId) => changedSeatsById.get(seatId))
+      .filter((seat): seat is WorkbenchSeatDto => Boolean(seat));
 
     return {
       activeConversationMessages,
@@ -592,22 +908,23 @@ export class MysqlWorkbenchService implements WorkbenchService {
         ...conversation,
         type: "upsert" as const,
       })),
-      messageStatusChanges: [],
       messageUpdateEvents,
       nextVersion,
-      nextMessageUpdateCursor: getNextMessageUpdateCursor(
+      nextMessageUpdateCursor: getNextEventCursor(
         messageUpdateCursor,
         messageUpdateEvents,
       ),
-      seatChanges: seatChange
-        ? [
-            {
-              lastMessageTime: seatChange.lastMessageTime,
-              seatId: seatChange.seatId,
-              unreadCount: seatChange.unreadCount,
-            },
-          ]
-        : [],
+      nextSeatUpdateCursor: getNextEventCursor(
+        seatUpdateCursor,
+        seatUpdateEvents,
+      ),
+      seatChanges: orderedChangedSeats
+        .map((seat) => ({
+          hostSubUserId: seat.hostSubUserId ?? null,
+          lastMessageTime: seat.lastMessageTime,
+          seatId: seat.seatId,
+          unreadCount: seat.unreadCount,
+        })),
     };
   }
 
@@ -619,8 +936,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const segment = getSingleSendSegment(payload);
+    const failMsgId = getRetryFailMsgId(payload);
     const response = await this.javaClient.sendMessage({
       clientMessageId: payload.clientMessageId,
+      ...(failMsgId != null ? { failMsgId } : {}),
       msgData: buildJavaSendMessageData(payload, segment),
       platform: conversation.platform,
       sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
@@ -651,6 +970,78 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return response;
+  }
+
+  async revokeMessage(
+    subUserId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<WorkbenchRevokeMessageResponse> {
+    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const normalizedMessageId = messageId.trim();
+
+    if (!normalizedMessageId) {
+      throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
+    }
+
+    const message = await this.repository.getMessageForRevoke({
+      conversationId: conversation.id,
+      messageId: normalizedMessageId,
+      platform: conversation.platform,
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdGroupId: conversation.thirdGroupId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    if (!message) {
+      throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
+    }
+
+    if (
+      message.senderType !== "agent" ||
+      message.status !== "sent" ||
+      message.isRevoked
+    ) {
+      throw new ForbiddenError("MESSAGE_REVOKE_FORBIDDEN", "暂不支持撤回该消息");
+    }
+
+    const elapsedMs = Date.now() - message.createdAt;
+
+    if (
+      !Number.isFinite(message.createdAt) ||
+      elapsedMs < -MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS ||
+      elapsedMs >= MESSAGE_REVOKE_WINDOW_MS
+    ) {
+      throw new BadRequestError("MESSAGE_REVOKE_EXPIRED", "已超过撤回时间");
+    }
+
+    await this.javaClient.revokeMessage({
+      platform: conversation.platform,
+      revokeMsgId: message.seq,
+      uid: conversation.uid,
+    });
+
+    this.logger.info(
+      {
+        conversationId: conversation.id,
+        messageId: normalizedMessageId,
+        operation: "revoke-message",
+        platform: conversation.platform,
+        revokeMsgId: message.seq,
+        seatId: conversation.seatId,
+        subUserId,
+        uid: conversation.uid,
+      },
+      "工作台消息撤回已受理",
+    );
+
+    return {
+      accepted: true,
+      conversationId: conversation.id,
+      messageId: normalizedMessageId,
+      revokeMsgId: message.seq,
+    };
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {
@@ -720,6 +1111,28 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
   }
 
+  private async getActiveConversationMessages(
+    subUserId: string,
+    conversationId: string,
+    activeMessageSeq: number,
+  ) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const page = await this.repository.listMessages(conversationId, {
+      beforeSeq: undefined,
+      includeHiddenConversation: true,
+      limit: 50,
+    });
+
+    return page.messages.filter((message) => message.seq > activeMessageSeq);
+  }
+
   private async getOperableConversation(subUserId: string, conversationId: string) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
@@ -735,9 +1148,118 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     return conversation;
   }
+
+  async search(
+    subUserId: string,
+    seatId: string,
+    keyword: string,
+  ): Promise<WorkbenchSearchResponseDto> {
+    await this.getMe(subUserId);
+    await this.assertSeatAccess(subUserId, seatId);
+
+    const seatNumericId = parseMySqlId(seatId);
+    if (seatNumericId == null) {
+      return { contacts: [], groups: [] };
+    }
+
+    const seatScope = await this.repository.getSeatOperateScope(seatId);
+    if (!seatScope) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    const [contacts, groups] = await Promise.all([
+      this.repository.searchContacts(seatScope.uid, seatScope.platform, seatScope.thirdUserId, keyword),
+      this.repository.searchGroups(seatScope.uid, seatScope.platform, seatScope.thirdUserId, keyword),
+    ]);
+
+    return { contacts, groups };
+  }
+
+  async getOrCreateConversation(
+    subUserId: string,
+    payload: WorkbenchGetOrCreateConversationRequestDto,
+  ): Promise<WorkbenchConversationSummaryDto> {
+    await this.getMe(subUserId);
+    await this.assertSeatAccess(subUserId, payload.seatId);
+
+    const seatNumericId = parseMySqlId(payload.seatId);
+    if (seatNumericId == null) {
+      throw new BadRequestError("INVALID_SEAT_ID", "席位ID无效");
+    }
+
+    const seatScope = await this.repository.getSeatOperateScope(payload.seatId);
+    if (!seatScope) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    const seatThirdUserId = seatScope.thirdUserId;
+    const targetId =
+      payload.chatType === CHAT_TYPE.GROUP ? payload.thirdGroupId : payload.thirdExternalUserId;
+
+    if (!targetId) {
+      throw new BadRequestError("INVALID_TARGET_ID", "目标ID无效");
+    }
+
+    // 1. 先查本地 DB 是否已有会话
+    const existingConversationId = await this.repository.findConversationIdByTarget(
+      seatScope.uid,
+      seatScope.platform,
+      seatThirdUserId,
+      payload.chatType,
+      targetId,
+    );
+
+    if (existingConversationId) {
+      const hydrated = await this.repository.getHydratedConversation(
+        seatScope.uid,
+        seatScope.platform,
+        seatThirdUserId,
+        existingConversationId,
+      );
+      if (!hydrated) {
+        throw new NotFoundError("CONVERSATION_HYDRATION_FAILED", "打开会话失败，请稍后重试");
+      }
+      return hydrated;
+    }
+
+    // 2. 本地不存在，调用 Java 接口创建（Java 接口待接入，目前调用会失败并返回 undefined）
+    // Java 调用失败（网络错误、接口未实现等）时 javaClient 内部 catch 返回 undefined
+    const javaResponse = await this.javaClient.createConversation({
+      chatType: payload.chatType,
+      platform: seatScope.platform,
+      thirdExternalUserId: payload.thirdExternalUserId,
+      thirdGroupId: payload.thirdGroupId,
+      thirdUserId: seatThirdUserId,
+      uid: seatScope.uid,
+    });
+
+    if (!javaResponse?.conversationId) {
+      // Java 未返回有效 conversationId，不做本地兜底，直接报错
+      throw new BadRequestError("CREATE_CONVERSATION_FAILED", "创建会话失败，请稍后重试");
+    }
+
+    // 3. Java 返回了 conversationId，检查是否已同步到本地 DB
+    const hydrated = await this.repository.getHydratedConversation(
+      seatScope.uid,
+      seatScope.platform,
+      seatThirdUserId,
+      javaResponse.conversationId,
+    );
+
+    if (!hydrated) {
+      // Java 创建成功但会话尚未同步到本地 DB，不自行插入，报错提示
+      this.logger.warn(
+        { conversationId: javaResponse.conversationId, payload },
+        "Java 已创建会话但本地 DB 尚未同步",
+      );
+      throw new NotFoundError("CONVERSATION_NOT_SYNCED", "打开会话失败，请稍后重试");
+    }
+
+    return hydrated;
+  }
 }
 
-function getNextMessageUpdateCursor(
+function getNextEventCursor(
   currentCursor: number,
   events: Array<{
     eventTime?: number;
@@ -765,6 +1287,150 @@ function getNextMessageUpdateCursor(
   );
 
   return latestEventTime;
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values));
+}
+
+function parseMessageContentRecord(rawContent: string) {
+  try {
+    const parsed: unknown = JSON.parse(rawContent);
+
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readStringValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function toPlayableVoiceCosObjectPath(rawUrl: string) {
+  let url: URL;
+
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    const objectPath = rawUrl.replace(/^\/+/, "");
+
+    if (isPlayableVoiceObjectPath(objectPath)) {
+      return objectPath;
+    }
+
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音播放地址不允许");
+  }
+
+  if (
+    url.protocol === "https:" &&
+    url.host === getPlayableMediaHost() &&
+    isPlayableVoiceObjectPath(url.pathname)
+  ) {
+    return url.pathname.replace(/^\/+/, "");
+  }
+
+  throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音播放地址不允许");
+}
+
+function toExpectedPlayableVoiceCosObjectPath(rawUrl: string) {
+  let url: URL;
+
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return toExpectedPlayableVoicePathname(`/${rawUrl.replace(/^\/+/, "")}`).replace(
+      /^\/+/,
+      "",
+    );
+  }
+
+  if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+  }
+
+  return toExpectedPlayableVoicePathname(url.pathname).replace(/^\/+/, "");
+}
+
+function toExpectedPlayableVoicePathname(pathname: string) {
+  const playablePathname = toPlayableVoicePathname(pathname);
+
+  if (!playablePathname) {
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+  }
+
+  return playablePathname;
+}
+
+function isPlayableVoiceObjectPath(pathname: string) {
+  return isPlayableVoicePathname(pathname);
+}
+
+function toPlayableVoiceAbsoluteUrl(objectPath: string) {
+  return `https://${getPlayableMediaHost()}/${objectPath.replace(/^\/+/, "")}`;
+}
+
+function toVoiceRecognitionUrl(rawUrl: string) {
+  const value = rawUrl.trim();
+
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value);
+
+    if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
+      throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+    }
+
+    toExpectedPlayableVoicePathname(url.pathname);
+    return url.toString();
+  } catch (error) {
+    if (error instanceof BadRequestError) {
+      throw error;
+    }
+
+    const pathname = `/${value.replace(/^\/+/, "")}`;
+    toExpectedPlayableVoicePathname(pathname);
+
+    return `https://${getPlayableMediaHost()}${pathname}`;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+async function checkPlayableVoiceExists(playbackUrl: string) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PLAYABLE_VOICE_HEAD_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch(playbackUrl, {
+      method: "HEAD",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new BadGatewayError("PLAYABLE_VOICE_CHECK_FAILED", "语音转码文件检查失败", {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (response.status === 404) {
+    return false;
+  }
+
+  if (!response.ok) {
+    throw new BadGatewayError("PLAYABLE_VOICE_CHECK_FAILED", "语音转码文件检查失败", {
+      status: response.status,
+    });
+  }
+
+  return true;
 }
 
 function getSingleSendSegment(
@@ -853,4 +1519,18 @@ function buildJavaSendMessageData(
   }
 
   return message;
+}
+
+function getRetryFailMsgId(payload: WorkbenchSendMessagePayload) {
+  if (!payload.failMsgId) {
+    return undefined;
+  }
+
+  const failMsgId = parseMySqlId(payload.failMsgId);
+
+  if (failMsgId == null) {
+    throw new BadRequestError("INVALID_MESSAGE_ID", "失败消息 ID 无效");
+  }
+
+  return failMsgId;
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
@@ -7,6 +7,8 @@ import {
   loadGroupMembers,
   loadAccountConversations,
   loadAccountScope,
+  confirmVoicePlaybackReady,
+  transcribeVoiceMessage,
   pollWorkbench,
 } from "@/pages/chat/api/workbench-gateway";
 import {
@@ -29,6 +31,57 @@ describe("workbench gateway message paging", () => {
     await bootstrapWorkbench("single", {});
 
     expect(observedLimits).toEqual([50]);
+  });
+
+  it("forwards voice playback confirmation to the active service", async () => {
+    const baseService = createMockWorkbenchService();
+    const confirmVoicePlayback = {
+      conversationId: "conv-001",
+      messageSeq: 538,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    };
+    const confirmVoicePlaybackReadySpy = vi.fn(async () => ({
+      messageSeq: confirmVoicePlayback.messageSeq,
+      playbackUrl: confirmVoicePlayback.playbackUrl,
+      transFileUrlPersisted: true as const,
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      confirmVoicePlaybackReady: confirmVoicePlaybackReadySpy,
+    });
+
+    await expect(confirmVoicePlaybackReady(confirmVoicePlayback)).resolves.toEqual({
+      messageSeq: 538,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      transFileUrlPersisted: true,
+    });
+    expect(confirmVoicePlaybackReadySpy).toHaveBeenCalledWith(confirmVoicePlayback);
+  });
+
+  it("forwards voice transcription to the active service", async () => {
+    const baseService = createMockWorkbenchService();
+    const request = {
+      conversationId: "conv-001",
+      messageSeq: 538,
+    };
+    const transcribeVoiceMessageSpy = vi.fn(async () => ({
+      messageSeq: request.messageSeq,
+      transVoiceText: "识别文本",
+      transVoiceTextPersisted: true as const,
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      transcribeVoiceMessage: transcribeVoiceMessageSpy,
+    });
+
+    await expect(transcribeVoiceMessage(request)).resolves.toEqual({
+      messageSeq: 538,
+      transVoiceText: "识别文本",
+      transVoiceTextPersisted: true,
+    });
+    expect(transcribeVoiceMessageSpy).toHaveBeenCalledWith(request);
   });
 
   it("loads single and group conversations separately during bootstrap", async () => {
@@ -100,7 +153,6 @@ describe("workbench gateway message paging", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           nextVersion: request.sinceVersion + 1,
           seatChanges: [],
         };
@@ -114,6 +166,7 @@ describe("workbench gateway message paging", () => {
         currentAccountId: "drc",
         freshBaseline: true,
         messageUpdateCursor: 1_778_840_020_000,
+        seatUpdateCursor: 1_778_840_030_000,
         sinceVersion: 1_778_840_010_000,
       },
       {
@@ -128,6 +181,7 @@ describe("workbench gateway message paging", () => {
       currentSeatId: "drc",
       freshBaseline: true,
       messageUpdateCursor: 1_778_840_020_000,
+      seatUpdateCursor: 1_778_840_030_000,
       sinceVersion: 1_778_840_010_000,
     });
   });
@@ -141,7 +195,6 @@ describe("workbench gateway message paging", () => {
         return {
           activeConversationMessages: [],
           conversationChanges: [],
-          messageStatusChanges: [],
           messageUpdateEvents: [
             {
               conversationId: request.activeConversationId ?? "",
@@ -150,6 +203,7 @@ describe("workbench gateway message paging", () => {
             },
           ],
           nextMessageUpdateCursor: 1_778_840_010_000,
+          nextSeatUpdateCursor: 1_778_840_020_000,
           nextVersion: request.sinceVersion + 1,
           seatChanges: [],
         };
@@ -175,6 +229,53 @@ describe("workbench gateway message paging", () => {
         conversationId: "conv-001",
         eventId: 4,
         messageId: "829",
+      },
+    ]);
+    expect(result.nextSeatUpdateCursor).toBe(1_778_840_020_000);
+  });
+
+  it("keeps seat takeover changes in poll account metadata", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [
+            {
+              hostSubUserId: "202",
+              lastMessageTime: 1_778_840_020_000,
+              seatId: "drc",
+              unreadCount: 3,
+            },
+          ],
+        };
+      },
+    });
+
+    const result = await pollWorkbench(
+      {
+        activeConversationId: "conv-001",
+        activeMessageSeq: 9,
+        currentAccountId: "drc",
+        sinceVersion: 1_778_840_010_000,
+      },
+      {
+        accounts: [],
+        customerProfilesById: {},
+      },
+    );
+
+    expect(result.accountChanges).toEqual([
+      {
+        accountId: "drc",
+        hostSubUserId: "202",
+        lastMessageTime: 1_778_840_020_000,
+        seatId: "drc",
+        unreadCount: 3,
       },
     ]);
   });

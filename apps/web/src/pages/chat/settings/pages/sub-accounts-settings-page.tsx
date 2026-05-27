@@ -91,7 +91,13 @@ import {
   updateSubAccount,
   updateSubAccountStatus,
 } from "@/pages/chat/settings/settings-service";
-import { Field, PageHeader, StatusText } from "@/pages/chat/settings/shared";
+import {
+  Field,
+  PageHeader,
+  SettingsPagination,
+  StatusText,
+  useSettingsLocalPagination,
+} from "@/pages/chat/settings/shared";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 import { cn } from "@/lib/utils";
 
@@ -197,6 +203,13 @@ export function SubAccountsSettingsPage() {
       ),
     );
   }, [data.subAccounts, query]);
+  const {
+    currentPage,
+    pagedItems: pagedSubAccounts,
+    resetPage,
+    setPage,
+    totalPages,
+  } = useSettingsLocalPagination(filteredSubAccounts);
 
   async function handleSubmit(values: FormValues, mode: FormMode) {
     const actionKey =
@@ -219,6 +232,7 @@ export function SubAccountsSettingsPage() {
           ...current,
           subAccounts: [nextSubAccount, ...current.subAccounts],
         }));
+        setPage(1);
         toast.success("子账号已新增");
       } else if (dialogState?.mode === "edit") {
         const updateRole =
@@ -321,7 +335,10 @@ export function SubAccountsSettingsPage() {
           <Input
             aria-label="搜索子账号"
             className="h-10 rounded-[8px] pl-9"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              resetPage();
+            }}
             placeholder="搜索子账号"
             value={query}
           />
@@ -380,8 +397,8 @@ export function SubAccountsSettingsPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : filteredSubAccounts.length > 0 ? (
-                filteredSubAccounts.map((subAccount) => (
+              ) : pagedSubAccounts.length > 0 ? (
+                pagedSubAccounts.map((subAccount) => (
                   <SubAccountRow
                     canManage={canManageSubAccounts}
                     isDeleting={pendingAction === `delete:${subAccount.id}`}
@@ -411,6 +428,15 @@ export function SubAccountsSettingsPage() {
           </Table>
         </section>
       )}
+      {!isLoading && totalPages > 1 ? (
+        <div className="mt-4 flex justify-end">
+          <SettingsPagination
+            onPageChange={setPage}
+            page={currentPage}
+            totalPages={totalPages}
+          />
+        </div>
+      ) : null}
 
       <SubAccountDialog
         isSubmitting={

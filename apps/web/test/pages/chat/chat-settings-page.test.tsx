@@ -3,10 +3,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
+import { toast } from "sonner";
 import { routerConfig } from "@/router";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import { useAuthStore } from "@/store/auth-store";
 import { requestInstance } from "@/lib/request";
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      error: vi.fn(),
+      success: vi.fn(),
+    },
+  };
+});
 
 const mock = new MockAdapter(requestInstance);
 
@@ -61,7 +76,10 @@ function mockAuthenticatedSession(role = "admin") {
 
 describe("Chat settings pages", () => {
   beforeEach(() => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
     resetWorkbenchService();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
     mock.reset();
     mockAuthenticatedSession();
     mock.onGet("/server/settings/sub-accounts").reply(200, {
@@ -665,6 +683,46 @@ describe("Chat settings pages", () => {
     expect(useWorkbenchStore.getState().sidebarItems.some((item) => item.id === "203")).toBe(false);
   });
 
+  it("shows API error message when updating a sidebar item fails", async () => {
+    const user = userEvent.setup();
+
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: [
+          {
+            bindTypes: ["1", "2"],
+            id: "201",
+            name: "企业名片",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/card",
+          },
+        ],
+      },
+      success: true,
+    });
+    mock.onPut("/server/settings/sidebar-items/201").reply(400, {
+      error: {
+        code: "INVALID_SIDEBAR_URL",
+        message: "页面地址必须使用 HTTPS 协议",
+      },
+      success: false,
+    });
+    renderRoute("/chat/settings/sidebar");
+
+    await user.click(await screen.findByRole("button", { name: "打开 企业名片 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "编辑" }));
+    await user.clear(screen.getByLabelText("页面地址"));
+    await user.type(screen.getByLabelText("页面地址"), "http://example.com/card");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("页面地址必须使用 HTTPS 协议");
+    });
+  });
+
   it("keeps sidebar preview fallback ordering aligned with numeric database ids", async () => {
     mock.resetHandlers();
     mockAuthenticatedSession();
@@ -776,6 +834,37 @@ describe("Chat settings pages", () => {
 
     expect(screen.getByText("页面名称最多 8 个字符")).toBeInTheDocument();
     expect(mock.history.post).toHaveLength(0);
+  });
+
+  it("shows sidebar item api error messages returned by success false envelopes", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      data: {
+        items: [],
+      },
+      success: true,
+    });
+    mock.onPost("/server/settings/sidebar-items").reply(200, {
+      error: {
+        code: "INVALID_SIDEBAR_URL",
+        message: "请输入有效的页面地址",
+      },
+      success: false,
+    });
+
+    renderRoute("/chat/settings/sidebar");
+
+    await user.click(await screen.findByRole("button", { name: "新增页面" }));
+    await user.type(screen.getByLabelText("页面名称"), "素材中心");
+    await user.type(screen.getByLabelText("页面地址"), "not-a-url");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("请输入有效的页面地址");
+    });
+    expect(screen.queryByText("操作失败，请稍后重试")).not.toBeInTheDocument();
   });
 
   it("creates, edits, toggles, and deletes sub-accounts from settings", async () => {
@@ -1178,6 +1267,138 @@ describe("Chat settings pages", () => {
       screen.getByRole("button", { name: "查看 客服一号 的全部关联托管账号" }),
     );
     expect(screen.getByText("关联托管账号 · 1")).toBeInTheDocument();
+  });
+
+  it("paginates sub-accounts locally with 10 rows per page", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/sub-accounts").reply(200, {
+      data: {
+        seats: [],
+        subAccounts: Array.from({ length: 11 }, (_, index) => ({
+          account: `agent${String(index + 1).padStart(3, "0")}`,
+          id: String(index + 1),
+          name: `客服${index + 1}`,
+          role: "operator",
+          seats: [],
+          status: "active",
+          type: 0,
+        })),
+      },
+      success: true,
+    });
+
+    renderRoute("/chat/settings/sub-accounts");
+
+    expect(await screen.findByText("客服1")).toBeInTheDocument();
+    expect(screen.getByText("客服10")).toBeInTheDocument();
+    expect(screen.queryByText("客服11")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(screen.getByText("客服11")).toBeInTheDocument();
+    expect(screen.queryByText("客服1")).not.toBeInTheDocument();
+    expect(
+      mock.history.get.filter((request) => request.url === "/server/settings/sub-accounts"),
+    ).toHaveLength(1);
+
+    await user.type(screen.getByRole("textbox", { name: "搜索子账号" }), "agent001");
+
+    expect(screen.getByText("客服1")).toBeInTheDocument();
+    expect(screen.queryByText("客服11")).not.toBeInTheDocument();
+  });
+
+  it("returns to the first sub-account page after creating a new account", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/sub-accounts").reply(200, {
+      data: {
+        seats: [],
+        subAccounts: Array.from({ length: 11 }, (_, index) => ({
+          account: `agent${String(index + 1).padStart(3, "0")}`,
+          id: String(index + 1),
+          name: `客服${index + 1}`,
+          role: "operator",
+          seats: [],
+          status: "active",
+          type: 0,
+        })),
+      },
+      success: true,
+    });
+    mock.onPost("/server/settings/sub-accounts").reply((config) => [
+      200,
+      {
+        data: {
+          ...JSON.parse(config.data ?? "{}"),
+          id: "12",
+          seats: [],
+          status: "active",
+          type: 0,
+        },
+        success: true,
+      },
+    ]);
+
+    renderRoute("/chat/settings/sub-accounts");
+
+    await user.click(await screen.findByRole("button", { name: "下一页" }));
+    expect(screen.getByText("客服11")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "新增子账号" }));
+    await user.type(screen.getByLabelText("登录用户名"), "agent012");
+    await user.type(screen.getByLabelText("密码"), "Strong1!");
+    await user.type(screen.getByLabelText("姓名"), "客服十二号");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    expect(await screen.findByText("客服十二号")).toBeInTheDocument();
+    expect(screen.queryByText("客服11")).not.toBeInTheDocument();
+  });
+
+  it("paginates managed accounts locally with 10 rows per page", async () => {
+    const user = userEvent.setup();
+    mock.resetHandlers();
+    mockAuthenticatedSession();
+    mock.onGet("/server/settings/managed-accounts").reply(200, {
+      data: {
+        managedAccounts: Array.from({ length: 11 }, (_, index) => ({
+          avatarUrl: "",
+          id: String(index + 1),
+          name: `托管${index + 1}`,
+          onlineStatus: "offline",
+          subAccounts: [],
+        })),
+        subAccounts: [],
+      },
+      success: true,
+    });
+
+    renderRoute("/chat/settings");
+
+    expect(await screen.findByText("托管1")).toBeInTheDocument();
+    expect(screen.getByText("托管10")).toBeInTheDocument();
+    expect(screen.queryByText("托管11")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(screen.getByText("托管11")).toBeInTheDocument();
+    expect(screen.queryByText("托管1")).not.toBeInTheDocument();
+    expect(
+      mock.history.get.filter((request) => request.url === "/server/settings/managed-accounts"),
+    ).toHaveLength(1);
+
+    await user.type(screen.getByRole("textbox", { name: "搜索托管账号" }), "托管1");
+
+    expect(screen.getByText("托管1")).toBeInTheDocument();
+    expect(screen.getByText("托管10")).toBeInTheDocument();
+    expect(screen.queryByText("托管2")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("row")).toHaveLength(4);
+    expect(screen.queryByRole("button", { name: "下一页" })).not.toBeInTheDocument();
+    expect(
+      mock.history.get.filter((request) => request.url === "/server/settings/managed-accounts"),
+    ).toHaveLength(1);
   });
 
   it("centers the sub-account loading state with the shared loader", async () => {

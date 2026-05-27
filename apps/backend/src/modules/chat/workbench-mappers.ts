@@ -12,6 +12,7 @@ import {
   readRecordNumber,
   readRecordString,
 } from "./workbench-content-utils.js";
+import { getPlayableMediaHost, toPlayableVoicePathname } from "./media-config.js";
 
 export type SeatRow = {
   avatar: string | null;
@@ -97,6 +98,8 @@ export type MessageHydrationSources = {
   >;
 };
 
+const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
+
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
   const hostSubUserId = normalizeOptionalId(row.host_sub_id);
@@ -130,7 +133,7 @@ export function mapConversationRow(
     mode === "group" ? row.group_avatar ?? "" : row.customer_avatar ?? "";
 
   return {
-    bizStatus: row.biz_status == null ? undefined : toNumber(row.biz_status),
+    bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
@@ -330,11 +333,15 @@ function parseMessageContent(
   }
 
   if (msgtype === "text") {
-    if (typeof parsed === "object" && parsed && "text" in parsed) {
+    if (isRecord(parsed) && "text" in parsed) {
       return { text: String(parsed.text ?? "") };
     }
 
-    return { text: String(parsed ?? "") };
+    if (typeof parsed === "string") {
+      return { text: parsed };
+    }
+
+    return { text: rawContent ?? "" };
   }
 
   if (msgtype === "system") {
@@ -356,6 +363,7 @@ function parseMessageContent(
       return {
         audioUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
         durationLabel: "",
+        ...buildVoiceTranscodeContent(parsed),
       };
     case "video":
       return {
@@ -445,31 +453,66 @@ function parseMessageContent(
         title: readStringField(parsed, "description") || "小程序",
       };
     default:
+      if (!msgtype && !rawContent) {
+        return {
+          text: UNSUPPORTED_MESSAGE_DISPLAY_TEXT,
+        };
+      }
+
       return {
         text: formatMessagePreview(msgtype, rawContent),
       };
   }
 }
 
-function formatMessagePreview(msgtype: string | null, rawContent: string | null) {
-  const parsed = parseContent(rawContent);
+function buildVoiceTranscodeContent(parsed: unknown) {
+  const transFileUrl = normalizeMediaAssetUrl(readStringField(parsed, "transFileUrl"));
+  const audioUrl = normalizeMediaAssetUrl(readStringField(parsed, "fileUrl"));
+  const playbackUrl = transFileUrl || buildDerivedVoicePlaybackUrl(audioUrl);
 
-  if (typeof parsed === "string") {
-    return parsed;
+  return {
+    ...(playbackUrl ? { playbackUrl } : {}),
+    transFileUrl,
+    transFileUrlPersisted: Boolean(transFileUrl),
+    transVoiceText: readStringField(parsed, "transVoiceText"),
+  };
+}
+
+function buildDerivedVoicePlaybackUrl(rawUrl: string) {
+  let url: URL;
+
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return undefined;
   }
 
-  if (parsed && typeof parsed === "object") {
-    if ("unsupportedDisplayText" in parsed) {
-      return String(parsed.unsupportedDisplayText ?? "");
-    }
+  if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
+    return undefined;
+  }
 
-    if ("text" in parsed) {
-      return String(parsed.text ?? "");
-    }
+  const playablePathname = toPlayableVoicePathname(url.pathname);
 
-    if ("title" in parsed) {
-      return String(parsed.title ?? "");
-    }
+  if (!playablePathname) {
+    return undefined;
+  }
+
+  url.pathname = playablePathname;
+  url.search = "";
+  url.hash = "";
+
+  return url.toString();
+}
+
+function formatMessagePreview(msgtype: string | null, rawContent: string | null) {
+  if (msgtype == null && !rawContent) {
+    return "";
+  }
+
+  const parsed = parseContent(rawContent);
+
+  if (msgtype === "text" || msgtype === "system") {
+    return readSystemMessageText(parsed, rawContent);
   }
 
   switch (msgtype) {
@@ -504,7 +547,7 @@ function formatMessagePreview(msgtype: string | null, rawContent: string | null)
     case "quote":
       return "[引用消息]";
     default:
-      return rawContent ?? "";
+      return "[新消息]";
   }
 }
 

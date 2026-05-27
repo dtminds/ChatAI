@@ -18,8 +18,15 @@ type ChatMessagePanelProps = {
   onLoadOlderMessages: () => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRevokeMessage?: (message: ChatMessage) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
+  retryingMessageIds?: ReadonlySet<string>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
 
@@ -37,8 +44,12 @@ export function ChatMessagePanel({
   onLoadOlderMessages,
   onOpenQuotedMessage,
   onQuoteMessage,
+  onRevokeMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  onVoicePlaybackReady,
+  onTranscribeVoice,
+  retryingMessageIds,
   messageViewportRef,
 }: ChatMessagePanelProps) {
   return (
@@ -86,11 +97,15 @@ export function ChatMessagePanel({
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
+                onRevokeMessage={onRevokeMessage}
+                onTranscribeVoice={onTranscribeVoice}
+                onVoicePlaybackReady={onVoicePlaybackReady}
                 onRetryMessage={(messageId) => {
                   startTransition(() => {
                     void onRetryMessage(messageId);
                   });
                 }}
+                retryingMessageIds={retryingMessageIds}
               />
             </div>
           </div>

@@ -5,6 +5,7 @@ import { vi } from "vitest";
 import { requestInstance } from "@/lib/request";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
@@ -60,6 +61,8 @@ vi.mock("sonner", async (importOriginal) => {
 
 vi.mock("@/pages/chat/api/media-upload-service", () => mediaUploadMocks);
 
+export const workbenchToastWarningMock = vi.mocked(toast.warning);
+
 export function renderChatWorkbenchPage() {
   return render(<ChatWorkbenchPage />);
 }
@@ -97,7 +100,15 @@ export function resetChatWorkbenchTestState() {
       url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
     }),
   );
-  vi.mocked(toast.warning).mockClear();
+  workbenchToastWarningMock.mockClear();
+  useAuthStore.setState(useAuthStore.getInitialState(), true);
+  useAuthStore.getState().setSession({
+    accountType: "sub",
+    displayName: "客服一号",
+    permissions: ["chat.access", "chat.send", "chat.takeover"],
+    role: "operator",
+    subUserId: "sub-user-001",
+  });
   useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   Object.defineProperty(document, "visibilityState", {
     configurable: true,

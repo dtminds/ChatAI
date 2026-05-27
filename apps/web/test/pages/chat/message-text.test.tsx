@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { MessageRow } from "@/pages/chat/components/message-feed";
 import { TextMessageBubble } from "@/pages/chat/components/message";
+import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
   installChatWorkbenchTestEnvironment,
   resetChatWorkbenchTestState,
@@ -17,10 +18,41 @@ describe("text message bubble layout", () => {
     render(<MessageRow message={createTextMessage("短消息")} />);
 
     expect(screen.getByTestId("message-row-group")).toHaveClass("max-w-[90%]");
-    expect(screen.getByTestId("message-content-stack")).toHaveClass("max-w-full");
+    expect(screen.getByTestId("message-content-stack")).toHaveClass("w-fit", "max-w-full");
     expect(screen.getByText("短消息").closest('[data-testid="text-message-bubble"]')).toHaveClass(
       "max-w-full",
     );
+  });
+
+  it("shrinks failed media message stacks to their content width", () => {
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("视频"),
+          content: {
+            alt: "视频",
+            coverImageUrl: "https://example.com/video-cover.jpg",
+            durationLabel: "0:08",
+            height: 240,
+            type: "video",
+            videoUrl: "https://example.com/video.mp4",
+            width: 320,
+          },
+          status: "failed",
+        }}
+        onRetryMessage={() => undefined}
+      />,
+    );
+
+    const contentStack = screen.getByTestId("message-content-stack");
+    const contentRow = screen.getByTestId("message-inline-content-row");
+    const retrySlot = screen.getByTestId("message-inline-status-slot");
+
+    expect(contentRow).toHaveClass("w-fit", "max-w-full");
+    expect(contentStack).toHaveClass("w-fit", "max-w-full");
+    expect(contentRow).toContainElement(retrySlot);
+    expect(contentRow).toContainElement(contentStack);
+    expect(contentStack).not.toContainElement(retrySlot);
   });
 
   it("forces long words and URLs to wrap inside the bubble", () => {
@@ -149,6 +181,26 @@ describe("text message bubble layout", () => {
     expect(textBubble.parentElement).not.toContainElement(quotePreview);
   });
 
+  it("shows retry loading state for failed messages being resent", () => {
+    render(
+      <MessageRow
+        isRetryingMessage
+        message={{
+          ...createTextMessage("重试中"),
+          status: "failed",
+        }}
+        onRetryMessage={() => undefined}
+      />,
+    );
+
+    const retryButton = screen.getByRole("button", { name: "正在重试发送" });
+
+    expect(retryButton).toBeDisabled();
+    expect(retryButton).toHaveAttribute("aria-busy", "true");
+    expect(retryButton).not.toHaveClass("bg-destructive");
+    expect(screen.queryByRole("button", { name: "重试发送" })).not.toBeInTheDocument();
+  });
+
   it("does not show sending state after optimistic messages are reconciled", () => {
     render(
       <MessageRow
@@ -241,7 +293,7 @@ describe("text message bubble layout", () => {
   });
 });
 
-function createTextMessage(text: string) {
+function createTextMessage(text: string): ChatMessage {
   return {
     id: "msg-text-layout",
     conversationId: "conv-layout",

@@ -76,6 +76,45 @@ export type WorkbenchMessageFileDownloadStatusResponse = {
   fileUrl?: string;
 };
 
+export type WorkbenchPlayableVoiceResponse = {
+  playable: boolean;
+  playableUrl?: string;
+};
+
+export type WorkbenchVoicePlaybackConfirmRequest = {
+  conversationId: string;
+  messageSeq: number;
+  playbackUrl: string;
+};
+
+export type WorkbenchVoicePlaybackConfirmResponse = {
+  messageSeq: number;
+  playbackUrl: string;
+  transFileUrlPersisted: true;
+};
+
+export type WorkbenchVoiceTranscriptionRequest = {
+  conversationId: string;
+  messageSeq: number;
+};
+
+export type WorkbenchVoiceTranscriptionResponse = {
+  messageSeq: number;
+  transVoiceText: string;
+  transVoiceTextPersisted: true;
+};
+
+export type WorkbenchRevokeMessageRequest = {
+  conversationId: string;
+};
+
+export type WorkbenchRevokeMessageResponse = {
+  accepted: true;
+  conversationId: string;
+  messageId: string;
+  revokeMsgId: number;
+};
+
 export type WorkbenchMessageFileDownloadStatusRequest = {
   conversationId: string;
   messageSeq: number;
@@ -84,6 +123,8 @@ export type WorkbenchMessageFileDownloadStatusRequest = {
 export type WorkbenchSubUserDto = {
   subUserId: string;
   displayName: string;
+  platform?: number;
+  uid?: number;
 };
 
 /** 侧栏 iframe 涂色查询参数签发请求；三方 ID 由服务端按会话解析，不信任 body */
@@ -212,6 +253,7 @@ export type WorkbenchSeatChangeDto = {
   seatId: string;
   unreadCount: number;
   lastMessageTime?: number;
+  hostSubUserId?: string | null;
 };
 
 export type WorkbenchConversationChangeDto =
@@ -223,14 +265,6 @@ export type WorkbenchConversationChangeDto =
   | ({
       type: "upsert";
     } & WorkbenchConversationSummaryDto);
-
-export type WorkbenchMessageStatusChangeDto = {
-  messageId: string;
-  clientMessageId?: string;
-  conversationId: string;
-  status: WorkbenchMessageStatus;
-  reason?: string;
-};
 
 export type WorkbenchMessageUpdateEventDto = {
   conversationId: string;
@@ -254,15 +288,16 @@ export type WorkbenchPollRequest = {
   activeConversationId?: string;
   activeMessageSeq?: number;
   messageUpdateCursor?: number;
+  seatUpdateCursor?: number;
 };
 
 export type WorkbenchPollResponse = {
   nextVersion: number;
   nextMessageUpdateCursor?: number;
+  nextSeatUpdateCursor?: number;
   seatChanges: WorkbenchSeatChangeDto[];
   conversationChanges: WorkbenchConversationChangeDto[];
   activeConversationMessages: WorkbenchMessageDto[];
-  messageStatusChanges: WorkbenchMessageStatusChangeDto[];
   messageUpdateEvents?: WorkbenchMessageUpdateEventDto[];
 };
 
@@ -300,6 +335,7 @@ export type WorkbenchSendMessagePayload = {
   seatId: string;
   conversationId: string;
   clientMessageId: string;
+  failMsgId?: string;
   contentType?: "text";
   content?: string;
   mention?: {
@@ -390,4 +426,124 @@ export type WorkbenchUploadCredentialResponse = {
 
 export type WorkbenchTakeOverSeatResponse = {
   seat: WorkbenchSeatDto;
+};
+
+export const WorkbenchCustomerSeatRelationSchema = Type.Object({
+  addTime: Type.Optional(Type.Number()),
+  bindId: Type.String(),
+  bindStatus: Type.Number(),
+  bindType: Type.Number(),
+  description: Type.Optional(Type.String()),
+  lastMessageTime: Type.Optional(Type.Number()),
+  seatAvatar: Type.String(),
+  seatId: Type.String(),
+  seatName: Type.String(),
+  thirdUserId: Type.String(),
+});
+
+export const WorkbenchCustomerLastConversationSchema = Type.Object({
+  conversationId: Type.String(),
+  lastMessageTime: Type.Number(),
+  seatAvatar: Type.String(),
+  seatId: Type.String(),
+  seatName: Type.String(),
+});
+
+export const WorkbenchCustomerSummarySchema = Type.Object({
+  avatar: Type.String(),
+  bizStatus: Type.Number(),
+  customerKey: Type.String(),
+  gender: Type.Union([Type.Number(), Type.Null()]),
+  name: Type.String(),
+  lastConversation: Type.Optional(WorkbenchCustomerLastConversationSchema),
+  lastMessageTime: Type.Optional(Type.Number()),
+  platform: Type.Number(),
+  realName: Type.String(),
+  relationCount: Type.Number(),
+  seatRelations: Type.Array(WorkbenchCustomerSeatRelationSchema),
+  thirdExternalUserId: Type.String(),
+  uid: Type.Number(),
+});
+
+export const WorkbenchCustomerListResponseSchema = Type.Object({
+  hasMore: Type.Boolean(),
+  items: Type.Array(WorkbenchCustomerSummarySchema),
+  nextCursor: Type.Optional(Type.String()),
+  total: Type.Number(),
+});
+
+export const WorkbenchCustomerLastConversationResponseSchema = Type.Object({
+  lastConversation: Type.Optional(WorkbenchCustomerLastConversationSchema),
+});
+
+export const WorkbenchCustomerRelationConversationSchema = Type.Object({
+  lastMessageTime: Type.Number(),
+  thirdUserId: Type.String(),
+});
+
+export const WorkbenchCustomerRelationConversationsResponseSchema = Type.Object({
+  items: Type.Array(WorkbenchCustomerRelationConversationSchema),
+});
+
+export const WorkbenchCustomerDetailResponseSchema = Type.Object({
+  customer: WorkbenchCustomerSummarySchema,
+});
+
+export type WorkbenchCustomerSeatRelationDto = Static<
+  typeof WorkbenchCustomerSeatRelationSchema
+>;
+
+export type WorkbenchCustomerLastConversationDto = Static<
+  typeof WorkbenchCustomerLastConversationSchema
+>;
+
+export type WorkbenchCustomerRelationConversationDto = Static<
+  typeof WorkbenchCustomerRelationConversationSchema
+>;
+
+export type WorkbenchCustomerRelationConversationsResponse = Static<
+  typeof WorkbenchCustomerRelationConversationsResponseSchema
+>;
+
+export type WorkbenchCustomerSummaryDto = Static<typeof WorkbenchCustomerSummarySchema>;
+
+export type WorkbenchCustomerListResponse = Static<
+  typeof WorkbenchCustomerListResponseSchema
+>;
+
+export type WorkbenchCustomerLastConversationResponse = Static<
+  typeof WorkbenchCustomerLastConversationResponseSchema
+>;
+
+export type WorkbenchCustomerDetailResponse = Static<
+  typeof WorkbenchCustomerDetailResponseSchema
+>;
+
+export type WorkbenchSearchContactResultDto = {
+  thirdExternalUserId: string;
+  name: string;
+  realName: string;
+  avatar: string;
+  remark?: string;
+  conversationId?: string;
+};
+
+export type WorkbenchSearchGroupResultDto = {
+  thirdGroupId: string;
+  name?: string;
+  avatar: string;
+  remark?: string;
+  conversationId?: string;
+};
+
+export type WorkbenchSearchResponseDto = {
+  contacts: WorkbenchSearchContactResultDto[];
+  groups: WorkbenchSearchGroupResultDto[];
+};
+
+export type WorkbenchGetOrCreateConversationRequestDto = {
+  seatId: string;
+  chatType: number;
+  thirdExternalUserId?: string;
+  thirdGroupId?: string;
 };

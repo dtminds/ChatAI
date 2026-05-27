@@ -42,5 +42,5 @@ export async function buildApp() {
 }
 
 export function shouldDisableRequestLogging(request: { url: string }) {
-  return request.url.startsWith("/api/server/media/proxy");
+  return request.url.startsWith("/api/server/media/playable-voice");
 }

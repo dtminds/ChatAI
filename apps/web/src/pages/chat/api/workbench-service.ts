@@ -18,6 +18,9 @@ import {
   type WorkbenchConversationUnpinResponse,
   type WorkbenchConversationUnreadResponse,
   type WorkbenchConversationSummaryDto,
+  type WorkbenchCustomerListResponse,
+  type WorkbenchCustomerLastConversationResponse,
+  type WorkbenchCustomerRelationConversationsResponse,
   type WorkbenchHistoryMessagePageDto,
   type WorkbenchHistoryMessageQuery,
   type WorkbenchHistoryMessageScope,
@@ -30,9 +33,14 @@ import {
   type WorkbenchMessageFileDownloadStatusResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchMessageStatus,
-  type WorkbenchMessageStatusChangeDto,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
+  type WorkbenchRevokeMessageRequest,
+  type WorkbenchRevokeMessageResponse,
+  type WorkbenchVoicePlaybackConfirmRequest,
+  type WorkbenchVoicePlaybackConfirmResponse,
+  type WorkbenchVoiceTranscriptionRequest,
+  type WorkbenchVoiceTranscriptionResponse,
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSendMessagePayload,
   type SettingsSidebarItemsResponse,
@@ -40,6 +48,8 @@ import {
   type WorkbenchSendMessageResponse,
   type WorkbenchTakeOverSeatResponse,
   type WorkbenchUploadCredentialResponse,
+  type WorkbenchSearchResponseDto,
+  type WorkbenchGetOrCreateConversationRequestDto,
 } from "@chatai/contracts";
 import type {
   ChatMode,
@@ -65,6 +75,20 @@ export type WorkbenchService = {
     options?: WorkbenchConversationListOptions,
   ) => Promise<WorkbenchConversationListResponse>;
   getMe: () => Promise<WorkbenchSubUserDto>;
+  getCustomers: (options: {
+    cursor?: string;
+    keyword?: string;
+    limit?: number;
+    scope: "all" | "mine";
+    seatIds?: string[];
+  }) => Promise<WorkbenchCustomerListResponse>;
+  getCustomerLastConversation: (
+    thirdExternalUserId: string,
+  ) => Promise<WorkbenchCustomerLastConversationResponse>;
+  getCustomerRelationConversations: (
+    thirdExternalUserId: string,
+    thirdUserIds: string[],
+  ) => Promise<WorkbenchCustomerRelationConversationsResponse>;
   /** 未配置或未接入数据库时可为 `null` */
   getSidebarIframeParams: (input: {
     conversationId: string;
@@ -79,6 +103,10 @@ export type WorkbenchService = {
   getMessagesByIds: (
     input: WorkbenchMessageQueryByIdsRequest,
   ) => Promise<WorkbenchMessageQueryByIdsResponse>;
+  revokeMessage: (input: {
+    conversationId: string;
+    messageId: string;
+  }) => Promise<WorkbenchRevokeMessageResponse>;
   downloadMessageFile: (input: {
     conversationId: string;
     messageId: string;
@@ -88,6 +116,12 @@ export type WorkbenchService = {
     conversationId: string;
     messageSeq: number;
   }) => Promise<WorkbenchMessageFileDownloadStatusResponse | undefined>;
+  confirmVoicePlaybackReady: (
+    input: WorkbenchVoicePlaybackConfirmRequest,
+  ) => Promise<WorkbenchVoicePlaybackConfirmResponse>;
+  transcribeVoiceMessage: (
+    input: WorkbenchVoiceTranscriptionRequest,
+  ) => Promise<WorkbenchVoiceTranscriptionResponse>;
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
   getUploadCredential: (conversationId: string) => Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
@@ -97,6 +131,8 @@ export type WorkbenchService = {
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
+  search: (seatId: string, keyword: string) => Promise<WorkbenchSearchResponseDto>;
+  getOrCreateConversation: (payload: WorkbenchGetOrCreateConversationRequestDto) => Promise<WorkbenchConversationSummaryDto>;
 };
 
 export type WorkbenchServiceMode = "mock" | "http";
@@ -116,11 +152,6 @@ type WorkbenchEvent =
       version: number;
       type: "message";
       payload: WorkbenchMessageDto;
-    }
-    | {
-      version: number;
-      type: "message-status";
-      payload: WorkbenchMessageStatusChangeDto;
     }
   | {
       version: number;
@@ -198,6 +229,19 @@ export function createMockWorkbenchService(): WorkbenchService {
     async getMe() {
       return clone(state.subUser);
     },
+    async getCustomers() {
+      return {
+        hasMore: false,
+        items: [],
+        total: 0,
+      };
+    },
+    async getCustomerLastConversation() {
+      return {};
+    },
+    async getCustomerRelationConversations() {
+      return { items: [] };
+    },
     async getSidebarIframeParams() {
       return null;
     },
@@ -273,6 +317,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         ),
       };
     },
+    async revokeMessage(input) {
+      const message = revokeMessage(state, input.conversationId, input.messageId);
+
+      return {
+        accepted: true,
+        conversationId: input.conversationId,
+        messageId: input.messageId,
+        revokeMsgId: message?.seq ?? 0,
+      };
+    },
     async downloadMessageFile(input) {
       const message = findMessageByIdOrSeq(
         state,
@@ -317,6 +371,32 @@ export function createMockWorkbenchService(): WorkbenchService {
         fileUrlExpireTime: content.type === "video" ? content.fileUrlExpireTime : undefined,
         fileSerialNo: content.fileSerialNo,
         fileUrl: content.type === "file" ? content.fileUrl : content.videoUrl,
+      };
+    },
+    async confirmVoicePlaybackReady(input) {
+      updateVoicePlaybackContent(state, input.conversationId, input.messageSeq, {
+        playbackUrl: input.playbackUrl,
+        transFileUrl: input.playbackUrl,
+        transFileUrlPersisted: true,
+      });
+
+      return {
+        messageSeq: input.messageSeq,
+        playbackUrl: input.playbackUrl,
+        transFileUrlPersisted: true,
+      };
+    },
+    async transcribeVoiceMessage(input) {
+      const transVoiceText = "这是一段语音转文字测试文本";
+
+      updateVoiceTranscriptionContent(state, input.conversationId, input.messageSeq, {
+        transVoiceText,
+      });
+
+      return {
+        messageSeq: input.messageSeq,
+        transVoiceText,
+        transVoiceTextPersisted: true,
       };
     },
     async getGroupMembers(conversationId) {
@@ -422,10 +502,24 @@ export function createMockWorkbenchService(): WorkbenchService {
         request.sinceVersion - (request.freshBaseline ? 0 : MOCK_POLL_OVERLAP_MS),
       );
       const relevantEvents = state.events.filter((event) => event.version > sinceVersion);
-      const seatChanges = collapseLatest(
-        relevantEvents.filter((event): event is Extract<WorkbenchEvent, { type: "seat" }> => event.type === "seat"),
+      const seatUpdateCursor = request.seatUpdateCursor ?? request.sinceVersion;
+      const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
+      const seatUpdateEvents = collapseLatest(
+        state.events.filter(
+          (event): event is Extract<WorkbenchEvent, { type: "seat" }> =>
+            event.type === "seat" && event.version > seatUpdateCursor,
+        ),
         (event) => event.payload.seatId,
-      ).map((event) => event.payload);
+      );
+      const seatChanges = seatUpdateEvents.map((event) => event.payload);
+
+      const messageUpdateEventRecords = state.events.filter(
+        (event): event is Extract<WorkbenchEvent, { type: "message-update" }> =>
+          event.type === "message-update" &&
+          event.payload.conversationId === request.activeConversationId &&
+          event.version > messageUpdateCursor,
+      );
+      const messageUpdateEvents = messageUpdateEventRecords.map((event) => event.payload);
 
       const conversationChanges = collapseLatest(
         relevantEvents.filter(
@@ -445,26 +539,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         )
         .map((event) => event.payload);
 
-      const messageStatusChanges = relevantEvents
-        .filter(
-          (event): event is Extract<WorkbenchEvent, { type: "message-status" }> =>
-            event.type === "message-status",
-        )
-        .map((event) => event.payload);
-      const messageUpdateEvents = relevantEvents
-        .filter(
-          (event): event is Extract<WorkbenchEvent, { type: "message-update" }> =>
-            event.type === "message-update" &&
-            event.payload.conversationId === request.activeConversationId,
-        )
-        .map((event) => event.payload);
-
       return {
         seatChanges: clone(seatChanges),
         activeConversationMessages: clone(activeConversationMessages),
         conversationChanges: clone(conversationChanges),
         messageUpdateEvents: clone(messageUpdateEvents),
-        messageStatusChanges: clone(messageStatusChanges),
+        nextMessageUpdateCursor: getNextMockEventCursor(
+          messageUpdateCursor,
+          messageUpdateEventRecords,
+        ),
+        nextSeatUpdateCursor: getNextMockEventCursor(seatUpdateCursor, seatUpdateEvents),
         nextVersion: state.version,
       };
     },
@@ -494,6 +578,7 @@ export function createMockWorkbenchService(): WorkbenchService {
           conversationId: payload.conversationId,
           createdAt: now + index,
           customerId: conversation.customerId,
+          failReason: outcome.reason,
           messageId,
           senderType: "agent" as const,
           seq: nextSeq,
@@ -518,13 +603,7 @@ export function createMockWorkbenchService(): WorkbenchService {
       pushConversationEvent(state, nextConversation);
       pushAccountEvent(state, payload.seatId);
       backendMessages.forEach((message) => {
-        pushMessageStatusEvent(state, {
-          clientMessageId: message.clientMessageId,
-          conversationId: message.conversationId,
-          messageId: message.messageId,
-          reason: outcome.reason,
-          status: outcome.status,
-        });
+        pushMessageEvent(state, message);
       });
 
       return {
@@ -557,6 +636,59 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       return { seat: clone(nextAccount) };
     },
+    async search(seatId, keyword) {
+      return {
+        contacts: [],
+        groups: [],
+      };
+    },
+    async getOrCreateConversation(payload) {
+      const conversations = state.conversationsByAccount[payload.seatId] ?? [];
+      const existingConversation = conversations.find((conversation) =>
+        payload.chatType === 2
+          ? conversation.thirdGroupId === payload.thirdGroupId
+          : conversation.thirdExternalUserId === payload.thirdExternalUserId,
+      );
+
+      if (existingConversation) {
+        return {
+          bizStatus: existingConversation.bizStatus ?? 1,
+          conversationId: existingConversation.conversationId,
+          customerAvatar: existingConversation.customerAvatar,
+          customerId: existingConversation.customerId,
+          customerName: existingConversation.customerName,
+          lastMessage: existingConversation.lastMessage,
+          lastMessageTime: existingConversation.lastMessageTime,
+          mode: existingConversation.mode,
+          priority: existingConversation.priority,
+          seatId: existingConversation.seatId,
+          thirdExternalUserId: existingConversation.thirdExternalUserId,
+          thirdGroupId: existingConversation.thirdGroupId,
+          thirdUserId: existingConversation.thirdUserId,
+          unreadCount: existingConversation.unreadCount,
+        };
+      }
+
+      const now = Date.now();
+      const conversationId = `mock-conversation-${state.nextId++}`;
+
+      return {
+        bizStatus: 1,
+        conversationId,
+        customerAvatar: "",
+        customerId: payload.thirdExternalUserId ?? payload.thirdGroupId ?? conversationId,
+        customerName: payload.thirdExternalUserId ?? payload.thirdGroupId ?? "新会话",
+        lastMessage: "",
+        lastMessageTime: now,
+        mode: payload.chatType === 2 ? "group" : "single",
+        priority: "medium",
+        seatId: payload.seatId,
+        thirdExternalUserId: payload.thirdExternalUserId,
+        thirdGroupId: payload.thirdGroupId,
+        thirdUserId: `third-user-${payload.seatId}`,
+        unreadCount: 0,
+      };
+    },
   };
 }
 
@@ -582,6 +714,35 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     getMe() {
       return http.get<WorkbenchSubUserDto>("/server/me");
+    },
+    getCustomers(options) {
+      return http.get<WorkbenchCustomerListResponse>("/server/customers", {
+        params: {
+          cursor: options.cursor,
+          keyword: options.keyword,
+          limit: options.limit,
+          scope: options.scope,
+          seat_ids:
+            options.scope === "mine" && options.seatIds?.length
+              ? options.seatIds.join(",")
+              : undefined,
+        },
+      });
+    },
+    getCustomerLastConversation(thirdExternalUserId) {
+      return http.get<WorkbenchCustomerLastConversationResponse>(
+        `/server/customers/${encodeURIComponent(thirdExternalUserId)}/last-conversation`,
+      );
+    },
+    getCustomerRelationConversations(thirdExternalUserId, thirdUserIds) {
+      return http.get<WorkbenchCustomerRelationConversationsResponse>(
+        `/server/customers/${encodeURIComponent(thirdExternalUserId)}/relation-conversations`,
+        {
+          params: {
+            third_userids: thirdUserIds.join(","),
+          },
+        },
+      );
     },
     getSidebarIframeParams(input) {
       return fetchWorkbenchSidebarIframeParams(input);
@@ -624,6 +785,14 @@ export function createHttpWorkbenchService(): WorkbenchService {
         input,
       );
     },
+    revokeMessage(input) {
+      return http.post<WorkbenchRevokeMessageResponse, WorkbenchRevokeMessageRequest>(
+        `/server/messages/${input.messageId}/revoke`,
+        {
+          conversationId: input.conversationId,
+        },
+      );
+    },
     downloadMessageFile(input) {
       return http.post<
         WorkbenchMessageFileDownloadResponse,
@@ -641,6 +810,18 @@ export function createHttpWorkbenchService(): WorkbenchService {
         conversationId: input.conversationId,
         messageSeq: input.messageSeq,
       });
+    },
+    confirmVoicePlaybackReady(input) {
+      return http.post<
+        WorkbenchVoicePlaybackConfirmResponse,
+        WorkbenchVoicePlaybackConfirmRequest
+      >("/server/media/voice-playback-confirmed", input);
+    },
+    transcribeVoiceMessage(input) {
+      return http.post<
+        WorkbenchVoiceTranscriptionResponse,
+        WorkbenchVoiceTranscriptionRequest
+      >("/server/media/voice-transcription", input);
     },
     getGroupMembers(conversationId) {
       return http.get<WorkbenchGroupMembersResponse>(
@@ -671,13 +852,18 @@ export function createHttpWorkbenchService(): WorkbenchService {
       );
     },
     poll(request) {
+      const activeConversationId = request.activeConversationId || undefined;
       return http.get<WorkbenchPollResponse>("/server/poll", {
         params: {
-          active_conversation_id: request.activeConversationId,
-          active_message_seq: request.activeMessageSeq,
+          active_conversation_id: activeConversationId,
+          active_message_seq:
+            activeConversationId && request.activeMessageSeq != null
+              ? request.activeMessageSeq
+              : undefined,
           current_seat_id: request.currentSeatId,
           fresh_baseline: request.freshBaseline ? "1" : undefined,
           message_update_cursor: request.messageUpdateCursor,
+          seat_update_cursor: request.seatUpdateCursor,
           since_version: request.sinceVersion,
         },
       });
@@ -696,6 +882,17 @@ export function createHttpWorkbenchService(): WorkbenchService {
     unpinConversation(conversationId) {
       return http.post<WorkbenchConversationUnpinResponse>(
         `/server/conversations/${conversationId}/unpin`,
+      );
+    },
+    search(seatId, keyword) {
+      return http.get<WorkbenchSearchResponseDto>("/server/search", {
+        params: { seatId, keyword },
+      });
+    },
+    getOrCreateConversation(payload) {
+      return http.post<WorkbenchConversationSummaryDto>(
+        "/server/conversations/get-or-create",
+        payload,
       );
     },
   };
@@ -874,6 +1071,7 @@ function buildInitialState(): MockState {
         conversations.map((conversation) => ({
           seatId: conversation.accountId,
           conversationId: conversation.id,
+          bizStatus: conversation.bizStatus ?? 1,
           customerAvatar: conversation.customerAvatarUrl,
           customerId: conversation.customerId,
           customerName: conversation.customerName,
@@ -883,6 +1081,10 @@ function buildInitialState(): MockState {
           mode: conversation.mode,
           priority: conversation.priority,
           unreadCount: conversation.unread,
+          thirdUserId: `third-user-${seatId}`,
+          ...(conversation.mode === "group"
+            ? { thirdGroupId: `third-group-${conversation.id}` }
+            : {}),
         })),
       ),
     ]),
@@ -1288,14 +1490,11 @@ function pushConversationRemoveEvent(
   });
 }
 
-function pushMessageStatusEvent(
-  state: MockState,
-  change: WorkbenchMessageStatusChangeDto,
-) {
-  state.version = Math.max(state.version + 1, Date.now());
+function pushMessageEvent(state: MockState, message: WorkbenchMessageDto) {
+  state.version = Math.max(state.version + 1, Date.now(), message.createdAt ?? 0);
   state.events.push({
-    payload: change,
-    type: "message-status",
+    payload: message,
+    type: "message",
     version: state.version,
   });
 }
@@ -1312,16 +1511,34 @@ function pushMessageUpdateEvent(
   });
 }
 
+function getNextMockEventCursor(
+  currentCursor: number,
+  events: Array<{
+    version?: number;
+  }>,
+) {
+  if (!Number.isFinite(currentCursor)) {
+    return undefined;
+  }
+
+  return events.reduce(
+    (latest, event) => Math.max(latest, event.version ?? currentCursor),
+    currentCursor,
+  );
+}
+
 function revokeMessage(
   state: MockState,
   conversationId: string,
   messageId: string,
 ) {
   const messages = state.messagesByConversationId[conversationId] ?? [];
-  const originalMessage = messages.find((message) => message.messageId === messageId);
+  const originalMessage = messages.find((message) =>
+    message.messageId === messageId || String(message.seq) === messageId,
+  );
 
   if (!originalMessage) {
-    return;
+    return undefined;
   }
 
   const nextMessage = {
@@ -1330,14 +1547,39 @@ function revokeMessage(
   };
 
   state.messagesByConversationId[conversationId] = messages.map((message) =>
-    message.messageId === messageId ? nextMessage : message,
+    message.messageId === originalMessage.messageId ? nextMessage : message,
   );
+
+  const revokeSignal = {
+    content: {
+      revokeMsgId: String(originalMessage.seq),
+      revokeOriginMsgId: String(originalMessage.seq),
+      type: "revoke",
+    },
+    contentType: "revoke",
+    conversationId,
+    createdAt: Date.now(),
+    customerId: originalMessage.customerId,
+    messageId: `revoke-${originalMessage.messageId}`,
+    seatId: originalMessage.seatId,
+    senderType: "system" as const,
+    seq: getNextMessageSeq(state, conversationId),
+    status: "sent" as const,
+  } satisfies WorkbenchMessageDto;
+
+  state.messagesByConversationId[conversationId] = [
+    ...state.messagesByConversationId[conversationId],
+    revokeSignal,
+  ];
 
   pushMessageUpdateEvent(state, {
     conversationId,
     eventId: state.version + 1,
-    messageId,
+    messageId: originalMessage.messageId,
   });
+  pushMessageEvent(state, revokeSignal);
+
+  return originalMessage;
 }
 
 function getNextMessageSeq(state: MockState, conversationId: string) {
@@ -1436,6 +1678,58 @@ function updateMessageDownloadContent(
       content: {
         ...message.content,
         ...stripUndefinedFields(patch),
+      },
+    };
+  });
+}
+
+function updateVoicePlaybackContent(
+  state: MockState,
+  conversationId: string,
+  messageSeq: number,
+  patch: {
+    playbackUrl: string;
+    transFileUrl: string;
+    transFileUrlPersisted: true;
+  },
+) {
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+
+  state.messagesByConversationId[conversationId] = messages.map((message) => {
+    if (message.seq !== messageSeq || message.contentType !== "voice") {
+      return message;
+    }
+
+    return {
+      ...message,
+      content: {
+        ...message.content,
+        ...patch,
+      },
+    };
+  });
+}
+
+function updateVoiceTranscriptionContent(
+  state: MockState,
+  conversationId: string,
+  messageSeq: number,
+  patch: {
+    transVoiceText: string;
+  },
+) {
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+
+  state.messagesByConversationId[conversationId] = messages.map((message) => {
+    if (message.seq !== messageSeq || message.contentType !== "voice") {
+      return message;
+    }
+
+    return {
+      ...message,
+      content: {
+        ...message.content,
+        ...patch,
       },
     };
   });

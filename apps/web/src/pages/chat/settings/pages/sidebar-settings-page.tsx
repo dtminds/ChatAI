@@ -71,6 +71,7 @@ import {
   updateSidebarItemsSort,
   updateSidebarItemStatus,
 } from "@/pages/chat/settings/settings-service";
+import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { sortSidebarItems } from "@/pages/chat/lib/sidebar-items";
 import { Field, PageHeader } from "@/pages/chat/settings/shared";
@@ -934,15 +935,11 @@ function isCjkChar(char: string) {
 }
 
 function getErrorMessage(error: unknown) {
-  if (typeof error === "object" && error && "response" in error) {
-    const response = (error as { response?: { data?: { error?: { message?: string } } } }).response;
-
-    if (response?.data?.error?.message) {
-      return response.data.error.message;
-    }
+  if (isRequestError(error) && error.message.trim()) {
+    return error.message;
   }
 
-  if (error instanceof Error) {
+  if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
 

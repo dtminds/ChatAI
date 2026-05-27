@@ -9,7 +9,7 @@ import {
 import type { LexicalEditor } from "lexical";
 import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,9 +34,11 @@ import {
 import { cn } from "@/lib/utils";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
+import { useAuthStore } from "@/store/auth-store";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
+import { CustomerPage } from "@/pages/chat/customer-page";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import {
   CLEAR_COMPOSER_COMMAND,
@@ -67,6 +69,7 @@ import {
   extractComposerMentionState,
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
+import { resolveWorkbenchPermissions } from "@/pages/chat/lib/workbench-permissions";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
@@ -120,10 +123,22 @@ export function ChatWorkbenchPage() {
 }
 
 export function ChatWorkbenchRoutePage() {
+  const location = useLocation();
   const navigate = useNavigate();
+  const activeView =
+    location.pathname === "/chat/customers"
+      ? "customers"
+      : "chat";
 
   return (
     <ChatWorkbenchContent
+      activeView={activeView}
+      onNavigateCustomerPage={() => {
+        navigate("/chat/customers");
+      }}
+      onNavigateChat={() => {
+        navigate("/chat");
+      }}
       onOpenSettings={() => {
         navigate("/chat/settings");
       }}
@@ -132,8 +147,14 @@ export function ChatWorkbenchRoutePage() {
 }
 
 function ChatWorkbenchContent({
+  activeView = "chat",
+  onNavigateChat,
+  onNavigateCustomerPage,
   onOpenSettings,
 }: {
+  activeView?: "chat" | "customers";
+  onNavigateChat?: () => void;
+  onNavigateCustomerPage?: () => void;
   onOpenSettings?: () => void;
 }) {
   const {
@@ -171,9 +192,14 @@ function ChatWorkbenchContent({
     pollState,
     pollWorkbench,
     readReceiptError,
+    revokeMessage,
+    revokeMessageError,
     pinConversation,
     retryFailedMessage,
+    setChatSendPermission,
+    clearRevokeMessageError,
     closeHistoryPanel,
+    clearActiveConversation,
     loadHistoryMessages,
     openHistoryPanel,
     setHistoryPanelDay,
@@ -185,11 +211,15 @@ function ChatWorkbenchContent({
     setActiveConversation,
     setActiveMode,
     sidebarItems,
+    selectOrCreateAndSelectConversation,
     takeOverAccount,
     takeoverStatusByAccountId,
     unpinConversation,
     updateMessageDownloadContent,
+    confirmVoicePlaybackReady,
+    transcribeVoiceMessage,
   } = useWorkbenchStore();
+  const subUser = useAuthStore((state) => state.subUser);
 
   const [draft, setDraft] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
@@ -212,6 +242,9 @@ function ChatWorkbenchContent({
     [],
   );
   const [isSendingDraft, setIsSendingDraft] = useState(false);
+  const [retryingMessageIds, setRetryingMessageIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [quotedMessage, setQuotedMessage] =
     useState<QuotedMessagePreviewContent | null>(null);
   const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
@@ -231,7 +264,9 @@ function ChatWorkbenchContent({
   const mentionRetryDialogStateRef =
     useRef<MentionRetryDialogState | null>(null);
   const isSendingDraftRef = useRef(false);
+  const shouldRestoreComposerFocusRef = useRef(false);
   const isMountedRef = useRef(true);
+  const activeConversationIdRef = useRef<string | undefined>(activeConversationId);
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
@@ -268,10 +303,11 @@ function ChatWorkbenchContent({
   const visibleConversations = visibleSearchableConversations.filter(
     (conversation) => conversation.mode === activeMode,
   );
+  const firstVisibleConversationId = visibleConversations[0]?.id;
   const activeConversation =
     visibleConversations.find(
       (conversation) => conversation.id === activeConversationId,
-    ) ?? visibleConversations[0];
+    ) ?? (activeView === "chat" ? visibleConversations[0] : undefined);
   const isHistoryPanelOpen =
     historyPanelOpenConversationId === activeConversation?.id;
   const activeMessages =
@@ -305,36 +341,23 @@ function ChatWorkbenchContent({
     undefined;
 
   useConversationRevealTimer(allConversations);
-  const isActiveAccountOffline = activeAccount?.loginStatus === "offline";
-  const isActiveAccountTakenOver =
-    !!activeAccount?.takenOverEmployeeId &&
-    activeAccount.takenOverEmployeeId === me?.id;
-  const isActiveConversationBizInactive = activeConversation?.bizStatus === 0;
-  const canSendMessage =
-    !!activeConversation &&
-    !isActiveAccountOffline &&
-    isActiveAccountTakenOver &&
-    !isActiveConversationBizInactive;
-  const sidebarIframeTos: "0" | "1" =
-    !!activeAccount?.takenOverEmployeeId &&
-    activeAccount.takenOverEmployeeId === me?.id
-      ? "1"
-      : "0";
-  const isConversationActionDisabled =
-    isActiveAccountOffline || !isActiveAccountTakenOver;
-  const composerPlaceholder = canSendMessage
-    ? "请输入消息……"
-    : bootstrapStatus === "loading" && !activeConversation
-      ? "正在加载会话数据..."
-      : isActiveAccountOffline
-        ? "当前账号离线，暂时无法发送消息"
-        : !isActiveAccountTakenOver
-          ? "当前账号未接管，暂时无法发送消息"
-          : isActiveConversationBizInactive
-            ? "当前会话已失效，暂时无法发送消息"
-          : !activeConversation
-            ? "当前列表暂无可发送会话"
-            : "当前会话暂不可发送消息";
+  const workbenchPermissions = resolveWorkbenchPermissions({
+    account: activeAccount,
+    activeConversation,
+    bootstrapStatus,
+    me,
+    subUser,
+  });
+  const {
+    canSendMessage,
+    canTakeOverAccount,
+    canUseChatSend,
+    composerPlaceholder,
+    isAccountTakenOverByCurrentUser,
+    isConversationActionDisabled,
+    sidebarIframeSendStatus,
+  } = workbenchPermissions;
+  const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";
 
   const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
 
@@ -373,6 +396,7 @@ function ChatWorkbenchContent({
 
       return () => {
         isMountedRef.current = false;
+        clearActiveConversation();
         fileUploadAbortControllersRef.current.forEach((controller) => {
           controller.abort();
         });
@@ -380,8 +404,35 @@ function ChatWorkbenchContent({
         fileUploadQueueRef.current = [];
       };
     },
-    [],
+    [clearActiveConversation],
   );
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (activeView !== "chat") {
+      if (activeConversationId) {
+        clearActiveConversation();
+      }
+      return;
+    }
+
+    if (!activeConversationId && firstVisibleConversationId) {
+      void setActiveConversation(firstVisibleConversationId);
+    }
+  }, [
+    activeConversationId,
+    activeView,
+    clearActiveConversation,
+    firstVisibleConversationId,
+    setActiveConversation,
+  ]);
+
+  useEffect(() => {
+    setChatSendPermission(canUseChatSend);
+  }, [canUseChatSend, setChatSendPermission]);
 
   useEffect(() => {
     if (!readReceiptError) {
@@ -393,6 +444,115 @@ function ChatWorkbenchContent({
   }, [dismissReadReceiptError, readReceiptError]);
 
   useEffect(() => {
+    if (!revokeMessageError) {
+      return;
+    }
+
+    toast.warning(revokeMessageError);
+    clearRevokeMessageError();
+  }, [clearRevokeMessageError, revokeMessageError]);
+
+  const handleTakeOverAccount = useCallback(
+    async (accountId: string) => {
+      if (!canTakeOverAccount) {
+        toast.warning("当前账号无接管权限");
+        return;
+      }
+
+      const result = await takeOverAccount(accountId);
+
+      if (!isMountedRef.current || result.ok) {
+        return;
+      }
+
+      toast.warning(result.errorMessage);
+    },
+    [canTakeOverAccount, takeOverAccount],
+  );
+
+  const handleStartCustomerChat = useCallback(
+    async (input: {
+      seatId: string;
+      thirdExternalUserId: string;
+      customerName: string;
+      customerAvatar: string;
+      realName: string;
+    }) => {
+      onNavigateChat?.();
+      await setActiveAccount(input.seatId);
+      await selectOrCreateAndSelectConversation({
+        avatar: input.customerAvatar,
+        name: input.customerName,
+        realName: input.realName,
+        thirdExternalUserId: input.thirdExternalUserId,
+      });
+    },
+    [onNavigateChat, selectOrCreateAndSelectConversation, setActiveAccount],
+  );
+
+  const handleRetryFailedMessage = useCallback(
+    async (messageId: string) => {
+      if (!canSendMessage) {
+        return;
+      }
+
+      const retryConversationId = activeConversationIdRef.current;
+      setRetryingMessageIds((current) => new Set(current).add(messageId));
+
+      try {
+        const result = await retryFailedMessage(messageId);
+
+        if (
+          !isMountedRef.current ||
+          activeConversationIdRef.current !== retryConversationId
+        ) {
+          return;
+        }
+
+        if (!result.ok) {
+          toast.warning(result.errorMessage || "重试失败，请稍后重试");
+          return;
+        }
+
+        const messageViewport = messageViewportRef.current;
+
+        if (messageViewport) {
+          messageViewport.scrollTo?.({
+            top: 0,
+            behavior: "smooth",
+          });
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setRetryingMessageIds((current) => {
+            const next = new Set(current);
+            next.delete(messageId);
+            return next;
+          });
+        }
+      }
+    },
+    [canSendMessage, retryFailedMessage],
+  );
+
+  const handleRevokeMessage = useCallback(
+    async (message: ChatMessage) => {
+      if (!canSendMessage) {
+        return;
+      }
+
+      const result = await revokeMessage(message.id);
+
+      if (!isMountedRef.current || result.ok) {
+        return;
+      }
+
+      toast.warning(result.errorMessage || "撤回失败，请稍后重试");
+    },
+    [canSendMessage, revokeMessage],
+  );
+
+  useEffect(() => {
     setIsEmojiPickerOpen(false);
   }, [activeConversation?.id]);
 
@@ -401,6 +561,17 @@ function ChatWorkbenchContent({
     setMentionRetryDialogState(null);
     setIsRefreshingMentionTarget(false);
   }, [activeConversation?.id]);
+
+  useEffect(() => {
+    if (isSendingDraft || !shouldRestoreComposerFocusRef.current) {
+      return;
+    }
+
+    shouldRestoreComposerFocusRef.current = false;
+    const editor = composerRef.current;
+    editor?.getRootElement()?.focus();
+    editor?.focus();
+  }, [isSendingDraft]);
 
   useWorkbenchPolling({
     activeAccountId,
@@ -423,6 +594,7 @@ function ChatWorkbenchContent({
   };
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
+    const sendConversationId = activeConversation?.id;
     const normalizedSegments = segments.length > 0 ? segments : [];
     const mentionState = extractComposerMentionState(segments);
     const mention =
@@ -481,7 +653,10 @@ function ChatWorkbenchContent({
         },
       });
 
-      if (!isMountedRef.current) {
+      if (
+        !isMountedRef.current ||
+        activeConversationIdRef.current !== sendConversationId
+      ) {
         return;
       }
 
@@ -500,10 +675,13 @@ function ChatWorkbenchContent({
       clearComposer({
         keepQuote: quotedMessage !== null && !result.didConsumeQuote,
       });
-      composerRef.current?.focus();
     } finally {
       isSendingDraftRef.current = false;
-      setIsSendingDraft(false);
+      if (isMountedRef.current) {
+        shouldRestoreComposerFocusRef.current =
+          activeConversationIdRef.current === sendConversationId;
+        setIsSendingDraft(false);
+      }
     }
   };
 
@@ -682,6 +860,29 @@ function ChatWorkbenchContent({
         });
         toast.warning("下载失败，请稍后重试");
       });
+  };
+
+  const handleVoicePlaybackReady = (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => {
+    if (message.content.type !== "voice" || !message.seq) {
+      return;
+    }
+
+    void confirmVoicePlaybackReady(
+      message.conversationId,
+      message.id,
+      payload.playbackUrl,
+    );
+  };
+
+  const handleTranscribeVoice = async (message: ChatMessage) => {
+    if (message.content.type !== "voice") {
+      throw new Error("当前消息不支持转文字");
+    }
+
+    return transcribeVoiceMessage(message.conversationId, message.id);
   };
 
   const handleDraftChange = (nextDraft: string) => {
@@ -950,16 +1151,31 @@ function ChatWorkbenchContent({
       >
         <AccountRail
           accounts={accounts}
-          activeAccountId={activeAccountId}
+          activeAccountId={activeView === "chat" ? activeAccountId : undefined}
+          activeNavItem={activeView === "customers" ? "客户" : "聊天"}
+          canTakeOverAccount={canTakeOverAccount}
           currentEmployee={me}
           currentEmployeeId={me?.id}
           isCollapsed={isAccountRailCollapsed}
           onCollapseChange={handleAccountRailCollapseChange}
           onLogout={handleLogout}
+          onNavItemSelect={(label) => {
+            if (label === "客户") {
+              onNavigateCustomerPage?.();
+              return;
+            }
+
+            if (label === "聊天" || label === "工作台") {
+              onNavigateChat?.();
+            }
+          }}
           onResizeStart={handleAccountRailResizeStart}
-          onSelectAccount={setActiveAccount}
+          onSelectAccount={async (accountId) => {
+            onNavigateChat?.();
+            await setActiveAccount(accountId);
+          }}
           onOpenSettings={onOpenSettings}
-          onTakeOverAccount={takeOverAccount}
+          onTakeOverAccount={handleTakeOverAccount}
           takeoverStatusByAccountId={takeoverStatusByAccountId}
         />
 
@@ -976,146 +1192,168 @@ function ChatWorkbenchContent({
             data-testid="chat-workbench-content"
             style={{ minWidth: `${MIN_WORKBENCH_CONTENT_WIDTH}px` }}
           >
-            <div
-              className="grid h-full min-h-0 overflow-hidden rounded-[inherit]"
-              data-testid="chat-main-layout"
-              style={{
-                gridTemplateColumns: `${CONVERSATION_LIST_PANEL_WIDTH}px minmax(0, 1fr)`,
-              }}
-            >
-              <ConversationListPanel
-                activeConversation={activeConversation}
-                activeMode={activeMode}
-                conversations={visibleSearchableConversations}
-                isConversationActionDisabled={isConversationActionDisabled}
-                onDeleteConversation={deleteConversation}
-                onMarkConversationRead={markConversationRead}
-                onMarkConversationUnread={markConversationUnread}
-                onPinConversation={pinConversation}
-                onSelectConversation={handleSelectConversation}
-                onSelectMode={handleSelectMode}
-                onUnpinConversation={unpinConversation}
-                searchableConversations={visibleSearchableConversations}
+            {activeView === "customers" ? (
+              <CustomerPage
+                accounts={accounts}
+                currentEmployeeId={me?.id}
+                onStartChat={handleStartCustomerChat}
               />
+            ) : (
+              <div
+                className="grid h-full min-h-0 overflow-hidden rounded-[inherit]"
+                data-testid="chat-main-layout"
+                style={{
+                  gridTemplateColumns: `${CONVERSATION_LIST_PANEL_WIDTH}px minmax(0, 1fr)`,
+                }}
+              >
+                <ConversationListPanel
+                  activeConversation={activeConversation}
+                  activeMode={activeMode}
+                  conversations={visibleSearchableConversations}
+                  isConversationActionDisabled={isConversationActionDisabled}
+                  isConversationLoading={isConversationLoading}
+                  onDeleteConversation={deleteConversation}
+                  onMarkConversationRead={markConversationRead}
+                  onMarkConversationUnread={markConversationUnread}
+                  onPinConversation={pinConversation}
+                  onSelectConversation={handleSelectConversation}
+                  onSelectMode={handleSelectMode}
+                  onUnpinConversation={unpinConversation}
+                  searchableConversations={visibleSearchableConversations}
+                />
 
-              <ChatPanel
-                accountName={activeAccount?.name}
-                accountAvatarUrl={activeAccount?.avatarUrl}
-                activeConversation={activeConversation}
-                activeHistoryStatus={activeHistoryStatus}
-                canSendMessage={canSendMessage}
-                composerPlaceholder={composerPlaceholder}
-                customer={activeCustomer}
-                sidebarIframeTos={sidebarIframeTos}
-                customerPanelWidth={customerPanelWidth}
-                draft={draft}
-                groupMembers={activeGroupMembers}
-                isGroupMembersLoading={isActiveGroupMembersLoading}
-                inputEnterBehavior={inputEnterBehavior}
-                isConversationLoading={isConversationLoading}
-                isEmojiPickerOpen={isEmojiPickerOpen}
-                isSendingDraft={isSendingDraft}
-                isResizingCustomerPanel={isResizingCustomerPanel}
-                fileUploadQueue={fileUploadQueue}
-                hasMoreHistory={hasMoreHistory}
-                historyLoadLabel={historyLoadLabel}
-                messages={activeMessages}
-                messageViewportRef={messageViewportRef}
-                quotedMessage={quotedMessage}
-                sidebarItems={sidebarItems}
-                onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
-                onComposerSegmentsChange={handleComposerSegmentsChange}
-                onCancelFileUpload={handleCancelFileUpload}
-                onClearQuotedMessage={() => setQuotedMessage(null)}
-                onDownloadMessageFile={handleDownloadMessageFile}
-                onDraftChange={handleDraftChange}
-                onEmojiPickerOpenChange={setIsEmojiPickerOpen}
-                onEnterBehaviorChange={setInputEnterBehavior}
-                onFileSelect={handleFileSelect}
-                onOpenHistory={() => {
-                  if (isHistoryPanelOpen) {
-                    closeHistoryPanel();
-                    return;
+                <ChatPanel
+                  accountName={activeAccount?.name}
+                  accountAvatarUrl={activeAccount?.avatarUrl}
+                  activeConversation={activeConversation}
+                  activeHistoryStatus={activeHistoryStatus}
+                  canSendMessage={canSendMessage}
+                  composerPlaceholder={composerPlaceholder}
+                  customer={activeCustomer}
+                  sidebarIframeTos={sidebarIframeTos}
+                  sidebarIframeSendStatus={sidebarIframeSendStatus}
+                  customerPanelWidth={customerPanelWidth}
+                  draft={draft}
+                  groupMembers={activeGroupMembers}
+                  isGroupMembersLoading={isActiveGroupMembersLoading}
+                  inputEnterBehavior={inputEnterBehavior}
+                  isConversationLoading={isConversationLoading}
+                  isEmojiPickerOpen={isEmojiPickerOpen}
+                  isSendingDraft={isSendingDraft}
+                  isResizingCustomerPanel={isResizingCustomerPanel}
+                  fileUploadQueue={fileUploadQueue}
+                  hasMoreHistory={hasMoreHistory}
+                  historyLoadLabel={historyLoadLabel}
+                  messages={activeMessages}
+                  messageViewportRef={messageViewportRef}
+                  quotedMessage={quotedMessage}
+                  sidebarItems={sidebarItems}
+                  onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
+                  onComposerSegmentsChange={handleComposerSegmentsChange}
+                  onCancelFileUpload={handleCancelFileUpload}
+                  onClearQuotedMessage={() => setQuotedMessage(null)}
+                  onDownloadMessageFile={handleDownloadMessageFile}
+                  onTranscribeVoice={handleTranscribeVoice}
+                  onVoicePlaybackReady={handleVoicePlaybackReady}
+                  onDraftChange={handleDraftChange}
+                  onEmojiPickerOpenChange={setIsEmojiPickerOpen}
+                  onEnterBehaviorChange={setInputEnterBehavior}
+                  onFileSelect={handleFileSelect}
+                  onOpenHistory={() => {
+                    if (isHistoryPanelOpen) {
+                      closeHistoryPanel();
+                      return;
+                    }
+
+                    void openHistoryPanel(activeConversation?.id);
+                  }}
+                  onHistoryClose={() => closeHistoryPanel()}
+                  onHistoryLoadMoreNext={() => {
+                    const nextCursor =
+                      activeConversation
+                        ? historyPanelByConversationId[activeConversation.id]
+                            ?.nextCursor
+                        : undefined;
+                    void loadHistoryMessages({
+                      cursor: nextCursor,
+                      direction: "next",
+                    });
+                  }}
+                  onHistoryLoadMorePrev={() => {
+                    const prevCursor =
+                      activeConversation
+                        ? historyPanelByConversationId[activeConversation.id]
+                            ?.prevCursor
+                        : undefined;
+                    void loadHistoryMessages({
+                      cursor: prevCursor,
+                      direction: "prev",
+                    });
+                  }}
+                  onHistoryRefresh={() => {
+                    void loadHistoryMessages({ direction: "next" });
+                  }}
+                  onHistorySetDay={(day) => {
+                    void setHistoryPanelDay(day);
+                  }}
+                  onHistorySetScope={(scope) => {
+                    void setHistoryPanelScope(scope);
+                  }}
+                  onHistorySetSenderId={(senderId) => {
+                    void setHistoryPanelSenderId(senderId);
+                  }}
+                  onRefreshGroupMembers={() => {
+                    void loadActiveGroupMembers({ force: true });
+                  }}
+                  onLoadOlderMessages={handleLoadOlderMessages}
+                  onMentionMessage={handleMentionMessage}
+                  onOpenQuotedMessage={handleOpenQuotedMessage}
+                  onQuoteMessage={handleQuoteMessage}
+                  onRevokeMessage={handleRevokeMessage}
+                  onMessageViewportScroll={handleMessageViewportScroll}
+                  onRetryMessage={handleRetryFailedMessage}
+                  retryingMessageIds={retryingMessageIds}
+                  onSendDraft={handleSendDraft}
+                  onDismissScopeTransitionError={() => {
+                    setFileUploadTransitionError(undefined);
+                    dismissScopeTransitionError();
+                  }}
+                  scopeTransitionError={
+                    fileUploadTransitionError ?? scopeTransitionError
                   }
-
-                  void openHistoryPanel(activeConversation?.id);
-                }}
-                onHistoryClose={() => closeHistoryPanel()}
-                onHistoryLoadMoreNext={() => {
-                  const nextCursor =
+                  historyPanel={
                     activeConversation
-                      ? historyPanelByConversationId[activeConversation.id]?.nextCursor
-                      : undefined;
-                  void loadHistoryMessages({
-                    cursor: nextCursor,
-                    direction: "next",
-                  });
-                }}
-                onHistoryLoadMorePrev={() => {
-                  const prevCursor =
-                    activeConversation
-                      ? historyPanelByConversationId[activeConversation.id]?.prevCursor
-                      : undefined;
-                  void loadHistoryMessages({
-                    cursor: prevCursor,
-                    direction: "prev",
-                  });
-                }}
-                onHistoryRefresh={() => {
-                  void loadHistoryMessages({ direction: "next" });
-                }}
-                onHistorySetDay={(day) => {
-                  void setHistoryPanelDay(day);
-                }}
-                onHistorySetScope={(scope) => {
-                  void setHistoryPanelScope(scope);
-                }}
-                onHistorySetSenderId={(senderId) => {
-                  void setHistoryPanelSenderId(senderId);
-                }}
-                onRefreshGroupMembers={() => {
-                  void loadActiveGroupMembers({ force: true });
-                }}
-                onLoadOlderMessages={handleLoadOlderMessages}
-                onMentionMessage={handleMentionMessage}
-                onOpenQuotedMessage={handleOpenQuotedMessage}
-                onQuoteMessage={handleQuoteMessage}
-                onMessageViewportScroll={handleMessageViewportScroll}
-                onRetryMessage={retryFailedMessage}
-                onSendDraft={handleSendDraft}
-                onDismissScopeTransitionError={() => {
-                  setFileUploadTransitionError(undefined);
-                  dismissScopeTransitionError();
-                }}
-                scopeTransitionError={
-                  fileUploadTransitionError ?? scopeTransitionError
-                }
-                historyPanel={
-                  activeConversation
-                    ? {
-                        activeHistory:
-                          historyPanelByConversationId[activeConversation.id],
-                        activeHistoryError:
-                          historyPanelErrorByConversationId[activeConversation.id],
-                        activeHistoryFilters:
-                          historyPanelFiltersByConversationId[activeConversation.id] ??
-                          {
-                            scope: "all",
-                          },
-                        activeHistoryLoading:
-                          historyPanelLoadingByConversationId[activeConversation.id] ??
-                          false,
-                        scrollMode:
-                          historyPanelScrollModeByConversationId[activeConversation.id],
-                        isOpen: isHistoryPanelOpen,
-                      }
-                    : undefined
-                }
-                isHistoryPanelOpen={isHistoryPanelOpen}
-                composerRef={composerRef}
-                workbenchBodyRef={workbenchBodyRef}
-              />
-            </div>
+                      ? {
+                          activeHistory:
+                            historyPanelByConversationId[activeConversation.id],
+                          activeHistoryError:
+                            historyPanelErrorByConversationId[
+                              activeConversation.id
+                            ],
+                          activeHistoryFilters:
+                            historyPanelFiltersByConversationId[
+                              activeConversation.id
+                            ] ?? {
+                              scope: "all",
+                            },
+                          activeHistoryLoading:
+                            historyPanelLoadingByConversationId[
+                              activeConversation.id
+                            ] ?? false,
+                          scrollMode:
+                            historyPanelScrollModeByConversationId[
+                              activeConversation.id
+                            ],
+                          isOpen: isHistoryPanelOpen,
+                        }
+                      : undefined
+                  }
+                  isHistoryPanelOpen={isHistoryPanelOpen}
+                  composerRef={composerRef}
+                  workbenchBodyRef={workbenchBodyRef}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

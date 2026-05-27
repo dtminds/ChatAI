@@ -275,7 +275,71 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
-  it("posts conversation delete payload to the Java internal API", async () => {
+  it("posts message content update payload to the Java internal API using audit id as updateId", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: "", error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await createWorkbenchJavaClient().updateMessageContent({
+      content: "{\"fileUrl\":\"s5/msg/voice.amr\",\"transFileUrl\":\"s5/playable-voice/voice.wav\"}",
+      platform: 5,
+      uid: 9001,
+      updateId: 538,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/update-message-content",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "{\"fileUrl\":\"s5/msg/voice.amr\",\"transFileUrl\":\"s5/playable-voice/voice.wav\"}",
+          platform: 5,
+          uid: 9001,
+          updateId: 538,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts sentence recognition payload to the Java internal API using the voice URL", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: "这是一条语音识别文本",
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().recognizeSentence({
+        voiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
+      }),
+    ).resolves.toBe("这是一条语音识别文本");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/tencent-cloud/sentence-recognition",
+      expect.objectContaining({
+        body: JSON.stringify({
+          voiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts conversation hide payload to the Java internal API", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
@@ -291,11 +355,47 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed/conversation/delete",
+      "https://java.internal/third-internal/wap-embed/conversation/hide",
       expect.objectContaining({
         body: JSON.stringify({
           conversationId: 88,
           platform: 5,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts manual-new conversation payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: 99887766, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().createConversation({
+        chatType: 1,
+        platform: 5,
+        thirdExternalUserId: "external-001",
+        thirdGroupId: undefined,
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({ conversationId: "99887766" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/manual-new",
+      expect.objectContaining({
+        body: JSON.stringify({
+          chatType: 1,
+          platform: 5,
+          thirdExternalUserid: "external-001",
+          thirdGroupId: undefined,
+          thirdUserid: "seat-user-001",
           uid: 9001,
         }),
         method: "POST",
@@ -377,6 +477,57 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts revoke message payload and preserves Java errorMsg", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { optNo: "revoke-opt-001" }, error: 0, errorMsg: "", success: true }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 601, errorMsg: "已超过撤回时间", success: false }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      );
+
+    await expect(
+      createWorkbenchJavaClient().revokeMessage({
+        platform: 5,
+        revokeMsgId: 321,
+        uid: 9001,
+      }),
+    ).resolves.toEqual({ optNo: "revoke-opt-001" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://java.internal/third-internal/wap-embed/conversation/revoke-message",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platform: 5,
+          revokeMsgId: 321,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().revokeMessage({
+        platform: 5,
+        revokeMsgId: 322,
+        uid: 9001,
+      }),
+    ).rejects.toMatchObject({
+      details: {
+        error: 601,
+      },
+      message: "已超过撤回时间",
+    });
+  });
+
   it("posts a single text message to the Java send-message API", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -426,6 +577,59 @@ describe("createWorkbenchJavaClient", () => {
           sendType: 2,
           source: 1,
           thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts failMsgId for retry send-message requests", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { optNo: "opt-retry-001" },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createWorkbenchJavaClient().sendMessage({
+      clientMessageId: "local-retry-001",
+      failMsgId: 538,
+      msgData: {
+        msgtype: "text",
+        text: "重试消息",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/send-message",
+      expect.objectContaining({
+        body: JSON.stringify({
+          failMsgId: 538,
+          msgData: {
+            msgtype: "text",
+            text: "重试消息",
+          },
+          platform: 5,
+          sendType: 1,
+          source: 1,
+          thirdExternalUserid: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
         }),

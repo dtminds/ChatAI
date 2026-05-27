@@ -73,6 +73,7 @@ export type JavaSendMessageData =
 
 export type JavaSendMessageInput = {
   clientMessageId: string;
+  failMsgId?: number;
   msgData: JavaSendMessageData;
   platform: number;
   sendType: (typeof JAVA_SEND_TYPE)[keyof typeof JAVA_SEND_TYPE];
@@ -87,7 +88,19 @@ type JavaSendMessageResponse = {
   optNo?: string;
 };
 
+type JavaRevokeMessageResponse = {
+  optNo?: string;
+};
+
 export type WorkbenchJavaClient = {
+  createConversation(input: {
+    chatType: number;
+    platform: number;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<{ conversationId: string } | undefined>;
   deleteConversation(input: {
     conversationId: string;
     platform: number;
@@ -116,12 +129,26 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+  recognizeSentence(input: {
+    voiceUrl: string;
+  }): Promise<string>;
+  revokeMessage(input: {
+    platform: number;
+    revokeMsgId: number;
+    uid: number;
+  }): Promise<JavaRevokeMessageResponse | undefined>;
   sendMessage(input: JavaSendMessageInput): Promise<WorkbenchSendMessageResponse>;
   takeOverSeat(input: {
     platform: number;
     subId: number;
     thirdUserId: string;
     uid: number;
+  }): Promise<void>;
+  updateMessageContent(input: {
+    content: string;
+    platform: number;
+    uid: number;
+    updateId: number;
   }): Promise<void>;
   unpinConversation(input: {
     conversationId: string;
@@ -137,11 +164,36 @@ export function createWorkbenchJavaClient(
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
   return {
+    createConversation(input) {
+      return postJavaEnvelope<number | string>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/manual-new",
+        {
+          chatType: input.chatType,
+          platform: input.platform,
+          thirdExternalUserid: input.thirdExternalUserId,
+          thirdGroupId: input.thirdGroupId,
+          thirdUserid: input.thirdUserId,
+          uid: input.uid,
+        },
+        logger,
+        "create-conversation",
+      )
+        .then((conversationId) => ({ conversationId: String(conversationId) }))
+        .catch((error) => {
+          logger.warn(
+            { error, input },
+            "调用 Java 创建会话接口失败",
+          );
+          return undefined;
+        });
+    },
     deleteConversation(input) {
       return postConversationOperate(
         baseUrl,
         token,
-        "/third-internal/wap-embed/conversation/delete",
+        "/third-internal/wap-embed/conversation/hide",
         input,
         logger,
         "delete-conversation",
@@ -197,6 +249,27 @@ export function createWorkbenchJavaClient(
         "pin-conversation",
       );
     },
+    recognizeSentence(input) {
+      return postJavaEnvelope<string>(
+        baseUrl,
+        token,
+        "/third-internal/tencent-cloud/sentence-recognition",
+        input,
+        logger,
+        "sentence-recognition",
+      );
+    },
+    revokeMessage(input) {
+      return postJavaEnvelope<JavaRevokeMessageResponse>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/revoke-message",
+        input,
+        logger,
+        "revoke-message",
+        { exposeErrorMessage: true },
+      );
+    },
     async sendMessage(input) {
       const response = await postJavaEnvelope<JavaSendMessageResponse>(
         baseUrl,
@@ -223,6 +296,16 @@ export function createWorkbenchJavaClient(
         input,
         logger,
         "take-over-seat",
+      ).then(() => undefined);
+    },
+    updateMessageContent(input) {
+      return postJavaEnvelope<string>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/update-message-content",
+        input,
+        logger,
+        "update-message-content",
       ).then(() => undefined);
     },
     unpinConversation(input) {
@@ -259,6 +342,7 @@ async function postConversationOperate(
 
 function buildJavaSendMessageBody(input: JavaSendMessageInput) {
   return {
+    ...(input.failMsgId != null ? { failMsgId: input.failMsgId } : {}),
     msgData: input.msgData,
     platform: input.platform,
     sendType: input.sendType,
@@ -362,6 +446,7 @@ async function postJavaEnvelope<T>(
   body: unknown,
   logger: AppLogger,
   operation: string,
+  options: { exposeErrorMessage?: boolean } = {},
 ): Promise<T> {
   const response = await postJava<JavaApiResponse<T>>(
     baseUrl,
@@ -385,7 +470,11 @@ async function postJavaEnvelope<T>(
     );
     throw new BadGatewayError(
       WORKBENCH_INTERNAL_API_FAILED_CODE,
-      JAVA_INTERNAL_API_USER_MESSAGE,
+      // Only use this for Java business messages that product has approved
+      // for direct customer-service operator display.
+      options.exposeErrorMessage
+        ? response.errorMsg?.trim() || JAVA_INTERNAL_API_USER_MESSAGE
+        : JAVA_INTERNAL_API_USER_MESSAGE,
       {
         error: response.error,
       },
@@ -406,12 +495,14 @@ function buildJavaLogContext(body: unknown) {
     "conversationId",
     "msgid",
     "platform",
+    "revokeMsgId",
     "sendType",
     "subId",
     "thirdExternalUserid",
     "thirdGroupId",
     "thirdUserId",
     "uid",
+    "updateId",
   ]) {
     if (body[key] != null) {
       context[key] = body[key];

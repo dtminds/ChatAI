@@ -8,6 +8,7 @@ import { ChatComposer } from "@/pages/chat/components/chat-composer";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
+import type { SidebarIframeSendStatus } from "@/pages/chat/lib/sidebar-iframe-url";
 import { MessageHistorySidePanel } from "@/pages/chat/components/message-history-side-panel";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import type {
@@ -32,6 +33,8 @@ type ChatPanelProps = {
   customer?: CustomerProfile;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
   sidebarIframeTos?: "0" | "1";
+  /** 侧栏 iframe `sendStatus`：发送能力状态码 */
+  sidebarIframeSendStatus?: SidebarIframeSendStatus;
   customerPanelWidth: number;
   draft: string;
   groupMembers: GroupMember[];
@@ -85,9 +88,16 @@ type ChatPanelProps = {
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRevokeMessage?: (message: ChatMessage) => void;
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  onVoicePlaybackReady?: (
+    message: ChatMessage,
+    payload: { playbackUrl: string },
+  ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
+  retryingMessageIds?: ReadonlySet<string>;
   onSendDraft: (segments: ComposerSegment[]) => void;
   onDismissScopeTransitionError: () => void;
   scopeTransitionError?: string;
@@ -107,6 +117,7 @@ export function ChatPanel({
   composerPlaceholder,
   customer,
   sidebarIframeTos,
+  sidebarIframeSendStatus,
   customerPanelWidth,
   draft,
   groupMembers,
@@ -143,10 +154,14 @@ export function ChatPanel({
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
+  onRevokeMessage,
   onClearQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  onVoicePlaybackReady,
+  retryingMessageIds,
   onSendDraft,
+  onTranscribeVoice,
   onDismissScopeTransitionError,
   scopeTransitionError,
   sidebarItems,
@@ -190,8 +205,12 @@ export function ChatPanel({
                 onLoadOlderMessages={onLoadOlderMessages}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
+                onRevokeMessage={onRevokeMessage}
                 onMessageViewportScroll={onMessageViewportScroll}
                 onRetryMessage={onRetryMessage}
+                onTranscribeVoice={onTranscribeVoice}
+                onVoicePlaybackReady={onVoicePlaybackReady}
+                retryingMessageIds={retryingMessageIds}
               />
 
               <Separator className="bg-divider" />
@@ -225,6 +244,7 @@ export function ChatPanel({
                     canSendMessage={canSendMessage}
                     draft={draft}
                     hasActiveFileUpload={hasActiveFileUpload}
+                    currentSeatThirdUserId={activeConversation.thirdUserId}
                     groupMembers={groupMembers}
                     isGroupConversation={activeConversation.mode === "group"}
                     inputEnterBehavior={inputEnterBehavior}
@@ -273,6 +293,7 @@ export function ChatPanel({
                   sidebarIframeConversationId={activeConversation.id}
                   sidebarIframeSeatId={activeConversation.accountId}
                   sidebarIframeTos={sidebarIframeTos}
+                  sidebarIframeSendStatus={sidebarIframeSendStatus}
                   groupMembers={groupMembers}
                   isGroupMembersLoading={isGroupMembersLoading}
                   isResizing={isResizingCustomerPanel}
@@ -292,6 +313,8 @@ export function ChatPanel({
                   activeHistoryFilters={historyPanel.activeHistoryFilters}
                   activeHistoryLoading={historyPanel.activeHistoryLoading}
                   onDownloadMessageFile={onDownloadMessageFile}
+                  onTranscribeVoice={onTranscribeVoice}
+                  onVoicePlaybackReady={onVoicePlaybackReady}
                   scrollMode={historyPanel.scrollMode}
                   customer={customer}
                   groupMembers={groupMembers}

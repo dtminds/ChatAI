@@ -17,14 +17,18 @@ import type {
   WorkbenchMessageFileDownloadResponse,
   WorkbenchMessagePageDto,
   WorkbenchMessageStatus,
-  WorkbenchMessageStatusChangeDto,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
+  WorkbenchRevokeMessageResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSidebarIframeParamsRequest,
   WorkbenchTakeOverSeatResponse,
   WorkbenchUploadCredentialResponse,
+  WorkbenchVoicePlaybackConfirmRequest,
+  WorkbenchVoicePlaybackConfirmResponse,
+  WorkbenchVoiceTranscriptionRequest,
+  WorkbenchVoiceTranscriptionResponse,
 } from "@chatai/contracts";
 import { NotFoundError } from "../../src/shared/errors.js";
 
@@ -43,11 +47,6 @@ type WorkbenchEvent =
       version: number;
       type: "message";
       payload: WorkbenchMessageDto;
-    }
-  | {
-      version: number;
-      type: "message-status";
-      payload: WorkbenchMessageStatusChangeDto;
     };
 
 type MemoryWorkbenchState = {
@@ -225,6 +224,68 @@ export function createMemoryWorkbenchService() {
         status: "accepted",
       };
     },
+    confirmVoicePlaybackReady(
+      _subUserId: string,
+      input: WorkbenchVoicePlaybackConfirmRequest,
+    ): WorkbenchVoicePlaybackConfirmResponse {
+      const conversation = findConversation(state, input.conversationId);
+
+      if (!conversation) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      state.messagesByConversationId[input.conversationId] = (
+        state.messagesByConversationId[input.conversationId] ?? []
+      ).map((item) =>
+        item.seq === input.messageSeq && item.contentType === "voice"
+          ? {
+              ...item,
+              content: {
+                ...item.content,
+                playbackUrl: input.playbackUrl,
+                transFileUrl: input.playbackUrl,
+                transFileUrlPersisted: true,
+              },
+            }
+          : item,
+      );
+
+      return {
+        messageSeq: input.messageSeq,
+        playbackUrl: input.playbackUrl,
+        transFileUrlPersisted: true,
+      };
+    },
+    transcribeVoiceMessage(
+      _subUserId: string,
+      input: WorkbenchVoiceTranscriptionRequest,
+    ): WorkbenchVoiceTranscriptionResponse {
+      const conversation = findConversation(state, input.conversationId);
+
+      if (!conversation) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      state.messagesByConversationId[input.conversationId] = (
+        state.messagesByConversationId[input.conversationId] ?? []
+      ).map((item) =>
+        item.seq === input.messageSeq && item.contentType === "voice"
+          ? {
+              ...item,
+              content: {
+                ...item.content,
+                transVoiceText: "这是一段语音转文字测试文本",
+              },
+            }
+          : item,
+      );
+
+      return {
+        messageSeq: input.messageSeq,
+        transVoiceText: "这是一段语音转文字测试文本",
+        transVoiceTextPersisted: true,
+      };
+    },
     markConversationRead(
       _subUserId: string,
       conversationId: string,
@@ -297,13 +358,15 @@ export function createMemoryWorkbenchService() {
     },
     poll(_subUserId: string, request: WorkbenchPollRequest): WorkbenchPollResponse {
       const relevantEvents = state.events.filter((event) => event.version > request.sinceVersion);
-      const seatChanges = collapseLatest(
-        relevantEvents.filter(
+      const seatUpdateCursor = request.seatUpdateCursor ?? request.sinceVersion;
+      const seatUpdateEvents = collapseLatest(
+        state.events.filter(
           (event): event is Extract<WorkbenchEvent, { type: "seat" }> =>
-            event.type === "seat",
+            event.type === "seat" && event.version > seatUpdateCursor,
         ),
         (event) => event.payload.seatId,
-      ).map((event) => event.payload);
+      );
+      const seatChanges = seatUpdateEvents.map((event) => event.payload);
       const conversationChanges = collapseLatest(
         relevantEvents.filter(
           (event): event is Extract<WorkbenchEvent, { type: "conversation" }> =>
@@ -320,18 +383,12 @@ export function createMemoryWorkbenchService() {
             event.payload.seq > (request.activeMessageSeq ?? 0),
         )
         .map((event) => event.payload);
-      const messageStatusChanges = relevantEvents
-        .filter(
-          (event): event is Extract<WorkbenchEvent, { type: "message-status" }> =>
-            event.type === "message-status",
-        )
-        .map((event) => event.payload);
 
       return {
         seatChanges: clone(seatChanges),
         activeConversationMessages: clone(activeConversationMessages),
         conversationChanges: clone(conversationChanges),
-        messageStatusChanges: clone(messageStatusChanges),
+        nextSeatUpdateCursor: getNextMemoryEventCursor(seatUpdateCursor, seatUpdateEvents),
         nextVersion: state.version,
       };
     },
@@ -390,13 +447,7 @@ export function createMemoryWorkbenchService() {
       pushConversationEvent(state, nextConversation);
       pushSeatEvent(state, payload.seatId);
       backendMessages.forEach((message) => {
-        pushMessageStatusEvent(state, {
-          clientMessageId: message.clientMessageId,
-          conversationId: message.conversationId,
-          messageId: message.messageId,
-          reason: outcome.reason,
-          status: outcome.status,
-        });
+        pushMessageEvent(state, message);
       });
 
       return {
@@ -410,6 +461,13 @@ export function createMemoryWorkbenchService() {
         })),
         status: "accepted",
       };
+    },
+    revokeMessage(
+      _subUserId: string,
+      conversationId: string,
+      messageId: string,
+    ): WorkbenchRevokeMessageResponse {
+      return revokeMessage(state, conversationId, messageId);
     },
     takeOverSeat(_subUserId: string, seatId: string): WorkbenchTakeOverSeatResponse {
       const seat = findSeat(state, seatId);
@@ -716,6 +774,69 @@ function removeConversation(
   };
 }
 
+function revokeMessage(
+  state: MemoryWorkbenchState,
+  conversationId: string,
+  messageId: string,
+): WorkbenchRevokeMessageResponse {
+  const conversation = findConversation(state, conversationId);
+
+  if (!conversation) {
+    throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+  }
+
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+  const targetMessage = messages.find(
+    (message) =>
+      message.messageId === messageId ||
+      String(message.seq) === messageId ||
+      message.optNo === messageId,
+  );
+
+  if (!targetMessage) {
+    throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
+  }
+
+  const nextMessage = {
+    ...targetMessage,
+    isRevoked: true,
+  };
+  state.messagesByConversationId[conversationId] = messages.map((message) =>
+    message.messageId === targetMessage.messageId ? nextMessage : message,
+  );
+
+  const revokeSignal = {
+    content: {
+      revokeMsgId: String(targetMessage.seq),
+      revokeOriginMsgId: String(targetMessage.seq),
+      type: "revoke",
+    },
+    contentType: "revoke",
+    conversationId,
+    createdAt: Date.now(),
+    customerId: targetMessage.customerId,
+    messageId: `revoke-${targetMessage.messageId}`,
+    seatId: targetMessage.seatId,
+    senderType: "system" as const,
+    seq: getNextMessageSeq(state, conversationId),
+    status: "sent" as const,
+  } satisfies WorkbenchMessageDto;
+
+  state.messagesByConversationId[conversationId] = [
+    ...state.messagesByConversationId[conversationId],
+    revokeSignal,
+  ];
+  pushMessageEvent(state, nextMessage);
+  pushMessageEvent(state, revokeSignal);
+
+  return {
+    accepted: true,
+    conversationId,
+    messageId,
+    revokeMsgId: targetMessage.seq,
+  };
+}
+
 function getSeatUnreadCountValue(state: MemoryWorkbenchState, seatId: string) {
   return findSeat(state, seatId)?.unreadCount ?? 0;
 }
@@ -755,6 +876,7 @@ function pushSeatEvent(state: MemoryWorkbenchState, seatId: string) {
   state.version += 1;
   state.events.push({
     payload: {
+      hostSubUserId: seat.hostSubUserId ?? null,
       seatId,
       lastMessageTime: seat.lastMessageTime,
       unreadCount: seat.unreadCount,
@@ -762,6 +884,22 @@ function pushSeatEvent(state: MemoryWorkbenchState, seatId: string) {
     type: "seat",
     version: state.version,
   });
+}
+
+function getNextMemoryEventCursor(
+  currentCursor: number,
+  events: Array<{
+    version?: number;
+  }>,
+) {
+  if (!Number.isFinite(currentCursor)) {
+    return undefined;
+  }
+
+  return events.reduce(
+    (latest, event) => Math.max(latest, event.version ?? currentCursor),
+    currentCursor,
+  );
 }
 
 function pushConversationEvent(
@@ -779,6 +917,15 @@ function pushConversationEvent(
   });
 }
 
+function pushMessageEvent(state: MemoryWorkbenchState, message: WorkbenchMessageDto) {
+  state.version += 1;
+  state.events.push({
+    payload: message,
+    type: "message",
+    version: state.version,
+  });
+}
+
 function pushConversationRemoveEvent(
   state: MemoryWorkbenchState,
   seatId: string,
@@ -792,18 +939,6 @@ function pushConversationRemoveEvent(
       type: "remove",
     },
     type: "conversation",
-    version: state.version,
-  });
-}
-
-function pushMessageStatusEvent(
-  state: MemoryWorkbenchState,
-  change: WorkbenchMessageStatusChangeDto,
-) {
-  state.version += 1;
-  state.events.push({
-    payload: change,
-    type: "message-status",
     version: state.version,
   });
 }

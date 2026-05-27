@@ -102,6 +102,7 @@ describe("backend app", () => {
     delete process.env.JWT_PRIVATE_KEY;
     delete process.env.JWT_PUBLIC_KEY;
     delete process.env.NODE_ENV;
+    delete process.env.PLAYABLE_MEDIA_HOST;
   });
 
   it("serves health and readiness endpoints", async () => {
@@ -153,8 +154,8 @@ describe("backend app", () => {
     );
   });
 
-  it("disables request logging for the media proxy route", async () => {
-    expect(shouldDisableRequestLogging({ url: "/api/server/media/proxy?url=https%3A%2F%2Fb5.bokr.com.cn%2Ffoo" })).toBe(true);
+  it("disables request logging for playable voice checks", async () => {
+    expect(shouldDisableRequestLogging({ url: "/api/server/media/playable-voice?url=https%3A%2F%2Fb5.bokr.com.cn%2Ffoo" })).toBe(true);
     expect(shouldDisableRequestLogging({ url: "/api/server/conversations" })).toBe(false);
   });
 
@@ -637,6 +638,17 @@ describe("backend app", () => {
     expect(refresh.json()).toMatchObject({
       data: {
         expiresIn: 1200,
+        subUser: {
+          accountType: "sub",
+          displayName: "客服一号",
+          permissions: [
+            "chat.access",
+            "chat.send",
+            "chat.takeover",
+          ],
+          role: "operator",
+          subUserId: "101",
+        },
       },
       success: true,
     });
@@ -1225,12 +1237,26 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("proxies allowlisted media through the authenticated server API", async () => {
+  it("does not expose the old media proxy route", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/proxy?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/voice/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("checks playable voice availability through a HEAD request", async () => {
     const { app, authorization } = await createAuthenticatedApp();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(new Uint8Array([1, 2, 3]), {
+      new Response(null, {
         headers: {
-          "content-type": "audio/amr",
+          "content-type": "audio/wav",
         },
         status: 200,
       }),
@@ -1239,15 +1265,21 @@ describe("backend app", () => {
     const response = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: `/api/server/media/proxy?url=${encodeURIComponent("https://b5.bokr.com.cn/bilin/20260421/272/voice.amr")}`,
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/voice/20260513/272/voice.amr")}`,
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.headers["content-type"]).toContain("audio/amr");
-    expect(response.body).toBe("\u0001\u0002\u0003");
+    expect(response.json()).toEqual({
+      data: {
+        playable: true,
+        playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
+      },
+      success: true,
+    });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://b5.bokr.com.cn/bilin/20260421/272/voice.amr",
+      "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
       expect.objectContaining({
+        method: "HEAD",
         signal: expect.any(AbortSignal),
       }),
     );
@@ -1255,13 +1287,138 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("rejects media proxy requests to non-allowlisted origins", async () => {
+  it("checks playable voice availability with configured media host", async () => {
+    process.env.PLAYABLE_MEDIA_HOST = "https://media.example.com:8443/";
+    const { app, authorization } = await createAuthenticatedApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 200 }),
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://media.example.com:8443/s5/voice/20260513/272/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        playable: true,
+        playableUrl: "https://media.example.com:8443/s5/playable-voice/20260513/272/voice.wav",
+      },
+      success: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://media.example.com:8443/s5/playable-voice/20260513/272/voice.wav",
+      expect.objectContaining({
+        method: "HEAD",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("checks playable voice availability for legacy s5 msg voice URLs", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, {
+        headers: {
+          "content-type": "audio/wav",
+        },
+        status: 200,
+      }),
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        playable: true,
+        playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
+      },
+      success: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
+      expect.objectContaining({
+        method: "HEAD",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("derives playable voice URL by slicing the matched source prefix", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, {
+        headers: {
+          "content-type": "audio/wav",
+        },
+        status: 200,
+      }),
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/msg/20260513/272/s5/msg/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        playable: true,
+        playableUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/s5/msg/voice.wav",
+      },
+      success: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/s5/msg/voice.wav",
+      expect.objectContaining({
+        method: "HEAD",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("reports voice as not playable when the converted wav is missing", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 404 }));
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/voice/20260513/272/voice.amr")}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        playable: false,
+      },
+      success: true,
+    });
+
+    await app.close();
+  });
+
+  it("rejects playable voice checks for non-voice source URLs", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
     const response = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: `/api/server/media/proxy?url=${encodeURIComponent("https://example.com/voice.amr")}`,
+      url: `/api/server/media/playable-voice?url=${encodeURIComponent("https://b5.bokr.com.cn/s5/image/20260513/272/image.jpg")}`,
     });
 
     expect(response.statusCode).toBe(400);
@@ -1297,6 +1454,117 @@ describe("backend app", () => {
       },
       region: expect.any(String),
     });
+
+    await app.close();
+  });
+
+  it("confirms voice playback readiness for an authenticated conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const confirmVoicePlaybackReady = vi.spyOn(
+      app.workbenchService,
+      "confirmVoicePlaybackReady",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      },
+      url: "/api/server/media/voice-playback-confirmed",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      messageSeq: 7,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      transFileUrlPersisted: true,
+    });
+    expect(confirmVoicePlaybackReady).toHaveBeenCalledWith("101", {
+      conversationId: "conv-001",
+      messageSeq: 7,
+      playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    });
+
+    await app.close();
+  });
+
+  it("rejects invalid voice playback message sequence before reaching the service", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const confirmVoicePlaybackReady = vi.spyOn(
+      app.workbenchService,
+      "confirmVoicePlaybackReady",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7.5,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      },
+      url: "/api/server/media/voice-playback-confirmed",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(confirmVoicePlaybackReady).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
+  it("transcribes voice messages for authenticated conversations", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const transcribeVoiceMessage = vi.spyOn(
+      app.workbenchService,
+      "transcribeVoiceMessage",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7,
+      },
+      url: "/api/server/media/voice-transcription",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      messageSeq: 7,
+      transVoiceText: "这是一段语音转文字测试文本",
+      transVoiceTextPersisted: true,
+    });
+    expect(transcribeVoiceMessage).toHaveBeenCalledWith("101", {
+      conversationId: "conv-001",
+      messageSeq: 7,
+    });
+
+    await app.close();
+  });
+
+  it("rejects invalid voice transcription message sequence before reaching the service", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const transcribeVoiceMessage = vi.spyOn(
+      app.workbenchService,
+      "transcribeVoiceMessage",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7.5,
+      },
+      url: "/api/server/media/voice-transcription",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(transcribeVoiceMessage).not.toHaveBeenCalled();
 
     await app.close();
   });
@@ -1631,11 +1899,76 @@ describe("backend app", () => {
       lastMessage: "后端 mock 发送测试",
       type: "upsert",
     });
-    expect(poll.json().messageStatusChanges[0]).toMatchObject({
+    expect(poll.json().activeConversationMessages).toMatchObject([
+      {
+        clientMessageId: "local-test-001",
+        conversationId: "conv-001",
+        status: "sent",
+      },
+    ]);
+    expect(
+      poll.json().activeConversationMessages.some(
+        (message) => message.clientMessageId === "local-test-001",
+      ),
+    ).toBe(true);
+    expect(poll.json().activeConversationMessages[0]).toMatchObject({
       clientMessageId: "local-test-001",
       conversationId: "conv-001",
       status: "sent",
     });
+
+    await app.close();
+  });
+
+  it("accepts revoke requests and reports revoke status through polling", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const send = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        clientMessageId: "local-revoke-001",
+        content: "这条消息马上撤回",
+        contentType: "text",
+        conversationId: "conv-001",
+        seatId: "drc",
+      },
+      url: "/api/server/messages/send",
+    });
+    const sentMessage = send.json<{ messageId: string }>();
+
+    const revoke = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+      },
+      url: `/api/server/messages/${sentMessage.messageId}/revoke`,
+    });
+    const poll = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+    });
+
+    expect(revoke.statusCode).toBe(200);
+    expect(revoke.json()).toMatchObject({
+      accepted: true,
+      conversationId: "conv-001",
+      messageId: sentMessage.messageId,
+    });
+    expect(poll.statusCode).toBe(200);
+    expect(poll.json().activeConversationMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: expect.objectContaining({
+            revokeOriginMsgId: expect.any(String),
+            type: "revoke",
+          }),
+          contentType: "revoke",
+          conversationId: "conv-001",
+        }),
+      ]),
+    );
 
     await app.close();
   });
@@ -1697,23 +2030,6 @@ describe("backend app", () => {
       },
     ]);
     expect(poll.statusCode).toBe(200);
-    expect(poll.json().messageStatusChanges).toMatchObject([
-      {
-        clientMessageId: "local-segment-test-001",
-        conversationId: "conv-001",
-        status: "sent",
-      },
-      {
-        clientMessageId: "local-segment-test-001_2",
-        conversationId: "conv-001",
-        status: "sent",
-      },
-      {
-        clientMessageId: "local-segment-test-001_3",
-        conversationId: "conv-001",
-        status: "sent",
-      },
-    ]);
     expect(messages.statusCode).toBe(200);
     expect(messages.json().messages.slice(-3)).toMatchObject([
       {
@@ -1812,8 +2128,16 @@ describe("backend app", () => {
       },
       url: "/api/server/messages/remote-msg-file-001/download",
     });
+    const revoke = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+      },
+      url: "/api/server/messages/msg-003/revoke",
+    });
 
-    for (const response of [send, takeOver, markRead, uploadCredential]) {
+    for (const response of [send, takeOver, markRead, uploadCredential, revoke]) {
       expect(response.statusCode).toBe(403);
       expect(response.json()).toEqual({
         error: {

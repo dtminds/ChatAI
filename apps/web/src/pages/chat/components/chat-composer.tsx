@@ -61,6 +61,7 @@ type ChatComposerProps = {
   draft: string;
   hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
+  currentSeatThirdUserId?: string;
   inputEnterBehavior: InputEnterBehavior;
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
@@ -101,6 +102,7 @@ export function ChatComposer({
   draft,
   hasActiveFileUpload,
   groupMembers,
+  currentSeatThirdUserId,
   inputEnterBehavior,
   isGroupConversation,
   isEmojiPickerOpen,
@@ -144,6 +146,13 @@ export function ChatComposer({
     () => getMentionTrigger(draftText, cursorPosition),
     [cursorPosition, draftText],
   );
+  const mentionableGroupMembers = useMemo(() => {
+    if (!currentSeatThirdUserId) {
+      return groupMembers;
+    }
+
+    return groupMembers.filter((member) => member.id !== currentSeatThirdUserId);
+  }, [currentSeatThirdUserId, groupMembers]);
   const filteredMentionMembers = useMemo(() => {
     if (!mentionTrigger || !isGroupConversation) {
       return [];
@@ -151,12 +160,12 @@ export function ChatComposer({
 
     const normalizedQuery = mentionTrigger.query.trim().toLocaleLowerCase();
 
-    return groupMembers.filter((member) => {
+    return mentionableGroupMembers.filter((member) => {
       return member.displayName.toLocaleLowerCase().includes(normalizedQuery);
     });
-  }, [groupMembers, isGroupConversation, mentionTrigger]);
+  }, [isGroupConversation, mentionTrigger, mentionableGroupMembers]);
   const shouldShowMentionAll = useMemo(() => {
-    if (!mentionTrigger || groupMembers.length === 0) {
+    if (!mentionTrigger || mentionableGroupMembers.length === 0) {
       return false;
     }
 
@@ -166,15 +175,15 @@ export function ChatComposer({
       normalizedQuery.length === 0 ||
       "所有人".toLocaleLowerCase().includes(normalizedQuery)
     );
-  }, [groupMembers.length, mentionTrigger]);
+  }, [mentionTrigger, mentionableGroupMembers.length]);
   const mentionDropdownItems = useMemo<MentionDropdownItem[]>(
     () => {
-      if (groupMembers.length === 0) {
+      if (mentionableGroupMembers.length === 0) {
         return [];
       }
 
       const mentionAllItem: MentionDropdownItem = {
-        displayName: `所有人（${groupMembers.length}人）`,
+        displayName: `所有人（${mentionableGroupMembers.length}人）`,
         isAll: true,
         memberId: "__all__",
       };
@@ -188,7 +197,7 @@ export function ChatComposer({
         })),
       ];
     },
-    [filteredMentionMembers, groupMembers.length, shouldShowMentionAll],
+    [filteredMentionMembers, mentionableGroupMembers.length, shouldShowMentionAll],
   );
   const isMentionPickerOpen =
     canSendMessage &&
@@ -256,9 +265,9 @@ export function ChatComposer({
   }, [isEmojiPickerOpen, onEmojiPickerOpenChange]);
 
   const handleDraftTextChange = useCallback(
-    (nextDraftText: string) => {
+    (nextDraftText: string, nextCursorPosition: number) => {
       setDraftText(nextDraftText);
-      setCursorPosition(nextDraftText.length);
+      setCursorPosition(nextCursorPosition);
       onDraftChange(nextDraftText);
     },
     [onDraftChange],
@@ -288,6 +297,9 @@ export function ChatComposer({
 
     composerRef.current?.update(() => {
       $removeComposerTextRange(mentionTrigger.start, mentionTrigger.end);
+      if (shouldPadMentionPrefix(draftText, mentionTrigger.start)) {
+        $insertComposerText(" ");
+      }
       $insertComposerMention({
         displayName: selectedMember.isAll ? "所有人" : selectedMember.displayName,
         isAll: selectedMember.isAll,
@@ -503,6 +515,7 @@ export function ChatComposer({
             className="size-7 rounded-full p-0 shadow-none"
             disabled={isSending || !canSubmitDraft}
             onClick={handleSendDraft}
+            onMouseDown={(event) => event.preventDefault()}
             size="icon"
           >
             <HugeiconsIcon
@@ -560,6 +573,9 @@ export function ChatComposer({
                 onClick={() => {
                   composerRef.current?.update(() => {
                     $removeComposerTextRange(mentionTrigger.start, mentionTrigger.end);
+                    if (shouldPadMentionPrefix(draftText, mentionTrigger.start)) {
+                      $insertComposerText(" ");
+                    }
                     $insertComposerMention({
                       displayName: member.isAll ? "所有人" : member.displayName,
                       isAll: member.isAll,
@@ -655,19 +671,25 @@ function MentionMemberAvatar({
 function getMentionTrigger(draft: string, cursorPosition: number) {
   const safeCursorPosition = Math.max(0, Math.min(cursorPosition, draft.length));
   const beforeCursor = draft.slice(0, safeCursorPosition);
-  const match = /(^|\s)@([^\s@]*)$/.exec(beforeCursor);
+  const match = /@([^\s@]*)$/.exec(beforeCursor);
 
   if (!match) {
     return null;
   }
 
-  const atIndex = match.index + match[1].length;
-
   return {
     end: safeCursorPosition,
-    query: match[2],
-    start: atIndex,
+    query: match[1],
+    start: match.index,
   };
+}
+
+function shouldPadMentionPrefix(draft: string, mentionStart: number) {
+  if (mentionStart <= 0) {
+    return false;
+  }
+
+  return !/\s/.test(draft[mentionStart - 1] ?? "");
 }
 
 function readImageFileAsDataUrl(file: File) {

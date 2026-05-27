@@ -181,6 +181,7 @@ export const seedConversations: Record<string, Conversation[]> = {
       unread: 7,
       mode: "group",
       priority: "low",
+      thirdUserId: "third-user-drc",
     },
     ...starCloudConversations,
   ],
@@ -241,7 +242,7 @@ export const seedGroupMembersByConversationId: Record<string, GroupMember[]> = {
       type: 0,
     },
     {
-      id: "member-004",
+      id: "third-user-drc",
       displayName: "德瑞可-小可",
       avatarUrl: agentAvatarUrl,
       type: 0,

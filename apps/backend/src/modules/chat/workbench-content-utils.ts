@@ -1,4 +1,4 @@
-const mediaAssetBaseUrl = "https://b5.bokr.com.cn";
+import { getPlayableMediaHost } from "./media-config.js";
 
 export function normalizeMediaAssetUrl(value: string) {
   const url = value.trim();
@@ -12,7 +12,7 @@ export function normalizeMediaAssetUrl(value: string) {
 
     return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:" ? url : "";
   } catch {
-    return `${mediaAssetBaseUrl}/${url.replace(/^\/+/, "")}`;
+    return `https://${getPlayableMediaHost()}/${url.replace(/^\/+/, "")}`;
   }
 }
 

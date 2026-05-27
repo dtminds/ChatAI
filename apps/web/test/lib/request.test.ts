@@ -1,12 +1,21 @@
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { http, request, requestInstance } from "@/lib/request";
+import { http, request, RequestNormalizedError, requestInstance } from "@/lib/request";
+import { useAuthStore } from "@/store/auth-store";
 
 const mock = new MockAdapter(requestInstance);
+const operatorSubUser = {
+  accountType: "sub" as const,
+  displayName: "客服一号",
+  permissions: ["chat.access", "chat.send", "chat.takeover"] as const,
+  role: "operator" as const,
+  subUserId: "101",
+};
 
 describe("request", () => {
   afterEach(() => {
     mock.reset();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
   });
 
   it("adds default workbench headers", async () => {
@@ -35,11 +44,14 @@ describe("request", () => {
   it("normalizes axios errors", async () => {
     mock.onPost("/messages").reply(503, { message: "Upstream unavailable" });
 
-    await expect(request({ method: "POST", url: "/messages" })).rejects.toEqual({
-      message: "Upstream unavailable",
-      status: 503,
-      code: undefined,
-    });
+    await expect(request({ method: "POST", url: "/messages" })).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        error instanceof RequestNormalizedError &&
+        error.message === "Upstream unavailable" &&
+        error.status === 503 &&
+        error.code === undefined,
+    );
   });
 
   it("normalizes API error envelopes", async () => {
@@ -51,13 +63,71 @@ describe("request", () => {
       success: false,
     });
 
-    await expect(
-      request({ method: "GET", url: "/server/accounts", _skipAuthRetry: true }),
-    ).rejects.toEqual({
-      code: "UNAUTHORIZED",
-      message: "登录已失效",
-      status: 401,
+    await expect(request({ method: "GET", url: "/server/accounts", _skipAuthRetry: true })).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        error instanceof RequestNormalizedError &&
+        error.message === "登录已失效" &&
+        error.code === "UNAUTHORIZED" &&
+        error.status === 401,
+    );
+  });
+
+  it("rejects successful HTTP responses that contain API error envelopes", async () => {
+    mock.onPost("/server/seats/ndt/take-over").reply(200, {
+      error: {
+        code: "FORBIDDEN",
+        message: "无权限访问",
+      },
+      success: false,
     });
+
+    await expect(request({ method: "POST", url: "/server/seats/ndt/take-over" })).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        error instanceof RequestNormalizedError &&
+        error.message === "无权限访问" &&
+        error.code === "FORBIDDEN" &&
+        error.status === 200,
+    );
+  });
+
+  it("throws api envelope failures as Error instances", async () => {
+    mock.onGet("/server/settings/sidebar-items").reply(200, {
+      error: {
+        code: "INVALID_SIDEBAR_URL",
+        message: "请输入有效的页面地址",
+      },
+      success: false,
+    });
+
+    await expect(request({ method: "GET", url: "/server/settings/sidebar-items" })).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        (error as { message?: string }).message === "请输入有效的页面地址",
+    );
+  });
+
+  it("preserves the original stack when normalizing thrown errors", async () => {
+    const originalError = new TypeError("请求参数无效");
+    const originalStack = "TypeError: 请求参数无效\n    at request interceptor";
+    originalError.stack = originalStack;
+    const interceptorId = requestInstance.interceptors.request.use(() => {
+      throw originalError;
+    });
+
+    try {
+      const normalizedError = await request({
+        method: "GET",
+        url: "/server/settings/sidebar-items",
+      }).catch((error: unknown) => error);
+
+      expect(normalizedError).toBeInstanceOf(Error);
+      expect((normalizedError as Error).message).toBe("请求参数无效");
+      expect((normalizedError as Error).stack).toContain(originalStack);
+    } finally {
+      requestInstance.interceptors.request.eject(interceptorId);
+    }
   });
 
   it("refreshes access tokens once and retries the failed request", async () => {
@@ -73,6 +143,7 @@ describe("request", () => {
       {
         data: {
           expiresIn: 1200,
+          subUser: operatorSubUser,
         },
         received: config.data,
         success: true,
@@ -91,6 +162,42 @@ describe("request", () => {
       withCredentials: true,
     });
     expect(mock.history.post[0]?.data).toBeUndefined();
+  });
+
+  it("stores refreshed auth session permissions after a successful refresh", async () => {
+    mock.onGet("/server/me").replyOnce(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "登录已失效",
+      },
+      success: false,
+    });
+    mock.onPost("/auth/refresh").reply(200, {
+      data: {
+        expiresIn: 1200,
+        subUser: {
+          accountType: "sub",
+          displayName: "客服（只读）",
+          permissions: ["chat.access"],
+          role: "viewer",
+          subUserId: "101",
+        },
+      },
+      success: true,
+    });
+    mock.onGet("/server/me").reply(200, {
+      displayName: "客服（只读）",
+      subUserId: "101",
+    });
+
+    await http.get("/server/me");
+
+    expect(useAuthStore.getState().subUser).toMatchObject({
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "101",
+    });
   });
 
   it("shares one refresh request across concurrent unauthorized responses", async () => {
@@ -116,6 +223,7 @@ describe("request", () => {
         {
           data: {
             expiresIn: 1200,
+            subUser: operatorSubUser,
           },
           success: true,
         },

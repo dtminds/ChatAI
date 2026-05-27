@@ -1,6 +1,9 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
-import { AuthSessionResponseSchema } from "../src/auth/dto";
+import {
+  AuthRefreshResponseSchema,
+  AuthSessionResponseSchema,
+} from "../src/auth/dto";
 import {
   SettingsSidebarItemCreateRequestSchema,
   SettingsSidebarItemsResponseSchema,
@@ -197,6 +200,27 @@ describe("settings sub-account DTOs", () => {
           role: "operator",
           subUserId: "102",
         },
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts auth refresh role and permissions", () => {
+    expect(
+      Value.Check(AuthRefreshResponseSchema, {
+        expiresIn: 1200,
+        subUser: {
+          accountType: "sub",
+          displayName: "客服一号",
+          permissions: ["chat.access", "chat.send", "chat.takeover"],
+          role: "operator",
+          subUserId: "101",
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(AuthRefreshResponseSchema, {
+        expiresIn: 1200,
       }),
     ).toBe(false);
   });

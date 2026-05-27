@@ -42,7 +42,12 @@ import {
   listManagedAccounts,
   updateManagedAccountSubAccounts,
 } from "@/pages/chat/settings/settings-service";
-import { PageHeader, StatusText } from "@/pages/chat/settings/shared";
+import {
+  PageHeader,
+  SettingsPagination,
+  StatusText,
+  useSettingsLocalPagination,
+} from "@/pages/chat/settings/shared";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
 import { cn } from "@/lib/utils";
 
@@ -106,6 +111,13 @@ export function AccountsSettingsPage() {
       account.name.toLowerCase().includes(normalizedQuery),
     );
   }, [data.managedAccounts, query]);
+  const {
+    currentPage,
+    pagedItems: pagedAccounts,
+    resetPage,
+    setPage,
+    totalPages,
+  } = useSettingsLocalPagination(filteredAccounts);
 
   async function handleSubmit(managedAccount: SettingsManagedAccount, subAccountIds: string[]) {
     setPendingAccountId(managedAccount.id);
@@ -150,7 +162,10 @@ export function AccountsSettingsPage() {
           <Input
             aria-label="搜索托管账号"
             className="h-10 rounded-[8px] pl-9"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              resetPage();
+            }}
             placeholder="搜索托管账号"
             value={query}
           />
@@ -191,8 +206,8 @@ export function AccountsSettingsPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : filteredAccounts.length > 0 ? (
-                filteredAccounts.map((account) => (
+              ) : pagedAccounts.length > 0 ? (
+                pagedAccounts.map((account) => (
                   <ManagedAccountRow
                     account={account}
                     canManage={canManageManagedAccounts}
@@ -212,6 +227,15 @@ export function AccountsSettingsPage() {
           </Table>
         </section>
       )}
+      {!isLoading && totalPages > 1 ? (
+        <div className="mt-4 flex justify-end">
+          <SettingsPagination
+            onPageChange={setPage}
+            page={currentPage}
+            totalPages={totalPages}
+          />
+        </div>
+      ) : null}
 
       <SubAccountRelationDialog
         isSubmitting={pendingAccountId === dialogState?.managedAccount.id}

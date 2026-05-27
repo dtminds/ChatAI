@@ -43,11 +43,14 @@ const railItems = [
 type AccountRailProps = {
   accounts: Account[];
   activeAccountId?: string;
+  activeNavItem?: string;
   isCollapsed?: boolean;
   currentEmployee?: EmployeeProfile;
   currentEmployeeId?: string;
+  canTakeOverAccount?: boolean;
   onCollapseChange?: (isCollapsed: boolean) => void;
   onLogout?: () => void | Promise<void>;
+  onNavItemSelect?: (label: string) => void;
   onResizeStart?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onSelectAccount: (accountId: string) => void | Promise<void>;
   onOpenSettings?: () => void;
@@ -75,11 +78,14 @@ function getFirstGrapheme(value: string) {
 export function AccountRail({
   accounts,
   activeAccountId,
+  activeNavItem = "聊天",
+  canTakeOverAccount = true,
   isCollapsed = false,
   currentEmployee,
   currentEmployeeId,
   onCollapseChange,
   onLogout,
+  onNavItemSelect,
   onOpenSettings,
   onResizeStart,
   onSelectAccount,
@@ -180,7 +186,7 @@ export function AccountRail({
             className="flex flex-col items-center gap-2"
           >
             {railItems.map((item) => {
-              const isActive = item.label === "聊天";
+              const isActive = item.label === activeNavItem;
 
               return (
                 <Tooltip key={item.label}>
@@ -192,6 +198,7 @@ export function AccountRail({
                         isActive &&
                           "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
                       )}
+                      onClick={() => onNavItemSelect?.(item.label)}
                       type="button"
                     >
                       <HugeiconsIcon
@@ -231,6 +238,7 @@ export function AccountRail({
                   }}
                   onTakeOverAccount={onTakeOverAccount}
                   takeoverStatus={takeoverStatusByAccountId[account.id] ?? "idle"}
+                  canTakeOverAccount={canTakeOverAccount}
                   variant="compact"
                 />
               );
@@ -304,7 +312,7 @@ export function AccountRail({
 
       <div className="flex flex-col gap-1 px-1">
         {railItems.map((item) => {
-          const isActive = item.label === "聊天";
+          const isActive = item.label === activeNavItem;
 
           return (
             <button
@@ -315,6 +323,7 @@ export function AccountRail({
                   : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               )}
               key={item.label}
+              onClick={() => onNavItemSelect?.(item.label)}
               type="button"
             >
               <HugeiconsIcon
@@ -349,6 +358,7 @@ export function AccountRail({
                 }}
                 onTakeOverAccount={onTakeOverAccount}
                 takeoverStatus={takeoverStatusByAccountId[account.id] ?? "idle"}
+                canTakeOverAccount={canTakeOverAccount}
               />
             );
           })}

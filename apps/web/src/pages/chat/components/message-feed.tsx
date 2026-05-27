@@ -194,9 +194,10 @@ export function MessageRow({
         <div className={cn("flex min-w-0 flex-col", isAgent ? "items-end" : "items-start")}>
           <div
             className={cn(
-              "flex min-w-0 max-w-full items-end gap-2",
+              "flex min-w-0 w-fit max-w-full items-end gap-2",
               isAgent ? "flex-row" : "flex-row-reverse",
             )}
+            data-testid="message-inline-content-row"
           >
             {isAgent && message.content.type !== "quote" ? (
               <MessageInlineStatusSlot
@@ -209,7 +210,7 @@ export function MessageRow({
             ) : null}
             <div
               className={cn(
-                "flex min-w-0 max-w-full flex-col gap-1.5",
+                "flex min-w-0 w-fit max-w-full flex-col gap-1.5",
                 isAgent ? "items-end" : "items-start",
               )}
               data-testid="message-content-stack"

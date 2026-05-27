@@ -1847,34 +1847,35 @@ export class WorkbenchRepository {
       return undefined;
     }
 
-    const seat = await this.db
-      .selectFrom("xy_wap_embed_user_seat")
-      .select(["id", "host_sub_id"])
-      .where("third_userid", "=", conversation.third_userid)
-      .where("uid", "=", conversation.uid)
-      .where("platform", "=", conversation.platform)
-      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-      .executeTakeFirst();
+    const [seat, seatUnread] = await Promise.all([
+      this.db
+        .selectFrom("xy_wap_embed_user_seat")
+        .select(["id", "host_sub_id"])
+        .where("third_userid", "=", conversation.third_userid)
+        .where("uid", "=", conversation.uid)
+        .where("platform", "=", conversation.platform)
+        .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+        .executeTakeFirst(),
+      this.db
+        .selectFrom("xy_wap_embed_conversation")
+        .select((expressionBuilder) =>
+          expressionBuilder.fn
+            .coalesce(
+              expressionBuilder.fn.sum<number>("unread_cnt"),
+              expressionBuilder.val(0),
+            )
+            .as("seat_unread_count"),
+        )
+        .where("uid", "=", conversation.uid)
+        .where("platform", "=", conversation.platform)
+        .where("third_userid", "=", conversation.third_userid)
+        .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+        .executeTakeFirst(),
+    ]);
 
     if (!seat) {
       return undefined;
     }
-
-    const seatUnread = await this.db
-      .selectFrom("xy_wap_embed_conversation")
-      .select((expressionBuilder) =>
-        expressionBuilder.fn
-          .coalesce(
-            expressionBuilder.fn.sum<number>("unread_cnt"),
-            expressionBuilder.val(0),
-          )
-          .as("seat_unread_count"),
-      )
-      .where("uid", "=", conversation.uid)
-      .where("platform", "=", conversation.platform)
-      .where("third_userid", "=", conversation.third_userid)
-      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-      .executeTakeFirst();
 
     return {
       id: String(conversation.id),
@@ -2536,33 +2537,31 @@ export class WorkbenchRepository {
       return [];
     }
 
-    const seatKeysByTenant = groupSeatAggregateKeysByTenant(seats);
-    const rows: SeatConversationAggregateRow[] = [];
+    const aggregateRowsByTenant = await Promise.all(
+      groupSeatAggregateKeysByTenant(seats).map(
+        ({ platform, thirdUserIds, uid }) =>
+          this.db
+            .selectFrom("xy_wap_embed_conversation")
+            .select(["uid", "platform", "third_userid"])
+            .select((expressionBuilder) => [
+              expressionBuilder.fn
+                .coalesce(
+                  expressionBuilder.fn.sum<number>("unread_cnt"),
+                  expressionBuilder.val(0),
+                )
+                .as("unread_cnt"),
+              expressionBuilder.fn.max("last_msgtime").as("last_msgtime"),
+            ])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_userid", "in", thirdUserIds)
+            .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+            .groupBy(["uid", "platform", "third_userid"])
+            .execute() as Promise<SeatConversationAggregateRow[]>,
+      ),
+    );
 
-    for (const { platform, thirdUserIds, uid } of seatKeysByTenant) {
-      rows.push(
-        ...((await this.db
-          .selectFrom("xy_wap_embed_conversation")
-          .select(["uid", "platform", "third_userid"])
-          .select((expressionBuilder) => [
-            expressionBuilder.fn
-              .coalesce(
-                expressionBuilder.fn.sum<number>("unread_cnt"),
-                expressionBuilder.val(0),
-              )
-              .as("unread_cnt"),
-            expressionBuilder.fn.max("last_msgtime").as("last_msgtime"),
-          ])
-          .where("uid", "=", uid)
-          .where("platform", "=", platform)
-          .where("third_userid", "in", thirdUserIds)
-          .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-          .groupBy(["uid", "platform", "third_userid"])
-          .execute()) as SeatConversationAggregateRow[]),
-      );
-    }
-
-    return rows;
+    return aggregateRowsByTenant.flat();
   }
 
   private async getConversationGroups(

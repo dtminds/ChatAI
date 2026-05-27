@@ -66,6 +66,10 @@ function normalizePositiveIdText(value: PositiveIdLike | null | undefined) {
     return value > 0n ? value.toString() : undefined;
   }
 
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
   const trimmedValue = value.trim();
 
   return /^[1-9]\d*$/.test(trimmedValue) ? trimmedValue : undefined;

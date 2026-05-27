@@ -8,7 +8,7 @@ export function hydrateRelationRows<Link, Source, Hydrated>(
     .map((link): Hydrated | undefined => {
       const source = sourcesById.get(getSourceId(link));
 
-      return source ? hydrate(link, source) : undefined;
+      return source !== undefined ? hydrate(link, source) : undefined;
     })
     .filter((row): row is Hydrated => row !== undefined);
 }

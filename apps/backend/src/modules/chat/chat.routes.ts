@@ -64,6 +64,10 @@ const MessageDownloadParamsSchema = Type.Object({
   messageId: Type.String(),
 });
 
+const MessageRevokeBodySchema = Type.Object({
+  conversationId: Type.String(),
+});
+
 const MessageDownloadStatusBodySchema = Type.Object({
   conversationId: Type.String(),
   messageSeq: Type.Number(),
@@ -234,6 +238,7 @@ type PlayableVoiceQuery = Static<typeof PlayableVoiceQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type VoicePlaybackConfirmBody = Static<typeof VoicePlaybackConfirmBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
+type MessageRevokeBody = Static<typeof MessageRevokeBodySchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
 type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
@@ -616,6 +621,28 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return getWorkbenchService(app, request).downloadMessageFile(
+        getSubUserId(request),
+        request.body.conversationId,
+        request.params.messageId,
+      );
+    },
+  );
+
+  app.post<{
+    Body: MessageRevokeBody;
+    Params: MessageDownloadParams;
+  }>(
+    "/api/server/messages/:messageId/revoke",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageRevokeBodySchema,
+        params: MessageDownloadParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatSendAccess(request);
+      return getWorkbenchService(app, request).revokeMessage(
         getSubUserId(request),
         request.body.conversationId,
         request.params.messageId,

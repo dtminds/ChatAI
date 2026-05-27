@@ -100,7 +100,7 @@ describe("ChatWorkbenchPage session flows", () => {
     });
     await user.click(screen.getByRole("button", { name: "消息操作" }));
 
-    expect(screen.getByRole("menuitem", { name: "引用消息" })).toHaveAttribute(
+    expect(screen.getByRole("menuitem", { name: "引用" })).toHaveAttribute(
       "data-disabled",
     );
   });

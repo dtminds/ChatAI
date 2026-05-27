@@ -20,6 +20,7 @@ import {
   pinConversation,
   pollWorkbench,
   confirmVoicePlaybackReady as confirmVoicePlaybackReadyRequest,
+  revokeMessage as revokeMessageRequest,
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
   unpinConversation,
@@ -31,6 +32,7 @@ import {
   type ComposerTextSegment,
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
+import { parseWorkbenchDate } from "@/pages/chat/lib/chat-time";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
@@ -38,6 +40,7 @@ import {
   type SettingsSidebarItem,
   type WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
+import { MESSAGE_REVOKE_WINDOW_MS } from "@/pages/chat/chat-constants";
 import type {
   Account,
   ChatMessage,
@@ -70,6 +73,16 @@ type SendMessageResult =
     };
 
 type RetryFailedMessageResult = SendMessageResult;
+
+type RevokeMessageResult =
+  | {
+      ok: true;
+    }
+  | {
+      errorCode: string;
+      errorMessage?: string;
+      ok: false;
+    };
 
 type TakeoverResult =
   | {
@@ -160,6 +173,9 @@ type WorkbenchState = {
   hasChatSendPermission: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
+  revokeMessageError?: string;
+  revokeMessage: (messageId: string) => Promise<RevokeMessageResult>;
+  clearRevokeMessageError: () => void;
   sidebarItems: SettingsSidebarItem[];
   clearActiveConversation: () => void;
   deleteConversation: (conversationId: string) => Promise<void>;
@@ -244,6 +260,7 @@ const defaultCustomerProfiles = seedCustomerProfiles;
 const MESSAGE_PAGE_SIZE = 50;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
+const REVOKE_PENDING_TIMEOUT_MS = 5 * 1000;
 export const MAX_CONVERSATION_LIST_CACHE_SEATS = 3;
 
 function createInitialState(): Omit<
@@ -265,6 +282,8 @@ function createInitialState(): Omit<
   | "takeOverAccount"
   | "unpinConversation"
   | "retryFailedMessage"
+  | "revokeMessage"
+  | "clearRevokeMessageError"
   | "loadOlderMessages"
   | "openHistoryPanel"
   | "closeHistoryPanel"
@@ -312,6 +331,7 @@ function createInitialState(): Omit<
     messagePaginationByConversationId: {},
     messagesByConversationId: {},
     pendingMessages: [],
+    revokeMessageError: undefined,
     pollState: {
       intervalMs: 2500,
       jitterMs: 350,
@@ -577,6 +597,7 @@ function upsertMessageList(
         merged[targetIndex] = {
           ...merged[targetIndex],
           isRevoked: true,
+          revokePending: false,
         };
       } else {
         const appendedIndex = findRevokedMessageIndex(appendedMessages, nextMessage);
@@ -585,6 +606,7 @@ function upsertMessageList(
           appendedMessages[appendedIndex] = {
             ...appendedMessages[appendedIndex],
             isRevoked: true,
+            revokePending: false,
           };
         }
       }
@@ -610,6 +632,9 @@ function upsertMessageList(
       merged[existingIndex] = {
         ...currentMessage,
         ...nextMessage,
+        revokePending: nextMessage.isRevoked
+          ? false
+          : currentMessage.revokePending,
         sender: {
           ...currentMessage.sender,
           ...nextSender,
@@ -666,6 +691,9 @@ function patchExistingMessageList(
     merged[existingIndex] = {
       ...currentMessage,
       ...refreshedMessage,
+      revokePending: refreshedMessage.isRevoked
+        ? false
+        : currentMessage.revokePending,
     };
   }
 
@@ -751,6 +779,31 @@ function patchVoicePlaybackMessage(
   };
 }
 
+function patchMessageRevokePendingList(
+  currentMessages: Message[],
+  messageId: string,
+  revokePending: boolean,
+) {
+  return currentMessages.map((message) =>
+    patchMessageRevokePending(message, messageId, revokePending),
+  );
+}
+
+function patchMessageRevokePending(
+  message: Message,
+  messageId: string,
+  revokePending: boolean,
+): Message {
+  if (!matchesMessageKey(message, messageId)) {
+    return message;
+  }
+
+  return {
+    ...message,
+    revokePending,
+  };
+}
+
 function isRevokeSignalMessage(message: Message) {
   return (
     message.role === "system" &&
@@ -815,7 +868,7 @@ function isSameMessage(left: Message, right: Message) {
 }
 
 function parseWorkbenchTimestamp(value: string) {
-  return new Date(value.replace(" ", "T")).getTime();
+  return parseWorkbenchDate(value)?.getTime() ?? Number.NaN;
 }
 
 function isCursorInvalidationError(error: unknown) {
@@ -1158,6 +1211,8 @@ export function createWorkbenchStore() {
   const pendingVoicePlaybackConfirmKeys = new Set<string>();
   const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
   const latestGroupMembersRequestIdByConversationId: Record<string, number> = {};
+  const revokePendingTimeoutsByMessageId = new Map<string, ReturnType<typeof setTimeout>>();
+  const pendingRevokeRequestMessageIds = new Set<string>();
 
   function issueScopeRequestId() {
     latestScopeRequestId += 1;
@@ -1197,6 +1252,15 @@ export function createWorkbenchStore() {
     delete latestGroupMembersRequestIdByConversationId[conversationId];
   }
 
+  function clearRevokePendingTimeout(messageId: string) {
+    const timeoutId = revokePendingTimeoutsByMessageId.get(messageId);
+
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      revokePendingTimeoutsByMessageId.delete(messageId);
+    }
+  }
+
   function omitTakeoverStatus(
     takeoverStatusByAccountId: Record<string, TakeoverStatus>,
     accountId: string,
@@ -1213,6 +1277,50 @@ export function createWorkbenchStore() {
   }
 
   return create<WorkbenchStore>((set, get) => {
+    function scheduleRevokePendingTimeout(conversationId: string, messageId: string) {
+      clearRevokePendingTimeout(messageId);
+
+      const timeoutId = setTimeout(() => {
+        revokePendingTimeoutsByMessageId.delete(messageId);
+
+        set((currentState) => {
+          const message = (currentState.messagesByConversationId[conversationId] ?? [])
+            .find((item) => item.id === messageId);
+
+          if (!message?.revokePending || message.isRevoked) {
+            return {};
+          }
+
+          const isCurrentActiveConversation =
+            currentState.activeConversationId === conversationId;
+
+          return {
+            messagesByConversationId: {
+              ...currentState.messagesByConversationId,
+              [conversationId]: patchMessageRevokePendingList(
+                currentState.messagesByConversationId[conversationId] ?? [],
+                messageId,
+                false,
+              ),
+            },
+            ...(isCurrentActiveConversation
+              ? { revokeMessageError: "撤回失败，请稍后重试" }
+              : {}),
+          };
+        });
+      }, REVOKE_PENDING_TIMEOUT_MS);
+
+      revokePendingTimeoutsByMessageId.set(messageId, timeoutId);
+    }
+
+    function clearResolvedRevokePendingTimeouts(messages: Message[]) {
+      messages
+        .filter((message) => message.isRevoked)
+        .forEach((message) => {
+          clearRevokePendingTimeout(message.id);
+        });
+    }
+
     async function loadGroupMembersForConversation(
       conversationId: string,
       requestId: number,
@@ -2125,6 +2233,8 @@ export function createWorkbenchStore() {
             ...response.activeConversationMessages,
             ...Object.values(refreshedMessagesByConversationId).flat(),
           ];
+          clearResolvedRevokePendingTimeouts(serverMessages);
+
           const pendingMessages = currentState.pendingMessages.filter(
             (pendingMessage) =>
               !serverMessages.some((message) => isSameMessage(pendingMessage, message)),
@@ -2511,6 +2621,66 @@ export function createWorkbenchStore() {
         removeMessageIdOnAccepted: failedMessage.id,
         quote: retryInput.quote,
       });
+    },
+    async revokeMessage(messageId) {
+      const state = get();
+      const message = findRevokableMessage(
+        state.messagesByConversationId[state.activeConversationId] ?? [],
+        messageId,
+      );
+
+      if (!message || !canUseMessageRevoke(message)) {
+        return {
+          errorCode: "MESSAGE_NOT_REVOKABLE",
+          errorMessage: "暂不支持撤回该消息",
+          ok: false,
+        };
+      }
+
+      if (pendingRevokeRequestMessageIds.has(message.id)) {
+        return {
+          errorCode: "MESSAGE_REVOKE_PENDING",
+          errorMessage: "消息正在撤回中",
+          ok: false,
+        };
+      }
+
+      pendingRevokeRequestMessageIds.add(message.id);
+
+      try {
+        await revokeMessageRequest({
+          conversationId: message.conversationId,
+          messageId: message.id,
+        });
+
+        set((currentState) => ({
+          messagesByConversationId: {
+            ...currentState.messagesByConversationId,
+            [message.conversationId]: patchMessageRevokePendingList(
+              currentState.messagesByConversationId[message.conversationId] ?? [],
+              message.id,
+              true,
+            ),
+          },
+          revokeMessageError: undefined,
+        }));
+        scheduleRevokePendingTimeout(message.conversationId, message.id);
+
+        return { ok: true };
+      } catch (error) {
+        const errorMessage = getRequestErrorMessage(error, "撤回失败，请稍后重试");
+
+        return {
+          errorCode: getRequestErrorCode(error),
+          errorMessage,
+          ok: false,
+        };
+      } finally {
+        pendingRevokeRequestMessageIds.delete(message.id);
+      }
+    },
+    clearRevokeMessageError() {
+      set({ revokeMessageError: undefined });
     },
     async loadOlderMessages() {
       const state = get();
@@ -3479,6 +3649,33 @@ function findVoiceMessageById(
     (message): message is ChatMessage & { content: VoiceMessageContent } =>
       isVoiceMessage(message) && message.id === messageId,
   );
+}
+
+function findRevokableMessage(
+  messages: Message[],
+  messageId: string,
+): ChatMessage | undefined {
+  return messages.find(
+    (message): message is ChatMessage =>
+      message.role !== "system" && message.id === messageId,
+  );
+}
+
+function canUseMessageRevoke(message: ChatMessage, now = Date.now()) {
+  if (
+    message.role !== "agent" ||
+    !message.isOwnMessage ||
+    message.isRevoked ||
+    message.revokePending ||
+    message.status !== "sent" ||
+    message.seq == null
+  ) {
+    return false;
+  }
+
+  const sentAt = parseWorkbenchTimestamp(message.sentAt);
+
+  return Number.isFinite(sentAt) && now - sentAt < MESSAGE_REVOKE_WINDOW_MS;
 }
 
 function getRequestErrorCode(error: unknown) {

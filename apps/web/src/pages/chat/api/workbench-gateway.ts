@@ -15,6 +15,7 @@ import type {
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
   WorkbenchMessageFileDownloadStatusResponse,
+  WorkbenchRevokeMessageResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSeatChangeDto,
@@ -403,6 +404,13 @@ export async function sendTextMessage(
   payload: WorkbenchSendMessagePayload,
 ): Promise<WorkbenchSendMessageResponse> {
   return getWorkbenchService().sendMessage(payload);
+}
+
+export async function revokeMessage(input: {
+  conversationId: string;
+  messageId: string;
+}): Promise<WorkbenchRevokeMessageResponse> {
+  return getWorkbenchService().revokeMessage(input);
 }
 
 export async function downloadMessageFile(input: {

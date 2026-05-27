@@ -35,6 +35,8 @@ import {
   type WorkbenchMessageStatus,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
+  type WorkbenchRevokeMessageRequest,
+  type WorkbenchRevokeMessageResponse,
   type WorkbenchVoicePlaybackConfirmRequest,
   type WorkbenchVoicePlaybackConfirmResponse,
   type WorkbenchMessageUpdateEventDto,
@@ -99,6 +101,10 @@ export type WorkbenchService = {
   getMessagesByIds: (
     input: WorkbenchMessageQueryByIdsRequest,
   ) => Promise<WorkbenchMessageQueryByIdsResponse>;
+  revokeMessage: (input: {
+    conversationId: string;
+    messageId: string;
+  }) => Promise<WorkbenchRevokeMessageResponse>;
   downloadMessageFile: (input: {
     conversationId: string;
     messageId: string;
@@ -304,6 +310,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         messages: clone(
           messages.filter((message) => normalizedIds.has(message.messageId)),
         ),
+      };
+    },
+    async revokeMessage(input) {
+      const message = revokeMessage(state, input.conversationId, input.messageId);
+
+      return {
+        accepted: true,
+        conversationId: input.conversationId,
+        messageId: input.messageId,
+        revokeMsgId: message?.seq ?? 0,
       };
     },
     async downloadMessageFile(input) {
@@ -749,6 +765,14 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<WorkbenchMessageQueryByIdsResponse, WorkbenchMessageQueryByIdsRequest>(
         "/server/messages/query-by-ids",
         input,
+      );
+    },
+    revokeMessage(input) {
+      return http.post<WorkbenchRevokeMessageResponse, WorkbenchRevokeMessageRequest>(
+        `/server/messages/${input.messageId}/revoke`,
+        {
+          conversationId: input.conversationId,
+        },
       );
     },
     downloadMessageFile(input) {
@@ -1485,10 +1509,12 @@ function revokeMessage(
   messageId: string,
 ) {
   const messages = state.messagesByConversationId[conversationId] ?? [];
-  const originalMessage = messages.find((message) => message.messageId === messageId);
+  const originalMessage = messages.find((message) =>
+    message.messageId === messageId || String(message.seq) === messageId,
+  );
 
   if (!originalMessage) {
-    return;
+    return undefined;
   }
 
   const nextMessage = {
@@ -1497,14 +1523,39 @@ function revokeMessage(
   };
 
   state.messagesByConversationId[conversationId] = messages.map((message) =>
-    message.messageId === messageId ? nextMessage : message,
+    message.messageId === originalMessage.messageId ? nextMessage : message,
   );
+
+  const revokeSignal = {
+    content: {
+      revokeMsgId: String(originalMessage.seq),
+      revokeOriginMsgId: String(originalMessage.seq),
+      type: "revoke",
+    },
+    contentType: "revoke",
+    conversationId,
+    createdAt: Date.now(),
+    customerId: originalMessage.customerId,
+    messageId: `revoke-${originalMessage.messageId}`,
+    seatId: originalMessage.seatId,
+    senderType: "system" as const,
+    seq: getNextMessageSeq(state, conversationId),
+    status: "sent" as const,
+  } satisfies WorkbenchMessageDto;
+
+  state.messagesByConversationId[conversationId] = [
+    ...state.messagesByConversationId[conversationId],
+    revokeSignal,
+  ];
 
   pushMessageUpdateEvent(state, {
     conversationId,
     eventId: state.version + 1,
-    messageId,
+    messageId: originalMessage.messageId,
   });
+  pushMessageEvent(state, revokeSignal);
+
+  return originalMessage;
 }
 
 function getNextMessageSeq(state: MockState, conversationId: string) {

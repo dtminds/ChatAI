@@ -337,6 +337,10 @@ function parseMessageContent(
       return { text: String(parsed.text ?? "") };
     }
 
+    if (typeof parsed === "string") {
+      return { text: parsed };
+    }
+
     return { text: rawContent ?? "" };
   }
 

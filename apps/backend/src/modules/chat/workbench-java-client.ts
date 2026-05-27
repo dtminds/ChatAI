@@ -250,13 +250,6 @@ export function createWorkbenchJavaClient(
       );
     },
     recognizeSentence(input) {
-      if (process.env.JAVA_INTERNAL_API_MOCK_VOICE_TRANSCRIPTION === "true") {
-        return Promise.resolve(
-          process.env.JAVA_INTERNAL_API_MOCK_VOICE_TRANSCRIPTION_TEXT ??
-          "这是一段语音转文字测试文本",
-        );
-      }
-
       return postJavaEnvelope<string>(
         baseUrl,
         token,

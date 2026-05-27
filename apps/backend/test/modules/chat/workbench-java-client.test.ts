@@ -9,7 +9,6 @@ describe("createWorkbenchJavaClient", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     delete process.env.JAVA_INTERNAL_API_BASE_URL;
-    delete process.env.JAVA_INTERNAL_API_MOCK_VOICE_TRANSCRIPTION;
     delete process.env.JAVA_INTERNAL_API_TOKEN;
   });
 
@@ -338,16 +337,6 @@ describe("createWorkbenchJavaClient", () => {
         method: "POST",
       }),
     );
-  });
-
-  it("can mock Java voice transcription while the Java endpoint is unavailable", async () => {
-    process.env.JAVA_INTERNAL_API_MOCK_VOICE_TRANSCRIPTION = "true";
-
-    await expect(
-      createWorkbenchJavaClient().recognizeSentence({
-        voiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
-      }),
-    ).resolves.toBe("这是一段语音转文字测试文本");
   });
 
   it("posts conversation hide payload to the Java internal API", async () => {

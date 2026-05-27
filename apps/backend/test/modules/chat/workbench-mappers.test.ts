@@ -327,6 +327,20 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("preserves JSON string text message content without literal quotes", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: "\"普通文本\"",
+        msgtype: "text",
+      })),
+    ).toMatchObject({
+      content: {
+        text: "普通文本",
+      },
+      contentType: "text",
+    });
+  });
+
   it("uses a visible fallback for blank unknown message types without content", () => {
     expect(
       mapMessageRow(messageRow({

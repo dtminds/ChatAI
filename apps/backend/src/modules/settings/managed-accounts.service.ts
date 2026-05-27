@@ -8,6 +8,7 @@ import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
+import { hydrateRelationRows } from "./relation-hydration.js";
 
 type TenantScope = {
   platform: number;
@@ -69,7 +70,7 @@ export class ManagedAccountSettingsService {
       subAccounts.map((subAccount) => [subAccount.id, subAccount] as const),
     );
     const relationsBySeatId = groupRelationsBySeatId(
-      hydrateRelationRows(relationLinks, subAccountsById),
+      hydrateManagedAccountRelationRows(relationLinks, subAccountsById),
     );
 
     return {
@@ -283,7 +284,7 @@ export class ManagedAccountSettingsService {
 
     return mapManagedAccount(
       managedAccount,
-      hydrateRelationRows(relationLinks, subAccountsById),
+      hydrateManagedAccountRelationRows(relationLinks, subAccountsById),
     );
   }
 }
@@ -305,28 +306,23 @@ function groupRelationsBySeatId(relations: RelationRow[]) {
   return relationsBySeatId;
 }
 
-function hydrateRelationRows(
+function hydrateManagedAccountRelationRows(
   relations: RelationLinkRow[],
   subAccountsById: Map<number, SubAccountRow>,
 ): RelationRow[] {
-  return relations
-    .map((relation): RelationRow | undefined => {
-      const subAccount = subAccountsById.get(relation.sub_id);
-
-      if (!subAccount) {
-        return undefined;
-      }
-
-      return {
+  return hydrateRelationRows(
+    relations,
+    subAccountsById,
+    (relation) => relation.sub_id,
+    (relation, subAccount) => ({
         account: subAccount.account,
         name: subAccount.name,
         seat_id: relation.seat_id,
         status: subAccount.status,
         sub_id: relation.sub_id,
         type: subAccount.type,
-      };
-    })
-    .filter((relation): relation is RelationRow => relation !== undefined);
+    }),
+  );
 }
 
 function mapManagedAccount(

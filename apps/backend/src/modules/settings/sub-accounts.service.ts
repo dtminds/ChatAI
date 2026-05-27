@@ -16,6 +16,7 @@ import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 import { deriveAccountRole, normalizeAccountRole } from "../auth/permissions.js";
 import { hashPassword } from "../auth/password.service.js";
+import { hydrateRelationRows } from "./relation-hydration.js";
 
 type TenantScope = {
   platform: number;
@@ -72,7 +73,7 @@ export class SubAccountSettingsService {
     ]);
     const seatsById = new Map(seats.map((seat) => [seat.id, seat] as const));
     const relationsBySubAccountId = groupRelationsBySubAccountId(
-      hydrateRelationRows(relationLinks, seatsById),
+      hydrateSubAccountRelationRows(relationLinks, seatsById),
     );
 
     return {
@@ -467,7 +468,7 @@ export class SubAccountSettingsService {
     const seatIds = uniquePositiveNumbers(relationLinks.map((relation) => relation.seat_id));
     const seats = seatIds.length === 0 ? [] : await this.listSeatRows(scope, seatIds);
     const seatsById = new Map(seats.map((seat) => [seat.id, seat] as const));
-    const relations = hydrateRelationRows(relationLinks, seatsById);
+    const relations = hydrateSubAccountRelationRows(relationLinks, seatsById);
 
     return mapSubAccount(
       subAccount,
@@ -531,26 +532,21 @@ function groupRelationsBySubAccountId(relations: RelationRow[]) {
   return relationsBySubAccountId;
 }
 
-function hydrateRelationRows(
+function hydrateSubAccountRelationRows(
   relations: RelationLinkRow[],
   seatsById: Map<number, SeatRow>,
 ): RelationRow[] {
-  return relations
-    .map((relation): RelationRow | undefined => {
-      const seat = seatsById.get(relation.seat_id);
-
-      if (!seat) {
-        return undefined;
-      }
-
-      return {
+  return hydrateRelationRows(
+    relations,
+    seatsById,
+    (relation) => relation.seat_id,
+    (relation, seat) => ({
         avatarUrl: seat.avatarUrl,
         name: seat.third_user_name,
         seat_id: relation.seat_id,
         sub_id: relation.sub_id,
-      };
-    })
-    .filter((relation): relation is RelationRow => relation !== undefined);
+    }),
+  );
 }
 
 function mapSeat(row: SeatRow): SettingsWeComSeat {

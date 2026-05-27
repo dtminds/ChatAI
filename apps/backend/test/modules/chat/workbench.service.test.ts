@@ -575,6 +575,43 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("rejects empty Java voice transcription results without persisting content", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.recognizeSentence).mockResolvedValue(
+      null as unknown as string,
+    );
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+          transVoiceText: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.transcribeVoiceMessage("101", {
+        conversationId: "88",
+        messageSeq: 538,
+      }),
+    ).rejects.toMatchObject({
+      code: "VOICE_TRANSCRIPTION_EMPTY",
+      statusCode: 502,
+    });
+    expect(javaClient.updateMessageContent).not.toHaveBeenCalled();
+  });
+
   it("rejects voice transcription when the target message is not a voice message", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(

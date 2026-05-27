@@ -127,9 +127,17 @@ export function VoiceMessageCard({
     try {
       const nextTransVoiceText = await onTranscribe();
 
+      if (!mountedRef.current) {
+        return;
+      }
+
       setLocalTransVoiceText(nextTransVoiceText.trim());
       setTranscriptionState("idle");
     } catch {
+      if (!mountedRef.current) {
+        return;
+      }
+
       setTranscriptionState("error");
     }
   };

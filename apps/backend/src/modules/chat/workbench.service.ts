@@ -705,9 +705,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
       );
     }
 
-    const transVoiceText = (await this.javaClient.recognizeSentence({
-      voiceUrl,
-    })).trim();
+    const transVoiceText = (
+      (await this.javaClient.recognizeSentence({ voiceUrl })) ?? ""
+    ).trim();
 
     if (!transVoiceText) {
       throw new BadGatewayError("VOICE_TRANSCRIPTION_EMPTY", "语音识别结果为空");

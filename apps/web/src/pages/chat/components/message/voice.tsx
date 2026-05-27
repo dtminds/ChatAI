@@ -131,7 +131,13 @@ export function VoiceMessageCard({
         return;
       }
 
-      setLocalTransVoiceText(nextTransVoiceText.trim());
+      const normalizedTransVoiceText = String(nextTransVoiceText ?? "").trim();
+
+      if (!normalizedTransVoiceText) {
+        throw new Error("EMPTY_TRANSCRIPTION");
+      }
+
+      setLocalTransVoiceText(normalizedTransVoiceText);
       setTranscriptionState("idle");
     } catch {
       if (!mountedRef.current) {
@@ -632,7 +638,7 @@ export function VoiceMessageCard({
         {transcribeAction}
       </div>
       {transVoiceText ? (
-        <div className="max-w-[min(480px,100%)] rounded-[10px] bg-surface-muted px-3 py-2 text-[13px] leading-5 text-foreground">
+        <div className="max-w-[min(480px,100%)] whitespace-pre-wrap break-words rounded-[10px] bg-surface-muted px-3 py-2 text-[13px] leading-5 text-foreground">
           {transVoiceText}
         </div>
       ) : null}

@@ -641,6 +641,30 @@ describe("voice message playback", () => {
     expect(await screen.findByText("这是一条语音文本")).toBeInTheDocument();
   });
 
+  it("shows an error when transcription resolves without text", async () => {
+    const user = userEvent.setup();
+    const onTranscribe = vi.fn().mockResolvedValue(null as unknown as string);
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "转文字" }));
+
+    expect(onTranscribe).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("转文字失败")).toBeInTheDocument();
+  });
+
   it("does not update transcription state after unmounting during a request", async () => {
     const user = userEvent.setup();
     let resolveTranscription: (value: string) => void = () => undefined;

@@ -1,18 +1,21 @@
 import {
   AtIcon,
+  Bug02Icon,
   ExclamationMarkIcon,
   Loading03Icon,
   MoreHorizontalIcon,
-  QuoteUpIcon,
+  QuoteUpSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMemo } from "react";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -329,6 +332,7 @@ function MessageActionAvatar({
     canUseMessageActions &&
     !message.isRevoked &&
     message.content.type !== "contact-card";
+  const messageIdForCopy = (message.remoteMessageId ?? message.id).trim();
 
   return (
     <div className="relative shrink-0">
@@ -386,17 +390,45 @@ function MessageActionAvatar({
             >
               <HugeiconsIcon
                 aria-hidden="true"
-                icon={QuoteUpIcon}
+                icon={QuoteUpSquareIcon}
                 size={15}
                 strokeWidth={2}
               />
               引用消息
             </DropdownMenuItem>
           ) : null}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => {
+              void copyMessageId(messageIdForCopy);
+            }}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={Bug02Icon}
+              size={15}
+              strokeWidth={2}
+            />
+            复制消息ID
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
   );
+}
+
+async function copyMessageId(messageId: string) {
+  if (!messageId || !navigator.clipboard) {
+    toast.warning("复制失败，请稍后重试");
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(messageId);
+    toast.success("已复制消息ID");
+  } catch {
+    toast.warning("复制失败，请稍后重试");
+  }
 }
 
 function MessageInlineStatusSlot({

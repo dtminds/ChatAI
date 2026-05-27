@@ -1,8 +1,22 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageRow, getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      success: vi.fn(),
+      warning: vi.fn(),
+    },
+  };
+});
 
 describe("message feed row actions", () => {
   afterEach(() => {
@@ -61,6 +75,32 @@ describe("message feed row actions", () => {
 
     expect(screen.getByRole("menuitem", { name: "引用消息" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();
+  });
+
+  it("copies the remote message id from the action menu", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const message = {
+      ...createTextMessage("可复制消息"),
+      id: "local-message-id",
+      remoteMessageId: " remote-message-id ",
+    } satisfies ChatMessage;
+
+    render(<MessageRow message={message} onQuoteMessage={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    const menuItems = screen.getAllByRole("menuitem").map((item) => item.textContent);
+
+    expect(menuItems).toEqual(["引用消息", "复制消息ID"]);
+
+    await user.click(screen.getByRole("menuitem", { name: "复制消息ID" }));
+
+    expect(writeText).toHaveBeenCalledWith("remote-message-id");
+    expect(toast.success).toHaveBeenCalledWith("已复制消息ID");
   });
 
   it("keeps eligible message actions visible but disabled when actions are locked", async () => {

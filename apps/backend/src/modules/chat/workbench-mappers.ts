@@ -333,11 +333,11 @@ function parseMessageContent(
   }
 
   if (msgtype === "text") {
-    if (typeof parsed === "object" && parsed && "text" in parsed) {
+    if (isRecord(parsed) && "text" in parsed) {
       return { text: String(parsed.text ?? "") };
     }
 
-    return { text: String(parsed ?? "") };
+    return { text: rawContent ?? "" };
   }
 
   if (msgtype === "system") {

@@ -313,6 +313,20 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("preserves long numeric text message content as raw text", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: "4200003049202605118042283490",
+        msgtype: "text",
+      })),
+    ).toMatchObject({
+      content: {
+        text: "4200003049202605118042283490",
+      },
+      contentType: "text",
+    });
+  });
+
   it("uses a visible fallback for blank unknown message types without content", () => {
     expect(
       mapMessageRow(messageRow({

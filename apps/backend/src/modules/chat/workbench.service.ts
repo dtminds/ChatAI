@@ -696,23 +696,34 @@ export class MysqlWorkbenchService implements WorkbenchService {
       };
     }
 
-    if (!readStringValue(content.fileUrl)) {
+    const voiceUrl = toVoiceRecognitionUrl(readStringValue(content.fileUrl));
+
+    if (!voiceUrl) {
       throw new BadRequestError(
         "VOICE_TRANSCRIPTION_UNSUPPORTED",
         "当前消息不支持语音转文字",
       );
     }
 
-    const response = await this.javaClient.transcribeVoice({
-      platform: conversation.platform,
-      uid: conversation.uid,
-      updateId: input.messageSeq,
-    });
-    const transVoiceText = response.transVoiceText.trim();
+    const transVoiceText = (await this.javaClient.recognizeSentence({
+      voiceUrl,
+    })).trim();
 
     if (!transVoiceText) {
       throw new BadGatewayError("VOICE_TRANSCRIPTION_EMPTY", "语音识别结果为空");
     }
+
+    const nextContent = {
+      ...content,
+      transVoiceText,
+    };
+
+    await this.javaClient.updateMessageContent({
+      content: JSON.stringify(nextContent),
+      platform: conversation.platform,
+      uid: conversation.uid,
+      updateId: input.messageSeq,
+    });
 
     return {
       messageSeq: input.messageSeq,
@@ -1357,6 +1368,34 @@ function isPlayableVoiceObjectPath(pathname: string) {
 
 function toPlayableVoiceAbsoluteUrl(objectPath: string) {
   return `https://${getPlayableMediaHost()}/${objectPath.replace(/^\/+/, "")}`;
+}
+
+function toVoiceRecognitionUrl(rawUrl: string) {
+  const value = rawUrl.trim();
+
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value);
+
+    if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
+      throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+    }
+
+    toExpectedPlayableVoicePathname(url.pathname);
+    return url.toString();
+  } catch (error) {
+    if (error instanceof BadRequestError) {
+      throw error;
+    }
+
+    const pathname = `/${value.replace(/^\/+/, "")}`;
+    toExpectedPlayableVoicePathname(pathname);
+
+    return `https://${getPlayableMediaHost()}${pathname}`;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

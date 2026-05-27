@@ -515,15 +515,12 @@ describe("MysqlWorkbenchService", () => {
       transVoiceText: "已经识别过的文本",
       transVoiceTextPersisted: true,
     });
-    expect(javaClient.transcribeVoice).not.toHaveBeenCalled();
+    expect(javaClient.recognizeSentence).not.toHaveBeenCalled();
   });
 
-  it("requests Java voice transcription with audit id and returns persisted text", async () => {
+  it("recognizes the voice URL, persists message content, and returns persisted text", async () => {
     const javaClient = createJavaClient();
-    vi.mocked(javaClient.transcribeVoice).mockResolvedValue({
-      transVoiceText: "新识别出来的文本",
-      updateId: 538,
-    });
+    vi.mocked(javaClient.recognizeSentence).mockResolvedValue("新识别出来的文本");
     const getMessageRawContent = vi.fn().mockResolvedValue(JSON.stringify({
       fileUrl: "s5/msg/20260525/272/voice.amr",
       transFileUrl: "",
@@ -563,7 +560,15 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
-    expect(javaClient.transcribeVoice).toHaveBeenCalledWith({
+    expect(javaClient.recognizeSentence).toHaveBeenCalledWith({
+      voiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
+    });
+    expect(javaClient.updateMessageContent).toHaveBeenCalledWith({
+      content: JSON.stringify({
+        fileUrl: "s5/msg/20260525/272/voice.amr",
+        transFileUrl: "",
+        transVoiceText: "新识别出来的文本",
+      }),
       platform: 5,
       uid: 9001,
       updateId: 538,
@@ -599,7 +604,7 @@ describe("MysqlWorkbenchService", () => {
       code: "VOICE_TRANSCRIPTION_UNSUPPORTED",
       statusCode: 400,
     });
-    expect(javaClient.transcribeVoice).not.toHaveBeenCalled();
+    expect(javaClient.recognizeSentence).not.toHaveBeenCalled();
   });
 
   it("rejects confirmed voice playback URLs outside playable voice storage", async () => {
@@ -2601,13 +2606,10 @@ function createJavaClient(): WorkbenchJavaClient {
     markConversationRead: vi.fn().mockResolvedValue(undefined),
     markConversationUnread: vi.fn().mockResolvedValue(undefined),
     pinConversation: vi.fn().mockResolvedValue(undefined),
+    recognizeSentence: vi.fn().mockResolvedValue("这是一段语音转文字测试文本"),
     revokeMessage: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi.fn(),
     takeOverSeat: vi.fn().mockResolvedValue(undefined),
-    transcribeVoice: vi.fn().mockResolvedValue({
-      transVoiceText: "这是一段语音转文字测试文本",
-      updateId: 538,
-    }),
     updateMessageContent: vi.fn().mockResolvedValue(undefined),
     unpinConversation: vi.fn().mockResolvedValue(undefined),
   };

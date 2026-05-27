@@ -56,7 +56,7 @@ const MediaUploadCredentialBodySchema = Type.Object({
 
 const VoicePlaybackConfirmBodySchema = Type.Object({
   conversationId: Type.String(),
-  messageSeq: Type.Number(),
+  messageSeq: Type.Integer({ minimum: 1 }),
   playbackUrl: Type.String({ minLength: 1 }),
 });
 

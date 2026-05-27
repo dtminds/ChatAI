@@ -20,6 +20,14 @@ type ActiveVoicePlayback = {
   stop: () => void;
 };
 
+type AudioListenerHandlers = {
+  error: () => void;
+  ended: () => void;
+  loadedmetadata: () => void;
+  pause: () => void;
+  timeupdate: () => void;
+};
+
 type PlaybackState =
   | "idle"
   | "preparing"
@@ -49,6 +57,20 @@ export function VoiceMessageCard({
   const playbackReadyNotifiedUrlRef = useRef<string | undefined>(undefined);
   const audioPlaybackUrlRef = useRef<string | null>(null);
   const previousAudioUrlRef = useRef(content.audioUrl);
+  const audioListenerHandlersRef = useRef<AudioListenerHandlers>({
+    error: () => undefined,
+    ended: () => undefined,
+    loadedmetadata: () => undefined,
+    pause: () => undefined,
+    timeupdate: () => undefined,
+  });
+  const audioListenersRef = useRef<AudioListenerHandlers>({
+    error: () => audioListenerHandlersRef.current.error(),
+    ended: () => audioListenerHandlersRef.current.ended(),
+    loadedmetadata: () => audioListenerHandlersRef.current.loadedmetadata(),
+    pause: () => audioListenerHandlersRef.current.pause(),
+    timeupdate: () => audioListenerHandlersRef.current.timeupdate(),
+  });
   const releaseAudioRef = useRef<() => void>(() => undefined);
   const stopPlaybackRef = useRef<() => void>(() => undefined);
   const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
@@ -242,12 +264,13 @@ export function VoiceMessageCard({
     }
 
     const audio = audioRef.current;
+    const listeners = audioListenersRef.current;
 
-    audio.removeEventListener("pause", pausePlayback);
-    audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
-    audio.removeEventListener("timeupdate", syncAudioProgress);
-    audio.removeEventListener("ended", finishPlayback);
-    audio.removeEventListener("error", failOrRejectPendingPlayback);
+    audio.removeEventListener("pause", listeners.pause);
+    audio.removeEventListener("loadedmetadata", listeners.loadedmetadata);
+    audio.removeEventListener("timeupdate", listeners.timeupdate);
+    audio.removeEventListener("ended", listeners.ended);
+    audio.removeEventListener("error", listeners.error);
     isReleasingAudioRef.current = true;
     audio.pause();
     audio.src = "";
@@ -260,14 +283,16 @@ export function VoiceMessageCard({
     audioPlaybackUrlRef.current = null;
   }, [
     clearLoadTimeout,
-    failOrRejectPendingPlayback,
-    finishPlayback,
-    handleLoadedMetadata,
-    pausePlayback,
-    syncAudioProgress,
   ]);
 
   releaseAudioRef.current = releaseAudio;
+  audioListenerHandlersRef.current = {
+    error: failOrRejectPendingPlayback,
+    ended: finishPlayback,
+    loadedmetadata: handleLoadedMetadata,
+    pause: pausePlayback,
+    timeupdate: syncAudioProgress,
+  };
 
   const stopPlayback = useCallback(() => {
     releaseAudio();
@@ -403,11 +428,14 @@ export function VoiceMessageCard({
       audioRef.current.preload = "auto";
       audioOriginalUrlRef.current = originalUrl;
       audioPlaybackUrlRef.current = audioUrl;
-      audioRef.current.addEventListener("loadedmetadata", handleLoadedMetadata);
-      audioRef.current.addEventListener("timeupdate", syncAudioProgress);
-      audioRef.current.addEventListener("ended", finishPlayback);
-      audioRef.current.addEventListener("error", failOrRejectPendingPlayback);
-      audioRef.current.addEventListener("pause", pausePlayback);
+      audioRef.current.addEventListener(
+        "loadedmetadata",
+        audioListenersRef.current.loadedmetadata,
+      );
+      audioRef.current.addEventListener("timeupdate", audioListenersRef.current.timeupdate);
+      audioRef.current.addEventListener("ended", audioListenersRef.current.ended);
+      audioRef.current.addEventListener("error", audioListenersRef.current.error);
+      audioRef.current.addEventListener("pause", audioListenersRef.current.pause);
     }
 
     if (!mountedRef.current || !isCurrentPlayback(generation)) {

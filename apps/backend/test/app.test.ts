@@ -1491,6 +1491,30 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("rejects invalid voice playback message sequence before reaching the service", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const confirmVoicePlaybackReady = vi.spyOn(
+      app.workbenchService,
+      "confirmVoicePlaybackReady",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7.5,
+        playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      },
+      url: "/api/server/media/voice-playback-confirmed",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(confirmVoicePlaybackReady).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
   it("returns an empty message page when limit is zero", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

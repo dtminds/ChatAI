@@ -877,6 +877,58 @@ describe("voice message playback", () => {
     expect(audioInstances[0]?.load).toHaveBeenCalledTimes((loadCallsBeforeRelease ?? 0) + 1);
   });
 
+  it("removes audio listeners with the originally registered references after props change", async () => {
+    const user = userEvent.setup();
+    const audioInstances: AudioMockInstance[] = [];
+    stubAudio({ instances: audioInstances });
+    const { rerender, unmount } = render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transFileUrlPersisted: false,
+        }}
+        isAgent={false}
+        onPlaybackReady={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
+
+    await waitFor(() => {
+      expect(audioInstances).toHaveLength(1);
+    });
+
+    const audio = audioInstances[0]!;
+    const registeredListeners = new Map(
+      audio.addEventListener.mock.calls.map(([event, listener]) => [event, listener]),
+    );
+
+    rerender(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b3.iyouke.com/bilin/20260421/272/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transFileUrlPersisted: false,
+        }}
+        isAgent={false}
+        onPlaybackReady={vi.fn()}
+      />,
+    );
+    unmount();
+
+    for (const event of ["pause", "loadedmetadata", "timeupdate", "ended", "error"]) {
+      expect(audio.removeEventListener).toHaveBeenCalledWith(
+        event,
+        registeredListeners.get(event),
+      );
+    }
+  });
+
   it("removes listeners from the previous audio element when the URL changes", async () => {
     const user = userEvent.setup();
     const audioInstances: AudioMockInstance[] = [];

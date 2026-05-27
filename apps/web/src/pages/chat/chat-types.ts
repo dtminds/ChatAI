@@ -261,6 +261,7 @@ type BaseMessage = {
   seq?: number;
   failReason?: string;
   isRevoked?: boolean;
+  revokePending?: boolean;
 };
 
 export type SystemMessage = BaseMessage & {

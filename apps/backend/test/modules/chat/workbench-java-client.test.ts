@@ -443,6 +443,57 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts revoke message payload and preserves Java errorMsg", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { optNo: "revoke-opt-001" }, error: 0, errorMsg: "", success: true }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 601, errorMsg: "已超过撤回时间", success: false }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      );
+
+    await expect(
+      createWorkbenchJavaClient().revokeMessage({
+        platform: 5,
+        revokeMsgId: 321,
+        uid: 9001,
+      }),
+    ).resolves.toEqual({ optNo: "revoke-opt-001" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://java.internal/third-internal/wap-embed/conversation/revoke-message",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platform: 5,
+          revokeMsgId: 321,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().revokeMessage({
+        platform: 5,
+        revokeMsgId: 322,
+        uid: 9001,
+      }),
+    ).rejects.toMatchObject({
+      details: {
+        error: 601,
+      },
+      message: "已超过撤回时间",
+    });
+  });
+
   it("posts a single text message to the Java send-message API", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

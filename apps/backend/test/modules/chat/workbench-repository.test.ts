@@ -3473,6 +3473,33 @@ describe("WorkbenchRepository", () => {
     expect(db.messageQueries).toHaveLength(1);
   });
 
+  it("normalizes string from_type when looking up revoke messages", async () => {
+    const db = createMessagesDb([
+      messageRow({
+        from_type: "1" as unknown as number,
+        id: 321,
+        msgid: "remote-msg-321",
+        status: 1,
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.getMessageForRevoke({
+        conversationId: "88",
+        messageId: "remote-msg-321",
+        platform: 5,
+        thirdExternalUserId: "external-1",
+        thirdUserId: "seat-third-user-1",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      senderType: "agent",
+      seq: 321,
+      status: "sent",
+    });
+  });
+
   it("applies media scope with day and sender filters in history queries", async () => {
     const db = createHistoryMessagesDb([
       messageRow({

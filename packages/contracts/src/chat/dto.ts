@@ -93,6 +93,17 @@ export type WorkbenchVoicePlaybackConfirmResponse = {
   transFileUrlPersisted: true;
 };
 
+export type WorkbenchRevokeMessageRequest = {
+  conversationId: string;
+};
+
+export type WorkbenchRevokeMessageResponse = {
+  accepted: true;
+  conversationId: string;
+  messageId: string;
+  revokeMsgId: number;
+};
+
 export type WorkbenchMessageFileDownloadStatusRequest = {
   conversationId: string;
   messageSeq: number;

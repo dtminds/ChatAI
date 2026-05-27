@@ -192,9 +192,12 @@ function ChatWorkbenchContent({
     pollState,
     pollWorkbench,
     readReceiptError,
+    revokeMessage,
+    revokeMessageError,
     pinConversation,
     retryFailedMessage,
     setChatSendPermission,
+    clearRevokeMessageError,
     closeHistoryPanel,
     clearActiveConversation,
     loadHistoryMessages,
@@ -439,6 +442,15 @@ function ChatWorkbenchContent({
     dismissReadReceiptError();
   }, [dismissReadReceiptError, readReceiptError]);
 
+  useEffect(() => {
+    if (!revokeMessageError) {
+      return;
+    }
+
+    toast.warning(revokeMessageError);
+    clearRevokeMessageError();
+  }, [clearRevokeMessageError, revokeMessageError]);
+
   const handleTakeOverAccount = useCallback(
     async (accountId: string) => {
       if (!canTakeOverAccount) {
@@ -520,6 +532,23 @@ function ChatWorkbenchContent({
       }
     },
     [canSendMessage, retryFailedMessage],
+  );
+
+  const handleRevokeMessage = useCallback(
+    async (message: ChatMessage) => {
+      if (!canSendMessage) {
+        return;
+      }
+
+      const result = await revokeMessage(message.id);
+
+      if (!isMountedRef.current || result.ok) {
+        return;
+      }
+
+      toast.warning(result.errorMessage || "撤回失败，请稍后重试");
+    },
+    [canSendMessage, revokeMessage],
   );
 
   useEffect(() => {
@@ -1270,6 +1299,7 @@ function ChatWorkbenchContent({
                   onMentionMessage={handleMentionMessage}
                   onOpenQuotedMessage={handleOpenQuotedMessage}
                   onQuoteMessage={handleQuoteMessage}
+                  onRevokeMessage={handleRevokeMessage}
                   onMessageViewportScroll={handleMessageViewportScroll}
                   onRetryMessage={handleRetryFailedMessage}
                   retryingMessageIds={retryingMessageIds}

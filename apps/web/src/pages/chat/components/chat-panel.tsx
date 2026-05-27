@@ -88,6 +88,7 @@ type ChatPanelProps = {
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRevokeMessage?: (message: ChatMessage) => void;
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
@@ -152,6 +153,7 @@ export function ChatPanel({
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
+  onRevokeMessage,
   onClearQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
@@ -201,6 +203,7 @@ export function ChatPanel({
                 onLoadOlderMessages={onLoadOlderMessages}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
+                onRevokeMessage={onRevokeMessage}
                 onMessageViewportScroll={onMessageViewportScroll}
                 onRetryMessage={onRetryMessage}
                 onVoicePlaybackReady={onVoicePlaybackReady}

@@ -241,6 +241,17 @@ describe("ChatWorkbenchPage", () => {
     expect(workbenchToastWarningMock).toHaveBeenCalledWith("重试失败，请稍后重试");
   });
 
+  it("shows a warning when revoke pending times out", async () => {
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    act(() => {
+      useWorkbenchStore.setState({ revokeMessageError: "撤回失败，请稍后重试" });
+    });
+
+    expect(workbenchToastWarningMock).toHaveBeenCalledWith("撤回失败，请稍后重试");
+  });
+
   it("does not scroll the current conversation when retry succeeds after switching away", async () => {
     const user = userEvent.setup();
     const retryGate = createDeferred<{

@@ -130,7 +130,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(targetRow).not.toBeNull();
 
     await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用" }));
     await pasteIntoComposer(user, composer, "收到，我按这个版本处理");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
@@ -937,7 +937,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(targetRow).not.toBeNull();
 
     await user.click(within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用" }));
     await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
 
     expect(await screen.findByRole("alertdialog", { name: "切换会话？" }))

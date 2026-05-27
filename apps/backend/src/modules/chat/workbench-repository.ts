@@ -105,6 +105,14 @@ export type MessageUpdateEventListResult = Array<
   }
 >;
 
+export type RevokeMessageLookup = {
+  createdAt: number;
+  isRevoked: boolean;
+  senderType: "agent" | "customer" | "system";
+  seq: number;
+  status: "failed" | "sent";
+};
+
 export type SeatUpdateEventListResult = Array<
   {
     eventTime: number;
@@ -426,6 +434,82 @@ export class WorkbenchRepository {
     const row = await query.executeTakeFirst();
 
     return row?.content ?? undefined;
+  }
+
+  async getMessageForRevoke(input: {
+    conversationId: string;
+    messageId: string;
+    platform: number;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<RevokeMessageLookup | undefined> {
+    const normalizedMessageId = input.messageId.trim();
+
+    if (!normalizedMessageId) {
+      return undefined;
+    }
+
+    const auditId = parseMySqlId(normalizedMessageId);
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.chat_type as chat_type",
+        "message.from_type as from_type",
+        "message.msgtime as msgtime",
+        "message.revoke_status as revoke_status",
+        "message.status as status",
+        "message.third_from_id as third_from_id",
+        "message.third_user_id as third_user_id",
+      ])
+      .where("message.uid", "=", input.uid)
+      .where("message.platform", "=", input.platform)
+      .where("message.third_user_id", "=", input.thirdUserId);
+
+    if (input.thirdGroupId) {
+      query = query.where("message.third_group_id", "=", input.thirdGroupId);
+    } else if (input.thirdExternalUserId) {
+      query = query.where("message.third_external_id", "=", input.thirdExternalUserId);
+    } else {
+      return undefined;
+    }
+
+    query = auditId == null
+      ? query.where("message.msgid", "=", normalizedMessageId)
+      : query.where((expressionBuilder) =>
+          expressionBuilder.or([
+            expressionBuilder("message.id", "=", auditId),
+            expressionBuilder("message.msgid", "=", normalizedMessageId),
+          ]),
+        );
+
+    const row = await query.executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    const chatType = toNumber(row.chat_type) ?? 0;
+    const seq = toNumber(row.id);
+
+    if (seq == null) {
+      return undefined;
+    }
+
+    return {
+      createdAt: toTimestamp(row.msgtime),
+      isRevoked: toNumber(row.revoke_status) === 1,
+      senderType: mapRevokeSenderType({
+        chatType,
+        fromType: toNumber(row.from_type) ?? null,
+        thirdFromId: row.third_from_id ?? undefined,
+        thirdUserId: row.third_user_id ?? undefined,
+      }),
+      seq,
+      status: toNumber(row.status) === 0 ? "failed" : "sent",
+    };
   }
 
   async listMessageUpdateEvents(
@@ -2893,6 +2977,35 @@ function toTimestamp(value: Date | number | string | null | undefined) {
 
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
+
+function mapRevokeSenderType(input: {
+  chatType: number;
+  fromType: number | null;
+  thirdFromId?: string;
+  thirdUserId?: string;
+}): "agent" | "customer" | "system" {
+  if (input.fromType === 3) {
+    return "system";
+  }
+
+  if (input.chatType === CHAT_TYPE_GROUP) {
+    const thirdFromId = (input.thirdFromId || "").trim();
+    const thirdUserId = (input.thirdUserId || "").trim();
+
+    return thirdFromId && thirdFromId === thirdUserId ? "agent" : "customer";
+  }
+
+  if (input.fromType === 1) {
+    return "agent";
+  }
+
+  if (input.fromType === 2) {
+    return "customer";
+  }
+
+  return "system";
+}
+
 function emptyHistoryMessagePage(): WorkbenchHistoryMessagePageDto {
   return {
     hasNext: false,

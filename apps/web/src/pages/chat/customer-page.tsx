@@ -200,7 +200,7 @@ export function CustomerPage({
     <>
       <main className="h-full min-h-0 overflow-hidden bg-surface">
         <div className="h-full min-h-0">
-          <section className="mx-auto flex h-full min-h-0 w-full max-w-[1180px] flex-col bg-background">
+          <section className="mx-auto flex h-full min-h-0 w-full max-w-[1180px] flex-col">
             <div className="shrink-0 px-8 py-6">
               <div className="flex items-center justify-between gap-4">
                 <div>

@@ -226,3 +226,4 @@ apps/voice-service/.scf-package/
 .pnp.*
 
 .idea
+.claude

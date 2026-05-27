@@ -3,11 +3,9 @@ import {
   BadRequestError,
 } from "../../shared/errors.js";
 import { noopLogger, type AppLogger } from "../../shared/logger.js";
-import { getPlayableMediaHost } from "./media-config.js";
+import { getPlayableMediaHost, toPlayableVoicePathname } from "./media-config.js";
 
 const DEFAULT_MEDIA_PROXY_TIMEOUT_MS = 8000;
-const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
-const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 
 export type PlayableVoiceStatus = {
   playable: boolean;
@@ -91,17 +89,14 @@ function parseAllowedMediaUrl(rawUrl: string) {
 }
 
 function buildPlayableVoiceUrl(sourceUrl: URL) {
-  const sourcePrefix = SOURCE_VOICE_PREFIXES.find((prefix) =>
-    sourceUrl.pathname.startsWith(prefix),
-  );
+  const playablePathname = toPlayableVoicePathname(sourceUrl.pathname);
 
-  if (!sourcePrefix) {
+  if (!playablePathname) {
     throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "媒体资源地址不允许访问");
   }
 
   const playableUrl = new URL(sourceUrl);
-  playableUrl.pathname = `${PLAYABLE_VOICE_PREFIX}${sourceUrl.pathname.slice(sourcePrefix.length)}`
-    .replace(/\.[^/.]+$/u, ".wav");
+  playableUrl.pathname = playablePathname;
   playableUrl.search = "";
   playableUrl.hash = "";
 

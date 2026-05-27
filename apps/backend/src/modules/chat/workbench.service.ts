@@ -60,14 +60,16 @@ import {
   parseMySqlId,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
-import { getPlayableMediaHost } from "./media-config.js";
+import {
+  getPlayableMediaHost,
+  isPlayableVoicePathname,
+  toPlayableVoicePathname,
+} from "./media-config.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
 const POLL_SEAT_UPDATE_LIMIT = 200;
-const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
-const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
 
 type PlayableVoiceExistsChecker = (playbackUrl: string) => Promise<boolean>;
@@ -1187,27 +1189,17 @@ function toExpectedPlayableVoiceCosObjectPath(rawUrl: string) {
 }
 
 function toExpectedPlayableVoicePathname(pathname: string) {
-  const sourcePrefix = SOURCE_VOICE_PREFIXES.find((prefix) =>
-    pathname.startsWith(prefix),
-  );
+  const playablePathname = toPlayableVoicePathname(pathname);
 
-  if (!sourcePrefix) {
+  if (!playablePathname) {
     throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
   }
 
-  return `${PLAYABLE_VOICE_PREFIX}${pathname.slice(sourcePrefix.length)}`.replace(
-    /\.[^/.]+$/u,
-    ".wav",
-  );
+  return playablePathname;
 }
 
 function isPlayableVoiceObjectPath(pathname: string) {
-  const normalizedPathname = pathname.startsWith("/") ? pathname : `/${pathname}`;
-
-  return (
-    normalizedPathname.startsWith(PLAYABLE_VOICE_PREFIX) &&
-    /\.wav$/i.test(normalizedPathname)
-  );
+  return isPlayableVoicePathname(pathname);
 }
 
 function toPlayableVoiceAbsoluteUrl(objectPath: string) {

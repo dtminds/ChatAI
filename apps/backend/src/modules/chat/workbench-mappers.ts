@@ -12,7 +12,7 @@ import {
   readRecordNumber,
   readRecordString,
 } from "./workbench-content-utils.js";
-import { getPlayableMediaHost } from "./media-config.js";
+import { getPlayableMediaHost, toPlayableVoicePathname } from "./media-config.js";
 
 export type SeatRow = {
   avatar: string | null;
@@ -99,8 +99,6 @@ export type MessageHydrationSources = {
 };
 
 const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
-const SOURCE_VOICE_PREFIXES = ["/s5/voice/", "/s5/msg/"] as const;
-const PLAYABLE_VOICE_PREFIX = "/s5/playable-voice/";
 
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
@@ -489,16 +487,13 @@ function buildDerivedVoicePlaybackUrl(rawUrl: string) {
     return undefined;
   }
 
-  const sourcePrefix = SOURCE_VOICE_PREFIXES.find((prefix) =>
-    url.pathname.startsWith(prefix),
-  );
+  const playablePathname = toPlayableVoicePathname(url.pathname);
 
-  if (!sourcePrefix) {
+  if (!playablePathname) {
     return undefined;
   }
 
-  url.pathname = `${PLAYABLE_VOICE_PREFIX}${url.pathname.slice(sourcePrefix.length)}`
-    .replace(/\.[^/.]+$/u, ".wav");
+  url.pathname = playablePathname;
   url.search = "";
   url.hash = "";
 

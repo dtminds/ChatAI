@@ -36,6 +36,7 @@ type PlaybackState =
   | "error"
   | "not-ready";
 
+// Covers slow COS/CDN availability and weak-network metadata loading before showing retry.
 const MEDIA_LOAD_TIMEOUT_MS = 8000;
 const HAVE_METADATA_READY_STATE = 1;
 

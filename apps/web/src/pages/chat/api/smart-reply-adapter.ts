@@ -18,6 +18,12 @@ import type { WorkbenchSmartReplyTextModerationResponse } from "@chatai/contract
 
 const DEFAULT_SMART_REPLY_ASSISTANT_NAME = "智能助手";
 
+const SMART_REPLY_TRIGGER_CONTENT_TYPES = new Set<MessageContent["type"]>([
+  "text",
+  "image",
+  "voice",
+]);
+
 /** 语音/图片消息先展示媒体处理文案，再切到生成话术的提示 */
 export const SMART_REPLY_MEDIA_PROCESSING_HINT_MS = 2000;
 
@@ -121,7 +127,7 @@ export function isSmartReplyEligibleMessage(message: ChatMessage) {
     message.role === "customer" &&
     !message.isOwnMessage &&
     !message.isRevoked &&
-    message.content.type !== "quote"
+    SMART_REPLY_TRIGGER_CONTENT_TYPES.has(message.content.type)
   );
 }
 

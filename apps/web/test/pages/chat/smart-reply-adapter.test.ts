@@ -177,6 +177,60 @@ describe("smart-reply-adapter", () => {
       shouldShowSmartReplyTriggerIcon(customerMessage, undefined),
     ).toBe(true);
     expect(
+      shouldShowSmartReplyTriggerIcon(
+        {
+          ...customerMessage,
+          content: {
+            alt: "产品图",
+            imageUrl: "https://example.com/image.png",
+            type: "image",
+          },
+        },
+        undefined,
+      ),
+    ).toBe(true);
+    expect(
+      shouldShowSmartReplyTriggerIcon(
+        {
+          ...customerMessage,
+          content: {
+            durationLabel: "0:05",
+            type: "voice",
+          },
+        },
+        undefined,
+      ),
+    ).toBe(true);
+    expect(
+      shouldShowSmartReplyTriggerIcon(
+        {
+          ...customerMessage,
+          content: {
+            extension: "pdf",
+            fileName: "说明.pdf",
+            fileSizeLabel: "1 MB",
+            type: "file",
+          },
+        },
+        undefined,
+      ),
+    ).toBe(false);
+    expect(
+      shouldShowSmartReplyTriggerIcon(
+        {
+          ...customerMessage,
+          content: {
+            alt: "视频",
+            coverImageUrl: "https://example.com/cover.png",
+            durationLabel: "0:30",
+            type: "video",
+            videoUrl: "https://example.com/video.mp4",
+          },
+        },
+        undefined,
+      ),
+    ).toBe(false);
+    expect(
       shouldShowSmartReplyTriggerIcon(customerMessage, {
         assistantName: "护肤小助手",
         content: "建议回复",

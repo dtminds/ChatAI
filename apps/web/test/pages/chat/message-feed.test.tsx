@@ -55,7 +55,7 @@ describe("message feed row actions", () => {
     expect(onMentionMessage).toHaveBeenCalledWith(message);
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用" }));
 
     expect(onQuoteMessage).toHaveBeenCalledWith(message);
   });
@@ -73,7 +73,7 @@ describe("message feed row actions", () => {
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
 
-    expect(screen.getByRole("menuitem", { name: "引用消息" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "引用" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();
   });
 
@@ -95,7 +95,7 @@ describe("message feed row actions", () => {
     await user.click(screen.getByRole("button", { name: "消息操作" }));
     const menuItems = screen.getAllByRole("menuitem").map((item) => item.textContent);
 
-    expect(menuItems).toEqual(["引用消息", "复制消息ID"]);
+    expect(menuItems).toEqual(["引用", "复制消息ID"]);
 
     await user.click(screen.getByRole("menuitem", { name: "复制消息ID" }));
 
@@ -134,12 +134,12 @@ describe("message feed row actions", () => {
     expect(screen.getByRole("menuitem", { name: "@Ta" })).toHaveAttribute(
       "data-disabled",
     );
-    expect(screen.getByRole("menuitem", { name: "引用消息" })).toHaveAttribute(
+    expect(screen.getByRole("menuitem", { name: "引用" })).toHaveAttribute(
       "data-disabled",
     );
 
     await user.click(screen.getByRole("menuitem", { name: "@Ta" }));
-    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用" }));
 
     expect(onMentionMessage).not.toHaveBeenCalled();
     expect(onQuoteMessage).not.toHaveBeenCalled();
@@ -158,10 +158,10 @@ describe("message feed row actions", () => {
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
 
-    expect(screen.getByRole("menuitem", { name: "引用消息" })).toHaveAttribute(
+    expect(screen.getByRole("menuitem", { name: "引用" })).toHaveAttribute(
       "data-disabled",
     );
-    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用" }));
 
     expect(onQuoteMessage).not.toHaveBeenCalled();
   });
@@ -186,12 +186,172 @@ describe("message feed row actions", () => {
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
 
-    expect(screen.getByRole("menuitem", { name: "引用消息" })).toHaveAttribute(
+    expect(screen.getByRole("menuitem", { name: "引用" })).toHaveAttribute(
       "data-disabled",
     );
-    await user.click(screen.getByRole("menuitem", { name: "引用消息" }));
+    await user.click(screen.getByRole("menuitem", { name: "引用" }));
 
     expect(onQuoteMessage).not.toHaveBeenCalled();
+  });
+
+  it("asks for confirmation before revoking own sent messages within 180 seconds", async () => {
+    const user = userEvent.setup();
+    const onRevokeMessage = vi.fn();
+    vi.setSystemTime(new Date("2026-05-08T09:56:59").getTime());
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("刚发送的客服消息"),
+          isOwnMessage: true,
+          seq: 42,
+          sentAt: "2026-05-08 09:54:00",
+        }}
+        onRevokeMessage={onRevokeMessage}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "撤回消息" }));
+
+    expect(onRevokeMessage).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("alertdialog", { name: "确认要撤回该消息吗" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("客户将在微信中看到撤回提示"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "确认撤回" }));
+
+    expect(onRevokeMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "msg-text-layout",
+        seq: 42,
+      }),
+    );
+  });
+
+  it("shows revoke action when the message sent time is slightly ahead of the local clock", async () => {
+    const user = userEvent.setup();
+    const onRevokeMessage = vi.fn();
+    vi.setSystemTime(new Date("2026-05-08T09:55:00").getTime());
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("本地时钟略慢的客服消息"),
+          isOwnMessage: true,
+          seq: 42,
+          sentAt: "2026-05-08 09:55:02",
+        }}
+        onRevokeMessage={onRevokeMessage}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "撤回消息" })).toBeInTheDocument();
+  });
+
+  it("does not revoke when the confirmation dialog is cancelled", async () => {
+    const user = userEvent.setup();
+    const onRevokeMessage = vi.fn();
+    vi.setSystemTime(new Date("2026-05-08T09:56:59").getTime());
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("可取消撤回的客服消息"),
+          isOwnMessage: true,
+          seq: 42,
+          sentAt: "2026-05-08 09:54:00",
+        }}
+        onRevokeMessage={onRevokeMessage}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "撤回消息" }));
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("alertdialog", { name: "确认要撤回该消息吗" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(onRevokeMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not expose revoke action for customer messages or 180-second old own messages", async () => {
+    const user = userEvent.setup();
+    const onRevokeMessage = vi.fn();
+    vi.setSystemTime(new Date("2026-05-08T09:57:00").getTime());
+
+    const { rerender } = render(
+      <MessageRow
+        message={{
+          ...createTextMessage("正好过期的客服消息"),
+          isOwnMessage: true,
+          seq: 42,
+          sentAt: "2026-05-08 09:54:00",
+        }}
+        onRevokeMessage={onRevokeMessage}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
+
+    rerender(
+      <MessageRow
+        message={{
+          ...createTextMessage("客户消息"),
+          isOwnMessage: false,
+          role: "customer",
+          seq: 43,
+          sentAt: "2026-05-08 09:56:00",
+        }}
+        onRevokeMessage={onRevokeMessage}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
+    expect(onRevokeMessage).not.toHaveBeenCalled();
+  });
+
+  it("shows revoke pending state and hides the revoke action", async () => {
+    const user = userEvent.setup();
+    const onRevokeMessage = vi.fn();
+    vi.setSystemTime(new Date("2026-05-08T09:55:00").getTime());
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("撤回中的客服消息"),
+          isOwnMessage: true,
+          revokePending: true,
+          seq: 42,
+          sentAt: "2026-05-08 09:54:00",
+        }}
+        onRevokeMessage={onRevokeMessage}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("message-inline-status-slot")).toContainElement(
+      screen.getByRole("status", { name: "撤回中" }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
   });
 
   it("keeps the feed item key stable after optimistic messages are reconciled", () => {

@@ -19,6 +19,7 @@ import type {
   WorkbenchMessageStatus,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
+  WorkbenchRevokeMessageResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSidebarIframeParamsRequest,
@@ -461,6 +462,13 @@ export function createMemoryWorkbenchService() {
         status: "accepted",
       };
     },
+    revokeMessage(
+      _subUserId: string,
+      conversationId: string,
+      messageId: string,
+    ): WorkbenchRevokeMessageResponse {
+      return revokeMessage(state, conversationId, messageId);
+    },
     takeOverSeat(_subUserId: string, seatId: string): WorkbenchTakeOverSeatResponse {
       const seat = findSeat(state, seatId);
 
@@ -763,6 +771,69 @@ function removeConversation(
     conversationId,
     seatId: conversation.seatId,
     seatUnreadCount: getSeatUnreadCountValue(state, conversation.seatId),
+  };
+}
+
+function revokeMessage(
+  state: MemoryWorkbenchState,
+  conversationId: string,
+  messageId: string,
+): WorkbenchRevokeMessageResponse {
+  const conversation = findConversation(state, conversationId);
+
+  if (!conversation) {
+    throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+  }
+
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+  const targetMessage = messages.find(
+    (message) =>
+      message.messageId === messageId ||
+      String(message.seq) === messageId ||
+      message.optNo === messageId,
+  );
+
+  if (!targetMessage) {
+    throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
+  }
+
+  const nextMessage = {
+    ...targetMessage,
+    isRevoked: true,
+  };
+  state.messagesByConversationId[conversationId] = messages.map((message) =>
+    message.messageId === targetMessage.messageId ? nextMessage : message,
+  );
+
+  const revokeSignal = {
+    content: {
+      revokeMsgId: String(targetMessage.seq),
+      revokeOriginMsgId: String(targetMessage.seq),
+      type: "revoke",
+    },
+    contentType: "revoke",
+    conversationId,
+    createdAt: Date.now(),
+    customerId: targetMessage.customerId,
+    messageId: `revoke-${targetMessage.messageId}`,
+    seatId: targetMessage.seatId,
+    senderType: "system" as const,
+    seq: getNextMessageSeq(state, conversationId),
+    status: "sent" as const,
+  } satisfies WorkbenchMessageDto;
+
+  state.messagesByConversationId[conversationId] = [
+    ...state.messagesByConversationId[conversationId],
+    revokeSignal,
+  ];
+  pushMessageEvent(state, nextMessage);
+  pushMessageEvent(state, revokeSignal);
+
+  return {
+    accepted: true,
+    conversationId,
+    messageId,
+    revokeMsgId: targetMessage.seq,
   };
 }
 

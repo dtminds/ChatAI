@@ -17,6 +17,7 @@ import type {
   WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
+  WorkbenchRevokeMessageResponse,
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -73,6 +74,8 @@ const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
 const POLL_SEAT_UPDATE_LIMIT = 200;
 const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
+const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
+const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
 
 type PlayableVoiceExistsChecker = (playbackUrl: string) => Promise<boolean>;
 
@@ -182,6 +185,11 @@ export type WorkbenchService = {
     subUserId: string,
     request: WorkbenchPollRequest,
   ): Promise<WorkbenchPollResponse> | WorkbenchPollResponse;
+  revokeMessage(
+    subUserId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<WorkbenchRevokeMessageResponse> | WorkbenchRevokeMessageResponse;
   sendMessage(
     subUserId: string,
     payload: WorkbenchSendMessagePayload,
@@ -951,6 +959,78 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return response;
+  }
+
+  async revokeMessage(
+    subUserId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<WorkbenchRevokeMessageResponse> {
+    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const normalizedMessageId = messageId.trim();
+
+    if (!normalizedMessageId) {
+      throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
+    }
+
+    const message = await this.repository.getMessageForRevoke({
+      conversationId: conversation.id,
+      messageId: normalizedMessageId,
+      platform: conversation.platform,
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdGroupId: conversation.thirdGroupId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    if (!message) {
+      throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
+    }
+
+    if (
+      message.senderType !== "agent" ||
+      message.status !== "sent" ||
+      message.isRevoked
+    ) {
+      throw new ForbiddenError("MESSAGE_REVOKE_FORBIDDEN", "暂不支持撤回该消息");
+    }
+
+    const elapsedMs = Date.now() - message.createdAt;
+
+    if (
+      !Number.isFinite(message.createdAt) ||
+      elapsedMs < -MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS ||
+      elapsedMs >= MESSAGE_REVOKE_WINDOW_MS
+    ) {
+      throw new BadRequestError("MESSAGE_REVOKE_EXPIRED", "已超过撤回时间");
+    }
+
+    await this.javaClient.revokeMessage({
+      platform: conversation.platform,
+      revokeMsgId: message.seq,
+      uid: conversation.uid,
+    });
+
+    this.logger.info(
+      {
+        conversationId: conversation.id,
+        messageId: normalizedMessageId,
+        operation: "revoke-message",
+        platform: conversation.platform,
+        revokeMsgId: message.seq,
+        seatId: conversation.seatId,
+        subUserId,
+        uid: conversation.uid,
+      },
+      "工作台消息撤回已受理",
+    );
+
+    return {
+      accepted: true,
+      conversationId: conversation.id,
+      messageId: normalizedMessageId,
+      revokeMsgId: message.seq,
+    };
   }
 
   async takeOverSeat(subUserId: string, seatId: string) {

@@ -179,6 +179,24 @@ describe("CustomerPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps filters outside the customer list scroll area", async () => {
+    const service = createCustomerPageService();
+    setWorkbenchService(service);
+
+    renderRoute("/chat/customers");
+
+    expect(await screen.findByRole("heading", { name: "客户" })).toBeInTheDocument();
+
+    const scrollViewport = screen
+      .getByText("搜索 或 选择一个托管账号来查看客户")
+      .closest("[data-slot='scroll-area-viewport']");
+
+    expect(scrollViewport).toBeInTheDocument();
+    expect(scrollViewport).not.toContainElement(screen.getByLabelText("席位筛选"));
+    expect(scrollViewport).not.toContainElement(screen.getByLabelText("搜索客户"));
+    expect(scrollViewport?.parentElement).toHaveClass("flex-1", "min-h-0");
+  });
+
   it("searches all managed accounts and expands seat relations", async () => {
     const user = userEvent.setup();
     const service = createCustomerPageService();

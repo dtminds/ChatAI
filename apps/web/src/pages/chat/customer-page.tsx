@@ -200,8 +200,8 @@ export function CustomerPage({
     <>
       <main className="h-full min-h-0 overflow-hidden bg-surface">
         <div className="h-full min-h-0">
-          <section className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col bg-background">
-            <div className="sticky top-0 z-10 bg-background px-8 py-6">
+          <section className="mx-auto flex h-full min-h-0 w-full max-w-[1180px] flex-col bg-background">
+            <div className="shrink-0 bg-background px-8 py-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h1 className="text-xl font-semibold leading-tight text-foreground">
@@ -417,7 +417,7 @@ function CustomerTableRow({
       </TableCell>
       <TableCell className="px-4 py-4">
         <Badge variant={customer.bizStatus === 1 ? "secondary" : "outline"}>
-          {customer.bizStatus === 1 ? "正常" : `状态 ${customer.bizStatus}`}
+          {customer.bizStatus === 1 ? "正常" : "异常"}
         </Badge>
       </TableCell>
     </TableRow>

@@ -1,11 +1,17 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { detectVoiceFormat } from "../src/shared/media-sniff.js";
 import { transcodeVoiceToWav } from "../src/shared/transcode.js";
 
 describe("voice transcoding", () => {
   it("transcodes Tencent SILK_V3 data to wav", async () => {
     const silk = await readFile(samplePath());
+    expect(detectVoiceFormat(silk)).toMatchObject({
+      format: "silk-v3",
+      headerOffset: 1,
+    });
+
     const result = await transcodeVoiceToWav(silk, {
       maxBytes: 1024 * 1024,
       maxDurationMs: 60_000,

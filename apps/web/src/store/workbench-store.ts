@@ -3404,9 +3404,9 @@ export function createWorkbenchStore() {
             playbackUrl,
           });
 
-          set((currentState) => {
-            const messages = currentState.messagesByConversationId[conversationId] ?? [];
-            const historyPanel = currentState.historyPanelByConversationId[conversationId];
+          set((state) => {
+            const messages = state.messagesByConversationId[conversationId] ?? [];
+            const historyPanel = state.historyPanelByConversationId[conversationId];
             const contentPatch = {
               playbackUrl,
               transFileUrl: playbackUrl,
@@ -3416,7 +3416,7 @@ export function createWorkbenchStore() {
             return {
               historyPanelByConversationId: historyPanel
                 ? {
-                    ...currentState.historyPanelByConversationId,
+                    ...state.historyPanelByConversationId,
                     [conversationId]: {
                       ...historyPanel,
                       messages: patchVoicePlaybackMessageList(
@@ -3426,9 +3426,9 @@ export function createWorkbenchStore() {
                       ),
                     },
                   }
-                : currentState.historyPanelByConversationId,
+                : state.historyPanelByConversationId,
               messagesByConversationId: {
-                ...currentState.messagesByConversationId,
+                ...state.messagesByConversationId,
                 [conversationId]: patchVoicePlaybackMessageList(
                   messages,
                   messageId,

@@ -104,5 +104,9 @@ async function toUint8Array(body: unknown) {
     return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
   }
 
+  if (typeof body === "string") {
+    return new TextEncoder().encode(body);
+  }
+
   return new Uint8Array(await consumeStream(body as NodeJS.ReadableStream));
 }

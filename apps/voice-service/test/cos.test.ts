@@ -72,4 +72,22 @@ describe("COS client credentials", () => {
     expect(result.body.byteOffset).toBe(view.byteOffset);
     expect(result.body.byteLength).toBe(view.byteLength);
   });
+
+  it("encodes string COS object bodies as bytes", async () => {
+    const client = {
+      getObject: async () => ({
+        Body: "#!SILK_V3",
+        headers: {},
+      }),
+    };
+
+    const result = await fetchCosObject(
+      client as never,
+      "scrm-msg-audit-1304132716",
+      "ap-shanghai",
+      "s5/voice/string.amr",
+    );
+
+    expect(result.body).toEqual(new TextEncoder().encode("#!SILK_V3"));
+  });
 });

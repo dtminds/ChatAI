@@ -186,6 +186,22 @@ const SeatParamsSchema = Type.Object({
   seatId: Type.String(),
 });
 
+const CustomersQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String()),
+  keyword: Type.Optional(Type.String()),
+  limit: Type.Optional(NumericStringSchema),
+  scope: Type.Optional(Type.Union([Type.Literal("mine"), Type.Literal("all")])),
+  seat_ids: Type.Optional(Type.String()),
+});
+
+const CustomerParamsSchema = Type.Object({
+  thirdExternalUserId: Type.String({ minLength: 1 }),
+});
+
+const CustomerRelationConversationsQuerySchema = Type.Object({
+  third_userids: Type.String({ minLength: 1 }),
+});
+
 const SidebarIframeParamsBodySchema = Type.Object({
   conversationId: Type.String(),
   seatId: Type.String(),
@@ -215,6 +231,11 @@ type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
+type CustomersQuery = Static<typeof CustomersQuerySchema>;
+type CustomerParams = Static<typeof CustomerParamsSchema>;
+type CustomerRelationConversationsQuery = Static<
+  typeof CustomerRelationConversationsQuerySchema
+>;
 type SidebarIframeParamsBody = Static<typeof SidebarIframeParamsBodySchema>;
 type SearchQuery = Static<typeof SearchQuerySchema>;
 type GetOrCreateConversationBody = Static<typeof GetOrCreateConversationBodySchema>;
@@ -242,6 +263,59 @@ export async function registerChatRoutes(app: FastifyInstance) {
 
   app.get("/api/server/seats", { preHandler: app.authenticate }, async (request) =>
     getWorkbenchService(app, request).getSeats(getSubUserId(request)),
+  );
+
+  app.get<{ Querystring: CustomersQuery }>(
+    "/api/server/customers",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: CustomersQuerySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getCustomers(getSubUserId(request), {
+        cursor: request.query.cursor,
+        keyword: request.query.keyword,
+        limit: parseOptionalInteger(request.query.limit),
+        scope: request.query.scope ?? "mine",
+        seatIds: parseSeatIdsQuery(request.query.seat_ids),
+      }),
+  );
+
+  app.get<{ Params: CustomerParams }>(
+    "/api/server/customers/:thirdExternalUserId/last-conversation",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: CustomerParamsSchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getCustomerLastConversation(
+        getSubUserId(request),
+        request.params.thirdExternalUserId,
+      ),
+  );
+
+  app.get<{
+    Params: CustomerParams;
+    Querystring: CustomerRelationConversationsQuery;
+  }>(
+    "/api/server/customers/:thirdExternalUserId/relation-conversations",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: CustomerParamsSchema,
+        querystring: CustomerRelationConversationsQuerySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getCustomerRelationConversations(
+        getSubUserId(request),
+        request.params.thirdExternalUserId,
+        parseCommaSeparatedQuery(request.query.third_userids),
+      ),
   );
 
   app.get<{ Querystring: MediaProxyQuery }>(
@@ -614,6 +688,17 @@ function parseOptionalInteger(value: string | undefined) {
   const parsed = Number.parseInt(value, 10);
 
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseSeatIdsQuery(value: string | undefined) {
+  return parseCommaSeparatedQuery(value);
+}
+
+function parseCommaSeparatedQuery(value: string | undefined) {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function assertChatSendAccess(request: FastifyRequest) {

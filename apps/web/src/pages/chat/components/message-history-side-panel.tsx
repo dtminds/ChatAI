@@ -467,7 +467,7 @@ function HistoryEdgeLoader({
   );
 }
 
-function HistoryCompactMessageList({
+export function HistoryCompactMessageList({
   messages,
   onDownloadMessageFile,
 }: {

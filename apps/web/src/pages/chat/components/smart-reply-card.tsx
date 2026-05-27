@@ -140,7 +140,7 @@ export function SmartReplyCard({
             processingLabel={processingLabel}
           />
           {
-            isKnowledgeHit && !isThinking && !isProcessing && !isSent ?
+            isKnowledgeHit && !isThinking && !isProcessing ?
             <footer className="flex items-center justify-between px-[16px] pb-[12px]">
               <SmartReplyToolbar
                 onMakeShorter={onMakeShorter}

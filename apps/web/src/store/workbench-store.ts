@@ -926,8 +926,11 @@ function applyReadResult(
   state: WorkbenchStore,
   conversationId: string,
   accountId: string,
-  seatUnreadCount: number,
 ) {
+  const currentConversation = (state.conversationListsByScope[accountId] ?? []).find(
+    (conversation) => conversation.id === conversationId,
+  );
+  const currentUnreadCount = currentConversation?.unread ?? 0;
   const nextConversations = (state.conversationListsByScope[accountId] ?? []).map(
     (conversation) =>
       conversation.id === conversationId
@@ -943,7 +946,10 @@ function applyReadResult(
       account.id === accountId
         ? {
             ...account,
-            unreadCount: seatUnreadCount,
+            unreadCount: Math.max(
+              0,
+              (account.unreadCount ?? 0) - currentUnreadCount,
+            ),
           }
         : account,
     ),
@@ -958,8 +964,11 @@ function applyUnreadResult(
   state: WorkbenchStore,
   conversationId: string,
   accountId: string,
-  seatUnreadCount: number,
 ) {
+  const currentConversation = (state.conversationListsByScope[accountId] ?? []).find(
+    (conversation) => conversation.id === conversationId,
+  );
+  const currentUnreadCount = currentConversation?.unread ?? 0;
   const nextConversations = (state.conversationListsByScope[accountId] ?? []).map(
     (conversation) =>
       conversation.id === conversationId
@@ -975,7 +984,10 @@ function applyUnreadResult(
       account.id === accountId
         ? {
             ...account,
-            unreadCount: seatUnreadCount,
+            unreadCount: Math.max(
+              0,
+              (account.unreadCount ?? 0) + 1 - currentUnreadCount,
+            ),
           }
         : account,
     ),
@@ -1459,7 +1471,6 @@ export function createWorkbenchStore() {
             currentState,
             readResult.conversationId,
             readResult.seatId,
-            readResult.seatUnreadCount,
           ),
           readReceiptError: undefined,
         }));
@@ -1741,9 +1752,8 @@ export function createWorkbenchStore() {
           return;
         }
 
-        let deleteResult: Awaited<ReturnType<typeof deleteConversationRequest>>;
         try {
-          deleteResult = await deleteConversationRequest(conversationId);
+          await deleteConversationRequest(conversationId);
         } catch (error) {
           set({
             readReceiptError:
@@ -1784,7 +1794,10 @@ export function createWorkbenchStore() {
             item.id === account.id
               ? {
                   ...item,
-                  unreadCount: deleteResult.seatUnreadCount,
+                  unreadCount: Math.max(
+                    0,
+                    (item.unreadCount ?? 0) - conversation.unread,
+                  ),
                 }
               : item,
           ),
@@ -1833,7 +1846,6 @@ export function createWorkbenchStore() {
               currentState,
               unreadResult.conversationId,
               unreadResult.seatId,
-              unreadResult.seatUnreadCount,
             ),
             readReceiptError: undefined,
           }));
@@ -1905,7 +1917,7 @@ export function createWorkbenchStore() {
         }));
 
         try {
-          const nextAccount = await takeOverAccountRequest(accountId);
+          const takeoverResult = await takeOverAccountRequest(accountId);
 
           if (!isCurrentTakeoverRequest(accountId, requestId)) {
             return { ok: true };
@@ -1913,7 +1925,12 @@ export function createWorkbenchStore() {
 
           set((currentState) => ({
             accounts: currentState.accounts.map((item) =>
-              item.id === accountId ? nextAccount : item,
+              item.id === accountId
+                ? {
+                    ...item,
+                    takenOverEmployeeId: takeoverResult.hostSubUserId,
+                  }
+                : item,
             ),
             takeoverStatusByAccountId: omitTakeoverStatus(
               currentState.takeoverStatusByAccountId,

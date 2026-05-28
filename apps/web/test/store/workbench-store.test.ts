@@ -2761,6 +2761,36 @@ describe("useWorkbenchStore", () => {
     expect(state.takeoverStatusByAccountId.ndt).toBeUndefined();
   });
 
+  it("patches only takeover owner after account takeover succeeds", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async takeOverSeat(seatId) {
+        return {
+          hostSubUserId: "sub-user-001",
+          seatId,
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const beforeAccount = useWorkbenchStore
+      .getState()
+      .accounts.find((account) => account.id === "ndt");
+
+    await useWorkbenchStore.getState().takeOverAccount("ndt");
+
+    const afterAccount = useWorkbenchStore
+      .getState()
+      .accounts.find((account) => account.id === "ndt");
+
+    expect(afterAccount).toEqual({
+      ...beforeAccount,
+      takenOverEmployeeId: "sub-user-001",
+    });
+  });
+
   it("returns the API error message when takeover fails", async () => {
     const baseService = createMockWorkbenchService();
 
@@ -3295,19 +3325,12 @@ describe("useWorkbenchStore", () => {
     const baseService = createMockWorkbenchService();
     const observedDeletedConversationIds: string[] = [];
     const observedConversationScopes: string[] = [];
-    const authoritativeSeatUnreadCount = 42;
 
     setWorkbenchService({
       ...baseService,
       async deleteConversation(conversationId) {
         observedDeletedConversationIds.push(conversationId);
-
-        const result = await baseService.deleteConversation(conversationId);
-
-        return {
-          ...result,
-          seatUnreadCount: authoritativeSeatUnreadCount,
-        };
+        return baseService.deleteConversation(conversationId);
       },
       async getConversations(accountId, options) {
         observedConversationScopes.push(accountId);
@@ -3318,6 +3341,10 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().initializeWorkbench();
     observedConversationScopes.length = 0;
+    const beforeDelete = useWorkbenchStore.getState();
+    const unreadBeforeDelete = beforeDelete.accounts.find((account) => account.id === "drc")?.unreadCount ?? 0;
+    const deletedConversationUnread =
+      beforeDelete.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-003")?.unread ?? 0;
 
     await useWorkbenchStore.getState().deleteConversation("conv-003");
 
@@ -3326,7 +3353,7 @@ describe("useWorkbenchStore", () => {
     expect(observedConversationScopes).toEqual([]);
     expect(state.conversationListsByScope.drc.map((conversation) => conversation.id)).not.toContain("conv-003");
     expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      authoritativeSeatUnreadCount,
+      Math.max(0, unreadBeforeDelete - deletedConversationUnread),
     );
   });
 

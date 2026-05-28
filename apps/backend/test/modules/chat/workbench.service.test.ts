@@ -255,19 +255,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("takes over an accessible seat through Java and persists host sub-user locally", async () => {
     const javaClient = createJavaClient();
-    const getSeat = vi.fn().mockResolvedValue({
-      avatar: "",
-      description: "私域客户管理",
-      hostSubUserId: "101",
-      lastMessageTime: 123,
-      loginStatus: "online",
-      name: "德瑞可",
-      operatorName: "小可",
-      phone: "13296712905",
-      seatId: "12",
-      thirdUserId: "zhangsan",
-      unreadCount: 6,
-    });
+    const getSeat = vi.fn();
     const updateSeatHostSubUser = vi.fn().mockResolvedValue(undefined);
     const service = new MysqlWorkbenchService(
       {
@@ -285,10 +273,8 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(service.takeOverSeat("101", "12")).resolves.toEqual({
-      seat: expect.objectContaining({
-        hostSubUserId: "101",
-        seatId: "12",
-      }),
+      hostSubUserId: "101",
+      seatId: "12",
     });
     expect(javaClient.takeOverSeat).toHaveBeenCalledWith({
       platform: 5,
@@ -302,6 +288,7 @@ describe("MysqlWorkbenchService", () => {
       subUserId: "101",
       uid: 9001,
     });
+    expect(getSeat).not.toHaveBeenCalled();
   });
 
   it("rejects takeover when the sub-user cannot access the seat", async () => {
@@ -401,7 +388,6 @@ describe("MysqlWorkbenchService", () => {
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup,
-        getSeatUnreadCountAfterMarkRead: vi.fn().mockResolvedValue(5),
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -417,7 +403,6 @@ describe("MysqlWorkbenchService", () => {
     expect(result).toEqual({
       conversationId: "88",
       seatId: "12",
-      seatUnreadCount: 5,
       unreadCount: 0,
     });
   });
@@ -847,8 +832,6 @@ describe("MysqlWorkbenchService", () => {
           seatId: "12",
           seatHostSubUserId: "202",
           uid: 9001,
-          unreadCount: 0,
-          seatUnreadCount: 5,
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -861,7 +844,7 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.markConversationUnread).not.toHaveBeenCalled();
   });
 
-  it("marks a taken-over read conversation unread and increments seat unread count once", async () => {
+  it("marks a taken-over conversation unread without calculating seat unread", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
       {
@@ -872,8 +855,6 @@ describe("MysqlWorkbenchService", () => {
           seatId: "12",
           seatHostSubUserId: "101",
           uid: 9001,
-          unreadCount: 0,
-          seatUnreadCount: 5,
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -889,35 +870,6 @@ describe("MysqlWorkbenchService", () => {
     expect(result).toEqual({
       conversationId: "88",
       seatId: "12",
-      seatUnreadCount: 6,
-      unreadCount: 1,
-    });
-  });
-
-  it("normalizes an already unread conversation to one unread count", async () => {
-    const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          uid: 9001,
-          unreadCount: 5,
-          seatUnreadCount: 9,
-        }),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-    );
-
-    const result = await service.markConversationUnread("101", "88");
-
-    expect(result).toEqual({
-      conversationId: "88",
-      seatId: "12",
-      seatUnreadCount: 5,
       unreadCount: 1,
     });
   });
@@ -1051,9 +1003,7 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
-          seatUnreadCount: 9,
           uid: 9001,
-          unreadCount: 2,
         }),
         hideConversation,
       } as unknown as WorkbenchRepository,
@@ -1063,7 +1013,6 @@ describe("MysqlWorkbenchService", () => {
     await expect(service.deleteConversation("101", "88")).resolves.toEqual({
       conversationId: "88",
       seatId: "12",
-      seatUnreadCount: 7,
     });
     expect(javaClient.deleteConversation).toHaveBeenCalledWith({
       conversationId: "88",
@@ -1503,12 +1452,10 @@ describe("MysqlWorkbenchService", () => {
           id: "88",
           platform: 5,
           seatId: "12",
-          seatUnreadCount: 0,
           thirdExternalUserId: "external-1",
           thirdGroupId: undefined,
           thirdUserId: "seat-third-user-1",
           uid: 272,
-          unreadCount: 0,
         }),
         listHistoryMessages,
       } as unknown as WorkbenchRepository,
@@ -2111,11 +2058,9 @@ describe("MysqlWorkbenchService", () => {
       platform: 5,
       seatId: "12",
       seatHostSubUserId: "101",
-      seatUnreadCount: 0,
       thirdGroupId: "group-001",
       thirdUserId: "seat-user-001",
       uid: 9001,
-      unreadCount: 0,
     });
     const service = new MysqlWorkbenchService(
       {
@@ -2180,11 +2125,9 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
-          seatUnreadCount: 0,
           thirdGroupId: "group-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
-          unreadCount: 0,
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -2238,11 +2181,9 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
-          seatUnreadCount: 0,
           thirdExternalUserId: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
-          unreadCount: 0,
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -2292,11 +2233,9 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
-          seatUnreadCount: 0,
           thirdExternalUserId: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
-          unreadCount: 0,
         }),
         getQuoteContentBase64,
       } as unknown as WorkbenchRepository,
@@ -2350,11 +2289,9 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
-          seatUnreadCount: 0,
           thirdExternalUserId: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
-          unreadCount: 0,
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -2403,11 +2340,9 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
-          seatUnreadCount: 0,
           thirdExternalUserId: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
-          unreadCount: 0,
         }),
         getQuoteContentBase64,
       } as unknown as WorkbenchRepository,
@@ -2456,11 +2391,9 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
-          seatUnreadCount: 0,
           thirdExternalUserId: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
-          unreadCount: 0,
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -2514,11 +2447,9 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
-          seatUnreadCount: 0,
           thirdExternalUserId: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
-          unreadCount: 0,
         }),
         getQuoteContentBase64,
       } as unknown as WorkbenchRepository,
@@ -2564,11 +2495,9 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
-          seatUnreadCount: 0,
           thirdExternalUserId: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
-          unreadCount: 0,
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -2601,11 +2530,9 @@ describe("MysqlWorkbenchService", () => {
           platform: 5,
           seatId: "12",
           seatHostSubUserId: "101",
-          seatUnreadCount: 0,
           thirdExternalUserId: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
-          unreadCount: 0,
         }),
       } as unknown as WorkbenchRepository,
       javaClient,

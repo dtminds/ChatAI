@@ -153,6 +153,10 @@ export function ChatMessageList({
       }, 500);
     } else if (!isSameConversation) {
       activeAppendAnimationRef.current = null;
+      if (clearAppendAnimationTimerRef.current !== null) {
+        window.clearTimeout(clearAppendAnimationTimerRef.current);
+        clearAppendAnimationTimerRef.current = null;
+      }
     }
 
     previousConversationIdRef.current = conversationId;
@@ -392,9 +396,9 @@ export function MessageRow({
 
 function getMessageEntranceAnimationClassName(
   direction: "left" | "right",
-  isNew?: boolean,
+  shouldAnimate?: boolean,
 ) {
-  if (!isNew) {
+  if (!shouldAnimate) {
     return undefined;
   }
 

@@ -552,6 +552,61 @@ describe("message feed row actions", () => {
     );
   });
 
+  it("clears the pending append animation timer when switching conversations", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    rerender(
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+          {
+            ...createTextMessage("新客服消息"),
+            id: "msg-2",
+            isNew: true,
+            isOwnMessage: true,
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    expect(vi.getTimerCount()).toBe(1);
+
+    rerender(
+      <ChatMessageList
+        conversationId="conv-other"
+        messages={[
+          {
+            ...createTextMessage("切换后的已有新消息"),
+            conversationId: "conv-other",
+            id: "msg-other-1",
+            isNew: true,
+            role: "customer",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("passes voice playback readiness with the source message", async () => {
     const user = userEvent.setup();
     const onVoicePlaybackReady = vi.fn();

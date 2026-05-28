@@ -240,7 +240,7 @@ function ChatWorkbenchContent({
     [],
   );
   const [sendFailureDialog, setSendFailureDialog] = useState<{
-    description: string;
+    description?: string;
     title: string;
   } | null>(null);
   const [pollingPauseReason, setPollingPauseReason] =
@@ -1517,9 +1517,11 @@ function ChatWorkbenchContent({
             />
             <AlertDialogHeader className="min-w-0 flex-1 space-y-1.5 text-left">
               <AlertDialogTitle>{sendFailureDialog?.title}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {sendFailureDialog?.description}
-              </AlertDialogDescription>
+              {sendFailureDialog?.description ? (
+                <AlertDialogDescription>
+                  {sendFailureDialog.description}
+                </AlertDialogDescription>
+              ) : null}
             </AlertDialogHeader>
           </div>
           <AlertDialogFooter>
@@ -1608,7 +1610,7 @@ function getSendFailureDialogCopy(
   errorCode: string,
   errorMessage?: string,
 ) {
-  const description = errorMessage?.trim() || `ErrorCode: ${errorCode}`;
+  const description = resolveSendFailureDescription(reason, errorCode, errorMessage);
 
   if (reason === "file-upload") {
     return {
@@ -1635,6 +1637,48 @@ function getSendFailureDialogCopy(
     title: "发送失败，请稍后重试",
     description,
   };
+}
+
+function resolveSendFailureDescription(
+  reason: "file-upload" | "image-upload" | "send" | "unavailable",
+  errorCode: string,
+  errorMessage?: string,
+) {
+  const message = errorMessage?.trim();
+
+  if (reason === "file-upload" || reason === "image-upload") {
+    if (message && containsChineseText(message)) {
+      return message;
+    }
+
+    return undefined;
+  }
+
+  if (message && containsChineseText(message)) {
+    return message;
+  }
+
+  if (message && isTransportFailureMessage(message)) {
+    return "网络异常，请稍后重试";
+  }
+
+  return `错误码：${errorCode}`;
+}
+
+function containsChineseText(text: string) {
+  return /[\u4e00-\u9fff]/.test(text);
+}
+
+function isTransportFailureMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes("cors") ||
+    normalized.includes("network error") ||
+    normalized.includes("network") ||
+    normalized.includes("timeout") ||
+    normalized.includes("failed to fetch")
+  );
 }
 
 function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {

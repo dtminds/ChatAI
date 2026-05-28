@@ -74,12 +74,10 @@ export type ConversationLookup = {
   platform: number;
   seatId: string;
   seatHostSubUserId?: string;
-  seatUnreadCount: number;
   thirdExternalUserId?: string;
   thirdGroupId?: string;
   thirdUserId: string;
   uid: number;
-  unreadCount: number;
 };
 
 export type SeatOperateScope = {
@@ -1803,113 +1801,48 @@ export class WorkbenchRepository {
 
     let query = this.db
       .selectFrom("xy_wap_embed_conversation as conversation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.third_userid", "=", "conversation.third_userid")
+          .onRef("seat.uid", "=", "conversation.uid")
+          .onRef("seat.platform", "=", "conversation.platform"),
+      )
       .select([
         "conversation.id as id",
         "conversation.platform as platform",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
         "conversation.third_userid as third_userid",
-        "conversation.unread_cnt as unread_cnt",
         "conversation.uid as uid",
+        "seat.host_sub_id as seat_host_sub_id",
+        "seat.id as seat_id",
       ])
-      .where("conversation.id", "=", conversationNumericId);
+      .where("conversation.id", "=", conversationNumericId)
+      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE);
 
     if (options.activeOnly) {
       query = query.where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE);
     }
 
-    const conversation = await query.executeTakeFirst();
+    const row = await query.executeTakeFirst();
 
-    if (!conversation) {
-      return undefined;
-    }
-
-    const [seat, seatUnread] = await Promise.all([
-      this.db
-        .selectFrom("xy_wap_embed_user_seat")
-        .select(["id", "host_sub_id"])
-        .where("third_userid", "=", conversation.third_userid)
-        .where("uid", "=", conversation.uid)
-        .where("platform", "=", conversation.platform)
-        .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-        .executeTakeFirst(),
-      this.db
-        .selectFrom("xy_wap_embed_conversation")
-        .select((expressionBuilder) =>
-          expressionBuilder.fn
-            .coalesce(
-              expressionBuilder.fn.sum<number>("unread_cnt"),
-              expressionBuilder.val(0),
-            )
-            .as("seat_unread_count"),
-        )
-        .where("uid", "=", conversation.uid)
-        .where("platform", "=", conversation.platform)
-        .where("third_userid", "=", conversation.third_userid)
-        .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-        .executeTakeFirst(),
-    ]);
-
-    if (!seat) {
+    if (!row) {
       return undefined;
     }
 
     return {
-      id: String(conversation.id),
-      platform: conversation.platform,
-      seatId: String(seat.id),
+      id: String(row.id),
+      platform: row.platform,
+      seatId: String(row.seat_id),
       seatHostSubUserId:
-        seat.host_sub_id == null || seat.host_sub_id <= 0
+        row.seat_host_sub_id == null || row.seat_host_sub_id <= 0
           ? undefined
-          : String(seat.host_sub_id),
-      seatUnreadCount: Number(seatUnread?.seat_unread_count ?? 0),
-      thirdExternalUserId: conversation.third_external_userid || undefined,
-      thirdGroupId: conversation.third_group_id || undefined,
-      thirdUserId: conversation.third_userid,
-      uid: conversation.uid,
-      unreadCount: Number(conversation.unread_cnt ?? 0),
+          : String(row.seat_host_sub_id),
+      thirdExternalUserId: row.third_external_userid || undefined,
+      thirdGroupId: row.third_group_id || undefined,
+      thirdUserId: row.third_userid,
+      uid: row.uid,
     };
-  }
-
-  async getSeatUnreadCountAfterMarkRead(input: {
-    conversationId: string;
-    platform: number;
-    seatId: string;
-    uid: number;
-  }) {
-    const conversationNumericId = parseMySqlId(input.conversationId);
-    const seatNumericId = parseMySqlId(input.seatId);
-
-    if (conversationNumericId == null || seatNumericId == null) {
-      return 0;
-    }
-
-    const row = await this.db
-      .selectFrom("xy_wap_embed_conversation")
-      .select((expressionBuilder) =>
-        expressionBuilder.fn
-          .coalesce(
-            expressionBuilder.fn.sum<number>("unread_cnt"),
-            expressionBuilder.val(0),
-          )
-          .as("unread_count"),
-      )
-      .where("uid", "=", input.uid)
-      .where("platform", "=", input.platform)
-      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where("id", "!=", conversationNumericId)
-      .where("third_userid", "=", (expressionBuilder) =>
-        expressionBuilder
-          .selectFrom("xy_wap_embed_user_seat")
-          .select("third_userid")
-          .where("id", "=", seatNumericId)
-          .where("uid", "=", input.uid)
-          .where("platform", "=", input.platform)
-          .where("biz_status", "=", BIZ_STATUS_ACTIVE),
-      )
-      .executeTakeFirst();
-
-    return Number(row?.unread_count ?? 0);
   }
 
   async updateConversationPinned(input: {

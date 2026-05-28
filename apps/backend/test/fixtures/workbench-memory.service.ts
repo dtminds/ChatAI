@@ -313,7 +313,6 @@ export function createMemoryWorkbenchService() {
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: getSeatUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 0,
       };
@@ -345,7 +344,6 @@ export function createMemoryWorkbenchService() {
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: getSeatUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 1,
       };
@@ -773,7 +771,6 @@ function removeConversation(
   return {
     conversationId,
     seatId: conversation.seatId,
-    seatUnreadCount: getSeatUnreadCountValue(state, conversation.seatId),
   };
 }
 

@@ -456,7 +456,6 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: getAccountUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 0,
       };
@@ -485,7 +484,6 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: getAccountUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 1,
       };
@@ -1412,7 +1410,6 @@ function removeConversation(
   return {
     conversationId,
     seatId: conversation.seatId,
-    seatUnreadCount: getAccountUnreadCountValue(state, conversation.seatId),
   };
 }
 

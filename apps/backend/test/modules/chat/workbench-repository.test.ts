@@ -721,16 +721,12 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("checks seat access without joining sub-users and seats", async () => {
+  it("checks seat access by joining relation and active seat only", async () => {
     const queryBuilders: Array<{ joins: string[]; table: string }> = [];
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
-          const query = createQueryBuilder(
-            table === "xy_wap_embed_user_seat_sub_relation as relation"
-              ? [{ id: 1, platform: 5, uid: 9001 }]
-              : [{ id: 11 }],
-          );
+          const query = createQueryBuilder({ can_access: 1 });
           queryBuilders.push({ joins: query.joins, table });
           return query;
         },
@@ -740,9 +736,7 @@ describe("WorkbenchRepository", () => {
     await expect(repository.canAccessSeat("11", "101")).resolves.toBe(true);
 
     expect(queryBuilders).toEqual([
-      { joins: [], table: "xy_wap_embed_user_seat_sub_relation as relation" },
-      { joins: [], table: "xy_wap_embed_sub_user" },
-      { joins: [], table: "xy_wap_embed_user_seat" },
+      { joins: ["innerJoin"], table: "xy_wap_embed_user_seat_sub_relation as relation" },
     ]);
   });
 

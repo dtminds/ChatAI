@@ -1581,37 +1581,21 @@ export class WorkbenchRepository {
       return false;
     }
 
-    const relation = await this.db
+    const access = await this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .select(["relation.id", "relation.uid", "relation.platform"])
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.id", "=", "relation.user_seat_id")
+          .onRef("seat.uid", "=", "relation.uid")
+          .onRef("seat.platform", "=", "relation.platform"),
+      )
+      .select("relation.id")
       .where("relation.sub_id", "=", subUserNumericId)
       .where("relation.user_seat_id", "=", seatNumericId)
+      .where("seat.biz_status", "=", 1)
       .executeTakeFirst();
 
-    if (!relation) {
-      return false;
-    }
-
-    const [subUser, seat] = await Promise.all([
-      this.db
-        .selectFrom("xy_wap_embed_sub_user")
-        .select("id")
-        .where("id", "=", subUserNumericId)
-        .where("uid", "=", relation.uid)
-        .where("platform", "=", relation.platform)
-        .where("status", "=", 1)
-        .executeTakeFirst(),
-      this.db
-        .selectFrom("xy_wap_embed_user_seat")
-        .select("id")
-        .where("id", "=", seatNumericId)
-        .where("uid", "=", relation.uid)
-        .where("platform", "=", relation.platform)
-        .where("biz_status", "=", 1)
-        .executeTakeFirst(),
-    ]);
-
-    return Boolean(subUser && seat);
+    return Boolean(access);
   }
 
   async listConversations(

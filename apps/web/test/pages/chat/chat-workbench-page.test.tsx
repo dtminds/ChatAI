@@ -25,6 +25,18 @@ function createDeferred<T = void>() {
   };
 }
 
+type IntersectionObserverEntryInit = {
+  isIntersecting: boolean;
+  target: Element;
+};
+
+type IntersectionObserverInstance = {
+  callback: IntersectionObserverCallback;
+  disconnect: ReturnType<typeof vi.fn>;
+  observe: ReturnType<typeof vi.fn>;
+  unobserve: ReturnType<typeof vi.fn>;
+};
+
 async function pasteIntoComposer(
   user: ReturnType<typeof userEvent.setup>,
   composer: HTMLElement,
@@ -32,6 +44,40 @@ async function pasteIntoComposer(
 ) {
   await user.click(composer);
   await user.paste(text);
+}
+
+function installIntersectionObserverMock() {
+  const instances: IntersectionObserverInstance[] = [];
+
+  class IntersectionObserverMock {
+    readonly callback: IntersectionObserverCallback;
+    readonly disconnect = vi.fn();
+    readonly observe = vi.fn();
+    readonly unobserve = vi.fn();
+
+    constructor(callback: IntersectionObserverCallback) {
+      this.callback = callback;
+      instances.push(this);
+    }
+  }
+
+  Object.defineProperty(window, "IntersectionObserver", {
+    configurable: true,
+    value: IntersectionObserverMock,
+  });
+  Object.defineProperty(globalThis, "IntersectionObserver", {
+    configurable: true,
+    value: IntersectionObserverMock,
+  });
+
+  return {
+    emit(entries: IntersectionObserverEntryInit[]) {
+      for (const instance of instances) {
+        instance.callback(entries as IntersectionObserverEntry[], instance as unknown as IntersectionObserver);
+      }
+    },
+    instances,
+  };
 }
 
 describe("ChatWorkbenchPage", () => {
@@ -46,6 +92,212 @@ describe("ChatWorkbenchPage", () => {
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
+  });
+
+  it("marks the active conversation read when the first unread customer message enters the viewport", async () => {
+    const intersectionObserver = installIntersectionObserverMock();
+    const baseService = createMockWorkbenchService();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+
+    setWorkbenchService({
+      ...baseService,
+      markConversationRead,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    markConversationRead.mockClear();
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        accounts: state.accounts.map((account) =>
+          account.id === "drc"
+            ? {
+                ...account,
+                unreadCount: 2,
+              }
+            : account,
+        ),
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? {
+                  ...conversation,
+                  unread: 2,
+                }
+              : conversation,
+          ),
+        },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(intersectionObserver.instances.at(-1)?.observe).toHaveBeenCalled();
+    });
+
+    const observedTarget = intersectionObserver.instances.at(-1)?.observe.mock
+      .calls.at(-1)?.[0] as Element;
+
+    expect(observedTarget).toHaveAttribute("data-message-id", "msg-009");
+
+    act(() => {
+      intersectionObserver.emit([
+        {
+          isIntersecting: true,
+          target: observedTarget,
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(markConversationRead).toHaveBeenCalledTimes(1);
+    });
+    expect(markConversationRead).toHaveBeenCalledWith("conv-001");
+  });
+
+  it("throttles visible unread read requests for the same active conversation", async () => {
+    const intersectionObserver = installIntersectionObserverMock();
+    const baseService = createMockWorkbenchService();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+
+    setWorkbenchService({
+      ...baseService,
+      markConversationRead,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    markConversationRead.mockClear();
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        accounts: state.accounts.map((account) =>
+          account.id === "drc"
+            ? {
+                ...account,
+                unreadCount: 2,
+              }
+            : account,
+        ),
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? {
+                  ...conversation,
+                  unread: 2,
+                }
+              : conversation,
+          ),
+        },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(intersectionObserver.instances.at(-1)?.observe).toHaveBeenCalled();
+    });
+
+    const observedTarget = intersectionObserver.instances.at(-1)?.observe.mock
+      .calls.at(-1)?.[0] as Element;
+
+    act(() => {
+      intersectionObserver.emit([
+        {
+          isIntersecting: true,
+          target: observedTarget,
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(markConversationRead).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        accounts: state.accounts.map((account) =>
+          account.id === "drc"
+            ? {
+                ...account,
+                unreadCount: 2,
+              }
+            : account,
+        ),
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? {
+                  ...conversation,
+                  unread: 2,
+                }
+              : conversation,
+          ),
+        },
+      }));
+    });
+
+    act(() => {
+      intersectionObserver.emit([
+        {
+          isIntersecting: true,
+          target: observedTarget,
+        },
+      ]);
+    });
+
+    expect(markConversationRead).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks the active conversation read after sending a reply while unread remains", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+
+    setWorkbenchService({
+      ...baseService,
+      markConversationRead,
+    });
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    markConversationRead.mockClear();
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        accounts: state.accounts.map((account) =>
+          account.id === "drc"
+            ? {
+                ...account,
+                unreadCount: 2,
+              }
+            : account,
+        ),
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? {
+                  ...conversation,
+                  unread: 2,
+                }
+              : conversation,
+          ),
+        },
+      }));
+    });
+
+    await pasteIntoComposer(user, composer, "我来确认一下权益清单");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => {
+      expect(markConversationRead).toHaveBeenCalledTimes(1);
+    });
+    expect(markConversationRead).toHaveBeenCalledWith("conv-001");
   });
 
   it("switches conversation mode and shows the matching conversation", async () => {

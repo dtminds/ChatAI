@@ -1015,7 +1015,6 @@ function updateConversationPreview(
     ...currentConversation,
     preview: formatConversationPreview(preview),
     quietFor: "刚刚更新",
-    unread: 0,
     updatedAt,
     updatedAtMs,
   });

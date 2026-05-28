@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageRow, getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
+import { ChatMessageList, MessageRow, getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
 vi.mock("sonner", async (importOriginal) => {
@@ -21,6 +21,7 @@ vi.mock("sonner", async (importOriginal) => {
 describe("message feed row actions", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -373,6 +374,237 @@ describe("message feed row actions", () => {
     expect(getMessageFeedItemKey(optimisticMessage)).toBe(
       getMessageFeedItemKey(reconciledMessage),
     );
+  });
+
+  it("adds directional entrance animation only to appended new messages", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    expect(screen.getByTestId("message-content-stack")).not.toHaveClass(
+      "anim-pop-right",
+    );
+    expect(screen.getByTestId("message-content-stack")).not.toHaveClass(
+      "anim-pop-left",
+    );
+
+    rerender(
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+          {
+            ...createTextMessage("新客服消息"),
+            id: "msg-2",
+            isNew: true,
+            isOwnMessage: true,
+          },
+          {
+            ...createTextMessage("新客户消息"),
+            id: "msg-3",
+            isNew: true,
+            role: "customer",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    const appendedStacks = screen.getAllByTestId("message-content-stack");
+    expect(appendedStacks[0]).not.toHaveClass("anim-pop-right");
+    expect(appendedStacks[1]).toHaveClass("anim-pop-right");
+    expect(appendedStacks[2]).toHaveClass("anim-pop-left");
+
+    act(() => {
+      vi.advanceTimersByTime(501);
+    });
+
+    rerender(
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+          {
+            ...createTextMessage("新客服消息"),
+            id: "msg-2",
+            isNew: true,
+            isOwnMessage: true,
+          },
+          {
+            ...createTextMessage("新客户消息"),
+            id: "msg-3",
+            isNew: true,
+            role: "customer",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    for (const stack of screen.getAllByTestId("message-content-stack")) {
+      expect(stack).not.toHaveClass("anim-pop-right");
+      expect(stack).not.toHaveClass("anim-pop-left");
+    }
+
+    rerender(
+      <ChatMessageList
+        conversationId="conv-other"
+        messages={[
+          {
+            ...createTextMessage("切换后的已有新消息"),
+            conversationId: "conv-other",
+            id: "msg-other-1",
+            isNew: true,
+            role: "customer",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    expect(screen.getByTestId("message-content-stack")).not.toHaveClass(
+      "anim-pop-left",
+    );
+    expect(screen.getByTestId("message-content-stack")).not.toHaveClass(
+      "anim-pop-right",
+    );
+  });
+
+  it("keeps the appended message entrance animation through message reconciliation", () => {
+    const { rerender } = render(
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    rerender(
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+          {
+            ...createTextMessage("新客服消息"),
+            clientMessageId: "local-001",
+            id: "local-001",
+            isNew: true,
+            isOwnMessage: true,
+            status: "accepted",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    expect(screen.getAllByTestId("message-content-stack")[1]).toHaveClass(
+      "anim-pop-right",
+    );
+
+    rerender(
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+          {
+            ...createTextMessage("新客服消息"),
+            clientMessageId: "local-001",
+            id: "remote-001",
+            isNew: true,
+            isOwnMessage: true,
+            remoteMessageId: "remote-001",
+            status: "sent",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    expect(screen.getAllByTestId("message-content-stack")[1]).toHaveClass(
+      "anim-pop-right",
+    );
+  });
+
+  it("clears the pending append animation timer when switching conversations", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    rerender(
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+          {
+            ...createTextMessage("新客服消息"),
+            id: "msg-2",
+            isNew: true,
+            isOwnMessage: true,
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    expect(vi.getTimerCount()).toBe(1);
+
+    rerender(
+      <ChatMessageList
+        conversationId="conv-other"
+        messages={[
+          {
+            ...createTextMessage("切换后的已有新消息"),
+            conversationId: "conv-other",
+            id: "msg-other-1",
+            isNew: true,
+            role: "customer",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("passes voice playback readiness with the source message", async () => {

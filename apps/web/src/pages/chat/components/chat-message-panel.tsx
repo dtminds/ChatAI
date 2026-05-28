@@ -12,6 +12,7 @@ type ChatMessagePanelProps = {
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
   isConversationLoading: boolean;
+  conversationId: string;
   messages: Message[];
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
@@ -38,6 +39,7 @@ export function ChatMessagePanel({
   hasMoreHistory,
   historyLoadLabel,
   isConversationLoading,
+  conversationId,
   messages,
   onDownloadMessageFile,
   onMentionMessage,
@@ -92,6 +94,7 @@ export function ChatMessagePanel({
               ) : null}
               <ChatMessageList
                 canUseMessageActions={canUseMessageActions}
+                conversationId={conversationId}
                 messages={messages}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}

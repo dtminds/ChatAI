@@ -97,7 +97,6 @@ export function ChatMessageList({
   const previousTailMessageKeyRef = useRef<string | null>(null);
   const activeAppendAnimationRef = useRef<{
     conversationId: string;
-    messages: Message[];
     startIndex: number;
   } | null>(null);
   const clearAppendAnimationTimerRef = useRef<number | null>(null);
@@ -123,7 +122,6 @@ export function ChatMessageList({
           (hasAppendedMessages && index >= appendStartIndex) ||
           (
             activeAppendAnimation?.conversationId === conversationId &&
-            activeAppendAnimation.messages === messages &&
             index >= activeAppendAnimation.startIndex
           )
         ),
@@ -134,7 +132,6 @@ export function ChatMessageList({
     if (hasAppendedMessages) {
       activeAppendAnimationRef.current = {
         conversationId,
-        messages,
         startIndex: appendStartIndex,
       };
 
@@ -147,7 +144,6 @@ export function ChatMessageList({
 
         if (
           activeAppendAnimation?.conversationId === conversationId &&
-          activeAppendAnimation.messages === messages &&
           activeAppendAnimation.startIndex === appendStartIndex
         ) {
           activeAppendAnimationRef.current = null;
@@ -155,13 +151,7 @@ export function ChatMessageList({
 
         clearAppendAnimationTimerRef.current = null;
       }, 500);
-    } else if (
-      !isSameConversation ||
-      (
-        activeAppendAnimationRef.current !== null &&
-        activeAppendAnimationRef.current.messages !== messages
-      )
-    ) {
+    } else if (!isSameConversation) {
       activeAppendAnimationRef.current = null;
     }
 

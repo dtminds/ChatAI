@@ -55,6 +55,7 @@ export function AccountSidebarItem({
   const [isTakeoverPopoverOpen, setIsTakeoverPopoverOpen] = useState(false);
   const [isTakeoverConfirmOpen, setIsTakeoverConfirmOpen] = useState(false);
   const [isTakeoverConfirmPending, setIsTakeoverConfirmPending] = useState(false);
+  const isMountedRef = useRef(true);
   const isOffline = account.loginStatus === "offline";
   const isTakenOverByCurrentUser =
     !!account.takenOverEmployeeId && account.takenOverEmployeeId === currentEmployeeId;
@@ -155,12 +156,21 @@ export function AccountSidebarItem({
     try {
       await onTakeOverAccount?.(account.id);
     } finally {
-      setIsTakeoverConfirmPending(false);
-      setIsTakeoverConfirmOpen(false);
+      if (isMountedRef.current) {
+        setIsTakeoverConfirmPending(false);
+        setIsTakeoverConfirmOpen(false);
+      }
     }
   };
 
-  useEffect(() => clearClosePopoverTimer, []);
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      clearClosePopoverTimer();
+      isMountedRef.current = false;
+    };
+  }, []);
 
   if (variant === "compact") {
     const compactButton = (

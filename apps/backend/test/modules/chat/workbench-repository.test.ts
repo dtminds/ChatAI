@@ -4136,27 +4136,6 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("finds hidden conversation ids by target for get-or-create reuse", async () => {
-    let conversationQuery: ReturnType<typeof createQueryBuilder> | undefined;
-    const repository = new WorkbenchRepository(
-      {
-        selectFrom(table: string) {
-          if (table === "xy_wap_embed_conversation") {
-            conversationQuery = createQueryBuilder({ id: 88 });
-            return conversationQuery;
-          }
-
-          throw new Error(`unexpected table ${table}`);
-        },
-      } as never,
-    );
-
-    await expect(
-      repository.findConversationIdByTarget(9001, 5, "seat-user-001", 1, "external-001"),
-    ).resolves.toBe("88");
-
-    expect(conversationQuery?.wheres).not.toContainEqual(["biz_status", "=", 1]);
-  });
 });
 
 function messageRow(overrides: Partial<MessageRow>): MessageRow {

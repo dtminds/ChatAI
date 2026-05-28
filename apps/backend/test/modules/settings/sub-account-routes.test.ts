@@ -295,6 +295,7 @@ describe("settings sub-account routes", () => {
     expect(remove.statusCode).toBe(200);
     expect(db.statusUpdates).toEqual([2, 1, 0]);
     expect(db.revokedSessionSubUserIds).toEqual([11, 11]);
+    expect(db.deletedRelationSubIds).toEqual([11]);
 
     await app.close();
   });

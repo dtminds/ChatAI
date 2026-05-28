@@ -251,6 +251,13 @@ export class SubAccountSettingsService {
       .where("type", "=", dbSubAccountType.sub)
       .execute();
 
+    await this.db
+      .deleteFrom("xy_wap_embed_user_seat_sub_relation")
+      .where("sub_id", "=", numericSubAccountId)
+      .where("uid", "=", scope.uid)
+      .where("platform", "=", scope.platform)
+      .execute();
+
     await this.revokeActiveSessions(numericSubAccountId);
 
     return { deleted: true };

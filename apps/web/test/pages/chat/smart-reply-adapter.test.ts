@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ChatMessage, Message } from "@/pages/chat/chat-types";
+import type { ChatMessage, Conversation, Message } from "@/pages/chat/chat-types";
 import {
   adaptSmartReplyAttachments,
   adaptSmartReplySuggestions,
@@ -18,6 +18,8 @@ import {
   getSmartReplyCustomerQuestion,
   getSmartReplyLookupKey,
   getSmartReplyProcessingLabel,
+  isSmartReplyEligibleMessage,
+  isSmartReplySupportedConversation,
   isSmartReplyGenerationFailed,
   isSmartReplyKnowledgeMiss,
   isSmartReplyPollActiveGenerateStatus,
@@ -175,6 +177,23 @@ describe("smart-reply-adapter", () => {
       role: "customer",
     } as ChatMessage;
 
+    expect(isSmartReplySupportedConversation({ mode: "single" } as Conversation)).toBe(true);
+    expect(isSmartReplySupportedConversation({ mode: "group" } as Conversation)).toBe(false);
+    expect(
+      isSmartReplyEligibleMessage({
+        ...customerMessage,
+        isGroupConversation: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowSmartReplyTriggerIcon(
+        {
+          ...customerMessage,
+          isGroupConversation: true,
+        },
+        undefined,
+      ),
+    ).toBe(false);
     expect(
       shouldShowSmartReplyTriggerIcon(customerMessage, undefined),
     ).toBe(true);

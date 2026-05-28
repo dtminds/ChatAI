@@ -57,6 +57,8 @@ import {
   createTriggeredSmartReplySuggestion,
   getSmartReplyLookupKey,
   isSmartReplyPollComplete,
+  isSmartReplyEligibleMessage,
+  isSmartReplySupportedConversation,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
@@ -735,6 +737,35 @@ function mergeSmartReplyPollResult(
   };
 }
 
+function findConversationById(
+  conversationListsByScope: WorkbenchState["conversationListsByScope"],
+  conversationId: string,
+) {
+  return Object.values(conversationListsByScope)
+    .flat()
+    .find((conversation) => conversation.id === conversationId);
+}
+
+function canUseSmartReplyForConversation(
+  state: WorkbenchState,
+  conversationId: string,
+) {
+  const conversation = findConversationById(
+    state.conversationListsByScope,
+    conversationId,
+  );
+
+  if (conversation) {
+    return isSmartReplySupportedConversation(conversation);
+  }
+
+  const messages = state.messagesByConversationId[conversationId] ?? [];
+
+  return !messages.some(
+    (message) => message.role !== "system" && message.isGroupConversation,
+  );
+}
+
 function scheduleSmartReplyPoll(
   get: () => WorkbenchStore,
   set: (
@@ -746,6 +777,11 @@ function scheduleSmartReplyPoll(
   options?: { force?: boolean },
 ) {
   const state = get();
+
+  if (!canUseSmartReplyForConversation(state, conversationId)) {
+    return;
+  }
+
   const lastPolledAt = state.smartReplyLastPolledAtByConversationId[conversationId];
 
   if (
@@ -1889,7 +1925,11 @@ export function createWorkbenchStore() {
         const state = get();
         const conversationId = state.activeConversationId;
 
-        if (!conversationId) {
+        if (
+          !conversationId ||
+          !canUseSmartReplyForConversation(state, conversationId) ||
+          !isSmartReplyEligibleMessage(message)
+        ) {
           return;
         }
 
@@ -1949,7 +1989,11 @@ export function createWorkbenchStore() {
         const state = get();
         const conversationId = state.activeConversationId;
 
-        if (!conversationId) {
+        if (
+          !conversationId ||
+          !canUseSmartReplyForConversation(state, conversationId) ||
+          !isSmartReplyEligibleMessage(message)
+        ) {
           return;
         }
 
@@ -2042,7 +2086,11 @@ export function createWorkbenchStore() {
         const state = get();
         const conversationId = state.activeConversationId;
 
-        if (!conversationId) {
+        if (
+          !conversationId ||
+          !canUseSmartReplyForConversation(state, conversationId) ||
+          !isSmartReplyEligibleMessage(message)
+        ) {
           return {
             errorCode: "CONVERSATION_NOT_ACTIVE",
             reason: "unavailable",
@@ -2559,7 +2607,9 @@ export function createWorkbenchStore() {
 
         const polledConversationId = response.request.activeConversationId;
         const newSmartReplyPendingKeys =
-          polledConversationId && response.activeConversationMessages.length > 0
+          polledConversationId &&
+          canUseSmartReplyForConversation(state, polledConversationId) &&
+          response.activeConversationMessages.length > 0
             ? collectNewSmartReplyPendingKeys(
                 state.messagesByConversationId[polledConversationId] ?? [],
                 response.activeConversationMessages,

@@ -6,7 +6,7 @@ import {
   SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS,
   SMART_REPLY_TERMINAL_GENERATE_STATUSES,
 } from "@chatai/contracts";
-import type { ChatMessage, Message, MessageContent } from "@/pages/chat/chat-types";
+import type { ChatMessage, Conversation, Message, MessageContent } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import {
   isSmartReplyBusy,
@@ -122,11 +122,18 @@ export function createTriggeredSmartReplySuggestion(
   };
 }
 
+export function isSmartReplySupportedConversation(
+  conversation?: Pick<Conversation, "mode"> | null,
+) {
+  return conversation?.mode === "single";
+}
+
 export function isSmartReplyEligibleMessage(message: ChatMessage) {
   return (
     message.role === "customer" &&
     !message.isOwnMessage &&
     !message.isRevoked &&
+    !message.isGroupConversation &&
     SMART_REPLY_TRIGGER_CONTENT_TYPES.has(message.content.type)
   );
 }

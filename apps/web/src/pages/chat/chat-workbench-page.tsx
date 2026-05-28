@@ -323,7 +323,7 @@ function ChatWorkbenchContent({
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
     [];
   const activeSmartReplyByMessageId = useMemo(() => {
-    if (!activeConversation) {
+    if (!activeConversation || activeConversation.mode !== "single") {
       return {};
     }
 

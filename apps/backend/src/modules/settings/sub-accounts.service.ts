@@ -251,6 +251,8 @@ export class SubAccountSettingsService {
       .where("type", "=", dbSubAccountType.sub)
       .execute();
 
+    await this.revokeActiveSessions(numericSubAccountId);
+
     return { deleted: true };
   }
 

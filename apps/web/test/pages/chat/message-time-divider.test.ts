@@ -55,6 +55,7 @@ describe("formatMessageDividerLabel", () => {
 
     render(
       createElement(ChatMessageList, {
+        conversationId: "conversation-1",
         messages: [
           createMessage("message-1", "第一条", "2026-05-09 14:00:00"),
           createMessage("message-2", "第二条", "2026-05-09 14:02:00"),
@@ -74,6 +75,7 @@ describe("formatMessageDividerLabel", () => {
 
     render(
       createElement(ChatMessageList, {
+        conversationId: "conversation-1",
         messages: [
           createMessage("message-1", "第一条", "2026-05-09 14:00:00"),
           createMessage("message-2", "第二条", "2026-05-09 14:04:00"),
@@ -92,6 +94,7 @@ describe("formatMessageDividerLabel", () => {
 
     render(
       createElement(ChatMessageList, {
+        conversationId: "conversation-1",
         messages: [
           {
             ...createMessage("message-file", "", "2026-05-09 14:00:00"),

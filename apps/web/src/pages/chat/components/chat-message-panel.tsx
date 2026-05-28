@@ -10,11 +10,11 @@ type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
   bottomOverlay?: ReactNode;
   canUseMessageActions?: boolean;
-  conversationId?: string;
   hasBottomOverlay?: boolean;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
   isConversationLoading: boolean;
+  conversationId: string;
   messages: Message[];
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;

@@ -197,7 +197,6 @@ export function ChatPanel({
             <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
               <ChatMessagePanel
                 activeHistoryStatus={activeHistoryStatus}
-                conversationId={activeConversation?.id}
                 bottomOverlay={
                   hasActiveFileUpload ? (
                     <FileUploadQueueBar
@@ -211,6 +210,7 @@ export function ChatPanel({
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
                 isConversationLoading={isConversationLoading}
+                conversationId={activeConversation.id}
                 messages={messages}
                 smartReplyByMessageId={smartReplyByMessageId}
                 messageViewportRef={messageViewportRef}

@@ -3022,14 +3022,19 @@ describe("WorkbenchRepository", () => {
       platform: 5,
       seatHostSubUserId: "101",
       seatId: "12",
+      seatUnreadCount: 6,
       thirdExternalUserId: "external-001",
       thirdGroupId: undefined,
       thirdGroupName: undefined,
       thirdUserId: "seat-user-001",
       uid: 9001,
+      unreadCount: 0,
     });
     expect(observedTables).toEqual(["xy_wap_embed_conversation as conversation"]);
-    expect(queryBuilders.flatMap((query) => query.joins)).toEqual(["innerJoin"]);
+    expect(queryBuilders.flatMap((query) => query.joins)).toEqual([
+      "innerJoin",
+      "leftJoin",
+    ]);
     expect(queryBuilders[0]?.wheres).not.toContainEqual([
       "conversation.biz_status",
       "=",
@@ -4206,27 +4211,6 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("finds hidden conversation ids by target for get-or-create reuse", async () => {
-    let conversationQuery: ReturnType<typeof createQueryBuilder> | undefined;
-    const repository = new WorkbenchRepository(
-      {
-        selectFrom(table: string) {
-          if (table === "xy_wap_embed_conversation") {
-            conversationQuery = createQueryBuilder({ id: 88 });
-            return conversationQuery;
-          }
-
-          throw new Error(`unexpected table ${table}`);
-        },
-      } as never,
-    );
-
-    await expect(
-      repository.findConversationIdByTarget(9001, 5, "seat-user-001", 1, "external-001"),
-    ).resolves.toBe("88");
-
-    expect(conversationQuery?.wheres).not.toContainEqual(["biz_status", "=", 1]);
-  });
 });
 
 function messageRow(overrides: Partial<MessageRow>): MessageRow {

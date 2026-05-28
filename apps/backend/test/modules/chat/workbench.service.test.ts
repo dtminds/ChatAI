@@ -155,6 +155,66 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("delegates get-or-create conversation decisions to Java before hydrating", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.createConversation).mockResolvedValue({
+      conversationId: "89",
+    });
+    const getHydratedConversation = vi.fn().mockResolvedValue({
+      conversationId: "89",
+      customerAvatar: "",
+      customerId: "external-001",
+      customerName: "微信客户",
+      lastMessage: "",
+      mode: "single",
+      priority: "medium",
+      seatId: "12",
+      unreadCount: 0,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getHydratedConversation,
+        getSeatOperateScope: vi.fn().mockResolvedValue({
+          platform: 5,
+          seatId: "12",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          subUserId: "101",
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getOrCreateConversation("101", {
+        chatType: 1,
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+      }),
+    ).resolves.toMatchObject({
+      conversationId: "89",
+    });
+
+    expect(javaClient.createConversation).toHaveBeenCalledWith({
+      chatType: 1,
+      platform: 5,
+      thirdExternalUserId: "external-001",
+      thirdGroupId: undefined,
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    expect(getHydratedConversation).toHaveBeenCalledWith(
+      9001,
+      5,
+      "seat-user-001",
+      "89",
+    );
+  });
+
   it("loads display messages from hidden conversations", async () => {
     const javaClient = createJavaClient();
     const getConversationLookup = vi.fn().mockResolvedValue({
@@ -2654,6 +2714,7 @@ describe("MysqlWorkbenchService", () => {
 
 function createJavaClient(): WorkbenchJavaClient {
   return {
+    createConversation: vi.fn(),
     deleteConversation: vi.fn().mockResolvedValue(undefined),
     downloadMsgFile: vi.fn().mockResolvedValue(undefined),
     getUploadCredential: vi.fn(),

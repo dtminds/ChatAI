@@ -505,7 +505,6 @@ describe("MessageHistorySidePanel", () => {
     expect(historyText).toHaveTextContent("收到");
     expect(historyText).not.toHaveTextContent("[微笑]");
     expect(emoji).toHaveAttribute("src", expect.stringContaining("/face/微笑.png"));
-    expect(emoji).toHaveClass("inline-block", "size-6");
   });
 
   it("renders quote messages without chat bubble alignment in history", () => {

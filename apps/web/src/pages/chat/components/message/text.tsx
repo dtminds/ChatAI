@@ -41,7 +41,7 @@ export function WechatEmojiText({ className, text }: WechatEmojiTextProps) {
         ) : (
           <img
             alt={segment.value.name}
-            className="mx-0.5 inline-block size-6 align-[-0.35em]"
+            className="mx-0.5 inline-block size-5 align-[-0.35em]"
             draggable={false}
             key={`emoji-${segment.value.name}-${index}`}
             src={segment.value.path}

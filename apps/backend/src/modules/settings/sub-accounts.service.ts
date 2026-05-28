@@ -258,6 +258,14 @@ export class SubAccountSettingsService {
       .where("platform", "=", scope.platform)
       .execute();
 
+    await this.db
+      .updateTable("xy_wap_embed_user_seat")
+      .set({ host_sub_id: 0 })
+      .where("host_sub_id", "=", numericSubAccountId)
+      .where("uid", "=", scope.uid)
+      .where("platform", "=", scope.platform)
+      .execute();
+
     await this.revokeActiveSessions(numericSubAccountId);
 
     return { deleted: true };

@@ -80,6 +80,15 @@ function installIntersectionObserverMock() {
   };
 }
 
+function getIntersectionObserverObserveCallCount(
+  instances: IntersectionObserverInstance[],
+) {
+  return instances.reduce(
+    (count, instance) => count + instance.observe.mock.calls.length,
+    0,
+  );
+}
+
 describe("ChatWorkbenchPage", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -155,6 +164,66 @@ describe("ChatWorkbenchPage", () => {
       expect(markConversationRead).toHaveBeenCalledTimes(1);
     });
     expect(markConversationRead).toHaveBeenCalledWith("conv-001");
+  });
+
+  it("waits until conversation loading finishes before observing unread messages", async () => {
+    const intersectionObserver = installIntersectionObserverMock();
+    const baseService = createMockWorkbenchService();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+
+    setWorkbenchService({
+      ...baseService,
+      markConversationRead,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    markConversationRead.mockClear();
+    const observeCallCountBeforeLoading = getIntersectionObserverObserveCallCount(
+      intersectionObserver.instances,
+    );
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        accounts: state.accounts.map((account) =>
+          account.id === "drc"
+            ? {
+                ...account,
+                unreadCount: 2,
+              }
+            : account,
+        ),
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? {
+                  ...conversation,
+                  unread: 2,
+                }
+              : conversation,
+          ),
+        },
+        isConversationLoading: true,
+      }));
+    });
+
+    expect(getIntersectionObserverObserveCallCount(intersectionObserver.instances)).toBe(
+      observeCallCountBeforeLoading,
+    );
+
+    act(() => {
+      useWorkbenchStore.setState({
+        isConversationLoading: false,
+      });
+    });
+
+    await waitFor(() => {
+      expect(getIntersectionObserverObserveCallCount(intersectionObserver.instances)).toBe(
+        observeCallCountBeforeLoading + 1,
+      );
+    });
   });
 
   it("throttles visible unread read requests for the same active conversation", async () => {

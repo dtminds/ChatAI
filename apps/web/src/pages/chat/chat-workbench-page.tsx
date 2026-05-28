@@ -379,6 +379,7 @@ function ChatWorkbenchContent({
     activeView,
     canUseConversationActions,
     firstUnreadMessageId,
+    isConversationLoading,
     markConversationRead,
     messageViewportRef,
     unreadCount: activeConversation?.unread ?? 0,

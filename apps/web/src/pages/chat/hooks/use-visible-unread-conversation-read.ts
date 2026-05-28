@@ -46,6 +46,7 @@ export function useVisibleUnreadConversationRead({
   activeView,
   canUseConversationActions,
   firstUnreadMessageId,
+  isConversationLoading,
   markConversationRead,
   messageViewportRef,
   unreadCount,
@@ -54,6 +55,7 @@ export function useVisibleUnreadConversationRead({
   activeView: "chat" | "customers";
   canUseConversationActions: boolean;
   firstUnreadMessageId?: string;
+  isConversationLoading: boolean;
   markConversationRead: (conversationId: string) => Promise<void>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
   unreadCount: number;
@@ -64,6 +66,7 @@ export function useVisibleUnreadConversationRead({
     activeConversationId,
     activeView,
     canUseConversationActions,
+    isConversationLoading,
     unreadCount,
   });
 
@@ -71,6 +74,7 @@ export function useVisibleUnreadConversationRead({
     activeConversationId,
     activeView,
     canUseConversationActions,
+    isConversationLoading,
     unreadCount,
   };
 
@@ -83,6 +87,7 @@ export function useVisibleUnreadConversationRead({
         !conversationId ||
         context.activeView !== "chat" ||
         !context.canUseConversationActions ||
+        context.isConversationLoading ||
         context.unreadCount <= 0 ||
         inFlightReadConversationIdsRef.current.has(conversationId)
       ) {
@@ -117,6 +122,7 @@ export function useVisibleUnreadConversationRead({
       activeView !== "chat" ||
       !activeConversationId ||
       !canUseConversationActions ||
+      isConversationLoading ||
       unreadCount <= 0 ||
       !firstUnreadMessageId ||
       typeof IntersectionObserver === "undefined"
@@ -155,6 +161,7 @@ export function useVisibleUnreadConversationRead({
     activeView,
     canUseConversationActions,
     firstUnreadMessageId,
+    isConversationLoading,
     messageViewportRef,
     requestActiveConversationRead,
     unreadCount,

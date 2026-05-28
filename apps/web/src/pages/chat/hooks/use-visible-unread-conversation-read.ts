@@ -18,6 +18,8 @@ export function getFirstUnreadCustomerMessageId(
 
   const unreadCustomerMessages: ChatMessage[] = [];
 
+  // Message lists are kept in chronological order, with the newest message
+  // at the end. Walk backward to find the earliest message in the unread tail.
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
 

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +10,17 @@ import {
   SmartReplyMessageAnchor,
 } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+
+const smartReplyCardSource = readFileSync(
+  join(process.cwd(), "src/pages/chat/components/smart-reply-card.tsx"),
+  "utf8",
+);
+const themeCss = readFileSync(join(process.cwd(), "src/styles/index.css"), "utf8");
+const appearanceThemeBlocks = [
+  ...themeCss.matchAll(
+    /html(?:\.dark)?\[data-appearance-theme="[^"]+"\]\s*\{[\s\S]*?\n\}/g,
+  ),
+].map((match) => match[0]);
 
 describe("SmartReplyCard", () => {
   afterEach(() => {
@@ -31,6 +44,47 @@ describe("SmartReplyCard", () => {
     expect(screen.getByText("这里是思考的文案...")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "编辑" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument();
+  });
+
+  it("renders without a card shadow", () => {
+    render(<SmartReplyCard assistantName="护肤小助手" content="建议回复" />);
+
+    expect(screen.getByTestId("smart-reply-card").className).not.toContain(
+      "shadow",
+    );
+  });
+
+  it("uses smart reply tokens instead of hard-coded component colors", () => {
+    expect(smartReplyCardSource).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(smartReplyCardSource).toContain("bg-smart-reply-card");
+    expect(smartReplyCardSource).toContain("text-smart-reply-card-foreground");
+    expect(smartReplyCardSource).toContain("bg-smart-reply-header");
+    expect(smartReplyCardSource).toContain("text-smart-reply-muted-foreground");
+    expect(smartReplyCardSource).toContain("text-smart-reply-action");
+    expect(smartReplyCardSource).toContain("bg-smart-reply-divider");
+  });
+
+  it("defines smart reply tokens outside appearance theme overrides", () => {
+    expect(themeCss).toContain("--smart-reply-card: oklch(");
+    expect(themeCss).toContain("--smart-reply-card-foreground: oklch(");
+    expect(themeCss).toContain("--smart-reply-header: oklch(");
+    expect(themeCss).toContain("--smart-reply-muted-foreground: oklch(");
+    expect(themeCss).toContain("--smart-reply-action: oklch(");
+    expect(themeCss).toContain("--smart-reply-divider: oklch(");
+    expect(themeCss).toContain("--color-smart-reply-card: var(--smart-reply-card);");
+    expect(themeCss).toContain(
+      "--color-smart-reply-card-foreground: var(--smart-reply-card-foreground);",
+    );
+    expect(themeCss).toContain("--color-smart-reply-header: var(--smart-reply-header);");
+    expect(themeCss).toContain(
+      "--color-smart-reply-muted-foreground: var(--smart-reply-muted-foreground);",
+    );
+    expect(themeCss).toContain("--color-smart-reply-action: var(--smart-reply-action);");
+    expect(themeCss).toContain("--color-smart-reply-divider: var(--smart-reply-divider);");
+
+    for (const block of appearanceThemeBlocks) {
+      expect(block).not.toContain("--smart-reply-");
+    }
   });
 
   it("collapses to header only and expands again from the header toggle", async () => {
@@ -415,7 +469,7 @@ describe("SmartReplyCard", () => {
       />,
     );
 
-    expect(screen.getByText("生成失败，请重试")).toBeInTheDocument();
+    expect(screen.getByText("生成失败：model_error")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "发送" })).not.toBeInTheDocument();
 

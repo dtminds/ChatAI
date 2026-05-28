@@ -201,6 +201,29 @@ describe("ChatWorkbenchPage", () => {
     expect(markConversationRead).toHaveBeenCalledWith("conv-001");
   });
 
+  it("shows the smart reply failure reason in the card when generation fails", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyGeneralAnswer() {
+        throw new Error("当前未配置可用AI助手");
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getAllByRole("button", { name: "生成智能回复" }).at(-1)!);
+
+    expect(await screen.findByTestId("smart-reply-card")).toBeInTheDocument();
+    expect(screen.getByText("生成失败：当前未配置可用AI助手")).toBeInTheDocument();
+    expect(workbenchToastWarningMock).not.toHaveBeenCalledWith(
+      "当前未配置可用AI助手",
+    );
+  });
+
   it("observes the first unread customer message within the unread tail", async () => {
     const intersectionObserver = installIntersectionObserverMock();
     const baseService = createMockWorkbenchService();

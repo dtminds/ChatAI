@@ -7,7 +7,9 @@ import {
   buildSmartReplyRealAttachIds,
   buildSmartReplySendSegments,
   collectNewSmartReplyPendingKeys,
+  collectPendingSmartReplyPollMsgIds,
   collectQuestionImgs,
+  collectUnansweredSmartReplyPendingKeys,
   collectSmartReplyMsgIds,
   collectSmartReplyPollMsgIds,
   canRequestSmartReplyMakeShorter,
@@ -164,6 +166,101 @@ describe("smart-reply-adapter", () => {
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:00:00+08:00",
             seq: 1,
+          },
+        ] as Message[],
+      ),
+    ).toEqual([]);
+  });
+
+  it("collects up to five latest unanswered customer messages after the last agent reply", () => {
+    const messages = [
+      {
+        content: { text: "已回复的问题", type: "text" },
+        id: "msg-old-customer",
+        role: "customer",
+        sender: { id: "cus-1", name: "客户" },
+        sentAt: "2026-05-25T10:00:00+08:00",
+        seq: 1,
+      },
+      {
+        content: { text: "客服回复", type: "text" },
+        id: "msg-agent",
+        role: "agent",
+        sender: { id: "agent-1", name: "客服" },
+        sentAt: "2026-05-25T10:01:00+08:00",
+        seq: 2,
+      },
+      ...Array.from({ length: 6 }, (_, index) => ({
+        content: { text: `未回复问题 ${index + 1}`, type: "text" as const },
+        id: `msg-new-${index + 1}`,
+        role: "customer" as const,
+        sender: { id: "cus-1", name: "客户" },
+        sentAt: `2026-05-25T10:0${index + 2}:00+08:00`,
+        seq: index + 3,
+      })),
+    ] as Message[];
+
+    expect(collectUnansweredSmartReplyPendingKeys(messages)).toEqual([
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+    ]);
+  });
+
+  it("does not keep smart reply candidates when the conversation ends with an agent reply", () => {
+    expect(
+      collectUnansweredSmartReplyPendingKeys([
+        {
+          content: { text: "客户问题", type: "text" },
+          id: "msg-customer",
+          role: "customer",
+          sender: { id: "cus-1", name: "客户" },
+          sentAt: "2026-05-25T10:00:00+08:00",
+          seq: 1,
+        },
+        {
+          content: { text: "客服回复", type: "text" },
+          id: "msg-agent",
+          role: "agent",
+          sender: { id: "agent-1", name: "客服" },
+          sentAt: "2026-05-25T10:01:00+08:00",
+          seq: 2,
+        },
+      ] as Message[]),
+    ).toEqual([]);
+  });
+
+  it("does not add a new customer message to pending when an agent replies after it in the same poll", () => {
+    expect(
+      collectNewSmartReplyPendingKeys(
+        [
+          {
+            content: { text: "旧消息", type: "text" },
+            id: "msg-1",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:00:00+08:00",
+            seq: 10,
+          },
+        ] as Message[],
+        [
+          {
+            content: { text: "新问题", type: "text" },
+            id: "msg-2",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:01:00+08:00",
+            seq: 11,
+          },
+          {
+            content: { text: "客服回复", type: "text" },
+            id: "msg-3",
+            role: "agent",
+            sender: { id: "agent-1", name: "客服" },
+            sentAt: "2026-05-25T10:02:00+08:00",
+            seq: 12,
           },
         ] as Message[],
       ),
@@ -570,6 +667,52 @@ describe("smart-reply-adapter", () => {
         },
       ),
     ).toEqual([1, 3]);
+  });
+
+  it("collects poll msg ids only from pending unanswered candidates", () => {
+    expect(
+      collectPendingSmartReplyPollMsgIds(
+        [
+          {
+            content: { text: "待推荐 1", type: "text" },
+            id: "msg-1",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:01:00+08:00",
+            seq: 1,
+          },
+          {
+            content: { text: "待推荐 2", type: "text" },
+            id: "msg-2",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:02:00+08:00",
+            seq: 2,
+          },
+          {
+            content: { text: "未加入 pending", type: "text" },
+            id: "msg-3",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:03:00+08:00",
+            seq: 3,
+          },
+        ] as Message[],
+        {
+          "2": {
+            assistantName: "智能助手",
+            content: "已完成",
+            generateStatus: 2,
+            pollComplete: true,
+            status: "ready",
+          },
+        },
+        {
+          "1": true,
+          "2": true,
+        },
+      ),
+    ).toEqual([1]);
   });
 
   it("marks terminal generate statuses", () => {

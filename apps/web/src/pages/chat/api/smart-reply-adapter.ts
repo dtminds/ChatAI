@@ -33,6 +33,8 @@ export const SMART_REPLY_POLL_INTERVAL_MS = 5000;
 /** 智能回复繁忙超时时间（毫秒） */
 export const SMART_REPLY_BUSY_TIMEOUT_MS = 30000;
 
+export const SMART_REPLY_INITIAL_CANDIDATE_LIMIT = 5;
+
 export function getSmartReplyProcessingLabel(
   contentType: MessageContent["type"],
   status?: SmartReplySuggestion["status"],
@@ -230,6 +232,12 @@ export function collectNewSmartReplyPendingKeys(
   const previousKeys = new Set(
     previousMessages.map((message) => getSmartReplyLookupKey(message)),
   );
+  const unansweredKeys = new Set(
+    collectUnansweredSmartReplyPendingKeys([
+      ...previousMessages,
+      ...incomingMessages,
+    ], Number.POSITIVE_INFINITY),
+  );
   const maxPreviousSeq = Math.max(
     0,
     ...previousMessages
@@ -252,6 +260,10 @@ export function collectNewSmartReplyPendingKeys(
       continue;
     }
 
+    if (!unansweredKeys.has(lookupKey)) {
+      continue;
+    }
+
     const seq = message.seq;
 
     if (seq != null && Number.isSafeInteger(seq) && seq > 0 && seq <= maxPreviousSeq) {
@@ -262,6 +274,36 @@ export function collectNewSmartReplyPendingKeys(
   }
 
   return pendingKeys;
+}
+
+export function collectUnansweredSmartReplyPendingKeys(
+  messages: Message[],
+  limit = SMART_REPLY_INITIAL_CANDIDATE_LIMIT,
+) {
+  const unansweredMessages = collectUnansweredSmartReplyMessages(messages);
+  const limitedMessages = Number.isFinite(limit)
+    ? unansweredMessages.slice(-Math.max(0, Math.floor(limit)))
+    : unansweredMessages;
+
+  return limitedMessages.map((message) => getSmartReplyLookupKey(message));
+}
+
+function collectUnansweredSmartReplyMessages(messages: Message[]) {
+  let lastAgentMessageIndex = -1;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === "agent") {
+      lastAgentMessageIndex = index;
+      break;
+    }
+  }
+
+  return messages
+    .slice(lastAgentMessageIndex + 1)
+    .filter(
+      (message): message is ChatMessage =>
+        message.role !== "system" && isSmartReplyEligibleMessage(message),
+    );
 }
 
 export function isSmartReplyReady(suggestion?: SmartReplySuggestion | null) {
@@ -410,6 +452,46 @@ export function collectSmartReplyPollMsgIds(
 
     return !isSmartReplyPollComplete(suggestion);
   });
+}
+
+export function collectPendingSmartReplyPollMsgIds(
+  messages: Message[],
+  suggestions: Record<string, SmartReplySuggestion>,
+  pending: Record<string, true>,
+  limit = 100,
+) {
+  const unansweredKeys = new Set(
+    collectUnansweredSmartReplyPendingKeys(messages, Number.POSITIVE_INFINITY),
+  );
+  const seen = new Set<number>();
+  const msgIds: number[] = [];
+
+  for (const message of messages) {
+    const lookupKey = getSmartReplyLookupKey(message);
+
+    if (!pending[lookupKey] || !unansweredKeys.has(lookupKey)) {
+      continue;
+    }
+
+    const seq = message.seq;
+
+    if (!Number.isSafeInteger(seq) || seq == null || seq <= 0 || seen.has(seq)) {
+      continue;
+    }
+
+    if (isSmartReplyPollComplete(suggestions[String(seq)])) {
+      continue;
+    }
+
+    seen.add(seq);
+    msgIds.push(seq);
+
+    if (msgIds.length >= limit) {
+      break;
+    }
+  }
+
+  return msgIds;
 }
 
 function readNonNegativeInteger(value: unknown) {

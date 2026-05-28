@@ -863,6 +863,41 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("preserves Java errorMsg when general-answer request fails", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 999,
+          errorMsg: "当前未配置可用AI助手",
+          success: false,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().requestGeneralAnswer({
+        chatType: 1,
+        msgId: 1324,
+        questionImgs: [],
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      details: {
+        error: 999,
+      },
+      message: "当前未配置可用AI助手",
+      statusCode: 502,
+    });
+  });
+
   it("posts attachment list requests with ids and uid", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

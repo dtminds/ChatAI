@@ -69,6 +69,12 @@
   --conversation-active-muted-foreground: oklch(0.9 0.08 259.76);
   --conversation-active-icon: oklch(0.9 0.08 259.76);
   --conversation-hover: var(--surface-hover);
+  --smart-reply-card: oklch(1 0 0);
+  --smart-reply-card-foreground: oklch(0.21 0.012 255);
+  --smart-reply-header: oklch(0.985 0.01 255);
+  --smart-reply-muted-foreground: oklch(0.36 0 0);
+  --smart-reply-action: oklch(0.62 0.19 259.76);
+  --smart-reply-divider: oklch(0.94 0.004 255);
 }
 
 .dark {
@@ -133,6 +139,12 @@
   --conversation-active-muted-foreground: oklch(0.84 0.07 259.76);
   --conversation-active-icon: oklch(0.84 0.07 259.76);
   --conversation-hover: var(--surface-hover);
+  --smart-reply-card: oklch(0.245 0.006 255);
+  --smart-reply-card-foreground: oklch(0.93 0.006 255);
+  --smart-reply-header: oklch(0.285 0.022 255);
+  --smart-reply-muted-foreground: oklch(0.76 0.006 255);
+  --smart-reply-action: oklch(0.72 0.14 255);
+  --smart-reply-divider: oklch(0.38 0.008 255);
 }
 
 html[data-appearance-theme="green"] {
@@ -1011,6 +1023,12 @@ html.dark[data-appearance-theme="nature"] {
   --color-conversation-active-muted-foreground: var(--conversation-active-muted-foreground);
   --color-conversation-active-icon: var(--conversation-active-icon);
   --color-conversation-hover: var(--conversation-hover);
+  --color-smart-reply-card: var(--smart-reply-card);
+  --color-smart-reply-card-foreground: var(--smart-reply-card-foreground);
+  --color-smart-reply-header: var(--smart-reply-header);
+  --color-smart-reply-muted-foreground: var(--smart-reply-muted-foreground);
+  --color-smart-reply-action: var(--smart-reply-action);
+  --color-smart-reply-divider: var(--smart-reply-divider);
   --radius-sm: calc(var(--radius) - 0.5rem);
   --radius-md: calc(var(--radius) - 0.25rem);
   --radius-lg: var(--radius);

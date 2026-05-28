@@ -15,6 +15,7 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchHistoryMessagePageDto,
   WorkbenchMessageDto,
+  WorkbenchSmartReplyPollRequest,
 } from "@chatai/contracts";
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
 import { createFreshWorkbenchStoreForTest } from "./workbench-store-test-utils";
@@ -111,6 +112,33 @@ function createDownloadFileMessageDto({
   };
 }
 
+function createSmartReplyTextMessageDto({
+  conversationId = "conv-001",
+  id,
+  senderType = "customer",
+  seq,
+  text,
+}: {
+  conversationId?: string;
+  id: string;
+  senderType?: "customer" | "agent";
+  seq: number;
+  text: string;
+}): WorkbenchMessageDto {
+  return {
+    content: { text },
+    contentType: "text",
+    conversationId,
+    createdAt: 1_778_400_000_000 + seq * 1_000,
+    customerId: "cust-001",
+    messageId: id,
+    seatId: "drc",
+    senderType,
+    seq,
+    status: "sent",
+  };
+}
+
 describe("useWorkbenchStore", () => {
   beforeEach(() => {
     resetWorkbenchStoreTestState();
@@ -162,6 +190,205 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveConversation("conv-002");
 
     expect(observedLimits).toEqual([50, 50]);
+  });
+
+  it("polls smart replies for at most the last five unanswered customer messages after loading a conversation", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-answered",
+              seq: 1,
+              text: "已经被客服回复的问题",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-agent",
+              senderType: "agent",
+              seq: 2,
+              text: "客服已回复",
+            }),
+            ...Array.from({ length: 6 }, (_, index) =>
+              createSmartReplyTextMessageDto({
+                id: `msg-unanswered-${index + 1}`,
+                seq: index + 3,
+                text: `待回复问题 ${index + 1}`,
+              }),
+            ),
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(observedSmartReplyRequests).toEqual([
+      {
+        conversationId: "conv-001",
+        msgIds: [4, 5, 6, 7, 8],
+      },
+    ]);
+  });
+
+  it("adds newly loaded customer messages to smart reply polling", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        const response = await baseService.poll(request);
+
+        if (request.activeConversationId !== "conv-001") {
+          return response;
+        }
+
+        return {
+          ...response,
+          activeConversationMessages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-new-customer",
+              seq: 11,
+              text: "新客户问题",
+            }),
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    observedSmartReplyRequests.length = 0;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedSmartReplyRequests).toEqual([
+      {
+        conversationId: "conv-001",
+        msgIds: [11],
+      },
+    ]);
+  });
+
+  it("clears smart reply suggestions and pending candidates when an agent reply arrives", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        const response = await baseService.poll(request);
+
+        if (request.activeConversationId !== "conv-001") {
+          return response;
+        }
+
+        return {
+          ...response,
+          activeConversationMessages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-agent-reply",
+              senderType: "agent",
+              seq: 11,
+              text: "客服回复",
+            }),
+          ],
+        };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "9": {
+            assistantName: "智能助手",
+            content: "旧推荐",
+            status: "ready",
+          },
+        },
+      },
+      smartReplyPendingMessageKeysByConversationId: {
+        ...state.smartReplyPendingMessageKeysByConversationId,
+        "conv-001": {
+          "9": true,
+          "10": true,
+        },
+      },
+    }));
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
+    ).toEqual({});
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).toEqual({});
+  });
+
+  it("keeps manually triggered processing smart replies in the poll candidates", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyGeneralAnswer(request) {
+        return {
+          suggestion: {
+            assistantName: "智能助手",
+            content: "",
+            messageId: String(request.msgId),
+            status: "processing",
+          },
+        };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 9,
+      );
+
+    expect(message).toBeDefined();
+
+    await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
+
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).toMatchObject({
+      "9": true,
+    });
   });
 
   it("keeps the opposite history cursor when prepending older pages", async () => {

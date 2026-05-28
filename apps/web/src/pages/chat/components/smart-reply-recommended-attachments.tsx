@@ -57,7 +57,7 @@ export function SmartReplyRecommendedAttachmentsSection({
   if (isLoading) {
     return (
       <section className={className}>
-        <p className="flex items-center gap-1 text-[13px] leading-[22px] text-[#3d3d3d]">
+        <p className="flex items-center gap-1 text-[13px] leading-[22px] text-muted-foreground">
           <HugeiconsIcon
             className="animate-spin"
             icon={Loading03Icon}
@@ -76,12 +76,12 @@ export function SmartReplyRecommendedAttachmentsSection({
 
   return (
     <section className={className}>
-      <p className="text-[13px] leading-[22px]">
-        <span aria-hidden className="text-[#3d3d3d]">
+      <p className="text-[13px] leading-[22px] text-foreground">
+        <span aria-hidden>
           📎
         </span>{" "}
         推荐附件：
-        <span className="text-[#999]">
+        <span className="text-muted-foreground">
           请按需勾选需要发送的附件 ({selectedCount}/{totalAttachments})
         </span>
       </p>
@@ -113,7 +113,7 @@ function RecommendedAttachmentRow({
   const typeLabel = getAttachmentTypeLabel(attachment.fileType);
 
   return (
-    <li className="mt-[12px] flex items-center gap-[16px] rounded-[6px] border border-[#EEEFF0] px-[22px] py-[16px]">
+    <li className="mt-[12px] flex items-center gap-[16px] rounded-[6px] border border-border px-[22px] py-[16px]">
       <Checkbox
         aria-label={`选择附件 ${attachment.fileName}`}
         checked={checked}
@@ -121,10 +121,10 @@ function RecommendedAttachmentRow({
       />
       <RecommendedAttachmentPreview attachment={attachment} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] leading-[22px] text-[#101419]">
+        <p className="truncate text-[13px] leading-[22px] text-foreground">
           {attachment.fileName}
         </p>
-        <p className="text-[12px] leading-5 text-[#267FF0]">{typeLabel}</p>
+        <p className="text-[12px] leading-5 text-primary">{typeLabel}</p>
       </div>
     </li>
   );
@@ -244,12 +244,12 @@ function getAttachmentTypeIcon(type: RecommendedAttachmentUiType) {
 function getAttachmentPreviewTone(type: RecommendedAttachmentUiType) {
   switch (type) {
     case "video":
-      return "bg-[#F2F3F5] text-[#4E5969]";
+      return "bg-muted text-muted-foreground";
     case "file":
-      return "bg-[#FFF1F0] text-[#F53F3F]";
+      return "bg-destructive/10 text-destructive";
     case "link":
-      return "bg-[#F2F3F5] text-[#86909C]";
+      return "bg-muted text-muted-foreground";
     default:
-      return "bg-[#F2F3F5] text-[#4E5969]";
+      return "bg-muted text-muted-foreground";
   }
 }

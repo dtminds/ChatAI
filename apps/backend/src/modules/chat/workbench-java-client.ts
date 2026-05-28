@@ -297,6 +297,7 @@ export function createWorkbenchJavaClient(
         },
         logger,
         "request-general-answer",
+        { exposeErrorMessage: true },
       ).then((data) => {
         return {
           suggestion: mapJavaGeneralAnswer(data),

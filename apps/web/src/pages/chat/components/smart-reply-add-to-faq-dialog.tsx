@@ -246,7 +246,7 @@ export function SmartReplyAddToFaqDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex max-h-[min(90vh,720px)] w-[520px] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[10px]"
+        className="flex max-h-[min(90vh,720px)] w-[min(860px,calc(100vw-48px))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[10px]"
         data-testid="smart-reply-add-to-faq-dialog"
       >
         <DialogHeader className="space-y-0 px-6 py-4 text-left">
@@ -255,57 +255,64 @@ export function SmartReplyAddToFaqDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-4">
-          <FaqSelectField
-            isLoading={isKnowledgeSetsLoading}
-            label="知识集"
-            loadingLabel="正在加载知识集"
-            onValueChange={setKnowledgeSetId}
-            options={knowledgeSets}
-            required
-            value={knowledgeSetId}
-          />
-          <FaqSelectField
-            isLoading={isFaqsLoading}
-            label="选择FAQ"
-            loadingLabel="正在加载 FAQ"
-            onValueChange={setFaqId}
-            options={faqOptions}
-            required
-            value={faqId}
-          />
-          <FaqTextareaField
-            label="问题"
-            onChange={setQuestion}
-            required
-            value={question}
-          />
-          <SimilarQuestionsField
-            onAdd={handleAddSimilarQuestion}
-            onChange={handleSimilarQuestionChange}
-            values={similarQuestions}
-          />
-          <FaqTextareaField
-            label="答案"
-            onChange={setAnswer}
-            required
-            rows={6}
-            value={answer}
-          />
-          {isRecommendedAttachmentsLoading ? (
-            <SmartReplyRecommendedAttachmentsSection
-              isLoading
-              onSelectedAttachmentIdsChange={() => undefined}
-              recommendedAttachments={[]}
-              selectedAttachmentIds={[]}
-            />
-          ) : recommendedAttachments.length > 0 ? (
-            <SmartReplyRecommendedAttachmentsSection
-              onSelectedAttachmentIdsChange={handleToggleAttachment}
-              recommendedAttachments={recommendedAttachments}
-              selectedAttachmentIds={selectedAttachmentIds}
-            />
-          ) : null}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
+          <div className="grid gap-5 md:grid-cols-[220px_minmax(0,1fr)]">
+            <div className="space-y-4">
+              <FaqSelectField
+                isLoading={isKnowledgeSetsLoading}
+                label="知识集"
+                loadingLabel="正在加载知识集"
+                onValueChange={setKnowledgeSetId}
+                options={knowledgeSets}
+                required
+                value={knowledgeSetId}
+              />
+              <FaqSelectField
+                isLoading={isFaqsLoading}
+                label="选择FAQ"
+                loadingLabel="正在加载 FAQ"
+                onValueChange={setFaqId}
+                options={faqOptions}
+                required
+                value={faqId}
+              />
+            </div>
+            <div className="min-w-0 space-y-4">
+              <FaqTextareaField
+                label="问题"
+                onChange={setQuestion}
+                required
+                rows={2}
+                value={question}
+              />
+              <SimilarQuestionsField
+                onAdd={handleAddSimilarQuestion}
+                onChange={handleSimilarQuestionChange}
+                values={similarQuestions}
+              />
+              <FaqTextareaField
+                label="答案"
+                onChange={setAnswer}
+                required
+                rows={6}
+                value={answer}
+              />
+              {isRecommendedAttachmentsLoading ? (
+                <SmartReplyRecommendedAttachmentsSection
+                  isLoading
+                  onSelectedAttachmentIdsChange={() => undefined}
+                  recommendedAttachments={[]}
+                  selectedAttachmentIds={[]}
+                />
+              ) : recommendedAttachments.length > 0 ? (
+                <SmartReplyRecommendedAttachmentsSection
+                  onSelectedAttachmentIdsChange={handleToggleAttachment}
+                  recommendedAttachments={recommendedAttachments}
+                  selectedAttachmentIds={selectedAttachmentIds}
+                />
+              ) : null}
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="gap-2 px-6 py-4 sm:justify-end">
@@ -437,7 +444,7 @@ function SimilarQuestionsField({
               key={fieldId}
               onChange={(event) => onChange(index, event.target.value)}
               placeholder="请输入相似问法"
-              rows={3}
+              rows={1}
               value={value}
             />
           );

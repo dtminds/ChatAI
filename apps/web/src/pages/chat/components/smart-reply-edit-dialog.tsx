@@ -220,11 +220,11 @@ export function SmartReplyEditDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex max-h-[min(90vh,720px)] w-[640px] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-[10px] px-[24px]"
+        className="flex max-h-[min(90vh,720px)] w-[640px] max-w-none flex-col gap-0 overflow-hidden px-[24px] py-0 text-foreground sm:rounded-[10px]"
         data-testid="smart-reply-edit-dialog"
       >
         <DialogHeader className="space-y-0 py-[16px] text-left">
-          <DialogTitle className="text-[14px] font-medium leading-6 text-[#101419]">
+          <DialogTitle className="text-[14px] font-medium leading-6 text-foreground">
             编辑
           </DialogTitle>
         </DialogHeader>
@@ -238,7 +238,7 @@ export function SmartReplyEditDialog({
 
          <div className="mt-[20px] flex justify-end gap-2">
             <Button
-              className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px] border-none bg-[rgba(38,127,240,0.06)] text-[#666]"
+              className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
               disabled={isCheckingViolations || !draftContent.trim()}
               onClick={() => void handleCheckViolations()}
               type="button"
@@ -254,10 +254,10 @@ export function SmartReplyEditDialog({
               ) : (
                 <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={2} />
               )}
-              {isCheckingViolations ? "违规词检测中" : "违规词检测"}
+              {isCheckingViolations ? "检测中" : "违规词检测"}
             </Button>
             <Button
-              className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px] bg-[rgba(38,127,240,0.06)] text-[#666] border-none"
+              className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
               disabled={!draftContent.trim()}
               onClick={() => setIsFaqDialogOpen(true)}
               type="button"
@@ -268,9 +268,6 @@ export function SmartReplyEditDialog({
             </Button>
           </div>
 
-          {violationCheckPhase === "loading" ? (
-            <ViolationCheckLoadingBanner />
-          ) : null}
           {violationCheckPhase === "clean" ? (
             <ViolationCheckSuccessBanner onDismiss={handleDismissViolationStatus} />
           ) : null}
@@ -344,7 +341,7 @@ function ViolationHighlightEditor({
   highlightedWords: string[];
 }) {
   return (
-    <div className="relative rounded-[8px] border border-input/80 bg-background">
+    <div className="relative rounded-[8px] border border-input/80 bg-background text-foreground">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 overflow-hidden rounded-[6px] px-[12px] py-[5px] text-[13px] leading-[22px] whitespace-pre-wrap break-words"
@@ -352,7 +349,7 @@ function ViolationHighlightEditor({
         <HighlightedText segments={splitByHighlights(value, highlightedWords)} />
       </div>
       <Textarea
-        className="relative min-h-[168px] resize-none border-0 bg-transparent px-[12px] py-[5px] text-[13px] leading-[22px] text-transparent caret-[#101419] shadow-none focus-visible:ring-0"
+        className="relative min-h-[168px] resize-none border-0 bg-transparent px-[12px] py-[5px] text-[13px] leading-[22px] text-transparent caret-foreground shadow-none focus-visible:ring-0"
         onChange={(event) => onChange(event.target.value)}
         value={value}
       />
@@ -369,7 +366,7 @@ function HighlightedText({
     <>
       {segments.map((segment, index) => (
         <span
-          className={segment.highlighted ? "text-[#F53F3F]" : "text-[#101419]"}
+          className={segment.highlighted ? "text-destructive" : "text-foreground"}
           key={`${segment.text}-${index}`}
         >
           {segment.text}
@@ -379,37 +376,26 @@ function HighlightedText({
   );
 }
 
-function ViolationCheckLoadingBanner() {
-  return (
-    <section
-      className="mt-3 rounded-[6px] border border-[#EEEFF0] bg-[#F7F8FA] p-[12px]"
-      data-testid="smart-reply-violation-check-loading"
-    >
-      <p className="text-[13px] leading-[22px] text-[#101419] font-medium">违规词检测中...</p>
-    </section>
-  );
-}
-
 function ViolationCheckSuccessBanner({ onDismiss }: { onDismiss: () => void }) {
   return (
     <section
-      className="relative mt-3 rounded-[8px] border border-[#EEEFF0] bg-[#F7F8FA] p-[12px]"
+      className="relative mt-3 rounded-[8px] border border-border bg-muted/50 p-[12px]"
       data-testid="smart-reply-violation-check-success"
     >
       <button
         aria-label="关闭违规词检测提示"
-        className="absolute right-3 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-[6px] text-[#86909C] outline-none transition-colors hover:bg-[#EEEFF0] hover:text-[#101419] focus-visible:ring-2 focus-visible:ring-ring/20"
+        className="absolute right-3 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-[6px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
         onClick={onDismiss}
         type="button"
       >
         <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={2} />
       </button>
-      <p className="pr-8 text-[13px] leading-[22px] text-[#101419]">
+      <p className="pr-8 text-[13px] leading-[22px] text-foreground">
         <span className="font-medium">违规词检测</span>
         <span aria-hidden className="mx-1 ml-[12px]">
           👍
         </span>
-        <span className="text-[#999]">做的太棒了，暂未检测到错误处～</span>
+        <span className="text-muted-foreground">做的太棒了，暂未检测到错误处～</span>
       </p>
     </section>
   );
@@ -424,22 +410,27 @@ function ViolationResultPanel({
 }) {
   return (
     <section
-      className="relative mt-[16px] rounded-[6px] border border-[#FBC9C9] bg-[#FFF5F5] p-[12px]"
+      className="relative mt-[16px] rounded-[6px] border border-destructive/25 bg-destructive/5 p-[12px]"
       data-testid="smart-reply-violation-result"
     >
       <button
         aria-label="关闭违规词检测结果"
-        className="absolute right-3 top-3 inline-flex size-6 items-center justify-center rounded-[6px] text-[#7E858F] outline-none transition-colors hover:bg-[#FFECEC] hover:text-[#101419] focus-visible:ring-2 focus-visible:ring-ring/20"
+        className="absolute right-3 top-3 inline-flex size-6 items-center justify-center rounded-[6px] text-muted-foreground outline-none transition-colors hover:bg-destructive/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
         onClick={onDismiss}
         type="button"
       >
-        <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={2} color="#7E858F"/>
+        <HugeiconsIcon
+          color="currentColor"
+          icon={Cancel01Icon}
+          size={14}
+          strokeWidth={2}
+        />
       </button>
       <div>
-        <span className="text-[13px] font-medium text-[#101419]">
+        <span className="text-[13px] font-medium text-foreground">
           违规词检测结果 
         </span>
-        <span className="ml-[12px] text-[13px] text-[#999]">
+        <span className="ml-[12px] text-[13px] text-muted-foreground">
           文中涉及以下违规：{result.categoryLabel}
         </span>
       </div>
@@ -448,7 +439,7 @@ function ViolationResultPanel({
       <div className="mt-[12px] flex flex-wrap gap-2">
         {result.words.map((word) => (
           <span
-            className="inline-flex rounded-full bg-[#FFEDED] px-[12px] py-[6px] text-[12px] leading-5 text-[#FF3E33]"
+            className="inline-flex rounded-full bg-destructive/10 px-[12px] py-[6px] text-[12px] leading-5 text-destructive"
             key={word}
           >
             {word}

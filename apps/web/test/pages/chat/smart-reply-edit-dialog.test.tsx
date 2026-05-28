@@ -1,9 +1,77 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { SmartReplyEditDialog } from "@/pages/chat/components/smart-reply-edit-dialog";
 
+const editDialogSource = readFileSync(
+  join(process.cwd(), "src/pages/chat/components/smart-reply-edit-dialog.tsx"),
+  "utf8",
+);
+const recommendedAttachmentsSource = readFileSync(
+  join(
+    process.cwd(),
+    "src/pages/chat/components/smart-reply-recommended-attachments.tsx",
+  ),
+  "utf8",
+);
+const hardcodedColorPattern =
+  /#[0-9a-fA-F]{3,8}\b|\b(?:rgb|rgba|hsl|hsla)\(/;
+const smartReplyColorTokenPattern =
+  /(?:bg|text|border|ring|shadow|from|via|to|caret)-smart-reply-|--smart-reply-/;
+
 describe("SmartReplyEditDialog", () => {
+  it("uses existing theme tokens for dialog colors", () => {
+    expect(editDialogSource).not.toMatch(hardcodedColorPattern);
+    expect(recommendedAttachmentsSource).not.toMatch(hardcodedColorPattern);
+    expect(editDialogSource).not.toMatch(smartReplyColorTokenPattern);
+    expect(recommendedAttachmentsSource).not.toMatch(smartReplyColorTokenPattern);
+  });
+
+  it("keeps horizontal dialog padding", () => {
+    render(
+      <SmartReplyEditDialog
+        initialContent="建议先确认是否敏感肌"
+        onOpenChange={() => undefined}
+        open
+      />,
+    );
+
+    const dialog = screen.getByTestId("smart-reply-edit-dialog");
+    const classNames = dialog.className.split(/\s+/);
+    expect(classNames).toContain("px-[24px]");
+    expect(classNames).not.toContain("p-0");
+  });
+
+  it("uses the shared button variant for secondary dialog actions", () => {
+    render(
+      <SmartReplyEditDialog
+        initialContent="建议先确认是否敏感肌"
+        onOpenChange={() => undefined}
+        open
+      />,
+    );
+
+    const customColorClasses = [
+      "border-none",
+      "bg-primary/10",
+      "text-primary",
+      "shadow-none",
+      "hover:bg-primary/15",
+    ];
+
+    for (const name of ["违规词检测", "添加到FAQ"]) {
+      const classNames = screen
+        .getByRole("button", { name })
+        .className.split(/\s+/);
+
+      for (const className of customColorClasses) {
+        expect(classNames).not.toContain(className);
+      }
+    }
+  });
+
   it("auto checks violations on send when automaticCheckIllegalWords is enabled", async () => {
     const user = userEvent.setup();
     const onSend = vi.fn().mockResolvedValue(true);
@@ -63,11 +131,21 @@ describe("SmartReplyEditDialog", () => {
   it("blocks send after manual violation check finds banned words", async () => {
     const user = userEvent.setup();
     const onSend = vi.fn().mockResolvedValue(true);
+    let resolveViolationCheck: (
+      value: { categoryLabel: string; words: string[] },
+    ) => void = () => undefined;
+    const onCheckViolations = vi.fn(
+      () =>
+        new Promise<{ categoryLabel: string; words: string[] }>((resolve) => {
+          resolveViolationCheck = resolve;
+        }),
+    );
 
     render(
       <SmartReplyEditDialog
         automaticCheckIllegalWords={0}
         initialContent="建议先确认是否敏感肌"
+        onCheckViolations={onCheckViolations}
         onOpenChange={() => undefined}
         onSend={onSend}
         open
@@ -78,6 +156,16 @@ describe("SmartReplyEditDialog", () => {
     await user.clear(textbox);
     await user.type(textbox, "这款产品太好用了");
     await user.click(screen.getByRole("button", { name: "违规词检测" }));
+
+    expect(screen.getByRole("button", { name: "检测中" })).toBeDisabled();
+    expect(
+      screen.queryByTestId("smart-reply-violation-check-loading"),
+    ).not.toBeInTheDocument();
+
+    resolveViolationCheck({
+      categoryLabel: "广告法_通用禁用极限词",
+      words: ["太好用了"],
+    });
 
     expect(await screen.findByTestId("smart-reply-violation-result")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();

@@ -375,6 +375,45 @@ describe("message feed row actions", () => {
     );
   });
 
+  it("adds directional entrance animation only for new chat messages", () => {
+    const { rerender } = render(
+      <MessageRow
+        message={{
+          ...createTextMessage("新客服消息"),
+          isNew: true,
+          isOwnMessage: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("message-content-stack")).toHaveClass(
+      "anim-pop-right",
+    );
+
+    rerender(
+      <MessageRow
+        message={{
+          ...createTextMessage("新客户消息"),
+          isNew: true,
+          role: "customer",
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("message-content-stack")).toHaveClass(
+      "anim-pop-left",
+    );
+
+    rerender(<MessageRow message={createTextMessage("历史消息")} />);
+
+    expect(screen.getByTestId("message-content-stack")).not.toHaveClass(
+      "anim-pop-right",
+    );
+    expect(screen.getByTestId("message-content-stack")).not.toHaveClass(
+      "anim-pop-left",
+    );
+  });
+
   it("passes voice playback readiness with the source message", async () => {
     const user = userEvent.setup();
     const onVoicePlaybackReady = vi.fn();

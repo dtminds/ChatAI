@@ -190,6 +190,10 @@ export function MessageRow({
   const isGroupConversation = Boolean(message.isGroupConversation);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
   const inlineDeliveryState = getInlineDeliveryState(message);
+  const animationClassName = getMessageEntranceAnimationClassName(
+    isAgent ? "right" : "left",
+    message.isNew,
+  );
   const messageActions = (
     <MessageActionAvatar
       message={message}
@@ -235,6 +239,7 @@ export function MessageRow({
               className={cn(
                 "flex min-w-0 w-fit max-w-full flex-col gap-1.5",
                 isAgent ? "items-end" : "items-start",
+                animationClassName,
               )}
               data-testid="message-content-stack"
             >
@@ -281,6 +286,17 @@ export function MessageRow({
       </div>
     </div>
   );
+}
+
+function getMessageEntranceAnimationClassName(
+  direction: "left" | "right",
+  isNew?: boolean,
+) {
+  if (!isNew) {
+    return undefined;
+  }
+
+  return direction === "right" ? "anim-pop-right" : "anim-pop-left";
 }
 
 function QuoteMessageContentWithDelivery({

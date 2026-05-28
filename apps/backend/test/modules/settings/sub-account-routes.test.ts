@@ -294,6 +294,7 @@ describe("settings sub-account routes", () => {
     expect(enable.statusCode).toBe(200);
     expect(remove.statusCode).toBe(200);
     expect(db.statusUpdates).toEqual([2, 1, 0]);
+    expect(db.revokedSessionSubUserIds).toEqual([11]);
 
     await app.close();
   });

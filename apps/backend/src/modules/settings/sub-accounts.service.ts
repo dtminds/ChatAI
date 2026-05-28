@@ -223,6 +223,10 @@ export class SubAccountSettingsService {
       .where("status", "!=", dbSubAccountStatus.deleted)
       .execute();
 
+    if (status === "disabled") {
+      await this.revokeActiveSessions(numericSubAccountId);
+    }
+
     return this.getSubAccountOrThrow(scope, numericSubAccountId);
   }
 

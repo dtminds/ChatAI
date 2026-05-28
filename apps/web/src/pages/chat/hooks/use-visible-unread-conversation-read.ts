@@ -25,14 +25,14 @@ export function getFirstUnreadCustomerMessageId(
       continue;
     }
 
-    unreadCustomerMessages.unshift(message);
+    unreadCustomerMessages.push(message);
 
     if (unreadCustomerMessages.length >= unreadCount) {
       break;
     }
   }
 
-  return unreadCustomerMessages[0]?.id;
+  return unreadCustomerMessages[unreadCustomerMessages.length - 1]?.id;
 }
 
 function escapeCssAttributeValue(value: string) {
@@ -65,19 +65,12 @@ export function useVisibleUnreadConversationRead({
     unreadCount,
   });
 
-  useEffect(() => {
-    readContextRef.current = {
-      activeConversationId,
-      activeView,
-      canUseConversationActions,
-      unreadCount,
-    };
-  }, [
+  readContextRef.current = {
     activeConversationId,
     activeView,
     canUseConversationActions,
     unreadCount,
-  ]);
+  };
 
   const requestActiveConversationRead = useCallback(
     async () => {
@@ -107,6 +100,9 @@ export function useVisibleUnreadConversationRead({
 
       try {
         await markConversationRead(conversationId);
+      } catch {
+        // Store-backed callers already surface read errors. This only prevents
+        // unexpected rejects from detached observer/send-triggered calls.
       } finally {
         inFlightReadConversationIdsRef.current.delete(conversationId);
       }

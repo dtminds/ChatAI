@@ -49,7 +49,6 @@ import {
 } from "./workbench-mappers.js";
 import {
   comparePositiveIdValues,
-  uniquePositiveIdStrings,
   uniquePositiveNumbers,
 } from "../../shared/id-utils.js";
 const BIZ_STATUS_HIDDEN = 0;
@@ -195,10 +194,6 @@ type SeatAggregateKeyRow = Pick<SeatBaseRow, "platform" | "third_userid" | "uid"
 type TenantScope = {
   platform: number;
   uid: number;
-};
-
-type SeatRelationLinkRow = {
-  user_seat_id: number | string | bigint;
 };
 
 type SeatConversationAggregateRow = {
@@ -870,36 +865,34 @@ export class WorkbenchRepository {
       return [];
     }
 
-    const relationRows = await this.db
+    const seats = await this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .select(["relation.user_seat_id as user_seat_id"])
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.id", "=", "relation.user_seat_id")
+          .onRef("seat.uid", "=", "relation.uid")
+          .onRef("seat.platform", "=", "relation.platform"),
+      )
+      .select([
+        "seat.id as id",
+        "seat.uid as uid",
+        "seat.platform as platform",
+        "seat.third_userid as third_userid",
+        "seat.third_user_name as third_user_name",
+        "seat.third_avatar as avatar",
+        "seat.is_online as is_online",
+        "seat.host_sub_id as host_sub_id",
+      ])
       .where("relation.sub_id", "=", subUserNumericId)
       .where("relation.uid", "=", scope.uid)
       .where("relation.platform", "=", scope.platform)
-      .execute() as SeatRelationLinkRow[];
-    const seatIds = uniquePositiveIdStrings(relationRows.map((row) => row.user_seat_id));
+      .where("seat.biz_status", "=", 1)
+      .execute() as SeatBaseRow[];
 
-    if (!seatIds.length) {
+    if (!seats.length) {
       return [];
     }
 
-    const seats = await this.db
-      .selectFrom("xy_wap_embed_user_seat")
-      .select([
-        "id",
-        "uid",
-        "platform",
-        "third_userid",
-        "third_user_name",
-        "third_avatar as avatar",
-        "is_online",
-        "host_sub_id",
-      ])
-      .where("id", "in", asSchemaBigIntIds(seatIds))
-      .where("uid", "=", scope.uid)
-      .where("platform", "=", scope.platform)
-      .where("biz_status", "=", 1)
-      .execute() as SeatBaseRow[];
     const aggregateRows = await this.getSeatConversationAggregateRows(seats);
     const aggregatesBySeatThirdUserId = groupSeatConversationAggregates(aggregateRows);
 

@@ -492,44 +492,12 @@ describe("WorkbenchRepository", () => {
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
   });
 
-  it("loads seats without join-based aggregation", async () => {
-    const queryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+  it("loads seats by joining relation and seat before conversation aggregation", async () => {
+    const queries: Array<{ query: ReturnType<typeof createQueryBuilder>; table: string }> = [];
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
-            const query = createQueryBuilder([
-              {
-                platform: 5,
-                sub_id: 11,
-                uid: 9001,
-                user_seat_id: 101,
-              },
-              {
-                platform: 5,
-                sub_id: 12,
-                uid: 9001,
-                user_seat_id: 101,
-              },
-              {
-                platform: 5,
-                sub_id: 11,
-                uid: 9001,
-                user_seat_id: 102,
-              },
-            ]);
-            queryBuilders.push(query);
-            return query;
-          }
-
-          if (table === "xy_wap_embed_sub_user") {
-            return createQueryBuilder({
-              platform: 5,
-              uid: 9001,
-            });
-          }
-
-          if (table === "xy_wap_embed_user_seat") {
             const query = createQueryBuilder([
               {
                 avatar: "https://example.com/drc.png",
@@ -552,8 +520,15 @@ describe("WorkbenchRepository", () => {
                 uid: 9001,
               },
             ]);
-            queryBuilders.push(query);
+            queries.push({ query, table });
             return query;
+          }
+
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+            });
           }
 
           if (table === "xy_wap_embed_conversation") {
@@ -573,7 +548,7 @@ describe("WorkbenchRepository", () => {
                 unread_cnt: 9,
               },
             ]);
-            queryBuilders.push(query);
+            queries.push({ query, table });
             return query;
           }
 
@@ -593,19 +568,33 @@ describe("WorkbenchRepository", () => {
       }),
     ]);
 
-    expect(queryBuilders[0]?.joins).toEqual([]);
-    expect(queryBuilders[1]?.joins).toEqual([]);
-    expect(queryBuilders[2]?.joins).toEqual([]);
-    expect(queryBuilders[0]?.wheres).toContainEqual(["relation.uid", "=", 9001]);
-    expect(queryBuilders[0]?.wheres).toContainEqual(["relation.platform", "=", 5]);
-    expect(queryBuilders[1]?.wheres).toContainEqual(["uid", "=", 9001]);
-    expect(queryBuilders[1]?.wheres).toContainEqual(["platform", "=", 5]);
-    expect(queryBuilders[2]?.wheres).toContainEqual(["uid", "=", 9001]);
-    expect(queryBuilders[2]?.wheres).toContainEqual(["platform", "=", 5]);
-    expect(queryBuilders[2]?.wheres).not.toContainEqual(["uid", "in", [9001]]);
-    expect(queryBuilders[2]?.wheres).not.toContainEqual(["platform", "in", [5]]);
-    expect(queryBuilders[2]?.aggregateFns).toEqual(["sum", "max"]);
-    expect(queryBuilders[2]?.groupBys).toEqual([
+    expect(queries.map((query) => query.table)).toEqual([
+      "xy_wap_embed_user_seat_sub_relation as relation",
+      "xy_wap_embed_conversation",
+    ]);
+    expect(queries[0]?.query.joins).toEqual(["innerJoin"]);
+    expect(queries[0]?.query.joinConditions).toEqual([
+      {
+        conditions: [
+          ["seat.id", "=", "relation.user_seat_id"],
+          ["seat.uid", "=", "relation.uid"],
+          ["seat.platform", "=", "relation.platform"],
+        ],
+        table: "xy_wap_embed_user_seat as seat",
+        type: "innerJoin",
+      },
+    ]);
+    expect(queries[0]?.query.wheres).toContainEqual(["relation.uid", "=", 9001]);
+    expect(queries[0]?.query.wheres).toContainEqual(["relation.platform", "=", 5]);
+    expect(queries[0]?.query.wheres).toContainEqual(["seat.biz_status", "=", 1]);
+    expect(queries[0]?.query.joins).not.toContain("leftJoin");
+    expect(queries[1]?.query.joins).toEqual([]);
+    expect(queries[1]?.query.wheres).toContainEqual(["uid", "=", 9001]);
+    expect(queries[1]?.query.wheres).toContainEqual(["platform", "=", 5]);
+    expect(queries[1]?.query.wheres).not.toContainEqual(["uid", "in", [9001]]);
+    expect(queries[1]?.query.wheres).not.toContainEqual(["platform", "in", [5]]);
+    expect(queries[1]?.query.aggregateFns).toEqual(["sum", "max"]);
+    expect(queries[1]?.query.groupBys).toEqual([
       "uid",
       "platform",
       "third_userid",
@@ -669,24 +658,6 @@ describe("WorkbenchRepository", () => {
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
             return createQueryBuilder([
               {
-                user_seat_id: "9007199254740992",
-              },
-              {
-                user_seat_id: "9007199254740993",
-              },
-            ]);
-          }
-
-          if (table === "xy_wap_embed_sub_user") {
-            return createQueryBuilder({
-              platform: 5,
-              uid: 9001,
-            });
-          }
-
-          if (table === "xy_wap_embed_user_seat") {
-            return createQueryBuilder([
-              {
                 avatar: "https://example.com/old.png",
                 host_sub_id: 0,
                 id: "9007199254740992",
@@ -707,6 +678,13 @@ describe("WorkbenchRepository", () => {
                 uid: 9001,
               },
             ]);
+          }
+
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+            });
           }
 
           if (table === "xy_wap_embed_conversation") {

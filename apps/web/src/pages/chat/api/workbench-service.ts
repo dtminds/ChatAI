@@ -512,7 +512,6 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: getAccountUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 0,
       };
@@ -541,7 +540,6 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: getAccountUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 1,
       };
@@ -773,7 +771,10 @@ export function createMockWorkbenchService(): WorkbenchService {
       );
       pushAccountEvent(state, seatId);
 
-      return { seat: clone(nextAccount) };
+      return {
+        hostSubUserId: CURRENT_SUB_USER_ID,
+        seatId: nextAccount.seatId,
+      };
     },
     async search(seatId, keyword) {
       return {
@@ -1618,7 +1619,6 @@ function removeConversation(
   return {
     conversationId,
     seatId: conversation.seatId,
-    seatUnreadCount: getAccountUnreadCountValue(state, conversation.seatId),
   };
 }
 

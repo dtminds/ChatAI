@@ -560,7 +560,6 @@ export type WorkbenchConversationReadResponse = {
   conversationId: string;
   seatId: string;
   unreadCount: number;
-  seatUnreadCount: number;
 };
 
 export type WorkbenchConversationUnreadResponse = WorkbenchConversationReadResponse;
@@ -576,7 +575,6 @@ export type WorkbenchConversationUnpinResponse = WorkbenchConversationPinRespons
 export type WorkbenchConversationDeleteResponse = {
   conversationId: string;
   seatId: string;
-  seatUnreadCount: number;
 };
 
 export type WorkbenchGroupMemberType =
@@ -614,7 +612,8 @@ export type WorkbenchUploadCredentialResponse = {
 };
 
 export type WorkbenchTakeOverSeatResponse = {
-  seat: WorkbenchSeatDto;
+  hostSubUserId: string;
+  seatId: string;
 };
 
 export const WorkbenchCustomerSeatRelationSchema = Type.Object({

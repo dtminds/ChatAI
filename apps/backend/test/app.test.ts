@@ -1708,7 +1708,7 @@ describe("backend app", () => {
       seatId: "drc",
       unreadCount: 0,
     });
-    expect(read.json().seatUnreadCount).toBeGreaterThan(0);
+    expect(read.json()).not.toHaveProperty("seatUnreadCount");
     expect(poll.statusCode).toBe(200);
     expect(poll.json()).toMatchObject({
       activeConversationMessages: [],
@@ -1716,7 +1716,7 @@ describe("backend app", () => {
     });
     expect(poll.json().seatChanges[0]).toMatchObject({
       seatId: "drc",
-      unreadCount: read.json().seatUnreadCount,
+      unreadCount: expect.any(Number),
     });
     expect(poll.json().conversationChanges[0]).toMatchObject({
       conversationId: "conv-001",
@@ -1747,7 +1747,7 @@ describe("backend app", () => {
       seatId: "drc",
       unreadCount: 1,
     });
-    expect(unread.json().seatUnreadCount).toBeGreaterThan(0);
+    expect(unread.json()).not.toHaveProperty("seatUnreadCount");
     expect(poll.statusCode).toBe(200);
     expect(poll.json()).toMatchObject({
       activeConversationMessages: [],
@@ -1755,7 +1755,7 @@ describe("backend app", () => {
     });
     expect(poll.json().seatChanges[0]).toMatchObject({
       seatId: "drc",
-      unreadCount: unread.json().seatUnreadCount,
+      unreadCount: expect.any(Number),
     });
     expect(poll.json().conversationChanges[0]).toMatchObject({
       conversationId: "conv-002",
@@ -1849,7 +1849,6 @@ describe("backend app", () => {
     expect(response.json()).toEqual({
       conversationId: "conv-002",
       seatId: "drc",
-      seatUnreadCount: 13,
     });
     expect(conversations.json().items).not.toEqual(
       expect.arrayContaining([
@@ -2156,7 +2155,7 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("takes over a seat and returns the updated seat", async () => {
+  it("takes over a seat and returns the updated takeover owner", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
     const response = await app.inject({
@@ -2166,11 +2165,9 @@ describe("backend app", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
-      seat: {
-        hostSubUserId: "sub-user-001",
-        seatId: "ndt",
-      },
+    expect(response.json()).toEqual({
+      hostSubUserId: "sub-user-001",
+      seatId: "ndt",
     });
 
     await app.close();

@@ -17,6 +17,7 @@ describe("settings sub-account routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(db.joinCalls).toEqual([]);
     expect(response.json()).toEqual({
       data: {
         seats: [
@@ -92,6 +93,7 @@ describe("settings sub-account routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(db.joinCalls).toEqual([]);
     expect(response.json()).toEqual({
       data: {
         account: "agent003",
@@ -221,6 +223,26 @@ describe("settings sub-account routes", () => {
     await app.close();
   });
 
+  it("hydrates sub-account seats from linked seat ids only", async () => {
+    const { app, authorization, db } = await createSettingsApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "PATCH",
+      payload: { status: "disabled" },
+      url: "/api/server/settings/sub-accounts/11/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(db.seatListWheres.find(([column]) => column === "id")).toEqual([
+      "id",
+      "in",
+      [101],
+    ]);
+
+    await app.close();
+  });
+
   it("rejects weak sub-account passwords on create and update", async () => {
     const hashSpy = vi.spyOn(argon2, "hash");
     const { app, authorization } = await createSettingsApp();
@@ -294,6 +316,9 @@ describe("settings sub-account routes", () => {
     expect(enable.statusCode).toBe(200);
     expect(remove.statusCode).toBe(200);
     expect(db.statusUpdates).toEqual([2, 1, 0]);
+    expect(db.revokedSessionSubUserIds).toEqual([11, 11]);
+    expect(db.deletedRelationSubIds).toEqual([11]);
+    expect(db.releasedHostSubUserIds).toEqual([11]);
 
     await app.close();
   });
@@ -377,6 +402,7 @@ function createSettingsDbMock() {
       third_avatar: "https://example.com/drc.png",
       id: 101,
       platform: 5,
+      host_sub_id: 11,
       third_user_name: "德瑞可",
       uid: 9001,
     },
@@ -384,6 +410,7 @@ function createSettingsDbMock() {
       third_avatar: "https://example.com/ndt.png",
       id: 102,
       platform: 5,
+      host_sub_id: 12,
       third_user_name: "念都堂",
       uid: 9001,
     },
@@ -401,7 +428,10 @@ function createSettingsDbMock() {
     insertedRelations: [] as Array<Record<string, unknown>>,
     insertedSubAccount: undefined as Record<string, unknown> | undefined,
     expiredAccessTokenSubUserIds: [] as number[],
+    joinCalls: [] as Array<{ method: string; table: unknown }>,
+    releasedHostSubUserIds: [] as number[],
     revokedSessionSubUserIds: [] as number[],
+    seatListWheres: [] as Array<[string, string, unknown]>,
     statusUpdates: [] as number[],
     subAccountListWheres: [] as Array<[string, string, unknown]>,
     updatedSubAccount: undefined as Record<string, unknown> | undefined,
@@ -413,11 +443,33 @@ function createSettingsDbMock() {
       const builder = {
         execute: async () => {
           if (table === "xy_wap_embed_user_seat") {
-            return seats.map((seat) => ({
-              avatarUrl: seat.third_avatar,
-              id: seat.id,
-              third_user_name: seat.third_user_name,
-            }));
+            state.seatListWheres = wheres;
+
+            return seats
+              .filter((seat) => {
+                const seatIdFilter = wheres.find(([column]) => column === "id");
+
+                if (!seatIdFilter) {
+                  return true;
+                }
+
+                const [, operator, value] = seatIdFilter;
+
+                if (operator === "=") {
+                  return seat.id === value;
+                }
+
+                if (operator === "in" && Array.isArray(value)) {
+                  return value.includes(seat.id);
+                }
+
+                return true;
+              })
+              .map((seat) => ({
+                avatarUrl: seat.third_avatar,
+                id: seat.id,
+                third_user_name: seat.third_user_name,
+              }));
           }
 
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
@@ -514,8 +566,14 @@ function createSettingsDbMock() {
           throw new Error(`Unexpected executeTakeFirst table: ${table}`);
         },
         groupBy: () => builder,
-        innerJoin: () => builder,
-        leftJoin: () => builder,
+        innerJoin: (table: unknown) => {
+          state.joinCalls.push({ method: "innerJoin", table });
+          return builder;
+        },
+        leftJoin: (table: unknown) => {
+          state.joinCalls.push({ method: "leftJoin", table });
+          return builder;
+        },
         orderBy: () => builder,
         select: () => builder,
         where: (column: string, operator: string, value: unknown) => {
@@ -570,6 +628,12 @@ function createSettingsDbMock() {
                 state.expiredAccessTokenSubUserIds.push(subUserId);
               }
             }
+          } else if (table === "xy_wap_embed_user_seat") {
+            const hostSubUserId = wheres.find(([column]) => column === "host_sub_id")?.[2];
+
+            if (typeof hostSubUserId === "number" && nextValues.host_sub_id === 0) {
+              state.releasedHostSubUserIds.push(hostSubUserId);
+            }
           }
 
           return [];
@@ -577,7 +641,8 @@ function createSettingsDbMock() {
         set: (values: Record<string, unknown> | ((expressionBuilder: unknown) => Record<string, unknown>)) => {
           if (
             table !== "xy_wap_embed_sub_user" &&
-            table !== "xy_wap_embed_sub_user_session"
+            table !== "xy_wap_embed_sub_user_session" &&
+            table !== "xy_wap_embed_user_seat"
           ) {
             throw new Error(`Unexpected update table: ${table}`);
           }

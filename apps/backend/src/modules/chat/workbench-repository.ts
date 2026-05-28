@@ -47,6 +47,10 @@ import {
   type MessageRowQuotePreview,
   type SeatRow,
 } from "./workbench-mappers.js";
+import {
+  comparePositiveIdValues,
+  uniquePositiveNumbers,
+} from "../../shared/id-utils.js";
 const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
 const CHAT_TYPE_SINGLE = 1;
@@ -168,6 +172,37 @@ type ConversationHydrationSources = {
     { avatar: string | null; bizStatus: number | null; name: string | null }
   >;
   lastMessagesById: Map<string, { content: string | null; msgtype: string | null }>;
+};
+
+type SeatBaseRow = {
+  avatar: string | null;
+  host_sub_id: number | string | null;
+  id: number | string;
+  is_online: number | null;
+  platform: number;
+  third_user_name: string;
+  third_userid: string;
+  uid: number;
+};
+
+type SeatSummaryRow = SeatBaseRow & {
+  last_message_time: Date | number | string | null;
+  unread_count: number | string | null;
+};
+
+type SeatAggregateKeyRow = Pick<SeatBaseRow, "platform" | "third_userid" | "uid">;
+
+type TenantScope = {
+  platform: number;
+  uid: number;
+};
+
+type SeatConversationAggregateRow = {
+  last_msgtime: Date | number | string | null;
+  platform: number;
+  third_userid: string;
+  unread_cnt: number | string | null;
+  uid: number;
 };
 
 type CustomerListScope =
@@ -687,7 +722,7 @@ export class WorkbenchRepository {
     messageIds: string[],
   ): Promise<WorkbenchMessageQueryByIdsResponse> {
     const conversationNumericId = parseMySqlId(conversationId);
-    const normalizedIds = uniqueNumbers(
+    const normalizedIds = uniquePositiveNumbers(
       messageIds
         .map((value) => Number.parseInt(value, 10))
         .filter((value) => Number.isSafeInteger(value) && value > 0),
@@ -825,7 +860,13 @@ export class WorkbenchRepository {
       return [];
     }
 
-    const rows = await this.db
+    const scope = await this.getSubUserTenantScope(subUserNumericId);
+
+    if (!scope) {
+      return [];
+    }
+
+    const seats = await this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
       .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
         join
@@ -833,42 +874,36 @@ export class WorkbenchRepository {
           .onRef("seat.uid", "=", "relation.uid")
           .onRef("seat.platform", "=", "relation.platform"),
       )
-      .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
-        join
-          .onRef("conversation.third_userid", "=", "seat.third_userid")
-          .onRef("conversation.uid", "=", "seat.uid")
-          .onRef("conversation.platform", "=", "seat.platform")
-          .on("conversation.biz_status", "=", 1),
-      )
-      .select((expressionBuilder) => [
+      .select([
         "seat.id as id",
+        "seat.uid as uid",
+        "seat.platform as platform",
         "seat.third_userid as third_userid",
         "seat.third_user_name as third_user_name",
         "seat.third_avatar as avatar",
         "seat.is_online as is_online",
         "seat.host_sub_id as host_sub_id",
-        expressionBuilder.fn
-          .coalesce(
-            expressionBuilder.fn.sum<number>("conversation.unread_cnt"),
-            expressionBuilder.val(0),
-          )
-          .as("unread_count"),
-        expressionBuilder.fn.max("conversation.last_msgtime").as("last_message_time"),
       ])
       .where("relation.sub_id", "=", subUserNumericId)
+      .where("relation.uid", "=", scope.uid)
+      .where("relation.platform", "=", scope.platform)
       .where("seat.biz_status", "=", 1)
-      .groupBy([
-        "seat.id",
-        "seat.third_userid",
-        "seat.third_user_name",
-        "seat.third_avatar",
-        "seat.is_online",
-        "seat.host_sub_id",
-      ])
-      .orderBy("last_message_time", "desc")
-      .execute();
+      .execute() as SeatBaseRow[];
 
-    return rows.map((row) => mapSeatRow(row as SeatRow));
+    if (!seats.length) {
+      return [];
+    }
+
+    const aggregateRows = await this.getSeatConversationAggregateRows(seats);
+    const aggregatesBySeatThirdUserId = groupSeatConversationAggregates(aggregateRows);
+
+    const hydratedSeats = seats
+      .map((seat) =>
+        withSeatConversationAggregate(seat, aggregatesBySeatThirdUserId),
+      )
+      .sort(sortSeatsByLastMessageTimeDesc);
+
+    return hydratedSeats.map(mapSeatRow);
   }
 
   async listCustomers(input: CustomerListScope): Promise<WorkbenchCustomerListResponse> {
@@ -876,7 +911,9 @@ export class WorkbenchRepository {
       input.scope === "mine" ? parseMySqlId(input.subUserId) : undefined;
     const seatIds =
       input.scope === "mine"
-        ? uniqueNumbers((input.seatIds ?? []).map((seatId) => parseMySqlId(seatId)))
+        ? uniquePositiveNumbers(
+            (input.seatIds ?? []).map((seatId) => parseMySqlId(seatId)),
+          )
         : [];
 
     if (input.scope === "mine" && subUserNumericId == null) {
@@ -1444,43 +1481,30 @@ export class WorkbenchRepository {
       return undefined;
     }
 
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_user_seat as seat")
-      .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
-        join
-          .onRef("conversation.third_userid", "=", "seat.third_userid")
-          .onRef("conversation.uid", "=", "seat.uid")
-          .onRef("conversation.platform", "=", "seat.platform")
-          .on("conversation.biz_status", "=", 1),
-      )
-      .select((expressionBuilder) => [
-        "seat.id as id",
-        "seat.third_userid as third_userid",
-        "seat.third_user_name as third_user_name",
-        "seat.third_avatar as avatar",
-        "seat.is_online as is_online",
-        "seat.host_sub_id as host_sub_id",
-        expressionBuilder.fn
-          .coalesce(
-            expressionBuilder.fn.sum<number>("conversation.unread_cnt"),
-            expressionBuilder.val(0),
-          )
-          .as("unread_count"),
-        expressionBuilder.fn.max("conversation.last_msgtime").as("last_message_time"),
+    const seat = await this.db
+      .selectFrom("xy_wap_embed_user_seat")
+      .select([
+        "id",
+        "uid",
+        "platform",
+        "third_userid",
+        "third_user_name",
+        "third_avatar as avatar",
+        "is_online",
+        "host_sub_id",
       ])
-      .where("seat.id", "=", seatNumericId)
-      .where("seat.biz_status", "=", 1)
-      .groupBy([
-        "seat.id",
-        "seat.third_userid",
-        "seat.third_user_name",
-        "seat.third_avatar",
-        "seat.is_online",
-        "seat.host_sub_id",
-      ])
-      .execute();
+      .where("id", "=", seatNumericId)
+      .where("biz_status", "=", 1)
+      .executeTakeFirst() as SeatBaseRow | undefined;
 
-    return rows[0] ? mapSeatRow(rows[0] as SeatRow) : undefined;
+    if (!seat) {
+      return undefined;
+    }
+
+    const aggregateRows = await this.getSeatConversationAggregateRows([seat]);
+    const aggregatesBySeatThirdUserId = groupSeatConversationAggregates(aggregateRows);
+
+    return mapSeatRow(withSeatConversationAggregate(seat, aggregatesBySeatThirdUserId));
   }
 
   async getSeatsByIds(seatIds: string[]): Promise<WorkbenchSeatDto[]> {
@@ -1558,14 +1582,8 @@ export class WorkbenchRepository {
       return false;
     }
 
-    const relation = await this.db
+    const access = await this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .innerJoin("xy_wap_embed_sub_user as sub_user", (join) =>
-        join
-          .onRef("sub_user.id", "=", "relation.sub_id")
-          .onRef("sub_user.uid", "=", "relation.uid")
-          .onRef("sub_user.platform", "=", "relation.platform"),
-      )
       .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
         join
           .onRef("seat.id", "=", "relation.user_seat_id")
@@ -1575,11 +1593,10 @@ export class WorkbenchRepository {
       .select("relation.id")
       .where("relation.sub_id", "=", subUserNumericId)
       .where("relation.user_seat_id", "=", seatNumericId)
-      .where("sub_user.status", "=", 1)
       .where("seat.biz_status", "=", 1)
       .executeTakeFirst();
 
-    return Boolean(relation);
+    return Boolean(access);
   }
 
   async listConversations(
@@ -2405,7 +2422,7 @@ export class WorkbenchRepository {
       uid: number;
     },
   ) {
-    const quoteIds = uniqueNumbers(rows.map(getQuoteMessageAuditId));
+    const quoteIds = uniquePositiveNumbers(rows.map(getQuoteMessageAuditId));
     const currentRowIds = new Set(rows.map((row) => toNumber(row.id)));
     const missingQuoteIds = quoteIds.filter((id) => !currentRowIds.has(id));
 
@@ -2488,6 +2505,49 @@ export class WorkbenchRepository {
       .where("id", "=", seatId)
       .where("biz_status", "=", 1)
       .executeTakeFirst();
+  }
+
+  private async getSubUserTenantScope(subUserId: number) {
+    return this.db
+      .selectFrom("xy_wap_embed_sub_user")
+      .select(["uid", "platform"])
+      .where("id", "=", subUserId)
+      .where("status", "=", 1)
+      .executeTakeFirst() as Promise<TenantScope | undefined>;
+  }
+
+  private async getSeatConversationAggregateRows(
+    seats: SeatAggregateKeyRow[],
+  ) {
+    if (!seats.length) {
+      return [];
+    }
+
+    const aggregateRowsByTenant = await Promise.all(
+      groupSeatAggregateKeysByTenant(seats).map(
+        ({ platform, thirdUserIds, uid }) =>
+          this.db
+            .selectFrom("xy_wap_embed_conversation")
+            .select(["uid", "platform", "third_userid"])
+            .select((expressionBuilder) => [
+              expressionBuilder.fn
+                .coalesce(
+                  expressionBuilder.fn.sum<number>("unread_cnt"),
+                  expressionBuilder.val(0),
+                )
+                .as("unread_cnt"),
+              expressionBuilder.fn.max("last_msgtime").as("last_msgtime"),
+            ])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_userid", "in", thirdUserIds)
+            .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+            .groupBy(["uid", "platform", "third_userid"])
+            .execute() as Promise<SeatConversationAggregateRow[]>,
+      ),
+    );
+
+    return aggregateRowsByTenant.flat();
   }
 
   private async getConversationGroups(
@@ -3074,6 +3134,123 @@ function toNumber(value: number | string | null | undefined) {
   return Number.isFinite(numberValue) ? numberValue : undefined;
 }
 
+function groupSeatConversationAggregates(rows: SeatConversationAggregateRow[]) {
+  const aggregatesBySeatThirdUserId = new Map<
+    string,
+    { lastMessageTime: Date | number | string | null; unreadCount: number }
+  >();
+
+  for (const row of rows) {
+    aggregatesBySeatThirdUserId.set(getSeatAggregateKey(row), {
+      lastMessageTime: row.last_msgtime,
+      unreadCount: toNumber(row.unread_cnt) ?? 0,
+    });
+  }
+
+  return aggregatesBySeatThirdUserId;
+}
+
+function withSeatConversationAggregate(
+  seat: SeatBaseRow,
+  aggregatesBySeatThirdUserId: Map<
+    string,
+    { lastMessageTime: Date | number | string | null; unreadCount: number }
+  >,
+): SeatSummaryRow {
+  const aggregate = aggregatesBySeatThirdUserId.get(getSeatAggregateKey(seat));
+
+  return {
+    ...seat,
+    last_message_time: aggregate?.lastMessageTime ?? null,
+    unread_count: aggregate?.unreadCount ?? 0,
+  };
+}
+
+function getSeatAggregateKey(seat: SeatAggregateKeyRow) {
+  return `${seat.uid}:${seat.platform}:${seat.third_userid}`;
+}
+
+function groupSeatAggregateKeysByTenant(seats: SeatAggregateKeyRow[]) {
+  const thirdUserIdsByTenant = new Map<
+    string,
+    { platform: number; thirdUserIds: Set<string>; uid: number }
+  >();
+
+  for (const seat of seats) {
+    if (
+      !Number.isSafeInteger(seat.uid) ||
+      seat.uid <= 0 ||
+      !Number.isSafeInteger(seat.platform) ||
+      seat.platform <= 0 ||
+      !seat.third_userid
+    ) {
+      continue;
+    }
+
+    const key = `${seat.uid}:${seat.platform}`;
+    const current = thirdUserIdsByTenant.get(key) ?? {
+      platform: seat.platform,
+      thirdUserIds: new Set<string>(),
+      uid: seat.uid,
+    };
+
+    current.thirdUserIds.add(seat.third_userid);
+    thirdUserIdsByTenant.set(key, current);
+  }
+
+  return Array.from(thirdUserIdsByTenant.values())
+    .map((item) => ({
+      platform: item.platform,
+      thirdUserIds: Array.from(item.thirdUserIds),
+      uid: item.uid,
+    }))
+    .filter((item) => item.thirdUserIds.length > 0);
+}
+
+function sortSeatsByLastMessageTimeDesc(left: SeatSummaryRow, right: SeatSummaryRow) {
+  const timestampComparison = compareTimestamps(
+    right.last_message_time,
+    left.last_message_time,
+  );
+
+  if (timestampComparison !== 0) {
+    return timestampComparison;
+  }
+
+  return comparePositiveIdValues(right.id, left.id);
+}
+
+function compareTimestamps(
+  left: Date | number | string | null | undefined,
+  right: Date | number | string | null | undefined,
+) {
+  return normalizeTimestamp(left) - normalizeTimestamp(right);
+}
+
+function normalizeTimestamp(value: Date | number | string | null | undefined) {
+  if (value == null || value === "") {
+    return 0;
+  }
+
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.getTime() : 0;
+  }
+
+  const numeric = Number(value);
+
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+
+  if (typeof value !== "string") {
+    return 0;
+  }
+
+  const timestamp = Date.parse(value);
+
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 function uniqueNonEmpty(values: Array<string | null | undefined>) {
   return Array.from(
     new Set(
@@ -3117,16 +3294,6 @@ function asSchemaBigIntIds(values: string[]) {
 
 function asSchemaDate(value: Date) {
   return value as unknown as number;
-}
-
-function uniqueNumbers(values: Array<number | undefined>) {
-  return Array.from(
-    new Set(
-      values.filter((value): value is number =>
-        typeof value === "number" && Number.isSafeInteger(value) && value > 0,
-      ),
-    ),
-  );
 }
 
 export function parseMySqlId(value: string) {

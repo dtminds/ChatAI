@@ -49,6 +49,10 @@ import {
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
+import {
+  getFirstUnreadCustomerMessageId,
+  useVisibleUnreadConversationRead,
+} from "@/pages/chat/hooks/use-visible-unread-conversation-read";
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import { useSmartHeartbeat } from "@/pages/chat/hooks/use-smart-heartbeat";
@@ -368,12 +372,32 @@ function ChatWorkbenchContent({
     canSendMessage,
     canTakeOverAccount,
     canUseChatSend,
+    canUseConversationActions,
     composerPlaceholder,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled,
     sidebarIframeSendStatus,
   } = workbenchPermissions;
   const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";
+  const firstUnreadMessageId = useMemo(
+    () =>
+      getFirstUnreadCustomerMessageId(
+        activeMessages,
+        activeConversation?.unread ?? 0,
+      ),
+    [activeConversation?.unread, activeMessages],
+  );
+  const requestActiveConversationRead = useVisibleUnreadConversationRead({
+    activeConversationId: activeConversation?.id,
+    activeMessages,
+    activeView,
+    canUseConversationActions,
+    firstUnreadMessageId,
+    isConversationLoading,
+    markConversationRead,
+    messageViewportRef,
+    unreadCount: activeConversation?.unread ?? 0,
+  });
 
   const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
 
@@ -699,6 +723,7 @@ function ChatWorkbenchContent({
       clearComposer({
         keepQuote: quotedMessage !== null && !result.didConsumeQuote,
       });
+      void requestActiveConversationRead();
     } finally {
       isSendingDraftRef.current = false;
       if (isMountedRef.current) {

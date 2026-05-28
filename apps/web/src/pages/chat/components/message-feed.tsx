@@ -123,6 +123,7 @@ export function ChatMessageList({
           </div>
         ) : (
           <div
+            data-message-id={item.message.id}
             data-scroll-anchor={item.message.id}
             key={getMessageFeedItemKey(item.message)}
           >

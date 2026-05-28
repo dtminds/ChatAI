@@ -98,10 +98,10 @@ export function AccountRail({
   const toggleIcon = isCollapsed ? PanelLeftIcon : LayoutAlignLeftIcon;
   const accountMenuContent = (
     <DropdownMenuContent
-      align="end"
+      align="start"
       className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-56 rounded-lg p-1 shadow-[0_16px_36px_var(--shadow-medium)] outline-none"
-      side="right"
-      sideOffset={4}
+      side="top"
+      sideOffset={8}
     >
       <DropdownMenuLabel className="p-0 font-normal">
         <div

@@ -319,17 +319,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
       platform: conversation.platform,
       uid: conversation.uid,
     });
-    // Avoid an aggregate query on delete. The response may be briefly stale if
-    // concurrent messages arrive, and the next poll will reconcile that value.
-    const seatUnreadCount = Math.max(
-      0,
-      conversation.seatUnreadCount - conversation.unreadCount,
-    );
 
     return {
       conversationId: conversation.id,
       seatId: conversation.seatId,
-      seatUnreadCount,
     };
   }
 
@@ -827,17 +820,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: conversation.uid,
     });
 
-    const seatUnreadCount = await this.repository.getSeatUnreadCountAfterMarkRead({
-      conversationId: conversation.id,
-      platform: conversation.platform,
-      seatId: conversation.seatId,
-      uid: conversation.uid,
-    });
-
     return {
       conversationId: conversation.id,
       seatId: conversation.seatId,
-      seatUnreadCount,
       unreadCount: 0,
     };
   }
@@ -851,17 +836,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: conversation.uid,
     });
 
-    const nextUnreadCount = 1;
-    const nextSeatUnreadCount = Math.max(
-      0,
-      conversation.seatUnreadCount + nextUnreadCount - conversation.unreadCount,
-    );
-
     return {
       conversationId: conversation.id,
       seatId: conversation.seatId,
-      seatUnreadCount: nextSeatUnreadCount,
-      unreadCount: nextUnreadCount,
+      unreadCount: 1,
     };
   }
 
@@ -1553,13 +1531,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: seat.uid,
     });
 
-    const nextSeat = await this.repository.getSeat(seatId);
-
-    if (!nextSeat) {
-      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
-    }
-
-    return { seat: nextSeat };
+    return {
+      hostSubUserId: subUserId,
+      seatId: seat.seatId,
+    };
   }
 
   async unpinConversation(subUserId: string, conversationId: string) {

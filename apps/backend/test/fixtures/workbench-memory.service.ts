@@ -335,7 +335,6 @@ export function createMemoryWorkbenchService() {
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: getSeatUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 0,
       };
@@ -367,7 +366,6 @@ export function createMemoryWorkbenchService() {
 
       return {
         seatId: nextConversation.seatId,
-        seatUnreadCount: getSeatUnreadCountValue(state, nextConversation.seatId),
         conversationId,
         unreadCount: 1,
       };
@@ -622,7 +620,10 @@ export function createMemoryWorkbenchService() {
       );
       pushSeatEvent(state, seatId);
 
-      return { seat: clone(nextSeat) };
+      return {
+        hostSubUserId: CURRENT_SUB_USER_ID,
+        seatId: nextSeat.seatId,
+      };
     },
     unpinConversation(
       _subUserId: string,
@@ -907,7 +908,6 @@ function removeConversation(
   return {
     conversationId,
     seatId: conversation.seatId,
-    seatUnreadCount: getSeatUnreadCountValue(state, conversation.seatId),
   };
 }
 

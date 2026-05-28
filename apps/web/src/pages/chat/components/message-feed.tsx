@@ -8,7 +8,7 @@ import {
   QuoteUpSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -44,6 +44,7 @@ const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 
 type ChatMessageListProps = {
   canUseMessageActions?: boolean;
+  conversationId: string;
   messages: Message[];
   showTimeDividers?: boolean;
   showTimestamps?: boolean;
@@ -74,6 +75,7 @@ type FeedItem =
 
 export function ChatMessageList({
   canUseMessageActions = true,
+  conversationId,
   messages,
   showTimeDividers = true,
   showTimestamps = false,
@@ -91,6 +93,90 @@ export function ChatMessageList({
     () => buildFeedItems(messages, showTimeDividers),
     [messages, showTimeDividers],
   );
+  const previousConversationIdRef = useRef<string | null>(null);
+  const previousTailMessageKeyRef = useRef<string | null>(null);
+  const activeAppendAnimationRef = useRef<{
+    conversationId: string;
+    messages: Message[];
+    startIndex: number;
+  } | null>(null);
+  const clearAppendAnimationTimerRef = useRef<number | null>(null);
+  const previousConversationId = previousConversationIdRef.current;
+  const previousTailMessageKey = previousTailMessageKeyRef.current;
+  const isSameConversation = previousConversationId === conversationId;
+  const appendStartIndex = getAppendStartIndex(
+    messages,
+    isSameConversation ? previousTailMessageKey : null,
+  );
+  const hasAppendedMessages =
+    isSameConversation &&
+    appendStartIndex >= 0 &&
+    appendStartIndex < messages.length;
+  const activeAppendAnimation = activeAppendAnimationRef.current;
+  const shouldAnimateMessageByKey = new Map<string, boolean>();
+
+  messages.forEach((message, index) => {
+    shouldAnimateMessageByKey.set(
+      getMessageFeedItemKey(message),
+      Boolean(message.isNew) &&
+        (
+          (hasAppendedMessages && index >= appendStartIndex) ||
+          (
+            activeAppendAnimation?.conversationId === conversationId &&
+            activeAppendAnimation.messages === messages &&
+            index >= activeAppendAnimation.startIndex
+          )
+        ),
+    );
+  });
+
+  useLayoutEffect(() => {
+    if (hasAppendedMessages) {
+      activeAppendAnimationRef.current = {
+        conversationId,
+        messages,
+        startIndex: appendStartIndex,
+      };
+
+      if (clearAppendAnimationTimerRef.current !== null) {
+        window.clearTimeout(clearAppendAnimationTimerRef.current);
+      }
+
+      clearAppendAnimationTimerRef.current = window.setTimeout(() => {
+        const activeAppendAnimation = activeAppendAnimationRef.current;
+
+        if (
+          activeAppendAnimation?.conversationId === conversationId &&
+          activeAppendAnimation.messages === messages &&
+          activeAppendAnimation.startIndex === appendStartIndex
+        ) {
+          activeAppendAnimationRef.current = null;
+        }
+
+        clearAppendAnimationTimerRef.current = null;
+      }, 500);
+    } else if (
+      !isSameConversation ||
+      (
+        activeAppendAnimationRef.current !== null &&
+        activeAppendAnimationRef.current.messages !== messages
+      )
+    ) {
+      activeAppendAnimationRef.current = null;
+    }
+
+    previousConversationIdRef.current = conversationId;
+    previousTailMessageKeyRef.current =
+      messages.length > 0 ? getMessageFeedItemKey(messages[messages.length - 1]) : null;
+  });
+
+  useEffect(() => {
+    return () => {
+      if (clearAppendAnimationTimerRef.current !== null) {
+        window.clearTimeout(clearAppendAnimationTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="space-y-3">
@@ -107,6 +193,9 @@ export function ChatMessageList({
             <MessageRow
               message={item.message}
               canUseMessageActions={canUseMessageActions}
+              shouldAnimate={
+                shouldAnimateMessageByKey.get(getMessageFeedItemKey(item.message)) ?? false
+              }
               showTimestamp={showTimestamps}
               onDownloadMessageFile={onDownloadMessageFile}
               onMentionMessage={onMentionMessage}
@@ -127,6 +216,21 @@ export function ChatMessageList({
 
 export function getMessageFeedItemKey(message: Message) {
   return message.clientMessageId ?? message.optNo ?? message.id;
+}
+
+function getAppendStartIndex(
+  messages: Message[],
+  previousTailMessageKey: string | null,
+) {
+  if (!previousTailMessageKey) {
+    return -1;
+  }
+
+  const previousTailIndex = messages.findIndex(
+    (message) => getMessageFeedItemKey(message) === previousTailMessageKey,
+  );
+
+  return previousTailIndex >= 0 ? previousTailIndex + 1 : -1;
 }
 
 export function MessageTimeDivider({ label }: { label: string }) {
@@ -156,6 +260,7 @@ export function MessageRow({
   message,
   canUseMessageActions = true,
   showTimestamp = false,
+  shouldAnimate = false,
   onDownloadMessageFile,
   onMentionMessage,
   onOpenQuotedMessage,
@@ -169,6 +274,7 @@ export function MessageRow({
   message: Message;
   canUseMessageActions?: boolean;
   isRetryingMessage?: boolean;
+  shouldAnimate?: boolean;
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
@@ -192,7 +298,7 @@ export function MessageRow({
   const inlineDeliveryState = getInlineDeliveryState(message);
   const animationClassName = getMessageEntranceAnimationClassName(
     isAgent ? "right" : "left",
-    message.isNew,
+    shouldAnimate,
   );
   const messageActions = (
     <MessageActionAvatar

@@ -198,6 +198,7 @@ export function ChatPanel({
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
                 isConversationLoading={isConversationLoading}
+                conversationId={activeConversation.id}
                 messages={messages}
                 messageViewportRef={messageViewportRef}
                 onDownloadMessageFile={onDownloadMessageFile}

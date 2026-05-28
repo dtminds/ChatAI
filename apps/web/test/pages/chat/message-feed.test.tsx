@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageRow, getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
+import { ChatMessageList, MessageRow, getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
 vi.mock("sonner", async (importOriginal) => {
@@ -375,42 +375,108 @@ describe("message feed row actions", () => {
     );
   });
 
-  it("adds directional entrance animation only for new chat messages", () => {
+  it("adds directional entrance animation only to appended new messages", () => {
     const { rerender } = render(
-      <MessageRow
-        message={{
-          ...createTextMessage("新客服消息"),
-          isNew: true,
-          isOwnMessage: true,
-        }}
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+        ]}
+        showTimeDividers={false}
       />,
     );
 
-    expect(screen.getByTestId("message-content-stack")).toHaveClass(
+    expect(screen.getByTestId("message-content-stack")).not.toHaveClass(
       "anim-pop-right",
+    );
+    expect(screen.getByTestId("message-content-stack")).not.toHaveClass(
+      "anim-pop-left",
     );
 
     rerender(
-      <MessageRow
-        message={{
-          ...createTextMessage("新客户消息"),
-          isNew: true,
-          role: "customer",
-        }}
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+          {
+            ...createTextMessage("新客服消息"),
+            id: "msg-2",
+            isNew: true,
+            isOwnMessage: true,
+          },
+          {
+            ...createTextMessage("新客户消息"),
+            id: "msg-3",
+            isNew: true,
+            role: "customer",
+          },
+        ]}
+        showTimeDividers={false}
       />,
     );
 
-    expect(screen.getByTestId("message-content-stack")).toHaveClass(
-      "anim-pop-left",
+    const appendedStacks = screen.getAllByTestId("message-content-stack");
+    expect(appendedStacks[0]).not.toHaveClass("anim-pop-right");
+    expect(appendedStacks[1]).toHaveClass("anim-pop-right");
+    expect(appendedStacks[2]).toHaveClass("anim-pop-left");
+
+    rerender(
+      <ChatMessageList
+        conversationId="conv-layout"
+        messages={[
+          {
+            ...createTextMessage("历史消息"),
+            id: "msg-1",
+          },
+          {
+            ...createTextMessage("新客服消息"),
+            id: "msg-2",
+            isNew: true,
+            isOwnMessage: true,
+          },
+          {
+            ...createTextMessage("新客户消息"),
+            id: "msg-3",
+            isNew: true,
+            role: "customer",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
     );
 
-    rerender(<MessageRow message={createTextMessage("历史消息")} />);
+    for (const stack of screen.getAllByTestId("message-content-stack")) {
+      expect(stack).not.toHaveClass("anim-pop-right");
+      expect(stack).not.toHaveClass("anim-pop-left");
+    }
 
+    rerender(
+      <ChatMessageList
+        conversationId="conv-other"
+        messages={[
+          {
+            ...createTextMessage("切换后的已有新消息"),
+            conversationId: "conv-other",
+            id: "msg-other-1",
+            isNew: true,
+            role: "customer",
+          },
+        ]}
+        showTimeDividers={false}
+      />,
+    );
+
+    expect(screen.getByTestId("message-content-stack")).not.toHaveClass(
+      "anim-pop-left",
+    );
     expect(screen.getByTestId("message-content-stack")).not.toHaveClass(
       "anim-pop-right",
-    );
-    expect(screen.getByTestId("message-content-stack")).not.toHaveClass(
-      "anim-pop-left",
     );
   });
 

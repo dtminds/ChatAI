@@ -620,7 +620,7 @@ function SmartReplyReadonlyContent({
       ) : null}
       {isGenerationFailed ? (
         <div className="flex items-center">
-          <p className="text-[13px] text-[#3D3D3D]">生成失败，请重试</p>
+          <p className="text-[13px] text-[#3D3D3D]">生成失败,</p>
           {onRetry ? (
             <button
               className="ml-[10px] text-[13px] text-[#267FF0] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/20"

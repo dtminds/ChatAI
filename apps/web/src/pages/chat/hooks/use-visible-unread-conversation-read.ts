@@ -23,7 +23,7 @@ export function getFirstUnreadCustomerMessageId(
   for (let index = firstUnreadMessageIndex; index < messages.length; index += 1) {
     const message = messages[index];
 
-    if (message.role === "customer" && !message.isOwnMessage) {
+    if (message && message.role === "customer" && !message.isOwnMessage) {
       return message.id;
     }
   }
@@ -37,6 +37,7 @@ function escapeCssAttributeValue(value: string) {
 
 export function useVisibleUnreadConversationRead({
   activeConversationId,
+  activeMessages,
   activeView,
   canUseConversationActions,
   firstUnreadMessageId,
@@ -46,6 +47,7 @@ export function useVisibleUnreadConversationRead({
   unreadCount,
 }: {
   activeConversationId?: string;
+  activeMessages: Message[];
   activeView: "chat" | "customers";
   canUseConversationActions: boolean;
   firstUnreadMessageId?: string;
@@ -141,7 +143,7 @@ export function useVisibleUnreadConversationRead({
       },
       {
         root: viewport,
-        threshold: 0.1,
+        threshold: 0,
       },
     );
 
@@ -152,6 +154,7 @@ export function useVisibleUnreadConversationRead({
     };
   }, [
     activeConversationId,
+    activeMessages,
     activeView,
     canUseConversationActions,
     firstUnreadMessageId,

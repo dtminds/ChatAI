@@ -374,6 +374,7 @@ function ChatWorkbenchContent({
   );
   const requestActiveConversationRead = useVisibleUnreadConversationRead({
     activeConversationId: activeConversation?.id,
+    activeMessages,
     activeView,
     canUseConversationActions,
     firstUnreadMessageId,

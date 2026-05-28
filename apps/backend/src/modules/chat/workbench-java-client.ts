@@ -112,6 +112,10 @@ type JavaSendMessageResponse = {
   optNo?: string;
 };
 
+type JavaRevokeMessageResponse = {
+  optNo?: string;
+};
+
 export type WorkbenchJavaClient = {
   listUserHistoryAnswers(input: {
     chatType: number;
@@ -225,6 +229,14 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+  recognizeSentence(input: {
+    voiceUrl: string;
+  }): Promise<string>;
+  revokeMessage(input: {
+    platform: number;
+    revokeMsgId: number;
+    uid: number;
+  }): Promise<JavaRevokeMessageResponse | undefined>;
   sendMessage(input: JavaSendMessageInput): Promise<WorkbenchSendMessageResponse>;
   takeOverSeat(input: {
     platform: number;
@@ -548,6 +560,27 @@ export function createWorkbenchJavaClient(
         "pin-conversation",
       );
     },
+    recognizeSentence(input) {
+      return postJavaEnvelope<string>(
+        baseUrl,
+        token,
+        "/third-internal/tencent-cloud/sentence-recognition",
+        input,
+        logger,
+        "sentence-recognition",
+      );
+    },
+    revokeMessage(input) {
+      return postJavaEnvelope<JavaRevokeMessageResponse>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/revoke-message",
+        input,
+        logger,
+        "revoke-message",
+        { exposeErrorMessage: true },
+      );
+    },
     async sendMessage(input) {
       const response = await postJavaEnvelope<JavaSendMessageResponse>(
         baseUrl,
@@ -855,6 +888,7 @@ async function postJavaEnvelope<T>(
   body: unknown,
   logger: AppLogger,
   operation: string,
+  options: { exposeErrorMessage?: boolean } = {},
 ): Promise<T> {
   const response = await postJava<JavaApiResponse<T>>(
     baseUrl,
@@ -880,7 +914,11 @@ async function postJavaEnvelope<T>(
     );
     throw new BadGatewayError(
       WORKBENCH_INTERNAL_API_FAILED_CODE,
-      JAVA_INTERNAL_API_USER_MESSAGE,
+      // Only use this for Java business messages that product has approved
+      // for direct customer-service operator display.
+      options.exposeErrorMessage
+        ? response.errorMsg?.trim() || JAVA_INTERNAL_API_USER_MESSAGE
+        : JAVA_INTERNAL_API_USER_MESSAGE,
       {
         error: response.error,
       },
@@ -971,6 +1009,7 @@ function buildJavaLogContext(body: unknown) {
     "msgIds",
     "platform",
     "thirdExternalId",
+    "revokeMsgId",
     "sendType",
     "subId",
     "thirdExternalUserid",

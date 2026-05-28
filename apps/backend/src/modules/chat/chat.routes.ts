@@ -15,6 +15,7 @@ import type {
   WorkbenchSmartHeartbeatRequest,
   WorkbenchSmartReplyTextModerationRequest,
   WorkbenchVoicePlaybackConfirmRequest,
+  WorkbenchVoiceTranscriptionRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -71,8 +72,17 @@ const VoicePlaybackConfirmBodySchema = Type.Object({
   playbackUrl: Type.String({ minLength: 1 }),
 });
 
+const VoiceTranscriptionBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeq: Type.Integer({ minimum: 1 }),
+});
+
 const MessageDownloadParamsSchema = Type.Object({
   messageId: Type.String(),
+});
+
+const MessageRevokeBodySchema = Type.Object({
+  conversationId: Type.String(),
 });
 
 const MessageDownloadStatusBodySchema = Type.Object({
@@ -307,7 +317,9 @@ type HistoryMessagesQuery = Static<typeof HistoryMessagesQuerySchema>;
 type PlayableVoiceQuery = Static<typeof PlayableVoiceQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type VoicePlaybackConfirmBody = Static<typeof VoicePlaybackConfirmBodySchema>;
+type VoiceTranscriptionBody = Static<typeof VoiceTranscriptionBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
+type MessageRevokeBody = Static<typeof MessageRevokeBodySchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
 type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
@@ -444,6 +456,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).confirmVoicePlaybackReady(
         getSubUserId(request),
         request.body satisfies WorkbenchVoicePlaybackConfirmRequest,
+      );
+    },
+  );
+
+  app.post<{ Body: VoiceTranscriptionBody }>(
+    "/api/server/media/voice-transcription",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: VoiceTranscriptionBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).transcribeVoiceMessage(
+        getSubUserId(request),
+        request.body satisfies WorkbenchVoiceTranscriptionRequest,
       );
     },
   );
@@ -857,6 +886,28 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return getWorkbenchService(app, request).downloadMessageFile(
+        getSubUserId(request),
+        request.body.conversationId,
+        request.params.messageId,
+      );
+    },
+  );
+
+  app.post<{
+    Body: MessageRevokeBody;
+    Params: MessageDownloadParams;
+  }>(
+    "/api/server/messages/:messageId/revoke",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageRevokeBodySchema,
+        params: MessageDownloadParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatSendAccess(request);
+      return getWorkbenchService(app, request).revokeMessage(
         getSubUserId(request),
         request.body.conversationId,
         request.params.messageId,

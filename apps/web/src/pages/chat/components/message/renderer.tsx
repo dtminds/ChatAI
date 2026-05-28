@@ -22,6 +22,7 @@ type MessageContentRendererProps = {
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
 };
 
 export function MessageContentRenderer({
@@ -30,6 +31,7 @@ export function MessageContentRenderer({
   onDownloadMessageFile,
   onOpenQuotedMessage,
   onVoicePlaybackReady,
+  onTranscribeVoice,
 }: MessageContentRendererProps) {
   switch (message.content.type) {
     case "text":
@@ -46,6 +48,9 @@ export function MessageContentRenderer({
           content={message.content}
           isAgent={isAgent}
           onPlaybackReady={(payload) => onVoicePlaybackReady?.(message, payload)}
+          onTranscribe={
+            onTranscribeVoice ? () => onTranscribeVoice(message) : undefined
+          }
         />
       );
     case "image":

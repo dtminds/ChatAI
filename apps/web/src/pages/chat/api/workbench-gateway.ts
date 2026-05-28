@@ -15,6 +15,7 @@ import type {
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
   WorkbenchMessageFileDownloadStatusResponse,
+  WorkbenchRevokeMessageResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSeatChangeDto,
@@ -26,6 +27,8 @@ import type {
   WorkbenchKnowledgeFaqAddRequest,
   WorkbenchVoicePlaybackConfirmRequest,
   WorkbenchVoicePlaybackConfirmResponse,
+  WorkbenchVoiceTranscriptionRequest,
+  WorkbenchVoiceTranscriptionResponse,
 } from "@chatai/contracts";
 import {
   adaptSmartReplySuggestions,
@@ -419,6 +422,13 @@ export async function sendTextMessage(
   return getWorkbenchService().sendMessage(payload);
 }
 
+export async function revokeMessage(input: {
+  conversationId: string;
+  messageId: string;
+}): Promise<WorkbenchRevokeMessageResponse> {
+  return getWorkbenchService().revokeMessage(input);
+}
+
 export async function downloadMessageFile(input: {
   conversationId: string;
   messageId: string;
@@ -438,6 +448,12 @@ export async function confirmVoicePlaybackReady(
   input: WorkbenchVoicePlaybackConfirmRequest,
 ): Promise<WorkbenchVoicePlaybackConfirmResponse> {
   return getWorkbenchService().confirmVoicePlaybackReady(input);
+}
+
+export async function transcribeVoiceMessage(
+  input: WorkbenchVoiceTranscriptionRequest,
+): Promise<WorkbenchVoiceTranscriptionResponse> {
+  return getWorkbenchService().transcribeVoiceMessage(input);
 }
 
 export async function takeOverAccount(accountId: string): Promise<Account> {

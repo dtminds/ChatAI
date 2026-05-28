@@ -1,5 +1,6 @@
 import {
   AtIcon,
+  ArrowTurnBackwardIcon,
   Bug02Icon,
   ExclamationMarkIcon,
   Loading03Icon,
@@ -7,8 +8,18 @@ import {
   QuoteUpSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +44,7 @@ import {
   SmartReplyTriggerIcon,
   type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
+import { MESSAGE_REVOKE_WINDOW_MS } from "@/pages/chat/chat-constants";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
   isSameCalendarDay,
@@ -51,6 +63,7 @@ type ChatMessageListProps = {
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
@@ -59,6 +72,7 @@ type ChatMessageListProps = {
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
 };
@@ -85,11 +99,13 @@ export function ChatMessageList({
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
+  onRevokeMessage,
   onRetryMessage,
   onSendSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
   onVoicePlaybackReady,
+  onTranscribeVoice,
   retryingMessageIds,
   smartReplyByMessageId,
 }: ChatMessageListProps) {
@@ -119,10 +135,12 @@ export function ChatMessageList({
               onMentionMessage={onMentionMessage}
               onOpenQuotedMessage={onOpenQuotedMessage}
               onQuoteMessage={onQuoteMessage}
+              onRevokeMessage={onRevokeMessage}
               onRetryMessage={onRetryMessage}
               onSendSmartReply={onSendSmartReply}
               onMakeShorterSmartReply={onMakeShorterSmartReply}
               onTriggerSmartReply={onTriggerSmartReply}
+              onTranscribeVoice={onTranscribeVoice}
               onVoicePlaybackReady={onVoicePlaybackReady}
               isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
               smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
@@ -170,11 +188,13 @@ export function MessageRow({
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
+  onRevokeMessage,
   onRetryMessage,
   onSendSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
   onVoicePlaybackReady,
+  onTranscribeVoice,
   isRetryingMessage = false,
   smartReply,
 }: {
@@ -187,6 +207,7 @@ export function MessageRow({
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
@@ -195,6 +216,7 @@ export function MessageRow({
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   smartReply?: SmartReplySuggestion;
 }) {
   if (message.role === "system") {
@@ -213,6 +235,7 @@ export function MessageRow({
       canUseMessageActions={canUseMessageActions}
       onMentionMessage={onMentionMessage}
       onQuoteMessage={onQuoteMessage}
+      onRevokeMessage={onRevokeMessage}
     />
   );
 
@@ -277,6 +300,7 @@ export function MessageRow({
                     message={message}
                     onDownloadMessageFile={onDownloadMessageFile}
                     onOpenQuotedMessage={onOpenQuotedMessage}
+                    onTranscribeVoice={onTranscribeVoice}
                     onVoicePlaybackReady={onVoicePlaybackReady}
                   />
                   {showSmartReplyTriggerIcon ? (
@@ -374,12 +398,15 @@ function MessageActionAvatar({
   canUseMessageActions,
   onMentionMessage,
   onQuoteMessage,
+  onRevokeMessage,
 }: {
   message: ChatMessage;
   canUseMessageActions: boolean;
   onMentionMessage?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRevokeMessage?: (message: ChatMessage) => void;
 }) {
+  const [isRevokeDialogOpen, setIsRevokeDialogOpen] = useState(false);
   const canMentionMessage = Boolean(
     onMentionMessage &&
     message.isGroupConversation &&
@@ -392,88 +419,135 @@ function MessageActionAvatar({
     canUseMessageActions &&
     !message.isRevoked &&
     message.content.type !== "contact-card";
+  const canRevokeMessage =
+    canUseMessageActions &&
+    Boolean(onRevokeMessage) &&
+    canShowRevokeMessageAction(message);
   const messageIdForCopy = (message.remoteMessageId ?? message.id).trim();
 
   return (
-    <div className="relative shrink-0">
-      <MessageAvatar message={message} />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            aria-label="消息操作"
-            className="absolute inset-0 z-10 size-8 rounded-[6px] bg-neutral-950/70 p-0 text-white opacity-0 shadow-sm transition-opacity hover:bg-neutral-950/80 hover:text-white focus-visible:ring-2 focus-visible:ring-white/45 group-hover/message:opacity-100 data-[state=open]:opacity-100"
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon
-              aria-hidden="true"
-              icon={MoreHorizontalIcon}
-              size={16}
-              strokeWidth={2}
-            />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="center" side="bottom">
-          {canMentionMessage ? (
-            <DropdownMenuItem
-              disabled={!canSelectMentionMessage}
-              onSelect={(event) => {
-                if (!canSelectMentionMessage) {
-                  event.preventDefault();
-                  return;
-                }
+    <>
+      <div className="relative shrink-0">
+        <MessageAvatar message={message} />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label="消息操作"
+              className="absolute inset-0 z-10 size-8 rounded-[6px] bg-neutral-950/70 p-0 text-white opacity-0 shadow-sm transition-opacity hover:bg-neutral-950/80 hover:text-white focus-visible:ring-2 focus-visible:ring-white/45 group-hover/message:opacity-100 data-[state=open]:opacity-100"
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={MoreHorizontalIcon}
+                size={16}
+                strokeWidth={2}
+              />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center" side="bottom">
+            {canMentionMessage ? (
+              <DropdownMenuItem
+                disabled={!canSelectMentionMessage}
+                onSelect={(event) => {
+                  if (!canSelectMentionMessage) {
+                    event.preventDefault();
+                    return;
+                  }
 
-                onMentionMessage?.(message);
+                  onMentionMessage?.(message);
+                }}
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={AtIcon}
+                  size={15}
+                  strokeWidth={2}
+                />
+                @Ta
+              </DropdownMenuItem>
+            ) : null}
+            {canQuoteMessage ? (
+              <DropdownMenuItem
+                disabled={!canSelectQuoteMessage}
+                onSelect={(event) => {
+                  if (!canSelectQuoteMessage) {
+                    event.preventDefault();
+                    return;
+                  }
+
+                  onQuoteMessage?.(message);
+                }}
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={QuoteUpSquareIcon}
+                  size={15}
+                  strokeWidth={2}
+                />
+                引用
+              </DropdownMenuItem>
+            ) : null}
+            {canRevokeMessage ? (
+              <DropdownMenuItem
+                onSelect={() => {
+                  setIsRevokeDialogOpen(true);
+                }}
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={ArrowTurnBackwardIcon}
+                  size={15}
+                  strokeWidth={2}
+                />
+                撤回消息
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => {
+                void copyMessageId(messageIdForCopy);
               }}
             >
               <HugeiconsIcon
                 aria-hidden="true"
-                icon={AtIcon}
+                icon={Bug02Icon}
                 size={15}
                 strokeWidth={2}
               />
-              @Ta
+              复制消息ID
             </DropdownMenuItem>
-          ) : null}
-          {canQuoteMessage ? (
-            <DropdownMenuItem
-              disabled={!canSelectQuoteMessage}
-              onSelect={(event) => {
-                if (!canSelectQuoteMessage) {
-                  event.preventDefault();
-                  return;
-                }
-
-                onQuoteMessage?.(message);
-              }}
-            >
-              <HugeiconsIcon
-                aria-hidden="true"
-                icon={QuoteUpSquareIcon}
-                size={15}
-                strokeWidth={2}
-              />
-              引用消息
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onSelect={() => {
-              void copyMessageId(messageIdForCopy);
-            }}
-          >
-            <HugeiconsIcon
-              aria-hidden="true"
-              icon={Bug02Icon}
-              size={15}
-              strokeWidth={2}
-            />
-            复制消息ID
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {isRevokeDialogOpen && canRevokeMessage ? (
+        <AlertDialog
+          open={isRevokeDialogOpen}
+          onOpenChange={setIsRevokeDialogOpen}
+        >
+          <AlertDialogContent size="sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>确认要撤回该消息吗</AlertDialogTitle>
+              <AlertDialogDescription>
+                客户将在微信中看到撤回提示
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => {
+                  onRevokeMessage?.(message);
+                }}
+              >
+                确认撤回
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : null}
+    </>
   );
 }
 
@@ -547,18 +621,20 @@ function MessageInlineStatusSlot({
     );
   }
 
-  if (state === "accepted") {
+  if (state === "accepted" || state === "revoke-pending") {
+    const label = state === "accepted" ? "发送中" : "撤回中";
+
     return (
       <div
         className="mb-1 flex h-4 shrink-0 items-center"
         data-testid="message-inline-status-slot"
       >
         <span
-          aria-label="发送中"
+          aria-label={label}
           className="text-[11px] leading-4 text-muted-foreground"
           role="status"
         >
-          发送中
+          {label}
         </span>
       </div>
     );
@@ -575,9 +651,13 @@ function MessageRevokedState() {
   );
 }
 
-type InlineDeliveryState = "accepted" | "failed";
+type InlineDeliveryState = "accepted" | "failed" | "revoke-pending";
 
 function getInlineDeliveryState(message: ChatMessage): InlineDeliveryState | null {
+  if (message.revokePending) {
+    return "revoke-pending";
+  }
+
   if (message.status === "failed") {
     return "failed";
   }
@@ -617,6 +697,23 @@ function isOptimisticAcceptedMessage(message: ChatMessage) {
     Boolean(message.optNo) &&
     message.remoteMessageId === message.optNo
   );
+}
+
+function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
+  if (
+    message.role !== "agent" ||
+    !message.isOwnMessage ||
+    message.isRevoked ||
+    message.revokePending ||
+    message.status !== "sent" ||
+    message.seq == null
+  ) {
+    return false;
+  }
+
+  const sentAt = parseWorkbenchDate(message.sentAt);
+
+  return sentAt != null && now - sentAt.getTime() < MESSAGE_REVOKE_WINDOW_MS;
 }
 
 export function MessageAvatar({ message }: { message: ChatMessage }) {

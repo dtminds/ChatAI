@@ -617,6 +617,135 @@ describe("voice message playback", () => {
     });
   });
 
+  it("requests transcription and displays the returned text", async () => {
+    const user = userEvent.setup();
+    const onTranscribe = vi.fn().mockResolvedValue("这是一条语音文本");
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "转文字" }));
+
+    expect(onTranscribe).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("这是一条语音文本")).toBeInTheDocument();
+  });
+
+  it("shows an error when transcription resolves without text", async () => {
+    const user = userEvent.setup();
+    const onTranscribe = vi.fn().mockResolvedValue(null as unknown as string);
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "转文字" }));
+
+    expect(onTranscribe).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("转文字失败")).toBeInTheDocument();
+  });
+
+  it("does not update transcription state after unmounting during a request", async () => {
+    const user = userEvent.setup();
+    let resolveTranscription: (value: string) => void = () => undefined;
+    const onTranscribe = vi.fn().mockImplementation(
+      () => new Promise<string>((resolve) => {
+        resolveTranscription = resolve;
+      }),
+    );
+    const { unmount } = render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "转文字" }));
+    unmount();
+    resolveTranscription("卸载后的语音文本");
+
+    await waitFor(() => {
+      expect(onTranscribe).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("shows existing voice transcription without a transcription button", () => {
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "已经存在的语音文本",
+        }}
+        isAgent={false}
+        onTranscribe={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("已经存在的语音文本")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "转文字" })).not.toBeInTheDocument();
+  });
+
+  it("allows retrying transcription after a failed request", async () => {
+    const user = userEvent.setup();
+    const onTranscribe = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("识别失败"))
+      .mockResolvedValueOnce("重试后的语音文本");
+
+    render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "转文字" }));
+
+    expect(await screen.findByText("转文字失败")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "重新转文字" }));
+
+    expect(await screen.findByText("重试后的语音文本")).toBeInTheDocument();
+    expect(onTranscribe).toHaveBeenCalledTimes(2);
+  });
+
   it("shows a retry-later message when converted voice is not ready", async () => {
     const user = userEvent.setup();
     const play = vi.fn().mockResolvedValue(undefined);

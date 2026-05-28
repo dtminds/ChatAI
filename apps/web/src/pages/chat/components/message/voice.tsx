@@ -2,7 +2,7 @@ import {
   Loading03Icon,
   PauseIcon,
   PlayIcon,
-  VolumeHighIcon,
+  SpeechIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -13,6 +13,7 @@ type VoiceMessageCardProps = {
   content: VoiceMessageContent;
   isAgent: boolean;
   onPlaybackReady?: (payload: { playbackUrl: string }) => void;
+  onTranscribe?: () => Promise<string>;
 };
 
 type ActiveVoicePlayback = {
@@ -36,6 +37,8 @@ type PlaybackState =
   | "error"
   | "not-ready";
 
+type TranscriptionState = "idle" | "loading" | "error";
+
 // Covers slow COS/CDN availability and weak-network metadata loading before showing retry.
 const MEDIA_LOAD_TIMEOUT_MS = 8000;
 const HAVE_METADATA_READY_STATE = 1;
@@ -47,6 +50,7 @@ export function VoiceMessageCard({
   content,
   isAgent,
   onPlaybackReady,
+  onTranscribe,
 }: VoiceMessageCardProps) {
   const bubbleTone = isAgent ? "bg-primary/10" : "bg-secondary";
   const playbackIdRef = useRef(Symbol("voice-message-playback"));
@@ -77,8 +81,12 @@ export function VoiceMessageCard({
   const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [transcriptionState, setTranscriptionState] =
+    useState<TranscriptionState>("idle");
+  const [localTransVoiceText, setLocalTransVoiceText] = useState("");
   const canPlay = Boolean(content.audioUrl);
   const label = content.durationLabel || "语音";
+  const transVoiceText = content.transVoiceText?.trim() || localTransVoiceText;
   const fallbackDuration = parseDurationLabel(content.durationLabel);
   const displayDuration = duration > 0 ? duration : fallbackDuration;
   const durationLabel =
@@ -101,6 +109,44 @@ export function VoiceMessageCard({
   const controlLabel = canPlay
     ? `${isPlaying ? "暂停" : "播放"}语音消息 ${label}`
     : "语音消息不可播放";
+  const shouldShowTranscribeAction = Boolean(onTranscribe && !transVoiceText);
+  const transcribeActionLabel =
+    transcriptionState === "loading"
+      ? "识别中"
+      : transcriptionState === "error"
+        ? "重新转文字"
+        : "转文字";
+
+  const handleTranscribeClick = async () => {
+    if (!onTranscribe || transcriptionState === "loading") {
+      return;
+    }
+
+    setTranscriptionState("loading");
+
+    try {
+      const nextTransVoiceText = await onTranscribe();
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      const normalizedTransVoiceText = String(nextTransVoiceText ?? "").trim();
+
+      if (!normalizedTransVoiceText) {
+        throw new Error("EMPTY_TRANSCRIPTION");
+      }
+
+      setLocalTransVoiceText(normalizedTransVoiceText);
+      setTranscriptionState("idle");
+    } catch {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setTranscriptionState("error");
+    }
+  };
 
   const clearActivePlayback = useCallback(() => {
     if (activeVoicePlayback?.id === playbackIdRef.current) {
@@ -471,8 +517,7 @@ export function VoiceMessageCard({
     finishPlaybackIfEnded();
   };
 
-  if (!isActivePlayer) {
-    return (
+  const voiceControl = !isActivePlayer ? (
       <button
         aria-label={controlLabel}
         className={cn(
@@ -488,7 +533,7 @@ export function VoiceMessageCard({
           className="relative z-1 shrink-0 text-foreground"
           data-testid="voice-volume-icon"
           data-volume-icon="high"
-          icon={VolumeHighIcon}
+          icon={SpeechIcon}
           size={18}
           strokeWidth={1.9}
         />
@@ -496,10 +541,7 @@ export function VoiceMessageCard({
           {statusLabel}
         </span>
       </button>
-    );
-  }
-
-  return (
+    ) : (
     <div
       className={cn(
         "relative inline-flex min-h-10 w-[216px] max-w-full items-center gap-2.5 rounded-[12px] px-3 py-2",
@@ -570,6 +612,41 @@ export function VoiceMessageCard({
           </span>
         </>
       )}
+    </div>
+  );
+
+  const transcribeAction = shouldShowTranscribeAction ? (
+    <button
+      className="inline-flex h-8 shrink-0 items-center rounded-[6px] px-1.5 text-[12px] font-medium leading-none text-muted-foreground outline-none transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-70"
+      disabled={transcriptionState === "loading"}
+      onClick={handleTranscribeClick}
+      type="button"
+    >
+      {transcribeActionLabel}
+    </button>
+  ) : null;
+
+  return (
+    <div className={cn("inline-flex max-w-full flex-col gap-1.5", isAgent ? "items-end" : "items-start")}>
+      <div
+        className={cn(
+          "inline-flex max-w-full items-center gap-2",
+          isAgent && "flex-row-reverse",
+        )}
+      >
+        {voiceControl}
+        {transcribeAction}
+      </div>
+      {transVoiceText ? (
+        <div className="max-w-[min(480px,100%)] whitespace-pre-wrap break-words rounded-[10px] bg-surface-muted px-3 py-2 text-[13px] leading-5 text-foreground">
+          {transVoiceText}
+        </div>
+      ) : null}
+      {transcriptionState === "error" ? (
+        <span className="px-1 text-[12px] leading-5 text-destructive">
+          转文字失败
+        </span>
+      ) : null}
     </div>
   );
 }

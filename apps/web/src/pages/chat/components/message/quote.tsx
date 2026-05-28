@@ -5,7 +5,7 @@ import {
   Link04Icon,
   Location01Icon,
   PlayCircle02Icon,
-  VolumeHighIcon,
+  SpeechIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { KeyboardEvent } from "react";
@@ -268,7 +268,7 @@ function getQuoteTypeIcon(contentType: QuotedMessagePreviewContent["contentType"
     case "image":
       return Image01Icon;
     case "voice":
-      return VolumeHighIcon;
+      return SpeechIcon;
     case "video":
       return PlayCircle02Icon;
     case "file":

@@ -90,6 +90,7 @@ type ChatPanelProps = {
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRevokeMessage?: (message: ChatMessage) => void;
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
@@ -100,6 +101,7 @@ type ChatPanelProps = {
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
   onSendDraft: (segments: ComposerSegment[]) => void;
@@ -158,6 +160,7 @@ export function ChatPanel({
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
+  onRevokeMessage,
   onClearQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
@@ -168,6 +171,7 @@ export function ChatPanel({
   retryingMessageIds,
   smartReplyByMessageId,
   onSendDraft,
+  onTranscribeVoice,
   onDismissScopeTransitionError,
   scopeTransitionError,
   sidebarItems,
@@ -216,8 +220,10 @@ export function ChatPanel({
                 onSendSmartReply={onSendSmartReply}
                 onMakeShorterSmartReply={onMakeShorterSmartReply}
                 onTriggerSmartReply={onTriggerSmartReply}
+                onRevokeMessage={onRevokeMessage}
                 onMessageViewportScroll={onMessageViewportScroll}
                 onRetryMessage={onRetryMessage}
+                onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}
                 retryingMessageIds={retryingMessageIds}
               />
@@ -315,6 +321,7 @@ export function ChatPanel({
                   activeHistoryFilters={historyPanel.activeHistoryFilters}
                   activeHistoryLoading={historyPanel.activeHistoryLoading}
                   onDownloadMessageFile={onDownloadMessageFile}
+                  onTranscribeVoice={onTranscribeVoice}
                   onVoicePlaybackReady={onVoicePlaybackReady}
                   scrollMode={historyPanel.scrollMode}
                   customer={customer}

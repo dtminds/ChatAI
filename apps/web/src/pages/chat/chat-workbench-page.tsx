@@ -200,9 +200,12 @@ function ChatWorkbenchContent({
     requestSmartReplyGeneralAnswer,
     requestSmartReplyMakeShorter,
     readReceiptError,
+    revokeMessage,
+    revokeMessageError,
     pinConversation,
     retryFailedMessage,
     setChatSendPermission,
+    clearRevokeMessageError,
     closeHistoryPanel,
     clearActiveConversation,
     loadHistoryMessages,
@@ -223,6 +226,7 @@ function ChatWorkbenchContent({
     unpinConversation,
     updateMessageDownloadContent,
     confirmVoicePlaybackReady,
+    transcribeVoiceMessage,
   } = useWorkbenchStore();
   const subUser = useAuthStore((state) => state.subUser);
 
@@ -455,6 +459,15 @@ function ChatWorkbenchContent({
     dismissReadReceiptError();
   }, [dismissReadReceiptError, readReceiptError]);
 
+  useEffect(() => {
+    if (!revokeMessageError) {
+      return;
+    }
+
+    toast.warning(revokeMessageError);
+    clearRevokeMessageError();
+  }, [clearRevokeMessageError, revokeMessageError]);
+
   const handleTakeOverAccount = useCallback(
     async (accountId: string) => {
       if (!canTakeOverAccount) {
@@ -536,6 +549,23 @@ function ChatWorkbenchContent({
       }
     },
     [canSendMessage, retryFailedMessage],
+  );
+
+  const handleRevokeMessage = useCallback(
+    async (message: ChatMessage) => {
+      if (!canSendMessage) {
+        return;
+      }
+
+      const result = await revokeMessage(message.id);
+
+      if (!isMountedRef.current || result.ok) {
+        return;
+      }
+
+      toast.warning(result.errorMessage || "撤回失败，请稍后重试");
+    },
+    [canSendMessage, revokeMessage],
   );
 
   useEffect(() => {
@@ -869,6 +899,14 @@ function ChatWorkbenchContent({
       message.id,
       payload.playbackUrl,
     );
+  };
+
+  const handleTranscribeVoice = async (message: ChatMessage) => {
+    if (message.content.type !== "voice") {
+      throw new Error("当前消息不支持转文字");
+    }
+
+    return transcribeVoiceMessage(message.conversationId, message.id);
   };
 
   const handleDraftChange = (nextDraft: string) => {
@@ -1294,6 +1332,7 @@ function ChatWorkbenchContent({
                   onCancelFileUpload={handleCancelFileUpload}
                   onClearQuotedMessage={() => setQuotedMessage(null)}
                   onDownloadMessageFile={handleDownloadMessageFile}
+                  onTranscribeVoice={handleTranscribeVoice}
                   onVoicePlaybackReady={handleVoicePlaybackReady}
                   onDraftChange={handleDraftChange}
                   onEmojiPickerOpenChange={setIsEmojiPickerOpen}
@@ -1352,6 +1391,7 @@ function ChatWorkbenchContent({
                   onSendSmartReply={handleSendSmartReply}
                   onMakeShorterSmartReply={handleMakeShorterSmartReply}
                   onTriggerSmartReply={handleTriggerSmartReply}
+                  onRevokeMessage={handleRevokeMessage}
                   onMessageViewportScroll={handleMessageViewportScroll}
                   onRetryMessage={handleRetryFailedMessage}
                   retryingMessageIds={retryingMessageIds}

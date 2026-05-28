@@ -21,6 +21,7 @@ type ChatMessagePanelProps = {
   onLoadOlderMessages: () => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
+  onRevokeMessage?: (message: ChatMessage) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
@@ -30,6 +31,7 @@ type ChatMessagePanelProps = {
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
+  onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
@@ -50,12 +52,14 @@ export function ChatMessagePanel({
   onLoadOlderMessages,
   onOpenQuotedMessage,
   onQuoteMessage,
+  onRevokeMessage,
   onMessageViewportScroll,
   onRetryMessage,
   onSendSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
   onVoicePlaybackReady,
+  onTranscribeVoice,
   retryingMessageIds,
   smartReplyByMessageId,
   messageViewportRef,
@@ -109,6 +113,8 @@ export function ChatMessagePanel({
                 onSendSmartReply={onSendSmartReply}
                 onMakeShorterSmartReply={onMakeShorterSmartReply}
                 onTriggerSmartReply={onTriggerSmartReply}
+                onRevokeMessage={onRevokeMessage}
+                onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}
                 onRetryMessage={(messageId) => {
                   startTransition(() => {

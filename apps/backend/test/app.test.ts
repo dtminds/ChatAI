@@ -1515,6 +1515,60 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("transcribes voice messages for authenticated conversations", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const transcribeVoiceMessage = vi.spyOn(
+      app.workbenchService,
+      "transcribeVoiceMessage",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7,
+      },
+      url: "/api/server/media/voice-transcription",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      messageSeq: 7,
+      transVoiceText: "这是一段语音转文字测试文本",
+      transVoiceTextPersisted: true,
+    });
+    expect(transcribeVoiceMessage).toHaveBeenCalledWith("101", {
+      conversationId: "conv-001",
+      messageSeq: 7,
+    });
+
+    await app.close();
+  });
+
+  it("rejects invalid voice transcription message sequence before reaching the service", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const transcribeVoiceMessage = vi.spyOn(
+      app.workbenchService,
+      "transcribeVoiceMessage",
+    );
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 7.5,
+      },
+      url: "/api/server/media/voice-transcription",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(transcribeVoiceMessage).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
   it("returns an empty message page when limit is zero", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
@@ -1866,6 +1920,59 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("accepts revoke requests and reports revoke status through polling", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const send = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        clientMessageId: "local-revoke-001",
+        content: "这条消息马上撤回",
+        contentType: "text",
+        conversationId: "conv-001",
+        seatId: "drc",
+      },
+      url: "/api/server/messages/send",
+    });
+    const sentMessage = send.json<{ messageId: string }>();
+
+    const revoke = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+      },
+      url: `/api/server/messages/${sentMessage.messageId}/revoke`,
+    });
+    const poll = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+    });
+
+    expect(revoke.statusCode).toBe(200);
+    expect(revoke.json()).toMatchObject({
+      accepted: true,
+      conversationId: "conv-001",
+      messageId: sentMessage.messageId,
+    });
+    expect(poll.statusCode).toBe(200);
+    expect(poll.json().activeConversationMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: expect.objectContaining({
+            revokeOriginMsgId: expect.any(String),
+            type: "revoke",
+          }),
+          contentType: "revoke",
+          conversationId: "conv-001",
+        }),
+      ]),
+    );
+
+    await app.close();
+  });
+
   it("expands segmented sends into separate backend messages", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
@@ -2021,8 +2128,16 @@ describe("backend app", () => {
       },
       url: "/api/server/messages/remote-msg-file-001/download",
     });
+    const revoke = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+      },
+      url: "/api/server/messages/msg-003/revoke",
+    });
 
-    for (const response of [send, takeOver, markRead, uploadCredential]) {
+    for (const response of [send, takeOver, markRead, uploadCredential, revoke]) {
       expect(response.statusCode).toBe(403);
       expect(response.json()).toEqual({
         error: {

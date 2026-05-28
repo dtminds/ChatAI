@@ -94,6 +94,28 @@ export type WorkbenchVoicePlaybackConfirmResponse = {
   transFileUrlPersisted: true;
 };
 
+export type WorkbenchVoiceTranscriptionRequest = {
+  conversationId: string;
+  messageSeq: number;
+};
+
+export type WorkbenchVoiceTranscriptionResponse = {
+  messageSeq: number;
+  transVoiceText: string;
+  transVoiceTextPersisted: true;
+};
+
+export type WorkbenchRevokeMessageRequest = {
+  conversationId: string;
+};
+
+export type WorkbenchRevokeMessageResponse = {
+  accepted: true;
+  conversationId: string;
+  messageId: string;
+  revokeMsgId: number;
+};
+
 export type WorkbenchMessageFileDownloadStatusRequest = {
   conversationId: string;
   messageSeq: number;

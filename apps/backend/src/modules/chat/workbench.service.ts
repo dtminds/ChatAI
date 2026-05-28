@@ -39,6 +39,7 @@ import type {
   WorkbenchSmartReplyMakeShorterResponse,
   WorkbenchSmartReplySendAnswerRequest,
   WorkbenchSmartReplySendAnswerResponse,
+  WorkbenchRevokeMessageResponse,
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -52,6 +53,8 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchVoicePlaybackConfirmRequest,
   WorkbenchVoicePlaybackConfirmResponse,
+  WorkbenchVoiceTranscriptionRequest,
+  WorkbenchVoiceTranscriptionResponse,
   WorkbenchCustomerListResponse,
   WorkbenchCustomerLastConversationResponse,
   WorkbenchCustomerRelationConversationsResponse,
@@ -99,6 +102,8 @@ const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
 const POLL_SEAT_UPDATE_LIMIT = 200;
 const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
+const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
+const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
 
 type PlayableVoiceExistsChecker = (playbackUrl: string) => Promise<boolean>;
 
@@ -146,6 +151,12 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchVoicePlaybackConfirmResponse>
     | WorkbenchVoicePlaybackConfirmResponse;
+  transcribeVoiceMessage(
+    subUserId: string,
+    input: WorkbenchVoiceTranscriptionRequest,
+  ):
+    | Promise<WorkbenchVoiceTranscriptionResponse>
+    | WorkbenchVoiceTranscriptionResponse;
   getMessageFileDownloadStatus(
     subUserId: string,
     conversationId: string,
@@ -258,6 +269,11 @@ export type WorkbenchService = {
     subUserId: string,
     request: WorkbenchSmartHeartbeatRequest,
   ): Promise<WorkbenchSmartHeartbeatResponse> | WorkbenchSmartHeartbeatResponse;
+  revokeMessage(
+    subUserId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<WorkbenchRevokeMessageResponse> | WorkbenchRevokeMessageResponse;
   sendMessage(
     subUserId: string,
     payload: WorkbenchSendMessagePayload,
@@ -723,6 +739,82 @@ export class MysqlWorkbenchService implements WorkbenchService {
       messageSeq: input.messageSeq,
       playbackUrl: input.playbackUrl,
       transFileUrlPersisted: true,
+    };
+  }
+
+  async transcribeVoiceMessage(
+    subUserId: string,
+    input: WorkbenchVoiceTranscriptionRequest,
+  ): Promise<WorkbenchVoiceTranscriptionResponse> {
+    const conversation = await this.repository.getConversationLookup(input.conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
+      throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
+    }
+
+    const rawContent = await this.repository.getMessageRawContent({
+      auditId: input.messageSeq,
+      platform: conversation.platform,
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdGroupId: conversation.thirdGroupId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    if (!rawContent) {
+      throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
+    }
+
+    const content = parseMessageContentRecord(rawContent);
+    const existingTransVoiceText = readStringValue(content.transVoiceText).trim();
+
+    if (existingTransVoiceText) {
+      return {
+        messageSeq: input.messageSeq,
+        transVoiceText: existingTransVoiceText,
+        transVoiceTextPersisted: true,
+      };
+    }
+
+    const voiceUrl = toVoiceRecognitionUrl(readStringValue(content.fileUrl));
+
+    if (!voiceUrl) {
+      throw new BadRequestError(
+        "VOICE_TRANSCRIPTION_UNSUPPORTED",
+        "当前消息不支持语音转文字",
+      );
+    }
+
+    const transVoiceText = (
+      (await this.javaClient.recognizeSentence({ voiceUrl })) ?? ""
+    ).trim();
+
+    if (!transVoiceText) {
+      throw new BadGatewayError("VOICE_TRANSCRIPTION_EMPTY", "语音识别结果为空");
+    }
+
+    const nextContent = {
+      ...content,
+      transVoiceText,
+    };
+
+    await this.javaClient.updateMessageContent({
+      content: JSON.stringify(nextContent),
+      platform: conversation.platform,
+      uid: conversation.uid,
+      updateId: input.messageSeq,
+    });
+
+    return {
+      messageSeq: input.messageSeq,
+      transVoiceText,
+      transVoiceTextPersisted: true,
     };
   }
 
@@ -1361,6 +1453,78 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return response;
   }
 
+  async revokeMessage(
+    subUserId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<WorkbenchRevokeMessageResponse> {
+    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const normalizedMessageId = messageId.trim();
+
+    if (!normalizedMessageId) {
+      throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
+    }
+
+    const message = await this.repository.getMessageForRevoke({
+      conversationId: conversation.id,
+      messageId: normalizedMessageId,
+      platform: conversation.platform,
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdGroupId: conversation.thirdGroupId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    if (!message) {
+      throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
+    }
+
+    if (
+      message.senderType !== "agent" ||
+      message.status !== "sent" ||
+      message.isRevoked
+    ) {
+      throw new ForbiddenError("MESSAGE_REVOKE_FORBIDDEN", "暂不支持撤回该消息");
+    }
+
+    const elapsedMs = Date.now() - message.createdAt;
+
+    if (
+      !Number.isFinite(message.createdAt) ||
+      elapsedMs < -MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS ||
+      elapsedMs >= MESSAGE_REVOKE_WINDOW_MS
+    ) {
+      throw new BadRequestError("MESSAGE_REVOKE_EXPIRED", "已超过撤回时间");
+    }
+
+    await this.javaClient.revokeMessage({
+      platform: conversation.platform,
+      revokeMsgId: message.seq,
+      uid: conversation.uid,
+    });
+
+    this.logger.info(
+      {
+        conversationId: conversation.id,
+        messageId: normalizedMessageId,
+        operation: "revoke-message",
+        platform: conversation.platform,
+        revokeMsgId: message.seq,
+        seatId: conversation.seatId,
+        subUserId,
+        uid: conversation.uid,
+      },
+      "工作台消息撤回已受理",
+    );
+
+    return {
+      accepted: true,
+      conversationId: conversation.id,
+      messageId: normalizedMessageId,
+      revokeMsgId: message.seq,
+    };
+  }
+
   async takeOverSeat(subUserId: string, seatId: string) {
     const subUserNumericId = parseMySqlId(subUserId);
 
@@ -1685,6 +1849,34 @@ function isPlayableVoiceObjectPath(pathname: string) {
 
 function toPlayableVoiceAbsoluteUrl(objectPath: string) {
   return `https://${getPlayableMediaHost()}/${objectPath.replace(/^\/+/, "")}`;
+}
+
+function toVoiceRecognitionUrl(rawUrl: string) {
+  const value = rawUrl.trim();
+
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value);
+
+    if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
+      throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+    }
+
+    toExpectedPlayableVoicePathname(url.pathname);
+    return url.toString();
+  } catch (error) {
+    if (error instanceof BadRequestError) {
+      throw error;
+    }
+
+    const pathname = `/${value.replace(/^\/+/, "")}`;
+    toExpectedPlayableVoicePathname(pathname);
+
+    return `https://${getPlayableMediaHost()}${pathname}`;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

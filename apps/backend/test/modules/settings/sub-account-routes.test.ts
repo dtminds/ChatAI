@@ -294,6 +294,9 @@ describe("settings sub-account routes", () => {
     expect(enable.statusCode).toBe(200);
     expect(remove.statusCode).toBe(200);
     expect(db.statusUpdates).toEqual([2, 1, 0]);
+    expect(db.revokedSessionSubUserIds).toEqual([11, 11]);
+    expect(db.deletedRelationSubIds).toEqual([11]);
+    expect(db.releasedHostSubUserIds).toEqual([11]);
 
     await app.close();
   });
@@ -377,6 +380,7 @@ function createSettingsDbMock() {
       third_avatar: "https://example.com/drc.png",
       id: 101,
       platform: 5,
+      host_sub_id: 11,
       third_user_name: "德瑞可",
       uid: 9001,
     },
@@ -384,6 +388,7 @@ function createSettingsDbMock() {
       third_avatar: "https://example.com/ndt.png",
       id: 102,
       platform: 5,
+      host_sub_id: 12,
       third_user_name: "念都堂",
       uid: 9001,
     },
@@ -401,6 +406,7 @@ function createSettingsDbMock() {
     insertedRelations: [] as Array<Record<string, unknown>>,
     insertedSubAccount: undefined as Record<string, unknown> | undefined,
     expiredAccessTokenSubUserIds: [] as number[],
+    releasedHostSubUserIds: [] as number[],
     revokedSessionSubUserIds: [] as number[],
     statusUpdates: [] as number[],
     subAccountListWheres: [] as Array<[string, string, unknown]>,
@@ -570,6 +576,12 @@ function createSettingsDbMock() {
                 state.expiredAccessTokenSubUserIds.push(subUserId);
               }
             }
+          } else if (table === "xy_wap_embed_user_seat") {
+            const hostSubUserId = wheres.find(([column]) => column === "host_sub_id")?.[2];
+
+            if (typeof hostSubUserId === "number" && nextValues.host_sub_id === 0) {
+              state.releasedHostSubUserIds.push(hostSubUserId);
+            }
           }
 
           return [];
@@ -577,7 +589,8 @@ function createSettingsDbMock() {
         set: (values: Record<string, unknown> | ((expressionBuilder: unknown) => Record<string, unknown>)) => {
           if (
             table !== "xy_wap_embed_sub_user" &&
-            table !== "xy_wap_embed_sub_user_session"
+            table !== "xy_wap_embed_sub_user_session" &&
+            table !== "xy_wap_embed_user_seat"
           ) {
             throw new Error(`Unexpected update table: ${table}`);
           }

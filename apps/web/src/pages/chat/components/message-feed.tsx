@@ -158,7 +158,13 @@ export function ChatMessageList({
     previousConversationIdRef.current = conversationId;
     previousTailMessageKeyRef.current =
       messages.length > 0 ? getMessageFeedItemKey(messages[messages.length - 1]) : null;
-  });
+  }, [
+    appendStartIndex,
+    conversationId,
+    hasAppendedMessages,
+    isSameConversation,
+    messages,
+  ]);
 
   useEffect(() => {
     return () => {

@@ -37,4 +37,8 @@ export const UPDATE_COMPOSER_IMAGE_COMMAND =
 export const INSERT_COMPOSER_MENTION_COMMAND =
   createCommand<InsertComposerMentionPayload>("INSERT_COMPOSER_MENTION_COMMAND");
 
+export const INSERT_COMPOSER_TEXT_COMMAND = createCommand<string>(
+  "INSERT_COMPOSER_TEXT_COMMAND",
+);
+
 export const CLEAR_COMPOSER_COMMAND = createCommand<void>("CLEAR_COMPOSER_COMMAND");

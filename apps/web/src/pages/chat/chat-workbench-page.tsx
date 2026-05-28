@@ -44,6 +44,7 @@ import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-beh
 import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
+  INSERT_COMPOSER_TEXT_COMMAND,
   UPDATE_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
@@ -1091,6 +1092,22 @@ function ChatWorkbenchContent({
     }
   };
 
+  const handleFillSmartReplyComposer = (
+    _message: ChatMessage,
+    content: string,
+  ) => {
+    const text = content.trim();
+
+    if (!text || !canSendMessage) {
+      return;
+    }
+
+    composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
+    composerRef.current?.dispatchCommand(INSERT_COMPOSER_TEXT_COMMAND, text);
+    setDraft(text);
+    composerRef.current?.focus();
+  };
+
   const handleTriggerSmartReply = (message: ChatMessage) => {
     void requestSmartReplyGeneralAnswer(message);
   };
@@ -1414,6 +1431,7 @@ function ChatWorkbenchContent({
                   onOpenQuotedMessage={handleOpenQuotedMessage}
                   onQuoteMessage={handleQuoteMessage}
                   onSendSmartReply={handleSendSmartReply}
+                  onFillSmartReplyComposer={handleFillSmartReplyComposer}
                   onMakeShorterSmartReply={handleMakeShorterSmartReply}
                   onTriggerSmartReply={handleTriggerSmartReply}
                   onRevokeMessage={handleRevokeMessage}

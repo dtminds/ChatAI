@@ -634,7 +634,10 @@ export function createMockWorkbenchService(): WorkbenchService {
       );
       pushAccountEvent(state, seatId);
 
-      return { seat: clone(nextAccount) };
+      return {
+        hostSubUserId: CURRENT_SUB_USER_ID,
+        seatId: nextAccount.seatId,
+      };
     },
     async search(seatId, keyword) {
       return {

@@ -486,7 +486,10 @@ export function createMemoryWorkbenchService() {
       );
       pushSeatEvent(state, seatId);
 
-      return { seat: clone(nextSeat) };
+      return {
+        hostSubUserId: CURRENT_SUB_USER_ID,
+        seatId: nextSeat.seatId,
+      };
     },
     unpinConversation(
       _subUserId: string,

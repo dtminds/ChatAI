@@ -255,19 +255,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("takes over an accessible seat through Java and persists host sub-user locally", async () => {
     const javaClient = createJavaClient();
-    const getSeat = vi.fn().mockResolvedValue({
-      avatar: "",
-      description: "私域客户管理",
-      hostSubUserId: "101",
-      lastMessageTime: 123,
-      loginStatus: "online",
-      name: "德瑞可",
-      operatorName: "小可",
-      phone: "13296712905",
-      seatId: "12",
-      thirdUserId: "zhangsan",
-      unreadCount: 6,
-    });
+    const getSeat = vi.fn();
     const updateSeatHostSubUser = vi.fn().mockResolvedValue(undefined);
     const service = new MysqlWorkbenchService(
       {
@@ -285,10 +273,8 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(service.takeOverSeat("101", "12")).resolves.toEqual({
-      seat: expect.objectContaining({
-        hostSubUserId: "101",
-        seatId: "12",
-      }),
+      hostSubUserId: "101",
+      seatId: "12",
     });
     expect(javaClient.takeOverSeat).toHaveBeenCalledWith({
       platform: 5,
@@ -302,6 +288,7 @@ describe("MysqlWorkbenchService", () => {
       subUserId: "101",
       uid: 9001,
     });
+    expect(getSeat).not.toHaveBeenCalled();
   });
 
   it("rejects takeover when the sub-user cannot access the seat", async () => {

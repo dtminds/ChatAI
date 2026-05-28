@@ -442,9 +442,8 @@ export async function transcribeVoiceMessage(
   return getWorkbenchService().transcribeVoiceMessage(input);
 }
 
-export async function takeOverAccount(accountId: string): Promise<Account> {
-  const response = await getWorkbenchService().takeOverSeat(accountId);
-  return adaptAccount(response.seat, response.seat.unreadCount);
+export async function takeOverAccount(accountId: string) {
+  return getWorkbenchService().takeOverSeat(accountId);
 }
 
 export async function pollWorkbench(

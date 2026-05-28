@@ -425,7 +425,8 @@ export type WorkbenchUploadCredentialResponse = {
 };
 
 export type WorkbenchTakeOverSeatResponse = {
-  seat: WorkbenchSeatDto;
+  hostSubUserId: string;
+  seatId: string;
 };
 
 export const WorkbenchCustomerSeatRelationSchema = Type.Object({

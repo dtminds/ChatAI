@@ -2156,7 +2156,7 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("takes over a seat and returns the updated seat", async () => {
+  it("takes over a seat and returns the updated takeover owner", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
     const response = await app.inject({
@@ -2166,11 +2166,9 @@ describe("backend app", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
-      seat: {
-        hostSubUserId: "sub-user-001",
-        seatId: "ndt",
-      },
+    expect(response.json()).toEqual({
+      hostSubUserId: "sub-user-001",
+      seatId: "ndt",
     });
 
     await app.close();

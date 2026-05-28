@@ -2761,6 +2761,36 @@ describe("useWorkbenchStore", () => {
     expect(state.takeoverStatusByAccountId.ndt).toBeUndefined();
   });
 
+  it("patches only takeover owner after account takeover succeeds", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async takeOverSeat(seatId) {
+        return {
+          hostSubUserId: "sub-user-001",
+          seatId,
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const beforeAccount = useWorkbenchStore
+      .getState()
+      .accounts.find((account) => account.id === "ndt");
+
+    await useWorkbenchStore.getState().takeOverAccount("ndt");
+
+    const afterAccount = useWorkbenchStore
+      .getState()
+      .accounts.find((account) => account.id === "ndt");
+
+    expect(afterAccount).toEqual({
+      ...beforeAccount,
+      takenOverEmployeeId: "sub-user-001",
+    });
+  });
+
   it("returns the API error message when takeover fails", async () => {
     const baseService = createMockWorkbenchService();
 

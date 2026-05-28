@@ -1905,7 +1905,7 @@ export function createWorkbenchStore() {
         }));
 
         try {
-          const nextAccount = await takeOverAccountRequest(accountId);
+          const takeoverResult = await takeOverAccountRequest(accountId);
 
           if (!isCurrentTakeoverRequest(accountId, requestId)) {
             return { ok: true };
@@ -1913,7 +1913,12 @@ export function createWorkbenchStore() {
 
           set((currentState) => ({
             accounts: currentState.accounts.map((item) =>
-              item.id === accountId ? nextAccount : item,
+              item.id === accountId
+                ? {
+                    ...item,
+                    takenOverEmployeeId: takeoverResult.hostSubUserId,
+                  }
+                : item,
             ),
             takeoverStatusByAccountId: omitTakeoverStatus(
               currentState.takeoverStatusByAccountId,

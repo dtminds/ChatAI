@@ -1072,13 +1072,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: seat.uid,
     });
 
-    const nextSeat = await this.repository.getSeat(seatId);
-
-    if (!nextSeat) {
-      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
-    }
-
-    return { seat: nextSeat };
+    return {
+      hostSubUserId: subUserId,
+      seatId: seat.seatId,
+    };
   }
 
   async unpinConversation(subUserId: string, conversationId: string) {

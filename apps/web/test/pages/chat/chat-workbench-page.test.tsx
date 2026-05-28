@@ -166,6 +166,73 @@ describe("ChatWorkbenchPage", () => {
     expect(markConversationRead).toHaveBeenCalledWith("conv-001");
   });
 
+  it("observes the first unread customer message within the unread tail", async () => {
+    const intersectionObserver = installIntersectionObserverMock();
+    const baseService = createMockWorkbenchService();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+
+    setWorkbenchService({
+      ...baseService,
+      markConversationRead,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    markConversationRead.mockClear();
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        accounts: state.accounts.map((account) =>
+          account.id === "drc"
+            ? {
+                ...account,
+                unreadCount: 2,
+              }
+            : account,
+        ),
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? {
+                  ...conversation,
+                  unread: 2,
+                }
+              : conversation,
+          ),
+        },
+        messagesByConversationId: {
+          ...state.messagesByConversationId,
+          "conv-001": [
+            ...(state.messagesByConversationId["conv-001"] ?? []),
+            {
+              author: "德瑞可-小可",
+              content: {
+                text: "系统提示",
+                type: "system",
+              },
+              conversationId: "conv-001",
+              id: "system-unread-tail",
+              role: "system",
+              sentAt: "2026-04-14 19:18:40",
+              status: "sent",
+            },
+          ],
+        },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(intersectionObserver.instances.at(-1)?.observe).toHaveBeenCalled();
+    });
+
+    const observedTarget = intersectionObserver.instances.at(-1)?.observe.mock
+      .calls.at(-1)?.[0] as Element;
+
+    expect(observedTarget).toHaveAttribute("data-message-id", "msg-010");
+  });
+
   it("waits until conversation loading finishes before observing unread messages", async () => {
     const intersectionObserver = installIntersectionObserverMock();
     const baseService = createMockWorkbenchService();

@@ -4,37 +4,31 @@ import {
   useRef,
   type RefObject,
 } from "react";
-import type { ChatMessage } from "@/pages/chat/chat-types";
+import type { Message } from "@/pages/chat/chat-types";
 
 const ACTIVE_CONVERSATION_READ_THROTTLE_MS = 800;
 
 export function getFirstUnreadCustomerMessageId(
-  messages: ChatMessage[],
+  messages: Message[],
   unreadCount: number,
 ) {
   if (unreadCount <= 0) {
     return undefined;
   }
 
-  const unreadCustomerMessages: ChatMessage[] = [];
+  const firstUnreadMessageIndex = Math.max(0, messages.length - unreadCount);
 
   // Message lists are kept in chronological order, with the newest message
-  // at the end. Walk backward to find the earliest message in the unread tail.
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
+  // at the end. Walk only the unread tail to avoid observing read history.
+  for (let index = firstUnreadMessageIndex; index < messages.length; index += 1) {
     const message = messages[index];
 
-    if (message.role !== "customer" || message.isOwnMessage) {
-      continue;
-    }
-
-    unreadCustomerMessages.push(message);
-
-    if (unreadCustomerMessages.length >= unreadCount) {
-      break;
+    if (message.role === "customer" && !message.isOwnMessage) {
+      return message.id;
     }
   }
 
-  return unreadCustomerMessages[unreadCustomerMessages.length - 1]?.id;
+  return undefined;
 }
 
 function escapeCssAttributeValue(value: string) {

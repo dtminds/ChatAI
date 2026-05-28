@@ -367,9 +367,7 @@ function ChatWorkbenchContent({
   const firstUnreadMessageId = useMemo(
     () =>
       getFirstUnreadCustomerMessageId(
-        activeMessages.filter(
-          (message): message is ChatMessage => message.role !== "system",
-        ),
+        activeMessages,
         activeConversation?.unread ?? 0,
       ),
     [activeConversation?.unread, activeMessages],

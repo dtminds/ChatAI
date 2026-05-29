@@ -1571,6 +1571,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         optNo: response.optNo,
         quoteMsgId,
         quoteOriginMsgId: payload.quote?.quotedMessageId,
+        replyText: segment.type === "text" ? segment.text : undefined,
       }).catch((error: unknown) => {
         this.logger.warn(
           {
@@ -1774,8 +1775,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
     optNo: string;
     quoteMsgId: number;
     quoteOriginMsgId?: string;
+    replyText?: string;
   }) {
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       const patched = await this.repository.patchQuoteMessageContentByOptNo({
         optNo: input.optNo,
         platform: input.conversation.platform,
@@ -1792,9 +1794,24 @@ export class MysqlWorkbenchService implements WorkbenchService {
       }
 
       await new Promise((resolve) => {
-        setTimeout(resolve, 200);
+        setTimeout(resolve, 300);
       });
     }
+
+    if (!input.replyText?.trim()) {
+      return;
+    }
+
+    await this.repository.patchQuoteMessageContentByRecentQuote({
+      platform: input.conversation.platform,
+      quoteMsgId: input.quoteMsgId,
+      quoteOriginMsgId: input.quoteOriginMsgId,
+      replyText: input.replyText,
+      thirdExternalUserId: input.conversation.thirdExternalUserId,
+      thirdGroupId: input.conversation.thirdGroupId,
+      thirdUserId: input.conversation.thirdUserId,
+      uid: input.conversation.uid,
+    });
   }
 
   private async getOperableConversation(subUserId: string, conversationId: string) {

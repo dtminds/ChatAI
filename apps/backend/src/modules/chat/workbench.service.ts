@@ -1889,7 +1889,7 @@ function toPlayableVoiceCosObjectPath(rawUrl: string) {
       return objectPath;
     }
 
-    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音播放地址不允许");
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "无效的语音地址");
   }
 
   if (
@@ -1900,7 +1900,7 @@ function toPlayableVoiceCosObjectPath(rawUrl: string) {
     return url.pathname.replace(/^\/+/, "");
   }
 
-  throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音播放地址不允许");
+  throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "无效的语音地址");
 }
 
 function toExpectedPlayableVoiceCosObjectPath(rawUrl: string) {
@@ -1916,7 +1916,7 @@ function toExpectedPlayableVoiceCosObjectPath(rawUrl: string) {
   }
 
   if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
-    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "无效的语音地址");
   }
 
   return toExpectedPlayableVoicePathname(url.pathname).replace(/^\/+/, "");
@@ -1926,7 +1926,7 @@ function toExpectedPlayableVoicePathname(pathname: string) {
   const playablePathname = toPlayableVoicePathname(pathname);
 
   if (!playablePathname) {
-    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "无效的语音地址");
   }
 
   return playablePathname;
@@ -1951,7 +1951,7 @@ function toVoiceRecognitionUrl(rawUrl: string) {
     const url = new URL(value);
 
     if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
-      throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+      throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "无效的语音地址");
     }
 
     toExpectedPlayableVoicePathname(url.pathname);

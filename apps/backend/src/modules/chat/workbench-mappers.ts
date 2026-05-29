@@ -669,6 +669,29 @@ export function buildMissingQuotedMessagePreview(): MessageRowQuotePreview {
   };
 }
 
+export function isUnresolvedQuotePreview(preview?: MessageRowQuotePreview) {
+  if (!preview) {
+    return true;
+  }
+
+  const text = preview.text?.trim() ?? "";
+  const fallback = preview.fallbackText?.trim() ?? "";
+
+  return (
+    text === "引用消息不可用"
+    || fallback === "引用消息不可用"
+    || (preview.contentType === "text" && text === "" && fallback === "")
+  );
+}
+
+export function readMessageRowTextContent(row: MessageRow) {
+  if (row.msgtype !== "text") {
+    return "";
+  }
+
+  return readTextMessageContent(parseContent(row.content), row.content).trim();
+}
+
 export function mergeQuoteMessageContentRaw(
   rawContent: string | null,
   metadata: {

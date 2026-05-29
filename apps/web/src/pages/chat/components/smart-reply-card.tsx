@@ -264,7 +264,7 @@ export function SmartReplyCard({
       </article>
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed left-0 top-0 z-50 hidden size-8 items-center justify-center rounded-[8px] bg-conversation-active text-conversation-active-foreground shadow-[0_10px_24px_rgb(56_116_246_/_0.28)]"
+        className="pointer-events-none fixed left-0 top-0 z-50 hidden size-8 items-center justify-center rounded-[8px] bg-conversation-active text-conversation-active-foreground shadow-[0_10px_24px_var(--shadow-medium)]"
         ref={flyIconRef}
       >
         <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={1.8} />

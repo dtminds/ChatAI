@@ -267,7 +267,7 @@ export function SmartReplyAddToFaqDialog({
         data-testid="smart-reply-add-to-faq-dialog"
       >
         <DialogHeader className="space-y-0 px-6 py-4 text-left">
-          <DialogTitle className="text-[14px] font-medium leading-6 text-[#101419]">
+          <DialogTitle className="text-[14px] font-medium leading-6 text-foreground">
             添加至FAQ
           </DialogTitle>
         </DialogHeader>
@@ -468,7 +468,7 @@ function SimilarQuestionsField({
         })}
       </div>
       <Button
-        className="h-auto gap-1 p-0 text-[13px] text-[#267FF0] hover:bg-transparent hover:text-[#1a6ad4]"
+        className="h-auto gap-1 p-0 text-[13px] text-primary hover:bg-transparent hover:text-primary/85"
         onClick={onAdd}
         type="button"
         variant="ghost"
@@ -491,11 +491,11 @@ function FaqFieldLabel({
 }) {
   return (
     <Label
-      className="gap-0.5 text-[13px] font-normal leading-[22px] text-[#3D3D3D]"
+      className="gap-0.5 text-[13px] font-normal leading-[22px] text-muted-foreground"
       htmlFor={htmlFor}
     >
       {required ? (
-        <span aria-hidden className="text-[#F53F3F]">
+        <span aria-hidden className="text-destructive">
           *
         </span>
       ) : null}

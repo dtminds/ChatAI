@@ -96,6 +96,7 @@ import {
   isPlayableVoicePathname,
   toPlayableVoicePathname,
 } from "./media-config.js";
+import { ensureVoiceUrlForRecognition } from "./voice-playable.service.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
@@ -775,7 +776,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
       };
     }
 
-    const voiceUrl = toVoiceRecognitionUrl(readStringValue(content.fileUrl));
+    const voiceRecognition = await ensureVoiceUrlForRecognition({
+      content,
+      playableVoiceExists: this.playableVoiceExists.bind(this),
+      readStringValue,
+      resolveVoiceRecognitionUrl,
+    });
+    const voiceUrl = voiceRecognition.voiceUrl;
 
     if (!voiceUrl) {
       throw new BadRequestError(
@@ -794,6 +801,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const nextContent = {
       ...content,
+      ...(voiceRecognition.transFileUrl
+        ? { transFileUrl: voiceRecognition.transFileUrl }
+        : {}),
       transVoiceText,
     };
 
@@ -1800,12 +1810,30 @@ function toPlayableVoiceAbsoluteUrl(objectPath: string) {
   return `https://${getPlayableMediaHost()}/${objectPath.replace(/^\/+/, "")}`;
 }
 
-function toVoiceRecognitionUrl(rawUrl: string) {
+function resolveVoiceRecognitionUrl(content: Record<string, unknown>) {
+  const transFileUrl = readStringValue(content.transFileUrl).trim();
+
+  if (transFileUrl) {
+    return toPlayableVoiceRecognitionUrl(transFileUrl);
+  }
+
+  const fileUrl = readStringValue(content.fileUrl).trim();
+
+  if (!fileUrl) {
+    return "";
+  }
+
+  return toPlayableVoiceRecognitionUrl(fileUrl);
+}
+
+function toPlayableVoiceRecognitionUrl(rawUrl: string) {
   const value = rawUrl.trim();
 
   if (!value) {
     return "";
   }
+
+  let pathname: string;
 
   try {
     const url = new URL(value);
@@ -1814,18 +1842,24 @@ function toVoiceRecognitionUrl(rawUrl: string) {
       throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
     }
 
-    toExpectedPlayableVoicePathname(url.pathname);
-    return url.toString();
+    pathname = url.pathname;
   } catch (error) {
     if (error instanceof BadRequestError) {
       throw error;
     }
 
-    const pathname = `/${value.replace(/^\/+/, "")}`;
-    toExpectedPlayableVoicePathname(pathname);
-
-    return `https://${getPlayableMediaHost()}${pathname}`;
+    pathname = `/${value.replace(/^\/+/, "")}`;
   }
+
+  const normalizedPathname = pathname.startsWith("/") ? pathname : `/${pathname}`;
+
+  if (isPlayableVoiceObjectPath(normalizedPathname)) {
+    return `https://${getPlayableMediaHost()}${normalizedPathname}`;
+  }
+
+  const playablePathname = toExpectedPlayableVoicePathname(normalizedPathname);
+
+  return `https://${getPlayableMediaHost()}${playablePathname}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ensurePlayableVoiceOnCos } from "@chatai/voice-service/ensure-playable-voice";
 import {
   JAVA_INTERNAL_API_USER_MESSAGE,
   WORKBENCH_INTERNAL_API_FAILED_CODE,
@@ -8,9 +9,15 @@ import { MysqlWorkbenchService } from "../../../src/modules/chat/workbench.servi
 import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
 import { BadGatewayError } from "../../../src/shared/errors.js";
 
+vi.mock("@chatai/voice-service/ensure-playable-voice", () => ({
+  ensurePlayableVoiceOnCos: vi.fn(),
+  mapEnsurePlayableVoiceError: vi.fn((error: unknown) => error),
+}));
+
 describe("MysqlWorkbenchService", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.mocked(ensurePlayableVoiceOnCos).mockReset();
   });
 
   it("lists my customers with visible seat filters", async () => {
@@ -571,6 +578,7 @@ describe("MysqlWorkbenchService", () => {
       transFileUrl: "",
       transVoiceText: "",
     }));
+    const playableVoiceExists = vi.fn().mockResolvedValue(true);
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -585,6 +593,8 @@ describe("MysqlWorkbenchService", () => {
         getMessageRawContent,
       } as unknown as WorkbenchRepository,
       javaClient,
+      undefined,
+      playableVoiceExists,
     );
 
     await expect(
@@ -605,8 +615,11 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
+    expect(playableVoiceExists).toHaveBeenCalledWith(
+      "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    );
     expect(javaClient.recognizeSentence).toHaveBeenCalledWith({
-      voiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
+      voiceUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
     });
     expect(javaClient.updateMessageContent).toHaveBeenCalledWith({
       content: JSON.stringify({
@@ -618,6 +631,147 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
       updateId: 538,
     });
+  });
+
+  it("prefers persisted transFileUrl when recognizing voice transcription", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.recognizeSentence).mockResolvedValue("识别文本");
+    const playableVoiceExists = vi.fn().mockResolvedValue(true);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "s5/playable-voice/20260525/272/persisted.wav",
+          transVoiceText: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      playableVoiceExists,
+    );
+
+    await service.transcribeVoiceMessage("101", {
+      conversationId: "88",
+      messageSeq: 538,
+    });
+
+    expect(playableVoiceExists).toHaveBeenCalledWith(
+      "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/persisted.wav",
+    );
+    expect(javaClient.recognizeSentence).toHaveBeenCalledWith({
+      voiceUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/persisted.wav",
+    });
+  });
+
+  it("transcodes missing playable wav on demand before recognizing voice", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.recognizeSentence).mockResolvedValue("新识别出来的文本");
+    const playableVoiceExists = vi
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    vi.mocked(ensurePlayableVoiceOnCos).mockResolvedValue({
+      playableObjectKey: "s5/playable-voice/20260525/272/voice.wav",
+      playableVoiceUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+          transVoiceText: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      playableVoiceExists,
+    );
+
+    await expect(
+      service.transcribeVoiceMessage("101", {
+        conversationId: "88",
+        messageSeq: 538,
+      }),
+    ).resolves.toEqual({
+      messageSeq: 538,
+      transVoiceText: "新识别出来的文本",
+      transVoiceTextPersisted: true,
+    });
+
+    expect(ensurePlayableVoiceOnCos).toHaveBeenCalledWith({
+      playableVoiceUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      sourceVoiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
+    });
+    expect(javaClient.updateMessageContent).toHaveBeenCalledWith({
+      content: JSON.stringify({
+        fileUrl: "s5/msg/20260525/272/voice.amr",
+        transFileUrl: "s5/playable-voice/20260525/272/voice.wav",
+        transVoiceText: "新识别出来的文本",
+      }),
+      platform: 5,
+      uid: 9001,
+      updateId: 538,
+    });
+  });
+
+  it("rejects voice transcription when on-demand transcode still leaves wav missing", async () => {
+    const javaClient = createJavaClient();
+    const playableVoiceExists = vi.fn().mockResolvedValue(false);
+    vi.mocked(ensurePlayableVoiceOnCos).mockResolvedValue({
+      playableObjectKey: "s5/playable-voice/20260525/272/voice.wav",
+      playableVoiceUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
+          fileUrl: "s5/msg/20260525/272/voice.amr",
+          transFileUrl: "",
+          transVoiceText: "",
+        })),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      playableVoiceExists,
+    );
+
+    await expect(
+      service.transcribeVoiceMessage("101", {
+        conversationId: "88",
+        messageSeq: 538,
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAYABLE_VOICE_NOT_READY",
+      message: "语音转码文件尚未就绪，请稍后再试",
+      statusCode: 404,
+    });
+    expect(javaClient.recognizeSentence).not.toHaveBeenCalled();
   });
 
   it("rejects empty Java voice transcription results without persisting content", async () => {
@@ -643,6 +797,8 @@ describe("MysqlWorkbenchService", () => {
         })),
       } as unknown as WorkbenchRepository,
       javaClient,
+      undefined,
+      vi.fn().mockResolvedValue(true),
     );
 
     await expect(

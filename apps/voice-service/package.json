@@ -8,6 +8,10 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./ensure-playable-voice": "./dist/shared/ensure-playable-voice.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "package:scf": "node scripts/package-scf.mjs",

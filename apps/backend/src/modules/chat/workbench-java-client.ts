@@ -39,6 +39,7 @@ import {
 } from "../../shared/logger.js";
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
+const DEFAULT_JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS = 60000;
 export const JAVA_INTERNAL_API_USER_MESSAGE = "工作台服务繁忙，请稍后重试";
 export const WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE =
   "WORKBENCH_INTERNAL_API_NOT_CONFIGURED";
@@ -821,8 +822,17 @@ async function streamJavaPostText(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), readJavaApiTimeoutMs());
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const armAbortTimeout = (timeoutMs: number) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  };
   const requestId = getLoggerRequestId(logger);
+  const streamIdleTimeoutMs = readJavaApiStreamIdleTimeoutMs();
+
+  armAbortTimeout(readJavaApiTimeoutMs());
 
   try {
     let response: Response;
@@ -891,6 +901,8 @@ async function streamJavaPostText(
     let raw = "";
 
     try {
+      armAbortTimeout(streamIdleTimeoutMs);
+
       while (true) {
         const { done, value } = await reader.read();
 
@@ -901,6 +913,8 @@ async function streamJavaPostText(
         if (value) {
           raw += decoder.decode(value, { stream: true });
         }
+
+        armAbortTimeout(streamIdleTimeoutMs);
       }
 
       raw += decoder.decode();
@@ -928,7 +942,9 @@ async function streamJavaPostText(
 
     return raw;
   } finally {
-    clearTimeout(timeoutId);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -1093,6 +1109,17 @@ function readJavaApiTimeoutMs() {
   return Number.isSafeInteger(value) && value > 0
     ? value
     : DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS;
+}
+
+function readJavaApiStreamIdleTimeoutMs() {
+  const value = Number.parseInt(
+    process.env.JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS ?? "",
+    10,
+  );
+
+  return Number.isSafeInteger(value) && value > 0
+    ? value
+    : DEFAULT_JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS;
 }
 
 function readJavaNonEmptyId(data: unknown) {

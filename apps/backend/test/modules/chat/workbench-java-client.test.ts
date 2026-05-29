@@ -8,9 +8,12 @@ import {
 
 describe("createWorkbenchJavaClient", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     delete process.env.JAVA_INTERNAL_API_BASE_URL;
     delete process.env.JAVA_INTERNAL_API_TOKEN;
+    delete process.env.JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS;
+    delete process.env.JAVA_INTERNAL_API_TIMEOUT_MS;
   });
 
   it("logs structured context when download message file request fails", async () => {
@@ -1452,6 +1455,86 @@ describe("createWorkbenchJavaClient", () => {
         method: "POST",
       }),
     );
+  });
+
+  it("uses the stream idle timeout instead of the generic Java timeout while reading ai helper streams", async () => {
+    vi.useFakeTimers();
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    process.env.JAVA_INTERNAL_API_TIMEOUT_MS = "5";
+    process.env.JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS = "60";
+    const encoder = new TextEncoder();
+    vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+      const signal = init?.signal as AbortSignal;
+
+      return Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              signal.addEventListener("abort", () => {
+                controller.error(new DOMException("Aborted", "AbortError"));
+              });
+              setTimeout(() => {
+                controller.enqueue(encoder.encode("  慢生成结果  "));
+                controller.close();
+              }, 10);
+            },
+          }),
+          {
+            headers: { "content-type": "text/event-stream;charset=UTF-8" },
+            status: 200,
+          },
+        ),
+      );
+    });
+
+    const contentPromise = createWorkbenchJavaClient(createLoggerMock())
+      .streamAiHelperAsk({
+        generateId: "2571",
+        uid: 9001,
+      });
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    await expect(contentPromise).resolves.toBe("慢生成结果");
+  });
+
+  it("aborts ai helper streams when no chunk arrives before the stream idle timeout", async () => {
+    vi.useFakeTimers();
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    process.env.JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS = "20";
+    vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+      const signal = init?.signal as AbortSignal;
+
+      return Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              signal.addEventListener("abort", () => {
+                controller.error(new DOMException("Aborted", "AbortError"));
+              });
+            },
+          }),
+          {
+            headers: { "content-type": "text/event-stream;charset=UTF-8" },
+            status: 200,
+          },
+        ),
+      );
+    });
+
+    const contentPromise = createWorkbenchJavaClient(createLoggerMock())
+      .streamAiHelperAsk({
+        generateId: "2571",
+        uid: 9001,
+      });
+    const rejectionExpectation = expect(contentPromise).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
+    });
+
+    await vi.advanceTimersByTimeAsync(20);
+
+    await rejectionExpectation;
   });
 });
 

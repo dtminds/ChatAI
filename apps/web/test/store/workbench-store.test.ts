@@ -457,9 +457,9 @@ describe("useWorkbenchStore", () => {
     ).toEqual({});
   });
 
-  it("adds newly loaded customer messages to smart reply polling", async () => {
+  it("auto-generates a smart reply task for a newly loaded customer message", async () => {
     const baseService = createMockWorkbenchService();
-    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
 
     setWorkbenchService({
       ...baseService,
@@ -481,23 +481,26 @@ describe("useWorkbenchStore", () => {
           ],
         };
       },
-      async pollSmartReplies(request) {
-        observedSmartReplyRequests.push(request);
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
 
+        return { id: 88 };
+      },
+      async pollSmartReplies() {
         return { suggestions: [] };
       },
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
     await new Promise((resolve) => window.setTimeout(resolve, 0));
-    observedSmartReplyRequests.length = 0;
+    observedAutoRequests.length = 0;
 
     await useWorkbenchStore.getState().pollWorkbench();
 
-    expect(observedSmartReplyRequests).toEqual([
+    expect(observedAutoRequests).toEqual([
       {
         conversationId: "conv-001",
-        msgIds: [9, 11],
+        msgId: 11,
       },
     ]);
   });
@@ -1297,6 +1300,24 @@ describe("useWorkbenchStore", () => {
 
   it("keeps previous conversation message state when it has pending messages", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "9": {
+            assistantName: "智能助手",
+            content: "",
+            status: "processing",
+          },
+        },
+      },
+      smartReplyPendingMessageKeysByConversationId: {
+        ...state.smartReplyPendingMessageKeysByConversationId,
+        "conv-001": {
+          "9": true,
+        },
+      },
+    }));
     await useWorkbenchStore.getState().sendAgentTextMessage("待确认消息");
 
     let state = useWorkbenchStore.getState();
@@ -1309,6 +1330,10 @@ describe("useWorkbenchStore", () => {
     state = useWorkbenchStore.getState();
     expect(state.activeConversationId).toBe("conv-002");
     expect(state.messagesByConversationId["conv-001"]).toBeDefined();
+    expect(state.smartReplyByMessageIdByConversationId["conv-001"]).toBeUndefined();
+    expect(
+      state.smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).toBeUndefined();
   });
 
   it("bootstraps conversations that contain video messages", async () => {

@@ -51,7 +51,6 @@ import {
 import {
   buildSmartReplyRealAttachIds,
   buildSmartReplySendSegments,
-  collectNewSmartReplyPendingKeys,
   collectPendingSmartReplyPollMsgIds,
   collectSmartReplyPendingKeysFromSuggestions,
   collectUnansweredSmartReplyPendingKeys,
@@ -1627,6 +1626,7 @@ function clearConversationMessageState(
   const clearedConversationIds = [...conversationIds].filter(
     (conversationId) => !retainedConversationIds.has(conversationId),
   );
+  const smartReplyClearedConversationIds = [...conversationIds];
 
   return {
     hasMoreHistoryByConversationId: omitByKeys(
@@ -1667,19 +1667,19 @@ function clearConversationMessageState(
     ),
     smartReplyByMessageIdByConversationId: omitByKeys(
       state.smartReplyByMessageIdByConversationId,
-      clearedConversationIds,
+      smartReplyClearedConversationIds,
     ),
     smartReplyEnabledByConversationId: omitByKeys(
       state.smartReplyEnabledByConversationId,
-      clearedConversationIds,
+      smartReplyClearedConversationIds,
     ),
     smartReplyPendingMessageKeysByConversationId: omitByKeys(
       state.smartReplyPendingMessageKeysByConversationId,
-      clearedConversationIds,
+      smartReplyClearedConversationIds,
     ),
     smartReplyLastPolledAtByConversationId: omitByKeys(
       state.smartReplyLastPolledAtByConversationId,
-      clearedConversationIds,
+      smartReplyClearedConversationIds,
     ),
   };
 }
@@ -3191,15 +3191,6 @@ export function createWorkbenchStore() {
         ) as Record<string, Message[]>;
 
         const polledConversationId = response.request.activeConversationId;
-        const newSmartReplyPendingKeys =
-          polledConversationId &&
-          canUseSmartReplyForConversation(state, polledConversationId) &&
-          response.activeConversationMessages.length > 0
-            ? collectNewSmartReplyPendingKeys(
-                state.messagesByConversationId[polledConversationId] ?? [],
-                response.activeConversationMessages,
-              )
-            : [];
 
         set((currentState) => {
           const requestedActiveConversationId =
@@ -3295,15 +3286,9 @@ export function createWorkbenchStore() {
               pending: currentPending,
               suggestions: currentSuggestions,
             });
-            const nextPendingKeys = {
-              ...prunedSmartReplyState.pending,
-              ...Object.fromEntries(
-                newSmartReplyPendingKeys.map((messageId) => [messageId, true as const]),
-              ),
-            };
 
             nextSmartReplyPendingMessageKeysByConversationId[polledConversationId] =
-              nextPendingKeys;
+              prunedSmartReplyState.pending;
             nextSmartReplyByMessageIdByConversationId[polledConversationId] =
               prunedSmartReplyState.suggestions;
           }
@@ -3401,8 +3386,37 @@ export function createWorkbenchStore() {
 
         if (polledConversationId) {
           scheduleSmartReplyPollForConversation(polledConversationId, {
-            force: newSmartReplyPendingKeys.length > 0,
+            force: false,
           });
+
+          const autoGenerateMessage = shouldAutoGenerateSmartReply({
+            message: getLatestNonSystemMessage(
+              get().messagesByConversationId[polledConversationId] ?? [],
+            ),
+            pending:
+              get().smartReplyPendingMessageKeysByConversationId[
+                polledConversationId
+              ] ?? {},
+            suggestions:
+              get().smartReplyByMessageIdByConversationId[polledConversationId] ??
+              {},
+          });
+
+          if (
+            autoGenerateMessage &&
+            canUseSmartReplyForConversation(get(), polledConversationId)
+          ) {
+            triggerSmartReplyAutoGeneration(
+              get,
+              set,
+              polledConversationId,
+              autoGenerateMessage,
+              {
+                schedulePoll: scheduleSmartReplyPollForConversation,
+                syncRuntimeTimers: syncSmartReplyRuntimeTimers,
+              },
+            );
+          }
         }
       } catch (error) {
         if (isCursorInvalidationError(error)) {
@@ -4631,6 +4645,10 @@ export function createWorkbenchStore() {
         return;
       }
 
+      if (state.activeConversationId) {
+        clearSmartReplyRuntimeTimers(state.activeConversationId);
+      }
+
       if (state.activeAccountId && !isConversationModeCacheFresh(state, state.activeAccountId, mode)) {
         const accountId = state.activeAccountId;
         const requestId = issueScopeRequestId();
@@ -4699,10 +4717,40 @@ export function createWorkbenchStore() {
           if (nextConversationId) {
             await get().setActiveConversation(nextConversationId);
           } else {
+            const previousConversationId = get().activeConversationId;
+
+            if (previousConversationId) {
+              clearSmartReplyRuntimeTimers(previousConversationId);
+            }
+
             set({
               activeConversationId: "",
               activeMessageSeq: 0,
               isConversationLoading: false,
+              smartReplyByMessageIdByConversationId: previousConversationId
+                ? omitByKeys(
+                    get().smartReplyByMessageIdByConversationId,
+                    [previousConversationId],
+                  )
+                : get().smartReplyByMessageIdByConversationId,
+              smartReplyEnabledByConversationId: previousConversationId
+                ? omitByKeys(
+                    get().smartReplyEnabledByConversationId,
+                    [previousConversationId],
+                  )
+                : get().smartReplyEnabledByConversationId,
+              smartReplyPendingMessageKeysByConversationId: previousConversationId
+                ? omitByKeys(
+                    get().smartReplyPendingMessageKeysByConversationId,
+                    [previousConversationId],
+                  )
+                : get().smartReplyPendingMessageKeysByConversationId,
+              smartReplyLastPolledAtByConversationId: previousConversationId
+                ? omitByKeys(
+                    get().smartReplyLastPolledAtByConversationId,
+                    [previousConversationId],
+                  )
+                : get().smartReplyLastPolledAtByConversationId,
             });
           }
         } catch (error) {
@@ -4730,9 +4778,37 @@ export function createWorkbenchStore() {
       if (nextConversationId) {
         await get().setActiveConversation(nextConversationId);
       } else {
+        if (state.activeConversationId) {
+          clearSmartReplyRuntimeTimers(state.activeConversationId);
+        }
+
         set({
           activeConversationId: "",
           activeMessageSeq: 0,
+          smartReplyByMessageIdByConversationId: state.activeConversationId
+            ? omitByKeys(
+                get().smartReplyByMessageIdByConversationId,
+                [state.activeConversationId],
+              )
+            : get().smartReplyByMessageIdByConversationId,
+          smartReplyEnabledByConversationId: state.activeConversationId
+            ? omitByKeys(
+                get().smartReplyEnabledByConversationId,
+                [state.activeConversationId],
+              )
+            : get().smartReplyEnabledByConversationId,
+          smartReplyPendingMessageKeysByConversationId: state.activeConversationId
+            ? omitByKeys(
+                get().smartReplyPendingMessageKeysByConversationId,
+                [state.activeConversationId],
+              )
+            : get().smartReplyPendingMessageKeysByConversationId,
+          smartReplyLastPolledAtByConversationId: state.activeConversationId
+            ? omitByKeys(
+                get().smartReplyLastPolledAtByConversationId,
+                [state.activeConversationId],
+              )
+            : get().smartReplyLastPolledAtByConversationId,
         });
       }
     },

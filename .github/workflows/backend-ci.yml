@@ -39,6 +39,7 @@ jobs:
               - ".github/workflows/backend-ci.yml"
               - ".github/workflows/ci.yml"
               - "apps/backend/**"
+              - "apps/voice-service/**"
               - "package.json"
               - "packages/contracts/**"
               - "pnpm-lock.yaml"

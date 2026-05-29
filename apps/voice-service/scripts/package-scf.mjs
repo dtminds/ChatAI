@@ -26,7 +26,7 @@ try {
     "--target=node22",
     "--format=cjs",
     `--outfile=${join(stagingDir, "index.js")}`,
-    "--external:audio-decode",
+    "--external:@audio/decode-amr",
     "--external:cos-nodejs-sdk-v5",
     "--external:silk-wasm",
   ]);
@@ -39,7 +39,7 @@ try {
         private: true,
         main: "index.js",
         dependencies: {
-          "audio-decode": "^3.10.1",
+          "@audio/decode-amr": "^1.1.1",
           "cos-nodejs-sdk-v5": "^2.15.4",
           "silk-wasm": "^3.7.1",
         },

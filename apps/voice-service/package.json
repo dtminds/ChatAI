@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "audio-decode": "^3.10.1",
+    "@audio/decode-amr": "^1.1.1",
     "cos-nodejs-sdk-v5": "^2.15.4",
     "silk-wasm": "^3.7.1"
   },

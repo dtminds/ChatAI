@@ -555,8 +555,14 @@ describe("smart-reply-adapter", () => {
             id: "102",
             localPath: "/files/guide.pdf",
           },
+          {
+            fileName: "规格.pdf",
+            fileType: "5",
+            id: "103",
+            localPath: "files/spec.pdf",
+          },
         ],
-        selectedAttachmentIds: ["101", "102"],
+        selectedAttachmentIds: ["101", "102", "103"],
       }),
     ).toEqual([
       {
@@ -574,6 +580,13 @@ describe("smart-reply-adapter", () => {
         fileSizeLabel: "",
         type: "file",
         url: "https://b1.dtminds.com/files/guide.pdf",
+      },
+      {
+        extension: "pdf",
+        fileName: "规格.pdf",
+        fileSizeLabel: "",
+        type: "file",
+        url: "https://b1.dtminds.com/files/spec.pdf",
       },
     ]);
   });

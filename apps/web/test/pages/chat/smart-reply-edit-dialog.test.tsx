@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { SmartReplyEditDialog } from "@/pages/chat/components/smart-reply-edit-dialog";
@@ -171,5 +171,59 @@ describe("SmartReplyEditDialog", () => {
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("syncs the violation highlight overlay scroll position with the textbox", () => {
+    render(
+      <SmartReplyEditDialog
+        initialContent={[
+          "第一行太好用了",
+          "第二行",
+          "第三行",
+          "第四行",
+          "第五行",
+          "第六行",
+          "第七行",
+          "第八行",
+          "第九行",
+        ].join("\n")}
+        onOpenChange={() => undefined}
+        open
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const overlay = screen.getByTestId("smart-reply-violation-highlight-overlay");
+
+    fireEvent.scroll(textbox, { target: { scrollTop: 72 } });
+
+    expect(overlay.scrollTop).toBe(72);
+  });
+
+  it("does not update violation check UI after unmounting during a request", async () => {
+    const user = userEvent.setup();
+    let resolveViolationCheck: (value: null) => void = () => undefined;
+    const onCheckViolations = vi.fn(
+      () =>
+        new Promise<null>((resolve) => {
+          resolveViolationCheck = resolve;
+        }),
+    );
+
+    const { unmount } = render(
+      <SmartReplyEditDialog
+        initialContent="建议先确认是否敏感肌"
+        onCheckViolations={onCheckViolations}
+        onOpenChange={() => undefined}
+        open
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "违规词检测" }));
+    unmount();
+    resolveViolationCheck(null);
+
+    await expect(onCheckViolations.mock.results[0]?.value).resolves.toBeNull();
+    expect(screen.queryByText("做的太棒了，暂未检测到错误处")).not.toBeInTheDocument();
   });
 });

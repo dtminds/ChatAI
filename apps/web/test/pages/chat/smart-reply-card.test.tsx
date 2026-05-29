@@ -1,15 +1,47 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
 import { SMART_REPLY_MEDIA_PROCESSING_HINT_MS } from "@/pages/chat/api/smart-reply-adapter";
 import {
   SmartReplyCard,
   SmartReplyInlineProcessingHint,
   SmartReplyMessageAnchor,
 } from "@/pages/chat/components/smart-reply-card";
+import { SmartReplyRecommendedAttachmentsSection } from "@/pages/chat/components/smart-reply-recommended-attachments";
+import {
+  addSmartReplyKnowledgeFaq,
+  listKnowledgeDocPage,
+  listKnowledgePage,
+} from "@/pages/chat/api/workbench-gateway";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      error: vi.fn(),
+      success: vi.fn(),
+    },
+  };
+});
+
+vi.mock("@/pages/chat/api/workbench-gateway", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/pages/chat/api/workbench-gateway")>();
+
+  return {
+    ...actual,
+    addSmartReplyKnowledgeFaq: vi.fn(),
+    listKnowledgeDocPage: vi.fn(),
+    listKnowledgePage: vi.fn(),
+  };
+});
 
 const themeCss = readFileSync(join(process.cwd(), "src/styles/index.css"), "utf8");
 const appearanceThemeBlocks = [
@@ -32,6 +64,11 @@ function createDeferred<T = void>() {
 describe("SmartReplyCard", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.mocked(addSmartReplyKnowledgeFaq).mockReset();
+    vi.mocked(listKnowledgeDocPage).mockReset();
+    vi.mocked(listKnowledgePage).mockReset();
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
   });
 
   it("renders assistant header, content and header actions", () => {
@@ -488,6 +525,72 @@ describe("SmartReplyCard", () => {
     expect(screen.getByRole("textbox", { name: "答案" })).toHaveValue(
       "建议先确认是否敏感肌\n这款产品适合温和修护",
     );
+  });
+
+  it("normalizes relative recommended attachment preview URLs", () => {
+    render(
+      <SmartReplyRecommendedAttachmentsSection
+        onSelectedAttachmentIdsChange={() => undefined}
+        recommendedAttachments={[
+          {
+            coverUrl: "s5/msg/cover.png",
+            defaultSelected: true,
+            fileName: "产品图.png",
+            fileType: "1",
+            id: "101",
+          },
+        ]}
+        selectedAttachmentIds={["101"]}
+      />,
+    );
+
+    expect(document.querySelector('img[src*="s5/msg/cover.png"]')).toHaveAttribute(
+      "src",
+      "https://b1.dtminds.com/s5/msg/cover.png",
+    );
+  });
+
+  it("does not show stale FAQ save toast after unmounting during a request", async () => {
+    const user = userEvent.setup();
+    const saveRequest = createDeferred<{ docId: string }>();
+    vi.mocked(listKnowledgePage).mockResolvedValue({
+      list: [{ id: "11", name: "默认知识集" }],
+    });
+    vi.mocked(listKnowledgeDocPage).mockResolvedValue({
+      list: [{ id: "22", name: "默认 FAQ" }],
+    });
+    vi.mocked(addSmartReplyKnowledgeFaq).mockReturnValue(saveRequest.promise);
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    const { unmount } = render(
+      <SmartReplyMessageAnchor
+        conversationId="conv-001"
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.click(screen.getByRole("button", { name: "添加到FAQ" }));
+    const saveButton = await screen.findByRole("button", { name: "保存" });
+    await waitFor(() => {
+      expect(saveButton).toBeEnabled();
+    });
+    await user.click(saveButton);
+
+    unmount();
+    saveRequest.resolve({ docId: "22" });
+    await saveRequest.promise;
+
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   it("shows success banner when no banned words are found in edit dialog", async () => {

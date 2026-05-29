@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Add01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
@@ -71,6 +71,7 @@ export function SmartReplyAddToFaqDialog({
   initialSelectedAttachmentIds = [],
   onSaved,
 }: SmartReplyAddToFaqDialogProps) {
+  const isMountedRef = useRef(false);
   const [knowledgeSets, setKnowledgeSets] = useState<SmartReplyFaqOption[]>([]);
   const [isKnowledgeSetsLoading, setIsKnowledgeSetsLoading] = useState(false);
   const [knowledgeSetId, setKnowledgeSetId] = useState("");
@@ -84,6 +85,14 @@ export function SmartReplyAddToFaqDialog({
     initialSelectedAttachmentIds,
   );
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -219,17 +228,25 @@ export function SmartReplyAddToFaqDialog({
       }),
     )
       .then(() => {
+        if (!isMountedRef.current) {
+          return;
+        }
         toast.success("已添加至 FAQ");
         onSaved?.();
         onOpenChange(false);
       })
       .catch((error) => {
+        if (!isMountedRef.current) {
+          return;
+        }
         toast.error(
           isRequestError(error) ? error.message : "添加至 FAQ 失败",
         );
       })
       .finally(() => {
-        setIsSaving(false);
+        if (isMountedRef.current) {
+          setIsSaving(false);
+        }
       });
   };
 

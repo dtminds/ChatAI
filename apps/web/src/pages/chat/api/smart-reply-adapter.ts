@@ -525,6 +525,12 @@ export function getSmartReplyLookupKey(message: { id: string; seq?: number }) {
 
 const SMART_REPLY_ATTACHMENT_MEDIA_CDN_PREFIX = "https://b1.dtminds.com";
 
+function joinSmartReplyMediaCdnUrl(path: string) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  return SMART_REPLY_ATTACHMENT_MEDIA_CDN_PREFIX + normalizedPath;
+}
+
 export type SmartReplySendPayload = {
   content: string;
   recommendedAttachments: SmartReplyRecommendedAttachment[];
@@ -676,7 +682,7 @@ function resolveSmartReplyMediaUrl(path?: string) {
     return trimmed;
   }
 
-  return SMART_REPLY_ATTACHMENT_MEDIA_CDN_PREFIX + trimmed;
+  return joinSmartReplyMediaCdnUrl(trimmed);
 }
 
 function resolveSmartReplyAttachmentImageUrl(

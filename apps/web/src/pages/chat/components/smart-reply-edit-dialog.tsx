@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type UIEvent,
+} from "react";
 import {
   Cancel01Icon,
   BookOpen01Icon,
@@ -63,6 +70,7 @@ export function SmartReplyEditDialog({
   onSend,
   onCheckViolations,
 }: SmartReplyEditDialogProps) {
+  const isMountedRef = useRef(false);
   const recommendedAttachments = recommendedAttachmentsProp ?? EMPTY_RECOMMENDED_ATTACHMENTS;
   const [draftContent, setDraftContent] = useState(initialContent);
   const [violationResult, setViolationResult] =
@@ -78,6 +86,14 @@ export function SmartReplyEditDialog({
         .map((item) => item.id),
   );
   const [isFaqDialogOpen, setIsFaqDialogOpen] = useState(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -148,10 +164,15 @@ export function SmartReplyEditDialog({
     setViolationResult(null);
     try {
       const result = await runViolationCheck();
+      if (!isMountedRef.current) {
+        return;
+      }
       setViolationResult(result);
       setViolationCheckPhase(result ? "found" : "clean");
     } finally {
-      setIsCheckingViolations(false);
+      if (isMountedRef.current) {
+        setIsCheckingViolations(false);
+      }
     }
   }, [runViolationCheck]);
 
@@ -183,13 +204,18 @@ export function SmartReplyEditDialog({
       setViolationResult(null);
       try {
         const result = await runViolationCheck();
+        if (!isMountedRef.current) {
+          return;
+        }
         setViolationResult(result);
         setViolationCheckPhase(result ? "found" : "clean");
         if (result) {
           return;
         }
       } finally {
-        setIsCheckingViolations(false);
+        if (isMountedRef.current) {
+          setIsCheckingViolations(false);
+        }
       }
     } else if (
       !shouldAutoCheckIllegalWords &&
@@ -204,7 +230,7 @@ export function SmartReplyEditDialog({
       selectedAttachmentIds,
     });
 
-    if (shouldClose !== false) {
+    if (isMountedRef.current && shouldClose !== false) {
       onOpenChange(false);
     }
   };
@@ -340,17 +366,27 @@ function ViolationHighlightEditor({
   onChange: (value: string) => void;
   highlightedWords: string[];
 }) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const handleScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
+    if (overlayRef.current) {
+      overlayRef.current.scrollTop = event.currentTarget.scrollTop;
+    }
+  }, []);
+
   return (
     <div className="relative rounded-[8px] border border-input/80 bg-background text-foreground">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 overflow-hidden rounded-[6px] px-[12px] py-[5px] text-[13px] leading-[22px] whitespace-pre-wrap break-words"
+        data-testid="smart-reply-violation-highlight-overlay"
+        ref={overlayRef}
       >
         <HighlightedText segments={splitByHighlights(value, highlightedWords)} />
       </div>
       <Textarea
         className="relative min-h-[168px] resize-none border-0 bg-transparent px-[12px] py-[5px] text-[13px] leading-[22px] text-transparent caret-foreground shadow-none focus-visible:ring-0"
         onChange={(event) => onChange(event.target.value)}
+        onScroll={handleScroll}
         value={value}
       />
     </div>

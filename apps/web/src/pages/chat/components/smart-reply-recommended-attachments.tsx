@@ -26,6 +26,12 @@ type RecommendedAttachmentUiType = "image" | "video" | "link" | "file";
 
 const ATTACHMENT_MEDIA_CDN_PREFIX = "https://b1.dtminds.com";
 
+function joinAttachmentMediaCdnUrl(path: string) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  return ATTACHMENT_MEDIA_CDN_PREFIX + normalizedPath;
+}
+
 const ATTACHMENT_FILE_TYPE_LABELS: Record<number, string> = {
   1: "图片",
   2: "音频",
@@ -211,7 +217,7 @@ function resolveAttachmentMediaUrl(path?: string) {
     return trimmed;
   }
 
-  return ATTACHMENT_MEDIA_CDN_PREFIX + trimmed;
+  return joinAttachmentMediaCdnUrl(trimmed);
 }
 
 function getAttachmentPreviewUrl(attachment: SmartReplyRecommendedAttachment) {

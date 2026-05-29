@@ -89,7 +89,7 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag>
 当前构建文件的职责：
 
 - `deploy/web.Dockerfile`：使用 `node:24-alpine` 构建 web，执行根脚本 `pnpm build`，再把 `apps/web/dist` 复制到 `nginx:alpine` 镜像。
-- `deploy/backend.Dockerfile`：使用 `node:24-alpine` 构建 backend，执行根脚本 `pnpm backend:build`，运行阶段只安装生产依赖并用 `node apps/backend/dist/server.js` 启动。
+- `deploy/backend.Dockerfile`：使用 `node:24-alpine` 构建 backend，执行根脚本 `pnpm backend:build`，运行阶段从 builder 复制 `apps/backend/dist`、`apps/voice-service/dist`、`packages/contracts/dist` 以及对应 `node_modules`，确保 `@chatai/voice-service` workspace 依赖可被 Node 解析，并用 `node apps/backend/dist/server.js` 启动。
 - `deploy/nginx.conf`：承载 web 静态资源，非 `/api/*` 请求回退到 `index.html`，`/api/*` 返回 404 作为兜底，实际发布时应由 Ingress 路由到 backend。
 
 注意事项：

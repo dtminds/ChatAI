@@ -7,6 +7,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { isRequestError } from "@/lib/request";
 import type { VoiceMessageContent } from "@/pages/chat/chat-types";
 import {
   playVoicePlaybackEndCue,
@@ -89,6 +90,7 @@ export function VoiceMessageCard({
   const [duration, setDuration] = useState(0);
   const [transcriptionState, setTranscriptionState] =
     useState<TranscriptionState>("idle");
+  const [transcriptionErrorMessage, setTranscriptionErrorMessage] = useState("");
   const [localTransVoiceText, setLocalTransVoiceText] = useState("");
   const canPlay = Boolean(content.audioUrl);
   const label = content.durationLabel || "语音";
@@ -129,6 +131,7 @@ export function VoiceMessageCard({
     }
 
     setTranscriptionState("loading");
+    setTranscriptionErrorMessage("");
 
     try {
       const nextTransVoiceText = await onTranscribe();
@@ -145,11 +148,12 @@ export function VoiceMessageCard({
 
       setLocalTransVoiceText(normalizedTransVoiceText);
       setTranscriptionState("idle");
-    } catch {
+    } catch (error) {
       if (!mountedRef.current) {
         return;
       }
 
+      setTranscriptionErrorMessage(resolveTranscriptionErrorMessage(error));
       setTranscriptionState("error");
     }
   };
@@ -656,9 +660,9 @@ export function VoiceMessageCard({
           {transVoiceText}
         </div>
       ) : null}
-      {transcriptionState === "error" ? (
+      {transcriptionState === "error" && transcriptionErrorMessage ? (
         <span className="px-1 text-[12px] leading-5 text-destructive">
-          转文字失败
+          {transcriptionErrorMessage}
         </span>
       ) : null}
     </div>
@@ -679,6 +683,43 @@ function getImmediateAudioUrl(content: VoiceMessageContent) {
   }
 
   return content.audioUrl;
+}
+
+function resolveTranscriptionErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message === "EMPTY_TRANSCRIPTION") {
+    return "语音识别结果为空";
+  }
+
+  const message = isRequestError(error)
+    ? error.message.trim()
+    : error instanceof Error
+      ? error.message.trim()
+      : "";
+
+  if (message && containsChineseText(message)) {
+    return message;
+  }
+
+  if (message && isTransportFailureMessage(message)) {
+    return "网络异常，请稍后重试";
+  }
+
+  return "转文字失败";
+}
+
+function containsChineseText(text: string) {
+  return /[\u4e00-\u9fff]/.test(text);
+}
+
+function isTransportFailureMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes("network error") ||
+    normalized.includes("timeout") ||
+    normalized.includes("failed to fetch") ||
+    normalized === "request failed"
+  );
 }
 
 function hasAudioMetadata(audio: HTMLAudioElement | null) {

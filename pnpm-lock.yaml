@@ -13,6 +13,9 @@ importers:
       '@chatai/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@chatai/voice-service':
+        specifier: workspace:*
+        version: link:../voice-service
       '@fastify/cookie':
         specifier: ^11.0.2
         version: 11.0.2

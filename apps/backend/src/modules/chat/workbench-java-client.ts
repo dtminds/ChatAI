@@ -569,6 +569,7 @@ export function createWorkbenchJavaClient(
         input,
         logger,
         "sentence-recognition",
+        { exposeErrorMessage: true },
       );
     },
     revokeMessage(input) {

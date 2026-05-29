@@ -59,7 +59,7 @@ const SMART_REPLY_TRIGGER_ICON =
   "https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/customer/容器@2x (1).png!tiny.webp";
 const SMART_REPLY_DISMISS_COLLAPSE_MS = 520;
 const SMART_REPLY_DISMISS_FLIGHT_MS = 640;
-const SMART_REPLY_DISMISS_FLIGHT_OVERLAP_MS = 50;
+const SMART_REPLY_DISMISS_FLIGHT_OVERLAP_MS = 120;
 
 export type SmartReplySuggestion = {
   assistantName: string;
@@ -173,7 +173,6 @@ export function SmartReplyCard({
       flyIcon,
       onComplete: onDismiss,
       sourceRect: cardRect,
-      target,
       targetRect,
     });
   }, [
@@ -279,14 +278,12 @@ function animateSmartReplyDismiss({
   flyIcon,
   onComplete,
   sourceRect,
-  target,
   targetRect,
 }: {
   card: HTMLElement;
   flyIcon: HTMLElement;
   onComplete: () => void;
   sourceRect: DOMRect;
-  target?: HTMLElement | null;
   targetRect: DOMRect;
 }) {
   const { animationLayer, contentLayer, miniIconLayer, miniIconMotion } =
@@ -392,22 +389,6 @@ function animateSmartReplyDismiss({
     easing: "linear",
     fill: "forwards",
   });
-  if (target && typeof target.animate === "function") {
-    target.animate(
-      [
-        { boxShadow: "0 0 0 0 rgb(56 116 246 / 0)", opacity: 0 },
-        { boxShadow: "0 0 0 7px rgb(56 116 246 / 0.2)", opacity: 1 },
-        { boxShadow: "0 0 0 0 rgb(56 116 246 / 0)", opacity: 1 },
-      ],
-      {
-        delay:
-          SMART_REPLY_DISMISS_COLLAPSE_MS +
-          SMART_REPLY_DISMISS_FLIGHT_MS * 0.58,
-        duration: 360,
-        easing: "ease-out",
-      },
-    );
-  }
 
   let completed = false;
   let animationLayerRemoved = false;

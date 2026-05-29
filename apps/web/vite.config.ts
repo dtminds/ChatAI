@@ -75,6 +75,10 @@ export function createViteConfig(mode = "development"): UserConfig {
       dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
       alias: {
         "@": path.resolve(__dirname, "./src"),
+        "@chatai/contracts": path.resolve(
+          repoRoot,
+          "packages/contracts/src/index.ts",
+        ),
       },
     },
   };

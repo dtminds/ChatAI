@@ -19,6 +19,8 @@ import type {
   WorkbenchPollResponse,
   WorkbenchSmartReplyAttachmentsRequest,
   WorkbenchSmartReplyAttachmentsResponse,
+  WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  WorkbenchSmartReplyAutoGeneralAnswerResponse,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollRequest,
@@ -105,8 +107,50 @@ const POLL_SEAT_UPDATE_LIMIT = 200;
 const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
 const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
 const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
+const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
+
+type SmartReplyMessagePageMetadata = {
+  smartReplyEnabled?: boolean;
+  smartReplyScope?: {
+    chatType: number;
+    thirdExternalId: string;
+    thirdUserId: string;
+    uid: number;
+  };
+};
+
+type MessagePageWithSmartReplyMetadata = WorkbenchMessagePageDto &
+  SmartReplyMessagePageMetadata;
 
 type PlayableVoiceExistsChecker = (playbackUrl: string) => Promise<boolean>;
+
+function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[]) {
+  const seen = new Set<number>();
+  const msgIds: number[] = [];
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (message?.senderType !== "customer") {
+      continue;
+    }
+
+    const seq = message.seq;
+
+    if (!Number.isSafeInteger(seq) || seq <= 0 || seen.has(seq)) {
+      continue;
+    }
+
+    seen.add(seq);
+    msgIds.unshift(seq);
+
+    if (msgIds.length >= SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT) {
+      break;
+    }
+  }
+
+  return msgIds;
+}
 
 export type WorkbenchService = {
   deleteConversation(
@@ -226,6 +270,12 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchSmartReplyGeneralAnswerResponse>
     | WorkbenchSmartReplyGeneralAnswerResponse;
+  requestSmartReplyAutoGeneralAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  ):
+    | Promise<WorkbenchSmartReplyAutoGeneralAnswerResponse>
+    | WorkbenchSmartReplyAutoGeneralAnswerResponse;
   requestSmartReplyMakeShorter(
     subUserId: string,
     request: WorkbenchSmartReplyMakeShorterRequest,
@@ -492,11 +542,58 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    return this.repository.listMessages(conversationId, {
+    const page = (await this.repository.listMessages(conversationId, {
       beforeSeq: options?.beforeSeq,
       includeHiddenConversation: true,
       limit: options?.limit ?? 30,
-    });
+    })) as MessagePageWithSmartReplyMetadata;
+    const { smartReplyEnabled, smartReplyScope, ...publicPage } = page;
+
+    if (options?.beforeSeq != null) {
+      return publicPage;
+    }
+
+    if (!smartReplyEnabled || !smartReplyScope) {
+      return {
+        ...publicPage,
+        smartReplyEnabled: false,
+      };
+    }
+
+    const msgIds = collectSmartReplyMessagePageCandidateIds(publicPage.messages);
+
+    if (msgIds.length === 0) {
+      return {
+        ...publicPage,
+        smartReplyEnabled: true,
+      };
+    }
+
+    try {
+      const smartReplies = await this.javaClient.listUserHistoryAnswers({
+        chatType: smartReplyScope.chatType,
+        msgIds,
+        thirdExternalId: smartReplyScope.thirdExternalId,
+        thirdUserId: smartReplyScope.thirdUserId,
+        uid: smartReplyScope.uid,
+      });
+
+      return {
+        ...publicPage,
+        smartReplyEnabled: true,
+        smartReplies: smartReplies.suggestions,
+      };
+    } catch (error) {
+      this.logger.warn(
+        { conversationId, error },
+        "Failed to load smart replies for message page",
+      );
+
+      return {
+        ...publicPage,
+        smartReplyEnabled: true,
+      };
+    }
   }
 
   async getMessagesByIds(
@@ -1077,6 +1174,49 @@ export class MysqlWorkbenchService implements WorkbenchService {
       chatType: conversation.thirdGroupId ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
       msgId: request.msgId,
       questionImgs: request.questionImgs ?? [],
+      thirdExternalId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+  }
+
+  async requestSmartReplyAutoGeneralAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (!Number.isSafeInteger(request.msgId) || request.msgId <= 0) {
+      throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
+    }
+
+    if (conversation.thirdGroupId) {
+      throw new BadRequestError(
+        "SMART_REPLY_SCOPE_INVALID",
+        "当前会话暂不支持智能回复",
+      );
+    }
+
+    const thirdExternalId = conversation.thirdExternalUserId?.trim();
+
+    if (!thirdExternalId) {
+      throw new BadRequestError(
+        "SMART_REPLY_SCOPE_INVALID",
+        "当前会话缺少智能回复所需的外部标识",
+      );
+    }
+
+    return this.javaClient.requestAutoGeneralAnswer({
+      chatType: CHAT_TYPE.SINGLE,
+      msgId: request.msgId,
       thirdExternalId,
       thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,

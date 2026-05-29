@@ -4,6 +4,7 @@ import type {
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchSmartReplyAttachmentsRequest,
+  WorkbenchSmartReplyAutoGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyMakeShorterRequest,
   WorkbenchSmartReplyPollRequest,
@@ -104,6 +105,11 @@ const SmartReplyGeneralAnswerBodySchema = Type.Object({
   conversationId: Type.String(),
   msgId: Type.Integer({ minimum: 1 }),
   questionImgs: Type.Optional(Type.Array(Type.String())),
+});
+
+const SmartReplyAutoGeneralAnswerBodySchema = Type.Object({
+  conversationId: Type.String(),
+  msgId: Type.Integer({ minimum: 1 }),
 });
 
 const SmartReplyMakeShorterBodySchema = Type.Object({
@@ -715,6 +721,21 @@ export async function registerChatRoutes(app: FastifyInstance) {
       getWorkbenchService(app, request).requestSmartReplyGeneralAnswer(
         getSubUserId(request),
         request.body satisfies WorkbenchSmartReplyGeneralAnswerRequest,
+      ),
+  );
+
+  app.post<{ Body: Static<typeof SmartReplyAutoGeneralAnswerBodySchema> }>(
+    "/api/server/smart-reply/auto-general-answer",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartReplyAutoGeneralAnswerBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).requestSmartReplyAutoGeneralAnswer(
+        getSubUserId(request),
+        request.body satisfies WorkbenchSmartReplyAutoGeneralAnswerRequest,
       ),
   );
 

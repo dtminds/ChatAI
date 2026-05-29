@@ -227,6 +227,8 @@ export type WorkbenchMessageDto = WorkbenchMessageBaseDto;
 
 export type WorkbenchMessagePageDto = {
   messages: WorkbenchMessageDto[];
+  smartReplyEnabled?: boolean;
+  smartReplies?: WorkbenchSmartReplySuggestionDto[];
   nextBeforeSeq?: number;
   hasMore: boolean;
   scannedCount: number;
@@ -314,7 +316,7 @@ export const SMART_REPLY_TERMINAL_GENERATE_STATUSES = [2, 3, 4] as const;
 /** Java user-history-answer-list 失败原因：未命中知识集 */
 export const SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS = "knowledge_miss";
 /** 智能回复轮询最小间隔（毫秒），与工作台主 poll 解耦 */
-export const SMART_REPLY_POLL_INTERVAL_MS = 5000;
+export const SMART_REPLY_POLL_INTERVAL_MS = 1000;
 
 export type WorkbenchSmartReplyStatus = "thinking" | "processing" | "ready";
 
@@ -350,6 +352,16 @@ export type WorkbenchSmartReplyGeneralAnswerRequest = {
 
 export type WorkbenchSmartReplyGeneralAnswerResponse = {
   suggestion: WorkbenchSmartReplySuggestionDto | null;
+};
+
+/** msgId 传消息 seq（非 messageId / msgid） */
+export type WorkbenchSmartReplyAutoGeneralAnswerRequest = {
+  conversationId: string;
+  msgId: number;
+};
+
+export type WorkbenchSmartReplyAutoGeneralAnswerResponse = {
+  id: number;
 };
 
 export type WorkbenchSmartReplyMakeShorterRequest = {

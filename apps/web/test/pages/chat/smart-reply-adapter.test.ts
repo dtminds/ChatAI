@@ -9,6 +9,7 @@ import {
   collectNewSmartReplyPendingKeys,
   collectPendingSmartReplyPollMsgIds,
   collectQuestionImgs,
+  collectSmartReplyPendingKeysFromSuggestions,
   collectUnansweredSmartReplyPendingKeys,
   collectSmartReplyMsgIds,
   collectSmartReplyPollMsgIds,
@@ -713,6 +714,24 @@ describe("smart-reply-adapter", () => {
         },
       ),
     ).toEqual([1]);
+  });
+
+  it("derives pending keys from non-terminal smart replies", () => {
+    expect(
+      collectSmartReplyPendingKeysFromSuggestions({
+        "101": {
+          assistantName: "智能助手",
+          content: "",
+          status: "processing",
+        },
+        "102": {
+          assistantName: "智能助手",
+          content: "已完成",
+          pollComplete: true,
+          status: "ready",
+        },
+      }),
+    ).toEqual(["101"]);
   });
 
   it("marks terminal generate statuses", () => {

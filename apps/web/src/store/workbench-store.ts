@@ -20,6 +20,7 @@ import {
   pinConversation,
   pollWorkbench,
   pollSmartReplies,
+  requestSmartReplyAutoGeneralAnswer,
   requestSmartReplyGeneralAnswer,
   requestSmartReplyMakeShorter as requestSmartReplyMakeShorterApi,
   sendSmartReplyAnswer,
@@ -30,6 +31,7 @@ import {
   transcribeVoiceMessage as transcribeVoiceMessageRequest,
   unpinConversation,
 } from "@/pages/chat/api/workbench-gateway";
+import type { WorkbenchConversationPage } from "@/pages/chat/api/workbench-gateway";
 import {
   getComposerSegmentsPreview,
   normalizeComposerSegments,
@@ -51,6 +53,7 @@ import {
   buildSmartReplySendSegments,
   collectNewSmartReplyPendingKeys,
   collectPendingSmartReplyPollMsgIds,
+  collectSmartReplyPendingKeysFromSuggestions,
   collectUnansweredSmartReplyPendingKeys,
   createMakeShorterSmartReplySuggestion,
   canRequestSmartReplyMakeShorter,
@@ -60,6 +63,7 @@ import {
   isSmartReplyPollComplete,
   isSmartReplyEligibleMessage,
   isSmartReplySupportedConversation,
+  SMART_REPLY_BUSY_TIMEOUT_MS,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
@@ -172,6 +176,7 @@ type WorkbenchState = {
     string,
     Record<string, SmartReplySuggestion>
   >;
+  smartReplyEnabledByConversationId: Record<string, boolean>;
   smartReplyPendingMessageKeysByConversationId: Record<string, Record<string, true>>;
   smartReplyLastPolledAtByConversationId: Record<string, number>;
   activeAccountId: string;
@@ -378,6 +383,7 @@ function createInitialState(): Omit<
     messagePaginationByConversationId: {},
     messagesByConversationId: {},
     smartReplyByMessageIdByConversationId: {},
+    smartReplyEnabledByConversationId: {},
     smartReplyPendingMessageKeysByConversationId: {},
     smartReplyLastPolledAtByConversationId: {},
     pendingMessages: [],
@@ -723,6 +729,37 @@ function mapSmartReplyPendingKeys(keys: string[]) {
   return Object.fromEntries(keys.map((key) => [key, true as const]));
 }
 
+function mapSmartReplyPendingKeysFromSuggestions(
+  suggestions: Record<string, SmartReplySuggestion>,
+) {
+  return mapSmartReplyPendingKeys(
+    collectSmartReplyPendingKeysFromSuggestions(suggestions),
+  );
+}
+
+function getPageSmartReplies(page: WorkbenchConversationPage) {
+  return page.smartReplyEnabled === false ? {} : page.smartReplies;
+}
+
+function getSmartReplyTimerKey(conversationId: string, lookupKey: string) {
+  return `${conversationId}:${lookupKey}`;
+}
+
+function createSmartReplyTimeoutSuggestion(
+  previous: SmartReplySuggestion | undefined,
+): SmartReplySuggestion {
+  return {
+    assistantName: previous?.assistantName ?? "智能助手",
+    content: previous?.content ?? "",
+    failReason: "智能回复生成超时，请稍后重试",
+    generateStatus: 3,
+    pollComplete: true,
+    refAttachIds: previous?.refAttachIds,
+    status: undefined,
+    recordId: previous?.recordId,
+  };
+}
+
 function filterSmartReplyRecordByKeys<T>(
   record: Record<string, T>,
   retainedKeys: Set<string>,
@@ -750,6 +787,38 @@ function pruneSmartReplyStateForMessages(input: {
   };
 }
 
+function getLatestNonSystemMessage(messages: Message[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (message?.role !== "system") {
+      return message;
+    }
+  }
+
+  return undefined;
+}
+
+function shouldAutoGenerateSmartReply(input: {
+  message?: Message;
+  pending: Record<string, true>;
+  suggestions: Record<string, SmartReplySuggestion>;
+}) {
+  const { message, pending, suggestions } = input;
+
+  if (!message || message.role === "system" || !isSmartReplyEligibleMessage(message)) {
+    return undefined;
+  }
+
+  const lookupKey = getSmartReplyLookupKey(message);
+
+  if (pending[lookupKey] || suggestions[lookupKey]) {
+    return undefined;
+  }
+
+  return message;
+}
+
 function mergeSmartReplyPollResult(
   previousSuggestions: Record<string, SmartReplySuggestion>,
   previousPending: Record<string, true>,
@@ -767,7 +836,7 @@ function mergeSmartReplyPollResult(
   for (const msgId of requestedMsgIds) {
     const lookupKey = String(msgId);
 
-    if (!returnedMessageIds.has(lookupKey)) {
+    if (!returnedMessageIds.has(lookupKey) && !unansweredKeys.has(lookupKey)) {
       delete nextPending[lookupKey];
     }
   }
@@ -808,6 +877,12 @@ function canUseSmartReplyForConversation(
   state: WorkbenchState,
   conversationId: string,
 ) {
+  const pageEnabled = state.smartReplyEnabledByConversationId[conversationId];
+
+  if (pageEnabled !== true) {
+    return false;
+  }
+
   const conversation = findConversationById(
     state.conversationListsByScope,
     conversationId,
@@ -832,7 +907,15 @@ function scheduleSmartReplyPoll(
       | ((state: WorkbenchStore) => Partial<WorkbenchStore>),
   ) => void,
   conversationId: string,
-  options?: { force?: boolean },
+  options?: {
+    force?: boolean;
+    clearPollTimer?: (conversationId: string) => void;
+    scheduleNextPoll?: (conversationId: string) => void;
+    syncRuntimeTimers?: (
+      conversationId: string,
+      pending: Record<string, true>,
+    ) => void;
+  },
 ) {
   const state = get();
 
@@ -857,9 +940,14 @@ function scheduleSmartReplyPoll(
     state.smartReplyPendingMessageKeysByConversationId[conversationId] ?? {};
   const msgIds = collectPendingSmartReplyPollMsgIds(messages, suggestions, pending);
 
+  options?.syncRuntimeTimers?.(conversationId, pending);
+
   if (msgIds.length === 0) {
+    options?.clearPollTimer?.(conversationId);
     return;
   }
+
+  options?.clearPollTimer?.(conversationId);
 
   set((currentState) => ({
     smartReplyLastPolledAtByConversationId: {
@@ -893,6 +981,7 @@ function scheduleSmartReplyPoll(
           currentState.messagesByConversationId[conversationId] ?? [],
           msgIds,
         );
+        options?.syncRuntimeTimers?.(conversationId, merged.pending);
 
         return {
           smartReplyByMessageIdByConversationId: {
@@ -905,8 +994,137 @@ function scheduleSmartReplyPoll(
           },
         };
       });
+
+      const latestState = get();
+      const latestPending =
+        latestState.smartReplyPendingMessageKeysByConversationId[conversationId] ?? {};
+
+      if (
+        latestState.activeConversationId === conversationId &&
+        Object.keys(latestPending).length > 0
+      ) {
+        options?.scheduleNextPoll?.(conversationId);
+      } else {
+        options?.clearPollTimer?.(conversationId);
+      }
     })
-    .catch(() => undefined);
+    .catch(() => {
+      const latestState = get();
+      const latestPending =
+        latestState.smartReplyPendingMessageKeysByConversationId[conversationId] ?? {};
+
+      if (
+        latestState.activeConversationId === conversationId &&
+        Object.keys(latestPending).length > 0
+      ) {
+        options?.syncRuntimeTimers?.(conversationId, latestPending);
+        options?.scheduleNextPoll?.(conversationId);
+      } else {
+        options?.clearPollTimer?.(conversationId);
+      }
+    });
+}
+
+function triggerSmartReplyAutoGeneration(
+  get: () => WorkbenchStore,
+  set: (
+    partial:
+      | Partial<WorkbenchStore>
+      | ((state: WorkbenchStore) => Partial<WorkbenchStore>),
+  ) => void,
+  conversationId: string,
+  message: ChatMessage,
+  options: {
+    schedulePoll: (conversationId: string, options?: { force?: boolean }) => void;
+    syncRuntimeTimers: (
+      conversationId: string,
+      pending: Record<string, true>,
+    ) => void;
+  },
+) {
+  const lookupKey = getSmartReplyLookupKey(message);
+  const optimisticSuggestion = createTriggeredSmartReplySuggestion(message);
+
+  set((currentState) => {
+    if (currentState.activeConversationId !== conversationId) {
+      return currentState;
+    }
+
+    return {
+      smartReplyByMessageIdByConversationId: {
+        ...currentState.smartReplyByMessageIdByConversationId,
+        [conversationId]: {
+          ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {}),
+          [lookupKey]: optimisticSuggestion,
+        },
+      },
+      smartReplyPendingMessageKeysByConversationId: {
+        ...currentState.smartReplyPendingMessageKeysByConversationId,
+        [conversationId]: {
+          ...(currentState.smartReplyPendingMessageKeysByConversationId[
+            conversationId
+          ] ?? {}),
+          [lookupKey]: true,
+        },
+      },
+    };
+  });
+  options.syncRuntimeTimers(
+    conversationId,
+    get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
+  );
+
+  void requestSmartReplyAutoGeneralAnswer(message, conversationId)
+    .then(() => {
+      if (get().activeConversationId !== conversationId) {
+        return;
+      }
+
+      options.schedulePoll(conversationId, { force: true });
+    })
+    .catch((error) => {
+      set((currentState) => {
+        if (currentState.activeConversationId !== conversationId) {
+          return currentState;
+        }
+
+        const errorMessage =
+          getRequestApiErrorMessage(error) ?? "智能回复生成失败，请稍后重试";
+
+        return {
+          smartReplyByMessageIdByConversationId: {
+            ...currentState.smartReplyByMessageIdByConversationId,
+            [conversationId]: {
+              ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ??
+                {}),
+              [lookupKey]: {
+                ...optimisticSuggestion,
+                failReason: errorMessage,
+                generateStatus: 3,
+                pollComplete: true,
+                status: undefined,
+              },
+            },
+          },
+          smartReplyPendingMessageKeysByConversationId: {
+            ...currentState.smartReplyPendingMessageKeysByConversationId,
+            [conversationId]: omitPendingSmartReplyKey(
+              currentState.smartReplyPendingMessageKeysByConversationId[
+                conversationId
+              ] ?? {},
+              lookupKey,
+            ),
+          },
+        };
+      });
+
+      if (get().activeConversationId === conversationId) {
+        options.syncRuntimeTimers(
+          conversationId,
+          get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
+        );
+      }
+    });
 }
 
 function patchExistingMessageList(
@@ -1451,6 +1669,10 @@ function clearConversationMessageState(
       state.smartReplyByMessageIdByConversationId,
       clearedConversationIds,
     ),
+    smartReplyEnabledByConversationId: omitByKeys(
+      state.smartReplyEnabledByConversationId,
+      clearedConversationIds,
+    ),
     smartReplyPendingMessageKeysByConversationId: omitByKeys(
       state.smartReplyPendingMessageKeysByConversationId,
       clearedConversationIds,
@@ -1489,12 +1711,16 @@ function getMessageStateConversationIds(state: WorkbenchStore) {
     ...Object.keys(state.messagesByConversationId),
     ...Object.keys(state.messagePaginationByConversationId),
     ...Object.keys(state.hasMoreHistoryByConversationId),
+    ...Object.keys(state.smartReplyEnabledByConversationId),
     ...Object.keys(state.historyStatusByConversationId),
     ...Object.keys(state.historyPanelByConversationId),
     ...Object.keys(state.historyPanelFiltersByConversationId),
     ...Object.keys(state.historyPanelLoadingByConversationId),
     ...Object.keys(state.historyPanelErrorByConversationId),
     ...Object.keys(state.historyPanelScrollModeByConversationId),
+    ...Object.keys(state.smartReplyByMessageIdByConversationId),
+    ...Object.keys(state.smartReplyPendingMessageKeysByConversationId),
+    ...Object.keys(state.smartReplyLastPolledAtByConversationId),
   ]);
 }
 
@@ -1514,6 +1740,8 @@ export function createWorkbenchStore() {
   let latestGroupMembersRequestId = 0;
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingVoicePlaybackConfirmKeys = new Set<string>();
+  const smartReplyPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
+  const smartReplyTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
   const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
   const latestGroupMembersRequestIdByConversationId: Record<string, number> = {};
   const revokePendingTimeoutsByMessageId = new Map<string, ReturnType<typeof setTimeout>>();
@@ -1566,6 +1794,36 @@ export function createWorkbenchStore() {
     }
   }
 
+  function clearSmartReplyPollTimer(conversationId: string) {
+    const timer = smartReplyPollTimersByConversationId.get(conversationId);
+
+    if (timer) {
+      clearTimeout(timer);
+      smartReplyPollTimersByConversationId.delete(conversationId);
+    }
+  }
+
+  function clearSmartReplyTimeout(conversationId: string, lookupKey: string) {
+    const timerKey = getSmartReplyTimerKey(conversationId, lookupKey);
+    const timer = smartReplyTimeoutsByKey.get(timerKey);
+
+    if (timer) {
+      clearTimeout(timer);
+      smartReplyTimeoutsByKey.delete(timerKey);
+    }
+  }
+
+  function clearSmartReplyRuntimeTimers(conversationId: string) {
+    clearSmartReplyPollTimer(conversationId);
+
+    for (const [timerKey, timer] of smartReplyTimeoutsByKey.entries()) {
+      if (timerKey.startsWith(`${conversationId}:`)) {
+        clearTimeout(timer);
+        smartReplyTimeoutsByKey.delete(timerKey);
+      }
+    }
+  }
+
   function omitTakeoverStatus(
     takeoverStatusByAccountId: Record<string, TakeoverStatus>,
     accountId: string,
@@ -1582,6 +1840,115 @@ export function createWorkbenchStore() {
   }
 
   return create<WorkbenchStore>((set, get) => {
+    function scheduleSmartReplyTimeout(conversationId: string, lookupKey: string) {
+      clearSmartReplyTimeout(conversationId, lookupKey);
+
+      const timerKey = getSmartReplyTimerKey(conversationId, lookupKey);
+      const timeoutId = setTimeout(() => {
+        smartReplyTimeoutsByKey.delete(timerKey);
+        let nextPendingAfterTimeout: Record<string, true> | undefined;
+
+        set((currentState) => {
+          const pending =
+            currentState.smartReplyPendingMessageKeysByConversationId[
+              conversationId
+            ] ?? {};
+
+          if (!pending[lookupKey]) {
+            return {};
+          }
+
+          nextPendingAfterTimeout = omitPendingSmartReplyKey(pending, lookupKey);
+          const previousSuggestion =
+            currentState.smartReplyByMessageIdByConversationId[conversationId]?.[
+              lookupKey
+            ];
+
+          return {
+            smartReplyByMessageIdByConversationId: {
+              ...currentState.smartReplyByMessageIdByConversationId,
+              [conversationId]: {
+                ...(currentState.smartReplyByMessageIdByConversationId[
+                  conversationId
+                ] ?? {}),
+                [lookupKey]: createSmartReplyTimeoutSuggestion(previousSuggestion),
+              },
+            },
+            smartReplyPendingMessageKeysByConversationId: {
+              ...currentState.smartReplyPendingMessageKeysByConversationId,
+              [conversationId]: nextPendingAfterTimeout,
+            },
+          };
+        });
+
+        if (!nextPendingAfterTimeout) {
+          return;
+        }
+
+        syncSmartReplyRuntimeTimers(conversationId, nextPendingAfterTimeout);
+
+        if (
+          get().activeConversationId === conversationId &&
+          Object.keys(nextPendingAfterTimeout).length > 0
+        ) {
+          scheduleSmartReplyPollForConversation(conversationId, { force: true });
+        } else {
+          clearSmartReplyPollTimer(conversationId);
+        }
+      }, SMART_REPLY_BUSY_TIMEOUT_MS);
+
+      smartReplyTimeoutsByKey.set(timerKey, timeoutId);
+    }
+
+    function syncSmartReplyRuntimeTimers(
+      conversationId: string,
+      pending: Record<string, true>,
+    ) {
+      for (const lookupKey of Object.keys(pending)) {
+        const timerKey = getSmartReplyTimerKey(conversationId, lookupKey);
+
+        if (!smartReplyTimeoutsByKey.has(timerKey)) {
+          scheduleSmartReplyTimeout(conversationId, lookupKey);
+        }
+      }
+
+      for (const [timerKey, timer] of smartReplyTimeoutsByKey.entries()) {
+        if (!timerKey.startsWith(`${conversationId}:`)) {
+          continue;
+        }
+
+        const lookupKey = timerKey.slice(conversationId.length + 1);
+
+        if (!pending[lookupKey]) {
+          clearTimeout(timer);
+          smartReplyTimeoutsByKey.delete(timerKey);
+        }
+      }
+    }
+
+    function scheduleSmartReplyPollForConversation(
+      conversationId: string,
+      options?: { force?: boolean },
+    ) {
+      scheduleSmartReplyPoll(get, set, conversationId, {
+        ...options,
+        clearPollTimer: clearSmartReplyPollTimer,
+        scheduleNextPoll: (targetConversationId) => {
+          clearSmartReplyPollTimer(targetConversationId);
+
+          const timeoutId = setTimeout(() => {
+            smartReplyPollTimersByConversationId.delete(targetConversationId);
+            scheduleSmartReplyPollForConversation(targetConversationId, {
+              force: true,
+            });
+          }, SMART_REPLY_POLL_INTERVAL_MS);
+
+          smartReplyPollTimersByConversationId.set(targetConversationId, timeoutId);
+        },
+        syncRuntimeTimers: syncSmartReplyRuntimeTimers,
+      });
+    }
+
     function scheduleRevokePendingTimeout(conversationId: string, messageId: string) {
       clearRevokePendingTimeout(messageId);
 
@@ -1844,9 +2211,9 @@ export function createWorkbenchStore() {
           return;
         }
 
-        const initialSmartReplyPendingKeys = collectUnansweredSmartReplyPendingKeys(
-          page.messages,
-        );
+        const pageSmartReplyByMessageId = getPageSmartReplies(page);
+        const pageSmartReplyPending =
+          mapSmartReplyPendingKeysFromSuggestions(pageSmartReplyByMessageId);
 
         set((currentState) => ({
           activeMessageSeq: getActiveMessageSeq(
@@ -1871,7 +2238,15 @@ export function createWorkbenchStore() {
           },
           smartReplyPendingMessageKeysByConversationId: {
             ...currentState.smartReplyPendingMessageKeysByConversationId,
-            [conversationId]: mapSmartReplyPendingKeys(initialSmartReplyPendingKeys),
+            [conversationId]: pageSmartReplyPending,
+          },
+          smartReplyByMessageIdByConversationId: {
+            ...currentState.smartReplyByMessageIdByConversationId,
+            [conversationId]: pageSmartReplyByMessageId,
+          },
+          smartReplyEnabledByConversationId: {
+            ...currentState.smartReplyEnabledByConversationId,
+            [conversationId]: page.smartReplyEnabled ?? true,
           },
           scopeTransitionError: undefined,
         }));
@@ -1888,9 +2263,26 @@ export function createWorkbenchStore() {
         }
 
         await markActiveConversationRead(conversationId, requestId);
-        scheduleSmartReplyPoll(get, set, conversationId, {
-          force: initialSmartReplyPendingKeys.length > 0,
+        scheduleSmartReplyPollForConversation(conversationId, {
+          force: Object.keys(pageSmartReplyPending).length > 0,
         });
+
+        const autoGenerateMessage = shouldAutoGenerateSmartReply({
+          message: getLatestNonSystemMessage(page.messages),
+          pending: get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
+          suggestions:
+            get().smartReplyByMessageIdByConversationId[conversationId] ?? {},
+        });
+
+        if (
+          autoGenerateMessage &&
+          canUseSmartReplyForConversation(get(), conversationId)
+        ) {
+          triggerSmartReplyAutoGeneration(get, set, conversationId, autoGenerateMessage, {
+            schedulePoll: scheduleSmartReplyPollForConversation,
+            syncRuntimeTimers: syncSmartReplyRuntimeTimers,
+          });
+        }
       } catch (error) {
         if (!isCurrentScopeRequest(requestId)) {
           return;
@@ -2027,6 +2419,15 @@ export function createWorkbenchStore() {
               [lookupKey]: optimisticSuggestion,
             },
           },
+          smartReplyPendingMessageKeysByConversationId: {
+            ...currentState.smartReplyPendingMessageKeysByConversationId,
+            [conversationId]: {
+              ...(currentState.smartReplyPendingMessageKeysByConversationId[
+                conversationId
+              ] ?? {}),
+              [lookupKey]: true,
+            },
+          },
         }));
 
         try {
@@ -2064,7 +2465,7 @@ export function createWorkbenchStore() {
             };
           });
 
-          scheduleSmartReplyPoll(get, set, conversationId, { force: true });
+          scheduleSmartReplyPollForConversation(conversationId, { force: true });
         } catch (error) {
           set((currentState) => {
             if (currentState.activeConversationId !== conversationId) {
@@ -2565,9 +2966,11 @@ export function createWorkbenchStore() {
           seatOrder: conversationListCacheSeatOrder,
         });
 
-          const initialSmartReplyPendingKeys = conversationPage
-            ? collectUnansweredSmartReplyPendingKeys(conversationPage.messages)
-            : [];
+          const bootstrapSmartReplyByMessageId = conversationPage
+            ? getPageSmartReplies(conversationPage)
+            : {};
+          const bootstrapSmartReplyPending =
+            mapSmartReplyPendingKeysFromSuggestions(bootstrapSmartReplyByMessageId);
 
           set({
             accounts: bootstrapResult.accounts,
@@ -2613,9 +3016,18 @@ export function createWorkbenchStore() {
             : {},
           smartReplyPendingMessageKeysByConversationId: conversationPage
             ? {
-                [conversationPage.conversationId]: mapSmartReplyPendingKeys(
-                  initialSmartReplyPendingKeys,
-                ),
+                [conversationPage.conversationId]: bootstrapSmartReplyPending,
+              }
+            : {},
+          smartReplyByMessageIdByConversationId: conversationPage
+            ? {
+                [conversationPage.conversationId]: bootstrapSmartReplyByMessageId,
+              }
+            : {},
+          smartReplyEnabledByConversationId: conversationPage
+            ? {
+                [conversationPage.conversationId]:
+                  conversationPage.smartReplyEnabled ?? true,
               }
             : {},
           sidebarItems: bootstrapResult.sidebarItems,
@@ -2661,9 +3073,42 @@ export function createWorkbenchStore() {
         }
 
         if (bootstrapResult.activeConversationId) {
-          scheduleSmartReplyPoll(get, set, bootstrapResult.activeConversationId, {
-            force: initialSmartReplyPendingKeys.length > 0,
+          scheduleSmartReplyPollForConversation(bootstrapResult.activeConversationId, {
+            force: Object.keys(bootstrapSmartReplyPending).length > 0,
           });
+
+          const autoGenerateMessage = conversationPage
+            ? shouldAutoGenerateSmartReply({
+                message: getLatestNonSystemMessage(conversationPage.messages),
+                pending:
+                  get().smartReplyPendingMessageKeysByConversationId[
+                    bootstrapResult.activeConversationId
+                  ] ?? {},
+                suggestions:
+                  get().smartReplyByMessageIdByConversationId[
+                    bootstrapResult.activeConversationId
+                  ] ?? {},
+              })
+            : undefined;
+
+          if (
+            autoGenerateMessage &&
+            canUseSmartReplyForConversation(
+              get(),
+              bootstrapResult.activeConversationId,
+            )
+          ) {
+            triggerSmartReplyAutoGeneration(
+              get,
+              set,
+              bootstrapResult.activeConversationId,
+              autoGenerateMessage,
+              {
+                schedulePoll: scheduleSmartReplyPollForConversation,
+                syncRuntimeTimers: syncSmartReplyRuntimeTimers,
+              },
+            );
+          }
         }
       } catch (error) {
         set({
@@ -2955,7 +3400,7 @@ export function createWorkbenchStore() {
         });
 
         if (polledConversationId) {
-          scheduleSmartReplyPoll(get, set, polledConversationId, {
+          scheduleSmartReplyPollForConversation(polledConversationId, {
             force: newSmartReplyPendingKeys.length > 0,
           });
         }
@@ -3776,6 +4221,10 @@ export function createWorkbenchStore() {
         return;
       }
 
+      if (state.activeConversationId) {
+        clearSmartReplyRuntimeTimers(state.activeConversationId);
+      }
+
       // 切换账号时立即取消未完成的搜索定时器并清空搜索态，
       // 防止上一个账号的搜索结果或进行中的请求污染新账号的视图。
       if (searchDebounceTimer) {
@@ -3898,6 +4347,11 @@ export function createWorkbenchStore() {
           return;
         }
 
+        const accountSwitchSmartReplyByMessageId =
+          getPageSmartReplies(conversationPage);
+        const accountSwitchSmartReplyPending =
+          mapSmartReplyPendingKeysFromSuggestions(accountSwitchSmartReplyByMessageId);
+
         set((currentState) => {
           const currentMessages =
             currentState.messagesByConversationId[conversationPage.conversationId] ??
@@ -3927,6 +4381,19 @@ export function createWorkbenchStore() {
                 currentMessages,
                 conversationPage.messages,
               ),
+            },
+            smartReplyByMessageIdByConversationId: {
+              ...currentState.smartReplyByMessageIdByConversationId,
+              [conversationPage.conversationId]: accountSwitchSmartReplyByMessageId,
+            },
+            smartReplyEnabledByConversationId: {
+              ...currentState.smartReplyEnabledByConversationId,
+              [conversationPage.conversationId]:
+                conversationPage.smartReplyEnabled ?? true,
+            },
+            smartReplyPendingMessageKeysByConversationId: {
+              ...currentState.smartReplyPendingMessageKeysByConversationId,
+              [conversationPage.conversationId]: accountSwitchSmartReplyPending,
             },
             scopeTransitionError: undefined,
             groupMembersLoadingByConversationId:
@@ -3959,6 +4426,29 @@ export function createWorkbenchStore() {
         ) {
           await markActiveConversationRead(nextConversationId, requestId);
         }
+
+        scheduleSmartReplyPollForConversation(nextConversationId, {
+          force: Object.keys(accountSwitchSmartReplyPending).length > 0,
+        });
+
+        const autoGenerateMessage = shouldAutoGenerateSmartReply({
+          message: getLatestNonSystemMessage(conversationPage.messages),
+          pending:
+            get().smartReplyPendingMessageKeysByConversationId[nextConversationId] ??
+            {},
+          suggestions:
+            get().smartReplyByMessageIdByConversationId[nextConversationId] ?? {},
+        });
+
+        if (
+          autoGenerateMessage &&
+          canUseSmartReplyForConversation(get(), nextConversationId)
+        ) {
+          triggerSmartReplyAutoGeneration(get, set, nextConversationId, autoGenerateMessage, {
+            schedulePoll: scheduleSmartReplyPollForConversation,
+            syncRuntimeTimers: syncSmartReplyRuntimeTimers,
+          });
+        }
       } catch (error) {
         if (isCurrentScopeRequest(requestId)) {
           set({
@@ -3982,6 +4472,8 @@ export function createWorkbenchStore() {
 
       const requestId = issueScopeRequestId();
       const currentConversation = getConversationById(state, conversationId);
+      clearSmartReplyRuntimeTimers(state.activeConversationId);
+      clearSmartReplyRuntimeTimers(conversationId);
 
       set({
         activeConversationId: conversationId,
@@ -4024,9 +4516,9 @@ export function createWorkbenchStore() {
           return;
         }
 
-        const initialSmartReplyPendingKeys = collectUnansweredSmartReplyPendingKeys(
-          page.messages,
-        );
+        const pageSmartReplyByMessageId = getPageSmartReplies(page);
+        const pageSmartReplyPending =
+          mapSmartReplyPendingKeysFromSuggestions(pageSmartReplyByMessageId);
 
         set((currentState) => {
           const staleMessageConversationIds = [
@@ -4061,7 +4553,15 @@ export function createWorkbenchStore() {
             messageUpdateCursor: undefined,
             smartReplyPendingMessageKeysByConversationId: {
               ...clearedMessageState.smartReplyPendingMessageKeysByConversationId,
-              [conversationId]: mapSmartReplyPendingKeys(initialSmartReplyPendingKeys),
+              [conversationId]: pageSmartReplyPending,
+            },
+            smartReplyByMessageIdByConversationId: {
+              ...clearedMessageState.smartReplyByMessageIdByConversationId,
+              [conversationId]: pageSmartReplyByMessageId,
+            },
+            smartReplyEnabledByConversationId: {
+              ...clearedMessageState.smartReplyEnabledByConversationId,
+              [conversationId]: page.smartReplyEnabled ?? true,
             },
             scopeTransitionError: undefined,
           };
@@ -4079,9 +4579,26 @@ export function createWorkbenchStore() {
         }
 
         await markActiveConversationRead(conversationId, requestId);
-        scheduleSmartReplyPoll(get, set, conversationId, {
-          force: initialSmartReplyPendingKeys.length > 0,
+        scheduleSmartReplyPollForConversation(conversationId, {
+          force: Object.keys(pageSmartReplyPending).length > 0,
         });
+
+        const autoGenerateMessage = shouldAutoGenerateSmartReply({
+          message: getLatestNonSystemMessage(page.messages),
+          pending: get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
+          suggestions:
+            get().smartReplyByMessageIdByConversationId[conversationId] ?? {},
+        });
+
+        if (
+          autoGenerateMessage &&
+          canUseSmartReplyForConversation(get(), conversationId)
+        ) {
+          triggerSmartReplyAutoGeneration(get, set, conversationId, autoGenerateMessage, {
+            schedulePoll: scheduleSmartReplyPollForConversation,
+            syncRuntimeTimers: syncSmartReplyRuntimeTimers,
+          });
+        }
       } catch (error) {
         if (isCurrentScopeRequest(requestId)) {
           set({

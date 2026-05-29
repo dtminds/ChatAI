@@ -21,6 +21,8 @@ import type {
   WorkbenchPollResponse,
   WorkbenchSmartReplyAttachmentsRequest,
   WorkbenchSmartReplyAttachmentsResponse,
+  WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  WorkbenchSmartReplyAutoGeneralAnswerResponse,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyMakeShorterRequest,
@@ -423,6 +425,12 @@ export function createMemoryWorkbenchService() {
       _request: WorkbenchSmartReplyGeneralAnswerRequest,
     ): WorkbenchSmartReplyGeneralAnswerResponse {
       return { suggestion: null };
+    },
+    requestSmartReplyAutoGeneralAnswer(
+      _subUserId: string,
+      _request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
+    ): WorkbenchSmartReplyAutoGeneralAnswerResponse {
+      return { id: 1 };
     },
     requestSmartReplyMakeShorter(
       _subUserId: string,

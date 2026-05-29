@@ -2059,7 +2059,17 @@ export class WorkbenchRepository {
       includeHiddenConversation?: boolean;
       limit: number;
     },
-  ): Promise<WorkbenchMessagePageDto> {
+  ): Promise<
+    WorkbenchMessagePageDto & {
+      smartReplyEnabled?: boolean;
+      smartReplyScope?: {
+        chatType: number;
+        thirdExternalId: string;
+        thirdUserId: string;
+        uid: number;
+      };
+    }
+  > {
     const conversationNumericId = parseMySqlId(conversationId);
 
     if (conversationNumericId == null || options.limit <= 0) {
@@ -2082,6 +2092,7 @@ export class WorkbenchRepository {
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
         "conversation.third_userid as third_userid",
+        "seat.assistant_id as assistant_id",
         "seat.id as seat_id",
       ])
       .select((expressionBuilder) => [
@@ -2187,6 +2198,19 @@ export class WorkbenchRepository {
       fetchedQuoteRowsById,
     );
 
+    const thirdExternalId = (conversation.conversation_external_id || "").trim();
+    const thirdUserId = (conversation.third_userid || "").trim();
+    const uid = toNumber(conversation.uid) ?? 0;
+    const smartReplyScope =
+      conversation.chat_type === CHAT_TYPE_SINGLE && thirdExternalId && thirdUserId && uid > 0
+        ? {
+            chatType: CHAT_TYPE_SINGLE,
+            thirdExternalId,
+            thirdUserId,
+            uid,
+          }
+        : undefined;
+
     return {
       filteredCount: 0,
       hasMore: rows.length > options.limit,
@@ -2195,6 +2219,9 @@ export class WorkbenchRepository {
       ),
       nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id) : undefined,
       scannedCount: rawRows.length,
+      smartReplyEnabled:
+        smartReplyScope != null && (toNumber(conversation.assistant_id) ?? 0) > 0,
+      smartReplyScope,
     };
   }
 

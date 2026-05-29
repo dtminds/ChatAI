@@ -75,6 +75,8 @@ export type WorkbenchConversationPage = {
   messages: Message[];
   nextBeforeSeq?: number;
   skippedHiddenCount: number;
+  smartReplyEnabled?: boolean;
+  smartReplies: Record<string, SmartReplySuggestion>;
 };
 
 export type WorkbenchHistoryPage = {
@@ -342,6 +344,8 @@ export async function loadConversationMessagesPage(
     messages,
     nextBeforeSeq: page.nextBeforeSeq,
     skippedHiddenCount: page.filteredCount,
+    smartReplyEnabled: page.smartReplyEnabled,
+    smartReplies: adaptSmartReplySuggestions(page.smartReplies ?? []),
   };
 }
 
@@ -552,6 +556,22 @@ export async function requestSmartReplyGeneralAnswer(
   );
 
   return suggestion ?? createTriggeredSmartReplySuggestion(message);
+}
+
+export async function requestSmartReplyAutoGeneralAnswer(
+  message: ChatMessage,
+  conversationId: string,
+) {
+  const msgId = message.seq;
+
+  if (!Number.isSafeInteger(msgId) || msgId == null || msgId <= 0) {
+    throw new Error("消息序号无效，无法生成智能回复");
+  }
+
+  return getWorkbenchService().requestSmartReplyAutoGeneralAnswer({
+    conversationId,
+    msgId,
+  });
 }
 
 export async function requestSmartReplyMakeShorter(

@@ -28,7 +28,7 @@ const SMART_REPLY_TRIGGER_CONTENT_TYPES = new Set<MessageContent["type"]>([
 export const SMART_REPLY_MEDIA_PROCESSING_HINT_MS = 2000;
 
 /** 智能回复轮询最小间隔（毫秒），与工作台主 poll 解耦 */
-export const SMART_REPLY_POLL_INTERVAL_MS = 5000;
+export const SMART_REPLY_POLL_INTERVAL_MS = 1000;
 
 /** 智能回复繁忙超时时间（毫秒） */
 export const SMART_REPLY_BUSY_TIMEOUT_MS = 30000;
@@ -492,6 +492,14 @@ export function collectPendingSmartReplyPollMsgIds(
   }
 
   return msgIds;
+}
+
+export function collectSmartReplyPendingKeysFromSuggestions(
+  suggestions: Record<string, SmartReplySuggestion>,
+) {
+  return Object.entries(suggestions)
+    .filter(([, suggestion]) => !isSmartReplyPollComplete(suggestion))
+    .map(([messageId]) => messageId);
 }
 
 function readNonNegativeInteger(value: unknown) {

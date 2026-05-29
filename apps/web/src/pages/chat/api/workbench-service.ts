@@ -38,6 +38,8 @@ import {
   type WorkbenchPollResponse,
   type WorkbenchSmartReplyAttachmentsRequest,
   type WorkbenchSmartReplyAttachmentsResponse,
+  type WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  type WorkbenchSmartReplyAutoGeneralAnswerResponse,
   type WorkbenchSmartReplyGeneralAnswerRequest,
   type WorkbenchSmartReplyGeneralAnswerResponse,
   type WorkbenchSmartReplyMakeShorterRequest,
@@ -157,6 +159,9 @@ export type WorkbenchService = {
   requestSmartReplyGeneralAnswer: (
     request: WorkbenchSmartReplyGeneralAnswerRequest,
   ) => Promise<WorkbenchSmartReplyGeneralAnswerResponse>;
+  requestSmartReplyAutoGeneralAnswer: (
+    request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  ) => Promise<WorkbenchSmartReplyAutoGeneralAnswerResponse>;
   requestSmartReplyMakeShorter: (
     request: WorkbenchSmartReplyMakeShorterRequest,
   ) => Promise<WorkbenchSmartReplyMakeShorterResponse>;
@@ -612,6 +617,9 @@ export function createMockWorkbenchService(): WorkbenchService {
     async requestSmartReplyGeneralAnswer() {
       return { suggestion: null };
     },
+    async requestSmartReplyAutoGeneralAnswer() {
+      return { id: 1 };
+    },
     async requestSmartReplyMakeShorter(request) {
       const trimmed = request.content.trim();
 
@@ -1022,6 +1030,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchSmartReplyGeneralAnswerResponse,
         WorkbenchSmartReplyGeneralAnswerRequest
       >("/server/smart-reply/general-answer", request);
+    },
+    requestSmartReplyAutoGeneralAnswer(request) {
+      return http.post<
+        WorkbenchSmartReplyAutoGeneralAnswerResponse,
+        WorkbenchSmartReplyAutoGeneralAnswerRequest
+      >("/server/smart-reply/auto-general-answer", request);
     },
     requestSmartReplyMakeShorter(request) {
       return http.post<

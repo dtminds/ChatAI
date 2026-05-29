@@ -45,7 +45,7 @@ export interface XyWapEmbedContact {
   /**
    * 第三方客户头像
    */
-  avatar: string;
+  avatar: Generated<string>;
   /**
    * 状态，1：正常
    */
@@ -57,7 +57,7 @@ export interface XyWapEmbedContact {
   /**
    * 外部联系人性别 0-未知 1-男性 2-女性
    */
-  gender: number | null;
+  gender: Generated<number | null>;
   /**
    * id
    */
@@ -65,7 +65,7 @@ export interface XyWapEmbedContact {
   /**
    * 第三方客户名称
    */
-  name: string;
+  name: Generated<string>;
   /**
    * 接入平台 5、比邻
    */
@@ -73,7 +73,7 @@ export interface XyWapEmbedContact {
   /**
    * 第三方客户实名
    */
-  real_name: string;
+  real_name: Generated<string>;
   /**
    * 第三方客户id
    */
@@ -90,7 +90,7 @@ export interface XyWapEmbedContact {
 
 export interface XyWapEmbedConversation {
   /**
-   * 会话状态：1、正常，0、隐藏
+   * 会话状态：1、正常，0、删除
    */
   biz_status: Generated<number | null>;
   /**
@@ -181,6 +181,10 @@ export interface XyWapEmbedCustomerBindRelation {
    */
   id: Generated<number>;
   /**
+   * 上一次智能工作台心跳时间
+   */
+  last_smart_heartbeat_time: Date | null;
+  /**
    * 上一次侧边栏心跳时间
    */
   last_wap_heartbeat_time: Date | null;
@@ -222,7 +226,7 @@ export interface XyWapEmbedGroupMember {
   /**
    * 群成员头像
    */
-  avatar: string;
+  avatar: string | null;
   /**
    * 成员状态。1 - 正常；0 - 已离开
    */
@@ -242,7 +246,7 @@ export interface XyWapEmbedGroupMember {
   /**
    * 邀请者第三方成员id
    */
-  inviter_third_userid: string;
+  inviter_third_userid: string | null;
   /**
    * 入群方式。1 - 由成员邀请入群（直接邀请入群）2 - 由成员邀请入群（通过邀请链接入群）3 - 通过扫描群二维码入群
    */
@@ -290,6 +294,10 @@ export interface XyWapEmbedGroupSeat {
    * 席位状态： 1、已绑定 0、已注销
    */
   biz_status: Generated<number>;
+  /**
+   * 群ID，xy_work_chat.id
+   */
+  chat_id: Generated<number>;
   /**
    * 插入时间
    */

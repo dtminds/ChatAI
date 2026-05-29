@@ -23,7 +23,7 @@ describe("SmartReplyCard", () => {
     vi.useRealTimers();
   });
 
-  it("renders assistant header, content and footer actions", () => {
+  it("renders assistant header, content and header actions", () => {
     render(
       <SmartReplyCard
         assistantName="护肤小助手"
@@ -36,20 +36,50 @@ describe("SmartReplyCard", () => {
     );
 
     expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
+    expect(screen.getByTestId("smart-reply-card")).toHaveClass("max-w-[640px]");
+    expect(
+      screen
+        .getByTestId("smart-reply-card-header")
+        .querySelector('img[alt="护肤小助手"]'),
+    ).toBeNull();
+    expect(screen.getByLabelText("AI 智能回复")).toBeInTheDocument();
     expect(screen.getByText("护肤小助手")).toBeInTheDocument();
     expect(screen.getByText("这里是思考的文案...")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "编辑智能回复" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "微调文案" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "微调文案" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "编辑" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "填入输入框" })).toBeInTheDocument();
     expect(
+      screen.getByRole("button", { name: "更多智能回复操作" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "填入输入框" })).toHaveClass(
+      "border",
+      "bg-conversation-active-foreground/10",
+    );
+    expect(screen.getByRole("button", { name: "收起" })).toHaveClass(
+      "border",
+      "bg-conversation-active-foreground/10",
+    );
+    expect(screen.getByRole("button", { name: "编辑" })).toHaveTextContent("编辑");
+    expect(screen.getByRole("button", { name: "发送" })).toHaveTextContent("发送");
+    expect(
       screen
-        .getAllByRole("button")
-        .map((button) => button.textContent)
-        .filter(
-          (text) => text === "微调文案" || text === "填入输入框" || text === "发送",
+        .getByTestId("smart-reply-card-header")
+        .querySelectorAll("button"),
+    ).toHaveLength(5);
+    expect(
+      Array.from(
+        screen.getByTestId("smart-reply-card-header").querySelectorAll("button"),
+      )
+        .map((button) => button.getAttribute("aria-label") ?? button.textContent)
+        .filter((text) =>
+          ["填入输入框", "编辑", "发送", "更多智能回复操作"].includes(text ?? ""),
         ),
-    ).toEqual(["微调文案", "填入输入框", "发送"]);
+    ).toEqual(["填入输入框", "编辑", "发送", "更多智能回复操作"]);
+    expect(screen.getByTestId("smart-reply-card-body")).toHaveTextContent(
+      "这里是思考的文案...",
+    );
   });
 
   it("defines smart reply tokens outside appearance theme overrides", () => {
@@ -87,7 +117,7 @@ describe("SmartReplyCard", () => {
 
     expect(screen.getByText("这里是思考的文案...")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "关闭智能回复" }));
+    await user.click(screen.getByRole("button", { name: "收起" }));
 
     expect(screen.getByTestId("smart-reply-card")).toHaveAttribute(
       "data-collapsed",
@@ -95,11 +125,9 @@ describe("SmartReplyCard", () => {
     );
     expect(screen.getByText("护肤小助手")).toBeInTheDocument();
     expect(screen.queryByText("这里是思考的文案...")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "展开智能回复" })).toHaveTextContent(
-      "展开",
-    );
+    expect(screen.getByRole("button", { name: "展开" })).toContainHTML("img");
 
-    await user.click(screen.getByRole("button", { name: "展开智能回复" }));
+    await user.click(screen.getByRole("button", { name: "展开" }));
 
     expect(screen.getByTestId("smart-reply-card")).toHaveAttribute(
       "data-collapsed",
@@ -120,7 +148,7 @@ describe("SmartReplyCard", () => {
     expect(screen.getByLabelText("推荐附件 3 个")).toHaveTextContent("3");
   });
 
-  it("opens text tuning menu from the right actions", async () => {
+  it("opens the secondary actions menu from the right button group", async () => {
     const user = userEvent.setup();
 
     render(
@@ -133,13 +161,89 @@ describe("SmartReplyCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "微调文案" }));
+    await user.click(screen.getByRole("button", { name: "更多智能回复操作" }));
 
     expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "简短一点",
+      "变短一点",
       "重新生成",
-      "编辑",
     ]);
+  });
+
+  it("shows tooltips for icon-only header buttons", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SmartReplyCard
+        assistantName="护肤小助手"
+        content="建议回复"
+      />,
+    );
+
+    await user.hover(screen.getByRole("button", { name: "填入输入框" }));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("填入输入框");
+
+  });
+
+  it("shows tooltip for the collapse icon button", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SmartReplyCard
+        assistantName="护肤小助手"
+        content="建议回复"
+      />,
+    );
+
+    await user.hover(screen.getByRole("button", { name: "收起" }));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("收起");
+  });
+
+  it("shows tooltip for disabled fill composer icon button", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SmartReplyCard
+        assistantName="护肤小助手"
+        canSendMessage={false}
+        content="建议回复"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "填入输入框" })).toBeDisabled();
+
+    await user.hover(screen.getByTestId("smart-reply-fill-composer-tooltip-trigger"));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("填入输入框");
+  });
+
+  it("disables edit and secondary menu actions when sending is unavailable", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SmartReplyCard
+        assistantName="护肤小助手"
+        canSendMessage={false}
+        content="建议回复"
+        onEdit={() => undefined}
+        onMakeShorter={() => undefined}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "编辑" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "更多智能回复操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "变短一点" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "重新生成" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("calls onRegenerate with the anchor message", async () => {
@@ -163,7 +267,7 @@ describe("SmartReplyCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "微调文案" }));
+    await user.click(screen.getByRole("button", { name: "更多智能回复操作" }));
     await user.click(screen.getByRole("menuitem", { name: "重新生成" }));
 
     expect(onRegenerate).toHaveBeenCalledWith(message);
@@ -191,8 +295,8 @@ describe("SmartReplyCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "微调文案" }));
-    await user.click(screen.getByRole("menuitem", { name: "简短一点" }));
+    await user.click(screen.getByRole("button", { name: "更多智能回复操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "变短一点" }));
 
     expect(onMakeShorter).toHaveBeenCalledWith(message);
   });
@@ -219,8 +323,8 @@ describe("SmartReplyCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "微调文案" }));
-    await user.click(screen.getByRole("menuitem", { name: "简短一点" }));
+    await user.click(screen.getByRole("button", { name: "更多智能回复操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "变短一点" }));
 
     expect(onMakeShorter).toHaveBeenCalledWith(message);
   });
@@ -243,8 +347,7 @@ describe("SmartReplyCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "微调文案" }));
-    await user.click(screen.getByRole("menuitem", { name: "编辑" }));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
 
     expect(screen.getByTestId("smart-reply-edit-dialog")).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toHaveTextContent("编辑");
@@ -270,8 +373,7 @@ describe("SmartReplyCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "微调文案" }));
-    await user.click(screen.getByRole("menuitem", { name: "编辑" }));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
     await user.click(screen.getByRole("button", { name: "添加到FAQ" }));
 
     const faqDialog = screen.getByTestId("smart-reply-add-to-faq-dialog");
@@ -307,8 +409,7 @@ describe("SmartReplyCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "微调文案" }));
-    await user.click(screen.getByRole("menuitem", { name: "编辑" }));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
     await user.click(screen.getByRole("button", { name: "违规词检测" }));
 
     const successBanner = await screen.findByTestId(
@@ -338,8 +439,7 @@ describe("SmartReplyCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "微调文案" }));
-    await user.click(screen.getByRole("menuitem", { name: "编辑" }));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
     await user.click(screen.getByRole("button", { name: "违规词检测" }));
 
     const violationPanel = await screen.findByTestId("smart-reply-violation-result");

@@ -14,6 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ShinyText } from "@/components/ui/shiny-text";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
   getSmartReplyCustomerQuestion,
@@ -575,7 +576,7 @@ function SmartReplyContentBody({
   processingLabel?: string;
 }) {
   return (
-    <div className="px-[16px] py-[12px]">
+    <div className="px-[16px] pb-[12px]">
       {isThinking || isProcessing || !isKnowledgeHit ? (
         <SmartReplyReadonlyContent
           failReason={failReason}
@@ -623,8 +624,10 @@ function SmartReplyReadonlyContent({
             strokeWidth={2}
           />
           <p className="text-[13px]" role="status">
-            {processingLabel ??
-              (isThinking ? "AI正在生成话术..." : "正在处理消息...")}
+            <ShinyText>
+              {processingLabel ??
+                (isThinking ? "AI正在生成话术..." : "正在处理消息...")}
+            </ShinyText>
           </p>
         </div>
       ) : null}

@@ -8,10 +8,6 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": {
-    ".": "./dist/index.js",
-    "./ensure-playable-voice": "./dist/shared/ensure-playable-voice.js"
-  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "package:scf": "node scripts/package-scf.mjs",
@@ -19,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@audio/decode-amr": "^1.1.1",
+    "audio-decode": "^3.10.1",
     "cos-nodejs-sdk-v5": "^2.15.4",
     "silk-wasm": "^3.7.1"
   },

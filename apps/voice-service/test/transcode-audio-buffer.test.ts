@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   decodeAudio: vi.fn(),
 }));
 
-vi.mock("@audio/decode-amr", () => ({
+vi.mock("audio-decode", () => ({
   default: mocks.decodeAudio,
 }));
 

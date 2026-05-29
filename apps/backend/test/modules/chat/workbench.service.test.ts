@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ensurePlayableVoiceOnCos } from "@chatai/voice-service/ensure-playable-voice";
 import {
   JAVA_INTERNAL_API_USER_MESSAGE,
   WORKBENCH_INTERNAL_API_FAILED_CODE,
@@ -9,15 +8,9 @@ import { MysqlWorkbenchService } from "../../../src/modules/chat/workbench.servi
 import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
 import { BadGatewayError } from "../../../src/shared/errors.js";
 
-vi.mock("@chatai/voice-service/ensure-playable-voice", () => ({
-  ensurePlayableVoiceOnCos: vi.fn(),
-  mapEnsurePlayableVoiceError: vi.fn((error: unknown) => error),
-}));
-
 describe("MysqlWorkbenchService", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
-    vi.mocked(ensurePlayableVoiceOnCos).mockReset();
   });
 
   it("lists my customers with visible seat filters", async () => {
@@ -254,267 +247,6 @@ describe("MysqlWorkbenchService", () => {
       includeHiddenConversation: true,
       limit: 10,
     });
-  });
-
-  it("loads smart replies for the last five customer messages on latest single-chat pages", async () => {
-    const javaClient = createJavaClient();
-    vi.mocked(javaClient.listUserHistoryAnswers).mockResolvedValue({
-      suggestions: [
-        {
-          assistantName: "智能助手",
-          content: "推荐回复 7",
-          messageId: "7",
-          pollComplete: true,
-        },
-      ],
-    });
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-        }),
-        listMessages: vi.fn().mockResolvedValue({
-          filteredCount: 0,
-          hasMore: false,
-          messages: [
-            createMessageDto({ senderType: "customer", seq: 1 }),
-            createMessageDto({ senderType: "agent", seq: 2 }),
-            createMessageDto({ senderType: "customer", seq: 3 }),
-            createMessageDto({ senderType: "customer", seq: 4 }),
-            createMessageDto({ senderType: "customer", seq: 5 }),
-            createMessageDto({ senderType: "customer", seq: 6 }),
-            createMessageDto({ senderType: "customer", seq: 7 }),
-          ],
-          scannedCount: 7,
-          smartReplyEnabled: true,
-          smartReplyScope: {
-            chatType: 1,
-            thirdExternalId: "external-001",
-            thirdUserId: "seat-user-001",
-            uid: 9001,
-          },
-        }),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-    );
-
-    await expect(service.getMessages("101", "88", { limit: 10 })).resolves.toMatchObject({
-      smartReplies: [
-        {
-          content: "推荐回复 7",
-          messageId: "7",
-        },
-      ],
-    });
-    expect(javaClient.listUserHistoryAnswers).toHaveBeenCalledWith({
-      chatType: 1,
-      msgIds: [3, 4, 5, 6, 7],
-      thirdExternalId: "external-001",
-      thirdUserId: "seat-user-001",
-      uid: 9001,
-    });
-  });
-
-  it("does not load smart replies for historical pages", async () => {
-    const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-        }),
-        listMessages: vi.fn().mockResolvedValue({
-          filteredCount: 0,
-          hasMore: false,
-          messages: [createMessageDto({ senderType: "customer", seq: 7 })],
-          scannedCount: 1,
-          smartReplyEnabled: true,
-          smartReplyScope: {
-            chatType: 1,
-            thirdExternalId: "external-001",
-            thirdUserId: "seat-user-001",
-            uid: 9001,
-          },
-        }),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-    );
-
-    await service.getMessages("101", "88", { beforeSeq: 8, limit: 10 });
-
-    expect(javaClient.listUserHistoryAnswers).not.toHaveBeenCalled();
-  });
-
-  it("does not load smart replies when the seat has no assistant", async () => {
-    const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-        }),
-        listMessages: vi.fn().mockResolvedValue({
-          filteredCount: 0,
-          hasMore: false,
-          messages: [createMessageDto({ senderType: "customer", seq: 7 })],
-          scannedCount: 1,
-          smartReplyEnabled: false,
-          smartReplyScope: {
-            chatType: 1,
-            thirdExternalId: "external-001",
-            thirdUserId: "seat-user-001",
-            uid: 9001,
-          },
-        }),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-    );
-
-    await expect(service.getMessages("101", "88", { limit: 10 })).resolves.toMatchObject({
-      smartReplyEnabled: false,
-    });
-
-    expect(javaClient.listUserHistoryAnswers).not.toHaveBeenCalled();
-  });
-
-  it("keeps the latest message page available when history smart reply lookup fails", async () => {
-    const javaClient = createJavaClient();
-    const logger = {
-      error: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-    };
-    vi.mocked(javaClient.listUserHistoryAnswers).mockRejectedValue(
-      new Error("java unavailable"),
-    );
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-        }),
-        listMessages: vi.fn().mockResolvedValue({
-          filteredCount: 0,
-          hasMore: false,
-          messages: [createMessageDto({ senderType: "customer", seq: 7 })],
-          scannedCount: 1,
-          smartReplyEnabled: true,
-          smartReplyScope: {
-            chatType: 1,
-            thirdExternalId: "external-001",
-            thirdUserId: "seat-user-001",
-            uid: 9001,
-          },
-        }),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-      logger,
-    );
-
-    await expect(service.getMessages("101", "88", { limit: 10 })).resolves.toMatchObject({
-      messages: [
-        {
-          seq: 7,
-        },
-      ],
-      smartReplyEnabled: true,
-    });
-    expect(logger.warn).toHaveBeenCalledWith(
-      {
-        conversationId: "88",
-        error: expect.any(Error),
-      },
-      "Failed to load smart replies for message page",
-    );
-  });
-
-  it("creates an automatic smart reply generation task through Java", async () => {
-    const javaClient = createJavaClient();
-    vi.mocked(javaClient.requestAutoGeneralAnswer).mockResolvedValue({ id: 567 });
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-        }),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-    );
-
-    await expect(
-      service.requestSmartReplyAutoGeneralAnswer("101", {
-        conversationId: "88",
-        msgId: 321,
-      }),
-    ).resolves.toEqual({ id: 567 });
-    expect(javaClient.requestAutoGeneralAnswer).toHaveBeenCalledWith({
-      chatType: 1,
-      msgId: 321,
-      thirdExternalId: "external-001",
-      thirdUserId: "seat-user-001",
-      uid: 9001,
-    });
-  });
-
-  it("rejects automatic smart reply generation for group conversations", async () => {
-    const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          thirdGroupId: "group-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-        }),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-    );
-
-    await expect(
-      service.requestSmartReplyAutoGeneralAnswer("101", {
-        conversationId: "88",
-        msgId: 321,
-      }),
-    ).rejects.toMatchObject({
-      code: "SMART_REPLY_SCOPE_INVALID",
-      statusCode: 400,
-    });
-    expect(javaClient.requestAutoGeneralAnswer).not.toHaveBeenCalled();
   });
 
   it("signs sidebar iframe params from hidden conversations", async () => {
@@ -839,7 +571,6 @@ describe("MysqlWorkbenchService", () => {
       transFileUrl: "",
       transVoiceText: "",
     }));
-    const playableVoiceExists = vi.fn().mockResolvedValue(true);
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -854,8 +585,6 @@ describe("MysqlWorkbenchService", () => {
         getMessageRawContent,
       } as unknown as WorkbenchRepository,
       javaClient,
-      undefined,
-      playableVoiceExists,
     );
 
     await expect(
@@ -876,11 +605,8 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
-    expect(playableVoiceExists).toHaveBeenCalledWith(
-      "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
-    );
     expect(javaClient.recognizeSentence).toHaveBeenCalledWith({
-      voiceUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
+      voiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
     });
     expect(javaClient.updateMessageContent).toHaveBeenCalledWith({
       content: JSON.stringify({
@@ -892,147 +618,6 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
       updateId: 538,
     });
-  });
-
-  it("prefers persisted transFileUrl when recognizing voice transcription", async () => {
-    const javaClient = createJavaClient();
-    vi.mocked(javaClient.recognizeSentence).mockResolvedValue("识别文本");
-    const playableVoiceExists = vi.fn().mockResolvedValue(true);
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-        }),
-        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
-          fileUrl: "s5/msg/20260525/272/voice.amr",
-          transFileUrl: "s5/playable-voice/20260525/272/persisted.wav",
-          transVoiceText: "",
-        })),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-      undefined,
-      playableVoiceExists,
-    );
-
-    await service.transcribeVoiceMessage("101", {
-      conversationId: "88",
-      messageSeq: 538,
-    });
-
-    expect(playableVoiceExists).toHaveBeenCalledWith(
-      "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/persisted.wav",
-    );
-    expect(javaClient.recognizeSentence).toHaveBeenCalledWith({
-      voiceUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/persisted.wav",
-    });
-  });
-
-  it("transcodes missing playable wav on demand before recognizing voice", async () => {
-    const javaClient = createJavaClient();
-    vi.mocked(javaClient.recognizeSentence).mockResolvedValue("新识别出来的文本");
-    const playableVoiceExists = vi
-      .fn()
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(true);
-    vi.mocked(ensurePlayableVoiceOnCos).mockResolvedValue({
-      playableObjectKey: "s5/playable-voice/20260525/272/voice.wav",
-      playableVoiceUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
-    });
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-        }),
-        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
-          fileUrl: "s5/msg/20260525/272/voice.amr",
-          transFileUrl: "",
-          transVoiceText: "",
-        })),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-      undefined,
-      playableVoiceExists,
-    );
-
-    await expect(
-      service.transcribeVoiceMessage("101", {
-        conversationId: "88",
-        messageSeq: 538,
-      }),
-    ).resolves.toEqual({
-      messageSeq: 538,
-      transVoiceText: "新识别出来的文本",
-      transVoiceTextPersisted: true,
-    });
-
-    expect(ensurePlayableVoiceOnCos).toHaveBeenCalledWith({
-      playableVoiceUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
-      sourceVoiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
-    });
-    expect(javaClient.updateMessageContent).toHaveBeenCalledWith({
-      content: JSON.stringify({
-        fileUrl: "s5/msg/20260525/272/voice.amr",
-        transFileUrl: "s5/playable-voice/20260525/272/voice.wav",
-        transVoiceText: "新识别出来的文本",
-      }),
-      platform: 5,
-      uid: 9001,
-      updateId: 538,
-    });
-  });
-
-  it("rejects voice transcription when on-demand transcode still leaves wav missing", async () => {
-    const javaClient = createJavaClient();
-    const playableVoiceExists = vi.fn().mockResolvedValue(false);
-    vi.mocked(ensurePlayableVoiceOnCos).mockResolvedValue({
-      playableObjectKey: "s5/playable-voice/20260525/272/voice.wav",
-      playableVoiceUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
-    });
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
-        }),
-        getMessageRawContent: vi.fn().mockResolvedValue(JSON.stringify({
-          fileUrl: "s5/msg/20260525/272/voice.amr",
-          transFileUrl: "",
-          transVoiceText: "",
-        })),
-      } as unknown as WorkbenchRepository,
-      javaClient,
-      undefined,
-      playableVoiceExists,
-    );
-
-    await expect(
-      service.transcribeVoiceMessage("101", {
-        conversationId: "88",
-        messageSeq: 538,
-      }),
-    ).rejects.toMatchObject({
-      code: "PLAYABLE_VOICE_NOT_READY",
-      message: "语音转码文件尚未就绪，请稍后再试",
-      statusCode: 404,
-    });
-    expect(javaClient.recognizeSentence).not.toHaveBeenCalled();
   });
 
   it("rejects empty Java voice transcription results without persisting content", async () => {
@@ -1058,8 +643,6 @@ describe("MysqlWorkbenchService", () => {
         })),
       } as unknown as WorkbenchRepository,
       javaClient,
-      undefined,
-      vi.fn().mockResolvedValue(true),
     );
 
     await expect(
@@ -3129,33 +2712,11 @@ describe("MysqlWorkbenchService", () => {
   });
 });
 
-function createMessageDto(input: {
-  senderType: "agent" | "customer" | "system";
-  seq: number;
-}) {
-  return {
-    content: {
-      text: `消息 ${input.seq}`,
-    },
-    contentType: "text" as const,
-    conversationId: "88",
-    customerId: "external-001",
-    messageId: `msg-${input.seq}`,
-    seatId: "12",
-    senderType: input.senderType,
-    seq: input.seq,
-    status: "sent" as const,
-  };
-}
-
 function createJavaClient(): WorkbenchJavaClient {
   return {
     createConversation: vi.fn(),
     deleteConversation: vi.fn().mockResolvedValue(undefined),
     downloadMsgFile: vi.fn().mockResolvedValue(undefined),
-    listUserHistoryAnswers: vi.fn().mockResolvedValue({ suggestions: [] }),
-    requestAutoGeneralAnswer: vi.fn().mockResolvedValue({ id: 1 }),
-    requestGeneralAnswer: vi.fn().mockResolvedValue({ suggestion: null }),
     getUploadCredential: vi.fn(),
     markConversationRead: vi.fn().mockResolvedValue(undefined),
     markConversationUnread: vi.fn().mockResolvedValue(undefined),

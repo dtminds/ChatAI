@@ -19,8 +19,6 @@ import type {
   WorkbenchPollResponse,
   WorkbenchSmartReplyAttachmentsRequest,
   WorkbenchSmartReplyAttachmentsResponse,
-  WorkbenchSmartReplyAutoGeneralAnswerRequest,
-  WorkbenchSmartReplyAutoGeneralAnswerResponse,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollRequest,
@@ -98,7 +96,6 @@ import {
   isPlayableVoicePathname,
   toPlayableVoicePathname,
 } from "./media-config.js";
-import { ensureVoiceUrlForRecognition } from "./voice-playable.service.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
@@ -107,50 +104,8 @@ const POLL_SEAT_UPDATE_LIMIT = 200;
 const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
 const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
 const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
-const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
-
-type SmartReplyMessagePageMetadata = {
-  smartReplyEnabled?: boolean;
-  smartReplyScope?: {
-    chatType: number;
-    thirdExternalId: string;
-    thirdUserId: string;
-    uid: number;
-  };
-};
-
-type MessagePageWithSmartReplyMetadata = WorkbenchMessagePageDto &
-  SmartReplyMessagePageMetadata;
 
 type PlayableVoiceExistsChecker = (playbackUrl: string) => Promise<boolean>;
-
-function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[]) {
-  const seen = new Set<number>();
-  const msgIds: number[] = [];
-
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-
-    if (message?.senderType !== "customer") {
-      continue;
-    }
-
-    const seq = message.seq;
-
-    if (!Number.isSafeInteger(seq) || seq <= 0 || seen.has(seq)) {
-      continue;
-    }
-
-    seen.add(seq);
-    msgIds.unshift(seq);
-
-    if (msgIds.length >= SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT) {
-      break;
-    }
-  }
-
-  return msgIds;
-}
 
 export type WorkbenchService = {
   deleteConversation(
@@ -270,12 +225,6 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchSmartReplyGeneralAnswerResponse>
     | WorkbenchSmartReplyGeneralAnswerResponse;
-  requestSmartReplyAutoGeneralAnswer(
-    subUserId: string,
-    request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
-  ):
-    | Promise<WorkbenchSmartReplyAutoGeneralAnswerResponse>
-    | WorkbenchSmartReplyAutoGeneralAnswerResponse;
   requestSmartReplyMakeShorter(
     subUserId: string,
     request: WorkbenchSmartReplyMakeShorterRequest,
@@ -542,58 +491,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    const page = (await this.repository.listMessages(conversationId, {
+    return this.repository.listMessages(conversationId, {
       beforeSeq: options?.beforeSeq,
       includeHiddenConversation: true,
       limit: options?.limit ?? 30,
-    })) as MessagePageWithSmartReplyMetadata;
-    const { smartReplyEnabled, smartReplyScope, ...publicPage } = page;
-
-    if (options?.beforeSeq != null) {
-      return publicPage;
-    }
-
-    if (!smartReplyEnabled || !smartReplyScope) {
-      return {
-        ...publicPage,
-        smartReplyEnabled: false,
-      };
-    }
-
-    const msgIds = collectSmartReplyMessagePageCandidateIds(publicPage.messages);
-
-    if (msgIds.length === 0) {
-      return {
-        ...publicPage,
-        smartReplyEnabled: true,
-      };
-    }
-
-    try {
-      const smartReplies = await this.javaClient.listUserHistoryAnswers({
-        chatType: smartReplyScope.chatType,
-        msgIds,
-        thirdExternalId: smartReplyScope.thirdExternalId,
-        thirdUserId: smartReplyScope.thirdUserId,
-        uid: smartReplyScope.uid,
-      });
-
-      return {
-        ...publicPage,
-        smartReplyEnabled: true,
-        smartReplies: smartReplies.suggestions,
-      };
-    } catch (error) {
-      this.logger.warn(
-        { conversationId, error },
-        "Failed to load smart replies for message page",
-      );
-
-      return {
-        ...publicPage,
-        smartReplyEnabled: true,
-      };
-    }
+    });
   }
 
   async getMessagesByIds(
@@ -873,13 +775,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       };
     }
 
-    const voiceRecognition = await ensureVoiceUrlForRecognition({
-      content,
-      playableVoiceExists: this.playableVoiceExists.bind(this),
-      readStringValue,
-      resolveVoiceRecognitionUrl,
-    });
-    const voiceUrl = voiceRecognition.voiceUrl;
+    const voiceUrl = toVoiceRecognitionUrl(readStringValue(content.fileUrl));
 
     if (!voiceUrl) {
       throw new BadRequestError(
@@ -898,9 +794,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const nextContent = {
       ...content,
-      ...(voiceRecognition.transFileUrl
-        ? { transFileUrl: voiceRecognition.transFileUrl }
-        : {}),
       transVoiceText,
     };
 
@@ -1174,49 +1067,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
       chatType: conversation.thirdGroupId ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
       msgId: request.msgId,
       questionImgs: request.questionImgs ?? [],
-      thirdExternalId,
-      thirdUserId: conversation.thirdUserId,
-      uid: conversation.uid,
-    });
-  }
-
-  async requestSmartReplyAutoGeneralAnswer(
-    subUserId: string,
-    request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
-  ) {
-    const conversation = await this.repository.getConversationLookup(
-      request.conversationId,
-    );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
-
-    if (!Number.isSafeInteger(request.msgId) || request.msgId <= 0) {
-      throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
-    }
-
-    if (conversation.thirdGroupId) {
-      throw new BadRequestError(
-        "SMART_REPLY_SCOPE_INVALID",
-        "当前会话暂不支持智能回复",
-      );
-    }
-
-    const thirdExternalId = conversation.thirdExternalUserId?.trim();
-
-    if (!thirdExternalId) {
-      throw new BadRequestError(
-        "SMART_REPLY_SCOPE_INVALID",
-        "当前会话缺少智能回复所需的外部标识",
-      );
-    }
-
-    return this.javaClient.requestAutoGeneralAnswer({
-      chatType: CHAT_TYPE.SINGLE,
-      msgId: request.msgId,
       thirdExternalId,
       thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,
@@ -1561,30 +1411,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: conversation.uid,
     });
 
-    const quoteMsgId = payload.quote?.quoteMsgId
-      ? parseMySqlId(payload.quote.quoteMsgId)
-      : undefined;
-
-    if (quoteMsgId != null && response.optNo) {
-      void this.persistQuoteMessageMetadata({
-        conversation,
-        optNo: response.optNo,
-        quoteMsgId,
-        quoteOriginMsgId: payload.quote?.quotedMessageId,
-        replyText: segment.type === "text" ? segment.text : undefined,
-      }).catch((error: unknown) => {
-        this.logger.warn(
-          {
-            err: error,
-            conversationId: conversation.id,
-            optNo: response.optNo,
-            quoteMsgId,
-          },
-          "引用消息元数据回写失败",
-        );
-      });
-    }
-
     this.logger.info(
       {
         clientMessageId: payload.clientMessageId,
@@ -1761,57 +1587,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     });
 
     return page.messages.filter((message) => message.seq > activeMessageSeq);
-  }
-
-  private async persistQuoteMessageMetadata(input: {
-    conversation: {
-      id: string;
-      platform: number;
-      thirdExternalUserId?: string;
-      thirdGroupId?: string;
-      thirdUserId: string;
-      uid: number;
-    };
-    optNo: string;
-    quoteMsgId: number;
-    quoteOriginMsgId?: string;
-    replyText?: string;
-  }) {
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      const patched = await this.repository.patchQuoteMessageContentByOptNo({
-        optNo: input.optNo,
-        platform: input.conversation.platform,
-        quoteMsgId: input.quoteMsgId,
-        quoteOriginMsgId: input.quoteOriginMsgId,
-        thirdExternalUserId: input.conversation.thirdExternalUserId,
-        thirdGroupId: input.conversation.thirdGroupId,
-        thirdUserId: input.conversation.thirdUserId,
-        uid: input.conversation.uid,
-      });
-
-      if (patched) {
-        return;
-      }
-
-      await new Promise((resolve) => {
-        setTimeout(resolve, 300);
-      });
-    }
-
-    if (!input.replyText?.trim()) {
-      return;
-    }
-
-    await this.repository.patchQuoteMessageContentByRecentQuote({
-      platform: input.conversation.platform,
-      quoteMsgId: input.quoteMsgId,
-      quoteOriginMsgId: input.quoteOriginMsgId,
-      replyText: input.replyText,
-      thirdExternalUserId: input.conversation.thirdExternalUserId,
-      thirdGroupId: input.conversation.thirdGroupId,
-      thirdUserId: input.conversation.thirdUserId,
-      uid: input.conversation.uid,
-    });
   }
 
   private async getOperableConversation(subUserId: string, conversationId: string) {
@@ -2025,30 +1800,12 @@ function toPlayableVoiceAbsoluteUrl(objectPath: string) {
   return `https://${getPlayableMediaHost()}/${objectPath.replace(/^\/+/, "")}`;
 }
 
-function resolveVoiceRecognitionUrl(content: Record<string, unknown>) {
-  const transFileUrl = readStringValue(content.transFileUrl).trim();
-
-  if (transFileUrl) {
-    return toPlayableVoiceRecognitionUrl(transFileUrl);
-  }
-
-  const fileUrl = readStringValue(content.fileUrl).trim();
-
-  if (!fileUrl) {
-    return "";
-  }
-
-  return toPlayableVoiceRecognitionUrl(fileUrl);
-}
-
-function toPlayableVoiceRecognitionUrl(rawUrl: string) {
+function toVoiceRecognitionUrl(rawUrl: string) {
   const value = rawUrl.trim();
 
   if (!value) {
     return "";
   }
-
-  let pathname: string;
 
   try {
     const url = new URL(value);
@@ -2057,24 +1814,18 @@ function toPlayableVoiceRecognitionUrl(rawUrl: string) {
       throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
     }
 
-    pathname = url.pathname;
+    toExpectedPlayableVoicePathname(url.pathname);
+    return url.toString();
   } catch (error) {
     if (error instanceof BadRequestError) {
       throw error;
     }
 
-    pathname = `/${value.replace(/^\/+/, "")}`;
+    const pathname = `/${value.replace(/^\/+/, "")}`;
+    toExpectedPlayableVoicePathname(pathname);
+
+    return `https://${getPlayableMediaHost()}${pathname}`;
   }
-
-  const normalizedPathname = pathname.startsWith("/") ? pathname : `/${pathname}`;
-
-  if (isPlayableVoiceObjectPath(normalizedPathname)) {
-    return `https://${getPlayableMediaHost()}${normalizedPathname}`;
-  }
-
-  const playablePathname = toExpectedPlayableVoicePathname(normalizedPathname);
-
-  return `https://${getPlayableMediaHost()}${playablePathname}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

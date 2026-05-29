@@ -1,5 +1,5 @@
 import { decode, getDuration } from "silk-wasm";
-import decodeAmr from "@audio/decode-amr";
+import decodeAudio from "audio-decode";
 import { detectVoiceFormat, type VoiceFormat } from "./media-sniff.js";
 import { createPcm16MonoWav } from "./wav.js";
 
@@ -49,7 +49,7 @@ export async function transcodeVoiceToWav(
     let decoded: DecodedAudioBuffer;
 
     try {
-      decoded = await decodeAmr(input);
+      decoded = await decodeAudio(input);
     } catch {
       throw new VoiceTranscodeError("DECODE_FAILED", "音频解码失败");
     }

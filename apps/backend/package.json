@@ -7,9 +7,9 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "build": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/voice-service build && tsc -p tsconfig.json && node scripts/materialize-workspace-deps.mjs",
+    "build": "pnpm --filter @chatai/contracts build && tsc -p tsconfig.json",
     "db:codegen": "node scripts/codegen-db-schema.mjs",
-    "dev": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/voice-service build && NODE_ENV=development tsx watch src/server.ts",
+    "dev": "pnpm --filter @chatai/contracts build && NODE_ENV=development tsx watch src/server.ts",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@chatai/contracts": "workspace:*",
-    "@chatai/voice-service": "workspace:*",
     "@fastify/cookie": "^11.0.2",
     "@fastify/env": "^5.0.3",
     "@fastify/jwt": "^10.0.0",

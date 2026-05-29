@@ -6,14 +6,6 @@ import type { WorkbenchMessageDto } from "@chatai/contracts";
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { VoiceMessageCard } from "@/pages/chat/components/message";
 
-const voicePlaybackCueMocks = vi.hoisted(() => ({
-  playVoicePlaybackEndCue: vi.fn(() => Promise.resolve()),
-  playVoicePlaybackFailureCue: vi.fn(() => Promise.resolve()),
-  playVoicePlaybackStartCue: vi.fn(() => Promise.resolve()),
-}));
-
-vi.mock("@/pages/chat/lib/voice-playback-cues", () => voicePlaybackCueMocks);
-
 type AudioMockInstance = {
   addEventListener: ReturnType<typeof vi.fn>;
   currentTime: number;
@@ -31,9 +23,6 @@ type AudioMockInstance = {
 
 describe("voice message playback", () => {
   afterEach(() => {
-    voicePlaybackCueMocks.playVoicePlaybackEndCue.mockClear();
-    voicePlaybackCueMocks.playVoicePlaybackFailureCue.mockClear();
-    voicePlaybackCueMocks.playVoicePlaybackStartCue.mockClear();
     vi.restoreAllMocks();
     vi.useRealTimers();
     vi.unstubAllEnvs();
@@ -146,35 +135,6 @@ describe("voice message playback", () => {
 
     await waitFor(() => {
       expect(play).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("plays the start cue only after the voice audio is ready", async () => {
-    const user = userEvent.setup();
-    const audioInstances: AudioMockInstance[] = [];
-    stubAudio({ instances: audioInstances });
-
-    render(
-      <VoiceMessageCard
-        content={{
-          type: "voice",
-          audioUrl: "https://b5.bokr.com.cn/s5/msg/20260513/272/voice.amr",
-          durationLabel: "11\"",
-          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260513/272/voice.wav",
-        }}
-        isAgent={false}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
-
-    expect(voicePlaybackCueMocks.playVoicePlaybackStartCue).not.toHaveBeenCalled();
-
-    audioInstances[0]!.duration = 11;
-    audioInstances[0]!.dispatch("loadedmetadata");
-
-    await waitFor(() => {
-      expect(voicePlaybackCueMocks.playVoicePlaybackStartCue).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -556,7 +516,6 @@ describe("voice message playback", () => {
 
     expect(pause).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "播放语音消息 11\"" })).toBeInTheDocument();
-    expect(voicePlaybackCueMocks.playVoicePlaybackEndCue).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "播放语音消息 11\"" }));
 
@@ -619,7 +578,6 @@ describe("voice message playback", () => {
     await waitFor(() => {
       expect(screen.getByRole("button")).toHaveTextContent("11\"");
     });
-    expect(voicePlaybackCueMocks.playVoicePlaybackEndCue).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("voice-volume-icon")).toBeInTheDocument();
     expect(screen.queryByRole("slider", { name: "语音播放进度" })).not.toBeInTheDocument();
   });
@@ -657,7 +615,6 @@ describe("voice message playback", () => {
     await waitFor(() => {
       expect(screen.getByRole("button")).toHaveTextContent("11\"");
     });
-    expect(voicePlaybackCueMocks.playVoicePlaybackEndCue).toHaveBeenCalledTimes(1);
   });
 
   it("requests transcription and displays the returned text", async () => {
@@ -705,7 +662,7 @@ describe("voice message playback", () => {
     await user.click(screen.getByRole("button", { name: "转文字" }));
 
     expect(onTranscribe).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("语音识别结果为空")).toBeInTheDocument();
+    expect(await screen.findByText("转文字失败")).toBeInTheDocument();
   });
 
   it("does not update transcription state after unmounting during a request", async () => {
@@ -781,39 +738,12 @@ describe("voice message playback", () => {
 
     await user.click(screen.getByRole("button", { name: "转文字" }));
 
-    expect(await screen.findByText("识别失败")).toBeInTheDocument();
+    expect(await screen.findByText("转文字失败")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "重新转文字" }));
 
     expect(await screen.findByText("重试后的语音文本")).toBeInTheDocument();
     expect(onTranscribe).toHaveBeenCalledTimes(2);
-  });
-
-  it("shows API transcription failure message", async () => {
-    const user = userEvent.setup();
-    const onTranscribe = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("语音转码文件尚未就绪，请稍后再试"));
-
-    render(
-      <VoiceMessageCard
-        content={{
-          type: "voice",
-          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
-          durationLabel: "11\"",
-          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
-          transVoiceText: "",
-        }}
-        isAgent={false}
-        onTranscribe={onTranscribe}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "转文字" }));
-
-    expect(
-      await screen.findByText("语音转码文件尚未就绪，请稍后再试"),
-    ).toBeInTheDocument();
   });
 
   it("shows a retry-later message when converted voice is not ready", async () => {
@@ -838,7 +768,6 @@ describe("voice message playback", () => {
       expect(screen.getByRole("button")).toHaveTextContent("暂不支持播放，请稍后重试");
     });
     expect(play).not.toHaveBeenCalled();
-    expect(voicePlaybackCueMocks.playVoicePlaybackFailureCue).toHaveBeenCalledTimes(1);
   });
 
   it("releases audio when converted voice fails before metadata loads", async () => {
@@ -866,7 +795,6 @@ describe("voice message playback", () => {
     await waitFor(() => {
       expect(screen.getByRole("button")).toHaveTextContent("暂不支持播放，请稍后重试");
     });
-    expect(voicePlaybackCueMocks.playVoicePlaybackFailureCue).toHaveBeenCalledTimes(1);
     expect(audioInstances[0]?.pause).toHaveBeenCalledTimes(1);
     expect(audioInstances[0]?.removeEventListener).toHaveBeenCalledWith(
       "loadedmetadata",
@@ -902,7 +830,6 @@ describe("voice message playback", () => {
       expect(screen.getByRole("button")).toHaveTextContent("暂不支持播放，请稍后重试");
     });
     expect(play).not.toHaveBeenCalled();
-    expect(voicePlaybackCueMocks.playVoicePlaybackFailureCue).toHaveBeenCalledTimes(1);
   });
 
   it("switches the voice control icon between play and pause states", async () => {

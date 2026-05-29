@@ -1,7 +1,6 @@
 import type {
   WorkbenchSendMessageResponse,
   WorkbenchSmartReplyAttachmentsResponse,
-  WorkbenchSmartReplyAutoGeneralAnswerResponse,
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollResponse,
   WorkbenchKnowledgePageResponse,
@@ -133,13 +132,6 @@ export type WorkbenchJavaClient = {
     thirdUserId: string;
     uid: number;
   }): Promise<WorkbenchSmartReplyGeneralAnswerResponse>;
-  requestAutoGeneralAnswer(input: {
-    chatType: number;
-    msgId: number;
-    thirdExternalId: string;
-    thirdUserId: string;
-    uid: number;
-  }): Promise<WorkbenchSmartReplyAutoGeneralAnswerResponse>;
   listAttachments(input: {
     ids: number[];
     uid: number;
@@ -310,34 +302,6 @@ export function createWorkbenchJavaClient(
         return {
           suggestion: mapJavaGeneralAnswer(data),
         };
-      });
-    },
-    requestAutoGeneralAnswer(input) {
-      return postJavaEnvelope<unknown>(
-        baseUrl,
-        token,
-        "/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
-        {
-          chatType: input.chatType,
-          msgId: input.msgId,
-          thirdExternalId: input.thirdExternalId,
-          thirdUserId: input.thirdUserId,
-          uid: input.uid,
-        },
-        logger,
-        "request-auto-general-answer",
-        { exposeErrorMessage: true },
-      ).then((data) => {
-        const id = readJavaPositiveId(data);
-
-        if (id == null) {
-          throw new BadGatewayError(
-            WORKBENCH_INTERNAL_API_FAILED_CODE,
-            JAVA_INTERNAL_API_USER_MESSAGE,
-          );
-        }
-
-        return { id };
       });
     },
     listAttachments(input) {
@@ -605,7 +569,6 @@ export function createWorkbenchJavaClient(
         input,
         logger,
         "sentence-recognition",
-        { exposeErrorMessage: true },
       );
     },
     revokeMessage(input) {
@@ -1090,22 +1053,6 @@ function readJavaRecommendAnswerRecordId(value: string) {
   }
 
   const parsed = Number.parseInt(trimmed, 10);
-
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function readJavaPositiveId(data: unknown) {
-  const value = isRecord(data) ? data["id"] : data;
-
-  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
-    return value;
-  }
-
-  if (typeof value !== "string" || !/^\d+$/.test(value.trim())) {
-    return undefined;
-  }
-
-  const parsed = Number.parseInt(value, 10);
 
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }

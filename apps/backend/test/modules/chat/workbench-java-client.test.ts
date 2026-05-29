@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   JAVA_INTERNAL_API_USER_MESSAGE,
+  WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
   WORKBENCH_INTERNAL_API_FAILED_CODE,
   createWorkbenchJavaClient,
 } from "../../../src/modules/chat/workbench-java-client.js";
@@ -922,6 +923,82 @@ describe("createWorkbenchJavaClient", () => {
         error: 999,
       },
       message: "当前未配置可用AI助手",
+      statusCode: 502,
+    });
+  });
+
+  it("accepts string ids from auto-general-answer", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            id: "EUBrlqBJuTzR6E1LVFl0xg",
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().requestAutoGeneralAnswer({
+        chatType: 1,
+        msgId: 1418,
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    ).resolves.toEqual({
+      id: "EUBrlqBJuTzR6E1LVFl0xg",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+      expect.objectContaining({
+        body: JSON.stringify({
+          chatType: 1,
+          msgId: 1418,
+          thirdExternalId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 272,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("reports contract errors when auto-general-answer has no id", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {},
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().requestAutoGeneralAnswer({
+        chatType: 1,
+        msgId: 1418,
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
       statusCode: 502,
     });
   });

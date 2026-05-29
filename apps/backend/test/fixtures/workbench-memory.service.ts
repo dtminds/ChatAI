@@ -430,7 +430,7 @@ export function createMemoryWorkbenchService() {
       _subUserId: string,
       _request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
     ): WorkbenchSmartReplyAutoGeneralAnswerResponse {
-      return { id: 1 };
+      return { id: "1" };
     },
     requestSmartReplyMakeShorter(
       _subUserId: string,

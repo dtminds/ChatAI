@@ -2582,13 +2582,17 @@ export function createWorkbenchStore() {
 
         if (
           !conversationId ||
-          !canUseSmartReplyForConversation(state, conversationId) ||
-          !isSmartReplyEligibleMessage(message)
+          !canUseSmartReplyForConversation(state, conversationId)
         ) {
           return;
         }
 
         const lookupKey = getSmartReplyLookupKey(message);
+
+        if (!state.smartReplyByMessageIdByConversationId[conversationId]?.[lookupKey]) {
+          return;
+        }
+
         set((currentState) => ({
           smartReplyHiddenMessageKeysByConversationId: {
             ...currentState.smartReplyHiddenMessageKeysByConversationId,

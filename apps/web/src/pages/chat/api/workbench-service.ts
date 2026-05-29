@@ -618,7 +618,7 @@ export function createMockWorkbenchService(): WorkbenchService {
       return { suggestion: null };
     },
     async requestSmartReplyAutoGeneralAnswer() {
-      return { id: 1 };
+      return { id: "1" };
     },
     async requestSmartReplyMakeShorter(request) {
       const trimmed = request.content.trim();

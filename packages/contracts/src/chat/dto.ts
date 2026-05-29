@@ -361,7 +361,7 @@ export type WorkbenchSmartReplyAutoGeneralAnswerRequest = {
 };
 
 export type WorkbenchSmartReplyAutoGeneralAnswerResponse = {
-  id: number;
+  id: string;
 };
 
 export type WorkbenchSmartReplyMakeShorterRequest = {

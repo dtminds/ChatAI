@@ -43,6 +43,8 @@ export const JAVA_INTERNAL_API_USER_MESSAGE = "工作台服务繁忙，请稍后
 export const WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE =
   "WORKBENCH_INTERNAL_API_NOT_CONFIGURED";
 export const WORKBENCH_INTERNAL_API_FAILED_CODE = "WORKBENCH_INTERNAL_API_FAILED";
+export const WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE =
+  "WORKBENCH_INTERNAL_API_CONTRACT_INVALID";
 
 export const JAVA_SEND_TYPE = {
   GROUP: 2,
@@ -328,11 +330,19 @@ export function createWorkbenchJavaClient(
         "request-auto-general-answer",
         { exposeErrorMessage: true },
       ).then((data) => {
-        const id = readJavaPositiveId(data);
+        const id = readJavaNonEmptyId(data);
 
         if (id == null) {
+          logger.error(
+            {
+              operation: "request-auto-general-answer",
+              path: "/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+              requestId: getLoggerRequestId(logger),
+            },
+            "上游工作台接口响应契约异常",
+          );
           throw new BadGatewayError(
-            WORKBENCH_INTERNAL_API_FAILED_CODE,
+            WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
             JAVA_INTERNAL_API_USER_MESSAGE,
           );
         }
@@ -1082,20 +1092,20 @@ function readJavaApiTimeoutMs() {
     : DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS;
 }
 
-function readJavaPositiveId(data: unknown) {
+function readJavaNonEmptyId(data: unknown) {
   const value = isRecord(data) ? data["id"] : data;
 
   if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
-    return value;
+    return String(value);
   }
 
-  if (typeof value !== "string" || !/^\d+$/.test(value.trim())) {
+  if (typeof value !== "string") {
     return undefined;
   }
 
-  const parsed = Number.parseInt(value, 10);
+  const trimmed = value.trim();
 
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+  return trimmed ? trimmed : undefined;
 }
 
 function readJavaRecommendAnswerRecordId(value: string) {

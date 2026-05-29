@@ -5,6 +5,8 @@ import {
   mapConversationRow,
   mapMessageRow,
   mapSeatRow,
+  mergeQuoteMessageContentRaw,
+  parseQuotedPreviewFromExtendOriginData,
 } from "../../../src/modules/chat/workbench-mappers.js";
 
 describe("workbench MySQL mappers", () => {
@@ -465,6 +467,106 @@ describe("workbench MySQL mappers", () => {
         text: "正式引用消息",
       },
       contentType: "quote",
+    });
+  });
+
+  it("falls back to quoteOriginMsgId when quoteMsgId is missing", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          content: "正式引用消息",
+          quoteOriginMsgId: "1009005",
+        }),
+        msgtype: "quote",
+      })),
+    ).toMatchObject({
+      content: {
+        quoteMsgId: "1009005",
+        quotedMessageId: "1009005",
+        text: "正式引用消息",
+      },
+      contentType: "quote",
+    });
+  });
+
+  it("exposes quotedMessageId when quote stores both audit id and origin msgid", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          content: "回复一下",
+          quoteMsgId: 999999,
+          quoteOriginMsgId: "1009005",
+        }),
+        msgtype: "quote",
+      })),
+    ).toMatchObject({
+      content: {
+        quoteMsgId: "999999",
+        quotedMessageId: "1009005",
+        text: "回复一下",
+      },
+      contentType: "quote",
+    });
+  });
+
+  it("merges quote metadata into stored quote content", () => {
+    expect(
+      mergeQuoteMessageContentRaw(JSON.stringify({ content: "1" }), {
+        quoteMsgId: 1375,
+        quoteOriginMsgId: "1009005",
+      }),
+    ).toBe(
+      JSON.stringify({
+        content: "1",
+        quoteMsgId: 1375,
+        quoteOriginMsgId: "1009005",
+      }),
+    );
+  });
+
+  it("parses quoted preview text from extend origin data", () => {
+    const originData = JSON.stringify({
+      quote_content_base64: Buffer.from(
+        JSON.stringify({
+          msg_content: {
+            msg_list: [
+              { sub_type: 0, data: { content: Buffer.from('"').toString("base64") } },
+              { sub_type: 0, data: { content: Buffer.from("\n").toString("base64") } },
+              {
+                sub_type: 0,
+                data: {
+                  content: Buffer.from("@帅庆 你好啊").toString("base64"),
+                },
+              },
+              { sub_type: 0, data: { content: Buffer.from('"\n------\n').toString("base64") } },
+              { sub_type: 0, data: { content: Buffer.from(" ").toString("base64") } },
+              { sub_type: 0, data: { content: Buffer.from("111").toString("base64") } },
+            ],
+          },
+        }),
+        "utf8",
+      ).toString("base64"),
+    });
+
+    expect(parseQuotedPreviewFromExtendOriginData(originData)).toMatchObject({
+      contentType: "text",
+      text: "@帅庆 你好啊",
+    });
+  });
+
+  it("reads text messages from the content field", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          content: "@帅庆 你好啊",
+        }),
+        msgtype: "text",
+      })),
+    ).toMatchObject({
+      content: {
+        text: "@帅庆 你好啊",
+      },
+      contentType: "text",
     });
   });
 

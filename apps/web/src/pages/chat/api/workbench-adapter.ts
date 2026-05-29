@@ -354,7 +354,8 @@ function adaptChatMessageContent(
       return {
         quoteMsgId: String(content.quoteMsgId ?? ""),
         quotedMessage: adaptQuotedMessagePreview(content.quotedMessage),
-        text: String(content.text ?? ""),
+        quotedMessageId: asOptionalString(content.quotedMessageId),
+        text: readTextMessageContent(content),
         type: "quote",
       };
     case "text":
@@ -362,10 +363,16 @@ function adaptChatMessageContent(
     case "revoke":
     default:
       return {
-        text: String(content.text ?? ""),
+        text: readTextMessageContent(content),
         type: "text",
       };
   }
+}
+
+function readTextMessageContent(content: Record<string, unknown>) {
+  const text = content.text ?? content.content;
+
+  return typeof text === "string" ? text : String(text ?? "");
 }
 
 function adaptQuotedMessagePreview(value: unknown): QuotedMessagePreviewContent | undefined {

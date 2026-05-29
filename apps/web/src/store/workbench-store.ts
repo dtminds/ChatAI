@@ -40,6 +40,10 @@ import {
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
 import { parseWorkbenchDate } from "@/pages/chat/lib/chat-time";
+import {
+  mergeMessageContent,
+  resolveQuoteMessagesInList,
+} from "@/pages/chat/lib/quote-message";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
@@ -695,6 +699,7 @@ function upsertMessageList(
       merged[existingIndex] = {
         ...currentMessage,
         ...nextMessage,
+        content: mergeMessageContent(currentMessage.content, nextMessage.content),
         revokePending: nextMessage.isRevoked
           ? false
           : currentMessage.revokePending,
@@ -719,7 +724,10 @@ function upsertMessageList(
     );
   }
 
-  return [...merged, ...sortMessagesForAppend(appendedMessages)];
+  return resolveQuoteMessagesInList([
+    ...merged,
+    ...sortMessagesForAppend(appendedMessages),
+  ]);
 }
 
 function omitPendingSmartReplyKey(
@@ -1318,13 +1326,14 @@ function patchExistingMessageList(
     merged[existingIndex] = {
       ...currentMessage,
       ...refreshedMessage,
+      content: mergeMessageContent(currentMessage.content, refreshedMessage.content),
       revokePending: refreshedMessage.isRevoked
         ? false
         : currentMessage.revokePending,
     };
   }
 
-  return merged;
+  return resolveQuoteMessagesInList(merged);
 }
 
 function patchDownloadMessageList(
@@ -2401,7 +2410,7 @@ export function createWorkbenchStore() {
           },
           messagesByConversationId: {
             ...currentState.messagesByConversationId,
-            [conversationId]: page.messages,
+            [conversationId]: upsertMessageList([], page.messages),
           },
           smartReplyPendingMessageKeysByConversationId: {
             ...currentState.smartReplyPendingMessageKeysByConversationId,
@@ -3938,7 +3947,11 @@ export function createWorkbenchStore() {
             const currentMessagesWithoutAcceptedRemoval = options?.removeMessageIdOnAccepted
               ? currentMessages.filter((message) => message.id !== options.removeMessageIdOnAccepted)
               : currentMessages;
-            const nextMessages = [...currentMessagesWithoutAcceptedRemoval, optimisticMessage];
+            const nextMessages = upsertMessageList(
+              currentMessagesWithoutAcceptedRemoval,
+              [optimisticMessage],
+              { markAppendedAsNew: true },
+            );
             const currentConversations =
               currentState.conversationListsByScope[activeAccountId] ?? [];
 
@@ -4407,12 +4420,13 @@ export function createWorkbenchStore() {
             };
           }
 
-          const nextMessages =
+          const nextMessages = resolveQuoteMessagesInList(
             cursor && direction === "prev" && currentHistory
               ? [...page.messages, ...currentHistory.messages]
               : cursor && direction === "next" && currentHistory
                 ? [...currentHistory.messages, ...page.messages]
-                : page.messages;
+                : page.messages,
+          );
           const nextHistoryState =
             cursor && currentHistory
               ? {

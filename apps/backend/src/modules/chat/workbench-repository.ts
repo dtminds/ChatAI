@@ -35,6 +35,9 @@ import {
   buildMissingQuotedMessagePreview,
   buildQuotedMessagePreview,
   getQuoteMessageAuditId,
+  getQuoteMessageMsgidCandidates,
+  mergeQuoteMessageContentRaw,
+  parseQuotedPreviewFromExtendOriginData,
   getGroupMemberHydrationKey,
   hydrateMessageRows,
   mapConversationRow,
@@ -472,6 +475,64 @@ export class WorkbenchRepository {
     return row?.content ?? undefined;
   }
 
+  async patchQuoteMessageContentByOptNo(input: {
+    optNo: string;
+    platform: number;
+    quoteMsgId: number;
+    quoteOriginMsgId?: string;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }) {
+    const optNo = input.optNo.trim();
+
+    if (!optNo || !Number.isInteger(input.quoteMsgId) || input.quoteMsgId <= 0) {
+      return false;
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info")
+      .select(["id", "content", "msgtype"])
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("third_user_id", "=", input.thirdUserId)
+      .where("opt_no", "=", optNo);
+
+    if (input.thirdGroupId) {
+      query = query.where("third_group_id", "=", input.thirdGroupId);
+    } else if (input.thirdExternalUserId) {
+      query = query.where("third_external_id", "=", input.thirdExternalUserId);
+    } else {
+      return false;
+    }
+
+    const row = await query.executeTakeFirst();
+
+    if (!row || row.msgtype !== "quote") {
+      return false;
+    }
+
+    if (getQuoteMessageMsgidCandidates(row as MessageRow).length > 0) {
+      return true;
+    }
+
+    const nextContent = mergeQuoteMessageContentRaw(row.content, {
+      quoteMsgId: input.quoteMsgId,
+      quoteOriginMsgId: input.quoteOriginMsgId,
+    });
+
+    const result = await this.db
+      .updateTable("xy_wap_embed_msg_audit_info")
+      .set({ content: nextContent })
+      .where("id", "=", row.id)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .executeTakeFirst();
+
+    return Number(result.numUpdatedRows ?? 0) > 0;
+  }
+
   async getMessageForRevoke(input: {
     conversationId: string;
     messageId: string;
@@ -826,10 +887,11 @@ export class WorkbenchRepository {
     const fetchedQuoteRowsById = new Map(
       hydratedQuotedRows.map((row) => [toNumber(row.id), row] as const),
     );
-    const quotePreviewsByRowId = this.buildQuotePreviewsByRowId(
+    const quotePreviewsByRowId = await this.buildQuotePreviewsForRows(
       hydratedRows,
       currentQuoteRowsById,
       fetchedQuoteRowsById,
+      conversation,
     );
     const messages = hydratedRows.map((row) =>
       mapMessageRow(
@@ -2192,10 +2254,11 @@ export class WorkbenchRepository {
     const fetchedQuoteRowsById = new Map(
       hydratedFetchedQuoteRows.map((row) => [toNumber(row.id), row] as const),
     );
-    const quotePreviewsByRowId = this.buildQuotePreviewsByRowId(
+    const quotePreviewsByRowId = await this.buildQuotePreviewsForRows(
       hydratedMessageRows,
       currentQuoteRowsById,
       fetchedQuoteRowsById,
+      conversation,
     );
 
     const thirdExternalId = (conversation.conversation_external_id || "").trim();
@@ -2389,10 +2452,11 @@ export class WorkbenchRepository {
     const fetchedQuoteRowsById = new Map(
       hydratedFetchedQuoteRows.map((row) => [toNumber(row.id), row] as const),
     );
-    const quotePreviewsByRowId = this.buildQuotePreviewsByRowId(
+    const quotePreviewsByRowId = await this.buildQuotePreviewsForRows(
       hydratedMessageRows,
       currentQuoteRowsById,
       fetchedQuoteRowsById,
+      conversation,
     );
     const firstRow = hydratedMessageRows[0];
     const lastRow = hydratedMessageRows.at(-1);
@@ -2450,11 +2514,87 @@ export class WorkbenchRepository {
     },
   ) {
     const quoteIds = uniquePositiveNumbers(rows.map(getQuoteMessageAuditId));
-    const currentRowIds = new Set(rows.map((row) => toNumber(row.id)));
-    const missingQuoteIds = quoteIds.filter((id) => !currentRowIds.has(id));
+    const currentRowsById = new Map(rows.map((row) => [toNumber(row.id), row]));
+    const currentRowMsgIds = new Set(
+      rows.map((row) => row.msgid?.trim()).filter((msgid): msgid is string => Boolean(msgid)),
+    );
+    const missingQuoteIds = quoteIds.filter((id) => !currentRowsById.has(id));
 
-    if (!missingQuoteIds.length) {
-      return { fetchedRows: [] as MessageRow[] };
+    const fetchedRows: MessageRow[] = [];
+
+    if (missingQuoteIds.length) {
+      fetchedRows.push(
+        ...(await this.queryQuotedMessageRows(conversation, {
+          auditIds: missingQuoteIds,
+        })),
+      );
+    }
+
+    const fetchedRowsById = new Map(
+      fetchedRows.map((row) => [toNumber(row.id), row]),
+    );
+    const resolvedRowsByMsgId = new Map<string, MessageRow>();
+
+    [...currentRowsById.values(), ...fetchedRows].forEach((row) => {
+      const msgid = row.msgid?.trim();
+
+      if (msgid) {
+        resolvedRowsByMsgId.set(msgid, row);
+      }
+    });
+
+    const missingOriginMsgIds = uniqueNonEmptyStrings(
+      rows.flatMap((row) => {
+        if (row.msgtype !== "quote") {
+          return [];
+        }
+
+        const quoteId = getQuoteMessageAuditId(row);
+
+        if (
+          quoteId != null
+          && (currentRowsById.has(quoteId) || fetchedRowsById.has(quoteId))
+        ) {
+          return [];
+        }
+
+        return getQuoteMessageMsgidCandidates(row);
+      }),
+    ).filter(
+      (msgid) => !currentRowMsgIds.has(msgid) && !resolvedRowsByMsgId.has(msgid),
+    );
+
+    if (missingOriginMsgIds.length) {
+      fetchedRows.push(
+        ...(await this.queryQuotedMessageRows(conversation, {
+          msgids: missingOriginMsgIds,
+        })),
+      );
+    }
+
+    return { fetchedRows: dedupeMessageRowsById(fetchedRows) };
+  }
+
+  private async queryQuotedMessageRows(
+    conversation: {
+      chat_type: number;
+      conversation_external_id: string;
+      conversation_group_id: string;
+      group_seat_id?: number | string | null;
+      platform: number;
+      third_userid: string;
+      uid: number;
+    },
+    scope: {
+      auditIds?: number[];
+      msgids?: string[];
+    },
+  ) {
+    const auditIds = scope.auditIds ?? [];
+    const msgids = scope.msgids ?? [];
+
+    if (!auditIds.length && !msgids.length) {
+      return [] as MessageRow[];
     }
 
     let query = this.db
@@ -2483,42 +2623,140 @@ export class WorkbenchRepository {
         expressionBuilder.val(conversation.conversation_group_id).as("conversation_group_id"),
         expressionBuilder.val(conversation.group_seat_id ?? null).as("conversation_group_seat_id"),
       ])
-      .where("message.id", "in", missingQuoteIds)
       .where("message.uid", "=", conversation.uid)
-      .where("message.platform", "=", conversation.platform)
-      .where("message.third_user_id", "=", conversation.third_userid);
+      .where("message.platform", "=", conversation.platform);
 
-    if (conversation.chat_type === CHAT_TYPE_GROUP) {
-      query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
-    } else {
-      query = query.where(
-        "message.third_external_id",
-        "=",
-        conversation.conversation_external_id,
+    if (auditIds.length && msgids.length) {
+      query = query.where((expressionBuilder) =>
+        expressionBuilder.or([
+          expressionBuilder("message.id", "in", auditIds),
+          expressionBuilder("message.msgid", "in", msgids),
+        ]),
       );
+    } else if (auditIds.length) {
+      query = query.where("message.id", "in", auditIds);
+    } else {
+      query = query.where("message.msgid", "in", msgids);
     }
 
-    return { fetchedRows: (await query.execute()) as MessageRow[] };
+    return (await query.execute()) as MessageRow[];
+  }
+
+  private async getQuoteExtendPreviewsByMsgIds(
+    rows: MessageRow[],
+    uid: number,
+    platform: number,
+  ) {
+    const msgids = uniqueNonEmptyStrings(
+      rows
+        .filter(
+          (row) =>
+            row.msgtype === "quote" && getQuoteMessageMsgidCandidates(row).length === 0,
+        )
+        .map((row) => row.msgid?.trim()),
+    );
+
+    if (!msgids.length) {
+      return new Map<string, MessageRowQuotePreview>();
+    }
+
+    const extendRows = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_info_extend")
+      .select(["msgid", "origin_data"])
+      .where("uid", "=", uid)
+      .where("platform", "=", platform)
+      .where("msgid", "in", msgids)
+      .execute();
+
+    const previews = new Map<string, MessageRowQuotePreview>();
+
+    extendRows.forEach((row) => {
+      const preview = parseQuotedPreviewFromExtendOriginData(row.origin_data);
+
+      if (preview) {
+        previews.set(row.msgid, preview);
+      }
+    });
+
+    return previews;
+  }
+
+  private async buildQuotePreviewsForRows(
+    rows: MessageRow[],
+    currentRowsById: Map<number | undefined, MessageRow>,
+    fetchedRowsById: Map<number | undefined, MessageRow>,
+    conversation: {
+      platform: number;
+      uid: number;
+    },
+  ) {
+    const extendPreviewsByMsgId = await this.getQuoteExtendPreviewsByMsgIds(
+      rows,
+      conversation.uid,
+      conversation.platform,
+    );
+
+    return this.buildQuotePreviewsByRowId(
+      rows,
+      currentRowsById,
+      fetchedRowsById,
+      extendPreviewsByMsgId,
+    );
   }
 
   private buildQuotePreviewsByRowId(
     rows: MessageRow[],
     currentRowsById: Map<number | undefined, MessageRow>,
     fetchedRowsById: Map<number | undefined, MessageRow>,
+    extendPreviewsByMsgId: Map<string, MessageRowQuotePreview> = new Map(),
   ) {
     const previews = new Map<number | undefined, MessageRowQuotePreview>();
+    const quotedRowsByMsgId = new Map<string, MessageRow>();
+
+    [...currentRowsById.values(), ...fetchedRowsById.values()].forEach((row) => {
+      const msgid = row.msgid?.trim();
+
+      if (msgid) {
+        quotedRowsByMsgId.set(msgid, row);
+      }
+    });
 
     rows.forEach((row) => {
       const quoteId = getQuoteMessageAuditId(row);
+      const msgidCandidates = getQuoteMessageMsgidCandidates(row);
 
-      if (quoteId == null) {
+      if (quoteId == null && msgidCandidates.length === 0) {
         return;
       }
 
-      const quotedRow = currentRowsById.get(quoteId) ?? fetchedRowsById.get(quoteId);
+      let quotedRow: MessageRow | undefined;
+
+      if (quoteId != null) {
+        quotedRow = currentRowsById.get(quoteId) ?? fetchedRowsById.get(quoteId);
+      }
+
+      if (!quotedRow) {
+        for (const msgid of msgidCandidates) {
+          quotedRow = quotedRowsByMsgId.get(msgid);
+
+          if (quotedRow) {
+            break;
+          }
+        }
+      }
+
+      let preview = quotedRow
+        ? buildQuotedMessagePreview(quotedRow)
+        : undefined;
+
+      if (!preview) {
+        const msgid = row.msgid?.trim();
+        preview = msgid ? extendPreviewsByMsgId.get(msgid) : undefined;
+      }
+
       previews.set(
         toNumber(row.id),
-        quotedRow ? buildQuotedMessagePreview(quotedRow) : buildMissingQuotedMessagePreview(),
+        preview ?? buildMissingQuotedMessagePreview(),
       );
     });
 
@@ -3134,6 +3372,30 @@ function toNumber(value: number | string | null | undefined) {
   const numberValue = typeof value === "number" ? value : Number(value);
 
   return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function uniqueNonEmptyStrings(values: Array<string | undefined>) {
+  return [
+    ...new Set(
+      values
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+}
+
+function dedupeMessageRowsById(rows: MessageRow[]) {
+  const rowsById = new Map<number, MessageRow>();
+
+  rows.forEach((row) => {
+    const id = toNumber(row.id);
+
+    if (id != null) {
+      rowsById.set(id, row);
+    }
+  });
+
+  return [...rowsById.values()];
 }
 
 function groupSeatConversationAggregates(rows: SeatConversationAggregateRow[]) {

@@ -1561,6 +1561,29 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: conversation.uid,
     });
 
+    const quoteMsgId = payload.quote?.quoteMsgId
+      ? parseMySqlId(payload.quote.quoteMsgId)
+      : undefined;
+
+    if (quoteMsgId != null && response.optNo) {
+      void this.persistQuoteMessageMetadata({
+        conversation,
+        optNo: response.optNo,
+        quoteMsgId,
+        quoteOriginMsgId: payload.quote?.quotedMessageId,
+      }).catch((error: unknown) => {
+        this.logger.warn(
+          {
+            err: error,
+            conversationId: conversation.id,
+            optNo: response.optNo,
+            quoteMsgId,
+          },
+          "引用消息元数据回写失败",
+        );
+      });
+    }
+
     this.logger.info(
       {
         clientMessageId: payload.clientMessageId,
@@ -1737,6 +1760,41 @@ export class MysqlWorkbenchService implements WorkbenchService {
     });
 
     return page.messages.filter((message) => message.seq > activeMessageSeq);
+  }
+
+  private async persistQuoteMessageMetadata(input: {
+    conversation: {
+      id: string;
+      platform: number;
+      thirdExternalUserId?: string;
+      thirdGroupId?: string;
+      thirdUserId: string;
+      uid: number;
+    };
+    optNo: string;
+    quoteMsgId: number;
+    quoteOriginMsgId?: string;
+  }) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const patched = await this.repository.patchQuoteMessageContentByOptNo({
+        optNo: input.optNo,
+        platform: input.conversation.platform,
+        quoteMsgId: input.quoteMsgId,
+        quoteOriginMsgId: input.quoteOriginMsgId,
+        thirdExternalUserId: input.conversation.thirdExternalUserId,
+        thirdGroupId: input.conversation.thirdGroupId,
+        thirdUserId: input.conversation.thirdUserId,
+        uid: input.conversation.uid,
+      });
+
+      if (patched) {
+        return;
+      }
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, 200);
+      });
+    }
   }
 
   private async getOperableConversation(subUserId: string, conversationId: string) {

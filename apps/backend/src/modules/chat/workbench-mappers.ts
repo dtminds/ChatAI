@@ -327,23 +327,18 @@ function parseMessageContent(
   const parsed = parseContent(rawContent);
 
   if (msgtype === "quote") {
+    const originMsgId = readQuoteOriginMsgId(parsed);
+
     return {
-      quoteMsgId: readQuoteMsgId(parsed),
+      quoteMsgId: readQuoteMsgId(parsed) || originMsgId,
       quotedMessage: quotePreview,
+      ...(originMsgId ? { quotedMessageId: originMsgId } : {}),
       text: isRecord(parsed) ? readStringField(parsed, "content") : "",
     };
   }
 
   if (msgtype === "text") {
-    if (isRecord(parsed) && "text" in parsed) {
-      return { text: String(parsed.text ?? "") };
-    }
-
-    if (typeof parsed === "string") {
-      return { text: parsed };
-    }
-
-    return { text: rawContent ?? "" };
+    return { text: readTextMessageContent(parsed, rawContent) };
   }
 
   if (msgtype === "system") {
@@ -604,6 +599,29 @@ export function getQuoteMessageAuditId(row: MessageRow) {
   return Number.isSafeInteger(numeric) && numeric > 0 ? numeric : undefined;
 }
 
+export function getQuoteMessageOriginMsgId(row: MessageRow) {
+  if (row.msgtype !== "quote") {
+    return undefined;
+  }
+
+  const originMsgId = readQuoteOriginMsgId(parseContent(row.content));
+
+  return originMsgId || undefined;
+}
+
+export function getQuoteMessageMsgidCandidates(row: MessageRow) {
+  if (row.msgtype !== "quote") {
+    return [] as string[];
+  }
+
+  const parsed = parseContent(row.content);
+
+  return uniqueNonEmptyStrings([
+    readQuoteOriginMsgId(parsed),
+    readQuoteMsgId(parsed),
+  ]);
+}
+
 export function buildQuotedMessagePreview(row: MessageRow): MessageRowQuotePreview {
   const mapped = mapMessageRow(row);
   const senderName = row.sender_name || getSenderFallbackName(row);
@@ -651,6 +669,129 @@ export function buildMissingQuotedMessagePreview(): MessageRowQuotePreview {
   };
 }
 
+export function mergeQuoteMessageContentRaw(
+  rawContent: string | null,
+  metadata: {
+    quoteMsgId: number;
+    quoteOriginMsgId?: string;
+  },
+) {
+  const parsed = parseContent(rawContent);
+  const base = isRecord(parsed)
+    ? parsed
+    : {
+        content: typeof parsed === "string" ? parsed : "",
+      };
+
+  return JSON.stringify({
+    ...base,
+    quoteMsgId: metadata.quoteMsgId,
+    ...(metadata.quoteOriginMsgId
+      ? { quoteOriginMsgId: metadata.quoteOriginMsgId }
+      : {}),
+  });
+}
+
+export function parseQuotedPreviewFromExtendOriginData(
+  rawOriginData: string | null | undefined,
+): MessageRowQuotePreview | undefined {
+  if (!rawOriginData?.trim()) {
+    return undefined;
+  }
+
+  try {
+    const origin = JSON.parse(rawOriginData) as unknown;
+
+    if (!isRecord(origin)) {
+      return undefined;
+    }
+
+    const quoteContentBase64 = origin.quote_content_base64;
+
+    if (typeof quoteContentBase64 !== "string" || !quoteContentBase64.trim()) {
+      return undefined;
+    }
+
+    const decoded = JSON.parse(
+      Buffer.from(quoteContentBase64, "base64").toString("utf8"),
+    ) as unknown;
+    const text = extractQuotedTextFromWxQuoteContent(decoded);
+
+    if (!text) {
+      return undefined;
+    }
+
+    return {
+      contentType: "text",
+      senderName: "",
+      text,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function extractQuotedTextFromWxQuoteContent(decoded: unknown) {
+  if (!isRecord(decoded) || !isRecord(decoded.msg_content)) {
+    return undefined;
+  }
+
+  const msgList = decoded.msg_content.msg_list;
+
+  if (!Array.isArray(msgList)) {
+    return undefined;
+  }
+
+  const parts: string[] = [];
+
+  for (const item of msgList) {
+    if (!isRecord(item) || item.sub_type !== 0 || !isRecord(item.data)) {
+      continue;
+    }
+
+    const content = item.data.content;
+
+    if (typeof content !== "string" || !content.trim()) {
+      continue;
+    }
+
+    try {
+      parts.push(Buffer.from(content, "base64").toString("utf8"));
+    } catch {
+      continue;
+    }
+  }
+
+  const separatorIndex = parts.findIndex((part) => part.includes("------"));
+
+  if (separatorIndex <= 0) {
+    return undefined;
+  }
+
+  for (let index = separatorIndex - 1; index >= 0; index -= 1) {
+    const trimmed = parts[index]
+      ?.trim()
+      .replace(/^["']+|["']+$/g, "")
+      .trim();
+
+    if (trimmed && trimmed !== '"' && trimmed !== "\n") {
+      return trimmed;
+    }
+  }
+
+  return undefined;
+}
+
+function uniqueNonEmptyStrings(values: Array<string | undefined>) {
+  return [
+    ...new Set(
+      values
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+}
+
 function readQuoteMsgId(value: unknown) {
   if (!isRecord(value)) {
     return "";
@@ -663,6 +804,34 @@ function readQuoteMsgId(value: unknown) {
   }
 
   return typeof field === "string" ? field.trim() : "";
+}
+
+function readQuoteOriginMsgId(value: unknown) {
+  if (!isRecord(value)) {
+    return "";
+  }
+
+  return readOptionalIdField(value, "quoteOriginMsgId");
+}
+
+function readTextMessageContent(parsed: unknown, rawContent: string | null) {
+  if (isRecord(parsed)) {
+    const text =
+      readStringField(parsed, "text") ||
+      readStringField(parsed, "content");
+
+    if (text) {
+      return text;
+    }
+
+    return "";
+  }
+
+  if (typeof parsed === "string") {
+    return parsed;
+  }
+
+  return rawContent ?? "";
 }
 
 function getSenderFallbackName(row: MessageRow) {

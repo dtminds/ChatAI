@@ -28,7 +28,10 @@ type ChatMessagePanelProps = {
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
-  onTriggerSmartReply?: (message: ChatMessage) => void;
+  onTriggerSmartReply?: (
+    message: ChatMessage,
+    options?: { force?: boolean },
+  ) => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },

@@ -17,6 +17,7 @@ import type { SmartReplyViolationResult } from "@/pages/chat/components/smart-re
 import type { WorkbenchSmartReplyTextModerationResponse } from "@chatai/contracts";
 
 const DEFAULT_SMART_REPLY_ASSISTANT_NAME = "智能助手";
+export const SMART_REPLY_THINKING_LABEL = "思考中..";
 
 const SMART_REPLY_TRIGGER_CONTENT_TYPES = new Set<MessageContent["type"]>([
   "text",
@@ -40,7 +41,7 @@ export function getSmartReplyProcessingLabel(
   status?: SmartReplySuggestion["status"],
 ) {
   if (status === "thinking") {
-    return "AI正在生成话术...";
+    return SMART_REPLY_THINKING_LABEL;
   }
 
   if (contentType === "voice") {
@@ -51,7 +52,7 @@ export function getSmartReplyProcessingLabel(
     return "正在处理图片消息...";
   }
 
-  return "AI正在生成话术...";
+  return SMART_REPLY_THINKING_LABEL;
 }
 
 export function resolveSmartReplyProcessingLabel(
@@ -60,7 +61,7 @@ export function resolveSmartReplyProcessingLabel(
   mediaHintExpired: boolean,
 ) {
   if (status === "thinking" || mediaHintExpired) {
-    return "AI正在生成话术...";
+    return SMART_REPLY_THINKING_LABEL;
   }
 
   return getSmartReplyProcessingLabel(contentType, status);

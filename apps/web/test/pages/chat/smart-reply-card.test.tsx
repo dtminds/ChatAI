@@ -18,6 +18,17 @@ const appearanceThemeBlocks = [
   ),
 ].map((match) => match[0]);
 
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return { promise, reject, resolve };
+}
+
 describe("SmartReplyCard", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -83,24 +94,9 @@ describe("SmartReplyCard", () => {
     );
   });
 
-  it("defines smart reply tokens outside appearance theme overrides", () => {
-    expect(themeCss).toContain("--smart-reply-card: oklch(");
-    expect(themeCss).toContain("--smart-reply-card-foreground: oklch(");
-    expect(themeCss).toContain("--smart-reply-header: oklch(");
-    expect(themeCss).toContain("--smart-reply-muted-foreground: oklch(");
-    expect(themeCss).toContain("--smart-reply-action: oklch(");
-    expect(themeCss).toContain("--smart-reply-divider: oklch(");
-    expect(themeCss).toContain("--color-smart-reply-card: var(--smart-reply-card);");
-    expect(themeCss).toContain(
-      "--color-smart-reply-card-foreground: var(--smart-reply-card-foreground);",
-    );
-    expect(themeCss).toContain("--color-smart-reply-header: var(--smart-reply-header);");
-    expect(themeCss).toContain(
-      "--color-smart-reply-muted-foreground: var(--smart-reply-muted-foreground);",
-    );
-    expect(themeCss).toContain("--color-smart-reply-action: var(--smart-reply-action);");
-    expect(themeCss).toContain("--color-smart-reply-divider: var(--smart-reply-divider);");
-
+  it("does not define dedicated smart reply theme tokens", () => {
+    expect(themeCss).not.toContain("--smart-reply-");
+    expect(themeCss).not.toContain("--color-smart-reply-");
     for (const block of appearanceThemeBlocks) {
       expect(block).not.toContain("--smart-reply-");
     }
@@ -575,7 +571,14 @@ describe("SmartReplyCard", () => {
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent("AI正在生成话术...");
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("思考中..");
+    expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("dot-matrix-loader").querySelector(".dmx-root"),
+    ).toHaveStyle({ height: "14px", width: "14px" });
+    expect(status).toHaveClass("text-[13px]");
+    expect(status).not.toHaveClass("text-primary");
   });
 
   it("switches media processing text to generating text after the hint duration", () => {
@@ -604,7 +607,7 @@ describe("SmartReplyCard", () => {
       vi.advanceTimersByTime(SMART_REPLY_MEDIA_PROCESSING_HINT_MS);
     });
 
-    expect(screen.getByRole("status")).toHaveTextContent("AI正在生成话术...");
+    expect(screen.getByRole("status")).toHaveTextContent("思考中..");
   });
 
   it("shows knowledge miss state and retries from the card", async () => {
@@ -698,6 +701,51 @@ describe("SmartReplyCard", () => {
     );
 
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+  });
+
+  it("shows a loading state while sending from the card", async () => {
+    const user = userEvent.setup();
+    const sendGate = createDeferred<{ ok: boolean }>();
+    const onSend = vi.fn(() => sendGate.promise);
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        onSend={onSend}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌",
+          status: "ready",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    const sendingButton = screen.getByRole("button", { name: "正在发送" });
+    expect(sendingButton).toBeDisabled();
+    expect(sendingButton).toHaveAttribute("aria-busy", "true");
+    expect(sendingButton).not.toHaveTextContent("发送中");
+    expect(sendingButton.querySelector('[data-testid="dot-matrix-loader"]')).toBeNull();
+
+    await user.click(sendingButton);
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      sendGate.resolve({ ok: true });
+      await sendGate.promise;
+    });
+
+    expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "发送" })).not.toHaveAttribute(
+      "aria-busy",
+    );
   });
 
   it("renders smart reply card inline below the message anchor", () => {

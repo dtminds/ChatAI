@@ -66,14 +66,14 @@ describe("smart-reply-adapter", () => {
   it("returns processing labels by message content type", () => {
     expect(getSmartReplyProcessingLabel("voice", "processing")).toBe("正在处理语音消息...");
     expect(getSmartReplyProcessingLabel("image", "processing")).toBe("正在处理图片消息...");
-    expect(getSmartReplyProcessingLabel("text", "processing")).toBe("AI正在生成话术...");
+    expect(getSmartReplyProcessingLabel("text", "processing")).toBe("思考中..");
   });
 
   it("returns generating label while smart reply is thinking", () => {
-    expect(getSmartReplyProcessingLabel("voice", "thinking")).toBe("AI正在生成话术...");
-    expect(getSmartReplyProcessingLabel("image", "thinking")).toBe("AI正在生成话术...");
+    expect(getSmartReplyProcessingLabel("voice", "thinking")).toBe("思考中..");
+    expect(getSmartReplyProcessingLabel("image", "thinking")).toBe("思考中..");
     expect(resolveSmartReplyProcessingLabel("voice", "processing", true)).toBe(
-      "AI正在生成话术...",
+      "思考中..",
     );
   });
 

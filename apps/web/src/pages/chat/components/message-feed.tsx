@@ -76,7 +76,10 @@ type ChatMessageListProps = {
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
-  onTriggerSmartReply?: (message: ChatMessage) => void;
+  onTriggerSmartReply?: (
+    message: ChatMessage,
+    options?: { force?: boolean },
+  ) => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
@@ -333,7 +336,10 @@ export function MessageRow({
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
-  onTriggerSmartReply?: (message: ChatMessage) => void;
+  onTriggerSmartReply?: (
+    message: ChatMessage,
+    options?: { force?: boolean },
+  ) => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
@@ -446,7 +452,9 @@ export function MessageRow({
                   onDismiss={onDismissSmartReply}
                   onFillComposer={onFillSmartReplyComposer}
                   onMakeShorter={onMakeShorterSmartReply}
-                  onRegenerate={onTriggerSmartReply}
+                  onRegenerate={(regenerateMessage) => {
+                    onTriggerSmartReply?.(regenerateMessage, { force: true });
+                  }}
                   suggestion={smartReply}
                   onSend={onSendSmartReply}
                 />
@@ -547,7 +555,10 @@ function MessageActionAvatar({
   onMentionMessage?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
-  onTriggerSmartReply?: (message: ChatMessage) => void;
+  onTriggerSmartReply?: (
+    message: ChatMessage,
+    options?: { force?: boolean },
+  ) => void;
   showSmartReplyRecommendation: boolean;
 }) {
   const [isRevokeDialogOpen, setIsRevokeDialogOpen] = useState(false);

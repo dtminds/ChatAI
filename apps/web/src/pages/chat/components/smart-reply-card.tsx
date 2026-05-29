@@ -15,12 +15,14 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
+import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { ShinyText } from "@/components/ui/shiny-text";
 import {
   Tooltip,
@@ -39,6 +41,7 @@ import {
   resolveSmartReplyProcessingLabel,
   SMART_REPLY_BUSY_TIMEOUT_MS,
   SMART_REPLY_MEDIA_PROCESSING_HINT_MS,
+  SMART_REPLY_THINKING_LABEL,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import { adaptSmartReplyViolationResult } from "@/pages/chat/api/smart-reply-adapter";
@@ -80,6 +83,7 @@ export type SmartReplyCardProps = {
   isKnowledgeHit?: boolean;
   isKnowledgeMiss?: boolean;
   isSent?: boolean;
+  isSending?: boolean;
   canSendMessage?: boolean;
   onEdit?: () => void;
   onFillComposer?: () => void;
@@ -103,6 +107,7 @@ export function SmartReplyCard({
   isKnowledgeHit = true,
   isKnowledgeMiss = false,
   isSent = false,
+  isSending = false,
   canSendMessage = true,
   onEdit,
   onFillComposer,
@@ -181,7 +186,7 @@ export function SmartReplyCard({
     <TooltipProvider>
       <article
         aria-hidden={isDismissing ? "true" : undefined}
-        className="w-full max-w-[640px] overflow-hidden rounded-[12px] bg-conversation-active p-[3px] text-smart-reply-card-foreground"
+        className="w-full max-w-[640px] overflow-hidden rounded-[12px] bg-conversation-active p-[3px] text-foreground"
         data-dismissing={isDismissing ? "true" : "false"}
         data-testid="smart-reply-card"
         ref={cardRef}
@@ -218,6 +223,7 @@ export function SmartReplyCard({
                 canSendMessage={canSendMessage}
                 canMakeShorter={canMakeShorter}
                 content={content}
+                isSending={isSending}
                 isThinking={isThinking}
                 onEdit={onEdit}
                 onFillComposer={onFillComposer}
@@ -597,10 +603,13 @@ export function SmartReplyMessageAnchor({
   >([]);
   const [isRecommendedAttachmentsLoading, setIsRecommendedAttachmentsLoading] =
     useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const isMountedRef = useRef(true);
 
   const isThinking = suggestion?.status === "thinking";
   const isProcessing = suggestion?.status === "processing";
   const isBusy = isThinking || isProcessing;
+  const displayContent = suggestion?.content ?? "";
   const processingLabel = useSmartReplyProcessingLabel(
     message.content.type,
     suggestion?.status,
@@ -614,6 +623,14 @@ export function SmartReplyMessageAnchor({
 
   const refAttachIds = suggestion?.refAttachIds;
   const refAttachIdsKey = refAttachIds?.join(",") ?? "";
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isEditDialogOpen) {
@@ -697,12 +714,31 @@ export function SmartReplyMessageAnchor({
     handleEditDialogOpenChange(true);
   }, [handleEditDialogOpenChange]);
 
+  const handleSendFromCard = useCallback(async () => {
+    if (!onSend || isSending) {
+      return;
+    }
+
+    setIsSending(true);
+
+    try {
+      await onSend(message, {
+        content: displayContent.trim(),
+        recommendedAttachments: [],
+        selectedAttachmentIds: [],
+      });
+    } finally {
+      if (isMountedRef.current) {
+        setIsSending(false);
+      }
+    }
+  }, [displayContent, isSending, message, onSend]);
+
   if (!suggestion) {
     return null;
   }
 
   const resolvedSuggestion = suggestion;
-  const displayContent = resolvedSuggestion.content;
   const isKnowledgeMiss = isSmartReplyKnowledgeMiss(resolvedSuggestion);
   const isGenerationFailed = isSmartReplyGenerationFailed(resolvedSuggestion);
   const isKnowledgeHit = !isKnowledgeMiss && !isGenerationFailed;
@@ -723,6 +759,7 @@ export function SmartReplyMessageAnchor({
         isKnowledgeHit={isKnowledgeHit}
         isKnowledgeMiss={isKnowledgeMiss}
         isSent={isSent}
+        isSending={isSending}
         isThinking={isThinking}
         isProcessing={isProcessing}
         processingLabel={processingLabel}
@@ -754,13 +791,7 @@ export function SmartReplyMessageAnchor({
           resolvedSuggestion.refAttachIds.length > 0
             ? openEditDialog
             : onSend
-              ? () => {
-                  onSend(message, {
-                    content: displayContent.trim(),
-                    recommendedAttachments: [],
-                    selectedAttachmentIds: [],
-                  });
-                }
+              ? handleSendFromCard
               : undefined
         }
       />
@@ -899,7 +930,7 @@ export function SmartReplyTriggerIcon({
 export function SmartReplyInlineProcessingHint({ label }: { label: string }) {
   return (
     <div
-      className="ml-[16px] flex shrink-0 items-center gap-1 text-smart-reply-muted-foreground"
+      className="ml-[16px] flex shrink-0 items-center gap-1 text-muted-foreground"
       data-testid="smart-reply-inline-processing"
       role="status"
     >
@@ -966,23 +997,33 @@ function SmartReplyContentBody({
 }) {
   return (
     <div
-      className="rounded-[10px] bg-background px-[13px] py-[10px]"
+      className="rounded-[10px] bg-background py-[10px]"
       data-testid="smart-reply-card-body"
     >
       {isThinking || isProcessing || !isKnowledgeHit ? (
-        <SmartReplyReadonlyContent
-          failReason={failReason}
-          isGenerationFailed={isGenerationFailed}
-          isKnowledgeMiss={isKnowledgeMiss}
-          isProcessing={isProcessing}
-          isThinking={isThinking}
-          onRetry={onRetry}
-          processingLabel={processingLabel}
-        />
+        <div className="px-[13px]">
+          <SmartReplyReadonlyContent
+            failReason={failReason}
+            isGenerationFailed={isGenerationFailed}
+            isKnowledgeMiss={isKnowledgeMiss}
+            isProcessing={isProcessing}
+            isThinking={isThinking}
+            onRetry={onRetry}
+            processingLabel={processingLabel}
+          />
+        </div>
       ) : (
-        <p className="max-h-[120px] overflow-y-auto whitespace-pre-wrap text-[13px] leading-[22px] text-smart-reply-card-foreground">
-          {content}
-        </p>
+        <ScrollArea
+          className="w-full [--scrollbar-size:4px] [--scrollbar-track-padding:0px]"
+          type="hover"
+          viewportProps={{
+            className: "max-h-[120px] !h-auto",
+          }}
+        >
+          <p className="whitespace-pre-wrap px-[13px] text-[13px] leading-[22px] text-foreground">
+            {content}
+          </p>
+        </ScrollArea>
       )}
     </div>
   );
@@ -1008,29 +1049,31 @@ function SmartReplyReadonlyContent({
   return (
     <div className="rounded-[10px]">
       {isThinking || isProcessing ? (
-        <div className="flex items-center gap-1 text-smart-reply-muted-foreground">
-          <HugeiconsIcon
-            color="currentColor"
-            icon={Loading03Icon}
-            size={14}
-            strokeWidth={2}
-          />
-          <p className="text-[13px] text-smart-reply-action" role="status">
+        <div className="flex items-center gap-1 text-muted-foreground">
+          <span aria-hidden="true" className="inline-flex">
+            <DotMatrixLoader
+              ariaLabel="智能回复处理中"
+              dotSize={2}
+              size={14}
+              speed={1.2}
+            />
+          </span>
+          <p className="text-[13px]" role="status">
             <ShinyText duration={1.15} shimmerWidth={44}>
               {processingLabel ??
-                (isThinking ? "AI正在生成话术..." : "正在处理消息...")}
+                (isThinking ? SMART_REPLY_THINKING_LABEL : "正在处理消息...")}
             </ShinyText>
           </p>
         </div>
       ) : null}
       {isKnowledgeMiss ? (
         <div className="flex items-center">
-          <p className="text-[13px] text-smart-reply-muted-foreground">
+          <p className="text-[13px] text-muted-foreground">
             🤔未命中知识集，暂无推荐话术
           </p>
           {onRetry ? (
             <button
-              className="ml-[10px] text-[13px] text-smart-reply-action outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/20"
+              className="ml-[10px] text-[13px] text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/20"
               onClick={onRetry}
               type="button"
             >
@@ -1041,12 +1084,12 @@ function SmartReplyReadonlyContent({
       ) : null}
       {isGenerationFailed ? (
         <div className="flex items-center">
-          <p className="text-[13px] text-smart-reply-muted-foreground">
+          <p className="text-[13px] text-muted-foreground">
             {failReason ? `生成失败：${failReason}` : "生成失败"}
           </p>
           {onRetry ? (
             <button
-              className="ml-[10px] text-[13px] text-smart-reply-action outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/20"
+              className="ml-[10px] text-[13px] text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/20"
               onClick={onRetry}
               type="button"
             >
@@ -1073,7 +1116,7 @@ function SmartReplyReferences({
       {refAttachCount > 0 ? (
         <div
           aria-label={`推荐附件 ${refAttachCount} 个`}
-          className="inline-flex items-center gap-1 text-[12px] leading-4 text-smart-reply-muted-foreground"
+          className="inline-flex items-center gap-1 text-[12px] leading-4 text-muted-foreground"
           onClick={onEdit}
         >
           <img
@@ -1093,6 +1136,7 @@ function SmartReplyActions({
   canSendMessage = true,
   canMakeShorter = true,
   content,
+  isSending = false,
   isThinking,
   onEdit,
   onFillComposer,
@@ -1103,6 +1147,7 @@ function SmartReplyActions({
   canSendMessage?: boolean;
   canMakeShorter?: boolean;
   content: string;
+  isSending?: boolean;
   isThinking: boolean;
   onEdit?: () => void;
   onFillComposer?: () => void;
@@ -1110,7 +1155,8 @@ function SmartReplyActions({
   onRegenerate?: () => void;
   onSend?: () => void;
 }) {
-  const isActionDisabled = !canSendMessage || isThinking || !content.trim();
+  const isActionDisabled =
+    isSending || !canSendMessage || isThinking || !content.trim();
 
   return (
     <div className="flex shrink-0 items-center gap-1.5">
@@ -1147,13 +1193,24 @@ function SmartReplyActions({
           编辑
         </Button>
         <Button
+          aria-label={isSending ? "正在发送" : undefined}
+          aria-busy={isSending ? "true" : undefined}
           className="h-6 rounded-none border-l border-conversation-active-foreground/20 px-2 text-[12px] leading-4 text-conversation-active-foreground hover:bg-conversation-active-foreground/15 hover:text-conversation-active-foreground"
           disabled={isActionDisabled}
           onClick={onSend}
           type="button"
           variant="ghost"
         >
-          发送
+          {isSending ? (
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="animate-spin"
+              icon={Loading03Icon}
+              size={12}
+              strokeWidth={2}
+            />
+          ) : null}
+          {isSending ? null : "发送"}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

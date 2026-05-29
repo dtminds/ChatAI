@@ -89,6 +89,22 @@ function installIntersectionObserverMock() {
   };
 }
 
+function mockScrolledAwayMessageViewport() {
+  const viewport = screen.getByTestId("message-viewport");
+  const scrollTo = vi.fn();
+
+  Object.defineProperty(viewport, "scrollTo", {
+    configurable: true,
+    value: scrollTo,
+  });
+  viewport.scrollTop = -160;
+
+  return {
+    scrollTo,
+    viewport,
+  };
+}
+
 function getIntersectionObserverObserveCallCount(
   instances: IntersectionObserverInstance[],
 ) {
@@ -334,6 +350,142 @@ describe("ChatWorkbenchPage", () => {
 
     expect(composer).toHaveTextContent("建议先确认权益清单口径");
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("scrolls to the visual bottom after sending a composer message", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    const { scrollTo } = mockScrolledAwayMessageViewport();
+
+    await pasteIntoComposer(user, composer, "我来确认一下权益清单");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenCalledWith({
+        behavior: "smooth",
+        top: 0,
+      });
+    });
+  });
+
+  it("scrolls to the visual bottom after sending a smart reply", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "客户想了解活动权益",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "护肤小助手",
+              content: "建议先确认权益清单口径",
+              messageId: "9",
+              pollComplete: true,
+              recordId: "smart-reply-001",
+              status: "ready",
+            },
+          ],
+        };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByText("建议先确认权益清单口径");
+    const { scrollTo } = mockScrolledAwayMessageViewport();
+
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenCalledWith({
+        behavior: "smooth",
+        top: 0,
+      });
+    });
+  });
+
+  it("regenerates from the smart reply card even when a local suggestion exists", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const requestSmartReplyGeneralAnswer = vi.fn(
+      async (request: { msgId: number }) => ({
+        suggestion: {
+          assistantName: "护肤小助手",
+          content: `重新生成话术 ${request.msgId}`,
+          messageId: String(request.msgId),
+          pollComplete: true,
+          recordId: "smart-reply-regenerated",
+          status: "ready" as const,
+        },
+      }),
+    );
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "客户想了解活动权益",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "护肤小助手",
+              content: "已有推荐话术",
+              messageId: "9",
+              pollComplete: true,
+              recordId: "smart-reply-existing",
+              status: "ready",
+            },
+          ],
+        };
+      },
+      requestSmartReplyGeneralAnswer,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByText("已有推荐话术");
+
+    await user.click(screen.getByRole("button", { name: "更多智能回复操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "重新生成" }));
+
+    expect(requestSmartReplyGeneralAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-001",
+        msgId: 9,
+      }),
+    );
+    expect(await screen.findByText("重新生成话术 9")).toBeInTheDocument();
+    expect(screen.queryByText("已有推荐话术")).not.toBeInTheDocument();
   });
 
   it("hides answered page smart replies until the recommendation action is selected", async () => {

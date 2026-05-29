@@ -653,6 +653,22 @@ function ChatWorkbenchContent({
     }
   };
 
+  const scrollMessageViewportToBottom = useCallback(() => {
+    const scroll = () => {
+      messageViewportRef.current?.scrollTo?.({
+        top: 0,
+        behavior: "smooth",
+      });
+    };
+
+    scroll();
+
+    window.requestAnimationFrame(() => {
+      scroll();
+      window.requestAnimationFrame(scroll);
+    });
+  }, []);
+
   const handleSendDraft = async (segments: ComposerSegment[]) => {
     const sendConversationId = activeConversation?.id;
     const normalizedSegments = segments.length > 0 ? segments : [];
@@ -735,6 +751,7 @@ function ChatWorkbenchContent({
       clearComposer({
         keepQuote: quotedMessage !== null && !result.didConsumeQuote,
       });
+      scrollMessageViewportToBottom();
       void requestActiveConversationRead();
     } finally {
       isSendingDraftRef.current = false;
@@ -1092,6 +1109,8 @@ function ChatWorkbenchContent({
             result.errorMessage,
           ),
         );
+      } else {
+        scrollMessageViewportToBottom();
       }
 
       return result;
@@ -1119,8 +1138,11 @@ function ChatWorkbenchContent({
     composerRef.current?.focus();
   };
 
-  const handleTriggerSmartReply = (message: ChatMessage) => {
-    void requestSmartReplyGeneralAnswer(message);
+  const handleTriggerSmartReply = (
+    message: ChatMessage,
+    options?: { force?: boolean },
+  ) => {
+    void requestSmartReplyGeneralAnswer(message, options);
   };
 
   const handleDismissSmartReply = (message: ChatMessage) => {

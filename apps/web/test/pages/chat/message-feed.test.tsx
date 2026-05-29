@@ -353,7 +353,7 @@ describe("message feed row actions", () => {
     await user.click(screen.getByRole("button", { name: "更多智能回复操作" }));
     await user.click(screen.getByRole("menuitem", { name: "重新生成" }));
 
-    expect(onTriggerSmartReply).toHaveBeenCalledWith(message);
+    expect(onTriggerSmartReply).toHaveBeenCalledWith(message, { force: true });
   });
 
   it("asks for confirmation before revoking own sent messages within 180 seconds", async () => {

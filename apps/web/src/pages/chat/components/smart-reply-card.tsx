@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useState } from "react";
 import {
-  ArrowRight01Icon,
-  ArrowDown01Icon,
+  AiChat02Icon,
+  InputCursorTextIcon,
   Loading03Icon,
-  MagicWand05Icon,
+  MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,6 +14,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ShinyText } from "@/components/ui/shiny-text";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
   getSmartReplyCustomerQuestion,
@@ -41,9 +46,10 @@ import {
 
 const SMART_REPLY_TRIGGER_ICON =
   "https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/customer/容器@2x (1).png!tiny.webp";
+const SMART_REPLY_COLLAPSE_IMAGE =
+  "data:image/svg+xml,%3Csvg width='14' height='14' viewBox='0 0 14 14' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.5 5.25L7 8.75L10.5 5.25' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
 
 export type SmartReplySuggestion = {
-  assistantAvatarUrl?: string;
   assistantName: string;
   busyRequestId?: number;
   content: string;
@@ -56,7 +62,6 @@ export type SmartReplySuggestion = {
 };
 
 export type SmartReplyCardProps = {
-  assistantAvatarUrl?: string;
   assistantName: string;
   content: string;
   failReason?: string;
@@ -78,7 +83,6 @@ export type SmartReplyCardProps = {
 };
 
 export function SmartReplyCard({
-  assistantAvatarUrl,
   assistantName,
   content,
   failReason,
@@ -100,70 +104,32 @@ export function SmartReplyCard({
 }: SmartReplyCardProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const resolvedFailureReason = failReason?.trim();
+  const shouldShowActions = isKnowledgeHit && !isThinking && !isProcessing;
 
   return (
-    <article
-      className="w-full max-w-full overflow-hidden rounded-[12px] border border-primary bg-primary/4 text-smart-reply-card-foreground"
-      data-collapsed={isCollapsed ? "true" : "false"}
-      data-testid="smart-reply-card"
-    >
-      <header className="flex items-center gap-[6px] px-[16px] py-[8px]">
-        <SmartReplyAssistantAvatar
-          avatarUrl={
-            assistantAvatarUrl ||
-            "https://b1.dtminds.com/fe-utility-tools/scrm/assests/AImarketing/小luna@2x.png!tiny.webp"
-          }
-          name={assistantName}
-        />
-        <p className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-smart-reply-card-foreground">
-          {assistantName}
-        </p>
-        <button
-          aria-expanded={!isCollapsed}
-          aria-label={isCollapsed ? "展开智能回复" : "关闭智能回复"}
-          className="inline-flex h-6 shrink-0 items-center justify-center gap-0.5 rounded-[6px] px-1 text-smart-reply-action outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/20"
-          onClick={() => setIsCollapsed((current) => !current)}
-          type="button"
+    <TooltipProvider>
+      <article
+        className="w-full max-w-[640px] overflow-hidden rounded-[12px] bg-conversation-active p-[3px] text-smart-reply-card-foreground"
+        data-collapsed={isCollapsed ? "true" : "false"}
+        data-testid="smart-reply-card"
+      >
+        <header
+          className="flex min-w-0 items-center gap-2 px-[12px] py-[7px]"
+          data-testid="smart-reply-card-header"
         >
-          {isCollapsed ? (
-            <>
-              <span className="text-[12px] leading-4">展开</span>
-              <HugeiconsIcon
-                color="currentColor"
-                icon={ArrowRight01Icon}
-                size={14}
-                strokeWidth={2}
-              />
-            </>
-          ) : (
-            <>
-              <span className="text-[12px] leading-4">收起</span>
-              <HugeiconsIcon
-                color="currentColor"
-                icon={ArrowDown01Icon}
-                size={14}
-                strokeWidth={2}
-              />
-            </>
-          )}
-        </button>
-      </header>
-
-      {isCollapsed ? null : (
-        <>
-          <SmartReplyContentBody
-            content={content}
-            failReason={resolvedFailureReason}
-            isGenerationFailed={isGenerationFailed}
-            isKnowledgeHit={isKnowledgeHit}
-            isKnowledgeMiss={isKnowledgeMiss}
-            isProcessing={isProcessing}
-            isThinking={isThinking}
-            onRetry={onRegenerate}
-            processingLabel={processingLabel}
-          />
-          {isKnowledgeHit && !isThinking && !isProcessing ? (
-            <footer className="flex items-center justify-between px-[16px] pb-[12px]">
+          <div className="flex min-w-0 flex-1 items-center gap-[6px]">
+            <HugeiconsIcon
+              aria-label="AI 智能回复"
+              className="shrink-0 text-conversation-active-foreground"
+              icon={AiChat02Icon}
+              size={18}
+            />
+            <p className="min-w-0 truncate text-[13px] font-medium leading-5 text-conversation-active-foreground">
+              {assistantName}
+            </p>
+          </div>
+          {!isCollapsed && shouldShowActions ? (
+            <div className="flex min-w-0 shrink-0 items-center gap-2">
               <SmartReplyReferences refAttachIds={refAttachIds} onEdit={onEdit} />
               <SmartReplyActions
                 canSendMessage={canSendMessage}
@@ -176,11 +142,41 @@ export function SmartReplyCard({
                 onRegenerate={onRegenerate}
                 onSend={onSend}
               />
-            </footer>
+            </div>
           ) : null}
-        </>
-      )}
-    </article>
+          <SmartReplyIconTooltip label={isCollapsed ? "展开" : "收起"}>
+            <button
+              aria-expanded={!isCollapsed}
+              aria-label={isCollapsed ? "展开" : "收起"}
+              className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] border border-conversation-active-foreground/25 bg-conversation-active-foreground/10 outline-none transition-colors hover:bg-conversation-active-foreground/15 focus-visible:ring-2 focus-visible:ring-ring/20"
+              onClick={() => setIsCollapsed((current) => !current)}
+              type="button"
+            >
+              <img
+                alt=""
+                aria-hidden
+                className={isCollapsed ? "size-3.5 -rotate-90" : "size-3.5"}
+                src={SMART_REPLY_COLLAPSE_IMAGE}
+              />
+            </button>
+          </SmartReplyIconTooltip>
+        </header>
+
+        {isCollapsed ? null : (
+          <SmartReplyContentBody
+            content={content}
+            failReason={resolvedFailureReason}
+            isGenerationFailed={isGenerationFailed}
+            isKnowledgeHit={isKnowledgeHit}
+            isKnowledgeMiss={isKnowledgeMiss}
+            isProcessing={isProcessing}
+            isThinking={isThinking}
+            onRetry={onRegenerate}
+            processingLabel={processingLabel}
+          />
+        )}
+      </article>
+    </TooltipProvider>
   );
 }
 
@@ -337,7 +333,6 @@ export function SmartReplyMessageAnchor({
     <>
       <SmartReplyCard
         refAttachIds={resolvedSuggestion.refAttachIds}
-        assistantAvatarUrl={resolvedSuggestion.assistantAvatarUrl}
         assistantName={resolvedSuggestion.assistantName}
         canMakeShorter={canMakeShorter}
         canSendMessage={canSendMessage}
@@ -537,20 +532,32 @@ export function SmartReplyInlineProcessingHint({ label }: { label: string }) {
   );
 }
 
-function SmartReplyAssistantAvatar({
-  avatarUrl,
-  name,
+function SmartReplyIconTooltip({
+  children,
+  disabled,
+  label,
+  triggerTestId,
 }: {
-  avatarUrl?: string;
-  name: string;
+  children: ReactElement;
+  disabled?: boolean;
+  label: string;
+  triggerTestId?: string;
 }) {
+  const trigger = disabled ? (
+    <span className="inline-flex" data-testid={triggerTestId}>
+      {children}
+    </span>
+  ) : (
+    children
+  );
+
   return (
-    <Avatar className="size-5 rounded-full">
-      {avatarUrl ? <AvatarImage alt={name} src={avatarUrl} /> : null}
-      <AvatarFallback className="rounded-full text-[11px] text-smart-reply-muted-foreground">
-        AI
-      </AvatarFallback>
-    </Avatar>
+    <Tooltip>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+      <TooltipContent side="top" sideOffset={6}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -576,7 +583,10 @@ function SmartReplyContentBody({
   processingLabel?: string;
 }) {
   return (
-    <div className="px-[16px] pb-[12px]">
+    <div
+      className="rounded-[10px] bg-background px-[13px] py-[10px]"
+      data-testid="smart-reply-card-body"
+    >
       {isThinking || isProcessing || !isKnowledgeHit ? (
         <SmartReplyReadonlyContent
           failReason={failReason}
@@ -721,60 +731,85 @@ function SmartReplyActions({
   const isActionDisabled = !canSendMessage || isThinking || !content.trim();
 
   return (
-    <div className="flex shrink-0 items-center gap-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
-            type="button"
-            variant="outline"
-          >
-            <HugeiconsIcon icon={MagicWand05Icon} size={14} strokeWidth={2} />
-            微调文案
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[128px]" side="top">
-          <DropdownMenuItem
-            disabled={!canMakeShorter || !onMakeShorter}
-            onSelect={() => {
-              onMakeShorter?.();
-            }}
-          >
-            简短一点
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              onRegenerate?.();
-            }}
-          >
-            重新生成
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              onEdit?.();
-            }}
-          >
-            编辑
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <Button
-        className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
+    <div className="flex shrink-0 items-center gap-1.5">
+      <SmartReplyIconTooltip
         disabled={isActionDisabled}
-        onClick={onFillComposer}
-        type="button"
-        variant="outline"
+        label="填入输入框"
+        triggerTestId="smart-reply-fill-composer-tooltip-trigger"
       >
-        填入输入框
-      </Button>
-      <Button
-        className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
-        disabled={isActionDisabled}
-        onClick={onSend}
-        type="button"
-      >
-        发送
-      </Button>
+        <Button
+          aria-label="填入输入框"
+          className="size-6 rounded-[6px] border border-conversation-active-foreground/25 bg-conversation-active-foreground/10 p-0 text-conversation-active-foreground hover:bg-conversation-active-foreground/15 hover:text-conversation-active-foreground"
+          disabled={isActionDisabled}
+          onClick={onFillComposer}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={InputCursorTextIcon}
+            size={14}
+            strokeWidth={2}
+          />
+        </Button>
+      </SmartReplyIconTooltip>
+      <div className="inline-flex shrink-0 items-center overflow-hidden rounded-[6px] border border-conversation-active-foreground/25 bg-conversation-active-foreground/10">
+        <Button
+          className="h-6 rounded-none px-2 text-[12px] leading-4 text-conversation-active-foreground hover:bg-conversation-active-foreground/15 hover:text-conversation-active-foreground"
+          disabled={isActionDisabled}
+          onClick={onEdit}
+          type="button"
+          variant="ghost"
+        >
+          编辑
+        </Button>
+        <Button
+          className="h-6 rounded-none border-l border-conversation-active-foreground/20 px-2 text-[12px] leading-4 text-conversation-active-foreground hover:bg-conversation-active-foreground/15 hover:text-conversation-active-foreground"
+          disabled={isActionDisabled}
+          onClick={onSend}
+          type="button"
+          variant="ghost"
+        >
+          发送
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label="更多智能回复操作"
+              className="size-6 rounded-none border-l border-conversation-active-foreground/20 p-0 text-conversation-active-foreground hover:bg-conversation-active-foreground/15 hover:text-conversation-active-foreground"
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={MoreHorizontalIcon}
+                size={14}
+                strokeWidth={2}
+              />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[128px]" side="top">
+            <DropdownMenuItem
+              disabled={isActionDisabled || !canMakeShorter || !onMakeShorter}
+              onSelect={() => {
+                onMakeShorter?.();
+              }}
+            >
+              变短一点
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={isActionDisabled}
+              onSelect={() => {
+                onRegenerate?.();
+              }}
+            >
+              重新生成
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   );
 }

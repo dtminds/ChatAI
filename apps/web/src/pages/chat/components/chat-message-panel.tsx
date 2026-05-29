@@ -46,6 +46,7 @@ export function ChatMessagePanel({
   hasMoreHistory,
   historyLoadLabel,
   isConversationLoading,
+  conversationId,
   messages,
   onDownloadMessageFile,
   onMentionMessage,

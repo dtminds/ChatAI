@@ -377,14 +377,14 @@ function ViolationHighlightEditor({
     <div className="relative rounded-[8px] border border-input/80 bg-background text-foreground">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 overflow-hidden rounded-[6px] px-[12px] py-[5px] text-[13px] leading-[22px] whitespace-pre-wrap break-words"
+        className="pointer-events-none absolute inset-0 overflow-y-auto rounded-[6px] px-[12px] py-[5px] text-[13px] leading-[22px] whitespace-pre-wrap break-words [scrollbar-gutter:stable]"
         data-testid="smart-reply-violation-highlight-overlay"
         ref={overlayRef}
       >
         <HighlightedText segments={splitByHighlights(value, highlightedWords)} />
       </div>
       <Textarea
-        className="relative min-h-[168px] resize-none border-0 bg-transparent px-[12px] py-[5px] text-[13px] leading-[22px] text-transparent caret-foreground shadow-none focus-visible:ring-0"
+        className="relative min-h-[168px] resize-none border-0 bg-transparent px-[12px] py-[5px] text-[13px] leading-[22px] text-transparent caret-foreground shadow-none [scrollbar-gutter:stable] focus-visible:ring-0"
         onChange={(event) => onChange(event.target.value)}
         onScroll={handleScroll}
         value={value}

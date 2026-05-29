@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { sendSmartHeartbeat } from "@/pages/chat/api/workbench-gateway";
 
@@ -17,26 +17,26 @@ export function useSmartHeartbeat({
 }: UseSmartHeartbeatOptions) {
   const inFlightRef = useRef(false);
 
-  const runHeartbeat = useEffectEvent(async () => {
-    if (!conversationId || inFlightRef.current) {
-      return;
-    }
-
-    inFlightRef.current = true;
-
-    try {
-      await sendSmartHeartbeat(conversationId);
-    } catch {
-      // 心跳失败不打断工作台主流程，下一轮 interval 继续尝试
-    } finally {
-      inFlightRef.current = false;
-    }
-  });
-
   useEffect(() => {
     if (!enabled || !conversationId) {
       return;
     }
+
+    const runHeartbeat = async () => {
+      if (!conversationId || inFlightRef.current) {
+        return;
+      }
+
+      inFlightRef.current = true;
+
+      try {
+        await sendSmartHeartbeat(conversationId);
+      } catch {
+        // 心跳失败不打断工作台主流程，下一轮 interval 继续尝试
+      } finally {
+        inFlightRef.current = false;
+      }
+    };
 
     void runHeartbeat();
 

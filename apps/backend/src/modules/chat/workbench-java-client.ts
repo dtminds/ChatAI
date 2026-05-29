@@ -822,111 +822,114 @@ async function streamJavaPostText(
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), readJavaApiTimeoutMs());
-  let response: Response;
   const requestId = getLoggerRequestId(logger);
 
   try {
-    response = await fetch(`${baseUrl}${path}`, {
-      body: JSON.stringify(body),
-      headers: {
-        accept: "text/event-stream",
-        "content-type": "application/json",
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(requestId ? { "x-request-id": requestId } : {}),
-      },
-      method: "POST",
-      signal: controller.signal,
-    });
-  } catch (error) {
-    logger.error(
-      {
-        ...buildJavaLogContext(body),
-        requestId,
-        operation,
-        path,
-        reason: error instanceof Error ? error.name : "unknown",
-      },
-      "Java 内部工作台接口调用失败",
-    );
-    throw new BadGatewayError(
-      WORKBENCH_INTERNAL_API_FAILED_CODE,
-      JAVA_INTERNAL_API_USER_MESSAGE,
-      {
-        reason: error instanceof Error ? error.name : "unknown",
-      },
-    );
+    let response: Response;
+
+    try {
+      response = await fetch(`${baseUrl}${path}`, {
+        body: JSON.stringify(body),
+        headers: {
+          accept: "text/event-stream",
+          "content-type": "application/json",
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+          ...(requestId ? { "x-request-id": requestId } : {}),
+        },
+        method: "POST",
+        signal: controller.signal,
+      });
+    } catch (error) {
+      logger.error(
+        {
+          ...buildJavaLogContext(body),
+          requestId,
+          operation,
+          path,
+          reason: error instanceof Error ? error.name : "unknown",
+        },
+        "Java 内部工作台接口调用失败",
+      );
+      throw new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+        {
+          reason: error instanceof Error ? error.name : "unknown",
+        },
+      );
+    }
+
+    if (!response.ok) {
+      logger.error(
+        {
+          ...buildJavaLogContext(body),
+          requestId,
+          operation,
+          path,
+          status: response.status,
+        },
+        "Java 内部工作台接口返回异常状态",
+      );
+      throw new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+        {
+          status: response.status,
+        },
+      );
+    }
+
+    if (!response.body) {
+      throw new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+      );
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let raw = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        if (value) {
+          raw += decoder.decode(value, { stream: true });
+        }
+      }
+
+      raw += decoder.decode();
+    } catch (error) {
+      logger.error(
+        {
+          ...buildJavaLogContext(body),
+          requestId,
+          operation,
+          path,
+          reason: error instanceof Error ? error.name : "unknown",
+        },
+        "Java 内部工作台流式接口读取失败",
+      );
+      throw new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+        {
+          reason: error instanceof Error ? error.name : "unknown",
+        },
+      );
+    } finally {
+      reader.releaseLock();
+    }
+
+    return raw;
   } finally {
     clearTimeout(timeoutId);
   }
-
-  if (!response.ok) {
-    logger.error(
-      {
-        ...buildJavaLogContext(body),
-        requestId,
-        operation,
-        path,
-        status: response.status,
-      },
-      "Java 内部工作台接口返回异常状态",
-    );
-    throw new BadGatewayError(
-      WORKBENCH_INTERNAL_API_FAILED_CODE,
-      JAVA_INTERNAL_API_USER_MESSAGE,
-      {
-        status: response.status,
-      },
-    );
-  }
-
-  if (!response.body) {
-    throw new BadGatewayError(
-      WORKBENCH_INTERNAL_API_FAILED_CODE,
-      JAVA_INTERNAL_API_USER_MESSAGE,
-    );
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let raw = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      if (value) {
-        raw += decoder.decode(value, { stream: true });
-      }
-    }
-
-    raw += decoder.decode();
-  } catch (error) {
-    logger.error(
-      {
-        ...buildJavaLogContext(body),
-        requestId,
-        operation,
-        path,
-        reason: error instanceof Error ? error.name : "unknown",
-      },
-      "Java 内部工作台流式接口读取失败",
-    );
-    throw new BadGatewayError(
-      WORKBENCH_INTERNAL_API_FAILED_CODE,
-      JAVA_INTERNAL_API_USER_MESSAGE,
-      {
-        reason: error instanceof Error ? error.name : "unknown",
-      },
-    );
-  } finally {
-    reader.releaseLock();
-  }
-
-  return raw;
 }
 
 async function postJavaEnvelope<T>(

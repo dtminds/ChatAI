@@ -330,6 +330,79 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("keeps but hides page smart replies for messages already followed by an agent reply", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-7",
+              seq: 7,
+              text: "客户问题",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-agent-8",
+              senderType: "agent",
+              seq: 8,
+              text: "客服回复",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "最新客户问题",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "旧问题推荐",
+              messageId: "7",
+              pollComplete: true,
+              status: "ready",
+            },
+            {
+              assistantName: "智能助手",
+              content: "最新问题推荐",
+              messageId: "9",
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
+    ).toMatchObject({
+      "7": {
+        content: "旧问题推荐",
+      },
+      "9": {
+        content: "最新问题推荐",
+      },
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).toEqual({
+      "7": true,
+    });
+  });
+
   it("adds non-terminal smart replies from the message page to pending", async () => {
     const baseService = createMockWorkbenchService();
     const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
@@ -560,7 +633,18 @@ describe("useWorkbenchStore", () => {
 
     expect(
       useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
-    ).toEqual({});
+    ).toMatchObject({
+      "9": {
+        content: "旧推荐",
+      },
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).toEqual({
+      "9": true,
+    });
     expect(
       useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
     ).toEqual({});
@@ -568,10 +652,34 @@ describe("useWorkbenchStore", () => {
 
   it("keeps manually triggered processing smart replies in the poll candidates", async () => {
     const baseService = createMockWorkbenchService();
+    const observedGeneralAnswerRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
 
     setWorkbenchService({
       ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "已存在的最新推荐",
+              messageId: "9",
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
       async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+
         return {
           suggestion: {
             assistantName: "智能助手",
@@ -581,18 +689,22 @@ describe("useWorkbenchStore", () => {
           },
         };
       },
-      async pollSmartReplies() {
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
         return { suggestions: [] };
       },
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    observedGeneralAnswerRequests.length = 0;
+    observedSmartReplyRequests.length = 0;
 
     const message = useWorkbenchStore
       .getState()
       .messagesByConversationId["conv-001"].find(
         (item): item is Message & { role: "customer" } =>
-          item.role === "customer" && item.seq === 9,
+          item.role === "customer" && item.seq === 8,
       );
 
     expect(message).toBeDefined();
@@ -602,7 +714,265 @@ describe("useWorkbenchStore", () => {
     expect(
       useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
     ).toMatchObject({
-      "9": true,
+      "8": true,
+    });
+    expect(observedGeneralAnswerRequests).toEqual([
+      expect.objectContaining({
+        conversationId: "conv-001",
+        msgId: 8,
+      }),
+    ]);
+    expect(observedSmartReplyRequests.at(-1)).toEqual({
+      conversationId: "conv-001",
+      msgIds: [8],
+    });
+  });
+
+  it("reveals an existing hidden smart reply without requesting generation", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedGeneralAnswerRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-7",
+              seq: 7,
+              text: "客户问题",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-agent-8",
+              senderType: "agent",
+              seq: 8,
+              text: "客服回复",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "最新客户问题",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "旧问题推荐",
+              messageId: "7",
+              pollComplete: true,
+              status: "ready",
+            },
+            {
+              assistantName: "智能助手",
+              content: "最新问题推荐",
+              messageId: "9",
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+
+        return { suggestion: null };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    observedSmartReplyRequests.length = 0;
+    observedGeneralAnswerRequests.length = 0;
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 7,
+      );
+
+    expect(message).toBeDefined();
+
+    await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
+
+    expect(
+      useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).toEqual({});
+    expect(observedSmartReplyRequests).toEqual([]);
+    expect(observedGeneralAnswerRequests).toEqual([]);
+  });
+
+  it("checks smart reply history once before generating manually", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedGeneralAnswerRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "已存在的最新推荐",
+              messageId: "9",
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return {
+          suggestions: [
+            {
+              assistantName: "智能助手",
+              content: "单次历史推荐",
+              messageId: String(request.msgIds[0]),
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+
+        return { suggestion: null };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    observedSmartReplyRequests.length = 0;
+    observedGeneralAnswerRequests.length = 0;
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 8,
+      );
+
+    expect(message).toBeDefined();
+
+    await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
+
+    expect(observedSmartReplyRequests).toEqual([
+      {
+        conversationId: "conv-001",
+        msgIds: [8],
+      },
+    ]);
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
+    ).toMatchObject({
+      "8": {
+        content: "单次历史推荐",
+      },
+    });
+    expect(observedGeneralAnswerRequests).toEqual([]);
+  });
+
+  it("requests generation after manual smart reply history lookup returns empty", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedGeneralAnswerRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "已存在的最新推荐",
+              messageId: "9",
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+
+        return {
+          suggestion: {
+            assistantName: "智能助手",
+            content: "",
+            messageId: String(request.msgId),
+            status: "processing",
+          },
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    observedSmartReplyRequests.length = 0;
+    observedGeneralAnswerRequests.length = 0;
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 8,
+      );
+
+    expect(message).toBeDefined();
+
+    await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
+
+    expect(observedSmartReplyRequests[0]).toEqual(
+      {
+        conversationId: "conv-001",
+        msgIds: [8],
+      },
+    );
+    expect(observedGeneralAnswerRequests).toEqual([
+      expect.objectContaining({
+        conversationId: "conv-001",
+        msgId: 8,
+      }),
+    ]);
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).toMatchObject({
+      "8": true,
     });
   });
 
@@ -802,6 +1172,14 @@ describe("useWorkbenchStore", () => {
 
         return {
           ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-11",
+              seq: 11,
+              text: "第二条手动推荐",
+            }),
+          ],
           smartReplies: [
             {
               assistantName: "智能助手",
@@ -811,8 +1189,8 @@ describe("useWorkbenchStore", () => {
             },
             {
               assistantName: "智能助手",
-              content: "已有结果",
-              messageId: "9",
+              content: "已有最新结果",
+              messageId: "10",
               pollComplete: true,
               status: "ready",
             },
@@ -825,7 +1203,7 @@ describe("useWorkbenchStore", () => {
             assistantName: "智能助手",
             content: "",
             messageId: String(request.msgId),
-              status: "processing",
+            status: "processing",
           },
         };
       },
@@ -839,7 +1217,7 @@ describe("useWorkbenchStore", () => {
             {
               assistantName: "智能助手",
               content: "第二条结果",
-              messageId: "9",
+              messageId: "11",
               pollComplete: true,
               status: "ready",
             },
@@ -857,7 +1235,7 @@ describe("useWorkbenchStore", () => {
       .getState()
       .messagesByConversationId["conv-001"].find(
         (item): item is Message & { role: "customer" } =>
-          item.role === "customer" && item.seq === 9,
+          item.role === "customer" && item.seq === 11,
       );
 
     expect(message).toBeDefined();
@@ -877,7 +1255,7 @@ describe("useWorkbenchStore", () => {
 
     expect(
       useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
-        "9"
+        "11"
       ],
     ).toMatchObject({
       content: "第二条结果",

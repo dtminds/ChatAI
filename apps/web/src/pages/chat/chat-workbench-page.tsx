@@ -68,9 +68,7 @@ import type {
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
-import {
-  type SmartReplySendPayload,
-} from "@/pages/chat/api/smart-reply-adapter";
+import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -200,6 +198,7 @@ function ChatWorkbenchContent({
     messagePaginationByConversationId,
     messagesByConversationId,
     smartReplyByMessageIdByConversationId,
+    smartReplyHiddenMessageKeysByConversationId,
     pollState,
     pollWorkbench,
     requestSmartReplyGeneralAnswer,
@@ -332,8 +331,19 @@ function ChatWorkbenchContent({
       return {};
     }
 
-    return smartReplyByMessageIdByConversationId[activeConversation.id] ?? {};
-  }, [activeConversation, smartReplyByMessageIdByConversationId]);
+    const suggestions =
+      smartReplyByMessageIdByConversationId[activeConversation.id] ?? {};
+    const hidden =
+      smartReplyHiddenMessageKeysByConversationId[activeConversation.id] ?? {};
+
+    return Object.fromEntries(
+      Object.entries(suggestions).filter(([lookupKey]) => !hidden[lookupKey]),
+    );
+  }, [
+    activeConversation,
+    smartReplyByMessageIdByConversationId,
+    smartReplyHiddenMessageKeysByConversationId,
+  ]);
   const activeGroupMembers =
     activeConversation?.mode === "group"
       ? (groupMembersByConversationId[activeConversation.id] ?? [])

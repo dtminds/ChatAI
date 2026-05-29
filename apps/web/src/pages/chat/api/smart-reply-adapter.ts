@@ -459,6 +459,7 @@ export function collectPendingSmartReplyPollMsgIds(
   suggestions: Record<string, SmartReplySuggestion>,
   pending: Record<string, true>,
   limit = 100,
+  options?: { allowKeys?: Set<string> },
 ) {
   const unansweredKeys = new Set(
     collectUnansweredSmartReplyPendingKeys(messages, Number.POSITIVE_INFINITY),
@@ -469,7 +470,10 @@ export function collectPendingSmartReplyPollMsgIds(
   for (const message of messages) {
     const lookupKey = getSmartReplyLookupKey(message);
 
-    if (!pending[lookupKey] || !unansweredKeys.has(lookupKey)) {
+    if (
+      !pending[lookupKey] ||
+      (!unansweredKeys.has(lookupKey) && !options?.allowKeys?.has(lookupKey))
+    ) {
       continue;
     }
 

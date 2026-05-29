@@ -5,6 +5,7 @@ import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/ap
 import { getFirstUnreadCustomerMessageId } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
 import type { Message } from "@/pages/chat/chat-types";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import type { WorkbenchMessageDto } from "@chatai/contracts";
 import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
@@ -95,6 +96,31 @@ function getIntersectionObserverObserveCallCount(
     (count, instance) => count + instance.observe.mock.calls.length,
     0,
   );
+}
+
+function createSmartReplyTextMessageDto({
+  id,
+  senderType = "customer",
+  seq,
+  text,
+}: {
+  id: string;
+  senderType?: "customer" | "agent";
+  seq: number;
+  text: string;
+}): WorkbenchMessageDto {
+  return {
+    content: { text },
+    contentType: "text",
+    conversationId: "conv-001",
+    createdAt: 1_778_400_000_000 + seq * 1_000,
+    customerId: "cust-001",
+    messageId: id,
+    seatId: "drc",
+    senderType,
+    seq,
+    status: "sent",
+  };
 }
 
 describe("ChatWorkbenchPage", () => {
@@ -207,6 +233,31 @@ describe("ChatWorkbenchPage", () => {
 
     setWorkbenchService({
       ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-7",
+              seq: 7,
+              text: "客户想了解活动权益",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-agent-8",
+              senderType: "agent",
+              seq: 8,
+              text: "客服已回复",
+            }),
+          ],
+          smartReplies: [],
+        };
+      },
       async requestSmartReplyGeneralAnswer() {
         throw new Error("当前未配置可用AI助手");
       },
@@ -215,7 +266,7 @@ describe("ChatWorkbenchPage", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getAllByRole("button", { name: "消息操作" }).at(-1)!);
+    await user.click(screen.getAllByRole("button", { name: "消息操作" })[0]);
     await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
 
     expect(await screen.findByTestId("smart-reply-card")).toBeInTheDocument();
@@ -232,6 +283,31 @@ describe("ChatWorkbenchPage", () => {
 
     setWorkbenchService({
       ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-7",
+              seq: 7,
+              text: "客户想了解活动权益",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-agent-8",
+              senderType: "agent",
+              seq: 8,
+              text: "客服已回复",
+            }),
+          ],
+          smartReplies: [],
+        };
+      },
       async requestSmartReplyGeneralAnswer() {
         return {
           suggestion: {
@@ -250,7 +326,7 @@ describe("ChatWorkbenchPage", () => {
     renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getAllByRole("button", { name: "消息操作" }).at(-1)!);
+    await user.click(screen.getAllByRole("button", { name: "消息操作" })[0]);
     await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
     expect(await screen.findByTestId("smart-reply-card")).toBeInTheDocument();
 
@@ -258,6 +334,85 @@ describe("ChatWorkbenchPage", () => {
 
     expect(composer).toHaveTextContent("建议先确认权益清单口径");
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("hides answered page smart replies until the recommendation action is selected", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: Array<{ conversationId: string; msgIds: number[] }> = [];
+    const observedGeneralAnswerRequests: Array<{ conversationId: string; msgId: number }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-7",
+              seq: 7,
+              text: "客户想了解活动权益",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-agent-8",
+              senderType: "agent",
+              seq: 8,
+              text: "客服已回复",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "最新客户问题",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "旧问题推荐话术",
+              messageId: "7",
+              pollComplete: true,
+              status: "ready",
+            },
+            {
+              assistantName: "智能助手",
+              content: "最新问题推荐话术",
+              messageId: "9",
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+
+        return { suggestion: null };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    expect(screen.queryByText("旧问题推荐话术")).not.toBeInTheDocument();
+    expect(screen.getByText("最新问题推荐话术")).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "消息操作" })[0]);
+    await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
+
+    expect(screen.getByText("旧问题推荐话术")).toBeInTheDocument();
+    expect(observedSmartReplyRequests).toEqual([]);
+    expect(observedGeneralAnswerRequests).toEqual([]);
   });
 
   it("observes the first unread customer message within the unread tail", async () => {

@@ -176,6 +176,7 @@ type WorkbenchState = {
     Record<string, SmartReplySuggestion>
   >;
   smartReplyEnabledByConversationId: Record<string, boolean>;
+  smartReplyHiddenMessageKeysByConversationId: Record<string, Record<string, true>>;
   smartReplyPendingMessageKeysByConversationId: Record<string, Record<string, true>>;
   smartReplyLastPolledAtByConversationId: Record<string, number>;
   activeAccountId: string;
@@ -383,6 +384,7 @@ function createInitialState(): Omit<
     messagesByConversationId: {},
     smartReplyByMessageIdByConversationId: {},
     smartReplyEnabledByConversationId: {},
+    smartReplyHiddenMessageKeysByConversationId: {},
     smartReplyPendingMessageKeysByConversationId: {},
     smartReplyLastPolledAtByConversationId: {},
     pendingMessages: [],
@@ -730,10 +732,62 @@ function mapSmartReplyPendingKeys(keys: string[]) {
 
 function mapSmartReplyPendingKeysFromSuggestions(
   suggestions: Record<string, SmartReplySuggestion>,
+  options?: { hidden?: Record<string, true> },
 ) {
   return mapSmartReplyPendingKeys(
-    collectSmartReplyPendingKeysFromSuggestions(suggestions),
+    collectSmartReplyPendingKeysFromSuggestions(suggestions).filter(
+      (key) => !options?.hidden?.[key],
+    ),
   );
+}
+
+function buildSmartReplyHiddenKeys(
+  messages: Message[],
+  suggestions: Record<string, SmartReplySuggestion>,
+) {
+  const hidden: Record<string, true> = {};
+
+  for (const key of Object.keys(suggestions)) {
+    const messageIndex = messages.findIndex(
+      (message) => getSmartReplyLookupKey(message) === key,
+    );
+
+    if (messageIndex < 0) {
+      continue;
+    }
+
+    const hasAgentReplyAfter = messages
+      .slice(messageIndex + 1)
+      .some((message) => message.role === "agent");
+
+    if (hasAgentReplyAfter) {
+      hidden[key] = true;
+    }
+  }
+
+  return hidden;
+}
+
+function omitSmartReplyHiddenKeysForSuggestions(
+  hidden: Record<string, true>,
+  suggestions: Record<string, SmartReplySuggestion>,
+) {
+  let nextHidden = hidden;
+
+  for (const key of Object.keys(suggestions)) {
+    nextHidden = omitSmartReplyHiddenKey(nextHidden, key);
+  }
+
+  return nextHidden;
+}
+
+function omitSmartReplyHiddenKey(
+  hidden: Record<string, true>,
+  lookupKey: string,
+) {
+  const { [lookupKey]: _removed, ...restHidden } = hidden;
+
+  return restHidden;
 }
 
 function getPageSmartReplies(page: WorkbenchConversationPage) {
@@ -769,19 +823,35 @@ function filterSmartReplyRecordByKeys<T>(
 }
 
 function pruneSmartReplyStateForMessages(input: {
+  hidden?: Record<string, true>;
   messages: Message[];
   pending: Record<string, true>;
   suggestions: Record<string, SmartReplySuggestion>;
 }) {
   const retainedKeys = new Set(
-    collectUnansweredSmartReplyPendingKeys(
-      input.messages,
-      Number.POSITIVE_INFINITY,
-    ),
+    input.messages
+      .filter((message) => message.role !== "system")
+      .map((message) => getSmartReplyLookupKey(message)),
+  );
+  const hiddenByAnsweredMessages = buildSmartReplyHiddenKeys(
+    input.messages,
+    input.suggestions,
   );
 
   return {
-    pending: filterSmartReplyRecordByKeys(input.pending, retainedKeys),
+    hidden: filterSmartReplyRecordByKeys(
+      {
+        ...input.hidden,
+        ...hiddenByAnsweredMessages,
+      },
+      retainedKeys,
+    ),
+    pending: filterSmartReplyRecordByKeys(
+      input.pending,
+      new Set(
+        [...retainedKeys].filter((key) => !hiddenByAnsweredMessages[key]),
+      ),
+    ),
     suggestions: filterSmartReplyRecordByKeys(input.suggestions, retainedKeys),
   };
 }
@@ -824,6 +894,7 @@ function mergeSmartReplyPollResult(
   nextSuggestions: Record<string, SmartReplySuggestion>,
   messages: Message[],
   requestedMsgIds: number[],
+  options: { allowAnswered?: boolean } = {},
 ) {
   const nextPending = { ...previousPending };
   const mergedSuggestions = { ...previousSuggestions };
@@ -835,7 +906,11 @@ function mergeSmartReplyPollResult(
   for (const msgId of requestedMsgIds) {
     const lookupKey = String(msgId);
 
-    if (!returnedMessageIds.has(lookupKey) && !unansweredKeys.has(lookupKey)) {
+    if (
+      !returnedMessageIds.has(lookupKey) &&
+      !options.allowAnswered &&
+      !unansweredKeys.has(lookupKey)
+    ) {
       delete nextPending[lookupKey];
     }
   }
@@ -845,7 +920,7 @@ function mergeSmartReplyPollResult(
       delete nextPending[messageId];
     }
 
-    if (!unansweredKeys.has(messageId)) {
+    if (!options.allowAnswered && !unansweredKeys.has(messageId)) {
       delete nextPending[messageId];
       continue;
     }
@@ -937,7 +1012,15 @@ function scheduleSmartReplyPoll(
     state.smartReplyByMessageIdByConversationId[conversationId] ?? {};
   const pending =
     state.smartReplyPendingMessageKeysByConversationId[conversationId] ?? {};
-  const msgIds = collectPendingSmartReplyPollMsgIds(messages, suggestions, pending);
+  const hidden =
+    state.smartReplyHiddenMessageKeysByConversationId[conversationId] ?? {};
+  const msgIds = collectPendingSmartReplyPollMsgIds(
+    messages,
+    suggestions,
+    pending,
+    undefined,
+    { allowKeys: new Set(Object.keys(pending).filter((key) => !hidden[key])) },
+  );
 
   options?.syncRuntimeTimers?.(conversationId, pending);
 
@@ -973,12 +1056,16 @@ function scheduleSmartReplyPoll(
           currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {};
         const previousPending =
           currentState.smartReplyPendingMessageKeysByConversationId[conversationId] ?? {};
+        const previousHidden =
+          currentState.smartReplyHiddenMessageKeysByConversationId[conversationId] ??
+          {};
         const merged = mergeSmartReplyPollResult(
           previousSuggestions,
           previousPending,
           smartReplyByMessageId,
           currentState.messagesByConversationId[conversationId] ?? [],
           msgIds,
+          { allowAnswered: true },
         );
         options?.syncRuntimeTimers?.(conversationId, merged.pending);
 
@@ -990,6 +1077,13 @@ function scheduleSmartReplyPoll(
           smartReplyPendingMessageKeysByConversationId: {
             ...currentState.smartReplyPendingMessageKeysByConversationId,
             [conversationId]: merged.pending,
+          },
+          smartReplyHiddenMessageKeysByConversationId: {
+            ...currentState.smartReplyHiddenMessageKeysByConversationId,
+            [conversationId]: omitSmartReplyHiddenKeysForSuggestions(
+              previousHidden,
+              smartReplyByMessageId,
+            ),
           },
         };
       });
@@ -1124,6 +1218,78 @@ function triggerSmartReplyAutoGeneration(
         );
       }
     });
+}
+
+async function revealSmartReplyOrPollOnce(
+  get: () => WorkbenchStore,
+  set: (
+    partial:
+      | Partial<WorkbenchStore>
+      | ((state: WorkbenchStore) => Partial<WorkbenchStore>),
+  ) => void,
+  conversationId: string,
+  message: ChatMessage,
+) {
+  const lookupKey = getSmartReplyLookupKey(message);
+  const existingSuggestion =
+    get().smartReplyByMessageIdByConversationId[conversationId]?.[lookupKey];
+
+  if (existingSuggestion) {
+    set((currentState) => ({
+      smartReplyHiddenMessageKeysByConversationId: {
+        ...currentState.smartReplyHiddenMessageKeysByConversationId,
+        [conversationId]: omitSmartReplyHiddenKey(
+          currentState.smartReplyHiddenMessageKeysByConversationId[
+            conversationId
+          ] ?? {},
+          lookupKey,
+        ),
+      },
+    }));
+
+    return existingSuggestion;
+  }
+
+  const msgId = message.seq;
+
+  if (!Number.isSafeInteger(msgId) || msgId == null || msgId <= 0) {
+    return undefined;
+  }
+
+  const pollResult = await pollSmartReplies(
+    {
+      conversationId,
+      msgIds: [msgId],
+    },
+    get().messagesByConversationId[conversationId] ?? [],
+    {},
+  );
+  const polledSuggestion = pollResult[lookupKey];
+
+  if (!polledSuggestion) {
+    return undefined;
+  }
+
+  set((currentState) => ({
+    smartReplyByMessageIdByConversationId: {
+      ...currentState.smartReplyByMessageIdByConversationId,
+      [conversationId]: {
+        ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {}),
+        [lookupKey]: polledSuggestion,
+      },
+    },
+    smartReplyHiddenMessageKeysByConversationId: {
+      ...currentState.smartReplyHiddenMessageKeysByConversationId,
+      [conversationId]: omitSmartReplyHiddenKey(
+        currentState.smartReplyHiddenMessageKeysByConversationId[
+          conversationId
+        ] ?? {},
+        lookupKey,
+      ),
+    },
+  }));
+
+  return polledSuggestion;
 }
 
 function patchExistingMessageList(
@@ -1673,6 +1839,10 @@ function clearConversationMessageState(
       state.smartReplyEnabledByConversationId,
       smartReplyClearedConversationIds,
     ),
+    smartReplyHiddenMessageKeysByConversationId: omitByKeys(
+      state.smartReplyHiddenMessageKeysByConversationId,
+      smartReplyClearedConversationIds,
+    ),
     smartReplyPendingMessageKeysByConversationId: omitByKeys(
       state.smartReplyPendingMessageKeysByConversationId,
       smartReplyClearedConversationIds,
@@ -1712,6 +1882,7 @@ function getMessageStateConversationIds(state: WorkbenchStore) {
     ...Object.keys(state.messagePaginationByConversationId),
     ...Object.keys(state.hasMoreHistoryByConversationId),
     ...Object.keys(state.smartReplyEnabledByConversationId),
+    ...Object.keys(state.smartReplyHiddenMessageKeysByConversationId),
     ...Object.keys(state.historyStatusByConversationId),
     ...Object.keys(state.historyPanelByConversationId),
     ...Object.keys(state.historyPanelFiltersByConversationId),
@@ -2212,8 +2383,14 @@ export function createWorkbenchStore() {
         }
 
         const pageSmartReplyByMessageId = getPageSmartReplies(page);
-        const pageSmartReplyPending =
-          mapSmartReplyPendingKeysFromSuggestions(pageSmartReplyByMessageId);
+        const pageSmartReplyHidden = buildSmartReplyHiddenKeys(
+          page.messages,
+          pageSmartReplyByMessageId,
+        );
+        const pageSmartReplyPending = mapSmartReplyPendingKeysFromSuggestions(
+          pageSmartReplyByMessageId,
+          { hidden: pageSmartReplyHidden },
+        );
 
         set((currentState) => ({
           activeMessageSeq: getActiveMessageSeq(
@@ -2243,6 +2420,10 @@ export function createWorkbenchStore() {
           smartReplyByMessageIdByConversationId: {
             ...currentState.smartReplyByMessageIdByConversationId,
             [conversationId]: pageSmartReplyByMessageId,
+          },
+          smartReplyHiddenMessageKeysByConversationId: {
+            ...currentState.smartReplyHiddenMessageKeysByConversationId,
+            [conversationId]: pageSmartReplyHidden,
           },
           smartReplyEnabledByConversationId: {
             ...currentState.smartReplyEnabledByConversationId,
@@ -2409,6 +2590,44 @@ export function createWorkbenchStore() {
         }
 
         const lookupKey = getSmartReplyLookupKey(message);
+
+        try {
+          const revealedSuggestion = await revealSmartReplyOrPollOnce(
+            get,
+            set,
+            conversationId,
+            message,
+          );
+
+          if (revealedSuggestion) {
+            if (!isSmartReplyPollComplete(revealedSuggestion)) {
+              set((currentState) => ({
+                smartReplyPendingMessageKeysByConversationId: {
+                  ...currentState.smartReplyPendingMessageKeysByConversationId,
+                  [conversationId]: {
+                    ...(currentState.smartReplyPendingMessageKeysByConversationId[
+                      conversationId
+                    ] ?? {}),
+                    [lookupKey]: true,
+                  },
+                },
+              }));
+              syncSmartReplyRuntimeTimers(
+                conversationId,
+                get().smartReplyPendingMessageKeysByConversationId[conversationId] ??
+                  {},
+              );
+              scheduleSmartReplyPollForConversation(conversationId, {
+                force: true,
+              });
+            }
+
+            return;
+          }
+        } catch {
+          // 单次历史查询失败不展示错误卡片，继续走原生成链路。
+        }
+
         const optimisticSuggestion = createTriggeredSmartReplySuggestion(message);
 
         set((currentState) => ({
@@ -2429,6 +2648,10 @@ export function createWorkbenchStore() {
             },
           },
         }));
+        syncSmartReplyRuntimeTimers(
+          conversationId,
+          get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
+        );
 
         try {
           const suggestion = await requestSmartReplyGeneralAnswer(message, conversationId);
@@ -2465,6 +2688,10 @@ export function createWorkbenchStore() {
             };
           });
 
+          syncSmartReplyRuntimeTimers(
+            conversationId,
+            get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
+          );
           scheduleSmartReplyPollForConversation(conversationId, { force: true });
         } catch (error) {
           set((currentState) => {
@@ -2501,6 +2728,10 @@ export function createWorkbenchStore() {
               },
             };
           });
+          syncSmartReplyRuntimeTimers(
+            conversationId,
+            get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
+          );
         }
       },
       async requestSmartReplyMakeShorter(message) {
@@ -2969,8 +3200,16 @@ export function createWorkbenchStore() {
           const bootstrapSmartReplyByMessageId = conversationPage
             ? getPageSmartReplies(conversationPage)
             : {};
-          const bootstrapSmartReplyPending =
-            mapSmartReplyPendingKeysFromSuggestions(bootstrapSmartReplyByMessageId);
+          const bootstrapSmartReplyHidden = conversationPage
+            ? buildSmartReplyHiddenKeys(
+                conversationPage.messages,
+                bootstrapSmartReplyByMessageId,
+              )
+            : {};
+          const bootstrapSmartReplyPending = mapSmartReplyPendingKeysFromSuggestions(
+            bootstrapSmartReplyByMessageId,
+            { hidden: bootstrapSmartReplyHidden },
+          );
 
           set({
             accounts: bootstrapResult.accounts,
@@ -3022,6 +3261,11 @@ export function createWorkbenchStore() {
           smartReplyByMessageIdByConversationId: conversationPage
             ? {
                 [conversationPage.conversationId]: bootstrapSmartReplyByMessageId,
+              }
+            : {},
+          smartReplyHiddenMessageKeysByConversationId: conversationPage
+            ? {
+                [conversationPage.conversationId]: bootstrapSmartReplyHidden,
               }
             : {},
           smartReplyEnabledByConversationId: conversationPage
@@ -3263,6 +3507,9 @@ export function createWorkbenchStore() {
           const nextSmartReplyByMessageIdByConversationId = {
             ...clearedResourceState.smartReplyByMessageIdByConversationId,
           };
+          const nextSmartReplyHiddenMessageKeysByConversationId = {
+            ...clearedResourceState.smartReplyHiddenMessageKeysByConversationId,
+          };
 
           if (
             response.activeConversationMessages.length > 0 &&
@@ -3279,9 +3526,14 @@ export function createWorkbenchStore() {
               clearedResourceState.smartReplyByMessageIdByConversationId[
                 polledConversationId
               ] ?? {};
+            const currentHidden =
+              clearedResourceState.smartReplyHiddenMessageKeysByConversationId[
+                polledConversationId
+              ] ?? {};
             const currentPending =
               nextSmartReplyPendingMessageKeysByConversationId[polledConversationId] ?? {};
             const prunedSmartReplyState = pruneSmartReplyStateForMessages({
+              hidden: currentHidden,
               messages: nextMessagesByConversationId[polledConversationId],
               pending: currentPending,
               suggestions: currentSuggestions,
@@ -3291,6 +3543,8 @@ export function createWorkbenchStore() {
               prunedSmartReplyState.pending;
             nextSmartReplyByMessageIdByConversationId[polledConversationId] =
               prunedSmartReplyState.suggestions;
+            nextSmartReplyHiddenMessageKeysByConversationId[polledConversationId] =
+              prunedSmartReplyState.hidden;
           }
 
           for (const [conversationId, refreshedMessages] of Object.entries(
@@ -3369,6 +3623,8 @@ export function createWorkbenchStore() {
             pendingMessages,
             smartReplyByMessageIdByConversationId:
               nextSmartReplyByMessageIdByConversationId,
+            smartReplyHiddenMessageKeysByConversationId:
+              nextSmartReplyHiddenMessageKeysByConversationId,
             smartReplyPendingMessageKeysByConversationId:
               nextSmartReplyPendingMessageKeysByConversationId,
             pollState: {
@@ -4363,8 +4619,14 @@ export function createWorkbenchStore() {
 
         const accountSwitchSmartReplyByMessageId =
           getPageSmartReplies(conversationPage);
-        const accountSwitchSmartReplyPending =
-          mapSmartReplyPendingKeysFromSuggestions(accountSwitchSmartReplyByMessageId);
+        const accountSwitchSmartReplyHidden = buildSmartReplyHiddenKeys(
+          conversationPage.messages,
+          accountSwitchSmartReplyByMessageId,
+        );
+        const accountSwitchSmartReplyPending = mapSmartReplyPendingKeysFromSuggestions(
+          accountSwitchSmartReplyByMessageId,
+          { hidden: accountSwitchSmartReplyHidden },
+        );
 
         set((currentState) => {
           const currentMessages =
@@ -4399,6 +4661,10 @@ export function createWorkbenchStore() {
             smartReplyByMessageIdByConversationId: {
               ...currentState.smartReplyByMessageIdByConversationId,
               [conversationPage.conversationId]: accountSwitchSmartReplyByMessageId,
+            },
+            smartReplyHiddenMessageKeysByConversationId: {
+              ...currentState.smartReplyHiddenMessageKeysByConversationId,
+              [conversationPage.conversationId]: accountSwitchSmartReplyHidden,
             },
             smartReplyEnabledByConversationId: {
               ...currentState.smartReplyEnabledByConversationId,
@@ -4531,8 +4797,14 @@ export function createWorkbenchStore() {
         }
 
         const pageSmartReplyByMessageId = getPageSmartReplies(page);
-        const pageSmartReplyPending =
-          mapSmartReplyPendingKeysFromSuggestions(pageSmartReplyByMessageId);
+        const pageSmartReplyHidden = buildSmartReplyHiddenKeys(
+          page.messages,
+          pageSmartReplyByMessageId,
+        );
+        const pageSmartReplyPending = mapSmartReplyPendingKeysFromSuggestions(
+          pageSmartReplyByMessageId,
+          { hidden: pageSmartReplyHidden },
+        );
 
         set((currentState) => {
           const staleMessageConversationIds = [
@@ -4572,6 +4844,10 @@ export function createWorkbenchStore() {
             smartReplyByMessageIdByConversationId: {
               ...clearedMessageState.smartReplyByMessageIdByConversationId,
               [conversationId]: pageSmartReplyByMessageId,
+            },
+            smartReplyHiddenMessageKeysByConversationId: {
+              ...clearedMessageState.smartReplyHiddenMessageKeysByConversationId,
+              [conversationId]: pageSmartReplyHidden,
             },
             smartReplyEnabledByConversationId: {
               ...clearedMessageState.smartReplyEnabledByConversationId,

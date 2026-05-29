@@ -716,6 +716,37 @@ describe("smart-reply-adapter", () => {
     ).toEqual([1]);
   });
 
+  it("collects explicitly allowed pending poll msg ids even when answered", () => {
+    expect(
+      collectPendingSmartReplyPollMsgIds(
+        [
+          {
+            content: { text: "已被回复的问题", type: "text" },
+            id: "msg-1",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:01:00+08:00",
+            seq: 1,
+          },
+          {
+            content: { text: "客服回复", type: "text" },
+            id: "msg-2",
+            role: "agent",
+            sender: { id: "agent-1", name: "客服" },
+            sentAt: "2026-05-25T10:02:00+08:00",
+            seq: 2,
+          },
+        ] as Message[],
+        {},
+        {
+          "1": true,
+        },
+        100,
+        { allowKeys: new Set(["1"]) },
+      ),
+    ).toEqual([1]);
+  });
+
   it("derives pending keys from non-terminal smart replies", () => {
     expect(
       collectSmartReplyPendingKeysFromSuggestions({

@@ -8,6 +8,11 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { VoiceMessageContent } from "@/pages/chat/chat-types";
+import {
+  playVoicePlaybackEndCue,
+  playVoicePlaybackFailureCue,
+  playVoicePlaybackStartCue,
+} from "@/pages/chat/lib/voice-playback-cues";
 
 type VoiceMessageCardProps = {
   content: VoiceMessageContent;
@@ -61,6 +66,7 @@ export function VoiceMessageCard({
   const mountedRef = useRef(true);
   const playbackReadyNotifiedUrlRef = useRef<string | undefined>(undefined);
   const audioPlaybackUrlRef = useRef<string | null>(null);
+  const startCuePlayedRef = useRef(false);
   const previousAudioUrlRef = useRef(content.audioUrl);
   const audioListenerHandlersRef = useRef<AudioListenerHandlers>({
     error: () => undefined,
@@ -168,6 +174,7 @@ export function VoiceMessageCard({
       return;
     }
 
+    void playVoicePlaybackEndCue();
     clearLoadTimeout();
     clearActivePlayback();
     setCurrentTime(0);
@@ -179,6 +186,7 @@ export function VoiceMessageCard({
       return;
     }
 
+    void playVoicePlaybackFailureCue();
     clearLoadTimeout();
     releaseAudioRef.current();
     clearActivePlayback();
@@ -190,6 +198,7 @@ export function VoiceMessageCard({
       return;
     }
 
+    void playVoicePlaybackFailureCue();
     clearLoadTimeout();
     releaseAudioRef.current();
     clearActivePlayback();
@@ -239,6 +248,10 @@ export function VoiceMessageCard({
 
     syncAudioProgress();
     setPlaybackState("playing");
+    if (!startCuePlayedRef.current) {
+      startCuePlayedRef.current = true;
+      void playVoicePlaybackStartCue();
+    }
     confirmPlaybackReady();
   }, [confirmPlaybackReady, syncAudioProgress]);
 
@@ -492,6 +505,7 @@ export function VoiceMessageCard({
     if (audioRef.current.readyState >= HAVE_METADATA_READY_STATE) {
       audioRef.current.currentTime = 0;
     }
+    startCuePlayedRef.current = false;
     setCurrentTime(0);
     loadTimeoutRef.current = window.setTimeout(() => {
       const audio = audioRef.current;

@@ -60,6 +60,13 @@
 - 当前理论上不依赖跨表事务；如果未来要引入事务，先明确业务一致性需求和失败补偿策略。
 - API 返回结构和 DTO 变更优先更新 `packages/contracts`，再改 web/backend 消费方。
 
+## Database Table Boundaries
+
+- `xy_wap_embed_*` 前缀的表中，只有 `apps/backend/src/db/writable-tables.ts` 白名单内的表允许 Node 后端写入。
+- 未在白名单中的表（如 `xy_wap_embed_msg_audit_info`、`xy_wap_embed_group_member`、`xy_wap_embed_contact` 等）属于平台层，Node 后端只读不写。
+- 需要修改平台层数据时，必须通过对应的 API 接口，禁止直接 INSERT/UPDATE/DELETE。
+- 发现平台层数据缺失或异常，应反馈给平台团队修复，不要在应用层做补偿（如轮询修补、重试回写等）。
+
 ## Environment Files
 
 - 根目录 `.env.development`: 本地前端 -> 本地 backend。

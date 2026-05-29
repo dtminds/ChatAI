@@ -1112,15 +1112,16 @@ html.dark[data-appearance-theme="nature"] {
   }
 
   .shiny-text {
-    --shiny-text-shimmer-width: 80px;
+    --shiny-text-duration: 1.35s;
+    --shiny-text-shimmer-width: 56px;
     display: inline-block;
     background-image:
       linear-gradient(
         110deg,
         transparent 0%,
-        color-mix(in oklch, currentColor 20%, white) 42%,
-        color-mix(in oklch, currentColor 8%, white) 50%,
-        color-mix(in oklch, currentColor 20%, white) 58%,
+        color-mix(in oklch, currentColor 24%, white) 34%,
+        white 50%,
+        color-mix(in oklch, currentColor 24%, white) 66%,
         transparent 100%
       ),
       linear-gradient(
@@ -1133,7 +1134,7 @@ html.dark[data-appearance-theme="nature"] {
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    animation: shiny-text-sweep 2.8s linear infinite;
+    animation: shiny-text-sweep var(--shiny-text-duration) cubic-bezier(0.36, 0, 0.2, 1) infinite;
   }
 
   .anim-pop-right {

@@ -1015,8 +1015,8 @@ function SmartReplyReadonlyContent({
             size={14}
             strokeWidth={2}
           />
-          <p className="text-[13px]" role="status">
-            <ShinyText>
+          <p className="text-[13px] text-smart-reply-action" role="status">
+            <ShinyText duration={1.15} shimmerWidth={44}>
               {processingLabel ??
                 (isThinking ? "AI正在生成话术..." : "正在处理消息...")}
             </ShinyText>

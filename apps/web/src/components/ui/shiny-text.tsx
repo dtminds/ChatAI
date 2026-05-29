@@ -1,13 +1,15 @@
 import { cn } from "@/lib/utils";
 
 type ShinyTextProps = React.ComponentProps<"span"> & {
+  duration?: number;
   shimmerWidth?: number;
 };
 
 function ShinyText({
   children,
   className,
-  shimmerWidth = 80,
+  duration = 1.35,
+  shimmerWidth = 56,
   style,
   ...props
 }: ShinyTextProps) {
@@ -16,6 +18,7 @@ function ShinyText({
       data-slot="shiny-text"
       style={
         {
+          "--shiny-text-duration": `${duration}s`,
           "--shiny-text-shimmer-width": `${shimmerWidth}px`,
           ...style,
         } as React.CSSProperties

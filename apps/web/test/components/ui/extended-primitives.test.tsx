@@ -90,6 +90,7 @@ describe("extended UI primitives", () => {
       <ShinyText
         aria-label="AI 正在思考"
         className="text-primary"
+        duration={1.2}
         shimmerWidth={96}
       >
         AI正在生成话术...
@@ -99,6 +100,7 @@ describe("extended UI primitives", () => {
     const text = screen.getByText("AI正在生成话术...");
     expect(text).toHaveAttribute("data-slot", "shiny-text");
     expect(text).toHaveAttribute("aria-label", "AI 正在思考");
+    expect(text).toHaveStyle({ "--shiny-text-duration": "1.2s" });
     expect(text).toHaveStyle({ "--shiny-text-shimmer-width": "96px" });
     expect(text).toHaveClass("text-primary");
   });

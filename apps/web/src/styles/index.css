@@ -52,6 +52,8 @@
   --scrollbar-track-padding: 2px;
   --scrollbar-thumb: oklch(0.708 0 0 / 0.58);
   --scrollbar-thumb-hover: oklch(0.556 0 0 / 0.72);
+  --chat-bubble-spring-easing: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --chat-bubble-pop-duration: 0.4s;
   --sidebar: oklch(0.98 0 0);
   --sidebar-foreground: oklch(0.14 0 0);
   --sidebar-primary: oklch(0.2 0 0);
@@ -1107,6 +1109,35 @@ html.dark[data-appearance-theme="nature"] {
 @layer components {
   .redpacket-message-card {
     background-color: #FA9D3D;
+  }
+
+  .anim-pop-right {
+    animation: chat-bubble-pop var(--chat-bubble-pop-duration) var(--chat-bubble-spring-easing) both;
+    transform-origin: bottom right;
+  }
+
+  .anim-pop-left {
+    animation: chat-bubble-pop var(--chat-bubble-pop-duration) var(--chat-bubble-spring-easing) both;
+    transform-origin: bottom left;
+  }
+}
+
+@keyframes chat-bubble-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(20px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-pop-right,
+  .anim-pop-left {
+    animation: none;
   }
 }
 

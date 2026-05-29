@@ -1656,30 +1656,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("INVALID_TARGET_ID", "目标ID无效");
     }
 
-    // 1. 先查本地 DB 是否已有会话
-    const existingConversationId = await this.repository.findConversationIdByTarget(
-      seatScope.uid,
-      seatScope.platform,
-      seatThirdUserId,
-      payload.chatType,
-      targetId,
-    );
-
-    if (existingConversationId) {
-      const hydrated = await this.repository.getHydratedConversation(
-        seatScope.uid,
-        seatScope.platform,
-        seatThirdUserId,
-        existingConversationId,
-      );
-      if (!hydrated) {
-        throw new NotFoundError("CONVERSATION_HYDRATION_FAILED", "打开会话失败，请稍后重试");
-      }
-      return hydrated;
-    }
-
-    // 2. 本地不存在，调用 Java 接口创建（Java 接口待接入，目前调用会失败并返回 undefined）
-    // Java 调用失败（网络错误、接口未实现等）时 javaClient 内部 catch 返回 undefined
+    // Java owns the get-or-create decision: create when absent, restore when hidden, return id.
     const javaResponse = await this.javaClient.createConversation({
       chatType: payload.chatType,
       platform: seatScope.platform,
@@ -1690,11 +1667,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
     });
 
     if (!javaResponse?.conversationId) {
-      // Java 未返回有效 conversationId，不做本地兜底，直接报错
       throw new BadRequestError("CREATE_CONVERSATION_FAILED", "创建会话失败，请稍后重试");
     }
 
-    // 3. Java 返回了 conversationId，检查是否已同步到本地 DB
     const hydrated = await this.repository.getHydratedConversation(
       seatScope.uid,
       seatScope.platform,
@@ -1703,7 +1678,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     if (!hydrated) {
-      // Java 创建成功但会话尚未同步到本地 DB，不自行插入，报错提示
       this.logger.warn(
         { conversationId: javaResponse.conversationId, payload },
         "Java 已创建会话但本地 DB 尚未同步",

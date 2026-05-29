@@ -635,6 +635,7 @@ function getConversationMode(
 function upsertMessageList(
   currentMessages: Message[],
   nextMessages: Message[],
+  options?: { markAppendedAsNew?: boolean },
 ) {
   const merged = [...currentMessages];
   const appendedMessages: Message[] = [];
@@ -699,7 +700,11 @@ function upsertMessageList(
       continue;
     }
 
-    appendedMessages.push(nextMessage);
+    appendedMessages.push(
+      options?.markAppendedAsNew && nextMessage.role !== "system"
+        ? { ...nextMessage, isNew: true }
+        : nextMessage,
+    );
   }
 
   return [...merged, ...sortMessagesForAppend(appendedMessages)];
@@ -2832,6 +2837,7 @@ export function createWorkbenchStore() {
             nextMessagesByConversationId[polledConversationId] = upsertMessageList(
               currentMessages,
               response.activeConversationMessages,
+              { markAppendedAsNew: true },
             );
             const currentSuggestions =
               clearedResourceState.smartReplyByMessageIdByConversationId[
@@ -3168,6 +3174,7 @@ export function createWorkbenchStore() {
             author: account ? `${account.name}-${account.operator}` : me.displayName,
             isGroupConversation: activeConversation.mode === "group",
             isOwnMessage: true,
+            isNew: true,
             clientMessageId: segmentClientMessageId,
             content: buildOptimisticMessageContent(segmentForSend, quoteForSegment),
             conversationId: activeConversationId,

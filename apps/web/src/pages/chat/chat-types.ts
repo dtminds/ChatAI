@@ -260,6 +260,7 @@ type BaseMessage = {
   sentAt: string;
   status: MessageStatus;
   clientMessageId?: string;
+  isNew?: boolean;
   optNo?: string;
   remoteMessageId?: string;
   seq?: number;

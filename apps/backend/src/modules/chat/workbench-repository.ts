@@ -2976,31 +2976,6 @@ export class WorkbenchRepository {
     return this.mapHydratedConversationRow(conversationRow, hydrationSources);
   }
 
-  async findConversationIdByTarget(
-    uid: number,
-    platform: number,
-    seatThirdUserId: string,
-    chatType: number,
-    targetId: string,
-  ): Promise<string | undefined> {
-    let query = this.db
-      .selectFrom("xy_wap_embed_conversation")
-      .select("id")
-      .where("uid", "=", uid)
-      .where("platform", "=", platform)
-      .where("third_userid", "=", seatThirdUserId)
-      .where("chat_type", "=", chatType);
-
-    if (chatType === CHAT_TYPE_GROUP) {
-      query = query.where("third_group_id", "=", targetId);
-    } else {
-      query = query.where("third_external_userid", "=", targetId);
-    }
-
-    const row = await query.executeTakeFirst();
-    return row?.id != null ? String(row.id) : undefined;
-  }
-
 }
 
 

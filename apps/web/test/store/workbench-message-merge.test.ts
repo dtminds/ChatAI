@@ -376,4 +376,66 @@ describe("workbench message merge state", () => {
       skippedHiddenCount: 0,
     });
   });
+
+  it("marks optimistic and polled appended chat messages as new without touching initial history", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage(payload) {
+        return {
+          clientMessageId: payload.clientMessageId,
+          messageId: "opt-new-001",
+          optNo: "opt-new-001",
+          status: "accepted",
+        };
+      },
+      async poll() {
+        return {
+          activeConversationMessages: [
+            {
+              content: {
+                text: "轮询新客户消息",
+              },
+              contentType: "text",
+              conversationId: "conv-001",
+              createdAt: Date.now(),
+              customerId: "cust-001",
+              messageId: "remote-new-customer-001",
+              seatId: "drc",
+              senderType: "customer",
+              seq: 1000,
+              status: "sent",
+            },
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .messagesByConversationId["conv-001"].some((message) => message.isNew),
+    ).toBe(false);
+
+    await useWorkbenchStore.getState().sendAgentTextMessage("本地新客服消息");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+
+    expect(messages.find((message) => message.optNo === "opt-new-001")).toMatchObject({
+      isNew: true,
+      role: "agent",
+    });
+    expect(messages.find((message) => message.id === "remote-new-customer-001"))
+      .toMatchObject({
+        isNew: true,
+        role: "customer",
+      });
+  });
 });

@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loading03Icon, UserCheck01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -54,6 +54,8 @@ export function AccountSidebarItem({
   const closePopoverTimerRef = useRef<number | null>(null);
   const [isTakeoverPopoverOpen, setIsTakeoverPopoverOpen] = useState(false);
   const [isTakeoverConfirmOpen, setIsTakeoverConfirmOpen] = useState(false);
+  const [isTakeoverConfirmPending, setIsTakeoverConfirmPending] = useState(false);
+  const isMountedRef = useRef(true);
   const isOffline = account.loginStatus === "offline";
   const isTakenOverByCurrentUser =
     !!account.takenOverEmployeeId && account.takenOverEmployeeId === currentEmployeeId;
@@ -133,8 +135,42 @@ export function AccountSidebarItem({
     event.preventDefault();
     onClick();
   };
+  const handleTakeoverConfirmOpenChange = (open: boolean) => {
+    if (isTakeoverConfirmPending && !open) {
+      return;
+    }
 
-  useEffect(() => clearClosePopoverTimer, []);
+    setIsTakeoverConfirmOpen(open);
+  };
+  const handleConfirmTakeover = async (
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+
+    if (isTakeoverConfirmPending) {
+      return;
+    }
+
+    setIsTakeoverConfirmPending(true);
+
+    try {
+      await onTakeOverAccount?.(account.id);
+    } finally {
+      if (isMountedRef.current) {
+        setIsTakeoverConfirmPending(false);
+        setIsTakeoverConfirmOpen(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      clearClosePopoverTimer();
+      isMountedRef.current = false;
+    };
+  }, []);
 
   if (variant === "compact") {
     const compactButton = (
@@ -253,7 +289,7 @@ export function AccountSidebarItem({
           </PopoverContent>
         ) : null}
         <AlertDialog
-          onOpenChange={setIsTakeoverConfirmOpen}
+          onOpenChange={handleTakeoverConfirmOpenChange}
           open={isTakeoverConfirmOpen}
         >
           <AlertDialogContent>
@@ -264,16 +300,25 @@ export function AccountSidebarItem({
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogCancel disabled={isTakeoverConfirmPending}>
+                取消
+              </AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => {
-                  startTransition(() => {
-                    void onTakeOverAccount?.(account.id);
-                  });
-                }}
+                aria-busy={isTakeoverConfirmPending}
+                disabled={isTakeoverConfirmPending}
+                onClick={handleConfirmTakeover}
                 variant="default"
               >
-                确认接管
+                {isTakeoverConfirmPending ? (
+                  <HugeiconsIcon
+                    className="animate-spin"
+                    color="currentColor"
+                    icon={Loading03Icon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                ) : null}
+                <span>{isTakeoverConfirmPending ? "接管中" : "确认接管"}</span>
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -403,7 +448,7 @@ export function AccountSidebarItem({
         </PopoverContent>
       ) : null}
       <AlertDialog
-        onOpenChange={setIsTakeoverConfirmOpen}
+        onOpenChange={handleTakeoverConfirmOpenChange}
         open={isTakeoverConfirmOpen}
       >
         <AlertDialogContent>
@@ -414,16 +459,25 @@ export function AccountSidebarItem({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={isTakeoverConfirmPending}>
+              取消
+            </AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                startTransition(() => {
-                  void onTakeOverAccount?.(account.id);
-                });
-              }}
+              aria-busy={isTakeoverConfirmPending}
+              disabled={isTakeoverConfirmPending}
+              onClick={handleConfirmTakeover}
               variant="default"
             >
-              确认接管
+              {isTakeoverConfirmPending ? (
+                <HugeiconsIcon
+                  className="animate-spin"
+                  color="currentColor"
+                  icon={Loading03Icon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              ) : null}
+              <span>{isTakeoverConfirmPending ? "接管中" : "确认接管"}</span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

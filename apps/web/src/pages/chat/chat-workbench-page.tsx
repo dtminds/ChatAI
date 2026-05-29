@@ -81,11 +81,6 @@ import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
 import { findViewportAnchor } from "@/pages/chat/lib/scroll-anchor";
 import {
-  buildQuotedMessagePreview,
-  findQuotedSourceMessage,
-  resolveQuoteMessagesInList,
-} from "@/pages/chat/lib/quote-message";
-import {
   CONVERSATION_LIST_PANEL_WIDTH,
   MIN_WORKBENCH_CONTENT_WIDTH,
 } from "@/pages/chat/lib/panel-width";
@@ -328,13 +323,9 @@ function ChatWorkbenchContent({
     ) ?? (activeView === "chat" ? visibleConversations[0] : undefined);
   const isHistoryPanelOpen =
     historyPanelOpenConversationId === activeConversation?.id;
-  const rawActiveMessages =
+  const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
     [];
-  const activeMessages = useMemo(
-    () => resolveQuoteMessagesInList([...rawActiveMessages]),
-    [rawActiveMessages],
-  );
   const activeSmartReplyByMessageId = useMemo(() => {
     if (!activeConversation || activeConversation.mode !== "single") {
       return {};
@@ -1053,19 +1044,10 @@ function ChatWorkbenchContent({
   };
 
   const handleOpenQuotedMessage = (quoteMsgId: string) => {
-    const quoteMessage = activeMessages.find(
-      (message): message is ChatMessage =>
-        message.role !== "system"
-        && message.content.type === "quote"
-        && message.content.quoteMsgId === quoteMsgId,
-    );
-    const originalMessage = findQuotedSourceMessage(
-      quoteMsgId,
-      quoteMessage?.content.type === "quote"
-        ? quoteMessage.content.quotedMessageId
-        : undefined,
-      activeMessages,
-    );
+    const quoteSeq = Number(quoteMsgId);
+    const originalMessage = Number.isSafeInteger(quoteSeq)
+      ? activeMessages.find((message) => message.seq === quoteSeq)
+      : undefined;
     const viewport = messageViewportRef.current;
     const anchor =
       viewport && originalMessage
@@ -1794,6 +1776,107 @@ function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
     message.content.downloadStatus === "finished" &&
     url
   );
+}
+
+function buildQuotedMessagePreview(
+  message: ChatMessage,
+): QuotedMessagePreviewContent {
+  const senderName =
+    message.senderDisplayName || message.sender.name || message.author;
+  const basePreview = {
+    contentType: message.content.type,
+    quoteMsgId: String(message.seq ?? message.remoteMessageId ?? message.id),
+    quotedMessageId: message.remoteMessageId ?? message.id,
+    senderName,
+  } satisfies Pick<
+    QuotedMessagePreviewContent,
+    "contentType" | "quoteMsgId" | "quotedMessageId" | "senderName"
+  >;
+
+  switch (message.content.type) {
+    case "text":
+      return {
+        ...basePreview,
+        text: message.content.text,
+      };
+    case "image":
+      return {
+        ...basePreview,
+        fallbackText: "[图片]",
+        imageUrl: message.content.imageUrl,
+      };
+    case "video":
+      return {
+        ...basePreview,
+        fallbackText: "[视频]",
+        imageUrl: message.content.coverImageUrl,
+        title: message.content.alt || message.content.durationLabel,
+      };
+    case "voice":
+      return {
+        ...basePreview,
+        fallbackText: "[语音]",
+        title: message.content.durationLabel,
+      };
+    case "file":
+      return {
+        ...basePreview,
+        fallbackText: "[文件]",
+        title: message.content.fileName,
+      };
+    case "h5":
+      return {
+        ...basePreview,
+        fallbackText: "[链接]",
+        imageUrl: message.content.previewImageUrl,
+        title: message.content.title,
+      };
+    case "mini-program":
+      return {
+        ...basePreview,
+        fallbackText: "[小程序]",
+        imageUrl: message.content.coverImageUrl,
+        title: message.content.title,
+      };
+    case "contact-card":
+      return {
+        ...basePreview,
+        fallbackText: "[名片]",
+        imageUrl: message.content.avatarUrl,
+        title: message.content.name,
+      };
+    case "location":
+      return {
+        ...basePreview,
+        fallbackText: "[位置]",
+        title: message.content.title || message.content.address,
+      };
+    case "sphfeed":
+      return {
+        ...basePreview,
+        fallbackText: "[视频号]",
+        imageUrl: message.content.imageUrl,
+        title: message.content.title,
+      };
+    case "solitaire":
+      return {
+        ...basePreview,
+        fallbackText: "[接龙]",
+        title: message.content.title,
+      };
+    case "redpacket":
+      return {
+        ...basePreview,
+        fallbackText: "[红包]",
+        title: message.content.title,
+      };
+    case "quote":
+      return {
+        ...basePreview,
+        fallbackText: "[引用消息]",
+        title: message.content.text,
+      };
+  }
 }
 
 function getSendErrorCode(error: unknown) {

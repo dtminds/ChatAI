@@ -3607,119 +3607,6 @@ describe("WorkbenchRepository", () => {
     expect(db.messageQueries).toHaveLength(1);
   });
 
-  it("hydrates group quote previews when quote stores copied message id", async () => {
-    const db = createMessagesDb(
-      [
-        messageRow({
-          chat_type: 2,
-          content: JSON.stringify({
-            content: "回复一下",
-            quoteOriginMsgId: "1009005",
-          }),
-          conversation_group_id: "group-1",
-          from_type: 1,
-          id: 102,
-          msgid: "remote-msg-102",
-          msgtype: "quote",
-          third_external_id: null,
-          third_group_id: "group-1",
-        }),
-      ],
-      [
-        messageRow({
-          chat_type: 2,
-          content: JSON.stringify({ content: "@帅庆 你好啊" }),
-          from_type: 2,
-          id: 101,
-          msgid: "1009005",
-          msgtype: "text",
-          third_external_id: null,
-          third_from_id: "member-1",
-          third_group_id: "group-1",
-        }),
-      ],
-      {
-        chat_type: 2,
-        conversation_external_id: "",
-        conversation_group_id: "group-1",
-      },
-    );
-    const repository = new WorkbenchRepository(db as never);
-
-    await expect(repository.listMessages("88", { limit: 1 })).resolves.toMatchObject({
-      messages: [
-        {
-          content: {
-            quotedMessage: {
-              contentType: "text",
-              text: "@帅庆 你好啊",
-            },
-            quoteMsgId: "1009005",
-            quotedMessageId: "1009005",
-            text: "回复一下",
-          },
-          contentType: "quote",
-        },
-      ],
-    });
-  });
-
-  it("falls back to msgid lookup when quoteMsgId is not an audit id", async () => {
-    const db = createMessagesDb(
-      [
-        messageRow({
-          chat_type: 2,
-          content: JSON.stringify({
-            content: "回复一下",
-            quoteMsgId: 1009005,
-          }),
-          conversation_group_id: "group-1",
-          from_type: 1,
-          id: 102,
-          msgid: "remote-msg-102",
-          msgtype: "quote",
-          third_external_id: null,
-          third_group_id: "group-1",
-        }),
-      ],
-      [
-        messageRow({
-          chat_type: 2,
-          content: JSON.stringify({ content: "@帅庆 你好啊" }),
-          from_type: 2,
-          id: 8291005,
-          msgid: "1009005",
-          msgtype: "text",
-          third_external_id: null,
-          third_from_id: "member-1",
-          third_group_id: "legacy-group-id",
-        }),
-      ],
-      {
-        chat_type: 2,
-        conversation_external_id: "",
-        conversation_group_id: "group-1",
-      },
-    );
-    const repository = new WorkbenchRepository(db as never);
-
-    await expect(repository.listMessages("88", { limit: 1 })).resolves.toMatchObject({
-      messages: [
-        {
-          content: {
-            quotedMessage: {
-              contentType: "text",
-              text: "@帅庆 你好啊",
-            },
-            quoteMsgId: "1009005",
-            text: "回复一下",
-          },
-          contentType: "quote",
-        },
-      ],
-    });
-  });
-
   it("fetches missing quoted rows in one scoped query and normalizes previews", async () => {
     const db = createMessagesDb(
       [
@@ -3802,77 +3689,15 @@ describe("WorkbenchRepository", () => {
     ).toEqual([201, 202]);
     expect(db.messageQueries[1]?.wheres).toContainEqual(["message.uid", "=", 9001]);
     expect(db.messageQueries[1]?.wheres).toContainEqual(["message.platform", "=", 5]);
-    expect(db.messageQueries[1]?.wheres).not.toContainEqual([
+    expect(db.messageQueries[1]?.wheres).toContainEqual([
       "message.third_user_id",
       "=",
       "seat-third-user-1",
     ]);
-    expect(db.messageQueries[1]?.wheres).not.toContainEqual([
+    expect(db.messageQueries[1]?.wheres).toContainEqual([
       "message.third_external_id",
       "=",
       "external-1",
-    ]);
-  });
-
-  it("fetches quoted audit rows by id without group key mismatch", async () => {
-    const db = createMessagesDb(
-      [
-        messageRow({
-          chat_type: 2,
-          content: JSON.stringify({
-            content: "引用一下",
-            quoteMsgId: 1009005,
-          }),
-          conversation_group_id: "group-1",
-          from_type: 1,
-          id: 102,
-          msgid: "remote-msg-102",
-          msgtype: "quote",
-          third_external_id: null,
-          third_group_id: "group-1",
-        }),
-      ],
-      [
-        messageRow({
-          chat_type: 2,
-          content: JSON.stringify({ content: "@帅庆 你好啊" }),
-          from_type: 2,
-          id: 1009005,
-          msgid: "remote-msg-101",
-          msgtype: "text",
-          third_external_id: null,
-          third_from_id: "member-1",
-          third_group_id: "legacy-group-id",
-        }),
-      ],
-      {
-        chat_type: 2,
-        conversation_external_id: "",
-        conversation_group_id: "group-1",
-      },
-    );
-    const repository = new WorkbenchRepository(db as never);
-
-    await expect(repository.listMessages("88", { limit: 1 })).resolves.toMatchObject({
-      messages: [
-        {
-          content: {
-            quotedMessage: {
-              contentType: "text",
-              text: "@帅庆 你好啊",
-            },
-            quoteMsgId: "1009005",
-            text: "引用一下",
-          },
-          contentType: "quote",
-        },
-      ],
-    });
-
-    expect(db.messageQueries[1]?.wheres).not.toContainEqual([
-      "message.third_group_id",
-      "=",
-      "group-1",
     ]);
   });
 

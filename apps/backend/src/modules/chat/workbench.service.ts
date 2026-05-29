@@ -19,6 +19,8 @@ import type {
   WorkbenchPollResponse,
   WorkbenchSmartReplyAttachmentsRequest,
   WorkbenchSmartReplyAttachmentsResponse,
+  WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  WorkbenchSmartReplyAutoGeneralAnswerResponse,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollRequest,
@@ -225,6 +227,12 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchSmartReplyGeneralAnswerResponse>
     | WorkbenchSmartReplyGeneralAnswerResponse;
+  requestSmartReplyAutoGeneralAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  ):
+    | Promise<WorkbenchSmartReplyAutoGeneralAnswerResponse>
+    | WorkbenchSmartReplyAutoGeneralAnswerResponse;
   requestSmartReplyMakeShorter(
     subUserId: string,
     request: WorkbenchSmartReplyMakeShorterRequest,
@@ -1067,6 +1075,49 @@ export class MysqlWorkbenchService implements WorkbenchService {
       chatType: conversation.thirdGroupId ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
       msgId: request.msgId,
       questionImgs: request.questionImgs ?? [],
+      thirdExternalId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+  }
+
+  async requestSmartReplyAutoGeneralAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (!Number.isSafeInteger(request.msgId) || request.msgId <= 0) {
+      throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
+    }
+
+    if (conversation.thirdGroupId) {
+      throw new BadRequestError(
+        "SMART_REPLY_SCOPE_INVALID",
+        "当前会话暂不支持智能回复",
+      );
+    }
+
+    const thirdExternalId = conversation.thirdExternalUserId?.trim();
+
+    if (!thirdExternalId) {
+      throw new BadRequestError(
+        "SMART_REPLY_SCOPE_INVALID",
+        "当前会话缺少智能回复所需的外部标识",
+      );
+    }
+
+    return this.javaClient.requestAutoGeneralAnswer({
+      chatType: CHAT_TYPE.SINGLE,
+      msgId: request.msgId,
       thirdExternalId,
       thirdUserId: conversation.thirdUserId,
       uid: conversation.uid,

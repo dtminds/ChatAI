@@ -1,5 +1,6 @@
 import {
   AtIcon,
+  AiChat02Icon,
   ArrowTurnBackwardIcon,
   Bug02Icon,
   ExclamationMarkIcon,
@@ -41,7 +42,6 @@ import {
 } from "@/pages/chat/api/smart-reply-adapter";
 import {
   SmartReplyMessageAnchor,
-  SmartReplyTriggerIcon,
   type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
 import { MESSAGE_REVOKE_WINDOW_MS } from "@/pages/chat/chat-constants";
@@ -66,6 +66,7 @@ type ChatMessageListProps = {
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
+  onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   onVoicePlaybackReady?: (
@@ -102,6 +103,7 @@ export function ChatMessageList({
   onRevokeMessage,
   onRetryMessage,
   onSendSmartReply,
+  onFillSmartReplyComposer,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
   onVoicePlaybackReady,
@@ -226,6 +228,7 @@ export function ChatMessageList({
               onRevokeMessage={onRevokeMessage}
               onRetryMessage={onRetryMessage}
               onSendSmartReply={onSendSmartReply}
+              onFillSmartReplyComposer={onFillSmartReplyComposer}
               onMakeShorterSmartReply={onMakeShorterSmartReply}
               onTriggerSmartReply={onTriggerSmartReply}
               onTranscribeVoice={onTranscribeVoice}
@@ -295,6 +298,7 @@ export function MessageRow({
   onRevokeMessage,
   onRetryMessage,
   onSendSmartReply,
+  onFillSmartReplyComposer,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
   onVoicePlaybackReady,
@@ -315,6 +319,7 @@ export function MessageRow({
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
+  onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   onVoicePlaybackReady?: (
@@ -345,6 +350,8 @@ export function MessageRow({
       onMentionMessage={onMentionMessage}
       onQuoteMessage={onQuoteMessage}
       onRevokeMessage={onRevokeMessage}
+      onTriggerSmartReply={onTriggerSmartReply}
+      showSmartReplyRecommendation={showSmartReplyTriggerIcon}
     />
   );
 
@@ -413,13 +420,6 @@ export function MessageRow({
                     onTranscribeVoice={onTranscribeVoice}
                     onVoicePlaybackReady={onVoicePlaybackReady}
                   />
-                  {showSmartReplyTriggerIcon ? (
-                    <div className="ml-[16px] cursor-pointer">
-                      <SmartReplyTriggerIcon
-                        onClick={() => onTriggerSmartReply?.(message)}
-                      />
-                    </div>
-                  ) : null}
                 </div>
               )}
               {message.isRevoked ? <MessageRevokedState /> : null}
@@ -428,6 +428,7 @@ export function MessageRow({
                   canSendMessage={canUseMessageActions}
                   conversationId={conversationId}
                   message={message}
+                  onFillComposer={onFillSmartReplyComposer}
                   onMakeShorter={onMakeShorterSmartReply}
                   onRegenerate={onTriggerSmartReply}
                   suggestion={smartReply}
@@ -520,12 +521,16 @@ function MessageActionAvatar({
   onMentionMessage,
   onQuoteMessage,
   onRevokeMessage,
+  onTriggerSmartReply,
+  showSmartReplyRecommendation,
 }: {
   message: ChatMessage;
   canUseMessageActions: boolean;
   onMentionMessage?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
+  onTriggerSmartReply?: (message: ChatMessage) => void;
+  showSmartReplyRecommendation: boolean;
 }) {
   const [isRevokeDialogOpen, setIsRevokeDialogOpen] = useState(false);
   const canMentionMessage = Boolean(
@@ -568,6 +573,21 @@ function MessageActionAvatar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="center" side="bottom">
+            {showSmartReplyRecommendation ? (
+              <DropdownMenuItem
+                onSelect={() => {
+                  onTriggerSmartReply?.(message);
+                }}
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={AiChat02Icon}
+                  size={15}
+                  strokeWidth={2}
+                />
+                话术推荐
+              </DropdownMenuItem>
+            ) : null}
             {canMentionMessage ? (
               <DropdownMenuItem
                 disabled={!canSelectMentionMessage}

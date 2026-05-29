@@ -2861,7 +2861,6 @@ export function createWorkbenchStore() {
               nextPendingKeys;
             nextSmartReplyByMessageIdByConversationId[polledConversationId] =
               prunedSmartReplyState.suggestions;
-
           }
 
           for (const [conversationId, refreshedMessages] of Object.entries(

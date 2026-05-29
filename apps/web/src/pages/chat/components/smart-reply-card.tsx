@@ -3,8 +3,7 @@ import {
   ArrowRight01Icon,
   ArrowDown01Icon,
   Loading03Icon,
-  Edit03Icon,
-  Sent02Icon,
+  MagicWand05Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
+import { ShinyText } from "@/components/ui/shiny-text";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
   getSmartReplyCustomerQuestion,
@@ -69,6 +68,7 @@ export type SmartReplyCardProps = {
   isSent?: boolean;
   canSendMessage?: boolean;
   onEdit?: () => void;
+  onFillComposer?: () => void;
   onMakeShorter?: () => void;
   canMakeShorter?: boolean;
   onRegenerate?: () => void;
@@ -90,6 +90,7 @@ export function SmartReplyCard({
   isSent = false,
   canSendMessage = true,
   onEdit,
+  onFillComposer,
   onMakeShorter,
   canMakeShorter = true,
   onRegenerate,
@@ -102,11 +103,11 @@ export function SmartReplyCard({
 
   return (
     <article
-      className="w-full max-w-full overflow-hidden rounded-[8px] border border-border bg-smart-reply-card text-smart-reply-card-foreground"
+      className="w-full max-w-full overflow-hidden rounded-[12px] border border-primary bg-primary/4 text-smart-reply-card-foreground"
       data-collapsed={isCollapsed ? "true" : "false"}
       data-testid="smart-reply-card"
     >
-      <header className="flex items-center gap-[6px] bg-smart-reply-header px-[16px] py-[8px]">
+      <header className="flex items-center gap-[6px] px-[16px] py-[8px]">
         <SmartReplyAssistantAvatar
           avatarUrl={
             assistantAvatarUrl ||
@@ -163,18 +164,16 @@ export function SmartReplyCard({
           />
           {isKnowledgeHit && !isThinking && !isProcessing ? (
             <footer className="flex items-center justify-between px-[16px] pb-[12px]">
-              <SmartReplyToolbar
-                canMakeShorter={canMakeShorter}
-                onEdit={onEdit}
-                onMakeShorter={onMakeShorter}
-                onRegenerate={onRegenerate}
-                refAttachIds={refAttachIds}
-              />
+              <SmartReplyReferences refAttachIds={refAttachIds} onEdit={onEdit} />
               <SmartReplyActions
                 canSendMessage={canSendMessage}
+                canMakeShorter={canMakeShorter}
                 content={content}
                 isThinking={isThinking}
                 onEdit={onEdit}
+                onFillComposer={onFillComposer}
+                onMakeShorter={onMakeShorter}
+                onRegenerate={onRegenerate}
                 onSend={onSend}
               />
             </footer>
@@ -190,6 +189,7 @@ type SmartReplyMessageAnchorProps = {
   conversationId?: string;
   message: ChatMessage;
   onEdit?: (message: ChatMessage, content: string) => void;
+  onFillComposer?: (message: ChatMessage, content: string) => void;
   onMakeShorter?: (message: ChatMessage) => void;
   onRegenerate?: (message: ChatMessage) => void;
   onSend?: (
@@ -205,6 +205,7 @@ export function SmartReplyMessageAnchor({
   conversationId,
   message,
   onEdit,
+  onFillComposer,
   onMakeShorter,
   onRegenerate,
   onSend,
@@ -350,6 +351,13 @@ export function SmartReplyMessageAnchor({
         isProcessing={isProcessing}
         processingLabel={processingLabel}
         onEdit={openEditDialog}
+        onFillComposer={
+          onFillComposer
+            ? () => {
+                onFillComposer(message, displayContent.trim());
+              }
+            : undefined
+        }
         onMakeShorter={
           onMakeShorter
             ? () => {
@@ -568,7 +576,7 @@ function SmartReplyContentBody({
   processingLabel?: string;
 }) {
   return (
-    <div className="px-[16px] py-[12px]">
+    <div className="px-[16px] pb-[12px]">
       {isThinking || isProcessing || !isKnowledgeHit ? (
         <SmartReplyReadonlyContent
           failReason={failReason}
@@ -616,8 +624,10 @@ function SmartReplyReadonlyContent({
             strokeWidth={2}
           />
           <p className="text-[13px]" role="status">
-            {processingLabel ??
-              (isThinking ? "AI正在生成话术..." : "正在处理消息...")}
+            <ShinyText>
+              {processingLabel ??
+                (isThinking ? "AI正在生成话术..." : "正在处理消息...")}
+            </ShinyText>
           </p>
         </div>
       ) : null}
@@ -657,16 +667,10 @@ function SmartReplyReadonlyContent({
   );
 }
 
-function SmartReplyToolbar({
-  canMakeShorter = true,
-  onMakeShorter,
-  onRegenerate,
+function SmartReplyReferences({
   refAttachIds,
   onEdit,
 }: {
-  canMakeShorter?: boolean;
-  onMakeShorter?: () => void;
-  onRegenerate?: () => void;
   refAttachIds?: string[];
   onEdit?: () => void;
 }) {
@@ -674,23 +678,62 @@ function SmartReplyToolbar({
 
   return (
     <div className="flex min-w-0 cursor-pointer items-center gap-[10px]">
+      {refAttachCount > 0 ? (
+        <div
+          aria-label={`推荐附件 ${refAttachCount} 个`}
+          className="inline-flex items-center gap-1 text-[12px] leading-4 text-smart-reply-muted-foreground"
+          onClick={onEdit}
+        >
+          <img
+            alt=""
+            aria-hidden
+            className="size-[14px] object-contain"
+            src="https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/third/容器@2x (3).png!tiny.webp"
+          />
+          <span>{refAttachCount}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SmartReplyActions({
+  canSendMessage = true,
+  canMakeShorter = true,
+  content,
+  isThinking,
+  onEdit,
+  onFillComposer,
+  onMakeShorter,
+  onRegenerate,
+  onSend,
+}: {
+  canSendMessage?: boolean;
+  canMakeShorter?: boolean;
+  content: string;
+  isThinking: boolean;
+  onEdit?: () => void;
+  onFillComposer?: () => void;
+  onMakeShorter?: () => void;
+  onRegenerate?: () => void;
+  onSend?: () => void;
+}) {
+  const isActionDisabled = !canSendMessage || isThinking || !content.trim();
+
+  return (
+    <div className="flex shrink-0 items-center gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            aria-label="智能回复调整"
-            className="size-auto p-0 shadow-none hover:bg-transparent"
+            className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
             type="button"
-            variant="ghost"
+            variant="outline"
           >
-            <img
-              alt=""
-              aria-hidden
-              className="size-[14px] object-contain"
-              src="https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/third/%E5%AE%B9%E5%99%A8@2x%20(2).png!tiny.webp"
-            />
+            <HugeiconsIcon icon={MagicWand05Icon} size={14} strokeWidth={2} />
+            微调文案
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="min-w-[128px]" side="top">
+        <DropdownMenuContent align="end" className="min-w-[128px]" side="top">
           <DropdownMenuItem
             disabled={!canMakeShorter || !onMakeShorter}
             onSelect={() => {
@@ -706,69 +749,30 @@ function SmartReplyToolbar({
           >
             重新生成
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              onEdit?.();
+            }}
+          >
+            编辑
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {refAttachCount > 0 ? (
-        <>
-          <Separator
-            className="h-[12px] bg-smart-reply-divider"
-            orientation="vertical"
-          />
-          <div
-            aria-label={`推荐附件 ${refAttachCount} 个`}
-            className="inline-flex items-center gap-1 text-[12px] leading-4 text-smart-reply-muted-foreground"
-            onClick={onEdit}
-          >
-            <img
-              alt=""
-              aria-hidden
-              className="size-[14px] object-contain"
-              src="https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/third/容器@2x (3).png!tiny.webp"
-            />
-            <span>{refAttachCount}</span>
-          </div>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-function SmartReplyActions({
-  canSendMessage = true,
-  content,
-  isThinking,
-  onEdit,
-  onSend,
-}: {
-  canSendMessage?: boolean;
-  content: string;
-  isThinking: boolean;
-  onEdit?: () => void;
-  onSend?: () => void;
-}) {
-  return (
-    <div className="flex shrink-0 items-center gap-2">
       <Button
         className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
-        onClick={onEdit}
+        disabled={isActionDisabled}
+        onClick={onFillComposer}
         type="button"
         variant="outline"
       >
-        <HugeiconsIcon icon={Edit03Icon} size={14} strokeWidth={2} />
-        编辑
+        填入输入框
       </Button>
       <Button
         className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
-        disabled={!canSendMessage || isThinking || !content.trim()}
+        disabled={isActionDisabled}
         onClick={onSend}
         type="button"
       >
-        <HugeiconsIcon
-          color="currentColor"
-          icon={Sent02Icon}
-          size={14}
-          strokeWidth={2}
-        />
         发送
       </Button>
     </div>

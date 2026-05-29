@@ -215,13 +215,49 @@ describe("ChatWorkbenchPage", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getAllByRole("button", { name: "生成智能回复" }).at(-1)!);
+    await user.click(screen.getAllByRole("button", { name: "消息操作" }).at(-1)!);
+    await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
 
     expect(await screen.findByTestId("smart-reply-card")).toBeInTheDocument();
     expect(screen.getByText("生成失败：当前未配置可用AI助手")).toBeInTheDocument();
     expect(workbenchToastWarningMock).not.toHaveBeenCalledWith(
       "当前未配置可用AI助手",
     );
+  });
+
+  it("fills the composer from a smart reply without sending it", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyGeneralAnswer() {
+        return {
+          suggestion: {
+            assistantName: "护肤小助手",
+            content: "建议先确认权益清单口径",
+            messageId: "10",
+            pollComplete: true,
+            recordId: "smart-reply-001",
+            status: "ready",
+          },
+        };
+      },
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getAllByRole("button", { name: "消息操作" }).at(-1)!);
+    await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
+    expect(await screen.findByTestId("smart-reply-card")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "填入输入框" }));
+
+    expect(composer).toHaveTextContent("建议先确认权益清单口径");
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("observes the first unread customer message within the unread tail", async () => {
@@ -1042,7 +1078,7 @@ describe("ChatWorkbenchPage", () => {
 
     await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" });
 
-    expect(screen.getByText("ErrorCode: SEND_RATE_LIMITED")).toBeInTheDocument();
+    expect(screen.getByText("错误码：SEND_RATE_LIMITED")).toBeInTheDocument();
   });
 
   it("shows the API error message when account takeover fails", async () => {

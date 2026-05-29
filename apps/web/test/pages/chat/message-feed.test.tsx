@@ -195,7 +195,9 @@ describe("message feed row actions", () => {
     expect(onQuoteMessage).not.toHaveBeenCalled();
   });
 
-  it("shows smart reply trigger icon for customer messages without suggestions", () => {
+  it("shows smart reply recommendation as the first message action for customer messages without suggestions", async () => {
+    const user = userEvent.setup();
+
     render(
       <MessageRow
         message={{
@@ -211,11 +213,21 @@ describe("message feed row actions", () => {
       />,
     );
 
-    expect(screen.getByTestId("smart-reply-trigger-icon")).toBeInTheDocument();
+    expect(screen.queryByTestId("smart-reply-trigger-icon")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(
+      screen.getByRole("menuitem", { name: "话术推荐" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "话术推荐",
+      "复制消息ID",
+    ]);
     expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
   });
 
-  it("calls smart reply trigger handler when the side icon is clicked", async () => {
+  it("calls smart reply trigger handler when the recommendation action is selected", async () => {
     const user = userEvent.setup();
     const onTriggerSmartReply = vi.fn();
     const message = {
@@ -235,7 +247,10 @@ describe("message feed row actions", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "生成智能回复" }));
+    expect(screen.queryByTestId("smart-reply-trigger-icon")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
 
     expect(onTriggerSmartReply).toHaveBeenCalledWith(message);
   });
@@ -290,7 +305,7 @@ describe("message feed row actions", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "智能回复调整" }));
+    await user.click(screen.getByRole("button", { name: "微调文案" }));
     await user.click(screen.getByRole("menuitem", { name: "重新生成" }));
 
     expect(onTriggerSmartReply).toHaveBeenCalledWith(message);

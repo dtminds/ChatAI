@@ -3022,14 +3022,19 @@ describe("WorkbenchRepository", () => {
       platform: 5,
       seatHostSubUserId: "101",
       seatId: "12",
+      seatUnreadCount: 6,
       thirdExternalUserId: "external-001",
       thirdGroupId: undefined,
       thirdGroupName: undefined,
       thirdUserId: "seat-user-001",
       uid: 9001,
+      unreadCount: 0,
     });
     expect(observedTables).toEqual(["xy_wap_embed_conversation as conversation"]);
-    expect(queryBuilders.flatMap((query) => query.joins)).toEqual(["innerJoin"]);
+    expect(queryBuilders.flatMap((query) => query.joins)).toEqual([
+      "innerJoin",
+      "leftJoin",
+    ]);
     expect(queryBuilders[0]?.wheres).not.toContainEqual([
       "conversation.biz_status",
       "=",

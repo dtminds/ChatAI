@@ -28,21 +28,14 @@ COPY packages/contracts/ ./packages/contracts/
 # 构建 backend（会先构建 contracts 与 voice-service）
 RUN pnpm backend:build
 
-# 运行阶段：复用 builder 已解析的 workspace 依赖树，避免二次 install 丢失 @chatai/voice-service 链接
+# 运行阶段：backend build 已将 workspace 包固化到 apps/backend/node_modules/@chatai
 FROM node:24-alpine AS runner
 
 WORKDIR /app
 
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/backend/package.json ./apps/backend/
 COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
 COPY --from=builder /app/apps/backend/node_modules ./apps/backend/node_modules
-COPY --from=builder /app/apps/voice-service/package.json ./apps/voice-service/
-COPY --from=builder /app/apps/voice-service/dist ./apps/voice-service/dist
-COPY --from=builder /app/apps/voice-service/node_modules ./apps/voice-service/node_modules
-COPY --from=builder /app/packages/contracts/package.json ./packages/contracts/
-COPY --from=builder /app/packages/contracts/dist ./packages/contracts/dist
 
 # 暴露端口
 EXPOSE 3001

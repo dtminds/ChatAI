@@ -7,7 +7,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "build": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/voice-service build && tsc -p tsconfig.json",
+    "build": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/voice-service build && tsc -p tsconfig.json && node scripts/materialize-workspace-deps.mjs",
     "db:codegen": "node scripts/codegen-db-schema.mjs",
     "dev": "pnpm --filter @chatai/contracts build && pnpm --filter @chatai/voice-service build && NODE_ENV=development tsx watch src/server.ts",
     "start": "node dist/server.js",

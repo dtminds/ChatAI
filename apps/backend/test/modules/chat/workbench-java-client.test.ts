@@ -369,6 +369,34 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("preserves Java errorMsg when sentence recognition fails", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 1201,
+          errorMsg: "语音识别音频无法解析",
+          success: false,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().recognizeSentence({
+        voiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
+      }),
+    ).rejects.toMatchObject({
+      details: {
+        error: 1201,
+      },
+      message: "语音识别音频无法解析",
+    });
+  });
+
   it("posts conversation hide payload to the Java internal API", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

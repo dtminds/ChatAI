@@ -630,8 +630,9 @@ export async function addSmartReplyKnowledgeFaq(
   return getWorkbenchService().addSmartReplyKnowledgeFaq(request);
 }
 
-export async function sendSmartHeartbeat(conversationId: string) {
-  return getWorkbenchService().sendSmartHeartbeat({ conversationId });
+export async function sendSmartHeartbeat(_conversationId: string) {
+  // 暂时停用心跳，待后续观察并决策启用或删除该逻辑
+  return { ok: true as const };
 }
 
 export async function listSmartReplyAttachments(

@@ -55,35 +55,12 @@ function createHistoryMessagesDb(rows: MessageRow[], conversationOverrides: Reco
         table === "xy_wap_embed_group_member as member" ||
         table === "xy_wap_embed_user_seat" ||
         table === "xy_wap_embed_contact" ||
-        table === "xy_wap_embed_customer_bind_relation" ||
-        table === "xy_wap_embed_msg_audit_info_extend"
+        table === "xy_wap_embed_customer_bind_relation"
       ) {
         return createQueryBuilder([]);
       }
 
-      if (table === "xy_wap_embed_msg_audit_info") {
-        return createQueryBuilder(rows);
-      }
-
       throw new Error(`unexpected table ${table}`);
-    },
-    updateTable() {
-      return {
-        set() {
-          return {
-            where() {
-              return {
-                where() {
-                  return {
-                    executeTakeFirst: async () => ({ numUpdatedRows: 1 }),
-                  };
-                },
-                executeTakeFirst: async () => ({ numUpdatedRows: 1 }),
-              };
-            },
-          };
-        },
-      };
     },
   };
 }
@@ -94,7 +71,6 @@ function createMessagesDb(
   conversationOverrides: Record<string, unknown> = {},
   hydrationRows: {
     contacts?: unknown[];
-    extendRows?: Array<{ msgid: string; origin_data: string | null }>;
     groupMembers?: unknown[];
     seats?: unknown[];
   } = {},
@@ -141,10 +117,6 @@ function createMessagesDb(
         return query;
       }
 
-      if (table === "xy_wap_embed_msg_audit_info") {
-        return createQueryBuilder([...rows, ...quoteRows]);
-      }
-
       if (table === "xy_wap_embed_group_member as member") {
         const query = createQueryBuilder(hydrationRows.groupMembers ?? []);
         hydrationQueries.push({
@@ -179,29 +151,7 @@ function createMessagesDb(
         return createQueryBuilder([]);
       }
 
-      if (table === "xy_wap_embed_msg_audit_info_extend") {
-        return createQueryBuilder(hydrationRows.extendRows ?? []);
-      }
-
       throw new Error(`unexpected table ${table}`);
-    },
-    updateTable(table: string) {
-      return {
-        set() {
-          return {
-            where() {
-              return {
-                where() {
-                  return {
-                    executeTakeFirst: async () => ({ numUpdatedRows: 1 }),
-                  };
-                },
-                executeTakeFirst: async () => ({ numUpdatedRows: 1 }),
-              };
-            },
-          };
-        },
-      };
     },
   };
 }
@@ -255,35 +205,12 @@ function createMessagesByIdsDb(
       if (
         table === "xy_wap_embed_contact" ||
         table === "xy_wap_embed_customer_bind_relation" ||
-        table === "xy_wap_embed_group_member as member" ||
-        table === "xy_wap_embed_msg_audit_info_extend"
+        table === "xy_wap_embed_group_member as member"
       ) {
         return createQueryBuilder([]);
       }
 
-      if (table === "xy_wap_embed_msg_audit_info") {
-        return createQueryBuilder([...rows, ...quoteRows]);
-      }
-
       throw new Error(`unexpected table ${table}`);
-    },
-    updateTable() {
-      return {
-        set() {
-          return {
-            where() {
-              return {
-                where() {
-                  return {
-                    executeTakeFirst: async () => ({ numUpdatedRows: 1 }),
-                  };
-                },
-                executeTakeFirst: async () => ({ numUpdatedRows: 1 }),
-              };
-            },
-          };
-        },
-      };
     },
   };
 }
@@ -3734,85 +3661,6 @@ describe("WorkbenchRepository", () => {
           contentType: "quote",
         },
       ],
-    });
-  });
-
-  it("hydrates group quote previews from extend data when audit content lacks quote ids", async () => {
-    const originData = JSON.stringify({
-      quote_content_base64: Buffer.from(
-        JSON.stringify({
-          msg_content: {
-            msg_list: [
-              { sub_type: 0, data: { content: Buffer.from('"').toString("base64") } },
-              { sub_type: 0, data: { content: Buffer.from("\n").toString("base64") } },
-              {
-                sub_type: 0,
-                data: {
-                  content: Buffer.from("@帅庆 你好啊").toString("base64"),
-                },
-              },
-              { sub_type: 0, data: { content: Buffer.from('"\n------\n').toString("base64") } },
-              { sub_type: 0, data: { content: Buffer.from("111").toString("base64") } },
-            ],
-          },
-        }),
-        "utf8",
-      ).toString("base64"),
-    });
-    const db = createMessagesDb(
-      [
-        messageRow({
-          chat_type: 2,
-          content: JSON.stringify({ content: "@帅庆 你好啊" }),
-          from_type: 2,
-          id: 101,
-          msgid: "1009005",
-          msgtype: "text",
-          third_external_id: null,
-          third_from_id: "member-1",
-          third_group_id: "group-1",
-        }),
-        messageRow({
-          chat_type: 2,
-          content: JSON.stringify({ content: "111" }),
-          conversation_group_id: "group-1",
-          from_type: 1,
-          id: 102,
-          msgid: "remote-msg-102",
-          msgtype: "quote",
-          third_external_id: null,
-          third_group_id: "group-1",
-        }),
-      ],
-      [],
-      {
-        chat_type: 2,
-        conversation_external_id: "",
-        conversation_group_id: "group-1",
-      },
-      {
-        extendRows: [
-          {
-            msgid: "remote-msg-102",
-            origin_data: originData,
-          },
-        ],
-      },
-    );
-    const repository = new WorkbenchRepository(db as never);
-
-    const page = await repository.listMessages("88", { limit: 2 });
-    const quoteMessage = page.messages.find((message) => message.contentType === "quote");
-
-    expect(quoteMessage).toMatchObject({
-      content: {
-        quotedMessage: {
-          contentType: "text",
-          text: "@帅庆 你好啊",
-        },
-        text: "111",
-      },
-      contentType: "quote",
     });
   });
 

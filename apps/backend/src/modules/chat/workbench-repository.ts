@@ -38,8 +38,6 @@ import {
   getQuoteMessageMsgidCandidates,
   mergeQuoteMessageContentRaw,
   parseQuotedPreviewFromExtendOriginData,
-  isUnresolvedQuotePreview,
-  readMessageRowTextContent,
   getGroupMemberHydrationKey,
   hydrateMessageRows,
   mapConversationRow,
@@ -533,156 +531,6 @@ export class WorkbenchRepository {
       .executeTakeFirst();
 
     return Number(result.numUpdatedRows ?? 0) > 0;
-  }
-
-  async patchQuoteMessageContentByAuditId(input: {
-    auditId: number;
-    platform: number;
-    quoteMsgId: number;
-    quoteOriginMsgId?: string;
-    uid: number;
-  }) {
-    if (!Number.isInteger(input.auditId) || input.auditId <= 0) {
-      return false;
-    }
-
-    const row = await this.db
-      .selectFrom("xy_wap_embed_msg_audit_info")
-      .select(["id", "content", "msgtype"])
-      .where("id", "=", input.auditId)
-      .where("uid", "=", input.uid)
-      .where("platform", "=", input.platform)
-      .executeTakeFirst();
-
-    if (!row || row.msgtype !== "quote") {
-      return false;
-    }
-
-    if (getQuoteMessageMsgidCandidates(row as MessageRow).length > 0) {
-      return true;
-    }
-
-    const nextContent = mergeQuoteMessageContentRaw(row.content, {
-      quoteMsgId: input.quoteMsgId,
-      quoteOriginMsgId: input.quoteOriginMsgId,
-    });
-
-    const result = await this.db
-      .updateTable("xy_wap_embed_msg_audit_info")
-      .set({ content: nextContent })
-      .where("id", "=", row.id)
-      .where("uid", "=", input.uid)
-      .where("platform", "=", input.platform)
-      .executeTakeFirst();
-
-    return Number(result.numUpdatedRows ?? 0) > 0;
-  }
-
-  async patchQuoteMessageContentByRecentQuote(input: {
-    platform: number;
-    quoteMsgId: number;
-    quoteOriginMsgId?: string;
-    replyText: string;
-    thirdExternalUserId?: string;
-    thirdGroupId?: string;
-    thirdUserId: string;
-    uid: number;
-  }) {
-    const replyText = input.replyText.trim();
-
-    if (!replyText || !Number.isInteger(input.quoteMsgId) || input.quoteMsgId <= 0) {
-      return false;
-    }
-
-    let query = this.db
-      .selectFrom("xy_wap_embed_msg_audit_info")
-      .select(["id", "content", "msgtype"])
-      .where("uid", "=", input.uid)
-      .where("platform", "=", input.platform)
-      .where("third_user_id", "=", input.thirdUserId)
-      .where("msgtype", "=", "quote")
-      .where("content", "like", `%"content":${JSON.stringify(replyText)}%`)
-      .orderBy("id", "desc")
-      .limit(5);
-
-    if (input.thirdGroupId) {
-      query = query.where("third_group_id", "=", input.thirdGroupId);
-    } else if (input.thirdExternalUserId) {
-      query = query.where("third_external_id", "=", input.thirdExternalUserId);
-    } else {
-      return false;
-    }
-
-    const rows = await query.execute();
-
-    for (const row of rows) {
-      if (getQuoteMessageMsgidCandidates(row as MessageRow).length > 0) {
-        continue;
-      }
-
-      const patched = await this.patchQuoteMessageContentByAuditId({
-        auditId: Number(row.id),
-        platform: input.platform,
-        quoteMsgId: input.quoteMsgId,
-        quoteOriginMsgId: input.quoteOriginMsgId,
-        uid: input.uid,
-      });
-
-      if (patched) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  scheduleQuoteMetadataRepair(
-    quoteRows: MessageRow[],
-    sourceRows: MessageRow[],
-    extendPreviewsByMsgId: Map<string, MessageRowQuotePreview>,
-    conversation: {
-      platform: number;
-      uid: number;
-    },
-  ) {
-    for (const row of quoteRows) {
-      if (row.msgtype !== "quote" || getQuoteMessageMsgidCandidates(row).length > 0) {
-        continue;
-      }
-
-      const msgid = row.msgid?.trim();
-      const previewText = msgid ? extendPreviewsByMsgId.get(msgid)?.text?.trim() : undefined;
-
-      if (!previewText) {
-        continue;
-      }
-
-      const source = sourceRows.find(
-        (candidate) =>
-          candidate.msgtype === "text"
-          && readMessageRowTextContent(candidate) === previewText,
-      );
-
-      if (!source) {
-        continue;
-      }
-
-      const auditId = toNumber(row.id);
-      const quoteMsgId = toNumber(source.id);
-      const quoteOriginMsgId = source.msgid?.trim();
-
-      if (auditId == null || quoteMsgId == null) {
-        continue;
-      }
-
-      void this.patchQuoteMessageContentByAuditId({
-        auditId,
-        platform: conversation.platform,
-        quoteMsgId,
-        quoteOriginMsgId,
-        uid: conversation.uid,
-      });
-    }
   }
 
   async getMessageForRevoke(input: {
@@ -2801,7 +2649,10 @@ export class WorkbenchRepository {
   ) {
     const msgids = uniqueNonEmptyStrings(
       rows
-        .filter((row) => row.msgtype === "quote")
+        .filter(
+          (row) =>
+            row.msgtype === "quote" && getQuoteMessageMsgidCandidates(row).length === 0,
+        )
         .map((row) => row.msgid?.trim()),
     );
 
@@ -2845,13 +2696,6 @@ export class WorkbenchRepository {
       conversation.platform,
     );
 
-    this.scheduleQuoteMetadataRepair(
-      rows,
-      [...currentRowsById.values(), ...fetchedRowsById.values()],
-      extendPreviewsByMsgId,
-      conversation,
-    );
-
     return this.buildQuotePreviewsByRowId(
       rows,
       currentRowsById,
@@ -2878,13 +2722,13 @@ export class WorkbenchRepository {
     });
 
     rows.forEach((row) => {
-      if (row.msgtype !== "quote") {
+      const quoteId = getQuoteMessageAuditId(row);
+      const msgidCandidates = getQuoteMessageMsgidCandidates(row);
+
+      if (quoteId == null && msgidCandidates.length === 0) {
         return;
       }
 
-      const quoteId = getQuoteMessageAuditId(row);
-      const msgidCandidates = getQuoteMessageMsgidCandidates(row);
-      const rowMsgid = row.msgid?.trim();
       let quotedRow: MessageRow | undefined;
 
       if (quoteId != null) {
@@ -2905,12 +2749,9 @@ export class WorkbenchRepository {
         ? buildQuotedMessagePreview(quotedRow)
         : undefined;
 
-      if (isUnresolvedQuotePreview(preview)) {
-        preview = undefined;
-      }
-
-      if (!preview && rowMsgid) {
-        preview = extendPreviewsByMsgId.get(rowMsgid);
+      if (!preview) {
+        const msgid = row.msgid?.trim();
+        preview = msgid ? extendPreviewsByMsgId.get(msgid) : undefined;
       }
 
       previews.set(

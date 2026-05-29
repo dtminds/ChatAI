@@ -1,9 +1,17 @@
-import { type ReactElement, useCallback, useEffect, useState } from "react";
+import {
+  type ReactElement,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   AiChat02Icon,
   InputCursorTextIcon,
   Loading03Icon,
   MoreHorizontalIcon,
+  Remove01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -46,8 +54,9 @@ import {
 
 const SMART_REPLY_TRIGGER_ICON =
   "https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/customer/容器@2x (1).png!tiny.webp";
-const SMART_REPLY_COLLAPSE_IMAGE =
-  "data:image/svg+xml,%3Csvg width='14' height='14' viewBox='0 0 14 14' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.5 5.25L7 8.75L10.5 5.25' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
+const SMART_REPLY_DISMISS_COLLAPSE_MS = 520;
+const SMART_REPLY_DISMISS_FLIGHT_MS = 640;
+const SMART_REPLY_DISMISS_FLIGHT_OVERLAP_MS = 50;
 
 export type SmartReplySuggestion = {
   assistantName: string;
@@ -75,11 +84,13 @@ export type SmartReplyCardProps = {
   onEdit?: () => void;
   onFillComposer?: () => void;
   onMakeShorter?: () => void;
+  onDismiss?: () => void;
   canMakeShorter?: boolean;
   onRegenerate?: () => void;
   onSend?: () => void;
   processingLabel?: string;
   refAttachIds?: string[];
+  dismissTargetRef?: RefObject<HTMLElement | null>;
 };
 
 export function SmartReplyCard({
@@ -96,22 +107,94 @@ export function SmartReplyCard({
   onEdit,
   onFillComposer,
   onMakeShorter,
+  onDismiss,
   canMakeShorter = true,
   onRegenerate,
   onSend,
   processingLabel,
   refAttachIds,
+  dismissTargetRef,
 }: SmartReplyCardProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const cardRef = useRef<HTMLElement | null>(null);
+  const flyIconRef = useRef<HTMLDivElement | null>(null);
+  const [isDismissing, setIsDismissing] = useState(false);
+  const [dismissPlaceholderSize, setDismissPlaceholderSize] = useState<{
+    height: number;
+    width: number;
+  } | null>(null);
   const resolvedFailureReason = failReason?.trim();
   const shouldShowActions = isKnowledgeHit && !isThinking && !isProcessing;
+  const handleDismiss = useCallback(() => {
+    if (!onDismiss || isDismissing) {
+      return;
+    }
+
+    const card = cardRef.current;
+    const flyIcon = flyIconRef.current;
+    const target = dismissTargetRef?.current;
+
+    if (!card || !flyIcon || typeof card.animate !== "function") {
+      onDismiss();
+      return;
+    }
+
+    const cardRect = card.getBoundingClientRect();
+    const targetRect =
+      target?.getBoundingClientRect() ??
+      ({
+        bottom: cardRect.top + 32,
+        height: 32,
+        left: cardRect.left - 42,
+        right: cardRect.left - 10,
+        top: cardRect.top,
+        width: 32,
+        x: cardRect.left - 42,
+        y: cardRect.top,
+        toJSON: () => undefined,
+      } as DOMRect);
+
+    if (cardRect.width <= 0 || cardRect.height <= 0) {
+      onDismiss();
+      return;
+    }
+
+    setDismissPlaceholderSize({
+      height: cardRect.height,
+      width: cardRect.width,
+    });
+    setIsDismissing(true);
+    animateSmartReplyDismiss({
+      card,
+      flyIcon,
+      onComplete: onDismiss,
+      sourceRect: cardRect,
+      target,
+      targetRect,
+    });
+  }, [
+    dismissTargetRef,
+    isDismissing,
+    onDismiss,
+  ]);
 
   return (
     <TooltipProvider>
       <article
+        aria-hidden={isDismissing ? "true" : undefined}
         className="w-full max-w-[640px] overflow-hidden rounded-[12px] bg-conversation-active p-[3px] text-smart-reply-card-foreground"
-        data-collapsed={isCollapsed ? "true" : "false"}
+        data-dismissing={isDismissing ? "true" : "false"}
         data-testid="smart-reply-card"
+        ref={cardRef}
+        style={
+          dismissPlaceholderSize
+            ? {
+                height: dismissPlaceholderSize.height,
+                opacity: 0,
+                pointerEvents: "none",
+                width: dismissPlaceholderSize.width,
+              }
+            : undefined
+        }
       >
         <header
           className="flex min-w-0 items-center gap-2 px-[12px] py-[7px]"
@@ -128,7 +211,7 @@ export function SmartReplyCard({
               {assistantName}
             </p>
           </div>
-          {!isCollapsed && shouldShowActions ? (
+          {shouldShowActions ? (
             <div className="flex min-w-0 shrink-0 items-center gap-2">
               <SmartReplyReferences refAttachIds={refAttachIds} onEdit={onEdit} />
               <SmartReplyActions
@@ -144,48 +227,343 @@ export function SmartReplyCard({
               />
             </div>
           ) : null}
-          <SmartReplyIconTooltip label={isCollapsed ? "展开" : "收起"}>
+          <SmartReplyIconTooltip label="收起">
             <button
-              aria-expanded={!isCollapsed}
-              aria-label={isCollapsed ? "展开" : "收起"}
-              className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] border border-conversation-active-foreground/25 bg-conversation-active-foreground/10 outline-none transition-colors hover:bg-conversation-active-foreground/15 focus-visible:ring-2 focus-visible:ring-ring/20"
-              onClick={() => setIsCollapsed((current) => !current)}
+              aria-label="收起"
+              className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] border border-conversation-active-foreground/25 bg-conversation-active-foreground/10 text-conversation-active-foreground outline-none transition-colors hover:bg-conversation-active-foreground/15 focus-visible:ring-2 focus-visible:ring-ring/20"
+              disabled={isDismissing}
+              onClick={handleDismiss}
               type="button"
             >
-              <img
-                alt=""
-                aria-hidden
-                className={isCollapsed ? "size-3.5 -rotate-90" : "size-3.5"}
-                src={SMART_REPLY_COLLAPSE_IMAGE}
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={Remove01Icon}
+                size={15}
+                strokeWidth={2}
               />
             </button>
           </SmartReplyIconTooltip>
         </header>
 
-        {isCollapsed ? null : (
-          <SmartReplyContentBody
-            content={content}
-            failReason={resolvedFailureReason}
-            isGenerationFailed={isGenerationFailed}
-            isKnowledgeHit={isKnowledgeHit}
-            isKnowledgeMiss={isKnowledgeMiss}
-            isProcessing={isProcessing}
-            isThinking={isThinking}
-            onRetry={onRegenerate}
-            processingLabel={processingLabel}
-          />
-        )}
+        <SmartReplyContentBody
+          content={content}
+          failReason={resolvedFailureReason}
+          isGenerationFailed={isGenerationFailed}
+          isKnowledgeHit={isKnowledgeHit}
+          isKnowledgeMiss={isKnowledgeMiss}
+          isProcessing={isProcessing}
+          isThinking={isThinking}
+          onRetry={onRegenerate}
+          processingLabel={processingLabel}
+        />
       </article>
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed left-0 top-0 z-50 hidden size-8 items-center justify-center rounded-[8px] bg-conversation-active text-conversation-active-foreground shadow-[0_10px_24px_rgb(56_116_246_/_0.28)]"
+        ref={flyIconRef}
+      >
+        <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={1.8} />
+      </div>
     </TooltipProvider>
   );
+}
+
+function animateSmartReplyDismiss({
+  card,
+  flyIcon,
+  onComplete,
+  sourceRect,
+  target,
+  targetRect,
+}: {
+  card: HTMLElement;
+  flyIcon: HTMLElement;
+  onComplete: () => void;
+  sourceRect: DOMRect;
+  target?: HTMLElement | null;
+  targetRect: DOMRect;
+}) {
+  const { animationLayer, contentLayer, miniIconLayer, miniIconMotion } =
+    createSmartReplyDismissAnimationLayer(card, sourceRect);
+  const collapsedLeft = sourceRect.left;
+  const collapsedTop = sourceRect.top;
+  const start = {
+    x: collapsedLeft + 16,
+    y: collapsedTop + 16,
+  };
+  const end = {
+    x: targetRect.left + targetRect.width / 2,
+    y: targetRect.top + targetRect.height / 2,
+  };
+  const distanceX = end.x - start.x;
+  const distanceY = end.y - start.y;
+  const arch = Math.max(54, Math.min(96, Math.abs(distanceX) * 0.55));
+  const control = {
+    x: start.x + distanceX * 0.46,
+    y: Math.min(start.y, end.y) - arch + distanceY * 0.08,
+  };
+  const collapseAnimation = animationLayer.animate(
+    [
+      {
+        borderRadius: "12px",
+        height: `${sourceRect.height}px`,
+        opacity: 1,
+        transform: "translate(0, 0)",
+        width: `${sourceRect.width}px`,
+      },
+      {
+        borderRadius: "11px",
+        height: `${Math.max(48, sourceRect.height * 0.74)}px`,
+        opacity: 1,
+        transform: "translate(0, 0)",
+        width: `${Math.max(72, sourceRect.width * 0.68)}px`,
+      },
+      {
+        borderRadius: "9px",
+        height: "48px",
+        opacity: 1,
+        transform: "translate(0, 0)",
+        width: "72px",
+      },
+      {
+        borderRadius: "8px",
+        height: "32px",
+        opacity: 1,
+        transform: "translate(0, 0)",
+        width: "32px",
+      },
+      {
+        borderRadius: "8px",
+        height: "32px",
+        opacity: 1,
+        transform: "translate(0, 0)",
+        width: "32px",
+      },
+    ],
+    {
+      duration: SMART_REPLY_DISMISS_COLLAPSE_MS,
+      easing: "cubic-bezier(0.24, 0.78, 0.2, 1)",
+      fill: "forwards",
+    },
+  );
+  contentLayer.animate(
+    [
+      { opacity: 1, transform: "translateY(0)" },
+      { opacity: 0, transform: "translateY(-2px)" },
+      { opacity: 0, transform: "translateY(-2px)" },
+    ],
+    {
+      duration: SMART_REPLY_DISMISS_COLLAPSE_MS,
+      easing: "ease-out",
+      fill: "forwards",
+    },
+  );
+  miniIconLayer.animate(
+    [
+      { opacity: 1, transform: "translate(0, 0)" },
+      { opacity: 1, transform: miniIconMotion.endTransform },
+    ],
+    {
+      duration: SMART_REPLY_DISMISS_COLLAPSE_MS,
+      easing: "cubic-bezier(0.24, 0.78, 0.2, 1)",
+      fill: "forwards",
+    },
+  );
+
+  flyIcon.hidden = false;
+  flyIcon.classList.remove("hidden");
+  flyIcon.classList.add("grid");
+  flyIcon.style.opacity = "0";
+  flyIcon.style.transform = `translate(${collapsedLeft}px, ${collapsedTop}px) scale(1)`;
+
+  const flightAnimation = flyIcon.animate(buildSmartReplyDismissFlightFrames({
+    control,
+    end,
+    start,
+  }), {
+    delay: SMART_REPLY_DISMISS_COLLAPSE_MS - SMART_REPLY_DISMISS_FLIGHT_OVERLAP_MS,
+    duration: SMART_REPLY_DISMISS_FLIGHT_MS,
+    easing: "linear",
+    fill: "forwards",
+  });
+  if (target && typeof target.animate === "function") {
+    target.animate(
+      [
+        { boxShadow: "0 0 0 0 rgb(56 116 246 / 0)", opacity: 0 },
+        { boxShadow: "0 0 0 7px rgb(56 116 246 / 0.2)", opacity: 1 },
+        { boxShadow: "0 0 0 0 rgb(56 116 246 / 0)", opacity: 1 },
+      ],
+      {
+        delay:
+          SMART_REPLY_DISMISS_COLLAPSE_MS +
+          SMART_REPLY_DISMISS_FLIGHT_MS * 0.58,
+        duration: 360,
+        easing: "ease-out",
+      },
+    );
+  }
+
+  let completed = false;
+  let animationLayerRemoved = false;
+  const removeAnimationLayer = () => {
+    if (animationLayerRemoved) {
+      return;
+    }
+
+    animationLayerRemoved = true;
+    animationLayer.remove();
+  };
+  const complete = () => {
+    if (completed) {
+      return;
+    }
+
+    completed = true;
+    removeAnimationLayer();
+    onComplete();
+  };
+
+  flightAnimation.onfinish = complete;
+  flightAnimation.oncancel = complete;
+  collapseAnimation.onfinish = removeAnimationLayer;
+  collapseAnimation.oncancel = complete;
+}
+
+function createSmartReplyDismissAnimationLayer(
+  card: HTMLElement,
+  sourceRect: DOMRect,
+) {
+  const animationLayer = card.cloneNode(false) as HTMLElement;
+  const contentLayer = card.cloneNode(true) as HTMLElement;
+  const miniIconLayer = document.createElement("div");
+  const sourceIcon = card.querySelector('[aria-label="AI 智能回复"]');
+  const sourceIconRect = sourceIcon?.getBoundingClientRect();
+  const centeredIcon = sourceIcon?.cloneNode(true);
+  const miniIconSize = sourceIconRect?.width && sourceIconRect.width > 0
+    ? sourceIconRect.width
+    : 18;
+  const miniIconStartLeft = sourceIconRect
+    ? sourceIconRect.left - sourceRect.left
+    : 12;
+  const miniIconStartTop = sourceIconRect ? sourceIconRect.top - sourceRect.top : 7;
+  const miniIconEndLeft = 16 - miniIconSize / 2;
+  const miniIconEndTop = 16 - miniIconSize / 2;
+  const miniIconMotion = {
+    endTransform: `translate(${miniIconEndLeft - miniIconStartLeft}px, ${miniIconEndTop - miniIconStartTop}px)`,
+  };
+
+  animationLayer.setAttribute("aria-hidden", "true");
+  animationLayer.setAttribute("data-testid", "smart-reply-card-animation-layer");
+  animationLayer.style.contain = "layout paint style";
+  animationLayer.style.height = `${sourceRect.height}px`;
+  animationLayer.style.left = `${sourceRect.left}px`;
+  animationLayer.style.margin = "0";
+  animationLayer.style.maxWidth = "none";
+  animationLayer.style.pointerEvents = "none";
+  animationLayer.style.position = "fixed";
+  animationLayer.style.top = `${sourceRect.top}px`;
+  animationLayer.style.transformOrigin = "0 0";
+  animationLayer.style.width = `${sourceRect.width}px`;
+  animationLayer.style.zIndex = "50";
+  animationLayer.style.overflow = "hidden";
+
+  contentLayer.removeAttribute("data-testid");
+  contentLayer
+    .querySelector('[aria-label="AI 智能回复"]')
+    ?.setAttribute("visibility", "hidden");
+  contentLayer
+    .querySelectorAll("[data-testid]")
+    .forEach((element) => element.removeAttribute("data-testid"));
+  contentLayer.style.height = "100%";
+  contentLayer.style.inset = "0";
+  contentLayer.style.margin = "0";
+  contentLayer.style.maxWidth = "none";
+  contentLayer.style.pointerEvents = "none";
+  contentLayer.style.position = "absolute";
+  contentLayer.style.width = "100%";
+
+  miniIconLayer.setAttribute("data-testid", "smart-reply-card-animation-mini-icon");
+  miniIconLayer.style.alignItems = "center";
+  miniIconLayer.style.color = "currentColor";
+  miniIconLayer.style.display = "flex";
+  miniIconLayer.style.justifyContent = "center";
+  miniIconLayer.style.height = `${miniIconSize}px`;
+  miniIconLayer.style.left = `${miniIconStartLeft}px`;
+  miniIconLayer.style.opacity = "1";
+  miniIconLayer.style.pointerEvents = "none";
+  miniIconLayer.style.position = "absolute";
+  miniIconLayer.style.top = `${miniIconStartTop}px`;
+  miniIconLayer.style.width = `${miniIconSize}px`;
+
+  if (centeredIcon instanceof Element) {
+    centeredIcon.setAttribute("aria-hidden", "true");
+    centeredIcon.removeAttribute("aria-label");
+    miniIconLayer.appendChild(centeredIcon);
+  }
+
+  animationLayer.append(contentLayer, miniIconLayer);
+  document.body.appendChild(animationLayer);
+
+  return { animationLayer, contentLayer, miniIconLayer, miniIconMotion };
+}
+
+function buildSmartReplyDismissFlightFrames({
+  control,
+  end,
+  start,
+}: {
+  control: { x: number; y: number };
+  end: { x: number; y: number };
+  start: { x: number; y: number };
+}) {
+  const frames: Keyframe[] = [];
+
+  for (let index = 0; index <= 32; index += 1) {
+    const progress = index / 32;
+    const easedProgress = 1 - (1 - progress) ** 2;
+    const point = getQuadraticCurvePoint(start, control, end, easedProgress);
+    const scale = 1 - 0.92 * easedProgress;
+    const opacity =
+      progress < 0.72 ? 1 : Math.max(0, 1 - (progress - 0.72) / 0.28);
+
+    frames.push({
+      offset: progress,
+      opacity,
+      transform: `translate(${point.x - 16}px, ${point.y - 16}px) scale(${scale})`,
+    });
+  }
+
+  return frames;
+}
+
+function getQuadraticCurvePoint(
+  start: { x: number; y: number },
+  control: { x: number; y: number },
+  end: { x: number; y: number },
+  progress: number,
+) {
+  const inverseProgress = 1 - progress;
+
+  return {
+    x:
+      inverseProgress * inverseProgress * start.x +
+      2 * inverseProgress * progress * control.x +
+      progress * progress * end.x,
+    y:
+      inverseProgress * inverseProgress * start.y +
+      2 * inverseProgress * progress * control.y +
+      progress * progress * end.y,
+  };
 }
 
 type SmartReplyMessageAnchorProps = {
   canSendMessage?: boolean;
   conversationId?: string;
+  dismissTargetRef?: RefObject<HTMLElement | null>;
   message: ChatMessage;
   onEdit?: (message: ChatMessage, content: string) => void;
   onFillComposer?: (message: ChatMessage, content: string) => void;
+  onDismiss?: (message: ChatMessage) => void;
   onMakeShorter?: (message: ChatMessage) => void;
   onRegenerate?: (message: ChatMessage) => void;
   onSend?: (
@@ -199,9 +577,11 @@ type SmartReplyMessageAnchorProps = {
 export function SmartReplyMessageAnchor({
   canSendMessage = true,
   conversationId,
+  dismissTargetRef,
   message,
   onEdit,
   onFillComposer,
+  onDismiss,
   onMakeShorter,
   onRegenerate,
   onSend,
@@ -337,6 +717,7 @@ export function SmartReplyMessageAnchor({
         canMakeShorter={canMakeShorter}
         canSendMessage={canSendMessage}
         content={displayContent}
+        dismissTargetRef={dismissTargetRef}
         failReason={resolvedSuggestion.failReason}
         isGenerationFailed={isGenerationFailed}
         isKnowledgeHit={isKnowledgeHit}
@@ -345,6 +726,7 @@ export function SmartReplyMessageAnchor({
         isThinking={isThinking}
         isProcessing={isProcessing}
         processingLabel={processingLabel}
+        onDismiss={onDismiss ? () => onDismiss(message) : undefined}
         onEdit={openEditDialog}
         onFillComposer={
           onFillComposer

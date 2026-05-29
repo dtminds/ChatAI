@@ -254,6 +254,7 @@ type WorkbenchState = {
   loadHistoryMessages: (options?: { cursor?: string; direction?: "next" | "prev" }) => Promise<void>;
   refreshSeatSummaries: () => Promise<void>;
   pollWorkbench: () => Promise<void>;
+  dismissSmartReply: (message: ChatMessage) => void;
   requestSmartReplyGeneralAnswer: (message: ChatMessage) => Promise<void>;
   requestSmartReplyMakeShorter: (message: ChatMessage) => Promise<void>;
   sendSmartReply: (
@@ -341,6 +342,7 @@ function createInitialState(): Omit<
   | "loadHistoryMessages"
   | "refreshSeatSummaries"
   | "pollWorkbench"
+  | "dismissSmartReply"
   | "requestSmartReplyGeneralAnswer"
   | "requestSmartReplyMakeShorter"
   | "sendSmartReply"
@@ -2576,6 +2578,31 @@ export function createWorkbenchStore() {
       },
       dismissConversationOpenError() {
         set({ conversationOpenError: undefined });
+      },
+      dismissSmartReply(message) {
+        const state = get();
+        const conversationId = state.activeConversationId;
+
+        if (
+          !conversationId ||
+          !canUseSmartReplyForConversation(state, conversationId) ||
+          !isSmartReplyEligibleMessage(message)
+        ) {
+          return;
+        }
+
+        const lookupKey = getSmartReplyLookupKey(message);
+        set((currentState) => ({
+          smartReplyHiddenMessageKeysByConversationId: {
+            ...currentState.smartReplyHiddenMessageKeysByConversationId,
+            [conversationId]: {
+              ...(currentState.smartReplyHiddenMessageKeysByConversationId[
+                conversationId
+              ] ?? {}),
+              [lookupKey]: true,
+            },
+          },
+        }));
       },
       async requestSmartReplyGeneralAnswer(message) {
         const state = get();

@@ -280,6 +280,51 @@ describe("message feed row actions", () => {
     expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
   });
 
+  it("dismisses the smart reply card so the avatar recommendation action can be used again", async () => {
+    const user = userEvent.setup();
+    const onDismissSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      id: "msg-customer-1",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+    } as ChatMessage;
+    const { rerender } = render(
+      <MessageRow
+        message={message}
+        onDismissSmartReply={onDismissSmartReply}
+        smartReply={{
+          assistantName: "护肤小助手",
+          content: "建议先确认肤质",
+          status: "ready",
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "收起" }));
+
+    expect(onDismissSmartReply).toHaveBeenCalledWith(message);
+
+    rerender(
+      <MessageRow
+        message={message}
+        onDismissSmartReply={onDismissSmartReply}
+      />,
+    );
+
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "话术推荐" })).toBeInTheDocument();
+  });
+
   it("calls smart reply trigger handler when regenerate is selected", async () => {
     const user = userEvent.setup();
     const onTriggerSmartReply = vi.fn();
@@ -305,7 +350,7 @@ describe("message feed row actions", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "微调文案" }));
+    await user.click(screen.getByRole("button", { name: "更多智能回复操作" }));
     await user.click(screen.getByRole("menuitem", { name: "重新生成" }));
 
     expect(onTriggerSmartReply).toHaveBeenCalledWith(message);

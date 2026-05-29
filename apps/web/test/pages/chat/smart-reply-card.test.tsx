@@ -60,6 +60,7 @@ describe("SmartReplyCard", () => {
     expect(screen.getByRole("button", { name: "收起" })).toHaveClass(
       "border",
       "bg-conversation-active-foreground/10",
+      "text-conversation-active-foreground",
     );
     expect(screen.getByRole("button", { name: "编辑" })).toHaveTextContent("编辑");
     expect(screen.getByRole("button", { name: "发送" })).toHaveTextContent("发送");
@@ -105,13 +106,15 @@ describe("SmartReplyCard", () => {
     }
   });
 
-  it("collapses to header only and expands again from the header toggle", async () => {
+  it("calls dismiss from the close control without exposing an expand state", async () => {
     const user = userEvent.setup();
+    const onDismiss = vi.fn();
 
     render(
       <SmartReplyCard
         assistantName="护肤小助手"
         content="这里是思考的文案..."
+        onDismiss={onDismiss}
       />,
     );
 
@@ -119,21 +122,121 @@ describe("SmartReplyCard", () => {
 
     await user.click(screen.getByRole("button", { name: "收起" }));
 
-    expect(screen.getByTestId("smart-reply-card")).toHaveAttribute(
-      "data-collapsed",
-      "true",
-    );
-    expect(screen.getByText("护肤小助手")).toBeInTheDocument();
-    expect(screen.queryByText("这里是思考的文案...")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "展开" })).toContainHTML("img");
-
-    await user.click(screen.getByRole("button", { name: "展开" }));
-
-    expect(screen.getByTestId("smart-reply-card")).toHaveAttribute(
-      "data-collapsed",
-      "false",
-    );
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "展开" })).not.toBeInTheDocument();
     expect(screen.getByText("这里是思考的文案...")).toBeInTheDocument();
+  });
+
+  it("keeps the original card box reserved while the dismiss animation runs", async () => {
+    const user = userEvent.setup();
+    const onDismiss = vi.fn();
+    const animate = vi.fn((_keyframes?: Keyframe[] | PropertyIndexedKeyframes) => ({
+      cancel: vi.fn(),
+    }));
+    vi.stubGlobal(
+      "Animation",
+      class {
+        cancel() {
+          return undefined;
+        }
+      },
+    );
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: animate,
+    });
+
+    render(
+      <SmartReplyCard
+        assistantName="护肤小助手"
+        content="这里是思考的文案..."
+        onDismiss={onDismiss}
+      />,
+    );
+
+    const card = screen.getByTestId("smart-reply-card");
+    const sourceIcon = screen.getByLabelText("AI 智能回复");
+    vi.spyOn(card, "getBoundingClientRect").mockReturnValue({
+      bottom: 248,
+      height: 128,
+      left: 40,
+      right: 480,
+      top: 120,
+      width: 440,
+      x: 40,
+      y: 120,
+      toJSON: () => undefined,
+    } as DOMRect);
+    vi.spyOn(sourceIcon, "getBoundingClientRect").mockReturnValue({
+      bottom: 145,
+      height: 18,
+      left: 52,
+      right: 70,
+      top: 127,
+      width: 18,
+      x: 52,
+      y: 127,
+      toJSON: () => undefined,
+    } as DOMRect);
+
+    await user.click(screen.getByRole("button", { name: "收起" }));
+
+    expect(card).toHaveAttribute("data-dismissing", "true");
+    expect(card).toHaveStyle({ height: "128px", width: "440px" });
+    expect(screen.getByTestId("smart-reply-card-animation-layer")).toBeInTheDocument();
+    expect(screen.getByTestId("smart-reply-card-animation-mini-icon")).toHaveStyle({
+      opacity: "1",
+    });
+    const collapseFrames = animate.mock.calls[0]?.[0] as Keyframe[];
+    expect(collapseFrames.map((frame) => frame.transform)).toEqual([
+      "translate(0, 0)",
+      "translate(0, 0)",
+      "translate(0, 0)",
+      "translate(0, 0)",
+      "translate(0, 0)",
+    ]);
+    expect(collapseFrames.map((frame) => frame.opacity)).toEqual([
+      1,
+      1,
+      1,
+      1,
+      1,
+    ]);
+    const miniIconFrames = animate.mock.calls
+      .map((call) => call[0] as Keyframe[])
+      .find((frames) =>
+        frames.some((frame) => frame.transform === "translate(-5px, 0px)"),
+      );
+    expect(miniIconFrames).toEqual([
+      expect.objectContaining({
+        opacity: 1,
+        transform: "translate(0, 0)",
+      }),
+      expect.objectContaining({
+        opacity: 1,
+        transform: "translate(-5px, 0px)",
+      }),
+    ]);
+    expect(animate.mock.calls[0]?.[0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          height: "32px",
+          transform: "translate(0, 0)",
+          width: "32px",
+        }),
+      ]),
+    );
+    const flightFrames = animate.mock.calls
+      .map((call) => call[0] as Keyframe[])
+      .find((frames) => frames.some((frame) => frame.offset === 0));
+    expect(flightFrames).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          offset: 0,
+          transform: "translate(40px, 120px) scale(1)",
+        }),
+      ]),
+    );
   });
 
   it("shows ref attach count in toolbar", () => {

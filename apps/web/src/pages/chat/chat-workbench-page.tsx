@@ -56,7 +56,6 @@ import {
 } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
-import { useSmartHeartbeat } from "@/pages/chat/hooks/use-smart-heartbeat";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
@@ -201,6 +200,7 @@ function ChatWorkbenchContent({
     smartReplyHiddenMessageKeysByConversationId,
     pollState,
     pollWorkbench,
+    dismissSmartReply,
     requestSmartReplyGeneralAnswer,
     requestSmartReplyMakeShorter,
     readReceiptError,
@@ -635,13 +635,14 @@ function ChatWorkbenchContent({
     pollWorkbench,
   });
 
-  useSmartHeartbeat({
-    conversationId: activeConversation?.id,
-    enabled:
-      bootstrapStatus === "ready" &&
-      isAccountTakenOverByCurrentUser &&
-      activeConversation?.mode === "single",
-  });
+  // 暂时停用心跳，待后续观察并决策启用或删除该逻辑
+  // useSmartHeartbeat({
+  //   conversationId: activeConversation?.id,
+  //   enabled:
+  //     bootstrapStatus === "ready" &&
+  //     isAccountTakenOverByCurrentUser &&
+  //     activeConversation?.mode === "single",
+  // });
 
   const clearComposer = (options?: { keepQuote?: boolean }) => {
     composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
@@ -1122,6 +1123,10 @@ function ChatWorkbenchContent({
     void requestSmartReplyGeneralAnswer(message);
   };
 
+  const handleDismissSmartReply = (message: ChatMessage) => {
+    dismissSmartReply(message);
+  };
+
   const handleMakeShorterSmartReply = (message: ChatMessage) => {
     void requestSmartReplyMakeShorter(message);
   };
@@ -1442,6 +1447,7 @@ function ChatWorkbenchContent({
                   onQuoteMessage={handleQuoteMessage}
                   onSendSmartReply={handleSendSmartReply}
                   onFillSmartReplyComposer={handleFillSmartReplyComposer}
+                  onDismissSmartReply={handleDismissSmartReply}
                   onMakeShorterSmartReply={handleMakeShorterSmartReply}
                   onTriggerSmartReply={handleTriggerSmartReply}
                   onRevokeMessage={handleRevokeMessage}

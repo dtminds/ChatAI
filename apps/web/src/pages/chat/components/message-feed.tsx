@@ -9,7 +9,14 @@ import {
   QuoteUpSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -67,6 +74,7 @@ type ChatMessageListProps = {
   onRetryMessage?: (messageId: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
+  onDismissSmartReply?: (message: ChatMessage) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   onVoicePlaybackReady?: (
@@ -104,6 +112,7 @@ export function ChatMessageList({
   onRetryMessage,
   onSendSmartReply,
   onFillSmartReplyComposer,
+  onDismissSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
   onVoicePlaybackReady,
@@ -229,6 +238,7 @@ export function ChatMessageList({
               onRetryMessage={onRetryMessage}
               onSendSmartReply={onSendSmartReply}
               onFillSmartReplyComposer={onFillSmartReplyComposer}
+              onDismissSmartReply={onDismissSmartReply}
               onMakeShorterSmartReply={onMakeShorterSmartReply}
               onTriggerSmartReply={onTriggerSmartReply}
               onTranscribeVoice={onTranscribeVoice}
@@ -299,6 +309,7 @@ export function MessageRow({
   onRetryMessage,
   onSendSmartReply,
   onFillSmartReplyComposer,
+  onDismissSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
   onVoicePlaybackReady,
@@ -320,6 +331,7 @@ export function MessageRow({
   onRetryMessage?: (messageId: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
+  onDismissSmartReply?: (message: ChatMessage) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   onVoicePlaybackReady?: (
@@ -343,10 +355,12 @@ export function MessageRow({
     isAgent ? "right" : "left",
     shouldAnimate,
   );
+  const dismissTargetRef = useRef<HTMLButtonElement | null>(null);
   const messageActions = (
     <MessageActionAvatar
       message={message}
       canUseMessageActions={canUseMessageActions}
+      triggerRef={dismissTargetRef}
       onMentionMessage={onMentionMessage}
       onQuoteMessage={onQuoteMessage}
       onRevokeMessage={onRevokeMessage}
@@ -427,7 +441,9 @@ export function MessageRow({
                 <SmartReplyMessageAnchor
                   canSendMessage={canUseMessageActions}
                   conversationId={conversationId}
+                  dismissTargetRef={dismissTargetRef}
                   message={message}
+                  onDismiss={onDismissSmartReply}
                   onFillComposer={onFillSmartReplyComposer}
                   onMakeShorter={onMakeShorterSmartReply}
                   onRegenerate={onTriggerSmartReply}
@@ -518,6 +534,7 @@ function QuoteMessageContentWithDelivery({
 function MessageActionAvatar({
   message,
   canUseMessageActions,
+  triggerRef,
   onMentionMessage,
   onQuoteMessage,
   onRevokeMessage,
@@ -526,6 +543,7 @@ function MessageActionAvatar({
 }: {
   message: ChatMessage;
   canUseMessageActions: boolean;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
   onMentionMessage?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
@@ -560,6 +578,7 @@ function MessageActionAvatar({
             <Button
               aria-label="消息操作"
               className="absolute inset-0 z-10 size-8 rounded-[6px] bg-neutral-950/70 p-0 text-white opacity-0 shadow-sm transition-opacity hover:bg-neutral-950/80 hover:text-white focus-visible:ring-2 focus-visible:ring-white/45 group-hover/message:opacity-100 data-[state=open]:opacity-100"
+              ref={triggerRef}
               size="icon"
               type="button"
               variant="ghost"

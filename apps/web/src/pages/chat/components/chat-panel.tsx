@@ -96,6 +96,7 @@ type ChatPanelProps = {
   onRetryMessage: (messageId: string) => void | Promise<void>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
+  onDismissSmartReply?: (message: ChatMessage) => void;
   onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (message: ChatMessage) => void;
   onVoicePlaybackReady?: (
@@ -167,6 +168,7 @@ export function ChatPanel({
   onRetryMessage,
   onSendSmartReply,
   onFillSmartReplyComposer,
+  onDismissSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
   onVoicePlaybackReady,
@@ -221,6 +223,7 @@ export function ChatPanel({
                 onQuoteMessage={onQuoteMessage}
                 onSendSmartReply={onSendSmartReply}
                 onFillSmartReplyComposer={onFillSmartReplyComposer}
+                onDismissSmartReply={onDismissSmartReply}
                 onMakeShorterSmartReply={onMakeShorterSmartReply}
                 onTriggerSmartReply={onTriggerSmartReply}
                 onRevokeMessage={onRevokeMessage}

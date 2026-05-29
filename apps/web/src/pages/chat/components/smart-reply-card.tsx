@@ -122,6 +122,7 @@ export function SmartReplyCard({
 }: SmartReplyCardProps) {
   const cardRef = useRef<HTMLElement | null>(null);
   const flyIconRef = useRef<HTMLDivElement | null>(null);
+  const dismissAnimationCleanupRef = useRef<(() => void) | null>(null);
   const [isDismissing, setIsDismissing] = useState(false);
   const [dismissPlaceholderSize, setDismissPlaceholderSize] = useState<{
     height: number;
@@ -129,6 +130,13 @@ export function SmartReplyCard({
   } | null>(null);
   const resolvedFailureReason = failReason?.trim();
   const shouldShowActions = isKnowledgeHit && !isThinking && !isProcessing;
+  useEffect(() => {
+    return () => {
+      dismissAnimationCleanupRef.current?.();
+      dismissAnimationCleanupRef.current = null;
+    };
+  }, []);
+
   const handleDismiss = useCallback(() => {
     if (!onDismiss || isDismissing) {
       return;
@@ -168,7 +176,8 @@ export function SmartReplyCard({
       width: cardRect.width,
     });
     setIsDismissing(true);
-    animateSmartReplyDismiss({
+    dismissAnimationCleanupRef.current?.();
+    dismissAnimationCleanupRef.current = animateSmartReplyDismiss({
       card,
       flyIcon,
       onComplete: onDismiss,
@@ -285,7 +294,7 @@ function animateSmartReplyDismiss({
   onComplete: () => void;
   sourceRect: DOMRect;
   targetRect: DOMRect;
-}) {
+}): () => void {
   const { animationLayer, contentLayer, miniIconLayer, miniIconMotion } =
     createSmartReplyDismissAnimationLayer(card, sourceRect);
   const collapsedLeft = sourceRect.left;
@@ -349,7 +358,7 @@ function animateSmartReplyDismiss({
       fill: "forwards",
     },
   );
-  contentLayer.animate(
+  const contentAnimation = contentLayer.animate(
     [
       { opacity: 1, transform: "translateY(0)" },
       { opacity: 0, transform: "translateY(-2px)" },
@@ -361,7 +370,7 @@ function animateSmartReplyDismiss({
       fill: "forwards",
     },
   );
-  miniIconLayer.animate(
+  const miniIconAnimation = miniIconLayer.animate(
     [
       { opacity: 1, transform: "translate(0, 0)" },
       { opacity: 1, transform: miniIconMotion.endTransform },
@@ -392,6 +401,12 @@ function animateSmartReplyDismiss({
 
   let completed = false;
   let animationLayerRemoved = false;
+  const animations = [
+    collapseAnimation,
+    contentAnimation,
+    miniIconAnimation,
+    flightAnimation,
+  ];
   const removeAnimationLayer = () => {
     if (animationLayerRemoved) {
       return;
@@ -400,6 +415,19 @@ function animateSmartReplyDismiss({
     animationLayerRemoved = true;
     animationLayer.remove();
   };
+  const resetFlyIcon = () => {
+    flyIcon.hidden = true;
+    flyIcon.classList.remove("grid");
+    flyIcon.classList.add("hidden");
+    flyIcon.style.opacity = "";
+    flyIcon.style.transform = "";
+  };
+  const clearAnimationHandlers = () => {
+    flightAnimation.onfinish = null;
+    flightAnimation.oncancel = null;
+    collapseAnimation.onfinish = null;
+    collapseAnimation.oncancel = null;
+  };
   const complete = () => {
     if (completed) {
       return;
@@ -407,6 +435,7 @@ function animateSmartReplyDismiss({
 
     completed = true;
     removeAnimationLayer();
+    resetFlyIcon();
     onComplete();
   };
 
@@ -414,6 +443,20 @@ function animateSmartReplyDismiss({
   flightAnimation.oncancel = complete;
   collapseAnimation.onfinish = removeAnimationLayer;
   collapseAnimation.oncancel = complete;
+
+  return () => {
+    if (completed) {
+      return;
+    }
+
+    completed = true;
+    clearAnimationHandlers();
+    for (const animation of animations) {
+      animation.cancel();
+    }
+    removeAnimationLayer();
+    resetFlyIcon();
+  };
 }
 
 function createSmartReplyDismissAnimationLayer(
@@ -867,14 +910,6 @@ function useSmartReplyBusyTimeout(
 
     return () => window.clearTimeout(timer);
   }, [busyRequestId, isBusy, onTimeout]);
-}
-
-export function isSmartReplyBusy(
-  suggestion?: SmartReplySuggestion | null,
-): boolean {
-  return (
-    suggestion?.status === "thinking" || suggestion?.status === "processing"
-  );
 }
 
 export function SmartReplyTriggerIcon({

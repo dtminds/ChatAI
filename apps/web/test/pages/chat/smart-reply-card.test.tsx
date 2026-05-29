@@ -13,6 +13,7 @@ import {
 import { SmartReplyRecommendedAttachmentsSection } from "@/pages/chat/components/smart-reply-recommended-attachments";
 import {
   addSmartReplyKnowledgeFaq,
+  checkSmartReplyTextModeration,
   listKnowledgeDocPage,
   listKnowledgePage,
 } from "@/pages/chat/api/workbench-gateway";
@@ -38,6 +39,7 @@ vi.mock("@/pages/chat/api/workbench-gateway", async (importOriginal) => {
   return {
     ...actual,
     addSmartReplyKnowledgeFaq: vi.fn(),
+    checkSmartReplyTextModeration: vi.fn(),
     listKnowledgeDocPage: vi.fn(),
     listKnowledgePage: vi.fn(),
   };
@@ -65,6 +67,7 @@ describe("SmartReplyCard", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.mocked(addSmartReplyKnowledgeFaq).mockReset();
+    vi.mocked(checkSmartReplyTextModeration).mockReset();
     vi.mocked(listKnowledgeDocPage).mockReset();
     vi.mocked(listKnowledgePage).mockReset();
     vi.mocked(toast.error).mockClear();
@@ -272,6 +275,59 @@ describe("SmartReplyCard", () => {
     );
   });
 
+  it("removes the dismiss animation layer when unmounted mid-animation", async () => {
+    const user = userEvent.setup();
+    const animate = vi.fn(() => ({
+      cancel: vi.fn(),
+    }));
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: animate,
+    });
+
+    const { unmount } = render(
+      <SmartReplyCard
+        assistantName="护肤小助手"
+        content="这里是思考的文案..."
+        onDismiss={() => undefined}
+      />,
+    );
+
+    const card = screen.getByTestId("smart-reply-card");
+    const sourceIcon = screen.getByLabelText("AI 智能回复");
+    vi.spyOn(card, "getBoundingClientRect").mockReturnValue({
+      bottom: 248,
+      height: 128,
+      left: 40,
+      right: 480,
+      top: 120,
+      width: 440,
+      x: 40,
+      y: 120,
+      toJSON: () => undefined,
+    } as DOMRect);
+    vi.spyOn(sourceIcon, "getBoundingClientRect").mockReturnValue({
+      bottom: 145,
+      height: 18,
+      left: 52,
+      right: 70,
+      top: 127,
+      width: 18,
+      x: 52,
+      y: 127,
+      toJSON: () => undefined,
+    } as DOMRect);
+
+    await user.click(screen.getByRole("button", { name: "收起" }));
+    expect(screen.getByTestId("smart-reply-card-animation-layer")).toBeInTheDocument();
+
+    unmount();
+
+    expect(
+      screen.queryByTestId("smart-reply-card-animation-layer"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows ref attach count in toolbar", () => {
     render(
       <SmartReplyCard
@@ -475,6 +531,7 @@ describe("SmartReplyCard", () => {
 
     render(
       <SmartReplyMessageAnchor
+        conversationId="conv-001"
         message={message}
         suggestion={{
           assistantName: "护肤小助手",
@@ -493,6 +550,12 @@ describe("SmartReplyCard", () => {
 
   it("opens add to faq dialog from edit dialog", async () => {
     const user = userEvent.setup();
+    vi.mocked(listKnowledgePage).mockResolvedValue({
+      list: [{ id: "11", name: "默认知识集" }],
+    });
+    vi.mocked(listKnowledgeDocPage).mockResolvedValue({
+      list: [{ id: "22", name: "默认 FAQ" }],
+    });
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
       id: "msg-1",
@@ -501,6 +564,7 @@ describe("SmartReplyCard", () => {
 
     render(
       <SmartReplyMessageAnchor
+        conversationId="conv-001"
         message={message}
         suggestion={{
           assistantName: "护肤小助手",
@@ -595,6 +659,7 @@ describe("SmartReplyCard", () => {
 
   it("shows success banner when no banned words are found in edit dialog", async () => {
     const user = userEvent.setup();
+    vi.mocked(checkSmartReplyTextModeration).mockResolvedValue({ result: null });
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
       id: "msg-1",
@@ -603,6 +668,7 @@ describe("SmartReplyCard", () => {
 
     render(
       <SmartReplyMessageAnchor
+        conversationId="conv-001"
         message={message}
         suggestion={{
           assistantName: "护肤小助手",
@@ -625,6 +691,12 @@ describe("SmartReplyCard", () => {
 
   it("shows violation result after checking banned words in edit dialog", async () => {
     const user = userEvent.setup();
+    vi.mocked(checkSmartReplyTextModeration).mockResolvedValue({
+      result: {
+        categoryLabel: "广告法_通用禁用极限词",
+        words: ["太好用了"],
+      },
+    });
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
       id: "msg-1",
@@ -633,6 +705,7 @@ describe("SmartReplyCard", () => {
 
     render(
       <SmartReplyMessageAnchor
+        conversationId="conv-001"
         message={message}
         suggestion={{
           assistantName: "护肤小助手",

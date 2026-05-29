@@ -173,6 +173,20 @@ describe("SmartReplyEditDialog", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("disables manual violation checks when no checker is provided", () => {
+    render(
+      <SmartReplyEditDialog
+        automaticCheckIllegalWords={0}
+        initialContent="这款产品太好用了"
+        onOpenChange={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "违规词检测" })).toBeDisabled();
+    expect(screen.queryByTestId("smart-reply-violation-result")).not.toBeInTheDocument();
+  });
+
   it("syncs the violation highlight overlay scroll position with the textbox", () => {
     render(
       <SmartReplyEditDialog

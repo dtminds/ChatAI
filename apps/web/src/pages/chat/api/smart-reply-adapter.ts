@@ -8,10 +8,7 @@ import {
 } from "@chatai/contracts";
 import type { ChatMessage, Conversation, Message, MessageContent } from "@/pages/chat/chat-types";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
-import {
-  isSmartReplyBusy,
-  type SmartReplySuggestion,
-} from "@/pages/chat/components/smart-reply-card";
+import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
 import type { SmartReplyViolationResult } from "@/pages/chat/components/smart-reply-edit-dialog";
 import type { WorkbenchSmartReplyTextModerationResponse } from "@chatai/contracts";
@@ -157,6 +154,14 @@ export function isSmartReplyPollActiveGenerateStatus(
   const numericStatus = readNonNegativeInteger(rawStatus);
 
   return numericStatus === 0 || numericStatus === 1;
+}
+
+export function isSmartReplyBusy(
+  suggestion?: SmartReplySuggestion | null,
+): boolean {
+  return (
+    suggestion?.status === "thinking" || suggestion?.status === "processing"
+  );
 }
 
 export function isSmartReplyKnowledgeMiss(

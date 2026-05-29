@@ -54,7 +54,6 @@ export type SmartReplyEditDialogProps = {
   onCheckViolations?: (content: string) => Promise<SmartReplyViolationResult | null>;
 };
 
-const DEMO_VIOLATION_WORDS = ["太好用了", "最好", "第一", "极致"];
 const EMPTY_RECOMMENDED_ATTACHMENTS: SmartReplyRecommendedAttachment[] = [];
 
 export function SmartReplyEditDialog({
@@ -130,26 +129,14 @@ export function SmartReplyEditDialog({
   const isContentChanged = trimmedDraftContent !== trimmedInitialContent;
   const shouldAutoCheckIllegalWords = automaticCheckIllegalWords === 1;
   const isSendBlockedByViolations = violationCheckPhase === "found";
+  const canCheckViolations = Boolean(onCheckViolations);
 
   const runViolationCheck = useCallback(async () => {
-    if (onCheckViolations) {
-      return onCheckViolations(draftContent);
+    if (!onCheckViolations) {
+      return null;
     }
 
-    await new Promise((resolve) => {
-      window.setTimeout(resolve, 400);
-    });
-
-    const words = DEMO_VIOLATION_WORDS.filter((word) => draftContent.includes(word));
-
-    if (words.length > 0) {
-      return {
-        categoryLabel: "广告法_通用禁用极限词",
-        words,
-      };
-    }
-
-    return null;
+    return onCheckViolations(draftContent);
   }, [draftContent, onCheckViolations]);
 
   const handleDraftContentChange = useCallback((value: string) => {
@@ -243,116 +230,118 @@ export function SmartReplyEditDialog({
 
   return (
     <>
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent
-        aria-describedby={undefined}
-        className="flex max-h-[min(90vh,720px)] w-[640px] max-w-none flex-col gap-0 overflow-hidden px-[24px] py-0 text-foreground sm:rounded-[10px]"
-        data-testid="smart-reply-edit-dialog"
-      >
-        <DialogHeader className="space-y-0 py-[16px] text-left">
-          <DialogTitle className="text-[14px] font-medium leading-6 text-foreground">
-            编辑
-          </DialogTitle>
-        </DialogHeader>
+      <Dialog onOpenChange={onOpenChange} open={open}>
+        <DialogContent
+          aria-describedby={undefined}
+          className="flex max-h-[min(90vh,720px)] w-[640px] max-w-none flex-col gap-0 overflow-hidden px-[24px] py-0 text-foreground sm:rounded-[10px]"
+          data-testid="smart-reply-edit-dialog"
+        >
+          <DialogHeader className="space-y-0 py-[16px] text-left">
+            <DialogTitle className="text-[14px] font-medium leading-6 text-foreground">
+              编辑
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <ViolationHighlightEditor
-            highlightedWords={highlightedWords}
-            onChange={handleDraftContentChange}
-            value={draftContent}
-          />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <ViolationHighlightEditor
+              highlightedWords={highlightedWords}
+              onChange={handleDraftContentChange}
+              value={draftContent}
+            />
 
-         <div className="mt-[20px] flex justify-end gap-2">
-            <Button
-              className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
-              disabled={isCheckingViolations || !draftContent.trim()}
-              onClick={() => void handleCheckViolations()}
-              type="button"
-              variant="outline"
-            >
-              {isCheckingViolations ? (
-                <HugeiconsIcon
-                  className="animate-spin"
-                  icon={Loading03Icon}
-                  size={14}
-                  strokeWidth={2}
-                />
-              ) : (
-                <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={2} />
-              )}
-              {isCheckingViolations ? "检测中" : "违规词检测"}
-            </Button>
-            <Button
-              className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
-              disabled={!draftContent.trim()}
-              onClick={() => setIsFaqDialogOpen(true)}
-              type="button"
-              variant="outline"
-            >
-              <HugeiconsIcon icon={BookOpen01Icon} size={14} strokeWidth={2} />
-              添加到FAQ
-            </Button>
+            <div className="mt-[20px] flex justify-end gap-2">
+              <Button
+                className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
+                disabled={
+                  isCheckingViolations || !draftContent.trim() || !canCheckViolations
+                }
+                onClick={() => void handleCheckViolations()}
+                type="button"
+                variant="outline"
+              >
+                {isCheckingViolations ? (
+                  <HugeiconsIcon
+                    className="animate-spin"
+                    icon={Loading03Icon}
+                    size={14}
+                    strokeWidth={2}
+                  />
+                ) : (
+                  <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={2} />
+                )}
+                {isCheckingViolations ? "检测中" : "违规词检测"}
+              </Button>
+              <Button
+                className="h-8 gap-1.5 rounded-[8px] px-3 text-[13px]"
+                disabled={!draftContent.trim()}
+                onClick={() => setIsFaqDialogOpen(true)}
+                type="button"
+                variant="outline"
+              >
+                <HugeiconsIcon icon={BookOpen01Icon} size={14} strokeWidth={2} />
+                添加到FAQ
+              </Button>
+            </div>
+
+            {violationCheckPhase === "clean" ? (
+              <ViolationCheckSuccessBanner onDismiss={handleDismissViolationStatus} />
+            ) : null}
+            {violationCheckPhase === "found" && violationResult ? (
+              <ViolationResultPanel
+                onDismiss={handleDismissViolationStatus}
+                result={violationResult}
+              />
+            ) : null}
+
+            {isRecommendedAttachmentsLoading ? (
+              <SmartReplyRecommendedAttachmentsSection
+                className="mt-[24px]"
+                isLoading
+                onSelectedAttachmentIdsChange={() => undefined}
+                recommendedAttachments={[]}
+                selectedAttachmentIds={[]}
+              />
+            ) : recommendedAttachments.length > 0 ? (
+              <SmartReplyRecommendedAttachmentsSection
+                className="mt-[24px]"
+                onSelectedAttachmentIdsChange={handleToggleAttachment}
+                recommendedAttachments={recommendedAttachments}
+                selectedAttachmentIds={selectedAttachmentIds}
+              />
+            ) : null}
           </div>
 
-          {violationCheckPhase === "clean" ? (
-            <ViolationCheckSuccessBanner onDismiss={handleDismissViolationStatus} />
-          ) : null}
-          {violationCheckPhase === "found" && violationResult ? (
-            <ViolationResultPanel
-              onDismiss={handleDismissViolationStatus}
-              result={violationResult}
-            />
-          ) : null}
-
-          {isRecommendedAttachmentsLoading ? (
-            <SmartReplyRecommendedAttachmentsSection
-              className="mt-[24px]"
-              isLoading
-              onSelectedAttachmentIdsChange={() => undefined}
-              recommendedAttachments={[]}
-              selectedAttachmentIds={[]}
-            />
-          ) : recommendedAttachments.length > 0 ? (
-            <SmartReplyRecommendedAttachmentsSection
-              className="mt-[24px]"
-              onSelectedAttachmentIdsChange={handleToggleAttachment}
-              recommendedAttachments={recommendedAttachments}
-              selectedAttachmentIds={selectedAttachmentIds}
-            />
-          ) : null}
-        </div>
-
-        <DialogFooter className="gap-2 py-4 sm:justify-end">
-          <Button
-            className="h-9 min-w-[72px] rounded-[8px] px-4 text-[13px]"
-            onClick={() => onOpenChange(false)}
-            type="button"
-            variant="outline"
-          >
-            取消
-          </Button>
-          <Button
-            className="h-9 min-w-[72px] rounded-[8px] px-4 text-[13px]"
-            disabled={isSendDisabled}
-            onClick={handleSend}
-            type="button"
-          >
-            发送
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-    <SmartReplyAddToFaqDialog
-      conversationId={conversationId}
-      initialAnswer={draftContent.trim()}
-      initialQuestion={faqInitialQuestion}
-      initialSelectedAttachmentIds={selectedAttachmentIds}
-      isRecommendedAttachmentsLoading={isRecommendedAttachmentsLoading}
-      onOpenChange={setIsFaqDialogOpen}
-      onSaved={() => onOpenChange(false)}
-      open={isFaqDialogOpen}
-      recommendedAttachments={recommendedAttachments}
-    />
+          <DialogFooter className="gap-2 py-4 sm:justify-end">
+            <Button
+              className="h-9 min-w-[72px] rounded-[8px] px-4 text-[13px]"
+              onClick={() => onOpenChange(false)}
+              type="button"
+              variant="outline"
+            >
+              取消
+            </Button>
+            <Button
+              className="h-9 min-w-[72px] rounded-[8px] px-4 text-[13px]"
+              disabled={isSendDisabled}
+              onClick={handleSend}
+              type="button"
+            >
+              发送
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <SmartReplyAddToFaqDialog
+        conversationId={conversationId}
+        initialAnswer={draftContent.trim()}
+        initialQuestion={faqInitialQuestion}
+        initialSelectedAttachmentIds={selectedAttachmentIds}
+        isRecommendedAttachmentsLoading={isRecommendedAttachmentsLoading}
+        onOpenChange={setIsFaqDialogOpen}
+        onSaved={() => onOpenChange(false)}
+        open={isFaqDialogOpen}
+        recommendedAttachments={recommendedAttachments}
+      />
     </>
   );
 }

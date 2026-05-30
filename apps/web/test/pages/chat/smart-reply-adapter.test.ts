@@ -179,6 +179,46 @@ describe("smart-reply-adapter", () => {
     ).toEqual(["150001"]);
   });
 
+  it("uses the latest sorted previous seq when the tail contains non-seq system messages", () => {
+    expect(
+      collectNewSmartReplyPendingKeys(
+        [
+          {
+            content: { text: "旧消息", type: "text" },
+            id: "msg-100",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:00:00+08:00",
+            seq: 100,
+          },
+          {
+            id: "typing-system",
+            role: "system",
+            sentAt: "2026-05-25T10:00:01+08:00",
+            text: "系统提示",
+          },
+        ] as Message[],
+        [
+          {
+            content: { text: "历史补齐消息", type: "text" },
+            id: "msg-90",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T09:59:00+08:00",
+            seq: 90,
+          },
+          {
+            content: { text: "新消息", type: "text" },
+            id: "msg-101",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:01:00+08:00",
+            seq: 101,
+          },
+        ] as Message[]),
+    ).toEqual(["101"]);
+  });
+
   it("does not mark history preload messages as pending", () => {
     expect(
       collectNewSmartReplyPendingKeys(

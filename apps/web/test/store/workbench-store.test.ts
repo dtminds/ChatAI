@@ -843,6 +843,73 @@ describe("useWorkbenchStore", () => {
     expect(observedGeneralAnswerRequests).toEqual([]);
   });
 
+  it("does not continue polling a revealed suggestion after switching conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredPoll = createDeferred<{
+      suggestions: Array<{
+        assistantName: string;
+        content: string;
+        generateStatus: number;
+        messageId: string;
+        pollComplete: boolean;
+        status: "processing";
+      }>;
+    }>();
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+        return deferredPoll.promise;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 8,
+      );
+
+    expect(message).toBeDefined();
+
+    const requestPromise =
+      useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    deferredPoll.resolve({
+      suggestions: [
+        {
+          assistantName: "智能助手",
+          content: "",
+          generateStatus: 1,
+          messageId: "8",
+          pollComplete: false,
+          status: "processing",
+        },
+      ],
+    });
+    await requestPromise;
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.activeConversationId).toBe("conv-002");
+    expect(observedSmartReplyRequests).toEqual([
+      {
+        conversationId: "conv-001",
+        msgIds: [8],
+      },
+    ]);
+    expect(
+      state.smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).toBeUndefined();
+    expect(state.smartReplyLastPolledAtByConversationId["conv-001"]).toBeUndefined();
+  });
+
   it("hides a dismissed smart reply while preserving the suggestion for later reveal", async () => {
     const baseService = createMockWorkbenchService();
 

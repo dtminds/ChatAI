@@ -244,15 +244,15 @@ export function collectNewSmartReplyPendingKeys(
       ...incomingMessages,
     ], Number.POSITIVE_INFINITY),
   );
-  const maxPreviousSeq = previousMessages.reduce(
-    (maxSeq, message) =>
-      typeof message.seq === "number" &&
-      Number.isSafeInteger(message.seq) &&
-      message.seq > maxSeq
-        ? message.seq
-        : maxSeq,
-    0,
-  );
+  let maxPreviousSeq = 0;
+  for (let index = previousMessages.length - 1; index >= 0; index -= 1) {
+    const seq = previousMessages[index]?.seq;
+
+    if (typeof seq === "number" && Number.isSafeInteger(seq) && seq > 0) {
+      maxPreviousSeq = seq;
+      break;
+    }
+  }
   const pendingKeys: string[] = [];
 
   for (const message of incomingMessages) {

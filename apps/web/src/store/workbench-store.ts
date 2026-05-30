@@ -2626,6 +2626,10 @@ export function createWorkbenchStore() {
               );
 
           if (revealedSuggestion) {
+            if (get().activeConversationId !== conversationId) {
+              return;
+            }
+
             if (!isSmartReplyPollComplete(revealedSuggestion)) {
               set((currentState) => ({
                 smartReplyPendingMessageKeysByConversationId: {

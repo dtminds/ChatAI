@@ -266,4 +266,24 @@ describe("SmartReplyEditDialog", () => {
     await expect(onCheckViolations.mock.results[0]?.value).resolves.toBeNull();
     expect(screen.queryByText("做的太棒了，暂未检测到错误处")).not.toBeInTheDocument();
   });
+
+  it("recovers the manual violation check UI when the request fails", async () => {
+    const user = userEvent.setup();
+    const onCheckViolations = vi.fn().mockRejectedValue(new Error("network"));
+
+    render(
+      <SmartReplyEditDialog
+        initialContent="建议先确认是否敏感肌"
+        onCheckViolations={onCheckViolations}
+        onOpenChange={() => undefined}
+        open
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "违规词检测" }));
+
+    expect(await screen.findByRole("button", { name: "违规词检测" })).toBeEnabled();
+    expect(screen.queryByTestId("smart-reply-violation-result")).not.toBeInTheDocument();
+    expect(screen.queryByText("做的太棒了，暂未检测到错误处")).not.toBeInTheDocument();
+  });
 });

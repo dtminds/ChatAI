@@ -54,6 +54,31 @@ describe("mapJavaTextModerationPlus", () => {
     });
   });
 
+  it("deduplicates repeated category descriptions", () => {
+    expect(
+      mapJavaTextModerationPlus({
+        riskItems: [
+          {
+            description: "广告法_通用禁用极限词",
+            label: "ad_law",
+            riskWords: "最好",
+          },
+          {
+            description: "广告法_通用禁用极限词",
+            label: "ad_law",
+            riskWords: "第一",
+          },
+        ],
+        riskLevel: "high",
+      }),
+    ).toEqual({
+      result: {
+        categoryLabel: "广告法_通用禁用极限词",
+        words: ["最好", "第一"],
+      },
+    });
+  });
+
   it("uses riskWords for non-customized items", () => {
     expect(
       mapJavaTextModerationPlus({

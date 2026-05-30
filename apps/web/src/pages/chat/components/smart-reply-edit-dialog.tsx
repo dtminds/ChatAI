@@ -156,6 +156,10 @@ export function SmartReplyEditDialog({
       }
       setViolationResult(result);
       setViolationCheckPhase(result ? "found" : "clean");
+    } catch {
+      if (isMountedRef.current) {
+        setViolationCheckPhase("none");
+      }
     } finally {
       if (isMountedRef.current) {
         setIsCheckingViolations(false);

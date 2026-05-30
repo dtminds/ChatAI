@@ -60,7 +60,9 @@ function collectRiskItemCategoryLabel(riskItems: JavaTextModerationRiskItem[]) {
     .map((item) => readString(item.description))
     .filter((description): description is string => Boolean(description));
 
-  return descriptions.length > 0 ? descriptions.join(",") : undefined;
+  return descriptions.length > 0
+    ? Array.from(new Set(descriptions)).join(",")
+    : undefined;
 }
 
 function collectRiskItemWords(riskItems: JavaTextModerationRiskItem[]) {

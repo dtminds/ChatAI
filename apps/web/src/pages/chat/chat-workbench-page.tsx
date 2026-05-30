@@ -676,7 +676,6 @@ function ChatWorkbenchContent({
     handleTriggerSmartReply,
   } = useSmartReplyState({
     activeConversation,
-    activeConversationIdRef,
     canSendMessage,
     composerRef,
     dismissSmartReply,

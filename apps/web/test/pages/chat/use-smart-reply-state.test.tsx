@@ -1,5 +1,4 @@
-import { render } from "@testing-library/react";
-import { useRef } from "react";
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LexicalEditor } from "lexical";
 import {
@@ -10,6 +9,8 @@ import { useSmartReplyState } from "@/pages/chat/hooks/use-smart-reply-state";
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
+
+type SmartReplyStateOptions = Parameters<typeof useSmartReplyState>[0];
 
 const singleConversation = {
   accountId: "drc",
@@ -67,6 +68,21 @@ function createSendPayload(content = "推荐话术"): SmartReplySendPayload {
   };
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return {
+    promise,
+    reject,
+    resolve,
+  };
+}
+
 function createEditorMock() {
   return {
     dispatchCommand: vi.fn(),
@@ -77,20 +93,27 @@ function createEditorMock() {
   };
 }
 
-type HarnessProps = Parameters<typeof useSmartReplyState>[0] & {
-  onState: (state: ReturnType<typeof useSmartReplyState>) => void;
-};
-
-function Harness({ onState, ...props }: HarnessProps) {
-  const composerRef = useRef<LexicalEditor | null>(props.composerRef.current);
-  const state = useSmartReplyState({
-    ...props,
-    composerRef,
-  });
-
-  onState(state);
-
-  return null;
+function createDefaultHookOptions(
+  overrides: Partial<SmartReplyStateOptions> = {},
+): SmartReplyStateOptions {
+  return {
+    activeConversation: singleConversation,
+    canSendMessage: true,
+    composerRef: { current: null },
+    dismissSmartReply: vi.fn(),
+    isMountedRef: { current: true },
+    isSendingDraftRef: { current: false },
+    onDraftChange: vi.fn(),
+    onSendFailure: vi.fn(),
+    onSent: vi.fn(),
+    onSendingChange: vi.fn(),
+    requestSmartReplyGeneralAnswer: vi.fn(),
+    requestSmartReplyMakeShorter: vi.fn(),
+    sendSmartReply: vi.fn(),
+    smartReplyByMessageIdByConversationId: {},
+    smartReplyHiddenMessageKeysByConversationId: {},
+    ...overrides,
+  };
 }
 
 describe("useSmartReplyState", () => {
@@ -99,111 +122,64 @@ describe("useSmartReplyState", () => {
   });
 
   it("exposes only visible smart replies for the active single conversation", () => {
-    let latestState: ReturnType<typeof useSmartReplyState> | undefined;
     const visibleSuggestion = createSuggestion("展示的话术");
     const hiddenSuggestion = createSuggestion("隐藏的话术");
 
-    render(
-      <Harness
-        activeConversation={singleConversation}
-        canSendMessage
-        composerRef={{ current: null }}
-        dismissSmartReply={vi.fn()}
-        isMountedRef={{ current: true }}
-        isSendingDraftRef={{ current: false }}
-        onDraftChange={vi.fn()}
-        onSendFailure={vi.fn()}
-        onSent={vi.fn()}
-        onSendingChange={vi.fn()}
-        onState={(state) => {
-          latestState = state;
-        }}
-        requestSmartReplyGeneralAnswer={vi.fn()}
-        requestSmartReplyMakeShorter={vi.fn()}
-        sendSmartReply={vi.fn()}
-        smartReplyByMessageIdByConversationId={{
-          "conv-001": {
-            "1": visibleSuggestion,
-            "2": hiddenSuggestion,
+    const { result } = renderHook(() =>
+      useSmartReplyState(
+        createDefaultHookOptions({
+          smartReplyByMessageIdByConversationId: {
+            "conv-001": {
+              "1": visibleSuggestion,
+              "2": hiddenSuggestion,
+            },
+            "conv-other": {
+              "3": createSuggestion("其他会话"),
+            },
           },
-          "conv-other": {
-            "3": createSuggestion("其他会话"),
+          smartReplyHiddenMessageKeysByConversationId: {
+            "conv-001": {
+              "2": true,
+            },
           },
-        }}
-        smartReplyHiddenMessageKeysByConversationId={{
-          "conv-001": {
-            "2": true,
-          },
-        }}
-      />,
+        }),
+      ),
     );
 
-    expect(latestState?.activeSmartReplyByMessageId).toEqual({
+    expect(result.current.activeSmartReplyByMessageId).toEqual({
       "1": visibleSuggestion,
     });
   });
 
   it("does not expose smart replies for group conversations", () => {
-    let latestState: ReturnType<typeof useSmartReplyState> | undefined;
-
-    render(
-      <Harness
-        activeConversation={groupConversation}
-        canSendMessage
-        composerRef={{ current: null }}
-        dismissSmartReply={vi.fn()}
-        isMountedRef={{ current: true }}
-        isSendingDraftRef={{ current: false }}
-        onDraftChange={vi.fn()}
-        onSendFailure={vi.fn()}
-        onSent={vi.fn()}
-        onSendingChange={vi.fn()}
-        onState={(state) => {
-          latestState = state;
-        }}
-        requestSmartReplyGeneralAnswer={vi.fn()}
-        requestSmartReplyMakeShorter={vi.fn()}
-        sendSmartReply={vi.fn()}
-        smartReplyByMessageIdByConversationId={{
-          "conv-group": {
-            "1": createSuggestion("群聊不展示"),
+    const { result } = renderHook(() =>
+      useSmartReplyState(
+        createDefaultHookOptions({
+          activeConversation: groupConversation,
+          smartReplyByMessageIdByConversationId: {
+            "conv-group": {
+              "1": createSuggestion("群聊不展示"),
+            },
           },
-        }}
-        smartReplyHiddenMessageKeysByConversationId={{}}
-      />,
+        }),
+      ),
     );
 
-    expect(latestState?.activeSmartReplyByMessageId).toEqual({});
+    expect(result.current.activeSmartReplyByMessageId).toEqual({});
   });
 
   it("fills the composer through Lexical commands without sending", () => {
-    let latestState: ReturnType<typeof useSmartReplyState> | undefined;
     const editor = createEditorMock();
 
-    render(
-      <Harness
-        activeConversation={singleConversation}
-        canSendMessage
-        composerRef={{ current: editor }}
-        dismissSmartReply={vi.fn()}
-        isMountedRef={{ current: true }}
-        isSendingDraftRef={{ current: false }}
-        onDraftChange={vi.fn()}
-        onSendFailure={vi.fn()}
-        onSent={vi.fn()}
-        onSendingChange={vi.fn()}
-        onState={(state) => {
-          latestState = state;
-        }}
-        requestSmartReplyGeneralAnswer={vi.fn()}
-        requestSmartReplyMakeShorter={vi.fn()}
-        sendSmartReply={vi.fn()}
-        smartReplyByMessageIdByConversationId={{}}
-        smartReplyHiddenMessageKeysByConversationId={{}}
-      />,
+    const { result } = renderHook(() =>
+      useSmartReplyState(
+        createDefaultHookOptions({
+          composerRef: { current: editor },
+        }),
+      ),
     );
 
-    latestState?.handleFillSmartReplyComposer(customerMessage, "  推荐话术  ");
+    result.current.handleFillSmartReplyComposer(customerMessage, "  推荐话术  ");
 
     expect(editor.dispatchCommand).toHaveBeenCalledWith(
       CLEAR_COMPOSER_COMMAND,
@@ -213,12 +189,11 @@ describe("useSmartReplyState", () => {
       INSERT_COMPOSER_TEXT_COMMAND,
       "推荐话术",
     );
-    expect(latestState?.handleFillSmartReplyComposer).toBeDefined();
+    expect(result.current.handleFillSmartReplyComposer).toBeDefined();
     expect(editor.focus).toHaveBeenCalledTimes(1);
   });
 
   it("sends smart replies through the store action and reports failures", async () => {
-    let latestState: ReturnType<typeof useSmartReplyState> | undefined;
     const onSendFailure = vi.fn();
     const onSendingChange = vi.fn();
     const sendSmartReply = vi.fn(async () => ({
@@ -228,30 +203,17 @@ describe("useSmartReplyState", () => {
       reason: "send" as const,
     }));
 
-    render(
-      <Harness
-        activeConversation={singleConversation}
-        canSendMessage
-        composerRef={{ current: null }}
-        dismissSmartReply={vi.fn()}
-        isMountedRef={{ current: true }}
-        isSendingDraftRef={{ current: false }}
-        onDraftChange={vi.fn()}
-        onSendFailure={onSendFailure}
-        onSent={vi.fn()}
-        onSendingChange={onSendingChange}
-        onState={(state) => {
-          latestState = state;
-        }}
-        requestSmartReplyGeneralAnswer={vi.fn()}
-        requestSmartReplyMakeShorter={vi.fn()}
-        sendSmartReply={sendSmartReply}
-        smartReplyByMessageIdByConversationId={{}}
-        smartReplyHiddenMessageKeysByConversationId={{}}
-      />,
+    const { result } = renderHook(() =>
+      useSmartReplyState(
+        createDefaultHookOptions({
+          onSendFailure,
+          onSendingChange,
+          sendSmartReply,
+        }),
+      ),
     );
 
-    const result = await latestState?.handleSendSmartReply(
+    const sendResult = await result.current.handleSendSmartReply(
       customerMessage,
       createSendPayload(),
     );
@@ -267,41 +229,80 @@ describe("useSmartReplyState", () => {
       reason: "send",
     });
     expect(onSendingChange).toHaveBeenLastCalledWith(false);
-    expect(result).toMatchObject({ ok: false });
+    expect(sendResult).toMatchObject({ ok: false });
+  });
+
+  it("skips stale send side effects when the active conversation changes", async () => {
+    const sendGate = createDeferred<{
+      didConsumeQuote?: boolean;
+      ok: true;
+    }>();
+    const isSendingDraftRef = { current: false };
+    const onSendFailure = vi.fn();
+    const onSent = vi.fn();
+    const onSendingChange = vi.fn();
+    const sendSmartReply = vi.fn(() => sendGate.promise);
+    const { result, rerender } = renderHook(
+      (options: SmartReplyStateOptions) => useSmartReplyState(options),
+      {
+        initialProps: createDefaultHookOptions({
+          isSendingDraftRef,
+          onSendFailure,
+          onSent,
+          onSendingChange,
+          sendSmartReply,
+        }),
+      },
+    );
+
+    const sendPromise = result.current.handleSendSmartReply(
+      customerMessage,
+      createSendPayload(),
+    );
+
+    rerender(
+      createDefaultHookOptions({
+        activeConversation: {
+          ...singleConversation,
+          id: "conv-002",
+        },
+        isSendingDraftRef,
+        onSendFailure,
+        onSent,
+        onSendingChange,
+        sendSmartReply,
+      }),
+    );
+
+    await act(async () => {
+      sendGate.resolve({ ok: true });
+      await sendPromise;
+    });
+
+    expect(onSent).not.toHaveBeenCalled();
+    expect(onSendFailure).not.toHaveBeenCalled();
+    expect(onSendingChange).toHaveBeenNthCalledWith(1, true);
+    expect(onSendingChange).toHaveBeenLastCalledWith(false);
   });
 
   it("forwards trigger, dismiss, and make-shorter handlers", () => {
-    let latestState: ReturnType<typeof useSmartReplyState> | undefined;
     const dismissSmartReply = vi.fn();
     const requestSmartReplyGeneralAnswer = vi.fn(async () => undefined);
     const requestSmartReplyMakeShorter = vi.fn(async () => undefined);
 
-    render(
-      <Harness
-        activeConversation={singleConversation}
-        canSendMessage
-        composerRef={{ current: null }}
-        dismissSmartReply={dismissSmartReply}
-        isMountedRef={{ current: true }}
-        isSendingDraftRef={{ current: false }}
-        onDraftChange={vi.fn()}
-        onSendFailure={vi.fn()}
-        onSent={vi.fn()}
-        onSendingChange={vi.fn()}
-        onState={(state) => {
-          latestState = state;
-        }}
-        requestSmartReplyGeneralAnswer={requestSmartReplyGeneralAnswer}
-        requestSmartReplyMakeShorter={requestSmartReplyMakeShorter}
-        sendSmartReply={vi.fn()}
-        smartReplyByMessageIdByConversationId={{}}
-        smartReplyHiddenMessageKeysByConversationId={{}}
-      />,
+    const { result } = renderHook(() =>
+      useSmartReplyState(
+        createDefaultHookOptions({
+          dismissSmartReply,
+          requestSmartReplyGeneralAnswer,
+          requestSmartReplyMakeShorter,
+        }),
+      ),
     );
 
-    latestState?.handleTriggerSmartReply(customerMessage, { force: true });
-    latestState?.handleDismissSmartReply(customerMessage);
-    latestState?.handleMakeShorterSmartReply(customerMessage);
+    result.current.handleTriggerSmartReply(customerMessage, { force: true });
+    result.current.handleDismissSmartReply(customerMessage);
+    result.current.handleMakeShorterSmartReply(customerMessage);
 
     expect(requestSmartReplyGeneralAnswer).toHaveBeenCalledWith(
       customerMessage,

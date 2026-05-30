@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type RefObject } from "react";
+import { useCallback, useMemo, useRef, type RefObject } from "react";
 import type { LexicalEditor } from "lexical";
 import {
   CLEAR_COMPOSER_COMMAND,
@@ -22,7 +22,6 @@ type SendSmartReplyResult =
 
 type UseSmartReplyStateOptions = {
   activeConversation?: Conversation;
-  activeConversationIdRef?: RefObject<string | undefined>;
   canSendMessage: boolean;
   composerRef: RefObject<LexicalEditor | null>;
   dismissSmartReply: (message: ChatMessage) => void;
@@ -57,7 +56,6 @@ type UseSmartReplyStateOptions = {
 
 export function useSmartReplyState({
   activeConversation,
-  activeConversationIdRef,
   canSendMessage,
   composerRef,
   dismissSmartReply,
@@ -75,6 +73,8 @@ export function useSmartReplyState({
 }: UseSmartReplyStateOptions) {
   const activeConversationId = activeConversation?.id;
   const activeConversationMode = activeConversation?.mode;
+  const latestConversationIdRef = useRef(activeConversationId);
+  latestConversationIdRef.current = activeConversationId;
 
   const activeSmartReplyByMessageId = useMemo(() => {
     if (!activeConversationId || activeConversationMode !== "single") {
@@ -113,8 +113,7 @@ export function useSmartReplyState({
 
       try {
         const result = await sendSmartReply(message, payload);
-        const latestConversationId =
-          activeConversationIdRef?.current ?? activeConversationId;
+        const latestConversationId = latestConversationIdRef.current;
 
         if (!isMountedRef.current || latestConversationId !== sendConversationId) {
           return result;
@@ -140,7 +139,6 @@ export function useSmartReplyState({
     },
     [
       activeConversationId,
-      activeConversationIdRef,
       canSendMessage,
       isMountedRef,
       isSendingDraftRef,

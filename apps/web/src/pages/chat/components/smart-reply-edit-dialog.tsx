@@ -486,6 +486,11 @@ function splitByHighlights(
   const uniqueWords = [...new Set(highlightedWords.filter(Boolean))].sort(
     (left, right) => right.length - left.length,
   );
+
+  if (uniqueWords.length === 0) {
+    return [{ text, highlighted: false }];
+  }
+
   const pattern = new RegExp(
     `(${uniqueWords.map((word) => escapeRegExp(word)).join("|")})`,
     "g",

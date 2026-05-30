@@ -97,4 +97,31 @@ describe("useSmartHeartbeat", () => {
 
     expect(sendSmartHeartbeat).toHaveBeenCalledTimes(2);
   });
+
+  it("does not let an in-flight heartbeat from one conversation block the next conversation", async () => {
+    let resolveFirstHeartbeat: () => void = () => undefined;
+    sendSmartHeartbeat.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirstHeartbeat = () => resolve({ ok: true });
+        }),
+    );
+
+    const { rerender } = render(
+      <SmartHeartbeatHarness conversationId="conv-001" intervalMs={1000} />,
+    );
+
+    await vi.waitFor(() => {
+      expect(sendSmartHeartbeat).toHaveBeenCalledWith("conv-001");
+    });
+
+    rerender(<SmartHeartbeatHarness conversationId="conv-002" intervalMs={1000} />);
+
+    await vi.waitFor(() => {
+      expect(sendSmartHeartbeat).toHaveBeenCalledWith("conv-002");
+    });
+    expect(sendSmartHeartbeat).toHaveBeenCalledTimes(2);
+
+    resolveFirstHeartbeat();
+  });
 });

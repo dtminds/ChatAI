@@ -214,6 +214,32 @@ describe("SmartReplyEditDialog", () => {
     expect(overlay.scrollTop).toBe(72);
   });
 
+  it("does not split highlight text into characters when violation words are empty", async () => {
+    render(
+      <SmartReplyEditDialog
+        initialContent="建议先确认是否敏感肌"
+        onCheckViolations={async () => ({
+          categoryLabel: "空结果",
+          words: [""],
+        })}
+        onOpenChange={() => undefined}
+        open
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "违规词检测" }));
+
+    expect(await screen.findByTestId("smart-reply-violation-result")).toBeInTheDocument();
+    expect(screen.getByTestId("smart-reply-violation-highlight-overlay")).toHaveTextContent(
+      "建议先确认是否敏感肌",
+    );
+    expect(
+      screen
+        .getByTestId("smart-reply-violation-highlight-overlay")
+        .querySelectorAll("span"),
+    ).toHaveLength(1);
+  });
+
   it("does not update violation check UI after unmounting during a request", async () => {
     const user = userEvent.setup();
     let resolveViolationCheck: (value: null) => void = () => undefined;

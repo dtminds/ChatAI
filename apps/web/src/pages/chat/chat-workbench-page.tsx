@@ -635,7 +635,7 @@ function ChatWorkbenchContent({
     pollWorkbench,
   });
 
-  // 暂时停用心跳，待后续观察并决策启用或删除该逻辑
+  // 心跳当前按产品决策停用；保留调用示例，后续恢复时再打开。
   // useSmartHeartbeat({
   //   conversationId: activeConversation?.id,
   //   enabled:

@@ -143,6 +143,7 @@ export function createPendingSmartReplySuggestion(
 ): SmartReplySuggestion {
   return {
     assistantName,
+    busyRequestId: Date.now(),
     content: "",
     status: "processing",
   };
@@ -655,7 +656,7 @@ function mapSmartReplyAttachmentToComposerSegment(
     };
   }
 
-  if (fileType !== 5) {
+  if (fileType !== 5 && fileType !== 3) {
     return null;
   }
 

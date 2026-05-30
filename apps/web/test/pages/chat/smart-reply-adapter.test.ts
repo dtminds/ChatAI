@@ -95,20 +95,31 @@ describe("smart-reply-adapter", () => {
   });
 
   it("creates triggered suggestions with media processing state", () => {
-    expect(
-      createTriggeredSmartReplySuggestion({
-        content: { imageUrl: "https://example.com/image.png", alt: "图片", type: "image" },
-        id: "msg-image",
-        role: "customer",
-      } as ChatMessage),
-    ).toEqual(createPendingSmartReplySuggestion());
+    const pendingSuggestion = createTriggeredSmartReplySuggestion({
+      content: { imageUrl: "https://example.com/image.png", alt: "图片", type: "image" },
+      id: "msg-image",
+      role: "customer",
+    } as ChatMessage);
+
+    expect(pendingSuggestion).toMatchObject({
+      assistantName: "智能助手",
+      content: "",
+      status: "processing",
+    });
+    expect(pendingSuggestion.busyRequestId).toEqual(expect.any(Number));
     expect(
       createTriggeredSmartReplySuggestion({
         content: { text: "文本", type: "text" },
         id: "msg-text",
         role: "customer",
-      } as ChatMessage).status,
-    ).toBe("thinking");
+      } as ChatMessage),
+    ).toMatchObject({
+      busyRequestId: expect.any(Number),
+      status: "thinking",
+    });
+    expect(
+      createPendingSmartReplySuggestion().busyRequestId,
+    ).toEqual(expect.any(Number));
   });
 
   it("treats ready suggestions and busy suggestions differently", () => {
@@ -626,19 +637,25 @@ describe("smart-reply-adapter", () => {
             localPath: "files/spec.pdf",
           },
           {
+            fileName: "演示视频.mp4",
+            fileType: "3",
+            id: "104",
+            localPath: "videos/demo.mp4",
+          },
+          {
             coverUrl: "https://example.com/article.png",
             fileName: "图文素材",
             fileType: "4",
-            id: "104",
+            id: "105",
           },
           {
             coverUrl: "https://example.com/mini.png",
             fileName: "小程序素材",
             fileType: "7",
-            id: "105",
+            id: "106",
           },
         ],
-        selectedAttachmentIds: ["101", "102", "103", "104", "105"],
+        selectedAttachmentIds: ["101", "102", "103", "104", "105", "106"],
       }),
     ).toEqual([
       {
@@ -661,6 +678,12 @@ describe("smart-reply-adapter", () => {
         fileName: "规格.pdf",
         type: "file",
         url: "https://b1.dtminds.com/files/spec.pdf",
+      },
+      {
+        extension: "mp4",
+        fileName: "演示视频.mp4",
+        type: "file",
+        url: "https://b1.dtminds.com/videos/demo.mp4",
       },
     ]);
   });

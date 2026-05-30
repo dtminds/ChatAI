@@ -45,8 +45,14 @@ export function mapJavaAiHelperGenerateId(data: unknown) {
     return undefined;
   }
 
-  if (data.generateId != null && String(data.generateId).trim().length > 0) {
-    return String(data.generateId).trim();
+  const generateId = data.generateId;
+
+  if (typeof generateId === "string" && generateId.trim().length > 0) {
+    return generateId.trim();
+  }
+
+  if (typeof generateId === "number" && Number.isFinite(generateId)) {
+    return String(generateId);
   }
 
   return undefined;

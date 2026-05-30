@@ -22,6 +22,10 @@ describe("mapJavaAiHelperGenerateId", () => {
     expect(mapJavaAiHelperGenerateId({ generateId: "gen-001" })).toBe("gen-001");
   });
 
+  it("ignores non-scalar generateId values", () => {
+    expect(mapJavaAiHelperGenerateId({ generateId: {} })).toBeUndefined();
+  });
+
   it("maps generateId from string payload", () => {
     expect(mapJavaAiHelperGenerateId("gen-002")).toBe("gen-002");
   });

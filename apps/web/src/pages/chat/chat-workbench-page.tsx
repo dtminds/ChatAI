@@ -650,6 +650,23 @@ function ChatWorkbenchContent({
     });
   }, []);
 
+  const handleSmartReplySendFailure = useCallback(
+    ({
+      errorCode,
+      errorMessage,
+      reason,
+    }: {
+      errorCode: string;
+      errorMessage?: string;
+      reason: "file-upload" | "image-upload" | "send" | "unavailable";
+    }) => {
+      setSendFailureDialog(
+        getSendFailureDialogCopy(reason, errorCode, errorMessage),
+      );
+    },
+    [],
+  );
+
   const {
     activeSmartReplyByMessageId,
     handleDismissSmartReply,
@@ -666,11 +683,7 @@ function ChatWorkbenchContent({
     isMountedRef,
     isSendingDraftRef,
     onDraftChange: setDraft,
-    onSendFailure({ errorCode, errorMessage, reason }) {
-      setSendFailureDialog(
-        getSendFailureDialogCopy(reason, errorCode, errorMessage),
-      );
-    },
+    onSendFailure: handleSmartReplySendFailure,
     onSendingChange: setIsSendingDraft,
     onSent: scrollMessageViewportToBottom,
     requestSmartReplyGeneralAnswer,

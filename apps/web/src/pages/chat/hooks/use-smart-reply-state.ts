@@ -73,28 +73,32 @@ export function useSmartReplyState({
   smartReplyByMessageIdByConversationId,
   smartReplyHiddenMessageKeysByConversationId,
 }: UseSmartReplyStateOptions) {
+  const activeConversationId = activeConversation?.id;
+  const activeConversationMode = activeConversation?.mode;
+
   const activeSmartReplyByMessageId = useMemo(() => {
-    if (!activeConversation || activeConversation.mode !== "single") {
+    if (!activeConversationId || activeConversationMode !== "single") {
       return {};
     }
 
     const suggestions =
-      smartReplyByMessageIdByConversationId[activeConversation.id] ?? {};
+      smartReplyByMessageIdByConversationId[activeConversationId] ?? {};
     const hidden =
-      smartReplyHiddenMessageKeysByConversationId[activeConversation.id] ?? {};
+      smartReplyHiddenMessageKeysByConversationId[activeConversationId] ?? {};
 
     return Object.fromEntries(
       Object.entries(suggestions).filter(([lookupKey]) => !hidden[lookupKey]),
     );
   }, [
-    activeConversation,
+    activeConversationId,
+    activeConversationMode,
     smartReplyByMessageIdByConversationId,
     smartReplyHiddenMessageKeysByConversationId,
   ]);
 
   const handleSendSmartReply = useCallback(
     async (message: ChatMessage, payload: SmartReplySendPayload) => {
-      const sendConversationId = activeConversation?.id;
+      const sendConversationId = activeConversationId;
 
       if (!canSendMessage) {
         return undefined;
@@ -110,7 +114,7 @@ export function useSmartReplyState({
       try {
         const result = await sendSmartReply(message, payload);
         const latestConversationId =
-          activeConversationIdRef?.current ?? activeConversation?.id;
+          activeConversationIdRef?.current ?? activeConversationId;
 
         if (!isMountedRef.current || latestConversationId !== sendConversationId) {
           return result;
@@ -135,7 +139,7 @@ export function useSmartReplyState({
       }
     },
     [
-      activeConversation?.id,
+      activeConversationId,
       activeConversationIdRef,
       canSendMessage,
       isMountedRef,

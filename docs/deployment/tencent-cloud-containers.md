@@ -159,6 +159,7 @@ AUTH_COOKIE_SECURE=true
 LOG_LEVEL=info
 REDIS_ENABLED=false
 JAVA_INTERNAL_API_TIMEOUT_MS=8000
+JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS=60000
 MEDIA_PROXY_TIMEOUT_MS=8000
 ```
 
@@ -191,6 +192,7 @@ openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
 - 所有环境都必须配置 `DATABASE_URL`，否则 backend 会拒绝启动；本地开发也不再提供无数据库降级运行模式。
 - 生产环境必须配置 `JAVA_INTERNAL_API_BASE_URL`，否则 backend 会拒绝启动；本地开发和测试环境可按需留空并使用 mock 或非生产配置。
 - `JAVA_INTERNAL_API_BASE_URL` 用于转发发送消息、会话已读、席位接管等写操作；`JAVA_INTERNAL_API_TOKEN` 目前仍是可选项。
+- `JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS` 用于 Java 流式 AI 接口的读流空闲超时，默认可按 60000ms 配置。
 - `JAVA_INTERNAL_API_BASE_URL` 只应配置在 backend 所在环境，不要放进 web 的 `VITE_*` 构建变量。
 - 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。
 - `REDIS_ENABLED=false` 是当前阶段可接受配置，Redis 不是必需依赖。

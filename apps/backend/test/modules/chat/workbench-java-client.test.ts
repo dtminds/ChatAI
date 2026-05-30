@@ -1,15 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   JAVA_INTERNAL_API_USER_MESSAGE,
+  WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
   WORKBENCH_INTERNAL_API_FAILED_CODE,
   createWorkbenchJavaClient,
 } from "../../../src/modules/chat/workbench-java-client.js";
 
 describe("createWorkbenchJavaClient", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     delete process.env.JAVA_INTERNAL_API_BASE_URL;
     delete process.env.JAVA_INTERNAL_API_TOKEN;
+    delete process.env.JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS;
+    delete process.env.JAVA_INTERNAL_API_TIMEOUT_MS;
   });
 
   it("logs structured context when download message file request fails", async () => {
@@ -118,6 +122,36 @@ describe("createWorkbenchJavaClient", () => {
         body: JSON.stringify({
           platform: 5,
           subId: 101,
+          thirdUserId: "zhangsan",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts smart heartbeat payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await createWorkbenchJavaClient().sendSmartHeartbeat({
+      platform: 5,
+      thirdExternalUserId: "external-customer-001",
+      thirdUserId: "zhangsan",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-customer-bind-relation/smart-heartbeat",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platform: 5,
+          thirdExternalUserId: "external-customer-001",
           thirdUserId: "zhangsan",
           uid: 9001,
         }),
@@ -337,6 +371,34 @@ describe("createWorkbenchJavaClient", () => {
         method: "POST",
       }),
     );
+  });
+
+  it("preserves Java errorMsg when sentence recognition fails", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 1201,
+          errorMsg: "语音识别音频无法解析",
+          success: false,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().recognizeSentence({
+        voiceUrl: "https://b5.bokr.com.cn/s5/msg/20260525/272/voice.amr",
+      }),
+    ).rejects.toMatchObject({
+      details: {
+        error: 1201,
+      },
+      message: "语音识别音频无法解析",
+    });
   });
 
   it("posts conversation hide payload to the Java internal API", async () => {
@@ -689,6 +751,790 @@ describe("createWorkbenchJavaClient", () => {
         method: "POST",
       }),
     );
+  });
+
+  it("requests user history answer list with conversation scope fields", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              analyseMsgId: 1001,
+              assistantName: "护肤小助手",
+              recommendAnswer: "您好",
+              status: 2,
+            },
+          ],
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().listUserHistoryAnswers({
+        chatType: 1,
+        msgIds: [1001],
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      suggestions: [
+        {
+          assistantName: "护肤小助手",
+          content: "您好",
+          generateStatus: 2,
+          messageId: "1001",
+          pollComplete: true,
+          status: "ready",
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/user-history-answer-list",
+      expect.objectContaining({
+        body: JSON.stringify({
+          chatType: 1,
+          msgIds: [1001],
+          thirdExternalId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("treats error:0 as success when Java returns success:false for empty smart reply list", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [],
+          error: 0,
+          success: false,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().listUserHistoryAnswers({
+        chatType: 1,
+        msgIds: [1001],
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({ suggestions: [] });
+  });
+
+  it("posts general-answer requests with smart reply scope fields", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            analyseMsgId: 1121,
+            assistantName: "护肤小助手",
+            recommendAnswer: "您好",
+            status: 0,
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().requestGeneralAnswer({
+        chatType: 1,
+        msgId: 1121,
+        questionImgs: ["https://example.com/image.png"],
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      suggestion: {
+        assistantName: "护肤小助手",
+        content: "您好",
+        generateStatus: 0,
+        messageId: "1121",
+        status: "thinking",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/general-answer",
+      expect.objectContaining({
+        body: JSON.stringify({
+          chatType: 1,
+          msgId: 1121,
+          questionImgs: ["https://example.com/image.png"],
+          thirdExternalId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("preserves Java errorMsg when general-answer request fails", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 999,
+          errorMsg: "当前未配置可用AI助手",
+          success: false,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().requestGeneralAnswer({
+        chatType: 1,
+        msgId: 1324,
+        questionImgs: [],
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      details: {
+        error: 999,
+      },
+      message: "当前未配置可用AI助手",
+      statusCode: 502,
+    });
+  });
+
+  it("accepts string ids from auto-general-answer", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            id: "EUBrlqBJuTzR6E1LVFl0xg",
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().requestAutoGeneralAnswer({
+        chatType: 1,
+        msgId: 1418,
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    ).resolves.toEqual({
+      id: "EUBrlqBJuTzR6E1LVFl0xg",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+      expect.objectContaining({
+        body: JSON.stringify({
+          chatType: 1,
+          msgId: 1418,
+          thirdExternalId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 272,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("reports contract errors when auto-general-answer has no id", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {},
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().requestAutoGeneralAnswer({
+        chatType: 1,
+        msgId: 1418,
+        thirdExternalId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
+      statusCode: 502,
+    });
+  });
+
+  it("posts attachment list requests with ids and uid", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              fileName: "产品图.png",
+              fileType: 1,
+              id: 101,
+            },
+          ],
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().listAttachments({
+        ids: [101, 102],
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      attachments: [
+        {
+          fileName: "产品图.png",
+          fileType: 1,
+          id: 101,
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/attachment/list",
+      expect.objectContaining({
+        body: JSON.stringify({
+          ids: [101, 102],
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts knowledge page requests with page, pageSize and uid", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 1,
+          error: 0,
+          list: [
+            {
+              id: 101,
+              name: "护肤知识集",
+            },
+          ],
+          page: 1,
+          pageSize: 9999,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.listKnowledgePage({
+      page: 1,
+      pageSize: 9999,
+      uid: 9001,
+    });
+
+    expect(response).toEqual({
+      list: [
+        {
+          id: "101",
+          name: "护肤知识集",
+        },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-knowledge/page",
+      expect.objectContaining({
+        body: JSON.stringify({
+          page: 1,
+          pageSize: 9999,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts knowledge doc page requests with knowledgeId, page, pageSize and uid", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 1,
+          error: 0,
+          list: [
+            {
+              id: 1001,
+              title: "敏感肌如何护理",
+            },
+          ],
+          page: 1,
+          pageSize: 9999,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.listKnowledgeDocPage({
+      knowledgeId: "W7zU2fWkVSp65OTAjDd3-w",
+      page: 1,
+      pageSize: 9999,
+      uid: 9001,
+    });
+
+    expect(response).toEqual({
+      list: [
+        {
+          id: "1001",
+          name: "敏感肌如何护理",
+        },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-knowledge-doc/page",
+      expect.objectContaining({
+        body: JSON.stringify({
+          knowledgeId: "W7zU2fWkVSp65OTAjDd3-w",
+          page: 1,
+          pageSize: 9999,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts knowledge faq add requests with docId, source, uid and list", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: "zJd3NJJ8B9PmN2vpdbmUKg",
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.addKnowledgeFaq({
+      docId: "zJd3NJJ8B9PmN2vpdbmUKg",
+      list: [
+        {
+          answer: "测试答案",
+          attachIds: "101,102",
+          question: "测试问题",
+          similarQuestion: "相似1\n相似2",
+        },
+      ],
+      source: 1,
+      uid: 9001,
+    });
+
+    expect(response).toEqual({
+      docId: "zJd3NJJ8B9PmN2vpdbmUKg",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-knowledge-faq/add",
+      expect.objectContaining({
+        body: JSON.stringify({
+          docId: "zJd3NJJ8B9PmN2vpdbmUKg",
+          list: [
+            {
+              answer: "测试答案",
+              attachIds: "101,102",
+              question: "测试问题",
+              similarQuestion: "相似1\n相似2",
+            },
+          ],
+          source: 1,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("calls text moderation plus with content and type", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            riskItems: [
+              {
+                customizedHit: {
+                  keyWords: "最好",
+                  libName: "广告法_通用禁用极限词",
+                },
+                description: "广告法_通用禁用极限词",
+                label: "customized",
+                riskWords: "最好",
+              },
+            ],
+            riskLevel: "high",
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.checkTextModerationPlus({
+      content: "这是最好的产品",
+      uid: 9001,
+    });
+
+    expect(response).toEqual({
+      result: {
+        categoryLabel: "广告法_通用禁用极限词",
+        words: ["最好"],
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/ai-helper/text-moderation-plus?uid=9001",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "这是最好的产品",
+          type: "plus",
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("loads msg audit knowledge config by uid", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            automaticCheckIllegalWords: 1,
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.getKnowledgeConfig({
+      uid: 9001,
+    });
+
+    expect(response).toEqual({
+      config: {
+        automaticCheckIllegalWords: 1,
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/msg-audit-knowledge/get-knowledge-config?uid=9001",
+      expect.objectContaining({
+        body: JSON.stringify({}),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("loads ai helper template config param id", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            configData: [{ id: 30, name: "content" }],
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const configParamId = await client.getAiHelperTemplate({
+      templateId: 17,
+      uid: 9001,
+    });
+
+    expect(configParamId).toBe(30);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/ai-helper/get-template",
+      expect.objectContaining({
+        body: JSON.stringify({
+          templateId: 17,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("submits ai helper generate ask and returns generateId", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            generateId: "gen-001",
+          },
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const response = await client.submitAiHelperGenerateAsk({
+      params: [
+        {
+          id: 30,
+          value: ["当前智能回答内容"],
+        },
+      ],
+      templateId: 17,
+      uid: 9001,
+    });
+
+    expect(response).toEqual({ generateId: "gen-001" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/ai-helper/generate-ask?uid=9001",
+      expect.objectContaining({
+        body: JSON.stringify({
+          params: [
+            {
+              id: 30,
+              value: ["当前智能回答内容"],
+            },
+          ],
+          templateId: 17,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts send-answer requests with real answer and attach ids", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    await client.sendRecommendAnswer({
+      realAnswer: "您好，这是发送的话术",
+      realAttachIds: ["101", "102"],
+      recordId: "88001",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/send-answer",
+      expect.objectContaining({
+        body: JSON.stringify({
+          realAnswer: "您好，这是发送的话术",
+          realAttachIds: ["101", "102"],
+          recordId: 88001,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("streams ai helper ask and returns trimmed content", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("  更短的话术  ", {
+        headers: { "content-type": "text/event-stream;charset=UTF-8" },
+        status: 200,
+      }),
+    );
+
+    const client = createWorkbenchJavaClient(createLoggerMock());
+    const content = await client.streamAiHelperAsk({
+      generateId: "2571",
+      uid: 9001,
+    });
+
+    expect(content).toBe("更短的话术");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/ai-helper/ask?uid=9001",
+      expect.objectContaining({
+        body: JSON.stringify({ generateId: 2571 }),
+        headers: expect.objectContaining({
+          accept: "text/event-stream",
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("uses the stream idle timeout instead of the generic Java timeout while reading ai helper streams", async () => {
+    vi.useFakeTimers();
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    process.env.JAVA_INTERNAL_API_TIMEOUT_MS = "5";
+    process.env.JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS = "60";
+    const encoder = new TextEncoder();
+    vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+      const signal = init?.signal as AbortSignal;
+
+      return Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              signal.addEventListener("abort", () => {
+                controller.error(new DOMException("Aborted", "AbortError"));
+              });
+              setTimeout(() => {
+                controller.enqueue(encoder.encode("  慢生成结果  "));
+                controller.close();
+              }, 10);
+            },
+          }),
+          {
+            headers: { "content-type": "text/event-stream;charset=UTF-8" },
+            status: 200,
+          },
+        ),
+      );
+    });
+
+    const contentPromise = createWorkbenchJavaClient(createLoggerMock())
+      .streamAiHelperAsk({
+        generateId: "2571",
+        uid: 9001,
+      });
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    await expect(contentPromise).resolves.toBe("慢生成结果");
+  });
+
+  it("aborts ai helper streams when no chunk arrives before the stream idle timeout", async () => {
+    vi.useFakeTimers();
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    process.env.JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS = "20";
+    vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+      const signal = init?.signal as AbortSignal;
+
+      return Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              signal.addEventListener("abort", () => {
+                controller.error(new DOMException("Aborted", "AbortError"));
+              });
+            },
+          }),
+          {
+            headers: { "content-type": "text/event-stream;charset=UTF-8" },
+            status: 200,
+          },
+        ),
+      );
+    });
+
+    const contentPromise = createWorkbenchJavaClient(createLoggerMock())
+      .streamAiHelperAsk({
+        generateId: "2571",
+        uid: 9001,
+      });
+    const rejectionExpectation = expect(contentPromise).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
+    });
+
+    await vi.advanceTimersByTimeAsync(20);
+
+    await rejectionExpectation;
   });
 });
 

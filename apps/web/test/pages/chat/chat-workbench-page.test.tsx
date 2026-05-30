@@ -5,6 +5,7 @@ import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/ap
 import { getFirstUnreadCustomerMessageId } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
 import type { Message } from "@/pages/chat/chat-types";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import type { WorkbenchMessageDto } from "@chatai/contracts";
 import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
@@ -88,6 +89,22 @@ function installIntersectionObserverMock() {
   };
 }
 
+function mockScrolledAwayMessageViewport() {
+  const viewport = screen.getByTestId("message-viewport");
+  const scrollTo = vi.fn();
+
+  Object.defineProperty(viewport, "scrollTo", {
+    configurable: true,
+    value: scrollTo,
+  });
+  viewport.scrollTop = -160;
+
+  return {
+    scrollTo,
+    viewport,
+  };
+}
+
 function getIntersectionObserverObserveCallCount(
   instances: IntersectionObserverInstance[],
 ) {
@@ -95,6 +112,31 @@ function getIntersectionObserverObserveCallCount(
     (count, instance) => count + instance.observe.mock.calls.length,
     0,
   );
+}
+
+function createSmartReplyTextMessageDto({
+  id,
+  senderType = "customer",
+  seq,
+  text,
+}: {
+  id: string;
+  senderType?: "customer" | "agent";
+  seq: number;
+  text: string;
+}): WorkbenchMessageDto {
+  return {
+    content: { text },
+    contentType: "text",
+    conversationId: "conv-001",
+    createdAt: 1_778_400_000_000 + seq * 1_000,
+    customerId: "cust-001",
+    messageId: id,
+    seatId: "drc",
+    senderType,
+    seq,
+    status: "sent",
+  };
 }
 
 describe("ChatWorkbenchPage", () => {
@@ -199,6 +241,330 @@ describe("ChatWorkbenchPage", () => {
       expect(markConversationRead).toHaveBeenCalledTimes(1);
     });
     expect(markConversationRead).toHaveBeenCalledWith("conv-001");
+  });
+
+  it("shows the smart reply failure reason in the card when generation fails", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-7",
+              seq: 7,
+              text: "客户想了解活动权益",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-agent-8",
+              senderType: "agent",
+              seq: 8,
+              text: "客服已回复",
+            }),
+          ],
+          smartReplies: [],
+        };
+      },
+      async requestSmartReplyGeneralAnswer() {
+        throw new Error("当前未配置可用AI助手");
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getAllByRole("button", { name: "消息操作" })[0]);
+    await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
+
+    expect(await screen.findByTestId("smart-reply-card")).toBeInTheDocument();
+    expect(screen.getByText("生成失败：当前未配置可用AI助手")).toBeInTheDocument();
+    expect(workbenchToastWarningMock).not.toHaveBeenCalledWith(
+      "当前未配置可用AI助手",
+    );
+  });
+
+  it("fills the composer from a smart reply without sending it", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-7",
+              seq: 7,
+              text: "客户想了解活动权益",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-agent-8",
+              senderType: "agent",
+              seq: 8,
+              text: "客服已回复",
+            }),
+          ],
+          smartReplies: [],
+        };
+      },
+      async requestSmartReplyGeneralAnswer() {
+        return {
+          suggestion: {
+            assistantName: "护肤小助手",
+            content: "建议先确认权益清单口径",
+            messageId: "10",
+            pollComplete: true,
+            recordId: "smart-reply-001",
+            status: "ready",
+          },
+        };
+      },
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getAllByRole("button", { name: "消息操作" })[0]);
+    await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
+    expect(await screen.findByTestId("smart-reply-card")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "填入输入框" }));
+
+    expect(composer).toHaveTextContent("建议先确认权益清单口径");
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("scrolls to the visual bottom after sending a composer message", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    const { scrollTo } = mockScrolledAwayMessageViewport();
+
+    await pasteIntoComposer(user, composer, "我来确认一下权益清单");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenCalledWith({
+        behavior: "smooth",
+        top: 0,
+      });
+    });
+  });
+
+  it("scrolls to the visual bottom after sending a smart reply", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "客户想了解活动权益",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "护肤小助手",
+              content: "建议先确认权益清单口径",
+              messageId: "9",
+              pollComplete: true,
+              recordId: "smart-reply-001",
+              status: "ready",
+            },
+          ],
+        };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByText("建议先确认权益清单口径");
+    const { scrollTo } = mockScrolledAwayMessageViewport();
+
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenCalledWith({
+        behavior: "smooth",
+        top: 0,
+      });
+    });
+  });
+
+  it("regenerates from the smart reply card even when a local suggestion exists", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const requestSmartReplyGeneralAnswer = vi.fn(
+      async (request: { msgId: number }) => ({
+        suggestion: {
+          assistantName: "护肤小助手",
+          content: `重新生成话术 ${request.msgId}`,
+          messageId: String(request.msgId),
+          pollComplete: true,
+          recordId: "smart-reply-regenerated",
+          status: "ready" as const,
+        },
+      }),
+    );
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "客户想了解活动权益",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "护肤小助手",
+              content: "已有推荐话术",
+              messageId: "9",
+              pollComplete: true,
+              recordId: "smart-reply-existing",
+              status: "ready",
+            },
+          ],
+        };
+      },
+      requestSmartReplyGeneralAnswer,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByText("已有推荐话术");
+
+    await user.click(screen.getByRole("button", { name: "更多智能回复操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "重新生成" }));
+
+    expect(requestSmartReplyGeneralAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-001",
+        msgId: 9,
+      }),
+    );
+    expect(await screen.findByText("重新生成话术 9")).toBeInTheDocument();
+    expect(screen.queryByText("已有推荐话术")).not.toBeInTheDocument();
+  });
+
+  it("hides answered page smart replies until the recommendation action is selected", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: Array<{ conversationId: string; msgIds: number[] }> = [];
+    const observedGeneralAnswerRequests: Array<{ conversationId: string; msgId: number }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-7",
+              seq: 7,
+              text: "客户想了解活动权益",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-agent-8",
+              senderType: "agent",
+              seq: 8,
+              text: "客服已回复",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "最新客户问题",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "旧问题推荐话术",
+              messageId: "7",
+              pollComplete: true,
+              status: "ready",
+            },
+            {
+              assistantName: "智能助手",
+              content: "最新问题推荐话术",
+              messageId: "9",
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+
+        return { suggestion: null };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    expect(screen.queryByText("旧问题推荐话术")).not.toBeInTheDocument();
+    expect(screen.getByText("最新问题推荐话术")).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "消息操作" })[0]);
+    await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
+
+    expect(screen.getByText("旧问题推荐话术")).toBeInTheDocument();
+    expect(observedSmartReplyRequests).toEqual([]);
+    expect(observedGeneralAnswerRequests).toEqual([]);
   });
 
   it("observes the first unread customer message within the unread tail", async () => {
@@ -650,7 +1016,6 @@ describe("ChatWorkbenchPage", () => {
       top: 0,
       behavior: "smooth",
     });
-    expect(viewport.scrollTop).toBe(-160);
   });
 
   it("warns when retrying an unsupported failed message type", async () => {
@@ -1019,7 +1384,7 @@ describe("ChatWorkbenchPage", () => {
 
     await screen.findByRole("alertdialog", { name: "发送失败，请稍后重试" });
 
-    expect(screen.getByText("ErrorCode: SEND_RATE_LIMITED")).toBeInTheDocument();
+    expect(screen.getByText("错误码：SEND_RATE_LIMITED")).toBeInTheDocument();
   });
 
   it("shows the API error message when account takeover fails", async () => {

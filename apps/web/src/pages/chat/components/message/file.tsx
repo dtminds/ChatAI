@@ -84,9 +84,11 @@ export function FileMessageCard({
           <p className="line-clamp-2 text-[14px] font-semibold leading-5 text-foreground">
             {content.fileName}
           </p>
-          <p className="mt-1.5 text-[13px] text-muted-foreground">
-            {content.fileSizeLabel}
-          </p>
+          {content.fileSizeLabel ? (
+            <p className="mt-1.5 text-[13px] text-muted-foreground">
+              {content.fileSizeLabel}
+            </p>
+          ) : null}
         </div>
 
         <FileExtensionBadge extension={content.extension} />

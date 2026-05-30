@@ -1093,6 +1093,32 @@ html.dark[data-appearance-theme="nature"] {
     background-color: #FA9D3D;
   }
 
+  .shiny-text {
+    --shiny-text-duration: 1.35s;
+    --shiny-text-shimmer-width: 56px;
+    display: inline-block;
+    background-image:
+      linear-gradient(
+        110deg,
+        transparent 0%,
+        color-mix(in oklch, currentColor 24%, white) 34%,
+        white 50%,
+        color-mix(in oklch, currentColor 24%, white) 66%,
+        transparent 100%
+      ),
+      linear-gradient(
+        currentColor,
+        currentColor
+      );
+    background-repeat: no-repeat, no-repeat;
+    background-size: var(--shiny-text-shimmer-width) 100%, 100% 100%;
+    background-position: calc(-1 * var(--shiny-text-shimmer-width)) center, 0 0;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shiny-text-sweep var(--shiny-text-duration) cubic-bezier(0.36, 0, 0.2, 1) infinite;
+  }
+
   .anim-pop-right {
     animation: chat-bubble-pop var(--chat-bubble-pop-duration) var(--chat-bubble-spring-easing) both;
     transform-origin: bottom right;
@@ -1101,6 +1127,16 @@ html.dark[data-appearance-theme="nature"] {
   .anim-pop-left {
     animation: chat-bubble-pop var(--chat-bubble-pop-duration) var(--chat-bubble-spring-easing) both;
     transform-origin: bottom left;
+  }
+}
+
+@keyframes shiny-text-sweep {
+  0% {
+    background-position: calc(-1 * var(--shiny-text-shimmer-width)) center, 0 0;
+  }
+
+  100% {
+    background-position: calc(100% + var(--shiny-text-shimmer-width)) center, 0 0;
   }
 }
 
@@ -1117,9 +1153,15 @@ html.dark[data-appearance-theme="nature"] {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .shiny-text,
   .anim-pop-right,
   .anim-pop-left {
     animation: none;
+  }
+
+  .shiny-text {
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
   }
 }
 

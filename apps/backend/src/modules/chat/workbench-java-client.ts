@@ -1,11 +1,36 @@
 import type {
   WorkbenchSendMessageResponse,
+  WorkbenchSmartReplyAttachmentsResponse,
+  WorkbenchSmartReplyAutoGeneralAnswerResponse,
+  WorkbenchSmartReplyGeneralAnswerResponse,
+  WorkbenchSmartReplyPollResponse,
+  WorkbenchKnowledgePageResponse,
+  WorkbenchKnowledgeDocPageResponse,
+  WorkbenchKnowledgeFaqAddResponse,
+  WorkbenchKnowledgeConfigResponse,
+  WorkbenchSmartReplyTextModerationResponse,
   WorkbenchUploadCredentialResponse,
 } from "@chatai/contracts";
+import { mapJavaAttachmentList } from "./attachment-mappers.js";
+import {
+  buildAiHelperAskRequestBody,
+  collectAiHelperAskStreamText,
+  extractAiHelperTemplateConfigParamId,
+  mapJavaAiHelperGenerateId,
+} from "./ai-helper-mappers.js";
+import { mapJavaKnowledgePage } from "./knowledge-mappers.js";
+import { mapJavaKnowledgeDocPage } from "./knowledge-doc-mappers.js";
+import { mapJavaKnowledgeFaqAdd } from "./knowledge-faq-mappers.js";
+import { mapJavaKnowledgeConfig } from "./knowledge-config-mappers.js";
+import { mapJavaTextModerationPlus } from "./text-moderation-mappers.js";
 import {
   BadGatewayError,
   ServiceUnavailableError,
 } from "../../shared/errors.js";
+import {
+  mapJavaGeneralAnswer,
+  mapJavaUserHistoryAnswerList,
+} from "./smart-reply-mappers.js";
 import {
   getLoggerRequestId,
   noopLogger,
@@ -14,10 +39,13 @@ import {
 } from "../../shared/logger.js";
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
+const DEFAULT_JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS = 60000;
 export const JAVA_INTERNAL_API_USER_MESSAGE = "工作台服务繁忙，请稍后重试";
 export const WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE =
   "WORKBENCH_INTERNAL_API_NOT_CONFIGURED";
 export const WORKBENCH_INTERNAL_API_FAILED_CODE = "WORKBENCH_INTERNAL_API_FAILED";
+export const WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE =
+  "WORKBENCH_INTERNAL_API_CONTRACT_INVALID";
 
 export const JAVA_SEND_TYPE = {
   GROUP: 2,
@@ -93,6 +121,89 @@ type JavaRevokeMessageResponse = {
 };
 
 export type WorkbenchJavaClient = {
+  listUserHistoryAnswers(input: {
+    chatType: number;
+    msgIds: number[];
+    thirdExternalId: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<WorkbenchSmartReplyPollResponse>;
+  requestGeneralAnswer(input: {
+    chatType: number;
+    msgId: number;
+    questionImgs: string[];
+    thirdExternalId: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<WorkbenchSmartReplyGeneralAnswerResponse>;
+  requestAutoGeneralAnswer(input: {
+    chatType: number;
+    msgId: number;
+    thirdExternalId: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<WorkbenchSmartReplyAutoGeneralAnswerResponse>;
+  listAttachments(input: {
+    ids: number[];
+    uid: number;
+  }): Promise<WorkbenchSmartReplyAttachmentsResponse>;
+  checkTextModerationPlus(input: {
+    content: string;
+    uid: number;
+  }): Promise<WorkbenchSmartReplyTextModerationResponse>;
+  getAiHelperTemplate(input: {
+    templateId: number;
+    uid: number;
+  }): Promise<number | undefined>;
+  submitAiHelperGenerateAsk(input: {
+    params: Array<{
+      id: number;
+      value: string[];
+    }>;
+    templateId: number;
+    uid: number;
+  }): Promise<{ generateId: string }>;
+  streamAiHelperAsk(input: {
+    generateId: string;
+    uid: number;
+  }): Promise<string>;
+  sendRecommendAnswer(input: {
+    realAnswer: string;
+    realAttachIds: string[];
+    recordId: string;
+    uid: number;
+  }): Promise<void>;
+  listKnowledgePage(input: {
+    page: number;
+    pageSize: number;
+    uid: number;
+  }): Promise<WorkbenchKnowledgePageResponse>;
+  getKnowledgeConfig(input: {
+    uid: number;
+  }): Promise<WorkbenchKnowledgeConfigResponse>;
+  listKnowledgeDocPage(input: {
+    knowledgeId: string;
+    page: number;
+    pageSize: number;
+    uid: number;
+  }): Promise<WorkbenchKnowledgeDocPageResponse>;
+  addKnowledgeFaq(input: {
+    docId: string;
+    list: Array<{
+      answer: string;
+      attachIds: string;
+      question: string;
+      similarQuestion: string;
+    }>;
+    source: number;
+    uid: number;
+  }): Promise<WorkbenchKnowledgeFaqAddResponse>;
+  sendSmartHeartbeat(input: {
+    platform: number;
+    thirdExternalUserId: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<void>;
   createConversation(input: {
     chatType: number;
     platform: number;
@@ -164,6 +275,254 @@ export function createWorkbenchJavaClient(
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
   return {
+    listUserHistoryAnswers(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-msg-audit-recommend-answer/user-history-answer-list",
+        {
+          chatType: input.chatType,
+          msgIds: input.msgIds,
+          thirdExternalId: input.thirdExternalId,
+          thirdUserId: input.thirdUserId,
+          uid: input.uid,
+        },
+        logger,
+        "list-user-history-answers",
+      ).then((data) => {
+        return mapJavaUserHistoryAnswerList(data);
+      });
+    },
+    requestGeneralAnswer(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-msg-audit-recommend-answer/general-answer",
+        {
+          chatType: input.chatType,
+          msgId: input.msgId,
+          questionImgs: input.questionImgs,
+          thirdExternalId: input.thirdExternalId,
+          thirdUserId: input.thirdUserId,
+          uid: input.uid,
+        },
+        logger,
+        "request-general-answer",
+        { exposeErrorMessage: true },
+      ).then((data) => {
+        return {
+          suggestion: mapJavaGeneralAnswer(data),
+        };
+      });
+    },
+    requestAutoGeneralAnswer(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+        {
+          chatType: input.chatType,
+          msgId: input.msgId,
+          thirdExternalId: input.thirdExternalId,
+          thirdUserId: input.thirdUserId,
+          uid: input.uid,
+        },
+        logger,
+        "request-auto-general-answer",
+        { exposeErrorMessage: true },
+      ).then((data) => {
+        const id = readJavaNonEmptyId(data);
+
+        if (id == null) {
+          logger.error(
+            {
+              operation: "request-auto-general-answer",
+              path: "/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+              requestId: getLoggerRequestId(logger),
+            },
+            "上游工作台接口响应契约异常",
+          );
+          throw new BadGatewayError(
+            WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+            JAVA_INTERNAL_API_USER_MESSAGE,
+          );
+        }
+
+        return { id };
+      });
+    },
+    listAttachments(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/attachment/list",
+        {
+          ids: input.ids,
+          uid: input.uid,
+        },
+        logger,
+        "list-attachments",
+      ).then((data) => mapJavaAttachmentList(data));
+    },
+    checkTextModerationPlus(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        `/third-internal/ai-helper/text-moderation-plus?uid=${input.uid}`,
+        {
+          content: input.content,
+          type: "plus",
+        },
+        logger,
+        "text-moderation-plus",
+      ).then((data) => mapJavaTextModerationPlus(data));
+    },
+    getAiHelperTemplate(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/ai-helper/get-template",
+        {
+          templateId: input.templateId,
+          uid: input.uid,
+        },
+        logger,
+        "get-ai-helper-template",
+      ).then((data) => {
+        return extractAiHelperTemplateConfigParamId(data);
+      });
+    },
+    submitAiHelperGenerateAsk(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        `/third-internal/ai-helper/generate-ask?uid=${input.uid}`,
+        {
+          params: input.params,
+          templateId: input.templateId,
+        },
+        logger,
+        "submit-ai-helper-generate-ask",
+      ).then((data) => {
+        const generateId = mapJavaAiHelperGenerateId(data);
+
+        if (!generateId) {
+          throw new BadGatewayError(
+            WORKBENCH_INTERNAL_API_FAILED_CODE,
+            JAVA_INTERNAL_API_USER_MESSAGE,
+          );
+        }
+
+        return { generateId };
+      });
+    },
+    streamAiHelperAsk(input) {
+      return streamJavaPostText(
+        baseUrl,
+        token,
+        `/third-internal/ai-helper/ask?uid=${input.uid}`,
+        buildAiHelperAskRequestBody(input.generateId),
+        logger,
+        "stream-ai-helper-ask",
+      ).then((raw) => {
+        const content = collectAiHelperAskStreamText(raw);
+
+        if (!content) {
+          throw new BadGatewayError(
+            WORKBENCH_INTERNAL_API_FAILED_CODE,
+            JAVA_INTERNAL_API_USER_MESSAGE,
+          );
+        }
+
+        return content;
+      });
+    },
+    sendRecommendAnswer(input) {
+      const numericRecordId = readJavaRecommendAnswerRecordId(input.recordId);
+
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-msg-audit-recommend-answer/send-answer",
+        {
+          realAnswer: input.realAnswer,
+          realAttachIds: input.realAttachIds,
+          recordId: numericRecordId ?? input.recordId,
+          uid: input.uid,
+        },
+        logger,
+        "send-recommend-answer",
+      ).then(() => undefined);
+    },
+    listKnowledgePage(input) {
+      return postJavaPageEnvelope(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-knowledge/page",
+        {
+          page: input.page,
+          pageSize: input.pageSize,
+          uid: input.uid,
+        },
+        logger,
+        "list-knowledge-page",
+      ).then((response) => mapJavaKnowledgePage(response));
+    },
+    getKnowledgeConfig(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        `/third-internal/msg-audit-knowledge/get-knowledge-config?uid=${input.uid}`,
+        {},
+        logger,
+        "get-knowledge-config",
+      ).then((data) => mapJavaKnowledgeConfig(data));
+    },
+    listKnowledgeDocPage(input) {
+      return postJavaPageEnvelope(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-knowledge-doc/page",
+        {
+          knowledgeId: input.knowledgeId,
+          page: input.page,
+          pageSize: input.pageSize,
+          uid: input.uid,
+        },
+        logger,
+        "list-knowledge-doc-page",
+      ).then((response) => mapJavaKnowledgeDocPage(response));
+    },
+    addKnowledgeFaq(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-knowledge-faq/add",
+        {
+          docId: input.docId,
+          list: input.list,
+          source: input.source,
+          uid: input.uid,
+        },
+        logger,
+        "add-knowledge-faq",
+      ).then((data) => mapJavaKnowledgeFaqAdd(data));
+    },
+    sendSmartHeartbeat(input) {
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-customer-bind-relation/smart-heartbeat",
+        {
+          platform: input.platform,
+          thirdExternalUserId: input.thirdExternalUserId,
+          thirdUserId: input.thirdUserId,
+          uid: input.uid,
+        },
+        logger,
+        "smart-heartbeat",
+      ).then(() => undefined);
+    },
     createConversation(input) {
       return postJavaEnvelope<number | string>(
         baseUrl,
@@ -257,6 +616,7 @@ export function createWorkbenchJavaClient(
         input,
         logger,
         "sentence-recognition",
+        { exposeErrorMessage: true },
       );
     },
     revokeMessage(input) {
@@ -439,6 +799,155 @@ async function postJava<T>(
   return (await response.json()) as T;
 }
 
+async function streamJavaPostText(
+  baseUrl: string | undefined,
+  token: string | undefined,
+  path: string,
+  body: unknown,
+  logger: AppLogger,
+  operation: string,
+): Promise<string> {
+  if (!baseUrl) {
+    logger.error(
+      {
+        operation,
+        path,
+      },
+      "Java 内部工作台接口未配置",
+    );
+    throw new ServiceUnavailableError(
+      WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+    );
+  }
+
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const armAbortTimeout = (timeoutMs: number) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  };
+  const requestId = getLoggerRequestId(logger);
+  const streamIdleTimeoutMs = readJavaApiStreamIdleTimeoutMs();
+
+  armAbortTimeout(readJavaApiTimeoutMs());
+
+  try {
+    let response: Response;
+
+    try {
+      response = await fetch(`${baseUrl}${path}`, {
+        body: JSON.stringify(body),
+        headers: {
+          accept: "text/event-stream",
+          "content-type": "application/json",
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+          ...(requestId ? { "x-request-id": requestId } : {}),
+        },
+        method: "POST",
+        signal: controller.signal,
+      });
+    } catch (error) {
+      logger.error(
+        {
+          ...buildJavaLogContext(body),
+          requestId,
+          operation,
+          path,
+          reason: error instanceof Error ? error.name : "unknown",
+        },
+        "Java 内部工作台接口调用失败",
+      );
+      throw new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+        {
+          reason: error instanceof Error ? error.name : "unknown",
+        },
+      );
+    }
+
+    if (!response.ok) {
+      logger.error(
+        {
+          ...buildJavaLogContext(body),
+          requestId,
+          operation,
+          path,
+          status: response.status,
+        },
+        "Java 内部工作台接口返回异常状态",
+      );
+      throw new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+        {
+          status: response.status,
+        },
+      );
+    }
+
+    if (!response.body) {
+      throw new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+      );
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let raw = "";
+
+    try {
+      armAbortTimeout(streamIdleTimeoutMs);
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        if (value) {
+          raw += decoder.decode(value, { stream: true });
+        }
+
+        armAbortTimeout(streamIdleTimeoutMs);
+      }
+
+      raw += decoder.decode();
+    } catch (error) {
+      logger.error(
+        {
+          ...buildJavaLogContext(body),
+          requestId,
+          operation,
+          path,
+          reason: error instanceof Error ? error.name : "unknown",
+        },
+        "Java 内部工作台流式接口读取失败",
+      );
+      throw new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+        {
+          reason: error instanceof Error ? error.name : "unknown",
+        },
+      );
+    } finally {
+      reader.releaseLock();
+    }
+
+    return raw;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 async function postJavaEnvelope<T>(
   baseUrl: string | undefined,
   token: string | undefined,
@@ -457,14 +966,16 @@ async function postJavaEnvelope<T>(
     operation,
   );
 
-  if (!response.success) {
+  if (!isJavaEnvelopeSuccessful(response)) {
     logger.error(
       {
         ...buildJavaLogContext(body),
         error: response.error,
+        errorMsg: response.errorMsg,
         requestId: getLoggerRequestId(logger),
         operation,
         path,
+        success: response.success,
       },
       "Java 内部工作台接口业务失败",
     );
@@ -484,6 +995,71 @@ async function postJavaEnvelope<T>(
   return response.data as T;
 }
 
+async function postJavaPageEnvelope(
+  baseUrl: string | undefined,
+  token: string | undefined,
+  path: string,
+  body: unknown,
+  logger: AppLogger,
+  operation: string,
+) {
+  const response = await postJava<JavaApiResponse<unknown> & Record<string, unknown>>(
+    baseUrl,
+    token,
+    path,
+    body,
+    logger,
+    operation,
+  );
+
+  if (!isJavaEnvelopeSuccessful(response)) {
+    logger.error(
+      {
+        ...buildJavaLogContext(body),
+        error: response.error,
+        errorMsg: response.errorMsg,
+        requestId: getLoggerRequestId(logger),
+        operation,
+        path,
+        success: response.success,
+      },
+      "Java 内部工作台接口业务失败",
+    );
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_FAILED_CODE,
+      JAVA_INTERNAL_API_USER_MESSAGE,
+      {
+        error: response.error,
+      },
+    );
+  }
+
+  logger.info(
+    {
+      ...buildJavaLogContext(body),
+      count: response.count,
+      list: response.list,
+      listLength: Array.isArray(response.list) ? response.list.length : undefined,
+      operation,
+      path,
+      requestId: getLoggerRequestId(logger),
+      response,
+    },
+    "Java 分页接口原始响应",
+  );
+
+  return response;
+}
+
+function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
+  if (response.success === true) {
+    return true;
+  }
+
+  // SCRM 部分内部接口用 numeric error 表示结果：0 为成功。个别接口在空结果时仍会返回 success:false。
+  return response.error === 0;
+}
+
 function buildJavaLogContext(body: unknown) {
   if (!isRecord(body)) {
     return {};
@@ -492,9 +1068,14 @@ function buildJavaLogContext(body: unknown) {
   const context: Record<string, unknown> = {};
 
   for (const key of [
+    "chatType",
     "conversationId",
     "msgid",
+    "msgId",
+    "ids",
+    "msgIds",
     "platform",
+    "thirdExternalId",
     "revokeMsgId",
     "sendType",
     "subId",
@@ -502,6 +1083,7 @@ function buildJavaLogContext(body: unknown) {
     "thirdGroupId",
     "thirdUserId",
     "uid",
+    "knowledgeId",
     "updateId",
   ]) {
     if (body[key] != null) {
@@ -527,4 +1109,43 @@ function readJavaApiTimeoutMs() {
   return Number.isSafeInteger(value) && value > 0
     ? value
     : DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS;
+}
+
+function readJavaApiStreamIdleTimeoutMs() {
+  const value = Number.parseInt(
+    process.env.JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS ?? "",
+    10,
+  );
+
+  return Number.isSafeInteger(value) && value > 0
+    ? value
+    : DEFAULT_JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS;
+}
+
+function readJavaNonEmptyId(data: unknown) {
+  const value = isRecord(data) ? data["id"] : data;
+
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return String(value);
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed ? trimmed : undefined;
+}
+
+function readJavaRecommendAnswerRecordId(value: string) {
+  const trimmed = value.trim();
+
+  if (!/^\d+$/.test(trimmed)) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(trimmed, 10);
+
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }

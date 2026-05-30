@@ -14,8 +14,7 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@chatai/contracts": ["../../packages/contracts/src/index.ts"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["vite.config.ts", "vitest.config.ts"]

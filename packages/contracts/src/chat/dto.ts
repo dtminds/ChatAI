@@ -3,6 +3,7 @@ import {
   GROUP_MEMBER_TYPE,
   LoginStatusSchema,
   TakeoverStatusSchema,
+  type ConversationCustodyMode,
 } from "./enums.js";
 
 export const ChatSeatSchema = Type.Object({
@@ -143,6 +144,10 @@ export type WorkbenchSidebarIframeParamsDto = {
   mid: string;
   rd?: string;
   ts: string;
+  /** 群聊时服务端签发的 AES 密文（明文为 `thirdGroupId` UTF-8 字符串本身） */
+  thirdGroupId?: string;
+  /** 群聊时服务端签发的 AES 密文（明文为群名称 UTF-8 字符串本身） */
+  thirdGroupName?: string;
 };
 
 export type WorkbenchSeatDto = {
@@ -163,6 +168,8 @@ export type WorkbenchConversationSummaryDto = {
   /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */
   bizStatus?: number;
   conversationId: string;
+  /** 会话托管模式：full 全托管，semi 半托管 */
+  custodyMode: ConversationCustodyMode;
   seatId: string;
   thirdUserId?: string;
   thirdExternalUserId?: string;
@@ -220,6 +227,8 @@ export type WorkbenchMessageDto = WorkbenchMessageBaseDto;
 
 export type WorkbenchMessagePageDto = {
   messages: WorkbenchMessageDto[];
+  smartReplyEnabled?: boolean;
+  smartReplies?: WorkbenchSmartReplySuggestionDto[];
   nextBeforeSeq?: number;
   hasMore: boolean;
   scannedCount: number;
@@ -299,6 +308,198 @@ export type WorkbenchPollResponse = {
   conversationChanges: WorkbenchConversationChangeDto[];
   activeConversationMessages: WorkbenchMessageDto[];
   messageUpdateEvents?: WorkbenchMessageUpdateEventDto[];
+};
+
+export const SMART_REPLY_MSG_IDS_LIMIT = 100;
+/** Java user-history-answer-list 终态：2 推荐成功、3 推荐失败、4 已发送 */
+export const SMART_REPLY_TERMINAL_GENERATE_STATUSES = [2, 3, 4] as const;
+/** Java user-history-answer-list 失败原因：未命中知识集 */
+export const SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS = "knowledge_miss";
+/** 智能回复轮询最小间隔（毫秒），与工作台主 poll 解耦 */
+export const SMART_REPLY_POLL_INTERVAL_MS = 1000;
+
+export type WorkbenchSmartReplyStatus = "thinking" | "processing" | "ready";
+
+export type WorkbenchSmartReplySuggestionDto = {
+  messageId: string;
+  assistantName: string;
+  content: string;
+  failReason?: string;
+  generateStatus?: number | string;
+  pollComplete?: boolean;
+  refAttachIds?: string[];
+  status?: WorkbenchSmartReplyStatus;
+  /** Java recommend-answer 记录 id，send-answer 的 recordId 参数 */
+  recordId?: string;
+};
+
+/** msgIds 传消息 seq（非 messageId / msgid） */
+export type WorkbenchSmartReplyPollRequest = {
+  conversationId: string;
+  msgIds: number[];
+};
+
+export type WorkbenchSmartReplyPollResponse = {
+  suggestions: WorkbenchSmartReplySuggestionDto[];
+};
+
+/** msgId 传消息 seq（非 messageId / msgid） */
+export type WorkbenchSmartReplyGeneralAnswerRequest = {
+  conversationId: string;
+  msgId: number;
+  questionImgs?: string[];
+};
+
+export type WorkbenchSmartReplyGeneralAnswerResponse = {
+  suggestion: WorkbenchSmartReplySuggestionDto | null;
+};
+
+/** msgId 传消息 seq（非 messageId / msgid） */
+export type WorkbenchSmartReplyAutoGeneralAnswerRequest = {
+  conversationId: string;
+  msgId: number;
+};
+
+export type WorkbenchSmartReplyAutoGeneralAnswerResponse = {
+  id: string;
+};
+
+export type WorkbenchSmartReplyMakeShorterRequest = {
+  content: string;
+  conversationId: string;
+};
+
+export type WorkbenchSmartReplyMakeShorterResponse = {
+  content: string;
+};
+
+export type WorkbenchSmartReplySendAnswerRequest = {
+  conversationId: string;
+  realAnswer: string;
+  realAttachIds: string[];
+  recordId: string;
+};
+
+export type WorkbenchSmartReplySendAnswerResponse = {
+  ok: true;
+};
+
+export type WorkbenchAttachmentAppInfoDto = {
+  appOriginId?: string;
+  appPath?: string;
+  appid?: string;
+  headImg?: string;
+  nickName?: string;
+};
+
+export type WorkbenchAttachmentDto = {
+  appId?: string;
+  appInfo?: WorkbenchAttachmentAppInfoDto;
+  content?: string;
+  coverUrl?: string;
+  fileContentType?: string;
+  fileDuration?: string;
+  fileHeight?: number;
+  fileLength?: number;
+  fileName?: string;
+  /** 1 图片 2 音频 3 视频 4 图文 5 文件 6 文本 7 小程序 */
+  fileType?: number;
+  fileWidth?: number;
+  id: number;
+  jumpUrl?: string;
+  localPath?: string;
+  slocalPath?: string;
+  textContent?: string;
+};
+
+export type WorkbenchSmartReplyAttachmentsRequest = {
+  conversationId: string;
+  ids: string[];
+};
+
+export type WorkbenchSmartReplyAttachmentsResponse = {
+  attachments: WorkbenchAttachmentDto[];
+};
+
+export type WorkbenchSmartReplyTextModerationRequest = {
+  conversationId: string;
+  content: string;
+};
+
+export type WorkbenchSmartReplyTextModerationDto = {
+  categoryLabel: string;
+  words: string[];
+};
+
+export type WorkbenchSmartReplyTextModerationResponse = {
+  result: WorkbenchSmartReplyTextModerationDto | null;
+};
+
+export type WorkbenchKnowledgeSetDto = {
+  createTimestamp?: number;
+  docNum?: number;
+  id: string;
+  name: string;
+  remark?: string;
+};
+
+export type WorkbenchKnowledgePageRequest = {
+  conversationId: string;
+};
+
+export type WorkbenchKnowledgePageResponse = {
+  list: WorkbenchKnowledgeSetDto[];
+};
+
+export type WorkbenchKnowledgeConfigRequest = {
+  conversationId: string;
+};
+
+export type WorkbenchKnowledgeConfigDto = {
+  automaticCheckIllegalWords: number;
+};
+
+export type WorkbenchKnowledgeConfigResponse = {
+  config: WorkbenchKnowledgeConfigDto;
+};
+
+export type WorkbenchKnowledgeDocDto = {
+  id: string;
+  name: string;
+};
+
+export type WorkbenchKnowledgeDocPageRequest = {
+  conversationId: string;
+  knowledgeId: string;
+};
+
+export type WorkbenchKnowledgeDocPageResponse = {
+  list: WorkbenchKnowledgeDocDto[];
+};
+
+export type WorkbenchKnowledgeFaqAddItemDto = {
+  answer: string;
+  attachIds: string;
+  question: string;
+  similarQuestion: string;
+};
+
+export type WorkbenchKnowledgeFaqAddRequest = {
+  conversationId: string;
+  docId: string;
+  list: WorkbenchKnowledgeFaqAddItemDto[];
+};
+
+export type WorkbenchKnowledgeFaqAddResponse = {
+  docId: string;
+};
+
+export type WorkbenchSmartHeartbeatRequest = {
+  conversationId: string;
+};
+
+export type WorkbenchSmartHeartbeatResponse = {
+  ok: true;
 };
 
 export type WorkbenchOutgoingMessageTextSegment = {

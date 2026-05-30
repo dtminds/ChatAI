@@ -76,8 +76,8 @@ export function createViteConfig(mode = "development"): UserConfig {
       alias: {
         "@": path.resolve(__dirname, "./src"),
         "@chatai/contracts": path.resolve(
-          __dirname,
-          "../../packages/contracts/src/index.ts",
+          repoRoot,
+          "packages/contracts/src/index.ts",
         ),
       },
     },

@@ -16,6 +16,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { ShinyText } from "@/components/ui/shiny-text";
 import { Slider } from "@/components/ui/slider";
 import {
   Field,
@@ -82,6 +83,26 @@ describe("extended UI primitives", () => {
     render(<Slider />);
 
     expect(screen.getAllByRole("slider")).toHaveLength(1);
+  });
+
+  it("renders reusable shiny text with custom shimmer width", () => {
+    render(
+      <ShinyText
+        aria-label="AI 正在思考"
+        className="text-primary"
+        duration={1.2}
+        shimmerWidth={96}
+      >
+        AI正在生成话术...
+      </ShinyText>,
+    );
+
+    const text = screen.getByText("AI正在生成话术...");
+    expect(text).toHaveAttribute("data-slot", "shiny-text");
+    expect(text).toHaveAttribute("aria-label", "AI 正在思考");
+    expect(text).toHaveStyle({ "--shiny-text-duration": "1.2s" });
+    expect(text).toHaveStyle({ "--shiny-text-shimmer-width": "96px" });
+    expect(text).toHaveClass("text-primary");
   });
 
   it("supports distinct labels for range slider thumbs", () => {

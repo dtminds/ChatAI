@@ -19,6 +19,30 @@ import type {
   WorkbenchMessageStatus,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
+  WorkbenchSmartReplyAttachmentsRequest,
+  WorkbenchSmartReplyAttachmentsResponse,
+  WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  WorkbenchSmartReplyAutoGeneralAnswerResponse,
+  WorkbenchSmartReplyGeneralAnswerRequest,
+  WorkbenchSmartReplyGeneralAnswerResponse,
+  WorkbenchSmartReplyMakeShorterRequest,
+  WorkbenchSmartReplyMakeShorterResponse,
+  WorkbenchSmartReplySendAnswerRequest,
+  WorkbenchSmartReplySendAnswerResponse,
+  WorkbenchSmartReplyPollRequest,
+  WorkbenchSmartReplyPollResponse,
+  WorkbenchKnowledgePageRequest,
+  WorkbenchKnowledgePageResponse,
+  WorkbenchKnowledgeConfigRequest,
+  WorkbenchKnowledgeConfigResponse,
+  WorkbenchKnowledgeDocPageRequest,
+  WorkbenchKnowledgeDocPageResponse,
+  WorkbenchKnowledgeFaqAddRequest,
+  WorkbenchKnowledgeFaqAddResponse,
+  WorkbenchSmartHeartbeatRequest,
+  WorkbenchSmartHeartbeatResponse,
+  WorkbenchSmartReplyTextModerationRequest,
+  WorkbenchSmartReplyTextModerationResponse,
   WorkbenchRevokeMessageResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -390,6 +414,126 @@ export function createMemoryWorkbenchService() {
         nextVersion: state.version,
       };
     },
+    pollSmartReplies(
+      _subUserId: string,
+      _request: WorkbenchSmartReplyPollRequest,
+    ): WorkbenchSmartReplyPollResponse {
+      return { suggestions: [] };
+    },
+    requestSmartReplyGeneralAnswer(
+      _subUserId: string,
+      _request: WorkbenchSmartReplyGeneralAnswerRequest,
+    ): WorkbenchSmartReplyGeneralAnswerResponse {
+      return { suggestion: null };
+    },
+    requestSmartReplyAutoGeneralAnswer(
+      _subUserId: string,
+      _request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
+    ): WorkbenchSmartReplyAutoGeneralAnswerResponse {
+      return { id: "1" };
+    },
+    requestSmartReplyMakeShorter(
+      _subUserId: string,
+      _request: WorkbenchSmartReplyMakeShorterRequest,
+    ): WorkbenchSmartReplyMakeShorterResponse {
+      return { content: _request.content.trim() || "更短的话术" };
+    },
+    sendSmartReplyAnswer(
+      _subUserId: string,
+      _request: WorkbenchSmartReplySendAnswerRequest,
+    ): WorkbenchSmartReplySendAnswerResponse {
+      return { ok: true };
+    },
+    listKnowledgePage(
+      _subUserId: string,
+      _request: WorkbenchKnowledgePageRequest,
+    ): WorkbenchKnowledgePageResponse {
+      return {
+        list: [
+          {
+            id: "ks-default",
+            name: "默认知识集",
+          },
+        ],
+      };
+    },
+    getKnowledgeConfig(
+      _subUserId: string,
+      _request: WorkbenchKnowledgeConfigRequest,
+    ): WorkbenchKnowledgeConfigResponse {
+      return {
+        config: {
+          automaticCheckIllegalWords: 0,
+        },
+      };
+    },
+    listKnowledgeDocPage(
+      _subUserId: string,
+      _request: WorkbenchKnowledgeDocPageRequest,
+    ): WorkbenchKnowledgeDocPageResponse {
+      return {
+        list: [
+          {
+            id: "faq-default",
+            name: "默认 FAQ",
+          },
+        ],
+      };
+    },
+    addKnowledgeFaq(
+      _subUserId: string,
+      request: WorkbenchKnowledgeFaqAddRequest,
+    ): WorkbenchKnowledgeFaqAddResponse {
+      return {
+        docId: request.docId,
+      };
+    },
+    sendSmartHeartbeat(
+      _subUserId: string,
+      _request: WorkbenchSmartHeartbeatRequest,
+    ): WorkbenchSmartHeartbeatResponse {
+      return { ok: true };
+    },
+    checkSmartReplyTextModeration(
+      _subUserId: string,
+      request: WorkbenchSmartReplyTextModerationRequest,
+    ): WorkbenchSmartReplyTextModerationResponse {
+      const demoWords = ["太好用了", "最好", "第一", "极致"];
+      const words = demoWords.filter((word) => request.content.includes(word));
+
+      if (words.length === 0) {
+        return { result: null };
+      }
+
+      return {
+        result: {
+          categoryLabel: "广告法_通用禁用极限词",
+          words,
+        },
+      };
+    },
+    listSmartReplyAttachments(
+      _subUserId: string,
+      request: WorkbenchSmartReplyAttachmentsRequest,
+    ): WorkbenchSmartReplyAttachmentsResponse {
+      return {
+        attachments: request.ids.flatMap((id) => {
+          const numericId = Number.parseInt(id, 10);
+
+          if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+            return [];
+          }
+
+          return [
+            {
+              fileName: `素材-${id}`,
+              fileType: 1,
+              id: numericId,
+            },
+          ];
+        }),
+      };
+    },
     sendMessage(
       _subUserId: string,
       payload: WorkbenchSendMessagePayload,
@@ -646,6 +790,7 @@ function conversation(
   return {
     seatId,
     conversationId,
+    custodyMode: "semi",
     customerAvatar,
     customerId,
     customerName,

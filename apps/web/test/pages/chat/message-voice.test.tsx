@@ -662,7 +662,7 @@ describe("voice message playback", () => {
     await user.click(screen.getByRole("button", { name: "转文字" }));
 
     expect(onTranscribe).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("转文字失败")).toBeInTheDocument();
+    expect(await screen.findByText("语音识别结果为空")).toBeInTheDocument();
   });
 
   it("does not update transcription state after unmounting during a request", async () => {
@@ -738,7 +738,7 @@ describe("voice message playback", () => {
 
     await user.click(screen.getByRole("button", { name: "转文字" }));
 
-    expect(await screen.findByText("转文字失败")).toBeInTheDocument();
+    expect(await screen.findByText("识别失败")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "重新转文字" }));
 

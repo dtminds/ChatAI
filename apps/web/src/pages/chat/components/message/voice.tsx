@@ -8,6 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { VoiceMessageContent } from "@/pages/chat/chat-types";
+import { resolveVoiceTranscriptionErrorMessage } from "@/pages/chat/lib/voice-transcription-error";
 
 type VoiceMessageCardProps = {
   content: VoiceMessageContent;
@@ -83,6 +84,9 @@ export function VoiceMessageCard({
   const [duration, setDuration] = useState(0);
   const [transcriptionState, setTranscriptionState] =
     useState<TranscriptionState>("idle");
+  const [transcriptionErrorMessage, setTranscriptionErrorMessage] = useState<
+    string | null
+  >(null);
   const [localTransVoiceText, setLocalTransVoiceText] = useState("");
   const canPlay = Boolean(content.audioUrl);
   const label = content.durationLabel || "语音";
@@ -122,6 +126,7 @@ export function VoiceMessageCard({
       return;
     }
 
+    setTranscriptionErrorMessage(null);
     setTranscriptionState("loading");
 
     try {
@@ -138,12 +143,14 @@ export function VoiceMessageCard({
       }
 
       setLocalTransVoiceText(normalizedTransVoiceText);
+      setTranscriptionErrorMessage(null);
       setTranscriptionState("idle");
-    } catch {
+    } catch (error) {
       if (!mountedRef.current) {
         return;
       }
 
+      setTranscriptionErrorMessage(resolveVoiceTranscriptionErrorMessage(error));
       setTranscriptionState("error");
     }
   };
@@ -642,9 +649,9 @@ export function VoiceMessageCard({
           {transVoiceText}
         </div>
       ) : null}
-      {transcriptionState === "error" ? (
+      {transcriptionState === "error" && transcriptionErrorMessage ? (
         <span className="px-1 text-[12px] leading-5 text-destructive">
-          转文字失败
+          {transcriptionErrorMessage}
         </span>
       ) : null}
     </div>

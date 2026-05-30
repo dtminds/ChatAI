@@ -7,6 +7,7 @@ import {
 import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { http } from "@/lib/request";
 import {
+  CONVERSATION_CUSTODY_MODE,
   type ApiSuccessEnvelope,
   type WorkbenchConversationDeleteResponse,
   type WorkbenchConversationListResponse,
@@ -35,6 +36,30 @@ import {
   type WorkbenchMessageStatus,
   type WorkbenchPollRequest,
   type WorkbenchPollResponse,
+  type WorkbenchSmartReplyAttachmentsRequest,
+  type WorkbenchSmartReplyAttachmentsResponse,
+  type WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  type WorkbenchSmartReplyAutoGeneralAnswerResponse,
+  type WorkbenchSmartReplyGeneralAnswerRequest,
+  type WorkbenchSmartReplyGeneralAnswerResponse,
+  type WorkbenchSmartReplyMakeShorterRequest,
+  type WorkbenchSmartReplyMakeShorterResponse,
+  type WorkbenchSmartReplySendAnswerRequest,
+  type WorkbenchSmartReplySendAnswerResponse,
+  type WorkbenchSmartReplyPollRequest,
+  type WorkbenchSmartReplyPollResponse,
+  type WorkbenchKnowledgePageRequest,
+  type WorkbenchKnowledgePageResponse,
+  type WorkbenchKnowledgeConfigRequest,
+  type WorkbenchKnowledgeConfigResponse,
+  type WorkbenchKnowledgeDocPageRequest,
+  type WorkbenchKnowledgeDocPageResponse,
+  type WorkbenchKnowledgeFaqAddRequest,
+  type WorkbenchKnowledgeFaqAddResponse,
+  type WorkbenchSmartHeartbeatRequest,
+  type WorkbenchSmartHeartbeatResponse,
+  type WorkbenchSmartReplyTextModerationRequest,
+  type WorkbenchSmartReplyTextModerationResponse,
   type WorkbenchRevokeMessageRequest,
   type WorkbenchRevokeMessageResponse,
   type WorkbenchVoicePlaybackConfirmRequest,
@@ -128,6 +153,42 @@ export type WorkbenchService = {
   markConversationUnread: (conversationId: string) => Promise<WorkbenchConversationUnreadResponse>;
   pinConversation: (conversationId: string) => Promise<WorkbenchConversationPinResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
+  pollSmartReplies: (
+    request: WorkbenchSmartReplyPollRequest,
+  ) => Promise<WorkbenchSmartReplyPollResponse>;
+  requestSmartReplyGeneralAnswer: (
+    request: WorkbenchSmartReplyGeneralAnswerRequest,
+  ) => Promise<WorkbenchSmartReplyGeneralAnswerResponse>;
+  requestSmartReplyAutoGeneralAnswer: (
+    request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  ) => Promise<WorkbenchSmartReplyAutoGeneralAnswerResponse>;
+  requestSmartReplyMakeShorter: (
+    request: WorkbenchSmartReplyMakeShorterRequest,
+  ) => Promise<WorkbenchSmartReplyMakeShorterResponse>;
+  sendSmartReplyAnswer: (
+    request: WorkbenchSmartReplySendAnswerRequest,
+  ) => Promise<WorkbenchSmartReplySendAnswerResponse>;
+  listSmartReplyAttachments: (
+    request: WorkbenchSmartReplyAttachmentsRequest,
+  ) => Promise<WorkbenchSmartReplyAttachmentsResponse>;
+  checkSmartReplyTextModeration: (
+    request: WorkbenchSmartReplyTextModerationRequest,
+  ) => Promise<WorkbenchSmartReplyTextModerationResponse>;
+  listKnowledgePage: (
+    request: WorkbenchKnowledgePageRequest,
+  ) => Promise<WorkbenchKnowledgePageResponse>;
+  getKnowledgeConfig: (
+    request: WorkbenchKnowledgeConfigRequest,
+  ) => Promise<WorkbenchKnowledgeConfigResponse>;
+  listKnowledgeDocPage: (
+    request: WorkbenchKnowledgeDocPageRequest,
+  ) => Promise<WorkbenchKnowledgeDocPageResponse>;
+  addSmartReplyKnowledgeFaq: (
+    request: WorkbenchKnowledgeFaqAddRequest,
+  ) => Promise<WorkbenchKnowledgeFaqAddResponse>;
+  sendSmartHeartbeat: (
+    request: WorkbenchSmartHeartbeatRequest,
+  ) => Promise<WorkbenchSmartHeartbeatResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
@@ -550,6 +611,92 @@ export function createMockWorkbenchService(): WorkbenchService {
         nextVersion: state.version,
       };
     },
+    async pollSmartReplies() {
+      return { suggestions: [] };
+    },
+    async requestSmartReplyGeneralAnswer() {
+      return { suggestion: null };
+    },
+    async requestSmartReplyAutoGeneralAnswer() {
+      return { id: "1" };
+    },
+    async requestSmartReplyMakeShorter(request) {
+      const trimmed = request.content.trim();
+
+      return { content: trimmed ? `${trimmed.slice(0, Math.max(8, Math.floor(trimmed.length / 2)))}…` : "更短的话术" };
+    },
+    async sendSmartReplyAnswer() {
+      return { ok: true };
+    },
+    async listSmartReplyAttachments(request) {
+      return {
+        attachments: request.ids.flatMap((id) => {
+          const numericId = Number.parseInt(id, 10);
+
+          if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+            return [];
+          }
+
+          return [
+            {
+              fileName: `素材-${id}`,
+              fileType: 1,
+              id: numericId,
+            },
+          ];
+        }),
+      };
+    },
+    async checkSmartReplyTextModeration(request) {
+      const demoWords = ["太好用了", "最好", "第一", "极致"];
+      const words = demoWords.filter((word) => request.content.includes(word));
+
+      if (words.length === 0) {
+        return { result: null };
+      }
+
+      return {
+        result: {
+          categoryLabel: "广告法_通用禁用极限词",
+          words,
+        },
+      };
+    },
+    async listKnowledgePage() {
+      return {
+        list: [
+          {
+            id: "ks-default",
+            name: "默认知识集",
+          },
+        ],
+      };
+    },
+    async getKnowledgeConfig() {
+      return {
+        config: {
+          automaticCheckIllegalWords: 0,
+        },
+      };
+    },
+    async listKnowledgeDocPage() {
+      return {
+        list: [
+          {
+            id: "faq-default",
+            name: "默认 FAQ",
+          },
+        ],
+      };
+    },
+    async addSmartReplyKnowledgeFaq(request) {
+      return {
+        docId: request.docId,
+      };
+    },
+    async sendSmartHeartbeat() {
+      return { ok: true };
+    },
     async sendMessage(payload) {
       const conversation = findConversation(state, payload.conversationId);
 
@@ -667,6 +814,8 @@ export function createMockWorkbenchService(): WorkbenchService {
           thirdGroupId: existingConversation.thirdGroupId,
           thirdUserId: existingConversation.thirdUserId,
           unreadCount: existingConversation.unreadCount,
+          custodyMode:
+            existingConversation.custodyMode ?? CONVERSATION_CUSTODY_MODE.SEMI,
         };
       }
 
@@ -688,6 +837,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         thirdGroupId: payload.thirdGroupId,
         thirdUserId: `third-user-${payload.seatId}`,
         unreadCount: 0,
+        custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
       };
     },
   };
@@ -868,6 +1018,78 @@ export function createHttpWorkbenchService(): WorkbenchService {
           since_version: request.sinceVersion,
         },
       });
+    },
+    pollSmartReplies(request) {
+      return http.post<WorkbenchSmartReplyPollResponse, WorkbenchSmartReplyPollRequest>(
+        "/server/smart-reply/poll",
+        request,
+      );
+    },
+    requestSmartReplyGeneralAnswer(request) {
+      return http.post<
+        WorkbenchSmartReplyGeneralAnswerResponse,
+        WorkbenchSmartReplyGeneralAnswerRequest
+      >("/server/smart-reply/general-answer", request);
+    },
+    requestSmartReplyAutoGeneralAnswer(request) {
+      return http.post<
+        WorkbenchSmartReplyAutoGeneralAnswerResponse,
+        WorkbenchSmartReplyAutoGeneralAnswerRequest
+      >("/server/smart-reply/auto-general-answer", request);
+    },
+    requestSmartReplyMakeShorter(request) {
+      return http.post<
+        WorkbenchSmartReplyMakeShorterResponse,
+        WorkbenchSmartReplyMakeShorterRequest
+      >("/server/smart-reply/make-shorter", request);
+    },
+    sendSmartReplyAnswer(request) {
+      return http.post<
+        WorkbenchSmartReplySendAnswerResponse,
+        WorkbenchSmartReplySendAnswerRequest
+      >("/server/smart-reply/send-answer", request);
+    },
+    listSmartReplyAttachments(request) {
+      return http.post<
+        WorkbenchSmartReplyAttachmentsResponse,
+        WorkbenchSmartReplyAttachmentsRequest
+      >("/server/smart-reply/attachments", request);
+    },
+    checkSmartReplyTextModeration(request) {
+      return http.post<
+        WorkbenchSmartReplyTextModerationResponse,
+        WorkbenchSmartReplyTextModerationRequest
+      >("/server/smart-reply/text-moderation", request);
+    },
+    listKnowledgePage(request) {
+      return http.post<WorkbenchKnowledgePageResponse, WorkbenchKnowledgePageRequest>(
+        "/server/smart-reply/knowledge-page",
+        request,
+      );
+    },
+    getKnowledgeConfig(request) {
+      return http.post<WorkbenchKnowledgeConfigResponse, WorkbenchKnowledgeConfigRequest>(
+        "/server/smart-reply/knowledge-config",
+        request,
+      );
+    },
+    listKnowledgeDocPage(request) {
+      return http.post<WorkbenchKnowledgeDocPageResponse, WorkbenchKnowledgeDocPageRequest>(
+        "/server/smart-reply/knowledge-doc-page",
+        request,
+      );
+    },
+    addSmartReplyKnowledgeFaq(request) {
+      return http.post<WorkbenchKnowledgeFaqAddResponse, WorkbenchKnowledgeFaqAddRequest>(
+        "/server/smart-reply/knowledge-faq/add",
+        request,
+      );
+    },
+    sendSmartHeartbeat(request) {
+      return http.post<WorkbenchSmartHeartbeatResponse, WorkbenchSmartHeartbeatRequest>(
+        "/server/conversations/smart-heartbeat",
+        request,
+      );
     },
     sendMessage(payload) {
       return http.post<WorkbenchSendMessageResponse, WorkbenchSendMessagePayload>(
@@ -1073,6 +1295,7 @@ function buildInitialState(): MockState {
           seatId: conversation.accountId,
           conversationId: conversation.id,
           bizStatus: conversation.bizStatus ?? 1,
+          custodyMode: conversation.custodyMode,
           customerAvatar: conversation.customerAvatarUrl,
           customerId: conversation.customerId,
           customerName: conversation.customerName,

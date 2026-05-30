@@ -2135,8 +2135,44 @@ describe("backend app", () => {
       },
       url: "/api/server/messages/msg-003/revoke",
     });
+    const smartReplySendAnswer = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        realAnswer: "只读账号不能标记智能回复已发送",
+        realAttachIds: [],
+        recordId: "1",
+      },
+      url: "/api/server/smart-reply/send-answer",
+    });
+    const knowledgeFaqAdd = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        docId: "faq-default",
+        list: [
+          {
+            answer: "只读账号不能新增 FAQ",
+            attachIds: "",
+            question: "只读账号可以新增 FAQ 吗",
+            similarQuestion: "",
+          },
+        ],
+      },
+      url: "/api/server/smart-reply/knowledge-faq/add",
+    });
 
-    for (const response of [send, takeOver, markRead, uploadCredential, revoke]) {
+    for (const response of [
+      send,
+      takeOver,
+      markRead,
+      uploadCredential,
+      revoke,
+      smartReplySendAnswer,
+      knowledgeFaqAdd,
+    ]) {
       expect(response.statusCode).toBe(403);
       expect(response.json()).toEqual({
         error: {

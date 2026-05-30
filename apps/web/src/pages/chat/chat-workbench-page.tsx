@@ -44,6 +44,7 @@ import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-beh
 import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
+  INSERT_COMPOSER_TEXT_COMMAND,
   UPDATE_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
@@ -66,6 +67,7 @@ import type {
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
+import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -194,8 +196,13 @@ function ChatWorkbenchContent({
     me,
     messagePaginationByConversationId,
     messagesByConversationId,
+    smartReplyByMessageIdByConversationId,
+    smartReplyHiddenMessageKeysByConversationId,
     pollState,
     pollWorkbench,
+    dismissSmartReply,
+    requestSmartReplyGeneralAnswer,
+    requestSmartReplyMakeShorter,
     readReceiptError,
     revokeMessage,
     revokeMessageError,
@@ -212,6 +219,7 @@ function ChatWorkbenchContent({
     setHistoryPanelSenderId,
     scopeTransitionError,
     sendAgentMessageSegments,
+    sendSmartReply,
     setActiveAccount,
     setActiveConversation,
     setActiveMode,
@@ -232,7 +240,7 @@ function ChatWorkbenchContent({
     [],
   );
   const [sendFailureDialog, setSendFailureDialog] = useState<{
-    description: string;
+    description?: string;
     title: string;
   } | null>(null);
   const [pollingPauseReason, setPollingPauseReason] =
@@ -318,6 +326,24 @@ function ChatWorkbenchContent({
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
     [];
+  const activeSmartReplyByMessageId = useMemo(() => {
+    if (!activeConversation || activeConversation.mode !== "single") {
+      return {};
+    }
+
+    const suggestions =
+      smartReplyByMessageIdByConversationId[activeConversation.id] ?? {};
+    const hidden =
+      smartReplyHiddenMessageKeysByConversationId[activeConversation.id] ?? {};
+
+    return Object.fromEntries(
+      Object.entries(suggestions).filter(([lookupKey]) => !hidden[lookupKey]),
+    );
+  }, [
+    activeConversation,
+    smartReplyByMessageIdByConversationId,
+    smartReplyHiddenMessageKeysByConversationId,
+  ]);
   const activeGroupMembers =
     activeConversation?.mode === "group"
       ? (groupMembersByConversationId[activeConversation.id] ?? [])
@@ -609,6 +635,15 @@ function ChatWorkbenchContent({
     pollWorkbench,
   });
 
+  // 心跳当前按产品决策停用；保留调用示例，后续恢复时再打开。
+  // useSmartHeartbeat({
+  //   conversationId: activeConversation?.id,
+  //   enabled:
+  //     bootstrapStatus === "ready" &&
+  //     isAccountTakenOverByCurrentUser &&
+  //     activeConversation?.mode === "single",
+  // });
+
   const clearComposer = (options?: { keepQuote?: boolean }) => {
     composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
     setDraft("");
@@ -617,6 +652,22 @@ function ChatWorkbenchContent({
       setQuotedMessage(null);
     }
   };
+
+  const scrollMessageViewportToBottom = useCallback(() => {
+    const scroll = () => {
+      messageViewportRef.current?.scrollTo?.({
+        top: 0,
+        behavior: "smooth",
+      });
+    };
+
+    scroll();
+
+    window.requestAnimationFrame(() => {
+      scroll();
+      window.requestAnimationFrame(scroll);
+    });
+  }, []);
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
     const sendConversationId = activeConversation?.id;
@@ -700,6 +751,7 @@ function ChatWorkbenchContent({
       clearComposer({
         keepQuote: quotedMessage !== null && !result.didConsumeQuote,
       });
+      scrollMessageViewportToBottom();
       void requestActiveConversationRead();
     } finally {
       isSendingDraftRef.current = false;
@@ -1022,6 +1074,85 @@ function ChatWorkbenchContent({
     composerRef.current?.focus();
   };
 
+  const handleSendSmartReply = async (
+    message: ChatMessage,
+    payload: SmartReplySendPayload,
+  ) => {
+    const sendConversationId = activeConversation?.id;
+
+    if (!canSendMessage) {
+      return;
+    }
+
+    if (isSendingDraftRef.current) {
+      return;
+    }
+
+    isSendingDraftRef.current = true;
+    setIsSendingDraft(true);
+
+    try {
+      const result = await sendSmartReply(message, payload);
+
+      if (
+        !isMountedRef.current ||
+        activeConversationIdRef.current !== sendConversationId
+      ) {
+        return result;
+      }
+
+      if (!result.ok) {
+        setSendFailureDialog(
+          getSendFailureDialogCopy(
+            result.reason,
+            result.errorCode,
+            result.errorMessage,
+          ),
+        );
+      } else {
+        scrollMessageViewportToBottom();
+      }
+
+      return result;
+    } finally {
+      isSendingDraftRef.current = false;
+      if (isMountedRef.current) {
+        setIsSendingDraft(false);
+      }
+    }
+  };
+
+  const handleFillSmartReplyComposer = (
+    _message: ChatMessage,
+    content: string,
+  ) => {
+    const text = content.trim();
+
+    if (!text || !canSendMessage) {
+      return;
+    }
+
+    composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
+    composerRef.current?.dispatchCommand(INSERT_COMPOSER_TEXT_COMMAND, text);
+    setDraft(text);
+    composerRef.current?.focus();
+  };
+
+  const handleTriggerSmartReply = (
+    message: ChatMessage,
+    options?: { force?: boolean },
+  ) => {
+    void requestSmartReplyGeneralAnswer(message, options);
+  };
+
+  const handleDismissSmartReply = (message: ChatMessage) => {
+    dismissSmartReply(message);
+  };
+
+  const handleMakeShorterSmartReply = (message: ChatMessage) => {
+    void requestSmartReplyMakeShorter(message);
+  };
+
   const handleMentionMessage = (message: ChatMessage) => {
     if (
       !message.isGroupConversation ||
@@ -1271,6 +1402,7 @@ function ChatWorkbenchContent({
                   hasMoreHistory={hasMoreHistory}
                   historyLoadLabel={historyLoadLabel}
                   messages={activeMessages}
+                  smartReplyByMessageId={activeSmartReplyByMessageId}
                   messageViewportRef={messageViewportRef}
                   quotedMessage={quotedMessage}
                   sidebarItems={sidebarItems}
@@ -1335,6 +1467,11 @@ function ChatWorkbenchContent({
                   onMentionMessage={handleMentionMessage}
                   onOpenQuotedMessage={handleOpenQuotedMessage}
                   onQuoteMessage={handleQuoteMessage}
+                  onSendSmartReply={handleSendSmartReply}
+                  onFillSmartReplyComposer={handleFillSmartReplyComposer}
+                  onDismissSmartReply={handleDismissSmartReply}
+                  onMakeShorterSmartReply={handleMakeShorterSmartReply}
+                  onTriggerSmartReply={handleTriggerSmartReply}
                   onRevokeMessage={handleRevokeMessage}
                   onMessageViewportScroll={handleMessageViewportScroll}
                   onRetryMessage={handleRetryFailedMessage}
@@ -1436,9 +1573,11 @@ function ChatWorkbenchContent({
             />
             <AlertDialogHeader className="min-w-0 flex-1 space-y-1.5 text-left">
               <AlertDialogTitle>{sendFailureDialog?.title}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {sendFailureDialog?.description}
-              </AlertDialogDescription>
+              {sendFailureDialog?.description ? (
+                <AlertDialogDescription>
+                  {sendFailureDialog.description}
+                </AlertDialogDescription>
+              ) : null}
             </AlertDialogHeader>
           </div>
           <AlertDialogFooter>
@@ -1527,7 +1666,7 @@ function getSendFailureDialogCopy(
   errorCode: string,
   errorMessage?: string,
 ) {
-  const description = errorMessage?.trim() || `ErrorCode: ${errorCode}`;
+  const description = resolveSendFailureDescription(reason, errorCode, errorMessage);
 
   if (reason === "file-upload") {
     return {
@@ -1554,6 +1693,48 @@ function getSendFailureDialogCopy(
     title: "发送失败，请稍后重试",
     description,
   };
+}
+
+function resolveSendFailureDescription(
+  reason: "file-upload" | "image-upload" | "send" | "unavailable",
+  errorCode: string,
+  errorMessage?: string,
+) {
+  const message = errorMessage?.trim();
+
+  if (reason === "file-upload" || reason === "image-upload") {
+    if (message && containsChineseText(message)) {
+      return message;
+    }
+
+    return undefined;
+  }
+
+  if (message && containsChineseText(message)) {
+    return message;
+  }
+
+  if (message && isTransportFailureMessage(message)) {
+    return "网络异常，请稍后重试";
+  }
+
+  return `错误码：${errorCode}`;
+}
+
+function containsChineseText(text: string) {
+  return /[\u4e00-\u9fff]/.test(text);
+}
+
+function isTransportFailureMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes("cors") ||
+    normalized.includes("network error") ||
+    normalized.includes("network") ||
+    normalized.includes("timeout") ||
+    normalized.includes("failed to fetch")
+  );
 }
 
 function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {

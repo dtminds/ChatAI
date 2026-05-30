@@ -64,4 +64,46 @@ describe("tuse-crypto AES-256-CBC", () => {
       ts: encryptTuseTsFromUnixSeconds(tuseKey, tuseIv, unixSeconds),
     });
   });
+
+  it("encrypts group identifiers for sidebar iframe params", () => {
+    const unixSeconds = 1735689600;
+    const thirdGroupId = "group-001";
+    const thirdGroupName = "测试群002";
+
+    expect(
+      buildSidebarIframeTuseCipherTexts({
+        aesIvUtf8Secret: tuseIv,
+        aesKeyUtf8Secret: tuseKey,
+        thirdGroupId,
+        thirdGroupName,
+        thirdUserId,
+        unixSeconds,
+      }),
+    ).toEqual({
+      rd: encryptTuseRdFromThirdUserId(tuseKey, tuseIv, thirdUserId),
+      thirdGroupId: encryptTuseAesCbcPkcs7Base64(tuseKey, tuseIv, thirdGroupId),
+      thirdGroupName: encryptTuseAesCbcPkcs7Base64(tuseKey, tuseIv, thirdGroupName),
+      ts: encryptTuseTsFromUnixSeconds(tuseKey, tuseIv, unixSeconds),
+    });
+  });
+
+  it("always encrypts thirdGroupName when only thirdGroupId is available", () => {
+    const unixSeconds = 1735689600;
+    const thirdGroupId = "group-001";
+
+    expect(
+      buildSidebarIframeTuseCipherTexts({
+        aesIvUtf8Secret: tuseIv,
+        aesKeyUtf8Secret: tuseKey,
+        thirdGroupId,
+        thirdUserId,
+        unixSeconds,
+      }),
+    ).toEqual({
+      rd: encryptTuseRdFromThirdUserId(tuseKey, tuseIv, thirdUserId),
+      thirdGroupId: encryptTuseAesCbcPkcs7Base64(tuseKey, tuseIv, thirdGroupId),
+      thirdGroupName: encryptTuseAesCbcPkcs7Base64(tuseKey, tuseIv, thirdGroupId),
+      ts: encryptTuseTsFromUnixSeconds(tuseKey, tuseIv, unixSeconds),
+    });
+  });
 });

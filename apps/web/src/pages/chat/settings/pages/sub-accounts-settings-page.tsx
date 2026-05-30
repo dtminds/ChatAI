@@ -114,6 +114,10 @@ const roleLabels = {
   viewer: "客服（只读）",
 } as const satisfies Record<AccountRole, string>;
 
+function resolveRoleLabel(role: AccountRole) {
+  return roleLabels[role];
+}
+
 type FormMode = "create" | "edit";
 
 type DialogState =
@@ -525,7 +529,7 @@ function SubAccountRow({
       </TableCell>
       <TableCell className="px-5 py-5">
         <Badge
-          aria-label={`角色：${roleLabels[subAccount.role]}`}
+          aria-label={`角色：${resolveRoleLabel(subAccount.role)}`}
           className={
             isMainAccount
               ? "bg-primary/12 text-primary"
@@ -533,7 +537,7 @@ function SubAccountRow({
           }
           variant={isMainAccount ? "default" : "secondary"}
         >
-          {roleLabels[subAccount.role]}
+          {resolveRoleLabel(subAccount.role)}
         </Badge>
       </TableCell>
       <TableCell className="px-5 py-5">
@@ -932,7 +936,9 @@ function SubAccountDialog({
         state.subAccount?.type === 1
           ? "owner"
           : (state.subAccount?.role ?? "operator"),
-      seatIds: state.subAccount?.seats.map((seat) => seat.seatId) ?? [],
+      seatIds:
+        state.subAccount?.seats.map((seat: SettingsWeComSeat) => seat.seatId) ??
+        [],
     });
     setFormError("");
     setPasswordError("");

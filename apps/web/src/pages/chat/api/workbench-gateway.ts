@@ -22,14 +22,28 @@ import type {
   WorkbenchUploadCredentialResponse,
   WorkbenchMessageQueryByIdsRequest,
   WorkbenchMessageUpdateEventDto,
+  WorkbenchSmartReplyPollRequest,
+  WorkbenchSmartReplySendAnswerRequest,
+  WorkbenchKnowledgeFaqAddRequest,
   WorkbenchVoicePlaybackConfirmRequest,
   WorkbenchVoicePlaybackConfirmResponse,
   WorkbenchVoiceTranscriptionRequest,
   WorkbenchVoiceTranscriptionResponse,
 } from "@chatai/contracts";
+import {
+  adaptSmartReplySuggestions,
+  collectQuestionImgs,
+  collectSmartReplyPollMsgIds,
+  createTriggeredSmartReplySuggestion,
+  isSmartReplyPollComplete,
+  adaptSmartReplyAttachments,
+} from "@/pages/chat/api/smart-reply-adapter";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
+import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
+import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
 import type {
   Account,
+  ChatMessage,
   ChatMode,
   Conversation,
   CustomerProfile,
@@ -61,6 +75,8 @@ export type WorkbenchConversationPage = {
   messages: Message[];
   nextBeforeSeq?: number;
   skippedHiddenCount: number;
+  smartReplyEnabled?: boolean;
+  smartReplies: Record<string, SmartReplySuggestion>;
 };
 
 export type WorkbenchHistoryPage = {
@@ -328,6 +344,8 @@ export async function loadConversationMessagesPage(
     messages,
     nextBeforeSeq: page.nextBeforeSeq,
     skippedHiddenCount: page.filteredCount,
+    smartReplyEnabled: page.smartReplyEnabled,
+    smartReplies: adaptSmartReplySuggestions(page.smartReplies ?? []),
   };
 }
 
@@ -489,6 +507,148 @@ export async function pollWorkbench(
     nextVersion: response.nextVersion,
     request,
   };
+}
+
+export async function pollSmartReplies(
+  request: WorkbenchSmartReplyPollRequest,
+  messages: Message[],
+  suggestions: Record<string, SmartReplySuggestion> = {},
+): Promise<Record<string, SmartReplySuggestion>> {
+  const msgIds =
+    request.msgIds.length > 0
+      ? request.msgIds.filter((seq) => !isSmartReplyPollComplete(suggestions[String(seq)]))
+      : collectSmartReplyPollMsgIds(messages, suggestions);
+
+  if (msgIds.length === 0) {
+    return {};
+  }
+
+  const response = await getWorkbenchService().pollSmartReplies({
+    conversationId: request.conversationId,
+    msgIds,
+  });
+
+  return adaptSmartReplySuggestions(response.suggestions);
+}
+
+export async function requestSmartReplyGeneralAnswer(
+  message: ChatMessage,
+  conversationId: string,
+): Promise<SmartReplySuggestion> {
+  const msgId = message.seq;
+
+  if (!Number.isSafeInteger(msgId) || msgId == null || msgId <= 0) {
+    throw new Error("消息序号无效，无法生成智能回复");
+  }
+
+  const response = await getWorkbenchService().requestSmartReplyGeneralAnswer({
+    conversationId,
+    msgId,
+    questionImgs: collectQuestionImgs(message),
+  });
+
+  if (!response.suggestion) {
+    return createTriggeredSmartReplySuggestion(message);
+  }
+
+  const [suggestion] = Object.values(
+    adaptSmartReplySuggestions([response.suggestion]),
+  );
+
+  return suggestion ?? createTriggeredSmartReplySuggestion(message);
+}
+
+export async function requestSmartReplyAutoGeneralAnswer(
+  message: ChatMessage,
+  conversationId: string,
+) {
+  const msgId = message.seq;
+
+  if (!Number.isSafeInteger(msgId) || msgId == null || msgId <= 0) {
+    throw new Error("消息序号无效，无法生成智能回复");
+  }
+
+  return getWorkbenchService().requestSmartReplyAutoGeneralAnswer({
+    conversationId,
+    msgId,
+  });
+}
+
+export async function requestSmartReplyMakeShorter(
+  conversationId: string,
+  content: string,
+) {
+  const trimmedContent = content.trim();
+
+  if (!trimmedContent) {
+    throw new Error("智能回复内容不能为空");
+  }
+
+  return getWorkbenchService().requestSmartReplyMakeShorter({
+    conversationId,
+    content: trimmedContent,
+  });
+}
+
+export async function sendSmartReplyAnswer(
+  request: WorkbenchSmartReplySendAnswerRequest,
+) {
+  return getWorkbenchService().sendSmartReplyAnswer(request);
+}
+
+export async function checkSmartReplyTextModeration(
+  conversationId: string,
+  content: string,
+) {
+  return getWorkbenchService().checkSmartReplyTextModeration({
+    conversationId,
+    content,
+  });
+}
+
+export async function listKnowledgePage(conversationId: string) {
+  return getWorkbenchService().listKnowledgePage({ conversationId });
+}
+
+export async function getSmartReplyKnowledgeConfig(conversationId: string) {
+  return getWorkbenchService().getKnowledgeConfig({ conversationId });
+}
+
+export async function listKnowledgeDocPage(
+  conversationId: string,
+  knowledgeId: string,
+) {
+  return getWorkbenchService().listKnowledgeDocPage({
+    conversationId,
+    knowledgeId,
+  });
+}
+
+export async function addSmartReplyKnowledgeFaq(
+  request: WorkbenchKnowledgeFaqAddRequest,
+) {
+  return getWorkbenchService().addSmartReplyKnowledgeFaq(request);
+}
+
+export async function sendSmartHeartbeat(_conversationId: string) {
+  // 暂时停用心跳，待后续观察并决策启用或删除该逻辑
+  return { ok: true as const };
+}
+
+export async function listSmartReplyAttachments(
+  conversationId: string,
+  ids: string[],
+): Promise<SmartReplyRecommendedAttachment[]> {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const response = await getWorkbenchService().listSmartReplyAttachments({
+    conversationId,
+    ids,
+  });
+
+  return adaptSmartReplyAttachments(response.attachments);
 }
 
 function adaptMessages(

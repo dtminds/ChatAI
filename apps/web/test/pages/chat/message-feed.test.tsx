@@ -195,6 +195,199 @@ describe("message feed row actions", () => {
     expect(onQuoteMessage).not.toHaveBeenCalled();
   });
 
+  it("shows smart reply recommendation as the first message action for customer messages without suggestions", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        message={{
+          content: { text: "客户想了解产品", type: "text" },
+          conversationId: "conv-1",
+          id: "msg-customer-1",
+          role: "customer",
+          sender: { id: "cus-1", name: "客户甲" },
+          sentAt: "2026-05-25T10:00:00+08:00",
+          author: "客户甲",
+          status: "sent",
+        } as ChatMessage}
+      />,
+    );
+
+    expect(screen.queryByTestId("smart-reply-trigger-icon")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(
+      screen.getByRole("menuitem", { name: "话术推荐" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "话术推荐",
+      "复制消息ID",
+    ]);
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+  });
+
+  it("calls smart reply trigger handler when the recommendation action is selected", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      id: "msg-customer-1",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+    } as ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onTriggerSmartReply={onTriggerSmartReply}
+      />,
+    );
+
+    expect(screen.queryByTestId("smart-reply-trigger-icon")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
+
+    expect(onTriggerSmartReply).toHaveBeenCalledWith(message);
+  });
+
+  it("keeps smart reply recommendation visible but disabled when actions are locked", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      id: "msg-customer-1",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+    } as ChatMessage;
+
+    render(
+      <MessageRow
+        canUseMessageActions={false}
+        message={message}
+        onTriggerSmartReply={onTriggerSmartReply}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    const smartReplyAction = screen.getByRole("menuitem", { name: "话术推荐" });
+
+    expect(smartReplyAction).toHaveAttribute("data-disabled");
+
+    await user.click(smartReplyAction);
+
+    expect(onTriggerSmartReply).not.toHaveBeenCalled();
+  });
+
+  it("hides smart reply trigger icon when a ready suggestion card is shown", () => {
+    render(
+      <MessageRow
+        message={{
+          content: { text: "客户想了解产品", type: "text" },
+          conversationId: "conv-1",
+          id: "msg-customer-1",
+          role: "customer",
+          sender: { id: "cus-1", name: "客户甲" },
+          sentAt: "2026-05-25T10:00:00+08:00",
+          author: "客户甲",
+          status: "sent",
+        } as ChatMessage}
+        smartReply={{
+          assistantName: "护肤小助手",
+          content: "建议先确认肤质",
+          status: "ready",
+        }}
+      />,
+    );
+
+    expect(screen.queryByTestId("smart-reply-trigger-icon")).not.toBeInTheDocument();
+    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
+  });
+
+  it("dismisses the smart reply card so the avatar recommendation action can be used again", async () => {
+    const user = userEvent.setup();
+    const onDismissSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      id: "msg-customer-1",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+    } as ChatMessage;
+    const { rerender } = render(
+      <MessageRow
+        message={message}
+        onDismissSmartReply={onDismissSmartReply}
+        smartReply={{
+          assistantName: "护肤小助手",
+          content: "建议先确认肤质",
+          status: "ready",
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "收起" }));
+
+    expect(onDismissSmartReply).toHaveBeenCalledWith(message);
+
+    rerender(
+      <MessageRow
+        message={message}
+        onDismissSmartReply={onDismissSmartReply}
+      />,
+    );
+
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "话术推荐" })).toBeInTheDocument();
+  });
+
+  it("calls smart reply trigger handler when regenerate is selected", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      id: "msg-customer-1",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+    } as ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onTriggerSmartReply={onTriggerSmartReply}
+        smartReply={{
+          assistantName: "护肤小助手",
+          content: "建议先确认肤质",
+          status: "ready",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "更多智能回复操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "重新生成" }));
+
+    expect(onTriggerSmartReply).toHaveBeenCalledWith(message, { force: true });
+  });
+
   it("asks for confirmation before revoking own sent messages within 180 seconds", async () => {
     const user = userEvent.setup();
     const onRevokeMessage = vi.fn();

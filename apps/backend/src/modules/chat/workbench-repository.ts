@@ -74,10 +74,13 @@ export type ConversationLookup = {
   platform: number;
   seatId: string;
   seatHostSubUserId?: string;
+  seatUnreadCount: number;
   thirdExternalUserId?: string;
   thirdGroupId?: string;
+  thirdGroupName?: string;
   thirdUserId: string;
   uid: number;
+  unreadCount: number;
 };
 
 export type SeatOperateScope = {
@@ -1807,15 +1810,43 @@ export class WorkbenchRepository {
           .onRef("seat.uid", "=", "conversation.uid")
           .onRef("seat.platform", "=", "conversation.platform"),
       )
+      .leftJoin("xy_wap_embed_group_seat as group_seat", (join) =>
+        join
+          .onRef("group_seat.third_group_id", "=", "conversation.third_group_id")
+          .onRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .onRef("group_seat.uid", "=", "conversation.uid")
+          .onRef("group_seat.platform", "=", "conversation.platform")
+          .on("group_seat.biz_status", "=", BIZ_STATUS_ACTIVE),
+      )
       .select([
         "conversation.id as id",
         "conversation.platform as platform",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
         "conversation.third_userid as third_userid",
+        "conversation.unread_cnt as unread_cnt",
         "conversation.uid as uid",
+        "group_seat.name as group_name",
+        "group_seat.remark as group_remark",
         "seat.host_sub_id as seat_host_sub_id",
         "seat.id as seat_id",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder
+          .selectFrom("xy_wap_embed_conversation as unread_conversation")
+          .select((subExpressionBuilder) =>
+            subExpressionBuilder.fn
+              .coalesce(
+                subExpressionBuilder.fn.sum<number>("unread_conversation.unread_cnt"),
+                subExpressionBuilder.val(0),
+              )
+              .as("seat_unread_count"),
+          )
+          .whereRef("unread_conversation.uid", "=", "conversation.uid")
+          .whereRef("unread_conversation.platform", "=", "conversation.platform")
+          .whereRef("unread_conversation.third_userid", "=", "conversation.third_userid")
+          .where("unread_conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+          .as("seat_unread_count"),
       ])
       .where("conversation.id", "=", conversationNumericId)
       .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE);
@@ -1826,23 +1857,68 @@ export class WorkbenchRepository {
 
     const row = await query.executeTakeFirst();
 
-    if (!row) {
-      return undefined;
+    return row
+      ? {
+          id: String(row.id),
+          platform: row.platform,
+          seatId: String(row.seat_id),
+          seatHostSubUserId:
+            row.seat_host_sub_id == null || row.seat_host_sub_id <= 0
+              ? undefined
+              : String(row.seat_host_sub_id),
+          seatUnreadCount: Number(row.seat_unread_count ?? 0),
+          thirdExternalUserId: row.third_external_userid || undefined,
+          thirdGroupId: row.third_group_id || undefined,
+          thirdGroupName: row.third_group_id
+            ? firstNonEmptyString(row.group_remark, row.group_name, row.third_group_id) ??
+              "未命名群聊"
+            : undefined,
+          thirdUserId: row.third_userid,
+          uid: row.uid,
+          unreadCount: Number(row.unread_cnt ?? 0),
+        }
+      : undefined;
+  }
+
+  async getSeatUnreadCountAfterMarkRead(input: {
+    conversationId: string;
+    platform: number;
+    seatId: string;
+    uid: number;
+  }) {
+    const conversationNumericId = parseMySqlId(input.conversationId);
+    const seatNumericId = parseMySqlId(input.seatId);
+
+    if (conversationNumericId == null || seatNumericId == null) {
+      return 0;
     }
 
-    return {
-      id: String(row.id),
-      platform: row.platform,
-      seatId: String(row.seat_id),
-      seatHostSubUserId:
-        row.seat_host_sub_id == null || row.seat_host_sub_id <= 0
-          ? undefined
-          : String(row.seat_host_sub_id),
-      thirdExternalUserId: row.third_external_userid || undefined,
-      thirdGroupId: row.third_group_id || undefined,
-      thirdUserId: row.third_userid,
-      uid: row.uid,
-    };
+    const row = await this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select((expressionBuilder) =>
+        expressionBuilder.fn
+          .coalesce(
+            expressionBuilder.fn.sum<number>("unread_cnt"),
+            expressionBuilder.val(0),
+          )
+          .as("unread_count"),
+      )
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("id", "!=", conversationNumericId)
+      .where("third_userid", "=", (expressionBuilder) =>
+        expressionBuilder
+          .selectFrom("xy_wap_embed_user_seat")
+          .select("third_userid")
+          .where("id", "=", seatNumericId)
+          .where("uid", "=", input.uid)
+          .where("platform", "=", input.platform)
+          .where("biz_status", "=", BIZ_STATUS_ACTIVE),
+      )
+      .executeTakeFirst();
+
+    return Number(row?.unread_count ?? 0);
   }
 
   async updateConversationPinned(input: {
@@ -1983,7 +2059,17 @@ export class WorkbenchRepository {
       includeHiddenConversation?: boolean;
       limit: number;
     },
-  ): Promise<WorkbenchMessagePageDto> {
+  ): Promise<
+    WorkbenchMessagePageDto & {
+      smartReplyEnabled?: boolean;
+      smartReplyScope?: {
+        chatType: number;
+        thirdExternalId: string;
+        thirdUserId: string;
+        uid: number;
+      };
+    }
+  > {
     const conversationNumericId = parseMySqlId(conversationId);
 
     if (conversationNumericId == null || options.limit <= 0) {
@@ -2006,6 +2092,7 @@ export class WorkbenchRepository {
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
         "conversation.third_userid as third_userid",
+        "seat.assistant_id as assistant_id",
         "seat.id as seat_id",
       ])
       .select((expressionBuilder) => [
@@ -2111,6 +2198,19 @@ export class WorkbenchRepository {
       fetchedQuoteRowsById,
     );
 
+    const thirdExternalId = (conversation.conversation_external_id || "").trim();
+    const thirdUserId = (conversation.third_userid || "").trim();
+    const uid = toNumber(conversation.uid) ?? 0;
+    const smartReplyScope =
+      conversation.chat_type === CHAT_TYPE_SINGLE && thirdExternalId && thirdUserId && uid > 0
+        ? {
+            chatType: CHAT_TYPE_SINGLE,
+            thirdExternalId,
+            thirdUserId,
+            uid,
+          }
+        : undefined;
+
     return {
       filteredCount: 0,
       hasMore: rows.length > options.limit,
@@ -2119,6 +2219,9 @@ export class WorkbenchRepository {
       ),
       nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id) : undefined,
       scannedCount: rawRows.length,
+      smartReplyEnabled:
+        smartReplyScope != null && (toNumber(conversation.assistant_id) ?? 0) > 0,
+      smartReplyScope,
     };
   }
 

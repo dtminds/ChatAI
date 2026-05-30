@@ -57,6 +57,8 @@ export type SidebarIframeTuseCipherTexts = {
   fsw?: string;
   rd?: string;
   ts: string;
+  thirdGroupId?: string;
+  thirdGroupName?: string;
 };
 
 /** 使用同一组密钥材料签发 rd / fsw / ts，避免重复派生 key 与 IV */
@@ -64,6 +66,8 @@ export function buildSidebarIframeTuseCipherTexts(input: {
   aesIvUtf8Secret: string;
   aesKeyUtf8Secret: string;
   thirdExternalUserId?: string;
+  thirdGroupId?: string;
+  thirdGroupName?: string;
   thirdUserId?: string;
   unixSeconds: number;
 }): SidebarIframeTuseCipherTexts {
@@ -72,10 +76,18 @@ export function buildSidebarIframeTuseCipherTexts(input: {
     encryptTuseAesCbcPkcs7Base64WithMaterial(material, plaintextUtf8);
   const thirdUserId = input.thirdUserId?.trim() ?? "";
   const thirdExternalUserId = input.thirdExternalUserId?.trim() ?? "";
+  const thirdGroupId = input.thirdGroupId?.trim() ?? "";
+  const thirdGroupName = input.thirdGroupName?.trim() ?? "";
 
   return {
     ...(thirdUserId ? { rd: encrypt(thirdUserId) } : {}),
     ...(thirdExternalUserId ? { fsw: encrypt(thirdExternalUserId) } : {}),
+    ...(thirdGroupId
+      ? {
+          thirdGroupId: encrypt(thirdGroupId),
+          thirdGroupName: encrypt(thirdGroupName || thirdGroupId),
+        }
+      : {}),
     ts: encrypt(String(Math.trunc(input.unixSeconds))),
   };
 }

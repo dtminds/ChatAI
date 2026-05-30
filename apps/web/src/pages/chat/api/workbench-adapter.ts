@@ -54,6 +54,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
   return {
     accountId: dto.seatId,
     bizStatus: dto.bizStatus ?? 0,
+    custodyMode: dto.custodyMode,
     createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,
     customerId: dto.customerId,

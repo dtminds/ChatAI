@@ -17,6 +17,30 @@ import type {
   WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
+  WorkbenchSmartReplyAttachmentsRequest,
+  WorkbenchSmartReplyAttachmentsResponse,
+  WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  WorkbenchSmartReplyAutoGeneralAnswerResponse,
+  WorkbenchSmartReplyGeneralAnswerRequest,
+  WorkbenchSmartReplyGeneralAnswerResponse,
+  WorkbenchSmartReplyPollRequest,
+  WorkbenchSmartReplyPollResponse,
+  WorkbenchKnowledgePageRequest,
+  WorkbenchKnowledgePageResponse,
+  WorkbenchKnowledgeConfigRequest,
+  WorkbenchKnowledgeConfigResponse,
+  WorkbenchKnowledgeDocPageRequest,
+  WorkbenchKnowledgeDocPageResponse,
+  WorkbenchKnowledgeFaqAddRequest,
+  WorkbenchKnowledgeFaqAddResponse,
+  WorkbenchSmartHeartbeatRequest,
+  WorkbenchSmartHeartbeatResponse,
+  WorkbenchSmartReplyTextModerationRequest,
+  WorkbenchSmartReplyTextModerationResponse,
+  WorkbenchSmartReplyMakeShorterRequest,
+  WorkbenchSmartReplyMakeShorterResponse,
+  WorkbenchSmartReplySendAnswerRequest,
+  WorkbenchSmartReplySendAnswerResponse,
   WorkbenchRevokeMessageResponse,
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
@@ -56,8 +80,14 @@ import {
   JAVA_MENTION_HIT_TYPE,
   JAVA_MENTION_LOCATION,
   JAVA_SEND_TYPE,
+  WORKBENCH_INTERNAL_API_FAILED_CODE,
 } from "./workbench-java-client.js";
 import { buildSidebarIframeTuseCipherTexts } from "../../lib/tuse-crypto.js";
+import { normalizeAttachmentIds } from "./attachment-mappers.js";
+import { normalizeKnowledgeId } from "./knowledge-doc-mappers.js";
+import { JAVA_KNOWLEDGE_FAQ_SOURCE } from "./knowledge-faq-mappers.js";
+import { SMART_REPLY_MAKE_SHORTER_TEMPLATE_ID } from "./ai-helper-mappers.js";
+import { normalizeSmartReplyMsgIds } from "./smart-reply-mappers.js";
 import {
   decodeConversationListCursor,
   parseMySqlId,
@@ -76,8 +106,50 @@ const POLL_SEAT_UPDATE_LIMIT = 200;
 const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
 const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
 const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
+const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
+
+type SmartReplyMessagePageMetadata = {
+  smartReplyEnabled?: boolean;
+  smartReplyScope?: {
+    chatType: number;
+    thirdExternalId: string;
+    thirdUserId: string;
+    uid: number;
+  };
+};
+
+type MessagePageWithSmartReplyMetadata = WorkbenchMessagePageDto &
+  SmartReplyMessagePageMetadata;
 
 type PlayableVoiceExistsChecker = (playbackUrl: string) => Promise<boolean>;
+
+function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[]) {
+  const seen = new Set<number>();
+  const msgIds: number[] = [];
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (message?.senderType !== "customer") {
+      continue;
+    }
+
+    const seq = message.seq;
+
+    if (!Number.isSafeInteger(seq) || seq <= 0 || seen.has(seq)) {
+      continue;
+    }
+
+    seen.add(seq);
+    msgIds.unshift(seq);
+
+    if (msgIds.length >= SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT) {
+      break;
+    }
+  }
+
+  return msgIds;
+}
 
 export type WorkbenchService = {
   deleteConversation(
@@ -185,6 +257,68 @@ export type WorkbenchService = {
     subUserId: string,
     request: WorkbenchPollRequest,
   ): Promise<WorkbenchPollResponse> | WorkbenchPollResponse;
+  pollSmartReplies(
+    subUserId: string,
+    request: WorkbenchSmartReplyPollRequest,
+  ):
+    | Promise<WorkbenchSmartReplyPollResponse>
+    | WorkbenchSmartReplyPollResponse;
+  requestSmartReplyGeneralAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplyGeneralAnswerRequest,
+  ):
+    | Promise<WorkbenchSmartReplyGeneralAnswerResponse>
+    | WorkbenchSmartReplyGeneralAnswerResponse;
+  requestSmartReplyAutoGeneralAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  ):
+    | Promise<WorkbenchSmartReplyAutoGeneralAnswerResponse>
+    | WorkbenchSmartReplyAutoGeneralAnswerResponse;
+  requestSmartReplyMakeShorter(
+    subUserId: string,
+    request: WorkbenchSmartReplyMakeShorterRequest,
+  ):
+    | Promise<WorkbenchSmartReplyMakeShorterResponse>
+    | WorkbenchSmartReplyMakeShorterResponse;
+  sendSmartReplyAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplySendAnswerRequest,
+  ):
+    | Promise<WorkbenchSmartReplySendAnswerResponse>
+    | WorkbenchSmartReplySendAnswerResponse;
+  listSmartReplyAttachments(
+    subUserId: string,
+    request: WorkbenchSmartReplyAttachmentsRequest,
+  ):
+    | Promise<WorkbenchSmartReplyAttachmentsResponse>
+    | WorkbenchSmartReplyAttachmentsResponse;
+  checkSmartReplyTextModeration(
+    subUserId: string,
+    request: WorkbenchSmartReplyTextModerationRequest,
+  ):
+    | Promise<WorkbenchSmartReplyTextModerationResponse>
+    | WorkbenchSmartReplyTextModerationResponse;
+  listKnowledgePage(
+    subUserId: string,
+    request: WorkbenchKnowledgePageRequest,
+  ): Promise<WorkbenchKnowledgePageResponse> | WorkbenchKnowledgePageResponse;
+  getKnowledgeConfig(
+    subUserId: string,
+    request: WorkbenchKnowledgeConfigRequest,
+  ): Promise<WorkbenchKnowledgeConfigResponse> | WorkbenchKnowledgeConfigResponse;
+  listKnowledgeDocPage(
+    subUserId: string,
+    request: WorkbenchKnowledgeDocPageRequest,
+  ): Promise<WorkbenchKnowledgeDocPageResponse> | WorkbenchKnowledgeDocPageResponse;
+  addKnowledgeFaq(
+    subUserId: string,
+    request: WorkbenchKnowledgeFaqAddRequest,
+  ): Promise<WorkbenchKnowledgeFaqAddResponse> | WorkbenchKnowledgeFaqAddResponse;
+  sendSmartHeartbeat(
+    subUserId: string,
+    request: WorkbenchSmartHeartbeatRequest,
+  ): Promise<WorkbenchSmartHeartbeatResponse> | WorkbenchSmartHeartbeatResponse;
   revokeMessage(
     subUserId: string,
     conversationId: string,
@@ -282,6 +416,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
       aesIvUtf8Secret: secrets.ivParameter,
       aesKeyUtf8Secret: secrets.secret,
       thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdGroupId: conversation.thirdGroupId,
+      thirdGroupName: conversation.thirdGroupName,
       thirdUserId: conversation.thirdUserId,
       unixSeconds: Math.floor(Date.now() / 1000),
     });
@@ -405,11 +541,58 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    return this.repository.listMessages(conversationId, {
+    const page = (await this.repository.listMessages(conversationId, {
       beforeSeq: options?.beforeSeq,
       includeHiddenConversation: true,
       limit: options?.limit ?? 30,
-    });
+    })) as MessagePageWithSmartReplyMetadata;
+    const { smartReplyEnabled, smartReplyScope, ...publicPage } = page;
+
+    if (options?.beforeSeq != null) {
+      return publicPage;
+    }
+
+    if (!smartReplyEnabled || !smartReplyScope) {
+      return {
+        ...publicPage,
+        smartReplyEnabled: false,
+      };
+    }
+
+    const msgIds = collectSmartReplyMessagePageCandidateIds(publicPage.messages);
+
+    if (msgIds.length === 0) {
+      return {
+        ...publicPage,
+        smartReplyEnabled: true,
+      };
+    }
+
+    try {
+      const smartReplies = await this.javaClient.listUserHistoryAnswers({
+        chatType: smartReplyScope.chatType,
+        msgIds,
+        thirdExternalId: smartReplyScope.thirdExternalId,
+        thirdUserId: smartReplyScope.thirdUserId,
+        uid: smartReplyScope.uid,
+      });
+
+      return {
+        ...publicPage,
+        smartReplyEnabled: true,
+        smartReplies: smartReplies.suggestions,
+      };
+    } catch (error) {
+      this.logger.warn(
+        { conversationId, error },
+        "Failed to load smart replies for message page",
+      );
+
+      return {
+        ...publicPage,
+        smartReplyEnabled: true,
+      };
+    }
   }
 
   async getMessagesByIds(
@@ -906,6 +1089,444 @@ export class MysqlWorkbenchService implements WorkbenchService {
     };
   }
 
+  async pollSmartReplies(
+    subUserId: string,
+    request: WorkbenchSmartReplyPollRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const javaMsgIds = normalizeSmartReplyMsgIds(request.msgIds);
+
+    if (javaMsgIds.length === 0) {
+      return { suggestions: [] };
+    }
+
+    const thirdExternalId = conversation.thirdGroupId
+      ? conversation.thirdGroupId
+      : conversation.thirdExternalUserId;
+
+    if (!thirdExternalId) {
+      throw new BadRequestError(
+        "SMART_REPLY_SCOPE_INVALID",
+        "当前会话缺少智能回复所需的外部标识",
+      );
+    }
+
+    const javaRequest = {
+      chatType: conversation.thirdGroupId ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
+      msgIds: javaMsgIds,
+      thirdExternalId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    };
+
+    return this.javaClient.listUserHistoryAnswers(javaRequest);
+  }
+
+  async requestSmartReplyGeneralAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplyGeneralAnswerRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (!Number.isSafeInteger(request.msgId) || request.msgId <= 0) {
+      throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
+    }
+
+    const thirdExternalId = conversation.thirdGroupId
+      ? conversation.thirdGroupId
+      : conversation.thirdExternalUserId;
+
+    if (!thirdExternalId) {
+      throw new BadRequestError(
+        "SMART_REPLY_SCOPE_INVALID",
+        "当前会话缺少智能回复所需的外部标识",
+      );
+    }
+
+    return this.javaClient.requestGeneralAnswer({
+      chatType: conversation.thirdGroupId ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
+      msgId: request.msgId,
+      questionImgs: request.questionImgs ?? [],
+      thirdExternalId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+  }
+
+  async requestSmartReplyAutoGeneralAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    if (!Number.isSafeInteger(request.msgId) || request.msgId <= 0) {
+      throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
+    }
+
+    if (conversation.thirdGroupId) {
+      throw new BadRequestError(
+        "SMART_REPLY_SCOPE_INVALID",
+        "当前会话暂不支持智能回复",
+      );
+    }
+
+    const thirdExternalId = conversation.thirdExternalUserId?.trim();
+
+    if (!thirdExternalId) {
+      throw new BadRequestError(
+        "SMART_REPLY_SCOPE_INVALID",
+        "当前会话缺少智能回复所需的外部标识",
+      );
+    }
+
+    return this.javaClient.requestAutoGeneralAnswer({
+      chatType: CHAT_TYPE.SINGLE,
+      msgId: request.msgId,
+      thirdExternalId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+  }
+
+  async requestSmartReplyMakeShorter(
+    subUserId: string,
+    request: WorkbenchSmartReplyMakeShorterRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const content = request.content.trim();
+
+    if (!content) {
+      throw new BadRequestError("SMART_REPLY_CONTENT_EMPTY", "智能回复内容不能为空");
+    }
+
+    const configParamId = await this.javaClient.getAiHelperTemplate({
+      templateId: SMART_REPLY_MAKE_SHORTER_TEMPLATE_ID,
+      uid: conversation.uid,
+    });
+
+    if (configParamId == null) {
+      throw new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        "智能回复模板配置无效",
+      );
+    }
+
+    const { generateId } = await this.javaClient.submitAiHelperGenerateAsk({
+      params: [
+        {
+          id: configParamId,
+          value: [content],
+        },
+      ],
+      templateId: SMART_REPLY_MAKE_SHORTER_TEMPLATE_ID,
+      uid: conversation.uid,
+    });
+
+    const shortenedContent = await this.javaClient.streamAiHelperAsk({
+      generateId,
+      uid: conversation.uid,
+    });
+
+    return { content: shortenedContent };
+  }
+
+  async sendSmartReplyAnswer(
+    subUserId: string,
+    request: WorkbenchSmartReplySendAnswerRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const realAnswer = request.realAnswer.trim();
+    const recordId = request.recordId.trim();
+
+    if (!realAnswer) {
+      throw new BadRequestError("SMART_REPLY_CONTENT_EMPTY", "智能回复内容不能为空");
+    }
+
+    if (!recordId) {
+      throw new BadRequestError("SMART_REPLY_RECORD_INVALID", "智能回复记录无效");
+    }
+
+    await this.javaClient.sendRecommendAnswer({
+      realAnswer,
+      realAttachIds: request.realAttachIds,
+      recordId,
+      uid: conversation.uid,
+    });
+
+    return { ok: true as const };
+  }
+
+  async listSmartReplyAttachments(
+    subUserId: string,
+    request: WorkbenchSmartReplyAttachmentsRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const ids = normalizeAttachmentIds(request.ids);
+
+    if (ids.length === 0) {
+      return { attachments: [] };
+    }
+
+    return this.javaClient.listAttachments({
+      ids,
+      uid: conversation.uid,
+    });
+  }
+
+  async checkSmartReplyTextModeration(
+    subUserId: string,
+    request: WorkbenchSmartReplyTextModerationRequest,
+  ) {
+    const content = request.content.trim();
+
+    if (!content) {
+      throw new BadRequestError("TEXT_MODERATION_CONTENT_EMPTY", "检测内容不能为空");
+    }
+
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    return this.javaClient.checkTextModerationPlus({
+      content,
+      uid: conversation.uid,
+    });
+  }
+
+  async listKnowledgePage(
+    subUserId: string,
+    request: WorkbenchKnowledgePageRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const response = await this.javaClient.listKnowledgePage({
+      page: 1,
+      pageSize: 9999,
+      uid: conversation.uid,
+    });
+
+    this.logger.info(
+      {
+        conversationId: request.conversationId,
+        list: response.list,
+        listLength: response.list.length,
+        operation: "list-knowledge-page",
+        uid: conversation.uid,
+      },
+      "知识集列表映射结果",
+    );
+
+    return response;
+  }
+
+  async getKnowledgeConfig(
+    subUserId: string,
+    request: WorkbenchKnowledgeConfigRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    return this.javaClient.getKnowledgeConfig({
+      uid: conversation.uid,
+    });
+  }
+
+  async listKnowledgeDocPage(
+    subUserId: string,
+    request: WorkbenchKnowledgeDocPageRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const knowledgeId = normalizeKnowledgeId(request.knowledgeId);
+
+    if (knowledgeId == null) {
+      this.logger.warn(
+        {
+          conversationId: request.conversationId,
+          knowledgeId: request.knowledgeId,
+          operation: "list-knowledge-doc-page",
+          uid: conversation.uid,
+        },
+        "知识集 ID 无效",
+      );
+      throw new BadRequestError("INVALID_KNOWLEDGE_ID", "知识集 ID 无效");
+    }
+
+    const response = await this.javaClient.listKnowledgeDocPage({
+      knowledgeId,
+      page: 1,
+      pageSize: 9999,
+      uid: conversation.uid,
+    });
+
+    this.logger.info(
+      {
+        conversationId: request.conversationId,
+        knowledgeId,
+        list: response.list,
+        listLength: response.list.length,
+        operation: "list-knowledge-doc-page",
+        uid: conversation.uid,
+      },
+      "知识集 FAQ 列表映射结果",
+    );
+
+    return response;
+  }
+
+  async addKnowledgeFaq(
+    subUserId: string,
+    request: WorkbenchKnowledgeFaqAddRequest,
+  ) {
+    const conversation = await this.repository.getConversationLookup(
+      request.conversationId,
+    );
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const docId = normalizeKnowledgeId(request.docId);
+
+    if (docId == null) {
+      throw new BadRequestError("INVALID_KNOWLEDGE_DOC_ID", "FAQ ID 无效");
+    }
+
+    if (request.list.length === 0) {
+      throw new BadRequestError("INVALID_KNOWLEDGE_FAQ_LIST", "FAQ 内容不能为空");
+    }
+
+    return this.javaClient.addKnowledgeFaq({
+      docId,
+      list: request.list.map((item) => ({
+        answer: item.answer,
+        attachIds: item.attachIds,
+        question: item.question,
+        similarQuestion: item.similarQuestion,
+      })),
+      source: JAVA_KNOWLEDGE_FAQ_SOURCE,
+      uid: conversation.uid,
+    });
+  }
+
+  async sendSmartHeartbeat(
+    subUserId: string,
+    request: WorkbenchSmartHeartbeatRequest,
+  ) {
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      request.conversationId,
+    );
+
+    if (conversation.thirdGroupId) {
+      throw new BadRequestError(
+        "SMART_HEARTBEAT_GROUP_UNSUPPORTED",
+        "群聊不支持沟通心跳",
+      );
+    }
+
+    const thirdExternalUserId = conversation.thirdExternalUserId?.trim();
+
+    if (!thirdExternalUserId) {
+      throw new BadRequestError(
+        "SMART_HEARTBEAT_CUSTOMER_MISSING",
+        "客户信息缺失",
+      );
+    }
+
+    await this.javaClient.sendSmartHeartbeat({
+      platform: conversation.platform,
+      thirdExternalUserId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    return { ok: true as const };
+  }
+
   async sendMessage(subUserId: string, payload: WorkbenchSendMessagePayload) {
     const conversation = await this.getOperableConversation(subUserId, payload.conversationId);
 
@@ -1268,7 +1889,7 @@ function toPlayableVoiceCosObjectPath(rawUrl: string) {
       return objectPath;
     }
 
-    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音播放地址不允许");
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "无效的语音地址");
   }
 
   if (
@@ -1279,7 +1900,7 @@ function toPlayableVoiceCosObjectPath(rawUrl: string) {
     return url.pathname.replace(/^\/+/, "");
   }
 
-  throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音播放地址不允许");
+  throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "无效的语音地址");
 }
 
 function toExpectedPlayableVoiceCosObjectPath(rawUrl: string) {
@@ -1295,7 +1916,7 @@ function toExpectedPlayableVoiceCosObjectPath(rawUrl: string) {
   }
 
   if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
-    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "无效的语音地址");
   }
 
   return toExpectedPlayableVoicePathname(url.pathname).replace(/^\/+/, "");
@@ -1305,7 +1926,7 @@ function toExpectedPlayableVoicePathname(pathname: string) {
   const playablePathname = toPlayableVoicePathname(pathname);
 
   if (!playablePathname) {
-    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+    throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "无效的语音地址");
   }
 
   return playablePathname;
@@ -1330,7 +1951,7 @@ function toVoiceRecognitionUrl(rawUrl: string) {
     const url = new URL(value);
 
     if (url.protocol !== "https:" || url.host !== getPlayableMediaHost()) {
-      throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "语音原始地址不允许");
+      throw new BadRequestError("MEDIA_URL_NOT_ALLOWED", "无效的语音地址");
     }
 
     toExpectedPlayableVoicePathname(url.pathname);

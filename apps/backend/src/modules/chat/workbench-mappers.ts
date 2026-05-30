@@ -1,5 +1,6 @@
-import type {
-  WorkbenchConversationSummaryDto,
+import {
+  CONVERSATION_CUSTODY_MODE,
+  type WorkbenchConversationSummaryDto,
   WorkbenchMessageContentType,
   WorkbenchMessageDto,
   WorkbenchMessageFileDownloadStatus,
@@ -135,6 +136,7 @@ export function mapConversationRow(
   return {
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
+    custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
     customerId,

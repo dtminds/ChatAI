@@ -1,5 +1,6 @@
 import {
   AtIcon,
+  AiChat02Icon,
   ArrowTurnBackwardIcon,
   Bug02Icon,
   ExclamationMarkIcon,
@@ -8,7 +9,14 @@ import {
   QuoteUpSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -33,6 +41,16 @@ import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
+import {
+  getSmartReplyLookupKey,
+  shouldShowSmartReplyCard,
+  shouldShowSmartReplyTriggerIcon,
+  type SmartReplySendPayload,
+} from "@/pages/chat/api/smart-reply-adapter";
+import {
+  SmartReplyMessageAnchor,
+  type SmartReplySuggestion,
+} from "@/pages/chat/components/smart-reply-card";
 import { MESSAGE_REVOKE_WINDOW_MS } from "@/pages/chat/chat-constants";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
@@ -54,13 +72,23 @@ type ChatMessageListProps = {
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
+  onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
+  onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
+  onDismissSmartReply?: (message: ChatMessage) => void;
+  onMakeShorterSmartReply?: (message: ChatMessage) => void;
+  onTriggerSmartReply?: (
+    message: ChatMessage,
+    options?: { force?: boolean },
+  ) => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
+  smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
 };
+
 
 type FeedItem =
   | {
@@ -85,9 +113,15 @@ export function ChatMessageList({
   onQuoteMessage,
   onRevokeMessage,
   onRetryMessage,
+  onSendSmartReply,
+  onFillSmartReplyComposer,
+  onDismissSmartReply,
+  onMakeShorterSmartReply,
+  onTriggerSmartReply,
   onVoicePlaybackReady,
   onTranscribeVoice,
   retryingMessageIds,
+  smartReplyByMessageId,
 }: ChatMessageListProps) {
   const items = useMemo(
     () => buildFeedItems(messages, showTimeDividers),
@@ -192,6 +226,7 @@ export function ChatMessageList({
             key={getMessageFeedItemKey(item.message)}
           >
             <MessageRow
+              conversationId={conversationId}
               message={item.message}
               canUseMessageActions={canUseMessageActions}
               shouldAnimate={
@@ -204,9 +239,15 @@ export function ChatMessageList({
               onQuoteMessage={onQuoteMessage}
               onRevokeMessage={onRevokeMessage}
               onRetryMessage={onRetryMessage}
+              onSendSmartReply={onSendSmartReply}
+              onFillSmartReplyComposer={onFillSmartReplyComposer}
+              onDismissSmartReply={onDismissSmartReply}
+              onMakeShorterSmartReply={onMakeShorterSmartReply}
+              onTriggerSmartReply={onTriggerSmartReply}
               onTranscribeVoice={onTranscribeVoice}
               onVoicePlaybackReady={onVoicePlaybackReady}
               isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
+              smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
             />
           </div>
         ),
@@ -258,6 +299,7 @@ function SystemMessageNotice({ text }: { text: string }) {
 }
 
 export function MessageRow({
+  conversationId,
   message,
   canUseMessageActions = true,
   showTimestamp = false,
@@ -268,10 +310,17 @@ export function MessageRow({
   onQuoteMessage,
   onRevokeMessage,
   onRetryMessage,
+  onSendSmartReply,
+  onFillSmartReplyComposer,
+  onDismissSmartReply,
+  onMakeShorterSmartReply,
+  onTriggerSmartReply,
   onVoicePlaybackReady,
   onTranscribeVoice,
   isRetryingMessage = false,
+  smartReply,
 }: {
+  conversationId?: string;
   message: Message;
   canUseMessageActions?: boolean;
   isRetryingMessage?: boolean;
@@ -283,11 +332,20 @@ export function MessageRow({
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (messageId: string) => void;
+  onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
+  onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
+  onDismissSmartReply?: (message: ChatMessage) => void;
+  onMakeShorterSmartReply?: (message: ChatMessage) => void;
+  onTriggerSmartReply?: (
+    message: ChatMessage,
+    options?: { force?: boolean },
+  ) => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
+  smartReply?: SmartReplySuggestion;
 }) {
   if (message.role === "system") {
     return <SystemMessageNotice text={message.content.text} />;
@@ -297,17 +355,23 @@ export function MessageRow({
   const isGroupConversation = Boolean(message.isGroupConversation);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
   const inlineDeliveryState = getInlineDeliveryState(message);
+  const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);
+  const showSmartReplyTriggerIcon = shouldShowSmartReplyTriggerIcon(message, smartReply);
   const animationClassName = getMessageEntranceAnimationClassName(
     isAgent ? "right" : "left",
     shouldAnimate,
   );
+  const dismissTargetRef = useRef<HTMLButtonElement | null>(null);
   const messageActions = (
     <MessageActionAvatar
       message={message}
       canUseMessageActions={canUseMessageActions}
+      triggerRef={dismissTargetRef}
       onMentionMessage={onMentionMessage}
       onQuoteMessage={onQuoteMessage}
       onRevokeMessage={onRevokeMessage}
+      onTriggerSmartReply={onTriggerSmartReply}
+      showSmartReplyRecommendation={showSmartReplyTriggerIcon}
     />
   );
 
@@ -367,16 +431,34 @@ export function MessageRow({
                   onRetryMessage={onRetryMessage}
                 />
               ) : (
-                <MessageContentRenderer
-                  isAgent={isAgent}
-                  message={message}
-                  onDownloadMessageFile={onDownloadMessageFile}
-                  onOpenQuotedMessage={onOpenQuotedMessage}
-                  onTranscribeVoice={onTranscribeVoice}
-                  onVoicePlaybackReady={onVoicePlaybackReady}
-                />
+                <div className="flex items-center gap-1">
+                  <MessageContentRenderer
+                    isAgent={isAgent}
+                    message={message}
+                    onDownloadMessageFile={onDownloadMessageFile}
+                    onOpenQuotedMessage={onOpenQuotedMessage}
+                    onTranscribeVoice={onTranscribeVoice}
+                    onVoicePlaybackReady={onVoicePlaybackReady}
+                  />
+                </div>
               )}
               {message.isRevoked ? <MessageRevokedState /> : null}
+              {showSmartReplyCard ? (
+                <SmartReplyMessageAnchor
+                  canSendMessage={canUseMessageActions}
+                  conversationId={conversationId}
+                  dismissTargetRef={dismissTargetRef}
+                  message={message}
+                  onDismiss={onDismissSmartReply}
+                  onFillComposer={onFillSmartReplyComposer}
+                  onMakeShorter={onMakeShorterSmartReply}
+                  onRegenerate={(regenerateMessage) => {
+                    onTriggerSmartReply?.(regenerateMessage, { force: true });
+                  }}
+                  suggestion={smartReply}
+                  onSend={onSendSmartReply}
+                />
+              ) : null}
               {showTimestamp ? (
                 <p className="px-1 text-[11px] leading-4 text-muted-foreground/80">
                   {message.sentAt}
@@ -385,7 +467,7 @@ export function MessageRow({
             </div>
           </div>
           {isAgent && !inlineDeliveryState ? (
-            <MessageDeliveryState message={message} />
+            <MessageDeliveryState message={message}/>
           ) : null}
         </div>
 
@@ -460,15 +542,24 @@ function QuoteMessageContentWithDelivery({
 function MessageActionAvatar({
   message,
   canUseMessageActions,
+  triggerRef,
   onMentionMessage,
   onQuoteMessage,
   onRevokeMessage,
+  onTriggerSmartReply,
+  showSmartReplyRecommendation,
 }: {
   message: ChatMessage;
   canUseMessageActions: boolean;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
   onMentionMessage?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
+  onTriggerSmartReply?: (
+    message: ChatMessage,
+    options?: { force?: boolean },
+  ) => void;
+  showSmartReplyRecommendation: boolean;
 }) {
   const [isRevokeDialogOpen, setIsRevokeDialogOpen] = useState(false);
   const canMentionMessage = Boolean(
@@ -487,6 +578,8 @@ function MessageActionAvatar({
     canUseMessageActions &&
     Boolean(onRevokeMessage) &&
     canShowRevokeMessageAction(message);
+  const canSelectSmartReplyRecommendation =
+    canUseMessageActions && Boolean(onTriggerSmartReply);
   const messageIdForCopy = (message.remoteMessageId ?? message.id).trim();
 
   return (
@@ -498,6 +591,7 @@ function MessageActionAvatar({
             <Button
               aria-label="消息操作"
               className="absolute inset-0 z-10 size-8 rounded-[6px] bg-neutral-950/70 p-0 text-white opacity-0 shadow-sm transition-opacity hover:bg-neutral-950/80 hover:text-white focus-visible:ring-2 focus-visible:ring-white/45 group-hover/message:opacity-100 data-[state=open]:opacity-100"
+              ref={triggerRef}
               size="icon"
               type="button"
               variant="ghost"
@@ -511,6 +605,27 @@ function MessageActionAvatar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="center" side="bottom">
+            {showSmartReplyRecommendation ? (
+              <DropdownMenuItem
+                disabled={!canSelectSmartReplyRecommendation}
+                onSelect={(event) => {
+                  if (!canSelectSmartReplyRecommendation) {
+                    event.preventDefault();
+                    return;
+                  }
+
+                  onTriggerSmartReply?.(message);
+                }}
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={AiChat02Icon}
+                  size={15}
+                  strokeWidth={2}
+                />
+                话术推荐
+              </DropdownMenuItem>
+            ) : null}
             {canMentionMessage ? (
               <DropdownMenuItem
                 disabled={!canSelectMentionMessage}

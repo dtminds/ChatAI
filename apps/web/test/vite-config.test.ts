@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDevProxyConfig,
+  createViteConfig,
   getRepoRoot,
   getViteDevServerConfig,
 } from "../vite.config";
@@ -77,6 +78,17 @@ describe("vite config env", () => {
 
   it("uses the repository root as the default env directory", () => {
     expect(getRepoRoot()).toBe(resolve(__dirname, "../../.."));
+  });
+
+  it("resolves workspace contracts from source during Vite and Vitest runs", () => {
+    const config = createViteConfig("test");
+
+    expect(config.resolve?.alias).toMatchObject({
+      "@chatai/contracts": resolve(
+        __dirname,
+        "../../../packages/contracts/src/index.ts",
+      ),
+    });
   });
 
   it("rejects malformed dev server ports", () => {

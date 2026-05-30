@@ -2,6 +2,8 @@ import { startTransition, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { ChatMessageList } from "@/pages/chat/components/message-feed";
+import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
+import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 
 type ChatMessagePanelProps = {
@@ -22,12 +24,21 @@ type ChatMessagePanelProps = {
   onRevokeMessage?: (message: ChatMessage) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
+  onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
+  onDismissSmartReply?: (message: ChatMessage) => void;
+  onMakeShorterSmartReply?: (message: ChatMessage) => void;
+  onTriggerSmartReply?: (
+    message: ChatMessage,
+    options?: { force?: boolean },
+  ) => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
+  smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
 
@@ -49,9 +60,15 @@ export function ChatMessagePanel({
   onRevokeMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  onSendSmartReply,
+  onFillSmartReplyComposer,
+  onDismissSmartReply,
+  onMakeShorterSmartReply,
+  onTriggerSmartReply,
   onVoicePlaybackReady,
   onTranscribeVoice,
   retryingMessageIds,
+  smartReplyByMessageId,
   messageViewportRef,
 }: ChatMessagePanelProps) {
   return (
@@ -100,6 +117,11 @@ export function ChatMessagePanel({
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
+                onSendSmartReply={onSendSmartReply}
+                onFillSmartReplyComposer={onFillSmartReplyComposer}
+                onDismissSmartReply={onDismissSmartReply}
+                onMakeShorterSmartReply={onMakeShorterSmartReply}
+                onTriggerSmartReply={onTriggerSmartReply}
                 onRevokeMessage={onRevokeMessage}
                 onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}
@@ -109,6 +131,7 @@ export function ChatMessagePanel({
                   });
                 }}
                 retryingMessageIds={retryingMessageIds}
+                smartReplyByMessageId={smartReplyByMessageId}
               />
             </div>
           </div>

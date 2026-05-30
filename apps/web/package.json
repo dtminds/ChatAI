@@ -7,9 +7,9 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "dev": "vite --force",
-    "dev:test-api": "vite --force --mode dev-test-api",
-    "build": "tsc -b && vite build",
+    "dev": "pnpm --filter @chatai/contracts build && vite --force",
+    "dev:test-api": "pnpm --filter @chatai/contracts build && vite --force --mode dev-test-api",
+    "build": "pnpm --filter @chatai/contracts build && tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

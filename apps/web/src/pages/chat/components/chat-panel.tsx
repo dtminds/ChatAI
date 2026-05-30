@@ -22,6 +22,8 @@ import type {
 } from "@/pages/chat/chat-types";
 import type { SettingsSidebarItem } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
+import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 
 type ChatPanelProps = {
   accountName?: string;
@@ -92,12 +94,21 @@ type ChatPanelProps = {
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (messageId: string) => void | Promise<void>;
+  onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
+  onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
+  onDismissSmartReply?: (message: ChatMessage) => void;
+  onMakeShorterSmartReply?: (message: ChatMessage) => void;
+  onTriggerSmartReply?: (
+    message: ChatMessage,
+    options?: { force?: boolean },
+  ) => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
+  smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
   onSendDraft: (segments: ComposerSegment[]) => void;
   onDismissScopeTransitionError: () => void;
   scopeTransitionError?: string;
@@ -158,8 +169,14 @@ export function ChatPanel({
   onClearQuotedMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  onSendSmartReply,
+  onFillSmartReplyComposer,
+  onDismissSmartReply,
+  onMakeShorterSmartReply,
+  onTriggerSmartReply,
   onVoicePlaybackReady,
   retryingMessageIds,
+  smartReplyByMessageId,
   onSendDraft,
   onTranscribeVoice,
   onDismissScopeTransitionError,
@@ -200,12 +217,18 @@ export function ChatPanel({
                 isConversationLoading={isConversationLoading}
                 conversationId={activeConversation.id}
                 messages={messages}
+                smartReplyByMessageId={smartReplyByMessageId}
                 messageViewportRef={messageViewportRef}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}
                 onLoadOlderMessages={onLoadOlderMessages}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
+                onSendSmartReply={onSendSmartReply}
+                onFillSmartReplyComposer={onFillSmartReplyComposer}
+                onDismissSmartReply={onDismissSmartReply}
+                onMakeShorterSmartReply={onMakeShorterSmartReply}
+                onTriggerSmartReply={onTriggerSmartReply}
                 onRevokeMessage={onRevokeMessage}
                 onMessageViewportScroll={onMessageViewportScroll}
                 onRetryMessage={onRetryMessage}
@@ -284,13 +307,6 @@ export function ChatPanel({
                   accountName={accountName}
                   conversationMode={activeConversation.mode}
                   customer={customer}
-                  sidebarIframeQd={
-                    activeConversation.mode === "group" &&
-                    activeConversation.thirdGroupId !== undefined &&
-                    activeConversation.thirdGroupId !== ""
-                      ? activeConversation.thirdGroupId
-                      : undefined
-                  }
                   sidebarIframeConversationId={activeConversation.id}
                   sidebarIframeSeatId={activeConversation.accountId}
                   sidebarIframeTos={sidebarIframeTos}

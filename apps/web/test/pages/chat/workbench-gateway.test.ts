@@ -293,6 +293,7 @@ describe("workbench gateway message paging", () => {
             items: [
               {
                 conversationId: "recent-unpinned",
+                custodyMode: "semi",
                 customerAvatar: "",
                 customerId: "customer-recent",
                 customerName: "最近未置顶",
@@ -313,6 +314,7 @@ describe("workbench gateway message paging", () => {
           items: [
             {
               conversationId: "old-pinned",
+              custodyMode: "semi",
               customerAvatar: "",
               customerId: "customer-pinned",
               customerName: "较早置顶",
@@ -481,6 +483,7 @@ describe("temporary conversation visibility", () => {
       {
         accountId: "drc",
         createdAtMs: now - 60_000,
+        custodyMode: "semi" as const,
         customerAvatarUrl: "",
         customerId: "customer-pending",
         customerName: "识别中的客户",
@@ -497,6 +500,7 @@ describe("temporary conversation visibility", () => {
       {
         accountId: "drc",
         createdAtMs: now - 181_000,
+        custodyMode: "semi" as const,
         customerAvatarUrl: "",
         customerId: "customer-expired",
         customerName: "超过等待窗口的客户",
@@ -513,6 +517,7 @@ describe("temporary conversation visibility", () => {
       {
         accountId: "drc",
         createdAtMs: now - 30_000,
+        custodyMode: "semi" as const,
         customerAvatarUrl: "",
         customerId: "customer-verified",
         customerName: "已识别客户",

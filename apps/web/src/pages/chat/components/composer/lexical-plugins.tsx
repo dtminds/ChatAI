@@ -29,6 +29,7 @@ import {
   INSERT_COMPOSER_EMOJI_COMMAND,
   INSERT_COMPOSER_IMAGE_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
+  INSERT_COMPOSER_TEXT_COMMAND,
   UPDATE_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
 import {
@@ -124,6 +125,19 @@ export function ComposerRuntimePlugin({
       (payload) => {
         editor.update(() => {
           $updateComposerImage(payload);
+        });
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      INSERT_COMPOSER_TEXT_COMMAND,
+      (text) => {
+        editor.update(() => {
+          $insertComposerText(text);
         });
         return true;
       },

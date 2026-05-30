@@ -486,6 +486,31 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("does not automatically create a smart reply task without chat send permission", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "88" };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+    useWorkbenchStore.getState().setChatSendPermission(false);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(observedAutoRequests).toEqual([]);
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).toEqual({});
+  });
+
   it("does not auto-generate or poll smart replies when the latest page disables the feature", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
@@ -927,6 +952,61 @@ describe("useWorkbenchStore", () => {
       );
 
     expect(message).toMatchObject({ isRevoked: true });
+
+    useWorkbenchStore.getState().dismissSmartReply(message!);
+
+    expect(
+      useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).toEqual({ "7": true });
+  });
+
+  it("hides a dismissed smart reply without chat send permission", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-7",
+              seq: 7,
+              text: "客户问题",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "推荐话术",
+              messageId: "7",
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
+    });
+
+    useWorkbenchStore.getState().setChatSendPermission(false);
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 7,
+      );
+
+    expect(message).toBeDefined();
 
     useWorkbenchStore.getState().dismissSmartReply(message!);
 

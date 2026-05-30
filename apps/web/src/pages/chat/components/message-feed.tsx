@@ -578,6 +578,8 @@ function MessageActionAvatar({
     canUseMessageActions &&
     Boolean(onRevokeMessage) &&
     canShowRevokeMessageAction(message);
+  const canSelectSmartReplyRecommendation =
+    canUseMessageActions && Boolean(onTriggerSmartReply);
   const messageIdForCopy = (message.remoteMessageId ?? message.id).trim();
 
   return (
@@ -605,7 +607,13 @@ function MessageActionAvatar({
           <DropdownMenuContent align="center" side="bottom">
             {showSmartReplyRecommendation ? (
               <DropdownMenuItem
-                onSelect={() => {
+                disabled={!canSelectSmartReplyRecommendation}
+                onSelect={(event) => {
+                  if (!canSelectSmartReplyRecommendation) {
+                    event.preventDefault();
+                    return;
+                  }
+
                   onTriggerSmartReply?.(message);
                 }}
               >

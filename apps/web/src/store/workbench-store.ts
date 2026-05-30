@@ -953,13 +953,24 @@ function canUseSmartReplyForConversation(
   );
 
   if (conversation) {
-    return isSmartReplySupportedConversation(conversation);
+    const account = state.accounts.find(
+      (item) => item.id === conversation.accountId,
+    );
+
+    return (
+      isSmartReplySupportedConversation(conversation) &&
+      canUseConversationActions(state, account) &&
+      conversation.bizStatus === 1
+    );
   }
 
   const messages = state.messagesByConversationId[conversationId] ?? [];
 
-  return !messages.some(
-    (message) => message.role !== "system" && message.isGroupConversation,
+  return (
+    state.hasChatSendPermission &&
+    !messages.some(
+      (message) => message.role !== "system" && message.isGroupConversation,
+    )
   );
 }
 
@@ -2569,15 +2580,7 @@ export function createWorkbenchStore() {
       },
       dismissSmartReply(message) {
         const state = get();
-        const conversationId = state.activeConversationId;
-
-        if (
-          !conversationId ||
-          !canUseSmartReplyForConversation(state, conversationId)
-        ) {
-          return;
-        }
-
+        const conversationId = message.conversationId;
         const lookupKey = getSmartReplyLookupKey(message);
 
         if (!state.smartReplyByMessageIdByConversationId[conversationId]?.[lookupKey]) {

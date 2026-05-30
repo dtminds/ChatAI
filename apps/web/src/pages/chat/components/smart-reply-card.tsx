@@ -58,8 +58,10 @@ import {
 const SMART_REPLY_TRIGGER_ICON =
   "https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/customer/容器@2x (1).png!tiny.webp";
 const SMART_REPLY_DISMISS_COLLAPSE_MS = 520;
-const SMART_REPLY_DISMISS_FLIGHT_MS = 640;
-const SMART_REPLY_DISMISS_FLIGHT_OVERLAP_MS = 120;
+const SMART_REPLY_DISMISS_FLIGHT_MS = 560;
+const SMART_REPLY_DISMISS_FLIGHT_OVERLAP_MS = 320;
+const SMART_REPLY_DISMISS_PLACEHOLDER_COLLAPSE_MS = 220;
+const SMART_REPLY_DISMISS_STACK_GAP_PX = 6;
 
 export type SmartReplySuggestion = {
   assistantName: string;
@@ -95,6 +97,7 @@ export type SmartReplyCardProps = {
   processingLabel?: string;
   refAttachIds?: string[];
   dismissTargetRef?: RefObject<HTMLElement | null>;
+  collapseContainerRef?: RefObject<HTMLDivElement | null>;
 };
 
 export function SmartReplyCard({
@@ -119,9 +122,9 @@ export function SmartReplyCard({
   processingLabel,
   refAttachIds,
   dismissTargetRef,
+  collapseContainerRef,
 }: SmartReplyCardProps) {
   const cardRef = useRef<HTMLElement | null>(null);
-  const flyIconRef = useRef<HTMLDivElement | null>(null);
   const dismissAnimationCleanupRef = useRef<(() => void) | null>(null);
   const [isDismissing, setIsDismissing] = useState(false);
   const [dismissPlaceholderSize, setDismissPlaceholderSize] = useState<{
@@ -143,10 +146,9 @@ export function SmartReplyCard({
     }
 
     const card = cardRef.current;
-    const flyIcon = flyIconRef.current;
     const target = dismissTargetRef?.current;
 
-    if (!card || !flyIcon || typeof card.animate !== "function") {
+    if (!card || typeof card.animate !== "function") {
       onDismiss();
       return;
     }
@@ -179,13 +181,18 @@ export function SmartReplyCard({
     dismissAnimationCleanupRef.current?.();
     dismissAnimationCleanupRef.current = animateSmartReplyDismiss({
       card,
-      flyIcon,
-      onComplete: onDismiss,
+      onComplete: () => {
+        dismissAnimationCleanupRef.current = animateSmartReplyPlaceholderCollapse(
+          collapseContainerRef?.current ?? card,
+          onDismiss,
+        );
+      },
       sourceRect: cardRect,
       targetRect,
     });
   }, [
     dismissTargetRef,
+    collapseContainerRef,
     isDismissing,
     onDismiss,
   ]);
@@ -271,26 +278,17 @@ export function SmartReplyCard({
           processingLabel={processingLabel}
         />
       </article>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed left-0 top-0 z-50 hidden size-8 items-center justify-center rounded-[8px] bg-conversation-active text-conversation-active-foreground shadow-[0_10px_24px_var(--shadow-medium)]"
-        ref={flyIconRef}
-      >
-        <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={1.8} />
-      </div>
     </TooltipProvider>
   );
 }
 
 function animateSmartReplyDismiss({
   card,
-  flyIcon,
   onComplete,
   sourceRect,
   targetRect,
 }: {
   card: HTMLElement;
-  flyIcon: HTMLElement;
   onComplete: () => void;
   sourceRect: DOMRect;
   targetRect: DOMRect;
@@ -344,13 +342,6 @@ function animateSmartReplyDismiss({
         transform: "translate(0, 0)",
         width: "32px",
       },
-      {
-        borderRadius: "8px",
-        height: "32px",
-        opacity: 1,
-        transform: "translate(0, 0)",
-        width: "32px",
-      },
     ],
     {
       duration: SMART_REPLY_DISMISS_COLLAPSE_MS,
@@ -382,15 +373,13 @@ function animateSmartReplyDismiss({
     },
   );
 
-  flyIcon.hidden = false;
-  flyIcon.classList.remove("hidden");
-  flyIcon.classList.add("grid");
-  flyIcon.style.opacity = "0";
-  flyIcon.style.transform = `translate(${collapsedLeft}px, ${collapsedTop}px) scale(1)`;
-
-  const flightAnimation = flyIcon.animate(buildSmartReplyDismissFlightFrames({
+  const flightAnimation = animationLayer.animate(buildSmartReplyDismissFlightFrames({
     control,
     end,
+    origin: {
+      x: collapsedLeft,
+      y: collapsedTop,
+    },
     start,
   }), {
     delay: SMART_REPLY_DISMISS_COLLAPSE_MS - SMART_REPLY_DISMISS_FLIGHT_OVERLAP_MS,
@@ -415,13 +404,6 @@ function animateSmartReplyDismiss({
     animationLayerRemoved = true;
     animationLayer.remove();
   };
-  const resetFlyIcon = () => {
-    flyIcon.hidden = true;
-    flyIcon.classList.remove("grid");
-    flyIcon.classList.add("hidden");
-    flyIcon.style.opacity = "";
-    flyIcon.style.transform = "";
-  };
   const clearAnimationHandlers = () => {
     flightAnimation.onfinish = null;
     flightAnimation.oncancel = null;
@@ -435,13 +417,12 @@ function animateSmartReplyDismiss({
 
     completed = true;
     removeAnimationLayer();
-    resetFlyIcon();
     onComplete();
   };
 
   flightAnimation.onfinish = complete;
   flightAnimation.oncancel = complete;
-  collapseAnimation.onfinish = removeAnimationLayer;
+  collapseAnimation.onfinish = null;
   collapseAnimation.oncancel = complete;
 
   return () => {
@@ -455,7 +436,71 @@ function animateSmartReplyDismiss({
       animation.cancel();
     }
     removeAnimationLayer();
-    resetFlyIcon();
+  };
+}
+
+function animateSmartReplyPlaceholderCollapse(
+  placeholder: HTMLElement,
+  onComplete: () => void,
+): () => void {
+  if (typeof placeholder.animate !== "function") {
+    onComplete();
+    return () => undefined;
+  }
+
+  const currentHeight = placeholder.getBoundingClientRect().height;
+  const currentWidth = placeholder.getBoundingClientRect().width;
+
+  if (currentHeight <= 0) {
+    onComplete();
+    return () => undefined;
+  }
+
+  const animation = placeholder.animate(
+    [
+      {
+        height: `${currentHeight}px`,
+        marginTop: "0px",
+        opacity: 0,
+      },
+      {
+        height: "0px",
+        marginTop: `-${SMART_REPLY_DISMISS_STACK_GAP_PX}px`,
+        opacity: 0,
+      },
+    ],
+    {
+      duration: SMART_REPLY_DISMISS_PLACEHOLDER_COLLAPSE_MS,
+      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      fill: "forwards",
+    },
+  );
+
+  placeholder.style.overflow = "hidden";
+  placeholder.style.width = `${currentWidth}px`;
+
+  let completed = false;
+  const complete = () => {
+    if (completed) {
+      return;
+    }
+
+    completed = true;
+    onComplete();
+  };
+
+  animation.onfinish = complete;
+  animation.oncancel = complete;
+
+  return () => {
+    if (completed) {
+      return;
+    }
+
+    completed = true;
+    animation.onfinish = null;
+    animation.oncancel = null;
+    animation.cancel();
   };
 }
 
@@ -540,10 +585,12 @@ function createSmartReplyDismissAnimationLayer(
 function buildSmartReplyDismissFlightFrames({
   control,
   end,
+  origin,
   start,
 }: {
   control: { x: number; y: number };
   end: { x: number; y: number };
+  origin: { x: number; y: number };
   start: { x: number; y: number };
 }) {
   const frames: Keyframe[] = [];
@@ -559,7 +606,7 @@ function buildSmartReplyDismissFlightFrames({
     frames.push({
       offset: progress,
       opacity,
-      transform: `translate(${point.x - 16}px, ${point.y - 16}px) scale(${scale})`,
+      transform: `translate(${point.x - origin.x - 16 * scale}px, ${point.y - origin.y - 16 * scale}px) scale(${scale})`,
     });
   }
 
@@ -629,6 +676,7 @@ export function SmartReplyMessageAnchor({
     useState(false);
   const [isSending, setIsSending] = useState(false);
   const isMountedRef = useRef(true);
+  const collapseContainerRef = useRef<HTMLDivElement | null>(null);
 
   const isThinking = suggestion?.status === "thinking";
   const isProcessing = suggestion?.status === "processing";
@@ -771,54 +819,61 @@ export function SmartReplyMessageAnchor({
 
   return (
     <>
-      <SmartReplyCard
-        refAttachIds={resolvedSuggestion.refAttachIds}
-        assistantName={resolvedSuggestion.assistantName}
-        canMakeShorter={canMakeShorter}
-        canSendMessage={canSendMessage}
-        content={displayContent}
-        dismissTargetRef={dismissTargetRef}
-        failReason={resolvedSuggestion.failReason}
-        isGenerationFailed={isGenerationFailed}
-        isKnowledgeHit={isKnowledgeHit}
-        isKnowledgeMiss={isKnowledgeMiss}
-        isSent={isSent}
-        isSending={isSending}
-        isThinking={isThinking}
-        isProcessing={isProcessing}
-        processingLabel={processingLabel}
-        onDismiss={onDismiss ? () => onDismiss(message) : undefined}
-        onEdit={openEditDialog}
-        onFillComposer={
-          onFillComposer
-            ? () => {
-                onFillComposer(message, displayContent.trim());
-              }
-            : undefined
-        }
-        onMakeShorter={
-          onMakeShorter
-            ? () => {
-                onMakeShorter(message);
-              }
-            : undefined
-        }
-        onRegenerate={
-          onRegenerate
-            ? () => {
-                onRegenerate(message);
-              }
-            : undefined
-        }
-        onSend={
-          resolvedSuggestion.refAttachIds?.length &&
-          resolvedSuggestion.refAttachIds.length > 0
-            ? openEditDialog
-            : onSend
-              ? handleSendFromCard
+      <div
+        className="overflow-visible"
+        data-testid="smart-reply-card-collapse-container"
+        ref={collapseContainerRef}
+      >
+        <SmartReplyCard
+          refAttachIds={resolvedSuggestion.refAttachIds}
+          assistantName={resolvedSuggestion.assistantName}
+          canMakeShorter={canMakeShorter}
+          canSendMessage={canSendMessage}
+          collapseContainerRef={collapseContainerRef}
+          content={displayContent}
+          dismissTargetRef={dismissTargetRef}
+          failReason={resolvedSuggestion.failReason}
+          isGenerationFailed={isGenerationFailed}
+          isKnowledgeHit={isKnowledgeHit}
+          isKnowledgeMiss={isKnowledgeMiss}
+          isSent={isSent}
+          isSending={isSending}
+          isThinking={isThinking}
+          isProcessing={isProcessing}
+          processingLabel={processingLabel}
+          onDismiss={onDismiss ? () => onDismiss(message) : undefined}
+          onEdit={openEditDialog}
+          onFillComposer={
+            onFillComposer
+              ? () => {
+                  onFillComposer(message, displayContent.trim());
+                }
               : undefined
-        }
-      />
+          }
+          onMakeShorter={
+            onMakeShorter
+              ? () => {
+                  onMakeShorter(message);
+                }
+              : undefined
+          }
+          onRegenerate={
+            onRegenerate
+              ? () => {
+                  onRegenerate(message);
+                }
+              : undefined
+          }
+          onSend={
+            resolvedSuggestion.refAttachIds?.length &&
+            resolvedSuggestion.refAttachIds.length > 0
+              ? openEditDialog
+              : onSend
+                ? handleSendFromCard
+                : undefined
+          }
+        />
+      </div>
       <SmartReplyEditDialog
         automaticCheckIllegalWords={automaticCheckIllegalWords}
         canSendMessage={canSendMessage}

@@ -255,6 +255,38 @@ describe("message feed row actions", () => {
     expect(onTriggerSmartReply).toHaveBeenCalledWith(message);
   });
 
+  it("keeps smart reply recommendation visible but disabled when actions are locked", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      id: "msg-customer-1",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+    } as ChatMessage;
+
+    render(
+      <MessageRow
+        canUseMessageActions={false}
+        message={message}
+        onTriggerSmartReply={onTriggerSmartReply}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    const smartReplyAction = screen.getByRole("menuitem", { name: "话术推荐" });
+
+    expect(smartReplyAction).toHaveAttribute("data-disabled");
+
+    await user.click(smartReplyAction);
+
+    expect(onTriggerSmartReply).not.toHaveBeenCalled();
+  });
+
   it("hides smart reply trigger icon when a ready suggestion card is shown", () => {
     render(
       <MessageRow

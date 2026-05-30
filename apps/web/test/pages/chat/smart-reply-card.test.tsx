@@ -52,6 +52,17 @@ const appearanceThemeBlocks = [
   ),
 ].map((match) => match[0]);
 
+type MockAnimation = {
+  cancel: ReturnType<typeof vi.fn>;
+  oncancel: (() => void) | null;
+  onfinish: (() => void) | null;
+};
+
+type MockAnimateFn = (
+  keyframes?: Keyframe[] | PropertyIndexedKeyframes,
+  options?: number | KeyframeAnimationOptions,
+) => MockAnimation;
+
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -166,9 +177,13 @@ describe("SmartReplyCard", () => {
   it("keeps the original card box reserved while the dismiss animation runs", async () => {
     const user = userEvent.setup();
     const onDismiss = vi.fn();
-    const animate = vi.fn((_keyframes?: Keyframe[] | PropertyIndexedKeyframes) => ({
-      cancel: vi.fn(),
-    }));
+    const animate = vi.fn(
+      ((_keyframes?: Keyframe[] | PropertyIndexedKeyframes) => ({
+        cancel: vi.fn(),
+        oncancel: null,
+        onfinish: null,
+      })) as MockAnimateFn,
+    );
     vi.stubGlobal(
       "Animation",
       class {
@@ -229,10 +244,8 @@ describe("SmartReplyCard", () => {
       "translate(0, 0)",
       "translate(0, 0)",
       "translate(0, 0)",
-      "translate(0, 0)",
     ]);
     expect(collapseFrames.map((frame) => frame.opacity)).toEqual([
-      1,
       1,
       1,
       1,
@@ -265,14 +278,221 @@ describe("SmartReplyCard", () => {
     const flightFrames = animate.mock.calls
       .map((call) => call[0] as Keyframe[])
       .find((frames) => frames.some((frame) => frame.offset === 0));
+    const flightOptions = animate.mock.calls
+      .find((call) => {
+        const frames = call[0] as Keyframe[];
+
+        return frames.some((frame) => frame.offset === 0);
+      })?.[1];
     expect(flightFrames).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           offset: 0,
-          transform: "translate(40px, 120px) scale(1)",
+          transform: "translate(0px, 0px) scale(1)",
+        }),
+        expect.objectContaining({
+          offset: 1,
+          transform: "translate(-27.28px, 14.72px) scale(0.07999999999999996)",
         }),
       ]),
     );
+    expect(flightOptions).toEqual(
+      expect.objectContaining({
+        delay: 200,
+        duration: 560,
+      }),
+    );
+    expect(animate).toHaveBeenCalledTimes(4);
+  });
+
+  it("collapses the reserved card space before completing dismissal", async () => {
+    const user = userEvent.setup();
+    const onDismiss = vi.fn();
+    const animations: MockAnimation[] = [];
+    const animate = vi.fn((() => {
+      const animation = {
+        cancel: vi.fn(),
+        oncancel: null,
+        onfinish: null,
+      };
+
+      animations.push(animation);
+
+      return animation;
+    }) as MockAnimateFn);
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: animate,
+    });
+
+    render(
+      <SmartReplyCard
+        assistantName="护肤小助手"
+        content="这里是思考的文案..."
+        onDismiss={onDismiss}
+      />,
+    );
+
+    const card = screen.getByTestId("smart-reply-card");
+    const sourceIcon = screen.getByLabelText("AI 智能回复");
+    vi.spyOn(card, "getBoundingClientRect").mockReturnValue({
+      bottom: 248,
+      height: 128,
+      left: 40,
+      right: 480,
+      top: 120,
+      width: 440,
+      x: 40,
+      y: 120,
+      toJSON: () => undefined,
+    } as DOMRect);
+    vi.spyOn(sourceIcon, "getBoundingClientRect").mockReturnValue({
+      bottom: 145,
+      height: 18,
+      left: 52,
+      right: 70,
+      top: 127,
+      width: 18,
+      x: 52,
+      y: 127,
+      toJSON: () => undefined,
+    } as DOMRect);
+
+    await user.click(screen.getByRole("button", { name: "收起" }));
+
+    animations.at(3)?.onfinish?.();
+
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(animate).toHaveBeenCalledTimes(5);
+
+    const placeholderFrames = animate.mock.calls[4]?.[0] as Keyframe[];
+    const placeholderOptions = animate.mock.calls[4]?.[1];
+
+    expect(placeholderFrames).toEqual([
+      expect.objectContaining({
+        height: "128px",
+        marginTop: "0px",
+        opacity: 0,
+      }),
+      expect.objectContaining({
+        height: "0px",
+        marginTop: "-6px",
+        opacity: 0,
+      }),
+    ]);
+    expect(placeholderOptions).toEqual(
+      expect.objectContaining({
+        duration: 220,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      }),
+    );
+
+    animations.at(4)?.onfinish?.();
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("collapses the anchor wrapper to absorb the message stack gap", async () => {
+    const user = userEvent.setup();
+    const onDismiss = vi.fn();
+    const animations: MockAnimation[] = [];
+    const animationTargets: Element[] = [];
+    const animate = vi.fn((function (this: Element) {
+      const animation = {
+        cancel: vi.fn(),
+        oncancel: null,
+        onfinish: null,
+      };
+
+      animationTargets.push(this);
+      animations.push(animation);
+
+      return animation;
+    }) as MockAnimateFn);
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: animate,
+    });
+
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      conversationId: "conv-001",
+      id: "msg-1",
+      role: "customer",
+      sender: { id: "customer-1", name: "客户" },
+      sentAt: "刚刚",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        conversationId="conv-001"
+        message={message}
+        onDismiss={onDismiss}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌",
+        }}
+      />,
+    );
+
+    const card = screen.getByTestId("smart-reply-card");
+    const collapseContainer = screen.getByTestId(
+      "smart-reply-card-collapse-container",
+    );
+    const sourceIcon = screen.getByLabelText("AI 智能回复");
+    vi.spyOn(card, "getBoundingClientRect").mockReturnValue({
+      bottom: 248,
+      height: 128,
+      left: 40,
+      right: 480,
+      top: 120,
+      width: 440,
+      x: 40,
+      y: 120,
+      toJSON: () => undefined,
+    } as DOMRect);
+    vi.spyOn(collapseContainer, "getBoundingClientRect").mockReturnValue({
+      bottom: 248,
+      height: 128,
+      left: 40,
+      right: 480,
+      top: 120,
+      width: 440,
+      x: 40,
+      y: 120,
+      toJSON: () => undefined,
+    } as DOMRect);
+    vi.spyOn(sourceIcon, "getBoundingClientRect").mockReturnValue({
+      bottom: 145,
+      height: 18,
+      left: 52,
+      right: 70,
+      top: 127,
+      width: 18,
+      x: 52,
+      y: 127,
+      toJSON: () => undefined,
+    } as DOMRect);
+
+    await user.click(screen.getByRole("button", { name: "收起" }));
+
+    animations.at(3)?.onfinish?.();
+
+    expect(animationTargets[4]).toBe(collapseContainer);
+    expect(animate.mock.calls[4]?.[0]).toEqual([
+      expect.objectContaining({
+        height: "128px",
+        marginTop: "0px",
+      }),
+      expect.objectContaining({
+        height: "0px",
+        marginTop: "-6px",
+      }),
+    ]);
+
+    animations.at(4)?.onfinish?.();
+
+    expect(onDismiss).toHaveBeenCalledWith(message);
   });
 
   it("removes the dismiss animation layer when unmounted mid-animation", async () => {

@@ -762,11 +762,13 @@ export async function registerChatRoutes(app: FastifyInstance) {
         body: SmartReplySendAnswerBodySchema,
       },
     },
-    async (request) =>
-      getWorkbenchService(app, request).sendSmartReplyAnswer(
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).sendSmartReplyAnswer(
         getSubUserId(request),
         request.body satisfies WorkbenchSmartReplySendAnswerRequest,
-      ),
+      );
+    },
   );
 
   app.post<{ Body: Static<typeof SmartReplyAttachmentsBodySchema> }>(
@@ -852,11 +854,13 @@ export async function registerChatRoutes(app: FastifyInstance) {
         body: SmartReplyKnowledgeFaqAddBodySchema,
       },
     },
-    async (request) =>
-      getWorkbenchService(app, request).addKnowledgeFaq(
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).addKnowledgeFaq(
         getSubUserId(request),
         request.body satisfies WorkbenchKnowledgeFaqAddRequest,
-      ),
+      );
+    },
   );
 
   app.post<{ Body: Static<typeof SmartHeartbeatBodySchema> }>(

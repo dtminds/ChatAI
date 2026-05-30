@@ -10,6 +10,7 @@ import {
   AiChat02Icon,
   InputCursorTextIcon,
   Loading03Icon,
+  MessageNotification01Icon,
   MoreHorizontalIcon,
   Remove01Icon,
 } from "@hugeicons/core-free-icons";
@@ -233,7 +234,6 @@ export function SmartReplyCard({
           </div>
           {shouldShowActions ? (
             <div className="flex min-w-0 shrink-0 items-center gap-2">
-              <SmartReplyReferences refAttachIds={refAttachIds} onEdit={onEdit} />
               <SmartReplyActions
                 canSendMessage={canSendMessage}
                 canMakeShorter={canMakeShorter}
@@ -276,6 +276,8 @@ export function SmartReplyCard({
           isThinking={isThinking}
           onRetry={onRegenerate}
           processingLabel={processingLabel}
+          refAttachIds={refAttachIds}
+          onEdit={onEdit}
         />
       </article>
     </TooltipProvider>
@@ -1053,8 +1055,10 @@ function SmartReplyContentBody({
   isKnowledgeMiss,
   isProcessing,
   isThinking,
+  onEdit,
   onRetry,
   processingLabel,
+  refAttachIds,
 }: {
   content: string;
   failReason?: string;
@@ -1063,8 +1067,10 @@ function SmartReplyContentBody({
   isKnowledgeMiss: boolean;
   isProcessing: boolean;
   isThinking: boolean;
+  onEdit?: () => void;
   onRetry?: () => void;
   processingLabel?: string;
+  refAttachIds?: string[];
 }) {
   return (
     <div
@@ -1084,17 +1090,20 @@ function SmartReplyContentBody({
           />
         </div>
       ) : (
-        <ScrollArea
-          className="w-full [--scrollbar-size:4px] [--scrollbar-track-padding:0px]"
-          type="hover"
-          viewportProps={{
-            className: "max-h-[120px] !h-auto",
-          }}
-        >
-          <p className="whitespace-pre-wrap px-[13px] text-[13px] leading-[22px] text-foreground">
-            {content}
-          </p>
-        </ScrollArea>
+        <>
+          <ScrollArea
+            className="w-full [--scrollbar-size:4px] [--scrollbar-track-padding:0px]"
+            type="hover"
+            viewportProps={{
+              className: "max-h-[120px] !h-auto",
+            }}
+          >
+            <p className="whitespace-pre-wrap px-[13px] text-[13px] leading-[22px] text-foreground">
+              {content}
+            </p>
+          </ScrollArea>
+          <SmartReplyReferences refAttachIds={refAttachIds} onEdit={onEdit} />
+        </>
       )}
     </div>
   );
@@ -1182,23 +1191,25 @@ function SmartReplyReferences({
 }) {
   const refAttachCount = refAttachIds?.length ?? 0;
 
+  if (refAttachCount <= 1) {
+    return null;
+  }
+
   return (
-    <div className="flex min-w-0 cursor-pointer items-center gap-[10px]">
-      {refAttachCount > 0 ? (
-        <div
-          aria-label={`推荐附件 ${refAttachCount} 个`}
-          className="inline-flex items-center gap-1 text-[12px] leading-4 text-muted-foreground"
-          onClick={onEdit}
-        >
-          <img
-            alt=""
-            aria-hidden
-            className="size-[14px] object-contain"
-            src="https://b1.dtminds.com/fe-utility-tools/scrm-mobile/assets/third/容器@2x (3).png!tiny.webp"
-          />
-          <span>{refAttachCount}</span>
-        </div>
-      ) : null}
+    <div className="mt-[8px] flex min-w-0 cursor-pointer items-center px-[13px]">
+      <div
+        aria-label={`推荐附件 ${refAttachCount} 个`}
+        className="inline-flex items-center gap-1 text-[12px] leading-4 text-muted-foreground"
+        onClick={onEdit}
+      >
+        <HugeiconsIcon
+          aria-hidden
+          icon={MessageNotification01Icon}
+          size={14}
+          strokeWidth={2}
+        />
+        <span>{refAttachCount}</span>
+      </div>
     </div>
   );
 }

@@ -155,6 +155,30 @@ describe("smart-reply-adapter", () => {
     ).toEqual(["11"]);
   });
 
+  it("collects new smart reply pending keys from large histories without spreading seq values", () => {
+    const previousMessages = Array.from({ length: 150_000 }, (_, index) => ({
+      content: { text: `旧消息 ${index + 1}`, type: "text" as const },
+      id: `msg-${index + 1}`,
+      role: "customer" as const,
+      sender: { id: "cus-1", name: "客户" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: index + 1,
+    })) as Message[];
+
+    expect(
+      collectNewSmartReplyPendingKeys(previousMessages, [
+        {
+          content: { text: "新消息", type: "text" },
+          id: "msg-new",
+          role: "customer",
+          sender: { id: "cus-1", name: "客户" },
+          sentAt: "2026-05-25T10:01:00+08:00",
+          seq: 150_001,
+        },
+      ] as Message[]),
+    ).toEqual(["150001"]);
+  });
+
   it("does not mark history preload messages as pending", () => {
     expect(
       collectNewSmartReplyPendingKeys(
@@ -561,8 +585,20 @@ describe("smart-reply-adapter", () => {
             id: "103",
             localPath: "files/spec.pdf",
           },
+          {
+            coverUrl: "https://example.com/article.png",
+            fileName: "图文素材",
+            fileType: "4",
+            id: "104",
+          },
+          {
+            coverUrl: "https://example.com/mini.png",
+            fileName: "小程序素材",
+            fileType: "7",
+            id: "105",
+          },
         ],
-        selectedAttachmentIds: ["101", "102", "103"],
+        selectedAttachmentIds: ["101", "102", "103", "104", "105"],
       }),
     ).toEqual([
       {
@@ -577,14 +613,12 @@ describe("smart-reply-adapter", () => {
       {
         extension: "pdf",
         fileName: "说明.pdf",
-        fileSizeLabel: "",
         type: "file",
         url: "https://b1.dtminds.com/files/guide.pdf",
       },
       {
         extension: "pdf",
         fileName: "规格.pdf",
-        fileSizeLabel: "",
         type: "file",
         url: "https://b1.dtminds.com/files/spec.pdf",
       },

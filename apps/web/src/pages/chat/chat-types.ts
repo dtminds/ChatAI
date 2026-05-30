@@ -139,7 +139,7 @@ export type VideoMessageContent = {
 export type FileMessageContent = {
   type: "file";
   fileName: string;
-  fileSizeLabel: string;
+  fileSizeLabel?: string;
   extension: string;
   downloadStatus?: MessageFileDownloadStatus;
   fileSerialNo?: string;

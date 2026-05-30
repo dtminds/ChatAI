@@ -244,14 +244,14 @@ export function collectNewSmartReplyPendingKeys(
       ...incomingMessages,
     ], Number.POSITIVE_INFINITY),
   );
-  const maxPreviousSeq = Math.max(
+  const maxPreviousSeq = previousMessages.reduce(
+    (maxSeq, message) =>
+      typeof message.seq === "number" &&
+      Number.isSafeInteger(message.seq) &&
+      message.seq > maxSeq
+        ? message.seq
+        : maxSeq,
     0,
-    ...previousMessages
-      .map((message) => message.seq)
-      .filter(
-        (seq): seq is number =>
-          typeof seq === "number" && Number.isSafeInteger(seq) && seq > 0,
-      ),
   );
   const pendingKeys: string[] = [];
 
@@ -655,6 +655,10 @@ function mapSmartReplyAttachmentToComposerSegment(
     };
   }
 
+  if (fileType !== 5) {
+    return null;
+  }
+
   const fileUrl = resolveSmartReplyAttachmentSendUrl(attachment);
 
   if (!fileUrl) {
@@ -664,7 +668,6 @@ function mapSmartReplyAttachmentToComposerSegment(
   return {
     extension: getSmartReplyAttachmentExtension(attachment.fileName),
     fileName: attachment.fileName,
-    fileSizeLabel: "",
     type: "file",
     url: fileUrl,
   };

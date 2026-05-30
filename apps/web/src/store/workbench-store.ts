@@ -1680,7 +1680,7 @@ function buildOptimisticMessageContent(
     return {
       extension: segment.extension,
       fileName: segment.fileName,
-      fileSizeLabel: segment.fileSizeLabel,
+      ...(segment.fileSizeLabel ? { fileSizeLabel: segment.fileSizeLabel } : {}),
       sourceLabel: "文件",
       type: "file",
     };
@@ -1748,7 +1748,9 @@ function getRetrySendInputFromMessage(message: ChatMessage): {
       segment: {
         extension: message.content.extension,
         fileName: message.content.fileName,
-        fileSizeLabel: message.content.fileSizeLabel,
+        ...(message.content.fileSizeLabel
+          ? { fileSizeLabel: message.content.fileSizeLabel }
+          : {}),
         type: "file",
         url: fileUrl,
       },

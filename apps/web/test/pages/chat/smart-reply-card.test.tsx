@@ -557,7 +557,37 @@ describe("SmartReplyCard", () => {
       />,
     );
 
-    expect(screen.getByLabelText("推荐附件 3 个")).toHaveTextContent("3");
+    const refAttachEntry = screen.getByLabelText("推荐附件 3 个");
+
+    expect(refAttachEntry).toHaveTextContent("3");
+    expect(screen.getByTestId("smart-reply-card-body")).toContainElement(
+      refAttachEntry,
+    );
+    expect(screen.getByTestId("smart-reply-card-header")).not.toContainElement(
+      refAttachEntry,
+    );
+  });
+
+  it("hides ref attach entry until more than one attachment is referenced", () => {
+    const { rerender } = render(
+      <SmartReplyCard
+        assistantName="护肤小助手"
+        content="建议回复"
+        refAttachIds={[]}
+      />,
+    );
+
+    expect(screen.queryByLabelText("推荐附件 0 个")).not.toBeInTheDocument();
+
+    rerender(
+      <SmartReplyCard
+        assistantName="护肤小助手"
+        content="建议回复"
+        refAttachIds={["101"]}
+      />,
+    );
+
+    expect(screen.queryByLabelText("推荐附件 1 个")).not.toBeInTheDocument();
   });
 
   it("opens the secondary actions menu from the right button group", async () => {

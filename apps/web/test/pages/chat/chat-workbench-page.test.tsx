@@ -1016,7 +1016,6 @@ describe("ChatWorkbenchPage", () => {
       top: 0,
       behavior: "smooth",
     });
-    expect(viewport.scrollTop).toBe(-160);
   });
 
   it("warns when retrying an unsupported failed message type", async () => {

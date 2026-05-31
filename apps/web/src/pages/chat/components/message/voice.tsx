@@ -63,6 +63,12 @@ export function VoiceMessageCard({
   const playbackReadyNotifiedUrlRef = useRef<string | undefined>(undefined);
   const audioPlaybackUrlRef = useRef<string | null>(null);
   const previousAudioUrlRef = useRef(content.audioUrl);
+  const previousSyncedTransVoiceTextRef = useRef(content.transVoiceText?.trim() ?? "");
+  const transcriptionRequestIdRef = useRef(0);
+  const latestTranscriptionSourceRef = useRef({
+    audioUrl: content.audioUrl,
+    transVoiceText: content.transVoiceText?.trim() ?? "",
+  });
   const audioListenerHandlersRef = useRef<AudioListenerHandlers>({
     error: () => undefined,
     ended: () => undefined,
@@ -114,25 +120,38 @@ export function VoiceMessageCard({
     ? `${isPlaying ? "暂停" : "播放"}语音消息 ${label}`
     : "语音消息不可播放";
   const shouldShowTranscribeAction = Boolean(onTranscribe && !transVoiceText);
-  const transcribeActionLabel =
-    transcriptionState === "loading"
-      ? "识别中"
-      : transcriptionState === "error"
-        ? "重新转文字"
-        : "转文字";
+  const shouldShowTranscriptionPanel =
+    transcriptionState === "loading" ||
+    Boolean(transVoiceText) ||
+    Boolean(transcriptionErrorMessage);
+  const shouldShowTranscriptionLoading =
+    !transVoiceText && transcriptionState === "loading";
+
+  latestTranscriptionSourceRef.current = {
+    audioUrl: content.audioUrl,
+    transVoiceText: content.transVoiceText?.trim() ?? "",
+  };
 
   const handleTranscribeClick = async () => {
     if (!onTranscribe || transcriptionState === "loading") {
       return;
     }
 
+    const requestId = transcriptionRequestIdRef.current + 1;
+    transcriptionRequestIdRef.current = requestId;
+    const requestAudioUrl = content.audioUrl;
     setTranscriptionErrorMessage(null);
     setTranscriptionState("loading");
 
     try {
       const nextTransVoiceText = await onTranscribe();
 
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current ||
+        transcriptionRequestIdRef.current !== requestId ||
+        latestTranscriptionSourceRef.current.audioUrl !== requestAudioUrl ||
+        latestTranscriptionSourceRef.current.transVoiceText
+      ) {
         return;
       }
 
@@ -146,7 +165,12 @@ export function VoiceMessageCard({
       setTranscriptionErrorMessage(null);
       setTranscriptionState("idle");
     } catch (error) {
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current ||
+        transcriptionRequestIdRef.current !== requestId ||
+        latestTranscriptionSourceRef.current.audioUrl !== requestAudioUrl ||
+        latestTranscriptionSourceRef.current.transVoiceText
+      ) {
         return;
       }
 
@@ -394,10 +418,33 @@ export function VoiceMessageCard({
     }
 
     previousAudioUrlRef.current = content.audioUrl;
+    transcriptionRequestIdRef.current += 1;
+    setLocalTransVoiceText("");
+    setTranscriptionErrorMessage(null);
+    setTranscriptionState("idle");
     playbackReadyNotifiedUrlRef.current = undefined;
     stopPlaybackRef.current();
     setDuration(0);
   }, [content.audioUrl]);
+
+  useEffect(() => {
+    const syncedTransVoiceText = content.transVoiceText?.trim() ?? "";
+
+    if (previousSyncedTransVoiceTextRef.current === syncedTransVoiceText) {
+      return;
+    }
+
+    previousSyncedTransVoiceTextRef.current = syncedTransVoiceText;
+
+    if (!syncedTransVoiceText) {
+      return;
+    }
+
+    transcriptionRequestIdRef.current += 1;
+    setLocalTransVoiceText("");
+    setTranscriptionErrorMessage(null);
+    setTranscriptionState("idle");
+  }, [content.transVoiceText]);
 
   const handleControlClick = async () => {
     if (!content.audioUrl) {
@@ -622,14 +669,13 @@ export function VoiceMessageCard({
     </div>
   );
 
-  const transcribeAction = shouldShowTranscribeAction ? (
+  const transcribeAction = shouldShowTranscribeAction && transcriptionState !== "loading" ? (
     <button
       className="inline-flex h-8 shrink-0 items-center rounded-[6px] px-1.5 text-[12px] font-medium leading-none text-muted-foreground outline-none transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-70"
-      disabled={transcriptionState === "loading"}
       onClick={handleTranscribeClick}
       type="button"
     >
-      {transcribeActionLabel}
+      转文字
     </button>
   ) : null;
 
@@ -644,15 +690,30 @@ export function VoiceMessageCard({
         {voiceControl}
         {transcribeAction}
       </div>
-      {transVoiceText ? (
-        <div className="max-w-[min(480px,100%)] whitespace-pre-wrap break-words rounded-[10px] bg-surface-muted px-3 py-2 text-[13px] leading-5 text-foreground">
-          {transVoiceText}
+      {shouldShowTranscriptionPanel ? (
+        <div
+          aria-label={shouldShowTranscriptionLoading ? "语音转文字中" : undefined}
+          className={cn(
+            "min-h-9 max-w-[min(480px,100%)] whitespace-pre-wrap break-words rounded-[10px] bg-surface-muted px-3 py-2 text-[13px] leading-5 text-foreground",
+            shouldShowTranscriptionLoading && "inline-flex min-w-16 items-center justify-center",
+            !transVoiceText && transcriptionState === "error" && "text-destructive",
+          )}
+          role={shouldShowTranscriptionLoading ? "status" : undefined}
+        >
+          {transVoiceText ? (
+            transVoiceText
+          ) : shouldShowTranscriptionLoading ? (
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="animate-spin text-muted-foreground"
+              icon={Loading03Icon}
+              size={16}
+              strokeWidth={2}
+            />
+          ) : (
+            transcriptionErrorMessage
+          )}
         </div>
-      ) : null}
-      {transcriptionState === "error" && transcriptionErrorMessage ? (
-        <span className="px-1 text-[12px] leading-5 text-destructive">
-          {transcriptionErrorMessage}
-        </span>
       ) : null}
     </div>
   );

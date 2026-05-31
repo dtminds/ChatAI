@@ -619,7 +619,12 @@ describe("voice message playback", () => {
 
   it("requests transcription and displays the returned text", async () => {
     const user = userEvent.setup();
-    const onTranscribe = vi.fn().mockResolvedValue("这是一条语音文本");
+    let resolveTranscription: (value: string) => void = () => undefined;
+    const onTranscribe = vi.fn().mockImplementation(
+      () => new Promise<string>((resolve) => {
+        resolveTranscription = resolve;
+      }),
+    );
 
     render(
       <VoiceMessageCard
@@ -638,7 +643,176 @@ describe("voice message playback", () => {
     await user.click(screen.getByRole("button", { name: "转文字" }));
 
     expect(onTranscribe).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "转文字" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "语音转文字中" })).toBeInTheDocument();
+
+    resolveTranscription("这是一条语音文本");
+
     expect(await screen.findByText("这是一条语音文本")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "语音转文字中" })).not.toBeInTheDocument();
+  });
+
+  it("prioritizes synced transcription text over a pending local request", async () => {
+    const user = userEvent.setup();
+    const onTranscribe = vi.fn().mockImplementation(
+      () => new Promise<string>(() => undefined),
+    );
+    const { rerender } = render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "转文字" }));
+    expect(screen.getByRole("status", { name: "语音转文字中" })).toBeInTheDocument();
+
+    rerender(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "外部同步的语音文本",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    expect(screen.getByText("外部同步的语音文本")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "语音转文字中" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "转文字" })).not.toBeInTheDocument();
+  });
+
+  it("ignores a pending local transcription result after synced text arrives", async () => {
+    const user = userEvent.setup();
+    let resolveTranscription: (value: string) => void = () => undefined;
+    const onTranscribe = vi.fn().mockImplementation(
+      () => new Promise<string>((resolve) => {
+        resolveTranscription = resolve;
+      }),
+    );
+    const { rerender } = render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "转文字" }));
+
+    rerender(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "外部同步的语音文本",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    resolveTranscription("本地旧识别文本");
+
+    rerender(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "转文字" })).toBeInTheDocument();
+    });
+    expect(screen.queryByText("本地旧识别文本")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "语音转文字中" })).not.toBeInTheDocument();
+  });
+
+  it("ignores a pending local transcription error after synced text arrives", async () => {
+    const user = userEvent.setup();
+    let rejectTranscription: (error: Error) => void = () => undefined;
+    const onTranscribe = vi.fn().mockImplementation(
+      () => new Promise<string>((_resolve, reject) => {
+        rejectTranscription = reject;
+      }),
+    );
+    const { rerender } = render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "转文字" }));
+
+    rerender(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "外部同步的语音文本",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    rejectTranscription(new Error("本地旧识别失败"));
+
+    rerender(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/voice.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/voice.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "转文字" })).toBeInTheDocument();
+    });
+    expect(screen.queryByText("本地旧识别失败")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "语音转文字中" })).not.toBeInTheDocument();
   });
 
   it("shows an error when transcription resolves without text", async () => {
@@ -661,8 +835,9 @@ describe("voice message playback", () => {
 
     await user.click(screen.getByRole("button", { name: "转文字" }));
 
-    expect(onTranscribe).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("语音识别结果为空")).toBeInTheDocument();
+    expect(onTranscribe).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "转文字" })).toBeInTheDocument();
   });
 
   it("does not update transcription state after unmounting during a request", async () => {
@@ -694,6 +869,54 @@ describe("voice message playback", () => {
     await waitFor(() => {
       expect(onTranscribe).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("ignores a pending transcription result after the audio URL changes", async () => {
+    const user = userEvent.setup();
+    let resolveTranscription: (value: string) => void = () => undefined;
+    const onTranscribe = vi.fn().mockImplementation(
+      () => new Promise<string>((resolve) => {
+        resolveTranscription = resolve;
+      }),
+    );
+    const { rerender } = render(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/first.amr",
+          durationLabel: "11\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/first.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "转文字" }));
+
+    rerender(
+      <VoiceMessageCard
+        content={{
+          type: "voice",
+          audioUrl: "https://b5.bokr.com.cn/s5/msg/second.amr",
+          durationLabel: "12\"",
+          playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/second.wav",
+          transVoiceText: "",
+        }}
+        isAgent={false}
+        onTranscribe={onTranscribe}
+      />,
+    );
+
+    resolveTranscription("第一条语音的旧识别文本");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "转文字" })).toBeInTheDocument();
+    });
+    expect(screen.queryByText("第一条语音的旧识别文本")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "语音转文字中" })).not.toBeInTheDocument();
+    expect(onTranscribe).toHaveBeenCalledTimes(1);
   });
 
   it("shows existing voice transcription without a transcription button", () => {
@@ -739,9 +962,12 @@ describe("voice message playback", () => {
     await user.click(screen.getByRole("button", { name: "转文字" }));
 
     expect(await screen.findByText("识别失败")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "转文字" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新转文字" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "重新转文字" }));
+    await user.click(screen.getByRole("button", { name: "转文字" }));
 
+    expect(screen.queryByRole("button", { name: "转文字" })).not.toBeInTheDocument();
     expect(await screen.findByText("重试后的语音文本")).toBeInTheDocument();
     expect(onTranscribe).toHaveBeenCalledTimes(2);
   });

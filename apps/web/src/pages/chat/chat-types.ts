@@ -87,6 +87,7 @@ export type MessageSender = {
   id: string;
   name: string;
   avatarUrl?: string;
+  userId?: string;
 };
 
 export type SystemMessageContent = {

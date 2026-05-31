@@ -161,6 +161,11 @@ export function adaptMessage(
       : isGroupConversation
         ? ""
         : customer?.avatarUrl);
+  const senderUserId = isOwnMessage
+    ? dto.thirdUserId
+    : isGroupConversation
+      ? dto.thirdFromId
+      : dto.thirdExternalUserId ?? dto.customerId;
 
   return {
     author: senderName,
@@ -185,6 +190,7 @@ export function adaptMessage(
         ? `sender-agent-${dto.seatId}`
         : `sender-customer-${dto.thirdFromId ?? dto.customerId}`,
       name: senderName,
+      userId: senderUserId,
     },
     sentAt,
     seq: dto.seq,

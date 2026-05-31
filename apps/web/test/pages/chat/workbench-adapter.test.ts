@@ -274,7 +274,33 @@ describe("adaptMessage", () => {
     ).toMatchObject({
       isGroupConversation: true,
       isOwnMessage: false,
+      sender: {
+        userId: "third-user-2",
+      },
       senderDisplayName: "群成员A",
+    });
+  });
+
+  it("exposes the single customer external id as the copyable sender user id", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          customerId: "customer-1",
+          senderName: "客户A",
+          senderType: "customer",
+          thirdExternalUserId: "external-user-1",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      isGroupConversation: false,
+      isOwnMessage: false,
+      sender: {
+        userId: "external-user-1",
+      },
     });
   });
 

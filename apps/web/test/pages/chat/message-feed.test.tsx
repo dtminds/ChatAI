@@ -89,6 +89,11 @@ describe("message feed row actions", () => {
       ...createTextMessage("可复制消息"),
       id: "local-message-id",
       remoteMessageId: " remote-message-id ",
+      sender: {
+        id: "sender-customer-id",
+        name: "客户甲",
+        userId: "customer-user-id",
+      },
     } satisfies ChatMessage;
 
     render(<MessageRow message={message} onQuoteMessage={vi.fn()} />);
@@ -96,12 +101,37 @@ describe("message feed row actions", () => {
     await user.click(screen.getByRole("button", { name: "消息操作" }));
     const menuItems = screen.getAllByRole("menuitem").map((item) => item.textContent);
 
-    expect(menuItems).toEqual(["引用", "复制消息ID"]);
+    expect(menuItems).toEqual(["引用", "复制消息ID", "复制用户ID"]);
 
     await user.click(screen.getByRole("menuitem", { name: "复制消息ID" }));
 
     expect(writeText).toHaveBeenCalledWith("remote-message-id");
     expect(toast.success).toHaveBeenCalledWith("已复制消息ID");
+  });
+
+  it("copies the sender user id from the action menu", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const message = {
+      ...createTextMessage("可复制用户"),
+      sender: {
+        id: "sender-customer-id",
+        name: "客户甲",
+        userId: " customer-user-id ",
+      },
+    } satisfies ChatMessage;
+
+    render(<MessageRow message={message} onQuoteMessage={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "复制用户ID" }));
+
+    expect(writeText).toHaveBeenCalledWith("customer-user-id");
+    expect(toast.success).toHaveBeenCalledWith("已复制用户ID");
   });
 
   it("keeps eligible message actions visible but disabled when actions are locked", async () => {

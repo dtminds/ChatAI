@@ -38,8 +38,8 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0
       kysely:
-        specifier: ^0.28.8
-        version: 0.28.17
+        specifier: ^0.29.0
+        version: 0.29.2
       mysql2:
         specifier: ^3.15.3
         version: 3.22.4(@types/node@24.12.4)
@@ -52,7 +52,7 @@ importers:
         version: 17.4.2
       kysely-codegen:
         specifier: ^0.20.0
-        version: 0.20.0(kysely@0.28.17)(mysql2@3.22.4(@types/node@24.12.4))(typescript@5.9.3)
+        version: 0.20.0(kysely@0.29.2)(mysql2@3.22.4(@types/node@24.12.4))(typescript@5.9.3)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -2577,9 +2577,9 @@ packages:
       tedious:
         optional: true
 
-  kysely@0.28.17:
-    resolution: {integrity: sha512-nbD8lB9EB3wNdMhOCdx5Li8DxnLbvKByylRLcJ1h+4SkrowVeECAyZlyiKMThF7xFdRz0jSQ2MoJr+wXux2y0Q==}
-    engines: {node: '>=20.0.0'}
+  kysely@0.29.2:
+    resolution: {integrity: sha512-s6WVJyEZrbm6jhBpiKHsGHyePMrVQKJ85wZCFCr9W4QHv6WTjWIrdvTmO9hDEA3bNK0xkrE2DqrHsXMLWuZpQg==}
+    engines: {node: '>=22.0.0'}
 
   lexical@0.44.0:
     resolution: {integrity: sha512-ReDUjRlFgkGoPWzvdjr7s16PUVpHATN+2NH2NiZs+PLlISTaIFFgKil2P467oP3Vg+XgmpDsUgmWZsFJTztYjg==}
@@ -5625,14 +5625,14 @@ snapshots:
       json-schema: 0.4.0
       verror: 1.10.0
 
-  kysely-codegen@0.20.0(kysely@0.28.17)(mysql2@3.22.4(@types/node@24.12.4))(typescript@5.9.3):
+  kysely-codegen@0.20.0(kysely@0.29.2)(mysql2@3.22.4(@types/node@24.12.4))(typescript@5.9.3):
     dependencies:
       chalk: 4.1.2
       cosmiconfig: 9.0.1(typescript@5.9.3)
       diff: 8.0.4
       dotenv: 17.4.2
       dotenv-expand: 12.0.3
-      kysely: 0.28.17
+      kysely: 0.29.2
       micromatch: 4.0.8
       minimist: 1.2.8
       pluralize: 8.0.0
@@ -5642,7 +5642,7 @@ snapshots:
     transitivePeerDependencies:
       - typescript
 
-  kysely@0.28.17: {}
+  kysely@0.29.2: {}
 
   lexical@0.44.0: {}
 

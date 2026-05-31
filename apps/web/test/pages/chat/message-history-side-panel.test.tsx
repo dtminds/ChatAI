@@ -193,8 +193,10 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.getByTestId("history-sender-selected-icon")).toBeInTheDocument();
     expect(screen.queryByText("☑️")).not.toBeInTheDocument();
     expect(screen.queryByText("☐")).not.toBeInTheDocument();
-    expect(within(singleAccountButton).getByText("林")).toBeInTheDocument();
-    expect(within(singleCustomerButton).getByText("测")).toBeInTheDocument();
+    expect(within(singleAccountButton).queryByText("林")).not.toBeInTheDocument();
+    expect(singleAccountButton.querySelector("svg")).toBeInTheDocument();
+    expect(within(singleCustomerButton).queryByText("测")).not.toBeInTheDocument();
+    expect(singleCustomerButton.querySelector("svg")).toBeInTheDocument();
   });
 
   it("renders sender options with avatars and checkbox marks in group conversations", async () => {
@@ -256,9 +258,12 @@ describe("MessageHistorySidePanel", () => {
     const emojiMemberButton = within(groupDialog).getByRole("button", { name: /👨‍👩‍👧‍👦客服/ });
     const anotherMemberButton = within(groupDialog).getByRole("button", { name: /睿白鸽/ });
 
-    expect(within(groupMemberButton).getByText("小")).toBeInTheDocument();
-    expect(within(emojiMemberButton).getByText("👨‍👩‍👧‍👦")).toBeInTheDocument();
-    expect(within(anotherMemberButton).getByText("睿")).toBeInTheDocument();
+    expect(within(groupMemberButton).queryByText("小")).not.toBeInTheDocument();
+    expect(groupMemberButton.querySelector("svg")).toBeInTheDocument();
+    expect(within(emojiMemberButton).queryByText("👨‍👩‍👧‍👦")).not.toBeInTheDocument();
+    expect(emojiMemberButton.querySelector("svg")).toBeInTheDocument();
+    expect(within(anotherMemberButton).queryByText("睿")).not.toBeInTheDocument();
+    expect(anotherMemberButton.querySelector("svg")).toBeInTheDocument();
   });
 
   it("closes the date picker after selecting a date", async () => {

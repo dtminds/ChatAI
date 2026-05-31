@@ -164,7 +164,7 @@ export function CustomerSidePanel({
                   ...(dto.thirdGroupId
                     ? {
                         thirdGroupId: dto.thirdGroupId,
-                        thirdGroupName: dto.thirdGroupName ?? dto.thirdGroupId,
+                        thirdGroupName: dto.thirdGroupName ?? "未知群聊",
                       }
                     : {}),
                 }

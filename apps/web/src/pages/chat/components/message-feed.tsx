@@ -5,8 +5,10 @@ import {
   Bug02Icon,
   ExclamationMarkIcon,
   Loading03Icon,
+  Male02Icon,
   MoreHorizontalIcon,
   QuoteUpSquareIcon,
+  UserIdVerificationIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -581,6 +583,7 @@ function MessageActionAvatar({
   const canSelectSmartReplyRecommendation =
     canUseMessageActions && Boolean(onTriggerSmartReply);
   const messageIdForCopy = (message.remoteMessageId ?? message.id).trim();
+  const senderUserIdForCopy = message.sender.userId?.trim() ?? "";
 
   return (
     <>
@@ -697,6 +700,21 @@ function MessageActionAvatar({
               />
               复制消息ID
             </DropdownMenuItem>
+            {senderUserIdForCopy ? (
+              <DropdownMenuItem
+                onSelect={() => {
+                  void copyUserId(senderUserIdForCopy);
+                }}
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={UserIdVerificationIcon}
+                  size={15}
+                  strokeWidth={2}
+                />
+                复制用户ID
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -739,6 +757,20 @@ async function copyMessageId(messageId: string) {
   try {
     await navigator.clipboard.writeText(messageId);
     toast.success("已复制消息ID");
+  } catch {
+    toast.warning("复制失败，请稍后重试");
+  }
+}
+
+async function copyUserId(userId: string) {
+  if (!userId || !navigator.clipboard) {
+    toast.warning("复制失败，请稍后重试");
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(userId);
+    toast.success("已复制用户ID");
   } catch {
     toast.warning("复制失败，请稍后重试");
   }
@@ -901,7 +933,15 @@ export function MessageAvatar({ message }: { message: ChatMessage }) {
       {message.sender.avatarUrl ? (
         <AvatarImage alt={message.sender.name} src={message.sender.avatarUrl} />
       ) : null}
-      <AvatarFallback className="rounded-[6px] text-sm" />
+      <AvatarFallback className="rounded-[6px] text-sm">
+        <HugeiconsIcon
+          aria-hidden="true"
+          color="currentColor"
+          icon={Male02Icon}
+          size={16}
+          strokeWidth={1.8}
+        />
+      </AvatarFallback>
     </Avatar>
   );
 }

@@ -703,6 +703,7 @@ function upsertMessageList(
           ...nextSender,
           avatarUrl: nextSender.avatarUrl || currentMessage.sender.avatarUrl,
           name: nextSender.name || currentMessage.sender.name,
+          userId: nextSender.userId || currentMessage.sender.userId,
         },
         senderDisplayName:
           nextMessage.senderDisplayName ?? currentMessage.senderDisplayName,
@@ -3939,6 +3940,7 @@ export function createWorkbenchStore() {
               avatarUrl: account?.avatarUrl,
               id: `sender-agent-${activeAccountId}`,
               name: account ? `${account.name}-${account.operator}` : me.displayName,
+              userId: activeConversation.thirdUserId,
             },
             sentAt: formatWorkbenchTimestamp(timestamp + index),
             status: "accepted" as const,

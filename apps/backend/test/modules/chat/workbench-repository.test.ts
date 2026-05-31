@@ -2070,6 +2070,7 @@ describe("WorkbenchRepository", () => {
       "xy_wap_embed_customer_bind_relation",
     ]);
     expect(page.items[0]).toMatchObject({
+      contactOriginalName: "客户名",
       conversationId: "88",
       customerAvatar: "https://example.com/avatar.png",
       customerName: "客户备注",
@@ -2140,7 +2141,7 @@ describe("WorkbenchRepository", () => {
       bizStatus: 0,
       conversationId: "88",
       customerAvatar: "https://example.com/inactive-contact.png",
-      customerName: "失效客户实名",
+      customerName: "失效客户",
     });
   });
 
@@ -2361,7 +2362,7 @@ describe("WorkbenchRepository", () => {
       }),
       expect.objectContaining({
         conversationId: "89",
-        customerName: "external-002",
+        customerName: "未知客户",
       }),
     ]);
   });
@@ -2484,10 +2485,12 @@ describe("WorkbenchRepository", () => {
       expect.objectContaining({
         bizStatus: 0,
         conversationId: "88",
+        customerName: "未知客户",
       }),
       expect.objectContaining({
         bizStatus: 0,
         conversationId: "89",
+        customerName: "未知群聊",
       }),
     ]);
   });
@@ -3118,7 +3121,7 @@ describe("WorkbenchRepository", () => {
     });
   });
 
-  it("falls back to third group id when group seat name is missing", async () => {
+  it("falls back to unknown group when group seat name is missing", async () => {
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
@@ -3144,7 +3147,7 @@ describe("WorkbenchRepository", () => {
 
     await expect(repository.getConversationLookup("100")).resolves.toMatchObject({
       thirdGroupId: "group-002",
-      thirdGroupName: "group-002",
+      thirdGroupName: "未知群聊",
     });
   });
 

@@ -3,6 +3,7 @@ import {
   Cancel01Icon,
   LicenseNoIcon,
   Loading03Icon,
+  Male02Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -528,7 +529,15 @@ function SearchContactResultItem({
           alt={displayName}
           src={item.avatar}
         />
-        <AvatarFallback className="rounded-[8px]" />
+        <AvatarFallback className="rounded-[8px]">
+          <HugeiconsIcon
+            aria-hidden="true"
+            color="currentColor"
+            icon={Male02Icon}
+            size={18}
+            strokeWidth={1.8}
+          />
+        </AvatarFallback>
       </Avatar>
       <div className="min-w-0 self-center">
         <p className="truncate text-[14px] font-normal text-foreground">
@@ -540,7 +549,7 @@ function SearchContactResultItem({
 }
 
 function formatContactDisplayName(item: WorkbenchSearchContactResultDto) {
-  const name = item.name || item.realName || "未知用户";
+  const name = item.name?.trim() || "未知客户";
   const remark = item.remark?.trim();
 
   if (remark && remark !== name) {
@@ -572,7 +581,15 @@ function SearchGroupResultItem({
           alt={groupName}
           src={item.avatar}
         />
-        <AvatarFallback className="rounded-[8px]" />
+        <AvatarFallback className="rounded-[8px]">
+          <HugeiconsIcon
+            aria-hidden="true"
+            color="currentColor"
+            icon={Male02Icon}
+            size={18}
+            strokeWidth={1.8}
+          />
+        </AvatarFallback>
       </Avatar>
       <div className="min-w-0 self-center">
         <p className="truncate text-[14px] font-normal text-foreground">

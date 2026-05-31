@@ -6,6 +6,7 @@ import {
   ExclamationMarkIcon,
   Download04Icon,
   Loading03Icon,
+  Male02Icon,
   PlayIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
@@ -1281,7 +1282,13 @@ function SenderFilter({
                 <Avatar className="size-5 shrink-0">
                   <AvatarImage alt={option.label} src={option.avatarUrl} />
                   <AvatarFallback className="text-[11px]">
-                    {getFirstGrapheme(option.label)}
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      color="currentColor"
+                      icon={Male02Icon}
+                      size={13}
+                      strokeWidth={1.8}
+                    />
                   </AvatarFallback>
                 </Avatar>
                 <span className="min-w-0 flex-1 truncate">{option.label}</span>
@@ -1337,25 +1344,4 @@ function getHistoryFilterKey(filters: {
   scope: HistoryPanelScope;
 }) {
   return `${filters.scope}\u0000${filters.day ?? ""}\u0000${filters.senderId ?? ""}`;
-}
-
-function getFirstGrapheme(value: string) {
-  const trimmed = value.trim();
-
-  if (!trimmed) {
-    return "?";
-  }
-
-  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
-    const segmenter = new Intl.Segmenter(undefined, {
-      granularity: "grapheme",
-    });
-    const first = segmenter.segment(trimmed)[Symbol.iterator]().next();
-
-    if (!first.done) {
-      return first.value.segment;
-    }
-  }
-
-  return Array.from(trimmed)[0] ?? "?";
 }

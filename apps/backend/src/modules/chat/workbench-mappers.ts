@@ -32,8 +32,10 @@ export type ConversationRow = {
   create_time?: Date | number | string | null;
   customer_avatar: string | null;
   customer_name: string | null;
+  contact_original_name: string | null;
   group_avatar: string | null;
   group_name: string | null;
+  group_remark: string | null;
   id: number | string;
   last_message_content: string | null;
   last_message_type: string | null;
@@ -126,10 +128,21 @@ export function mapConversationRow(
   const mode = row.chat_type === 2 ? "group" : "single";
   const customerId =
     mode === "group" ? row.third_group_id : row.third_external_userid;
+  const groupRemark = row.group_remark?.trim();
+  const groupName = row.group_name?.trim();
   const customerName =
     mode === "group"
-      ? row.group_name || row.third_group_id || "未命名群聊"
-      : row.customer_name || row.third_external_userid || "微信客户";
+      ? groupRemark || groupName || "未知群聊"
+      : row.customer_name?.trim() || "未知客户";
+  const groupOriginalName =
+    mode === "group" && groupRemark && groupName && groupRemark !== groupName
+      ? groupName
+      : undefined;
+  const contactOriginalNameTrimmed = row.contact_original_name?.trim();
+  const contactOriginalName =
+    mode !== "group" && contactOriginalNameTrimmed && customerName !== contactOriginalNameTrimmed
+      ? contactOriginalNameTrimmed
+      : undefined;
   const customerAvatar =
     mode === "group" ? row.group_avatar ?? "" : row.customer_avatar ?? "";
 
@@ -141,6 +154,8 @@ export function mapConversationRow(
     customerAvatar,
     customerId,
     customerName,
+    contactOriginalName,
+    groupOriginalName,
     isPinned: toNumber(row.pinned_time) > 0 ? true : undefined,
     lastMessage: formatMessagePreview(row.last_message_type, row.last_message_content),
     lastMessageTime: toOptionalTimestamp(row.last_msgtime),

@@ -59,6 +59,8 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     customerAvatarUrl: dto.customerAvatar,
     customerId: dto.customerId,
     customerName: dto.customerName,
+    contactOriginalName: dto.contactOriginalName,
+    groupOriginalName: dto.groupOriginalName,
     id: dto.conversationId,
     isPinned: dto.isPinned,
     isVerified: dto.verified,
@@ -159,6 +161,11 @@ export function adaptMessage(
       : isGroupConversation
         ? ""
         : customer?.avatarUrl);
+  const senderUserId = isOwnMessage
+    ? dto.thirdUserId
+    : isGroupConversation
+      ? dto.thirdFromId
+      : dto.thirdExternalUserId ?? dto.customerId;
 
   return {
     author: senderName,
@@ -183,6 +190,7 @@ export function adaptMessage(
         ? `sender-agent-${dto.seatId}`
         : `sender-customer-${dto.thirdFromId ?? dto.customerId}`,
       name: senderName,
+      userId: senderUserId,
     },
     sentAt,
     seq: dto.seq,

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Male02Icon,
   MoreHorizontalIcon,
   PinIcon,
   PinOffIcon,
@@ -80,7 +81,16 @@ export function ConversationCard({
                 isActive &&
                   "bg-conversation-active-foreground/20 text-conversation-active-foreground",
               )}
-            />
+              data-testid="conversation-avatar-fallback"
+            >
+              <HugeiconsIcon
+                aria-hidden="true"
+                color="currentColor"
+                icon={Male02Icon}
+                size={18}
+                strokeWidth={1.8}
+              />
+            </AvatarFallback>
           </Avatar>
           {conversation.unread > 0 ? (
             <div className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground">

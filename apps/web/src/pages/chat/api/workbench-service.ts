@@ -827,7 +827,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         conversationId,
         customerAvatar: "",
         customerId: payload.thirdExternalUserId ?? payload.thirdGroupId ?? conversationId,
-        customerName: payload.thirdExternalUserId ?? payload.thirdGroupId ?? "新会话",
+        customerName: payload.chatType === 2 ? "未知群聊" : "未知客户",
         lastMessage: "",
         lastMessageTime: now,
         mode: payload.chatType === 2 ? "group" : "single",

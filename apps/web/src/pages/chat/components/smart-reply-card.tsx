@@ -218,10 +218,10 @@ export function SmartReplyCard({
         }
       >
         <header
-          className="flex min-w-0 items-center gap-2 px-[12px] py-[7px]"
+          className="flex min-w-0 items-center gap-1 px-[6px] py-[6px]"
           data-testid="smart-reply-card-header"
         >
-          <div className="flex min-w-0 flex-1 items-center gap-[6px]">
+          <div className="flex min-w-0 flex-1 items-center gap-[3px]">
             <HugeiconsIcon
               aria-label="AI 智能回复"
               className="shrink-0 text-conversation-active-foreground"
@@ -1241,7 +1241,7 @@ function SmartReplyActions({
     isSending || !canSendMessage || isThinking || !content.trim();
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
+    <div className="flex shrink-0 items-center gap-1">
       <SmartReplyIconTooltip
         disabled={isActionDisabled}
         label="填入输入框"

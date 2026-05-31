@@ -169,7 +169,7 @@ type ConversationHydrationSources = {
   >;
   groupsByThirdGroupId: Map<
     string,
-    { avatar: string | null; bizStatus: number | null; name: string | null }
+    { avatar: string | null; bizStatus: number | null; name: string | null; remark: string | null }
   >;
   lastMessagesById: Map<string, { content: string | null; msgtype: string | null }>;
 };
@@ -1870,8 +1870,7 @@ export class WorkbenchRepository {
           thirdExternalUserId: row.third_external_userid || undefined,
           thirdGroupId: row.third_group_id || undefined,
           thirdGroupName: row.third_group_id
-            ? firstNonEmptyString(row.group_remark, row.group_name, row.third_group_id) ??
-              "未命名群聊"
+            ? firstNonEmptyString(row.group_remark, row.group_name) ?? "未知群聊"
             : undefined,
           thirdUserId: row.third_userid,
           uid: row.uid,
@@ -2662,7 +2661,7 @@ export class WorkbenchRepository {
       groupIds.length
         ? this.db
             .selectFrom("xy_wap_embed_group_seat")
-            .select(["third_group_id", "avatar", "name", "biz_status"])
+            .select(["third_group_id", "avatar", "name", "remark", "biz_status"])
             .where("uid", "=", uid)
             .where("platform", "=", platform)
             .where("third_userid", "=", seatThirdUserId)
@@ -2699,6 +2698,7 @@ export class WorkbenchRepository {
             avatar: group.avatar,
             bizStatus: group.biz_status,
             name: group.name,
+            remark: group.remark,
           },
         ]),
       ),
@@ -2742,11 +2742,12 @@ export class WorkbenchRepository {
       customer_avatar: contact?.avatar ?? null,
       customer_name: firstNonEmptyString(
         bind?.remark,
-        contact?.realName,
         contact?.name,
       ) ?? null,
+      contact_original_name: firstNonEmptyString(contact?.name, contact?.realName) ?? null,
       group_avatar: group?.avatar ?? null,
       group_name: firstNonEmptyString(group?.name) ?? null,
+      group_remark: firstNonEmptyString(group?.remark) ?? null,
       last_message_content: lastMessage?.content ?? null,
       last_message_type: lastMessage?.msgtype ?? null,
     });

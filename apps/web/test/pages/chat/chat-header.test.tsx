@@ -78,6 +78,21 @@ describe("ChatHeader", () => {
     expect(screen.queryByText(/22天没聊了/)).not.toBeInTheDocument();
   });
 
+  it("renders the original conversation name as secondary text", () => {
+    render(
+      <ChatHeader
+        activeConversation={{
+          ...conversation,
+          contactOriginalName: "客户原始昵称",
+          customerName: "客户备注",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("客户备注")).toBeInTheDocument();
+    expect(screen.getByText("客户原始昵称")).toBeInTheDocument();
+  });
+
   it("does not read browser storage or media queries while rendering", () => {
     const getItemSpy = vi.spyOn(Storage.prototype, "getItem");
     const matchMediaSpy = vi.spyOn(window, "matchMedia");

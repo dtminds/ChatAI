@@ -60,6 +60,10 @@ export type Conversation = {
   customerId: string;
   customerName: string;
   customerAvatarUrl: string;
+  /** 客户原始昵称（当使用备注展示时） */
+  contactOriginalName?: string;
+  /** 群原始名称（当使用备注展示时） */
+  groupOriginalName?: string;
   createdAtMs?: number;
   preview: string;
   updatedAt: string;
@@ -83,6 +87,7 @@ export type MessageSender = {
   id: string;
   name: string;
   avatarUrl?: string;
+  userId?: string;
 };
 
 export type SystemMessageContent = {

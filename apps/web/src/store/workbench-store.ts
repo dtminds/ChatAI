@@ -5273,6 +5273,39 @@ export function createWorkbenchStore() {
           };
         });
 
+        const latestState = get();
+
+        if (
+          latestState.activeConversationId === conversationId &&
+          canUseSmartReplyForConversation(latestState, conversationId)
+        ) {
+          const autoGenerateMessage = shouldAutoGenerateSmartReply({
+            message: getLatestNonSystemMessage(
+              latestState.messagesByConversationId[conversationId] ?? [],
+            ),
+            pending:
+              latestState.smartReplyPendingMessageKeysByConversationId[
+                conversationId
+              ] ?? {},
+            suggestions:
+              latestState.smartReplyByMessageIdByConversationId[conversationId] ??
+              {},
+          });
+
+          if (autoGenerateMessage) {
+            triggerSmartReplyAutoGeneration(
+              get,
+              set,
+              conversationId,
+              autoGenerateMessage,
+              {
+                schedulePoll: scheduleSmartReplyPollForConversation,
+                syncRuntimeTimers: syncSmartReplyRuntimeTimers,
+              },
+            );
+          }
+        }
+
         return transVoiceText;
       },
     };

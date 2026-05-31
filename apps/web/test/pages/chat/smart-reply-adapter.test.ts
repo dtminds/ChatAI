@@ -94,6 +94,88 @@ describe("smart-reply-adapter", () => {
     ).toEqual([]);
   });
 
+  it("only treats voice and image messages as eligible after usable content is ready", () => {
+    const baseMessage = {
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    expect(
+      isSmartReplyEligibleMessage({
+        ...baseMessage,
+        content: {
+          durationLabel: "0:05",
+          transVoiceText: "",
+          type: "voice",
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isSmartReplyEligibleMessage({
+        ...baseMessage,
+        content: {
+          durationLabel: "0:05",
+          transVoiceText: " 转写后的问题 ",
+          type: "voice",
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isSmartReplyEligibleMessage({
+        ...baseMessage,
+        content: {
+          alt: "",
+          imageUrl: "",
+          type: "image",
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isSmartReplyEligibleMessage({
+        ...baseMessage,
+        content: {
+          alt: "产品照片",
+          type: "image",
+        } as ChatMessage["content"],
+      }),
+    ).toBe(true);
+    expect(
+      isSmartReplyEligibleMessage({
+        ...baseMessage,
+        content: {
+          alt: "",
+          imageUrl: "https://example.com/product.png",
+          type: "image",
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("uses processed media text as the smart reply customer question", () => {
+    expect(
+      getSmartReplyCustomerQuestion({
+        content: {
+          durationLabel: "0:05",
+          transVoiceText: "转写后的问题",
+          type: "voice",
+        },
+        id: "msg-voice",
+        role: "customer",
+      } as ChatMessage),
+    ).toBe("转写后的问题");
+    expect(
+      getSmartReplyCustomerQuestion({
+        content: {
+          alt: "客户上传的产品照片",
+          imageUrl: "https://example.com/product.png",
+          type: "image",
+        },
+        id: "msg-image",
+        role: "customer",
+      } as ChatMessage),
+    ).toBe("客户上传的产品照片");
+  });
+
   it("creates triggered suggestions with media processing state", () => {
     const pendingSuggestion = createTriggeredSmartReplySuggestion({
       content: { imageUrl: "https://example.com/image.png", alt: "图片", type: "image" },
@@ -394,7 +476,7 @@ describe("smart-reply-adapter", () => {
         },
         undefined,
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldShowSmartReplyTriggerIcon(
         {

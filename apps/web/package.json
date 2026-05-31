@@ -26,6 +26,7 @@
     "@hugeicons/core-free-icons": "^4.1.0",
     "@hugeicons/react": "^1.0.0",
     "@lexical/react": "^0.44.0",
+    "@paddlejs-models/ocr": "^1.2.4",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",

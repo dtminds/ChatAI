@@ -1,16 +1,40 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import {
+  AiScanIcon,
+  Cancel01Icon,
+  Copy01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { ShinyText } from "@/components/ui/shiny-text";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
+  DialogPortal,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type { ImageMessageContent } from "@/pages/chat/chat-types";
 import {
   LoadableMessageImage,
   MessageMediaFallback,
 } from "@/pages/chat/components/message/media-fallback";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
+import {
+  recognizeImageText,
+  type ImageOcrPhase,
+  type ImageOcrResult,
+} from "@/pages/chat/lib/image-ocr";
 
 type ImageMessageCardProps = {
   content: ImageMessageContent;
@@ -31,6 +55,7 @@ export function ImageMessageCard({ content }: ImageMessageCardProps) {
     <ImagePreviewDialog
       alt={content.alt}
       imageUrl={imageUrl}
+      ocrEnabled={!isEmotion}
       triggerClassName="relative isolate inline-block overflow-hidden rounded-[8px] border border-border/40 bg-muted-foreground/10 p-0 outline-none transition-[border-color,filter] hover:brightness-[0.98] focus-visible:ring-4 focus-visible:ring-ring/25"
       triggerStyle={isEmotion ? emotionConstraintStyle : imageConstraintStyle}
     >
@@ -65,6 +90,7 @@ type ImagePreviewDialogProps = {
   alt: string;
   children: ReactNode;
   imageUrl: string;
+  ocrEnabled?: boolean;
   triggerClassName?: string;
   triggerStyle?: CSSProperties;
 };
@@ -73,10 +99,72 @@ export function ImagePreviewDialog({
   alt,
   children,
   imageUrl,
+  ocrEnabled = true,
   triggerClassName,
   triggerStyle,
 }: ImagePreviewDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [ocrStatus, setOcrStatus] = useState<"idle" | "loading" | "success" | "error">(
+    "idle",
+  );
+  const [ocrPhase, setOcrPhase] = useState<ImageOcrPhase>("loading-model");
+  const [activeOcrRegionId, setActiveOcrRegionId] = useState<string | null>(null);
+  const [previewImageSize, setPreviewImageSize] = useState<{
+    height: number;
+    width: number;
+  } | null>(null);
+  const [ocrResult, setOcrResult] = useState<ImageOcrResult | null>(null);
+  const [ocrError, setOcrError] = useState("");
+  const previewImageRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      return;
+    }
+
+    setOcrStatus("idle");
+    setOcrPhase("loading-model");
+    setActiveOcrRegionId(null);
+    setPreviewImageSize(null);
+    setOcrResult(null);
+    setOcrError("");
+  }, [isOpen]);
+
+  const handleRecognizeText = async () => {
+    if (ocrStatus === "loading") {
+      return;
+    }
+
+    setOcrStatus("loading");
+    setOcrPhase("loading-model");
+    setOcrError("");
+
+    try {
+      await waitForNextPaint();
+      const nextResult = await recognizeImageText({
+        alt,
+        imageUrl,
+        onPhaseChange: setOcrPhase,
+      });
+
+      setOcrResult(nextResult);
+      setOcrStatus("success");
+    } catch (error) {
+      setOcrResult(null);
+      setOcrStatus("error");
+      setOcrError(getOcrErrorMessage(error));
+    }
+  };
+
+  const isOcrPanelOpen = ocrStatus === "loading" || ocrStatus === "success" || ocrStatus === "error";
+  const handlePreviewImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
+    const image = event.currentTarget;
+
+    setPreviewImageSize({
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    });
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -88,29 +176,342 @@ export function ImagePreviewDialog({
       >
         {children}
       </DialogTrigger>
+      <DialogPortal>
+        {isOpen ? (
+          <DialogClose asChild>
+            <Button
+              aria-label="关闭图片预览"
+              className="fixed right-4 top-4 z-[60] bg-black/35 text-white opacity-100 shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-black/55 hover:text-white"
+              data-testid="image-preview-close"
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={2} />
+            </Button>
+          </DialogClose>
+        ) : null}
+      </DialogPortal>
       <DialogContent
         aria-describedby={undefined}
-        className="max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)] border-0 bg-transparent p-0 shadow-none sm:max-w-[calc(100vw-2rem)]"
+        className="top-[calc(50%+1.5rem)] max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] border-0 bg-transparent p-0 shadow-none sm:max-w-[calc(100vw-2rem)] [&>button:last-child]:hidden"
       >
         <DialogTitle className="sr-only">图片预览</DialogTitle>
-        <button
-          aria-label="关闭图片预览"
-          className="flex max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)] items-center justify-center"
+        <div
+          className="relative flex max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] items-center justify-center"
           data-testid="image-preview-backdrop"
           onClick={() => setIsOpen(false)}
-          type="button"
         >
-          <img
-            alt={alt}
-            className="max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)]"
-            data-testid="image-preview-full"
+          <div
+            className="flex max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] items-stretch gap-3"
+            data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
+            data-testid="image-preview-layout"
             onClick={(event) => event.stopPropagation()}
-            src={imageUrl}
-          />
-        </button>
+          >
+            <div className="relative flex min-w-0 items-center justify-center">
+              <div className="relative">
+                <img
+                  alt={alt}
+                  className="max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)] data-[ocr-panel=open]:max-w-[calc(100vw-25rem)]"
+                  crossOrigin="anonymous"
+                  data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
+                  data-testid="image-preview-full"
+                  onLoad={handlePreviewImageLoad}
+                  ref={previewImageRef}
+                  src={imageUrl}
+                />
+                {ocrResult && previewImageSize ? (
+                  <ImageOcrOverlay
+                    activeRegionId={activeOcrRegionId}
+                    imageSize={previewImageSize}
+                    regions={ocrResult.regions}
+                    setActiveRegionId={setActiveOcrRegionId}
+                  />
+                ) : null}
+                {ocrEnabled && (ocrStatus === "idle" || ocrStatus === "error") ? (
+                  <Button
+                    className="absolute bottom-4 right-4 bg-background/92 text-foreground shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-background"
+                    onClick={() => void handleRecognizeText()}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    <HugeiconsIcon
+                      icon={AiScanIcon}
+                      size={16}
+                      strokeWidth={2}
+                    />
+                    识别图中文字
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            {isOcrPanelOpen ? (
+              <ImageOcrPanel
+                activeRegionId={activeOcrRegionId}
+                error={ocrError}
+                loadingPhase={ocrStatus === "loading" ? ocrPhase : null}
+                result={ocrResult}
+                setActiveRegionId={setActiveOcrRegionId}
+              />
+            ) : null}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
+}
+
+function ImageOcrPanel({
+  activeRegionId,
+  error,
+  loadingPhase,
+  result,
+  setActiveRegionId,
+}: {
+  activeRegionId: string | null;
+  error: string;
+  loadingPhase: ImageOcrPhase | null;
+  result: ImageOcrResult | null;
+  setActiveRegionId: (regionId: string | null) => void;
+}) {
+  const recognizedText = result?.text.trim() ?? "";
+  const regions = result?.regions ?? [];
+  const isLoading = loadingPhase !== null;
+  const panelTitle = getOcrPanelTitle({ error, loadingPhase, result });
+
+  const copyText = async (text: string, successMessage: string) => {
+    if (!text) {
+      toast.warning("复制失败，请稍后重试");
+      return;
+    }
+
+    const copied = await copyTextToClipboard(text);
+
+    if (copied) {
+      toast.success(successMessage);
+      return;
+    }
+
+    toast.warning("复制失败，请稍后重试");
+  };
+
+  return (
+    <aside
+      className="flex h-[calc(100vh-5rem)] w-[22rem] shrink-0 flex-col rounded-[8px] border border-white/12 bg-neutral-950/88 text-white shadow-[0_18px_60px_var(--shadow-strong)] backdrop-blur-md"
+      data-testid="image-preview-ocr-panel"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+        <h2 className="text-sm font-semibold text-white">
+          {isLoading ? (
+            <ShinyText className="text-white/82" duration={1.15} shimmerWidth={48}>
+              {panelTitle}
+            </ShinyText>
+          ) : (
+            panelTitle
+          )}
+        </h2>
+        {!isLoading && recognizedText ? (
+          <Button
+            aria-label="复制全部识别文字"
+            className="size-8 border-white/12 bg-white/8 p-0 text-white hover:bg-white/14 hover:text-white"
+            onClick={() => void copyText(recognizedText, "已复制识别文字")}
+            size="icon"
+            type="button"
+            variant="outline"
+          >
+            <HugeiconsIcon icon={Copy01Icon} size={14} strokeWidth={2} />
+          </Button>
+        ) : null}
+      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="space-y-2.5 p-4">
+          {!isLoading && error ? (
+            <div className="rounded-[8px] border border-red-300/35 bg-red-500/14 px-3 py-3 text-sm text-red-100">
+              {error}
+            </div>
+          ) : null}
+          {!isLoading && !error && result && regions.length === 0 ? (
+            <div className="rounded-[8px] border border-white/10 bg-white/6 px-3 py-3 text-sm text-white/70">
+              未识别到图片文字
+            </div>
+          ) : null}
+          {regions.map((region, index) => (
+            <div
+              className="group/ocr-result relative rounded-[8px] border border-white/10 bg-white/7 px-3 py-4 text-sm text-white/90 transition-colors hover:border-white/24 hover:bg-white/10 data-[active=true]:border-white/34 data-[active=true]:bg-white/13"
+              data-active={activeRegionId === region.id}
+              key={region.id}
+              onMouseEnter={() => setActiveRegionId(region.id)}
+              onMouseLeave={() => setActiveRegionId(null)}
+            >
+              <span className="absolute left-0 top-0 flex min-w-5 items-center justify-center rounded-br-[8px] rounded-tl-[8px] bg-white/13 px-1.5 py-1 text-[11px] font-medium leading-none text-white/72 ring-1 ring-inset ring-white/10">
+                {index + 1}
+              </span>
+              <Button
+                aria-label={`复制第 ${index + 1} 条识别文字`}
+                className="absolute bottom-0 right-0 size-7 rounded-none rounded-br-[8px] rounded-tl-[8px] bg-neutral-950/76 p-0 text-white opacity-0 shadow-sm backdrop-blur transition-opacity hover:bg-neutral-900 hover:text-white focus-visible:opacity-100 group-hover/ocr-result:opacity-100"
+                onClick={() => void copyText(region.text, "已复制单条文字")}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={Copy01Icon} size={13} strokeWidth={2} />
+              </Button>
+              <p className="whitespace-pre-wrap break-words leading-6">{region.text}</p>
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
+    </aside>
+  );
+}
+
+function getOcrPanelTitle({
+  error,
+  loadingPhase,
+  result,
+}: {
+  error: string;
+  loadingPhase: ImageOcrPhase | null;
+  result: ImageOcrResult | null;
+}) {
+  if (loadingPhase === "loading-model") {
+    return "正在加载 OCR 模型";
+  }
+
+  if (loadingPhase === "recognizing") {
+    return "正在识别图片文字";
+  }
+
+  if (error) {
+    return "识别失败";
+  }
+
+  if (result) {
+    return "识别结果";
+  }
+
+  return "识别图中文字";
+}
+
+function waitForNextPaint() {
+  return new Promise<void>((resolve) => {
+    if (typeof window.requestAnimationFrame !== "function") {
+      window.setTimeout(resolve, 0);
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+async function copyTextToClipboard(text: string) {
+  if (!window.isSecureContext && copyTextWithSelection(text)) {
+    return true;
+  }
+
+  const clipboard = navigator.clipboard;
+
+  if (clipboard) {
+    try {
+      await clipboard.writeText(text);
+      return true;
+    } catch {
+      return copyTextWithSelection(text);
+    }
+  }
+
+  return copyTextWithSelection(text);
+}
+
+function copyTextWithSelection(text: string) {
+  if (typeof document.execCommand !== "function") {
+    return false;
+  }
+
+  const textArea = document.createElement("textarea");
+  const selection = document.getSelection();
+  const selectedRange = selection && selection.rangeCount > 0
+    ? selection.getRangeAt(0)
+    : null;
+
+  textArea.value = text;
+  textArea.setAttribute("readonly", "");
+  textArea.style.left = "-9999px";
+  textArea.style.position = "fixed";
+  textArea.style.top = "0";
+  document.body.appendChild(textArea);
+  textArea.select();
+  textArea.setSelectionRange(0, textArea.value.length);
+
+  try {
+    return document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textArea);
+
+    if (selection && selectedRange) {
+      selection.removeAllRanges();
+      selection.addRange(selectedRange);
+    }
+  }
+}
+
+function ImageOcrOverlay({
+  activeRegionId,
+  imageSize,
+  regions,
+  setActiveRegionId,
+}: {
+  activeRegionId: string | null;
+  imageSize: {
+    height: number;
+    width: number;
+  };
+  regions: ImageOcrResult["regions"];
+  setActiveRegionId: (regionId: string | null) => void;
+}) {
+  const drawableRegions = regions.filter((region) => region.points.length >= 3);
+
+  if (
+    drawableRegions.length === 0 ||
+    imageSize.width <= 0 ||
+    imageSize.height <= 0
+  ) {
+    return null;
+  }
+
+  return (
+    <svg
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 size-full rounded-[8px]"
+      data-testid="image-preview-ocr-overlay"
+      preserveAspectRatio="none"
+      viewBox={`0 0 ${imageSize.width} ${imageSize.height}`}
+    >
+      {drawableRegions.map((region) => (
+        <polygon
+          className="pointer-events-auto cursor-pointer fill-black/5 stroke-white/78 transition-colors [paint-order:stroke] [stroke-dasharray:8_6] [vector-effect:non-scaling-stroke] hover:fill-amber-300/18 hover:stroke-amber-200 data-[active=true]:fill-amber-300/28 data-[active=true]:stroke-amber-200 data-[active=true]:[stroke-dasharray:0]"
+          data-active={activeRegionId === region.id}
+          data-testid="image-preview-ocr-region"
+          key={region.id}
+          onMouseEnter={() => setActiveRegionId(region.id)}
+          onMouseLeave={() => setActiveRegionId(null)}
+          points={region.points.map(([x, y]) => `${x},${y}`).join(" ")}
+          strokeWidth={activeRegionId === region.id ? 3 : 1.5}
+        />
+      ))}
+    </svg>
+  );
+}
+
+function getOcrErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return "文字识别失败，请稍后重试";
 }
 
 const imageConstraintStyle = {

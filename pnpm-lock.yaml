@@ -114,6 +114,9 @@ importers:
       '@lexical/react':
         specifier: ^0.44.0
         version: 0.44.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(yjs@13.6.30)
+      '@paddlejs-models/ocr':
+        specifier: ^1.2.4
+        version: 1.2.4
       '@radix-ui/react-accordion':
         specifier: ^1.2.12
         version: 1.2.12(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -837,6 +840,18 @@ packages:
   '@lukeed/ms@2.0.2':
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
     engines: {node: '>=8'}
+
+  '@paddlejs-mediapipe/opencv@0.0.4':
+    resolution: {integrity: sha512-bfwixZPKGFh7JcAtLToTBmBiu/nyQjVrm0gf/pn92apHJQEYyhnAFGvgDubmqQbijmtP2/fbOMR4CuSSlq2g8w==}
+
+  '@paddlejs-models/ocr@1.2.4':
+    resolution: {integrity: sha512-mdvaWXQaCmLULEvCxcsUzHtDgmoDVzJX2LsqyMmJxSzfhgrtnscF1eLiLbaouDwg6n08koXP0BCzeB+0oAv/AQ==}
+
+  '@paddlejs/paddlejs-backend-webgl@1.2.9':
+    resolution: {integrity: sha512-cVDa0/Wbw2EyfsYqdYUPhFeqKsET79keEUWjyhYQmQkJfWg8j1qdR6yp7g6nx9qAGrqFvwuj1s0EqkYA1dok6A==}
+
+  '@paddlejs/paddlejs-core@2.2.0':
+    resolution: {integrity: sha512-P3rPkF9fFHtq8uSte5gA7fJQwBNl9Ytsvj6aTcfQSsirnBO/HxMNu0gJyh7+lItvEtF92PR15eI0eOwJYfZDhQ==}
 
   '@phc/format@1.0.0':
     resolution: {integrity: sha512-m7X9U6BG2+J+R1lSOdCiITLLrxm+cWlNI3HUFA92oLO77ObGNzaKdh8pMLqdZcshtkKuV84olNNXDfMc4FezBQ==}
@@ -3926,6 +3941,18 @@ snapshots:
       yjs: 13.6.30
 
   '@lukeed/ms@2.0.2': {}
+
+  '@paddlejs-mediapipe/opencv@0.0.4': {}
+
+  '@paddlejs-models/ocr@1.2.4':
+    dependencies:
+      '@paddlejs-mediapipe/opencv': 0.0.4
+      '@paddlejs/paddlejs-backend-webgl': 1.2.9
+      '@paddlejs/paddlejs-core': 2.2.0
+
+  '@paddlejs/paddlejs-backend-webgl@1.2.9': {}
+
+  '@paddlejs/paddlejs-core@2.2.0': {}
 
   '@phc/format@1.0.0': {}
 

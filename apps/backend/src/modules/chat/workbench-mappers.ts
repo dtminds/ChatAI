@@ -138,9 +138,10 @@ export function mapConversationRow(
     mode === "group" && groupRemark && groupName && groupRemark !== groupName
       ? groupName
       : undefined;
+  const contactOriginalNameTrimmed = row.contact_original_name?.trim();
   const contactOriginalName =
-    mode !== "group" && row.contact_original_name?.trim() && customerName !== row.contact_original_name.trim()
-      ? row.contact_original_name.trim()
+    mode !== "group" && contactOriginalNameTrimmed && customerName !== contactOriginalNameTrimmed
+      ? contactOriginalNameTrimmed
       : undefined;
   const customerAvatar =
     mode === "group" ? row.group_avatar ?? "" : row.customer_avatar ?? "";

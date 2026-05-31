@@ -118,6 +118,8 @@ export function VoiceMessageCard({
     transcriptionState === "loading" ||
     Boolean(transVoiceText) ||
     Boolean(transcriptionErrorMessage);
+  const shouldShowTranscriptionLoading =
+    !transVoiceText && transcriptionState === "loading";
 
   const handleTranscribeClick = async () => {
     if (!onTranscribe || transcriptionState === "loading") {
@@ -643,15 +645,17 @@ export function VoiceMessageCard({
       </div>
       {shouldShowTranscriptionPanel ? (
         <div
-          aria-label={transcriptionState === "loading" ? "语音转文字中" : undefined}
+          aria-label={shouldShowTranscriptionLoading ? "语音转文字中" : undefined}
           className={cn(
             "min-h-9 max-w-[min(480px,100%)] whitespace-pre-wrap break-words rounded-[10px] bg-surface-muted px-3 py-2 text-[13px] leading-5 text-foreground",
-            transcriptionState === "loading" && "inline-flex min-w-16 items-center justify-center",
-            transcriptionState === "error" && "text-destructive",
+            shouldShowTranscriptionLoading && "inline-flex min-w-16 items-center justify-center",
+            !transVoiceText && transcriptionState === "error" && "text-destructive",
           )}
-          role={transcriptionState === "loading" ? "status" : undefined}
+          role={shouldShowTranscriptionLoading ? "status" : undefined}
         >
-          {transcriptionState === "loading" ? (
+          {transVoiceText ? (
+            transVoiceText
+          ) : shouldShowTranscriptionLoading ? (
             <HugeiconsIcon
               aria-hidden="true"
               className="animate-spin text-muted-foreground"
@@ -659,10 +663,8 @@ export function VoiceMessageCard({
               size={16}
               strokeWidth={2}
             />
-          ) : transcriptionState === "error" ? (
-            transcriptionErrorMessage
           ) : (
-            transVoiceText
+            transcriptionErrorMessage
           )}
         </div>
       ) : null}

@@ -415,7 +415,7 @@ function ImageOcrPanel({
           ) : null}
           {regions.map((region, index) => (
             <div
-              className="group/ocr-result relative rounded-[8px] border border-white/10 bg-white/7 px-3 py-4 text-sm text-white/90 transition-colors hover:border-white/24 hover:bg-white/10 data-[active=true]:border-white/34 data-[active=true]:bg-white/13"
+              className="group/ocr-result relative rounded-[8px] border border-white/10 bg-white/7 px-3 py-4 text-sm text-white/90 transition-colors hover:border-amber-200/55 hover:bg-amber-300/10 data-[active=true]:border-amber-200/80 data-[active=true]:bg-amber-300/16 data-[active=true]:text-white"
               data-active={activeRegionId === region.id}
               key={region.id}
               onMouseEnter={() => setActiveRegionId(region.id)}

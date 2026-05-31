@@ -73,38 +73,42 @@ export function useSmartReplyState({
 }: UseSmartReplyStateOptions) {
   const activeConversationId = activeConversation?.id;
   const activeConversationMode = activeConversation?.mode;
-  const latestConversationIdRef = useRef(activeConversationId);
-  latestConversationIdRef.current = activeConversationId;
+  const activeSendTokenRef = useRef<symbol | null>(null);
+  const prevConversationIdRef = useRef(activeConversationId);
+
+  if (prevConversationIdRef.current !== activeConversationId) {
+    prevConversationIdRef.current = activeConversationId;
+    isSendingDraftRef.current = false;
+    activeSendTokenRef.current = null;
+  }
 
   useEffect(() => {
-    isSendingDraftRef.current = false;
     onSendingChange(false);
-  }, [activeConversationId, isSendingDraftRef, onSendingChange]);
+  }, [activeConversationId, onSendingChange]);
+
+  const suggestions = activeConversationId
+    ? smartReplyByMessageIdByConversationId[activeConversationId]
+    : undefined;
+  const hidden = activeConversationId
+    ? smartReplyHiddenMessageKeysByConversationId[activeConversationId]
+    : undefined;
 
   const activeSmartReplyByMessageId = useMemo(() => {
-    if (!activeConversationId || activeConversationMode !== "single") {
+    if (!activeConversationId || activeConversationMode !== "single" || !suggestions) {
       return {};
     }
 
-    const suggestions =
-      smartReplyByMessageIdByConversationId[activeConversationId] ?? {};
-    const hidden =
-      smartReplyHiddenMessageKeysByConversationId[activeConversationId] ?? {};
+    const activeHidden = hidden ?? {};
 
     return Object.fromEntries(
-      Object.entries(suggestions).filter(([lookupKey]) => !hidden[lookupKey]),
+      Object.entries(suggestions).filter(
+        ([lookupKey]) => !activeHidden[lookupKey],
+      ),
     );
-  }, [
-    activeConversationId,
-    activeConversationMode,
-    smartReplyByMessageIdByConversationId,
-    smartReplyHiddenMessageKeysByConversationId,
-  ]);
+  }, [activeConversationId, activeConversationMode, suggestions, hidden]);
 
   const handleSendSmartReply = useCallback(
     async (message: ChatMessage, payload: SmartReplySendPayload) => {
-      const sendConversationId = activeConversationId;
-
       if (!canSendMessage) {
         return undefined;
       }
@@ -113,14 +117,15 @@ export function useSmartReplyState({
         return undefined;
       }
 
+      const token = Symbol();
+      activeSendTokenRef.current = token;
       isSendingDraftRef.current = true;
       onSendingChange(true);
 
       try {
         const result = await sendSmartReply(message, payload);
-        const latestConversationId = latestConversationIdRef.current;
 
-        if (!isMountedRef.current || latestConversationId !== sendConversationId) {
+        if (!isMountedRef.current || activeSendTokenRef.current !== token) {
           return result;
         }
 
@@ -136,7 +141,8 @@ export function useSmartReplyState({
 
         return result;
       } finally {
-        if (latestConversationIdRef.current === sendConversationId) {
+        if (activeSendTokenRef.current === token) {
+          activeSendTokenRef.current = null;
           isSendingDraftRef.current = false;
           if (isMountedRef.current) {
             onSendingChange(false);
@@ -145,7 +151,6 @@ export function useSmartReplyState({
       }
     },
     [
-      activeConversationId,
       canSendMessage,
       isMountedRef,
       isSendingDraftRef,

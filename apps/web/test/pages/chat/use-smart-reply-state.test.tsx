@@ -289,26 +289,35 @@ describe("useSmartReplyState", () => {
     expect(onSendingChange).toHaveBeenLastCalledWith(false);
   });
 
-  it("does not clear a newer send when an older conversation send settles", async () => {
-    const sendGate = createDeferred<{
+  it("does not clear a newer send after switching away and back", async () => {
+    const olderSendGate = createDeferred<{
+      didConsumeQuote?: boolean;
+      ok: true;
+    }>();
+    const newerSendGate = createDeferred<{
       didConsumeQuote?: boolean;
       ok: true;
     }>();
     const isSendingDraftRef = { current: false };
+    const onSent = vi.fn();
     const onSendingChange = vi.fn();
-    const sendSmartReply = vi.fn(() => sendGate.promise);
+    const sendSmartReply = vi
+      .fn()
+      .mockReturnValueOnce(olderSendGate.promise)
+      .mockReturnValueOnce(newerSendGate.promise);
     const { result, rerender } = renderHook(
       (options: SmartReplyStateOptions) => useSmartReplyState(options),
       {
         initialProps: createDefaultHookOptions({
           isSendingDraftRef,
+          onSent,
           onSendingChange,
           sendSmartReply,
         }),
       },
     );
 
-    const sendPromise = result.current.handleSendSmartReply(
+    const olderSendPromise = result.current.handleSendSmartReply(
       customerMessage,
       createSendPayload(),
     );
@@ -320,23 +329,45 @@ describe("useSmartReplyState", () => {
           id: "conv-002",
         },
         isSendingDraftRef,
+        onSent,
         onSendingChange,
         sendSmartReply,
       }),
     );
-    isSendingDraftRef.current = true;
+
+    rerender(
+      createDefaultHookOptions({
+        isSendingDraftRef,
+        onSent,
+        onSendingChange,
+        sendSmartReply,
+      }),
+    );
+
+    onSendingChange.mockClear();
+
+    const newerSendPromise = result.current.handleSendSmartReply(
+      customerMessage,
+      createSendPayload("新的推荐话术"),
+    );
 
     await act(async () => {
-      sendGate.resolve({ ok: true });
-      await sendPromise;
+      olderSendGate.resolve({ ok: true });
+      await olderSendPromise;
     });
 
     expect(isSendingDraftRef.current).toBe(true);
-    expect(getBooleanMockCalls(onSendingChange)).toEqual([
-      false,
-      true,
-      false,
-    ]);
+    expect(onSent).not.toHaveBeenCalled();
+    expect(getBooleanMockCalls(onSendingChange)).toEqual([true]);
+
+    await act(async () => {
+      newerSendGate.resolve({ ok: true });
+      await newerSendPromise;
+    });
+
+    expect(isSendingDraftRef.current).toBe(false);
+    expect(onSent).toHaveBeenCalledTimes(1);
+    expect(getBooleanMockCalls(onSendingChange)).toEqual([true, false]);
   });
 
   it("forwards trigger, dismiss, and make-shorter handlers", () => {

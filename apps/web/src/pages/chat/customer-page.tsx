@@ -723,7 +723,7 @@ function SeatConversationAvatar({
     <Avatar className="size-7 rounded-full border border-surface">
       {avatarUrl ? <AvatarImage alt={`${displayName}头像`} src={avatarUrl} /> : null}
       <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">
-        {getFirstGrapheme(displayName, "托")}
+        <HugeiconsIcon color="currentColor" icon={Male02Icon} size={14} />
       </AvatarFallback>
     </Avatar>
   );
@@ -929,7 +929,7 @@ function SeatRelationAvatar({
     >
       {avatarUrl ? <AvatarImage alt={`${seatName}头像`} src={avatarUrl} /> : null}
       <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">
-        {getFirstGrapheme(seatName, "席")}
+        <HugeiconsIcon color="currentColor" icon={Male02Icon} size={16} />
       </AvatarFallback>
     </Avatar>
   );
@@ -949,10 +949,6 @@ function canStartSeatChat(account: Account | undefined, currentEmployeeId: strin
 
 function uniqueStrings(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
-
-function getFirstGrapheme(value: string, fallback: string) {
-  return [...value.trim()][0] || fallback;
 }
 
 function LoadingState() {
@@ -989,11 +985,12 @@ function StatusRow({
 }
 
 function getCustomerDisplayName(customer: WorkbenchCustomerSummaryDto) {
-  const name = customer.name.trim() || "未知客户";
-  const realName = customer.realName.trim();
+  const rawName = customer.name ?? "";
+  const name = rawName.trim() || "未知客户";
+  const realName = (customer.realName ?? "").trim();
 
-  if (customer.name && realName && customer.name !== realName) {
-    return `${customer.name}（${realName}）`;
+  if (name !== "未知客户" && realName && name !== realName) {
+    return `${name}（${realName}）`;
   }
 
   return name;

@@ -549,7 +549,7 @@ function SearchContactResultItem({
 }
 
 function formatContactDisplayName(item: WorkbenchSearchContactResultDto) {
-  const name = item.name || item.realName || "未知用户";
+  const name = item.name?.trim() || "未知客户";
   const remark = item.remark?.trim();
 
   if (remark && remark !== name) {

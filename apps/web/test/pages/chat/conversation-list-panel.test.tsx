@@ -430,4 +430,31 @@ describe("ConversationListPanel", () => {
     expect(within(searchbox).getByRole("button", { name: /^李帅$/ })).toBeInTheDocument();
     expect(within(searchbox).queryByText("王帅（王帅）")).not.toBeInTheDocument();
   });
+
+  it("does not fall back to real name when search contact name is empty", async () => {
+    const contact = {
+      ...makeContact(1, ""),
+      realName: "客户实名",
+    };
+    storeState = {
+      ...defaultStoreState,
+      searchKeyword: "客户",
+      isSearchLoading: false,
+      searchResults: { contacts: [contact], groups: [] },
+    };
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={conversations.filter((item) => item.mode === "single")}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    const searchbox = await screen.findByRole("dialog", { name: "搜索结果" });
+    expect(within(searchbox).getByRole("button", { name: /^未知客户$/ })).toBeInTheDocument();
+    expect(within(searchbox).queryByText("客户实名")).not.toBeInTheDocument();
+  });
 });

@@ -599,6 +599,39 @@ describe("CustomerPage", () => {
     expect(screen.queryByText("external-random-id")).not.toBeInTheDocument();
   });
 
+  it("treats nullish customer names as unknown customer", async () => {
+    const user = userEvent.setup();
+    const service = createCustomerPageService();
+    vi.mocked(service.getCustomers).mockResolvedValueOnce({
+      hasMore: false,
+      items: [
+        {
+          avatar: "",
+          bizStatus: 1,
+          customerKey: "9001:5:external-null-name",
+          gender: null,
+          name: null,
+          platform: 5,
+          realName: "客户实名",
+          relationCount: 0,
+          seatRelations: [],
+          thirdExternalUserId: "external-null-name",
+          uid: 9001,
+        } as never,
+      ],
+      total: 1,
+    });
+    setWorkbenchService(service);
+
+    renderRoute("/chat/customers");
+
+    await screen.findByRole("heading", { name: "客户" });
+    await user.click(screen.getByRole("tab", { name: "全部客户" }));
+
+    expect(await screen.findByText("未知客户")).toBeInTheDocument();
+    expect(screen.queryByText("客户实名")).not.toBeInTheDocument();
+  });
+
   it("hides the seat filter when all customers is selected", async () => {
     const user = userEvent.setup();
     const service = createCustomerPageService();

@@ -63,6 +63,7 @@ export function VoiceMessageCard({
   const playbackReadyNotifiedUrlRef = useRef<string | undefined>(undefined);
   const audioPlaybackUrlRef = useRef<string | null>(null);
   const previousAudioUrlRef = useRef(content.audioUrl);
+  const transcriptionRequestIdRef = useRef(0);
   const audioListenerHandlersRef = useRef<AudioListenerHandlers>({
     error: () => undefined,
     ended: () => undefined,
@@ -126,13 +127,20 @@ export function VoiceMessageCard({
       return;
     }
 
+    const requestId = transcriptionRequestIdRef.current + 1;
+    transcriptionRequestIdRef.current = requestId;
+    const requestAudioUrl = content.audioUrl;
     setTranscriptionErrorMessage(null);
     setTranscriptionState("loading");
 
     try {
       const nextTransVoiceText = await onTranscribe();
 
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current ||
+        transcriptionRequestIdRef.current !== requestId ||
+        content.audioUrl !== requestAudioUrl
+      ) {
         return;
       }
 
@@ -146,7 +154,11 @@ export function VoiceMessageCard({
       setTranscriptionErrorMessage(null);
       setTranscriptionState("idle");
     } catch (error) {
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current ||
+        transcriptionRequestIdRef.current !== requestId ||
+        content.audioUrl !== requestAudioUrl
+      ) {
         return;
       }
 
@@ -394,6 +406,10 @@ export function VoiceMessageCard({
     }
 
     previousAudioUrlRef.current = content.audioUrl;
+    transcriptionRequestIdRef.current += 1;
+    setLocalTransVoiceText("");
+    setTranscriptionErrorMessage(null);
+    setTranscriptionState("idle");
     playbackReadyNotifiedUrlRef.current = undefined;
     stopPlaybackRef.current();
     setDuration(0);

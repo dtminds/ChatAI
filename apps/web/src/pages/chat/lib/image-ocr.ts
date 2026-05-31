@@ -99,9 +99,11 @@ function loadPaddleOcrScript() {
           return;
         }
 
+        existingScript.remove();
         reject(new Error("Paddle.js OCR 加载失败"));
       }, { once: true });
       existingScript.addEventListener("error", () => {
+        existingScript.remove();
         reject(new Error("Paddle.js OCR 加载失败"));
       }, { once: true });
       return;
@@ -120,9 +122,11 @@ function loadPaddleOcrScript() {
         return;
       }
 
+      script.remove();
       reject(new Error("Paddle.js OCR 加载失败"));
     };
     script.onerror = () => {
+      script.remove();
       reject(new Error("Paddle.js OCR 加载失败"));
     };
     document.head.appendChild(script);

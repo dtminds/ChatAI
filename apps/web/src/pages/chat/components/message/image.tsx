@@ -116,7 +116,17 @@ export function ImagePreviewDialog({
   const [ocrResult, setOcrResult] = useState<ImageOcrResult | null>(null);
   const [ocrError, setOcrError] = useState("");
   const ocrRequestIdRef = useRef(0);
+  const isMountedRef = useRef(false);
   const previewImageRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      ocrRequestIdRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -146,20 +156,29 @@ export function ImagePreviewDialog({
 
     try {
       await waitForNextPaint();
+
+      if (!isMountedRef.current || ocrRequestIdRef.current !== requestId) {
+        return;
+      }
+
       const nextResult = await recognizeImageText({
         alt,
         imageUrl,
-        onPhaseChange: setOcrPhase,
+        onPhaseChange: (phase) => {
+          if (isMountedRef.current && ocrRequestIdRef.current === requestId) {
+            setOcrPhase(phase);
+          }
+        },
       });
 
-      if (ocrRequestIdRef.current !== requestId) {
+      if (!isMountedRef.current || ocrRequestIdRef.current !== requestId) {
         return;
       }
 
       setOcrResult(nextResult);
       setOcrStatus("success");
     } catch (error) {
-      if (ocrRequestIdRef.current !== requestId) {
+      if (!isMountedRef.current || ocrRequestIdRef.current !== requestId) {
         return;
       }
 
@@ -305,6 +324,15 @@ function ImageOcrPanel({
   const regions = result?.regions ?? [];
   const isLoading = loadingPhase !== null;
   const panelTitle = getOcrPanelTitle({ error, loadingPhase, result });
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const copyText = async (text: string, successMessage: string) => {
     if (!text) {
@@ -313,6 +341,10 @@ function ImageOcrPanel({
     }
 
     const copied = await copyTextToClipboard(text);
+
+    if (!isMountedRef.current) {
+      return;
+    }
 
     if (copied) {
       toast.success(successMessage);

@@ -1,9 +1,23 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
 import type { ChatMessage, ImageMessageContent } from "@/pages/chat/chat-types";
 import { ImageMessageCard, MessageContentRenderer } from "@/pages/chat/components/message";
 import { recognizeImageText } from "@/pages/chat/lib/image-ocr";
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      success: vi.fn(),
+      warning: vi.fn(),
+    },
+  };
+});
 
 vi.mock("@/pages/chat/lib/image-ocr", () => ({
   recognizeImageText: vi.fn(),
@@ -649,6 +663,96 @@ describe("MessageContentRenderer image messages", () => {
 
     expect(screen.queryByText("旧请求结果")).not.toBeInTheDocument();
     expect(screen.queryByTestId("image-preview-ocr-panel")).not.toBeInTheDocument();
+  });
+
+  it("does not apply OCR phase changes after the preview component unmounts", async () => {
+    const user = userEvent.setup();
+    let changePhase: Parameters<typeof recognizeImageText>[0]["onPhaseChange"] | undefined;
+    vi.mocked(recognizeImageText).mockImplementation(
+      ({ onPhaseChange }) =>
+        new Promise(() => {
+          changePhase = onPhaseChange;
+        }),
+    );
+
+    const { unmount } = render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "卸载中识别图片",
+          height: 292,
+          imageUrl: "https://cdn.example.com/chat/text-photo.jpg",
+          width: 668,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：卸载中识别图片" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
+
+    await vi.waitFor(() => {
+      expect(recognizeImageText).toHaveBeenCalled();
+    });
+
+    unmount();
+
+    expect(() => changePhase?.("recognizing")).not.toThrow();
+  });
+
+  it("does not show copy toast after the OCR panel unmounts", async () => {
+    const user = userEvent.setup();
+    let resolveClipboard: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveClipboard = resolve;
+        }),
+    );
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: true,
+    });
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.warning).mockClear();
+    vi.mocked(recognizeImageText).mockResolvedValue({
+      text: "延迟复制文本",
+      regions: [
+        {
+          id: "ocr-region-1",
+          points: [],
+          text: "延迟复制文本",
+        },
+      ],
+    });
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "复制后关闭图片",
+          height: 292,
+          imageUrl: "https://cdn.example.com/chat/text-photo.jpg",
+          width: 668,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：复制后关闭图片" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
+    await screen.findByText("延迟复制文本");
+    await user.click(screen.getByRole("button", { name: "复制全部识别文字" }));
+    await user.click(screen.getByTestId("image-preview-backdrop"));
+
+    expect(screen.queryByTestId("image-preview-ocr-panel")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveClipboard?.();
+    });
+
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 
   it("shows a retryable error state when OCR fails", async () => {

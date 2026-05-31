@@ -109,4 +109,73 @@ describe("recognizeImageText", () => {
     });
     expect(nextResult.text).toBe("第二张");
   });
+
+  it("removes failed Paddle.js OCR script elements so retries can load a fresh script", async () => {
+    vi.resetModules();
+    Object.defineProperty(window, "paddlejs", {
+      configurable: true,
+      value: undefined,
+    });
+    vi.stubGlobal("Image", class extends ImageMock {
+      constructor() {
+        super();
+        createdImages.push(this);
+      }
+    });
+    const { recognizeImageText: recognizeFreshImageText } = await import(
+      "@/pages/chat/lib/image-ocr"
+    );
+    const firstRecognition = recognizeFreshImageText({
+      alt: "首次失败图片",
+      imageUrl: "https://cdn.example.com/first.jpg",
+    });
+    const failedScript = document.querySelector<HTMLScriptElement>(
+      "script[data-paddlejs-ocr]",
+    );
+
+    expect(failedScript).toBeInTheDocument();
+
+    failedScript?.dispatchEvent(new Event("error"));
+
+    await expect(firstRecognition).rejects.toThrow("Paddle.js OCR 加载失败");
+    expect(
+      document.querySelector("script[data-paddlejs-ocr]"),
+    ).not.toBeInTheDocument();
+
+    const secondRecognition = recognizeFreshImageText({
+      alt: "重试图片",
+      imageUrl: "https://cdn.example.com/retry.jpg",
+    });
+    const retryScript = document.querySelector<HTMLScriptElement>(
+      "script[data-paddlejs-ocr]",
+    );
+
+    expect(retryScript).toBeInTheDocument();
+    expect(retryScript).not.toBe(failedScript);
+
+    Object.defineProperty(window, "paddlejs", {
+      configurable: true,
+      value: {
+        ocr: {
+          init,
+          recognize: vi.fn(async () => ({
+            points: [],
+            text: ["重试成功"],
+          })),
+        },
+      },
+    });
+    retryScript?.dispatchEvent(new Event("load"));
+
+    await expect(secondRecognition).resolves.toEqual({
+      regions: [
+        {
+          id: "ocr-region-1",
+          points: [],
+          text: "重试成功",
+        },
+      ],
+      text: "重试成功",
+    });
+  });
 });

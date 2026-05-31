@@ -178,4 +178,68 @@ describe("recognizeImageText", () => {
       text: "重试成功",
     });
   });
+
+  it("cleans up paired listeners when an existing Paddle.js OCR script finishes loading", async () => {
+    vi.resetModules();
+    Object.defineProperty(window, "paddlejs", {
+      configurable: true,
+      value: undefined,
+    });
+    const existingScript = document.createElement("script");
+    const addEventListenerSpy = vi.spyOn(existingScript, "addEventListener");
+    const removeEventListenerSpy = vi.spyOn(existingScript, "removeEventListener");
+
+    existingScript.dataset.paddlejsOcr = "true";
+    document.head.appendChild(existingScript);
+
+    const { recognizeImageText: recognizeFreshImageText } = await import(
+      "@/pages/chat/lib/image-ocr"
+    );
+    const recognition = recognizeFreshImageText({
+      alt: "已有脚本图片",
+      imageUrl: "https://cdn.example.com/existing.jpg",
+    });
+
+    expect(addEventListenerSpy).toHaveBeenCalledWith(
+      "load",
+      expect.any(Function),
+    );
+    expect(addEventListenerSpy).toHaveBeenCalledWith(
+      "error",
+      expect.any(Function),
+    );
+
+    Object.defineProperty(window, "paddlejs", {
+      configurable: true,
+      value: {
+        ocr: {
+          init,
+          recognize: vi.fn(async () => ({
+            points: [],
+            text: ["已有脚本加载成功"],
+          })),
+        },
+      },
+    });
+    existingScript.dispatchEvent(new Event("load"));
+
+    await expect(recognition).resolves.toEqual({
+      regions: [
+        {
+          id: "ocr-region-1",
+          points: [],
+          text: "已有脚本加载成功",
+        },
+      ],
+      text: "已有脚本加载成功",
+    });
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      "load",
+      expect.any(Function),
+    );
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      "error",
+      expect.any(Function),
+    );
+  });
 });

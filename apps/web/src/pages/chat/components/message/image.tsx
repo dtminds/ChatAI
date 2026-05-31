@@ -248,7 +248,6 @@ export function ImagePreviewDialog({
                 <img
                   alt={alt}
                   className="max-h-[calc(100vh-8.5rem)] max-w-[calc(100vw-2rem)] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)] data-[ocr-panel=open]:max-w-[calc(100vw-25rem)]"
-                  crossOrigin="anonymous"
                   data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
                   data-testid="image-preview-full"
                   onLoad={handlePreviewImageLoad}
@@ -566,6 +565,10 @@ function ImageOcrOverlay({
 }
 
 function getOcrErrorMessage(error: unknown) {
+  if (isOcrImageLoadError(error)) {
+    return `${error.message}（请检查网络或图片服务器是否允许跨域读取）`;
+  }
+
   if (isCanvasSecurityError(error)) {
     return "图片服务器未允许跨域读取，无法在浏览器内识别这张图片";
   }
@@ -575,6 +578,10 @@ function getOcrErrorMessage(error: unknown) {
   }
 
   return "文字识别失败，请稍后重试";
+}
+
+function isOcrImageLoadError(error: unknown): error is Error {
+  return error instanceof Error && error.message.startsWith("图片加载失败：");
 }
 
 function isCanvasSecurityError(error: unknown) {

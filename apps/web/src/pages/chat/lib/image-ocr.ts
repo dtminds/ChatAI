@@ -91,7 +91,8 @@ function loadPaddleOcrScript() {
     );
 
     if (existingScript) {
-      existingScript.addEventListener("load", () => {
+      const handleLoad = () => {
+        cleanupExistingScriptListeners();
         const ocr = getWindowPaddleOcr();
 
         if (ocr) {
@@ -101,11 +102,19 @@ function loadPaddleOcrScript() {
 
         existingScript.remove();
         reject(new Error("Paddle.js OCR 加载失败"));
-      }, { once: true });
-      existingScript.addEventListener("error", () => {
+      };
+      const handleError = () => {
+        cleanupExistingScriptListeners();
         existingScript.remove();
         reject(new Error("Paddle.js OCR 加载失败"));
-      }, { once: true });
+      };
+      const cleanupExistingScriptListeners = () => {
+        existingScript.removeEventListener("load", handleLoad);
+        existingScript.removeEventListener("error", handleError);
+      };
+
+      existingScript.addEventListener("load", handleLoad);
+      existingScript.addEventListener("error", handleError);
       return;
     }
 

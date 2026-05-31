@@ -69,9 +69,8 @@ describe("MessageContentRenderer image messages", () => {
       "src",
       "https://cdn.example.com/chat/photo.jpg",
     );
-    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+    expect(screen.getByTestId("image-preview-full")).not.toHaveAttribute(
       "crossorigin",
-      "anonymous",
     );
 
     await user.keyboard("{Escape}");
@@ -784,7 +783,11 @@ describe("MessageContentRenderer image messages", () => {
     await user.click(screen.getByRole("button", { name: "查看大图：失败图片" }));
     await user.click(screen.getByRole("button", { name: "提取图片文字" }));
 
-    expect(await screen.findByText("图片加载失败：失败图片")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "图片加载失败：失败图片（请检查网络或图片服务器是否允许跨域读取）",
+      ),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "提取图片文字" }));
 

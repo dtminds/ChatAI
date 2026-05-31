@@ -450,6 +450,64 @@ describe("MessageContentRenderer image messages", () => {
     expect(screen.getAllByTestId("image-preview-ocr-region")).toHaveLength(2);
   });
 
+  it("scrolls the matching OCR text block into view when an overlay region is clicked", async () => {
+    const user = userEvent.setup();
+    const scrollIntoView = vi.fn();
+
+    Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    vi.mocked(recognizeImageText).mockResolvedValue({
+      text: "第一行文字\n第二行文字",
+      regions: [
+        {
+          id: "ocr-region-1",
+          points: [
+            [10, 20],
+            [150, 20],
+            [150, 44],
+            [10, 44],
+          ],
+          text: "第一行文字",
+        },
+        {
+          id: "ocr-region-2",
+          points: [
+            [10, 56],
+            [180, 56],
+            [180, 82],
+            [10, 82],
+          ],
+          text: "第二行文字",
+        },
+      ],
+    });
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "点击标注图片",
+          height: 292,
+          imageUrl: "https://cdn.example.com/chat/text-photo.jpg",
+          width: 668,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：点击标注图片" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
+    await screen.findByText("第二行文字");
+    fireEvent.load(screen.getByTestId("image-preview-full"));
+
+    await user.click(screen.getAllByTestId("image-preview-ocr-region")[1]);
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "nearest",
+    });
+  });
+
   it("shows separate loading messages for model loading and text recognition", async () => {
     const user = userEvent.setup();
     let changePhase: Parameters<typeof recognizeImageText>[0]["onPhaseChange"] | undefined;

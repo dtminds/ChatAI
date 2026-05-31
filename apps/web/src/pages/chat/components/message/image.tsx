@@ -109,6 +109,9 @@ export function ImagePreviewDialog({
   );
   const [ocrPhase, setOcrPhase] = useState<ImageOcrPhase>("loading-model");
   const [activeOcrRegionId, setActiveOcrRegionId] = useState<string | null>(null);
+  const [scrollTargetOcrRegionId, setScrollTargetOcrRegionId] = useState<string | null>(
+    null,
+  );
   const [previewImageSize, setPreviewImageSize] = useState<{
     height: number;
     width: number;
@@ -137,6 +140,7 @@ export function ImagePreviewDialog({
     setOcrStatus("idle");
     setOcrPhase("loading-model");
     setActiveOcrRegionId(null);
+    setScrollTargetOcrRegionId(null);
     setPreviewImageSize(null);
     setOcrResult(null);
     setOcrError("");
@@ -259,6 +263,7 @@ export function ImagePreviewDialog({
                     activeRegionId={activeOcrRegionId}
                     imageSize={previewImageSize}
                     regions={ocrResult.regions}
+                    scrollToRegion={setScrollTargetOcrRegionId}
                     setActiveRegionId={setActiveOcrRegionId}
                   />
                 ) : null}
@@ -295,6 +300,7 @@ export function ImagePreviewDialog({
                   error={ocrError}
                   loadingPhase={ocrStatus === "loading" ? ocrPhase : null}
                   result={ocrResult}
+                  scrollTargetRegionId={scrollTargetOcrRegionId}
                   setActiveRegionId={setActiveOcrRegionId}
                 />
               </div>
@@ -311,12 +317,14 @@ function ImageOcrPanel({
   error,
   loadingPhase,
   result,
+  scrollTargetRegionId,
   setActiveRegionId,
 }: {
   activeRegionId: string | null;
   error: string;
   loadingPhase: ImageOcrPhase | null;
   result: ImageOcrResult | null;
+  scrollTargetRegionId: string | null;
   setActiveRegionId: (regionId: string | null) => void;
 }) {
   const recognizedText = result?.text.trim() ?? "";
@@ -324,6 +332,7 @@ function ImageOcrPanel({
   const isLoading = loadingPhase !== null;
   const panelTitle = getOcrPanelTitle({ error, loadingPhase, result });
   const isMountedRef = useRef(false);
+  const regionElementRefs = useRef(new Map<string, HTMLDivElement>());
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -352,6 +361,17 @@ function ImageOcrPanel({
 
     toast.warning("复制失败，请稍后重试");
   };
+
+  useEffect(() => {
+    if (!scrollTargetRegionId) {
+      return;
+    }
+
+    regionElementRefs.current.get(scrollTargetRegionId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+  }, [scrollTargetRegionId]);
 
   return (
     <aside
@@ -400,6 +420,14 @@ function ImageOcrPanel({
               key={region.id}
               onMouseEnter={() => setActiveRegionId(region.id)}
               onMouseLeave={() => setActiveRegionId(null)}
+              ref={(element) => {
+                if (element) {
+                  regionElementRefs.current.set(region.id, element);
+                  return;
+                }
+
+                regionElementRefs.current.delete(region.id);
+              }}
             >
               <span className="absolute left-0 top-0 flex min-w-5 items-center justify-center rounded-br-[8px] rounded-tl-[8px] bg-white/13 px-1.5 py-1 text-[11px] font-medium leading-none text-white/72 ring-1 ring-inset ring-white/10">
                 {index + 1}
@@ -520,6 +548,7 @@ function ImageOcrOverlay({
   activeRegionId,
   imageSize,
   regions,
+  scrollToRegion,
   setActiveRegionId,
 }: {
   activeRegionId: string | null;
@@ -528,6 +557,7 @@ function ImageOcrOverlay({
     width: number;
   };
   regions: ImageOcrResult["regions"];
+  scrollToRegion: (regionId: string) => void;
   setActiveRegionId: (regionId: string | null) => void;
 }) {
   const drawableRegions = regions.filter((region) => region.points.length >= 3);
@@ -554,6 +584,10 @@ function ImageOcrOverlay({
           data-active={activeRegionId === region.id}
           data-testid="image-preview-ocr-region"
           key={region.id}
+          onClick={() => {
+            setActiveRegionId(region.id);
+            scrollToRegion(region.id);
+          }}
           onMouseEnter={() => setActiveRegionId(region.id)}
           onMouseLeave={() => setActiveRegionId(null)}
           points={region.points.map(([x, y]) => `${x},${y}`).join(" ")}

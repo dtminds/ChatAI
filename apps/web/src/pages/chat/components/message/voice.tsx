@@ -63,7 +63,12 @@ export function VoiceMessageCard({
   const playbackReadyNotifiedUrlRef = useRef<string | undefined>(undefined);
   const audioPlaybackUrlRef = useRef<string | null>(null);
   const previousAudioUrlRef = useRef(content.audioUrl);
+  const previousSyncedTransVoiceTextRef = useRef(content.transVoiceText?.trim() ?? "");
   const transcriptionRequestIdRef = useRef(0);
+  const latestTranscriptionSourceRef = useRef({
+    audioUrl: content.audioUrl,
+    transVoiceText: content.transVoiceText?.trim() ?? "",
+  });
   const audioListenerHandlersRef = useRef<AudioListenerHandlers>({
     error: () => undefined,
     ended: () => undefined,
@@ -122,6 +127,11 @@ export function VoiceMessageCard({
   const shouldShowTranscriptionLoading =
     !transVoiceText && transcriptionState === "loading";
 
+  latestTranscriptionSourceRef.current = {
+    audioUrl: content.audioUrl,
+    transVoiceText: content.transVoiceText?.trim() ?? "",
+  };
+
   const handleTranscribeClick = async () => {
     if (!onTranscribe || transcriptionState === "loading") {
       return;
@@ -139,7 +149,8 @@ export function VoiceMessageCard({
       if (
         !mountedRef.current ||
         transcriptionRequestIdRef.current !== requestId ||
-        content.audioUrl !== requestAudioUrl
+        latestTranscriptionSourceRef.current.audioUrl !== requestAudioUrl ||
+        latestTranscriptionSourceRef.current.transVoiceText
       ) {
         return;
       }
@@ -157,7 +168,8 @@ export function VoiceMessageCard({
       if (
         !mountedRef.current ||
         transcriptionRequestIdRef.current !== requestId ||
-        content.audioUrl !== requestAudioUrl
+        latestTranscriptionSourceRef.current.audioUrl !== requestAudioUrl ||
+        latestTranscriptionSourceRef.current.transVoiceText
       ) {
         return;
       }
@@ -414,6 +426,25 @@ export function VoiceMessageCard({
     stopPlaybackRef.current();
     setDuration(0);
   }, [content.audioUrl]);
+
+  useEffect(() => {
+    const syncedTransVoiceText = content.transVoiceText?.trim() ?? "";
+
+    if (previousSyncedTransVoiceTextRef.current === syncedTransVoiceText) {
+      return;
+    }
+
+    previousSyncedTransVoiceTextRef.current = syncedTransVoiceText;
+
+    if (!syncedTransVoiceText) {
+      return;
+    }
+
+    transcriptionRequestIdRef.current += 1;
+    setLocalTransVoiceText("");
+    setTranscriptionErrorMessage(null);
+    setTranscriptionState("idle");
+  }, [content.transVoiceText]);
 
   const handleControlClick = async () => {
     if (!content.audioUrl) {

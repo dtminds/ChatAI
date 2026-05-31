@@ -536,6 +536,10 @@ describe("MessageContentRenderer image messages", () => {
     await user.click(screen.getByRole("button", { name: "提取图片文字" }));
 
     expect(await screen.findByText("正在加载 OCR 模型")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "OCR 处理中" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/matrix-loader_green_ripple.svg",
+    );
     changePhase?.("recognizing");
     expect(await screen.findByText("正在识别图片文字")).toBeInTheDocument();
 
@@ -543,6 +547,8 @@ describe("MessageContentRenderer image messages", () => {
       regions: [],
       text: "",
     });
+    await screen.findByText("识别结果");
+    expect(screen.queryByRole("img", { name: "OCR 处理中" })).not.toBeInTheDocument();
   });
 
   it("copies all and single OCR text results", async () => {

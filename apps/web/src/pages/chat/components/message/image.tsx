@@ -379,11 +379,18 @@ function ImageOcrPanel({
       data-testid="image-preview-ocr-panel"
     >
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-        <h2 className="text-sm font-semibold text-white">
+        <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-white">
           {isLoading ? (
-            <ShinyText className="text-white/82" duration={1.15} shimmerWidth={48}>
-              {panelTitle}
-            </ShinyText>
+            <>
+              <img
+                alt="OCR 处理中"
+                className="size-5 shrink-0"
+                src={ocrLoadingIconUrl}
+              />
+              <ShinyText className="text-white/82" duration={1.15} shimmerWidth={48}>
+                {panelTitle}
+              </ShinyText>
+            </>
           ) : (
             panelTitle
           )}
@@ -391,11 +398,11 @@ function ImageOcrPanel({
         {!isLoading && recognizedText ? (
           <Button
             aria-label="复制全部识别文字"
-            className="size-8 border-white/12 bg-white/8 p-0 text-white hover:bg-white/14 hover:text-white"
+            className="size-8 p-0 text-white hover:bg-white/12 hover:text-white"
             onClick={() => void copyText(recognizedText, "已复制识别文字")}
             size="icon"
             type="button"
-            variant="outline"
+            variant="ghost"
           >
             <HugeiconsIcon icon={Copy01Icon} size={14} strokeWidth={2} />
           </Button>
@@ -639,6 +646,8 @@ const imageConstraintStyle = {
   minWidth: "120px",
   width: "fit-content",
 } satisfies CSSProperties;
+
+const ocrLoadingIconUrl = "https://b5.bokr.com.cn/dist/matrix-loader_green_ripple.svg";
 
 const emotionConstraintStyle = {
   maxHeight: "120px",

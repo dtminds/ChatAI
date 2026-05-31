@@ -71,7 +71,7 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
           </div>
           {activeConversation?.groupOriginalName || activeConversation?.contactOriginalName ? (
             <p className="truncate text-[12px] text-muted-foreground">
-              {activeConversation.groupOriginalName ?? activeConversation.contactOriginalName}
+              {activeConversation?.groupOriginalName ?? activeConversation?.contactOriginalName}
             </p>
           ) : null}
         </div>

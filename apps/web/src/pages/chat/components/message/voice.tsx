@@ -114,12 +114,10 @@ export function VoiceMessageCard({
     ? `${isPlaying ? "暂停" : "播放"}语音消息 ${label}`
     : "语音消息不可播放";
   const shouldShowTranscribeAction = Boolean(onTranscribe && !transVoiceText);
-  const transcribeActionLabel =
-    transcriptionState === "loading"
-      ? "识别中"
-      : transcriptionState === "error"
-        ? "重新转文字"
-        : "转文字";
+  const shouldShowTranscriptionPanel =
+    transcriptionState === "loading" ||
+    Boolean(transVoiceText) ||
+    Boolean(transcriptionErrorMessage);
 
   const handleTranscribeClick = async () => {
     if (!onTranscribe || transcriptionState === "loading") {
@@ -622,14 +620,13 @@ export function VoiceMessageCard({
     </div>
   );
 
-  const transcribeAction = shouldShowTranscribeAction ? (
+  const transcribeAction = shouldShowTranscribeAction && transcriptionState !== "loading" ? (
     <button
       className="inline-flex h-8 shrink-0 items-center rounded-[6px] px-1.5 text-[12px] font-medium leading-none text-muted-foreground outline-none transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-70"
-      disabled={transcriptionState === "loading"}
       onClick={handleTranscribeClick}
       type="button"
     >
-      {transcribeActionLabel}
+      转文字
     </button>
   ) : null;
 
@@ -644,15 +641,30 @@ export function VoiceMessageCard({
         {voiceControl}
         {transcribeAction}
       </div>
-      {transVoiceText ? (
-        <div className="max-w-[min(480px,100%)] whitespace-pre-wrap break-words rounded-[10px] bg-surface-muted px-3 py-2 text-[13px] leading-5 text-foreground">
-          {transVoiceText}
+      {shouldShowTranscriptionPanel ? (
+        <div
+          aria-label={transcriptionState === "loading" ? "语音转文字中" : undefined}
+          className={cn(
+            "min-h-9 max-w-[min(480px,100%)] whitespace-pre-wrap break-words rounded-[10px] bg-surface-muted px-3 py-2 text-[13px] leading-5 text-foreground",
+            transcriptionState === "loading" && "inline-flex min-w-16 items-center justify-center",
+            transcriptionState === "error" && "text-destructive",
+          )}
+          role={transcriptionState === "loading" ? "status" : undefined}
+        >
+          {transcriptionState === "loading" ? (
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="animate-spin text-muted-foreground"
+              icon={Loading03Icon}
+              size={16}
+              strokeWidth={2}
+            />
+          ) : transcriptionState === "error" ? (
+            transcriptionErrorMessage
+          ) : (
+            transVoiceText
+          )}
         </div>
-      ) : null}
-      {transcriptionState === "error" && transcriptionErrorMessage ? (
-        <span className="px-1 text-[12px] leading-5 text-destructive">
-          {transcriptionErrorMessage}
-        </span>
       ) : null}
     </div>
   );

@@ -146,6 +146,35 @@ function createSmartReplyTextMessageDto({
   };
 }
 
+function createSmartReplyVoiceMessageDto({
+  id,
+  seq,
+  transVoiceText,
+}: {
+  id: string;
+  seq: number;
+  transVoiceText?: string;
+}): WorkbenchMessageDto {
+  return {
+    content: {
+      audioUrl: `https://b5.bokr.com.cn/s5/msg/20260525/${id}.amr`,
+      durationLabel: "11\"",
+      playbackUrl: `https://b5.bokr.com.cn/s5/playable-voice/20260525/${id}.wav`,
+      transFileUrlPersisted: true,
+      transVoiceText,
+    },
+    contentType: "voice",
+    conversationId: "conv-001",
+    createdAt: 1_778_400_000_000 + seq * 1_000,
+    customerId: "cust-001",
+    messageId: id,
+    seatId: "drc",
+    senderType: "customer",
+    seq,
+    status: "sent",
+  };
+}
+
 describe("useWorkbenchStore", () => {
   beforeEach(() => {
     resetWorkbenchStoreTestState();
@@ -252,6 +281,64 @@ describe("useWorkbenchStore", () => {
       {
         conversationId: "conv-001",
         msgId: 8,
+      },
+    ]);
+  });
+
+  it("waits for voice transcription before auto-generating smart reply", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyVoiceMessageDto({
+              id: "msg-voice-9",
+              seq: 9,
+              transVoiceText: "",
+            }),
+          ],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "voice-smart-reply-9" };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+      async transcribeVoiceMessage(input) {
+        return {
+          messageSeq: input.messageSeq,
+          transVoiceText: "识别后的客户问题",
+          transVoiceTextPersisted: true,
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(observedAutoRequests).toEqual([]);
+
+    await useWorkbenchStore.getState().transcribeVoiceMessage(
+      "conv-001",
+      "msg-voice-9",
+    );
+
+    expect(observedAutoRequests).toEqual([
+      {
+        conversationId: "conv-001",
+        msgId: 9,
       },
     ]);
   });

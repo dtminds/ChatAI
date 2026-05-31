@@ -80,11 +80,15 @@ export function getSmartReplyCustomerQuestion(message: ChatMessage) {
     case "quote":
       return message.content.text.trim();
     case "voice":
+      if (message.content.transVoiceText?.trim()) {
+        return message.content.transVoiceText.trim();
+      }
+
       return message.content.durationLabel
         ? `[语音 ${message.content.durationLabel}]`
         : "[语音]";
     case "image":
-      return "[图片]";
+      return message.content.alt?.trim() || "[图片]";
     case "video":
       return message.content.alt?.trim() || "[视频]";
     case "file":
@@ -129,13 +133,26 @@ export function isSmartReplySupportedConversation(
 }
 
 export function isSmartReplyEligibleMessage(message: ChatMessage) {
-  return (
-    message.role === "customer" &&
-    !message.isOwnMessage &&
-    !message.isRevoked &&
-    !message.isGroupConversation &&
-    SMART_REPLY_TRIGGER_CONTENT_TYPES.has(message.content.type)
-  );
+  if (
+    message.role !== "customer" ||
+    message.isOwnMessage ||
+    message.isRevoked ||
+    message.isGroupConversation ||
+    !SMART_REPLY_TRIGGER_CONTENT_TYPES.has(message.content.type)
+  ) {
+    return false;
+  }
+
+  switch (message.content.type) {
+    case "voice":
+      return Boolean(message.content.transVoiceText?.trim());
+    case "image":
+      return Boolean(
+        message.content.imageUrl.trim() || message.content.alt?.trim(),
+      );
+    default:
+      return true;
+  }
 }
 
 export function createPendingSmartReplySuggestion(

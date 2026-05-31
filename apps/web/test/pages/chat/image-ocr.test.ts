@@ -110,6 +110,20 @@ describe("recognizeImageText", () => {
     expect(nextResult.text).toBe("第二张");
   });
 
+  it("normalizes falsy OCR results to an empty result", async () => {
+    recognize.mockResolvedValue(null);
+
+    await expect(
+      recognizeImageText({
+        alt: "空结果图片",
+        imageUrl: "https://cdn.example.com/empty-result.jpg",
+      }),
+    ).resolves.toEqual({
+      regions: [],
+      text: "",
+    });
+  });
+
   it("removes failed Paddle.js OCR script elements so retries can load a fresh script", async () => {
     vi.resetModules();
     Object.defineProperty(window, "paddlejs", {

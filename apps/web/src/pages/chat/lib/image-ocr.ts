@@ -33,7 +33,7 @@ type PaddleOcrModule = {
         strokeStyle?: string;
       };
     },
-  ) => Promise<PaddleOcrRawResult>;
+  ) => Promise<PaddleOcrRawResult | null | undefined>;
 };
 
 type PaddleOcrRawResult = {
@@ -166,7 +166,16 @@ function loadImageForOcr(input: RecognizeImageTextInput) {
   });
 }
 
-function normalizeOcrResult(rawResult: PaddleOcrRawResult): ImageOcrResult {
+function normalizeOcrResult(
+  rawResult: PaddleOcrRawResult | null | undefined,
+): ImageOcrResult {
+  if (!rawResult) {
+    return {
+      regions: [],
+      text: "",
+    };
+  }
+
   const rawTexts = Array.isArray(rawResult.text)
     ? rawResult.text
     : typeof rawResult.text === "string"

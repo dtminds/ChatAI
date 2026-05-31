@@ -303,6 +303,28 @@ describe("MessageContentRenderer image messages", () => {
     ).toBeInTheDocument();
   });
 
+  it("places the browser OCR action below the preview image", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "下方按钮图片",
+          height: 292,
+          imageUrl: "https://cdn.example.com/chat/text-photo.jpg",
+          width: 668,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：下方按钮图片" }));
+
+    const action = screen.getByRole("button", { name: "识别图中文字" });
+
+    expect(screen.getByTestId("image-preview-action-bar")).toContainElement(action);
+    expect(screen.getByTestId("image-preview-image-frame")).not.toContainElement(action);
+  });
+
   it("does not show browser OCR action for emotion image previews", async () => {
     const user = userEvent.setup();
 

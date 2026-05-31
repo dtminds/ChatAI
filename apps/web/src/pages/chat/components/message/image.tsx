@@ -194,25 +194,28 @@ export function ImagePreviewDialog({
       </DialogPortal>
       <DialogContent
         aria-describedby={undefined}
-        className="top-[calc(50%+1.5rem)] max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] border-0 bg-transparent p-0 shadow-none sm:max-w-[calc(100vw-2rem)] [&>button:last-child]:hidden"
+        className="top-[calc(50%+1rem)] max-h-[calc(100vh-4rem)] max-w-[calc(100vw-2rem)] border-0 bg-transparent p-0 shadow-none sm:max-w-[calc(100vw-2rem)] [&>button:last-child]:hidden"
       >
         <DialogTitle className="sr-only">图片预览</DialogTitle>
         <div
-          className="relative flex max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] items-center justify-center"
+          className="relative flex max-h-[calc(100vh-4rem)] max-w-[calc(100vw-2rem)] items-center justify-center"
           data-testid="image-preview-backdrop"
           onClick={() => setIsOpen(false)}
         >
           <div
-            className="flex max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] items-stretch gap-3"
+            className="flex max-h-[calc(100vh-4rem)] max-w-[calc(100vw-2rem)] items-stretch gap-3"
             data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
             data-testid="image-preview-layout"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="relative flex min-w-0 items-center justify-center">
-              <div className="relative">
+            <div className="flex min-w-0 flex-col items-center justify-center gap-3">
+              <div
+                className="relative flex min-h-0 items-center justify-center"
+                data-testid="image-preview-image-frame"
+              >
                 <img
                   alt={alt}
-                  className="max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)] data-[ocr-panel=open]:max-w-[calc(100vw-25rem)]"
+                  className="max-h-[calc(100vh-8.5rem)] max-w-[calc(100vw-2rem)] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)] data-[ocr-panel=open]:max-w-[calc(100vw-25rem)]"
                   crossOrigin="anonymous"
                   data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
                   data-testid="image-preview-full"
@@ -228,9 +231,14 @@ export function ImagePreviewDialog({
                     setActiveRegionId={setActiveOcrRegionId}
                   />
                 ) : null}
+              </div>
+              <div
+                className="flex h-10 shrink-0 items-center justify-center"
+                data-testid="image-preview-action-bar"
+              >
                 {ocrEnabled && (ocrStatus === "idle" || ocrStatus === "error") ? (
                   <Button
-                    className="absolute bottom-4 right-4 bg-background/92 text-foreground shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-background"
+                    className="bg-background/92 text-foreground shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-background"
                     onClick={() => void handleRecognizeText()}
                     size="sm"
                     type="button"
@@ -298,7 +306,7 @@ function ImageOcrPanel({
 
   return (
     <aside
-      className="flex h-[calc(100vh-5rem)] w-[22rem] shrink-0 flex-col rounded-[8px] border border-white/12 bg-neutral-950/88 text-white shadow-[0_18px_60px_var(--shadow-strong)] backdrop-blur-md"
+      className="flex h-[calc(100vh-8.5rem)] w-[22rem] shrink-0 flex-col rounded-[8px] border border-white/12 bg-neutral-950/88 text-white shadow-[0_18px_60px_var(--shadow-strong)] backdrop-blur-md"
       data-testid="image-preview-ocr-panel"
     >
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">

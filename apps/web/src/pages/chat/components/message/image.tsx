@@ -459,6 +459,7 @@ function waitForNextPaint() {
       return;
     }
 
+    // Let the loading state paint before OCR initialization can block the main thread.
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => resolve());
     });
@@ -565,11 +566,30 @@ function ImageOcrOverlay({
 }
 
 function getOcrErrorMessage(error: unknown) {
+  if (isCanvasSecurityError(error)) {
+    return "图片服务器未允许跨域读取，无法在浏览器内识别这张图片";
+  }
+
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
 
   return "文字识别失败，请稍后重试";
+}
+
+function isCanvasSecurityError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const errorText = `${error.name} ${error.message}`.toLowerCase();
+
+  return (
+    errorText.includes("securityerror") ||
+    errorText.includes("tainted canvas") ||
+    errorText.includes("tainted canvases") ||
+    errorText.includes("teximage2d")
+  );
 }
 
 const imageConstraintStyle = {

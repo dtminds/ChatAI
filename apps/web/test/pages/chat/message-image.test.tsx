@@ -790,6 +790,33 @@ describe("MessageContentRenderer image messages", () => {
 
     expect(await screen.findByText("重试成功")).toBeInTheDocument();
   });
+
+  it("shows a specific message when browser canvas security blocks OCR", async () => {
+    const user = userEvent.setup();
+    vi.mocked(recognizeImageText).mockRejectedValue(
+      new Error(
+        "Failed to execute 'texImage2D' on 'WebGL2RenderingContext': Tainted canvases may not be loaded.",
+      ),
+    );
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "跨域图片",
+          height: 292,
+          imageUrl: "https://cdn.example.com/chat/cors-photo.jpg",
+          width: 668,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：跨域图片" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
+
+    expect(
+      await screen.findByText("图片服务器未允许跨域读取，无法在浏览器内识别这张图片"),
+    ).toBeInTheDocument();
+  });
 });
 
 function createImageMessage(content: ImageMessageContent): ChatMessage {

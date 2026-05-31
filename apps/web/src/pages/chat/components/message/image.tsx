@@ -115,6 +115,7 @@ export function ImagePreviewDialog({
   } | null>(null);
   const [ocrResult, setOcrResult] = useState<ImageOcrResult | null>(null);
   const [ocrError, setOcrError] = useState("");
+  const ocrRequestIdRef = useRef(0);
   const previewImageRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
@@ -122,6 +123,7 @@ export function ImagePreviewDialog({
       return;
     }
 
+    ocrRequestIdRef.current += 1;
     setOcrStatus("idle");
     setOcrPhase("loading-model");
     setActiveOcrRegionId(null);
@@ -135,6 +137,9 @@ export function ImagePreviewDialog({
       return;
     }
 
+    const requestId = ocrRequestIdRef.current + 1;
+
+    ocrRequestIdRef.current = requestId;
     setOcrStatus("loading");
     setOcrPhase("loading-model");
     setOcrError("");
@@ -147,9 +152,17 @@ export function ImagePreviewDialog({
         onPhaseChange: setOcrPhase,
       });
 
+      if (ocrRequestIdRef.current !== requestId) {
+        return;
+      }
+
       setOcrResult(nextResult);
       setOcrStatus("success");
     } catch (error) {
+      if (ocrRequestIdRef.current !== requestId) {
+        return;
+      }
+
       setOcrResult(null);
       setOcrStatus("error");
       setOcrError(getOcrErrorMessage(error));
@@ -206,12 +219,12 @@ export function ImagePreviewDialog({
             className="flex max-h-[calc(100vh-4rem)] max-w-[calc(100vw-2rem)] items-stretch gap-3"
             data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
             data-testid="image-preview-layout"
-            onClick={(event) => event.stopPropagation()}
           >
             <div className="flex min-w-0 flex-col items-center justify-center gap-3">
               <div
                 className="relative flex min-h-0 items-center justify-center"
                 data-testid="image-preview-image-frame"
+                onClick={(event) => event.stopPropagation()}
               >
                 <img
                   alt={alt}
@@ -239,7 +252,10 @@ export function ImagePreviewDialog({
                 {ocrEnabled && (ocrStatus === "idle" || ocrStatus === "error") ? (
                   <Button
                     className="border border-white/12 bg-neutral-950/86 text-white shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-neutral-900 hover:text-white"
-                    onClick={() => void handleRecognizeText()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleRecognizeText();
+                    }}
                     size="sm"
                     type="button"
                     variant="ghost"
@@ -255,13 +271,15 @@ export function ImagePreviewDialog({
               </div>
             </div>
             {isOcrPanelOpen ? (
-              <ImageOcrPanel
-                activeRegionId={activeOcrRegionId}
-                error={ocrError}
-                loadingPhase={ocrStatus === "loading" ? ocrPhase : null}
-                result={ocrResult}
-                setActiveRegionId={setActiveOcrRegionId}
-              />
+              <div onClick={(event) => event.stopPropagation()}>
+                <ImageOcrPanel
+                  activeRegionId={activeOcrRegionId}
+                  error={ocrError}
+                  loadingPhase={ocrStatus === "loading" ? ocrPhase : null}
+                  result={ocrResult}
+                  setActiveRegionId={setActiveOcrRegionId}
+                />
+              </div>
             ) : null}
           </div>
         </div>

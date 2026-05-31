@@ -262,6 +262,29 @@ describe("MessageContentRenderer image messages", () => {
     expect(screen.queryByRole("dialog", { name: "图片预览" })).not.toBeInTheDocument();
   });
 
+  it("closes the full preview when blank space around the OCR action is clicked", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "按钮周边空白图片",
+          height: 292,
+          imageUrl: "https://cdn.example.com/chat/photo.jpg",
+          width: 668,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：按钮周边空白图片" }));
+
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("image-preview-action-bar"));
+
+    expect(screen.queryByRole("dialog", { name: "图片预览" })).not.toBeInTheDocument();
+  });
+
   it("keeps the full preview open when the image itself is clicked", async () => {
     const user = userEvent.setup();
 
@@ -576,6 +599,56 @@ describe("MessageContentRenderer image messages", () => {
       expect(recognizeImageText).toHaveBeenCalled();
     });
     requestAnimationFrameSpy.mockRestore();
+  });
+
+  it("ignores OCR results from a closed preview", async () => {
+    const user = userEvent.setup();
+    let resolveOcr: ((value: Awaited<ReturnType<typeof recognizeImageText>>) => void) | undefined;
+    vi.mocked(recognizeImageText).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveOcr = resolve;
+        }),
+    );
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "关闭中识别图片",
+          height: 292,
+          imageUrl: "https://cdn.example.com/chat/text-photo.jpg",
+          width: 668,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：关闭中识别图片" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
+    await screen.findByText("正在加载 OCR 模型");
+
+    await vi.waitFor(() => {
+      expect(recognizeImageText).toHaveBeenCalled();
+    });
+
+    await user.click(screen.getByTestId("image-preview-backdrop"));
+
+    expect(screen.queryByRole("dialog", { name: "图片预览" })).not.toBeInTheDocument();
+
+    resolveOcr?.({
+      regions: [
+        {
+          id: "ocr-region-1",
+          points: [],
+          text: "旧请求结果",
+        },
+      ],
+      text: "旧请求结果",
+    });
+
+    await user.click(screen.getByRole("button", { name: "查看大图：关闭中识别图片" }));
+
+    expect(screen.queryByText("旧请求结果")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("image-preview-ocr-panel")).not.toBeInTheDocument();
   });
 
   it("shows a retryable error state when OCR fails", async () => {

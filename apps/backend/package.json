@@ -18,7 +18,7 @@
   "dependencies": {
     "@chatai/contracts": "workspace:*",
     "@fastify/cookie": "^11.0.2",
-    "@fastify/env": "^5.0.3",
+    "@fastify/env": "^6.0.0",
     "@fastify/jwt": "^10.0.0",
     "@sinclair/typebox": "^0.34.41",
     "altcha-lib": "^2.0.3",

@@ -93,6 +93,10 @@ function createEditorMock() {
   };
 }
 
+function getBooleanMockCalls(mock: ReturnType<typeof vi.fn>) {
+  return mock.mock.calls.map(([value]) => value);
+}
+
 function createDefaultHookOptions(
   overrides: Partial<SmartReplyStateOptions> = {},
 ): SmartReplyStateOptions {
@@ -222,7 +226,7 @@ describe("useSmartReplyState", () => {
       customerMessage,
       createSendPayload(),
     );
-    expect(onSendingChange).toHaveBeenNthCalledWith(1, true);
+    expect(getBooleanMockCalls(onSendingChange)).toContain(true);
     expect(onSendFailure).toHaveBeenCalledWith({
       errorCode: "SEND_FAILED",
       errorMessage: "发送失败",
@@ -281,8 +285,58 @@ describe("useSmartReplyState", () => {
 
     expect(onSent).not.toHaveBeenCalled();
     expect(onSendFailure).not.toHaveBeenCalled();
-    expect(onSendingChange).toHaveBeenNthCalledWith(1, true);
+    expect(getBooleanMockCalls(onSendingChange)).toContain(true);
     expect(onSendingChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("does not clear a newer send when an older conversation send settles", async () => {
+    const sendGate = createDeferred<{
+      didConsumeQuote?: boolean;
+      ok: true;
+    }>();
+    const isSendingDraftRef = { current: false };
+    const onSendingChange = vi.fn();
+    const sendSmartReply = vi.fn(() => sendGate.promise);
+    const { result, rerender } = renderHook(
+      (options: SmartReplyStateOptions) => useSmartReplyState(options),
+      {
+        initialProps: createDefaultHookOptions({
+          isSendingDraftRef,
+          onSendingChange,
+          sendSmartReply,
+        }),
+      },
+    );
+
+    const sendPromise = result.current.handleSendSmartReply(
+      customerMessage,
+      createSendPayload(),
+    );
+
+    rerender(
+      createDefaultHookOptions({
+        activeConversation: {
+          ...singleConversation,
+          id: "conv-002",
+        },
+        isSendingDraftRef,
+        onSendingChange,
+        sendSmartReply,
+      }),
+    );
+    isSendingDraftRef.current = true;
+
+    await act(async () => {
+      sendGate.resolve({ ok: true });
+      await sendPromise;
+    });
+
+    expect(isSendingDraftRef.current).toBe(true);
+    expect(getBooleanMockCalls(onSendingChange)).toEqual([
+      false,
+      true,
+      false,
+    ]);
   });
 
   it("forwards trigger, dismiss, and make-shorter handlers", () => {

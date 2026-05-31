@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import type { LexicalEditor } from "lexical";
 import {
   CLEAR_COMPOSER_COMMAND,
@@ -76,6 +76,11 @@ export function useSmartReplyState({
   const latestConversationIdRef = useRef(activeConversationId);
   latestConversationIdRef.current = activeConversationId;
 
+  useEffect(() => {
+    isSendingDraftRef.current = false;
+    onSendingChange(false);
+  }, [activeConversationId, isSendingDraftRef, onSendingChange]);
+
   const activeSmartReplyByMessageId = useMemo(() => {
     if (!activeConversationId || activeConversationMode !== "single") {
       return {};
@@ -131,9 +136,11 @@ export function useSmartReplyState({
 
         return result;
       } finally {
-        isSendingDraftRef.current = false;
-        if (isMountedRef.current) {
-          onSendingChange(false);
+        if (latestConversationIdRef.current === sendConversationId) {
+          isSendingDraftRef.current = false;
+          if (isMountedRef.current) {
+            onSendingChange(false);
+          }
         }
       }
     },

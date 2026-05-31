@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
+import { useCallback, useMemo, useRef, type RefObject } from "react";
 import type { LexicalEditor } from "lexical";
 import {
   CLEAR_COMPOSER_COMMAND,
@@ -74,17 +74,13 @@ export function useSmartReplyState({
   const activeConversationId = activeConversation?.id;
   const activeConversationMode = activeConversation?.mode;
   const activeSendTokenRef = useRef<symbol | null>(null);
+  const activeConversationVersionRef = useRef(0);
   const prevConversationIdRef = useRef(activeConversationId);
 
   if (prevConversationIdRef.current !== activeConversationId) {
     prevConversationIdRef.current = activeConversationId;
-    isSendingDraftRef.current = false;
-    activeSendTokenRef.current = null;
+    activeConversationVersionRef.current += 1;
   }
-
-  useEffect(() => {
-    onSendingChange(false);
-  }, [activeConversationId, onSendingChange]);
 
   const suggestions = activeConversationId
     ? smartReplyByMessageIdByConversationId[activeConversationId]
@@ -118,6 +114,7 @@ export function useSmartReplyState({
       }
 
       const token = Symbol();
+      const sendConversationVersion = activeConversationVersionRef.current;
       activeSendTokenRef.current = token;
       isSendingDraftRef.current = true;
       onSendingChange(true);
@@ -125,7 +122,11 @@ export function useSmartReplyState({
       try {
         const result = await sendSmartReply(message, payload);
 
-        if (!isMountedRef.current || activeSendTokenRef.current !== token) {
+        if (
+          !isMountedRef.current ||
+          activeSendTokenRef.current !== token ||
+          activeConversationVersionRef.current !== sendConversationVersion
+        ) {
           return result;
         }
 

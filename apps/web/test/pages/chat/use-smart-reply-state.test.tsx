@@ -236,7 +236,7 @@ describe("useSmartReplyState", () => {
     expect(sendResult).toMatchObject({ ok: false });
   });
 
-  it("skips stale send side effects when the active conversation changes", async () => {
+  it("keeps the shared send lock while skipping stale side effects after the active conversation changes", async () => {
     const sendGate = createDeferred<{
       didConsumeQuote?: boolean;
       ok: true;
@@ -263,6 +263,7 @@ describe("useSmartReplyState", () => {
       customerMessage,
       createSendPayload(),
     );
+    onSendingChange.mockClear();
 
     rerender(
       createDefaultHookOptions({
@@ -278,6 +279,9 @@ describe("useSmartReplyState", () => {
       }),
     );
 
+    expect(isSendingDraftRef.current).toBe(true);
+    expect(getBooleanMockCalls(onSendingChange)).toEqual([]);
+
     await act(async () => {
       sendGate.resolve({ ok: true });
       await sendPromise;
@@ -285,26 +289,19 @@ describe("useSmartReplyState", () => {
 
     expect(onSent).not.toHaveBeenCalled();
     expect(onSendFailure).not.toHaveBeenCalled();
-    expect(getBooleanMockCalls(onSendingChange)).toContain(true);
+    expect(isSendingDraftRef.current).toBe(false);
     expect(onSendingChange).toHaveBeenLastCalledWith(false);
   });
 
-  it("does not clear a newer send after switching away and back", async () => {
+  it("blocks another smart reply after switching away and back until the first send settles", async () => {
     const olderSendGate = createDeferred<{
-      didConsumeQuote?: boolean;
-      ok: true;
-    }>();
-    const newerSendGate = createDeferred<{
       didConsumeQuote?: boolean;
       ok: true;
     }>();
     const isSendingDraftRef = { current: false };
     const onSent = vi.fn();
     const onSendingChange = vi.fn();
-    const sendSmartReply = vi
-      .fn()
-      .mockReturnValueOnce(olderSendGate.promise)
-      .mockReturnValueOnce(newerSendGate.promise);
+    const sendSmartReply = vi.fn().mockReturnValueOnce(olderSendGate.promise);
     const { result, rerender } = renderHook(
       (options: SmartReplyStateOptions) => useSmartReplyState(options),
       {
@@ -351,23 +348,19 @@ describe("useSmartReplyState", () => {
       createSendPayload("新的推荐话术"),
     );
 
+    await expect(newerSendPromise).resolves.toBeUndefined();
+    expect(sendSmartReply).toHaveBeenCalledTimes(1);
+    expect(isSendingDraftRef.current).toBe(true);
+    expect(onSendingChange).not.toHaveBeenCalled();
+
     await act(async () => {
       olderSendGate.resolve({ ok: true });
       await olderSendPromise;
     });
 
-    expect(isSendingDraftRef.current).toBe(true);
-    expect(onSent).not.toHaveBeenCalled();
-    expect(getBooleanMockCalls(onSendingChange)).toEqual([true]);
-
-    await act(async () => {
-      newerSendGate.resolve({ ok: true });
-      await newerSendPromise;
-    });
-
     expect(isSendingDraftRef.current).toBe(false);
-    expect(onSent).toHaveBeenCalledTimes(1);
-    expect(getBooleanMockCalls(onSendingChange)).toEqual([true, false]);
+    expect(onSent).not.toHaveBeenCalled();
+    expect(getBooleanMockCalls(onSendingChange)).toEqual([false]);
   });
 
   it("forwards trigger, dismiss, and make-shorter handlers", () => {

@@ -135,9 +135,8 @@ describe("smart-reply-adapter", () => {
         ...baseMessage,
         content: {
           alt: "产品照片",
-          imageUrl: "",
           type: "image",
-        },
+        } as ChatMessage["content"],
       }),
     ).toBe(true);
     expect(

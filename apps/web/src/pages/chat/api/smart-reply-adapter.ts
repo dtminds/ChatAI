@@ -148,7 +148,7 @@ export function isSmartReplyEligibleMessage(message: ChatMessage) {
       return Boolean(message.content.transVoiceText?.trim());
     case "image":
       return Boolean(
-        message.content.imageUrl.trim() || message.content.alt?.trim(),
+        message.content.imageUrl?.trim() || message.content.alt?.trim(),
       );
     default:
       return true;

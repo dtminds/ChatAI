@@ -5274,34 +5274,36 @@ export function createWorkbenchStore() {
         });
 
         const latestState = get();
-        const autoGenerateMessage = shouldAutoGenerateSmartReply({
-          message: getLatestNonSystemMessage(
-            latestState.messagesByConversationId[conversationId] ?? [],
-          ),
-          pending:
-            latestState.smartReplyPendingMessageKeysByConversationId[
-              conversationId
-            ] ?? {},
-          suggestions:
-            latestState.smartReplyByMessageIdByConversationId[conversationId] ??
-            {},
-        });
 
         if (
           latestState.activeConversationId === conversationId &&
-          autoGenerateMessage &&
           canUseSmartReplyForConversation(latestState, conversationId)
         ) {
-          triggerSmartReplyAutoGeneration(
-            get,
-            set,
-            conversationId,
-            autoGenerateMessage,
-            {
-              schedulePoll: scheduleSmartReplyPollForConversation,
-              syncRuntimeTimers: syncSmartReplyRuntimeTimers,
-            },
-          );
+          const autoGenerateMessage = shouldAutoGenerateSmartReply({
+            message: getLatestNonSystemMessage(
+              latestState.messagesByConversationId[conversationId] ?? [],
+            ),
+            pending:
+              latestState.smartReplyPendingMessageKeysByConversationId[
+                conversationId
+              ] ?? {},
+            suggestions:
+              latestState.smartReplyByMessageIdByConversationId[conversationId] ??
+              {},
+          });
+
+          if (autoGenerateMessage) {
+            triggerSmartReplyAutoGeneration(
+              get,
+              set,
+              conversationId,
+              autoGenerateMessage,
+              {
+                schedulePoll: scheduleSmartReplyPollForConversation,
+                syncRuntimeTimers: syncSmartReplyRuntimeTimers,
+              },
+            );
+          }
         }
 
         return transVoiceText;

@@ -98,6 +98,25 @@ describe("ConversationCard", () => {
     expect(avatarFallback?.querySelector("svg")).toBeInTheDocument();
   });
 
+  it("uses the standard customer fallback icon instead of initials", () => {
+    const { container } = render(
+      <ConversationCard
+        conversation={{
+          ...conversation,
+          customerAvatarUrl: "",
+          customerName: "测试客户",
+        }}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const avatarFallback = container.querySelector("[data-testid='conversation-avatar-fallback']");
+    expect(avatarFallback).toBeInTheDocument();
+    expect(avatarFallback).toHaveTextContent("");
+    expect(avatarFallback?.querySelector("svg")).toBeInTheDocument();
+  });
+
   it("shows mark-read for unread conversations and mark-unread for read conversations", async () => {
     const user = userEvent.setup();
     const { rerender } = render(

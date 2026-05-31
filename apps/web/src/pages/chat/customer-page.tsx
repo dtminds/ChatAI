@@ -5,6 +5,7 @@ import {
   AlertCircleIcon,
   Chat01Icon,
   Loading03Icon,
+  Male02Icon,
   Refresh03Icon,
   Search01Icon,
   UserMultiple02Icon,
@@ -447,8 +448,17 @@ function CustomerAvatar({
           src={customer.avatar}
         />
       ) : null}
-      <AvatarFallback className="rounded-[inherit] bg-primary/12 text-primary">
-        {getFirstGrapheme(displayName, "客")}
+      <AvatarFallback
+        className="rounded-[inherit] bg-primary/12 text-primary"
+        data-testid="customer-avatar-fallback"
+      >
+        <HugeiconsIcon
+          aria-hidden="true"
+          color="currentColor"
+          icon={Male02Icon}
+          size={18}
+          strokeWidth={1.8}
+        />
       </AvatarFallback>
     </Avatar>
   );
@@ -979,7 +989,7 @@ function StatusRow({
 }
 
 function getCustomerDisplayName(customer: WorkbenchCustomerSummaryDto) {
-  const name = customer.name || customer.realName || "未命名客户";
+  const name = customer.name.trim() || "未知客户";
   const realName = customer.realName.trim();
 
   if (customer.name && realName && customer.name !== realName) {

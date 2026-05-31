@@ -566,6 +566,39 @@ describe("CustomerPage", () => {
     expect(screen.queryByText("--")).not.toBeInTheDocument();
   });
 
+  it("falls back to unknown customer instead of identifiers when customer names are empty", async () => {
+    const user = userEvent.setup();
+    const service = createCustomerPageService();
+    vi.mocked(service.getCustomers).mockResolvedValueOnce({
+      hasMore: false,
+      items: [
+        {
+          avatar: "",
+          bizStatus: 1,
+          customerKey: "9001:5:external-random-id",
+          gender: null,
+          name: "",
+          platform: 5,
+          realName: "",
+          relationCount: 0,
+          seatRelations: [],
+          thirdExternalUserId: "external-random-id",
+          uid: 9001,
+        },
+      ],
+      total: 1,
+    });
+    setWorkbenchService(service);
+
+    renderRoute("/chat/customers");
+
+    await screen.findByRole("heading", { name: "客户" });
+    await user.click(screen.getByRole("tab", { name: "全部客户" }));
+
+    expect(await screen.findByText("未知客户")).toBeInTheDocument();
+    expect(screen.queryByText("external-random-id")).not.toBeInTheDocument();
+  });
+
   it("hides the seat filter when all customers is selected", async () => {
     const user = userEvent.setup();
     const service = createCustomerPageService();
@@ -674,7 +707,7 @@ describe("CustomerPage", () => {
     expect(screen.queryByText("下一页加载失败")).not.toBeInTheDocument();
   });
 
-  it("uses a full unicode character for avatar fallbacks", async () => {
+  it("uses the standard customer fallback icon instead of initials", async () => {
     const user = userEvent.setup();
     const service = createCustomerPageService();
     vi.mocked(service.getCustomers).mockResolvedValue({
@@ -705,7 +738,11 @@ describe("CustomerPage", () => {
     await user.click(screen.getByRole("button", { name: "查询" }));
 
     expect(await screen.findByText("😀客户")).toBeInTheDocument();
-    expect(screen.getByText("😀")).toBeInTheDocument();
+    const avatarFallback = document.querySelector("[data-testid='customer-avatar-fallback']");
+    expect(avatarFallback).toBeInTheDocument();
+    expect(avatarFallback).toHaveTextContent("");
+    expect(avatarFallback?.querySelector("svg")).toBeInTheDocument();
+    expect(screen.queryByText("😀")).not.toBeInTheDocument();
   });
 
   it("falls back when a recent conversation timestamp is invalid", async () => {

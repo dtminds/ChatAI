@@ -101,6 +101,54 @@ describe("workbench MySQL mappers", () => {
     expect(conversation.bizStatus).toBe(0);
   });
 
+  it("does not fall back to customer or group ids for display names", () => {
+    expect(
+      mapConversationRow({
+        chat_type: 1,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: "",
+        group_avatar: "",
+        group_name: "",
+        id: 88,
+        last_message_content: null,
+        last_message_type: null,
+        last_msgtime: null,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "external-looks-like-random-id",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      customerName: "未知客户",
+    });
+
+    expect(
+      mapConversationRow({
+        chat_type: 2,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: null,
+        group_avatar: "",
+        group_name: "",
+        id: 89,
+        last_message_content: null,
+        last_message_type: null,
+        last_msgtime: null,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "",
+        third_group_id: "group-looks-like-random-id",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      customerName: "未知群聊",
+    });
+  });
+
   it("uses raw conversation preview content only for text messages", () => {
     expect(
       mapConversationRow({

@@ -59,6 +59,8 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     customerAvatarUrl: dto.customerAvatar,
     customerId: dto.customerId,
     customerName: dto.customerName,
+    contactOriginalName: dto.contactOriginalName,
+    groupOriginalName: dto.groupOriginalName,
     id: dto.conversationId,
     isPinned: dto.isPinned,
     isVerified: dto.verified,

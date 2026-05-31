@@ -5,6 +5,7 @@ import {
   Bug02Icon,
   ExclamationMarkIcon,
   Loading03Icon,
+  Male02Icon,
   MoreHorizontalIcon,
   QuoteUpSquareIcon,
 } from "@hugeicons/core-free-icons";
@@ -901,7 +902,15 @@ export function MessageAvatar({ message }: { message: ChatMessage }) {
       {message.sender.avatarUrl ? (
         <AvatarImage alt={message.sender.name} src={message.sender.avatarUrl} />
       ) : null}
-      <AvatarFallback className="rounded-[6px] text-sm" />
+      <AvatarFallback className="rounded-[6px] text-sm">
+        <HugeiconsIcon
+          aria-hidden="true"
+          color="currentColor"
+          icon={Male02Icon}
+          size={16}
+          strokeWidth={1.8}
+        />
+      </AvatarFallback>
     </Avatar>
   );
 }

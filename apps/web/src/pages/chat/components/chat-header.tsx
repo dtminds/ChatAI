@@ -69,6 +69,11 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
               {activeConversation?.customerName ?? "请选择会话"}
             </p>
           </div>
+          {activeConversation?.groupOriginalName || activeConversation?.contactOriginalName ? (
+            <p className="truncate text-[12px] text-muted-foreground">
+              {activeConversation.groupOriginalName ?? activeConversation.contactOriginalName}
+            </p>
+          ) : null}
         </div>
 
         <SegmentedControl

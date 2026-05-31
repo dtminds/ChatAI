@@ -44,7 +44,6 @@ import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-beh
 import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
-  INSERT_COMPOSER_TEXT_COMMAND,
   UPDATE_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
@@ -55,6 +54,7 @@ import {
   useVisibleUnreadConversationRead,
 } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
+import { useSmartReplyState } from "@/pages/chat/hooks/use-smart-reply-state";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -67,7 +67,6 @@ import type {
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
-import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -326,24 +325,6 @@ function ChatWorkbenchContent({
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
     [];
-  const activeSmartReplyByMessageId = useMemo(() => {
-    if (!activeConversation || activeConversation.mode !== "single") {
-      return {};
-    }
-
-    const suggestions =
-      smartReplyByMessageIdByConversationId[activeConversation.id] ?? {};
-    const hidden =
-      smartReplyHiddenMessageKeysByConversationId[activeConversation.id] ?? {};
-
-    return Object.fromEntries(
-      Object.entries(suggestions).filter(([lookupKey]) => !hidden[lookupKey]),
-    );
-  }, [
-    activeConversation,
-    smartReplyByMessageIdByConversationId,
-    smartReplyHiddenMessageKeysByConversationId,
-  ]);
   const activeGroupMembers =
     activeConversation?.mode === "group"
       ? (groupMembersByConversationId[activeConversation.id] ?? [])
@@ -668,6 +649,48 @@ function ChatWorkbenchContent({
       window.requestAnimationFrame(scroll);
     });
   }, []);
+
+  const handleSmartReplySendFailure = useCallback(
+    ({
+      errorCode,
+      errorMessage,
+      reason,
+    }: {
+      errorCode: string;
+      errorMessage?: string;
+      reason: "file-upload" | "image-upload" | "send" | "unavailable";
+    }) => {
+      setSendFailureDialog(
+        getSendFailureDialogCopy(reason, errorCode, errorMessage),
+      );
+    },
+    [],
+  );
+
+  const {
+    activeSmartReplyByMessageId,
+    handleDismissSmartReply,
+    handleFillSmartReplyComposer,
+    handleMakeShorterSmartReply,
+    handleSendSmartReply,
+    handleTriggerSmartReply,
+  } = useSmartReplyState({
+    activeConversation,
+    canSendMessage,
+    composerRef,
+    dismissSmartReply,
+    isMountedRef,
+    isSendingDraftRef,
+    onDraftChange: setDraft,
+    onSendFailure: handleSmartReplySendFailure,
+    onSendingChange: setIsSendingDraft,
+    onSent: scrollMessageViewportToBottom,
+    requestSmartReplyGeneralAnswer,
+    requestSmartReplyMakeShorter,
+    sendSmartReply,
+    smartReplyByMessageIdByConversationId,
+    smartReplyHiddenMessageKeysByConversationId,
+  });
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
     const sendConversationId = activeConversation?.id;
@@ -1072,85 +1095,6 @@ function ChatWorkbenchContent({
 
     setQuotedMessage(buildQuotedMessagePreview(message));
     composerRef.current?.focus();
-  };
-
-  const handleSendSmartReply = async (
-    message: ChatMessage,
-    payload: SmartReplySendPayload,
-  ) => {
-    const sendConversationId = activeConversation?.id;
-
-    if (!canSendMessage) {
-      return;
-    }
-
-    if (isSendingDraftRef.current) {
-      return;
-    }
-
-    isSendingDraftRef.current = true;
-    setIsSendingDraft(true);
-
-    try {
-      const result = await sendSmartReply(message, payload);
-
-      if (
-        !isMountedRef.current ||
-        activeConversationIdRef.current !== sendConversationId
-      ) {
-        return result;
-      }
-
-      if (!result.ok) {
-        setSendFailureDialog(
-          getSendFailureDialogCopy(
-            result.reason,
-            result.errorCode,
-            result.errorMessage,
-          ),
-        );
-      } else {
-        scrollMessageViewportToBottom();
-      }
-
-      return result;
-    } finally {
-      isSendingDraftRef.current = false;
-      if (isMountedRef.current) {
-        setIsSendingDraft(false);
-      }
-    }
-  };
-
-  const handleFillSmartReplyComposer = (
-    _message: ChatMessage,
-    content: string,
-  ) => {
-    const text = content.trim();
-
-    if (!text || !canSendMessage) {
-      return;
-    }
-
-    composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
-    composerRef.current?.dispatchCommand(INSERT_COMPOSER_TEXT_COMMAND, text);
-    setDraft(text);
-    composerRef.current?.focus();
-  };
-
-  const handleTriggerSmartReply = (
-    message: ChatMessage,
-    options?: { force?: boolean },
-  ) => {
-    void requestSmartReplyGeneralAnswer(message, options);
-  };
-
-  const handleDismissSmartReply = (message: ChatMessage) => {
-    dismissSmartReply(message);
-  };
-
-  const handleMakeShorterSmartReply = (message: ChatMessage) => {
-    void requestSmartReplyMakeShorter(message);
   };
 
   const handleMentionMessage = (message: ChatMessage) => {

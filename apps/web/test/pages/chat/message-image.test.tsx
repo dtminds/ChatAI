@@ -299,7 +299,7 @@ describe("MessageContentRenderer image messages", () => {
     await user.click(screen.getByRole("button", { name: "查看大图：带文字的图片" }));
 
     expect(
-      screen.getByRole("button", { name: "识别图中文字" }),
+      screen.getByRole("button", { name: "提取图片文字" }),
     ).toBeInTheDocument();
   });
 
@@ -319,7 +319,7 @@ describe("MessageContentRenderer image messages", () => {
 
     await user.click(screen.getByRole("button", { name: "查看大图：下方按钮图片" }));
 
-    const action = screen.getByRole("button", { name: "识别图中文字" });
+    const action = screen.getByRole("button", { name: "提取图片文字" });
 
     expect(screen.getByTestId("image-preview-action-bar")).toContainElement(action);
     expect(screen.getByTestId("image-preview-image-frame")).not.toContainElement(action);
@@ -342,7 +342,7 @@ describe("MessageContentRenderer image messages", () => {
     await user.click(screen.getByRole("button", { name: "查看大图：客户表情" }));
 
     expect(
-      screen.queryByRole("button", { name: "识别图中文字" }),
+      screen.queryByRole("button", { name: "提取图片文字" }),
     ).not.toBeInTheDocument();
   });
 
@@ -389,7 +389,7 @@ describe("MessageContentRenderer image messages", () => {
 
     expect(recognizeImageText).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "识别图中文字" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
 
     expect(recognizeImageText).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -404,7 +404,7 @@ describe("MessageContentRenderer image messages", () => {
     );
     expect(screen.getByText("订单号 12345")).toBeInTheDocument();
     expect(screen.getByText("收货地址 上海市")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "识别图中文字" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "提取图片文字" })).not.toBeInTheDocument();
     expect(screen.queryByText("文本 1")).not.toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
 
@@ -439,7 +439,7 @@ describe("MessageContentRenderer image messages", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "查看大图：阶段提示图片" }));
-    await user.click(screen.getByRole("button", { name: "识别图中文字" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
 
     expect(await screen.findByText("正在加载 OCR 模型")).toBeInTheDocument();
     changePhase?.("recognizing");
@@ -481,7 +481,7 @@ describe("MessageContentRenderer image messages", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "查看大图：可复制识别结果" }));
-    await user.click(screen.getByRole("button", { name: "识别图中文字" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
     await screen.findByTestId("image-preview-ocr-panel");
     await user.click(screen.getByRole("button", { name: "复制全部识别文字" }));
     await user.click(screen.getByRole("button", { name: "复制第 1 条识别文字" }));
@@ -525,7 +525,7 @@ describe("MessageContentRenderer image messages", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "查看大图：兜底复制图片" }));
-    await user.click(screen.getByRole("button", { name: "识别图中文字" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
     await screen.findByTestId("image-preview-ocr-panel");
     await user.click(screen.getByRole("button", { name: "复制全部识别文字" }));
 
@@ -558,7 +558,7 @@ describe("MessageContentRenderer image messages", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "查看大图：先渲染加载态图片" }));
-    await user.click(screen.getByRole("button", { name: "识别图中文字" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
 
     expect(await screen.findByText("正在加载 OCR 模型")).toBeInTheDocument();
     expect(requestAnimationFrameSpy).toHaveBeenCalled();
@@ -605,11 +605,11 @@ describe("MessageContentRenderer image messages", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "查看大图：失败图片" }));
-    await user.click(screen.getByRole("button", { name: "识别图中文字" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
 
     expect(await screen.findByText("图片加载失败：失败图片")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "识别图中文字" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
 
     expect(await screen.findByText("重试成功")).toBeInTheDocument();
   });

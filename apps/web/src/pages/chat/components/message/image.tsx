@@ -238,18 +238,18 @@ export function ImagePreviewDialog({
               >
                 {ocrEnabled && (ocrStatus === "idle" || ocrStatus === "error") ? (
                   <Button
-                    className="bg-background/92 text-foreground shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-background"
+                    className="border border-white/12 bg-neutral-950/86 text-white shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-neutral-900 hover:text-white"
                     onClick={() => void handleRecognizeText()}
                     size="sm"
                     type="button"
-                    variant="secondary"
+                    variant="ghost"
                   >
                     <HugeiconsIcon
                       icon={AiScanIcon}
                       size={16}
                       strokeWidth={2}
                     />
-                    识别图中文字
+                    提取图片文字
                   </Button>
                 ) : null}
               </div>
@@ -399,7 +399,7 @@ function getOcrPanelTitle({
     return "识别结果";
   }
 
-  return "识别图中文字";
+  return "提取图片文字";
 }
 
 function waitForNextPaint() {

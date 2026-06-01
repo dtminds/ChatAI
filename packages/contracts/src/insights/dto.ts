@@ -67,6 +67,42 @@ export const InsightIntentCountSchema = Type.Object({
   intentLabel: Type.String(),
 });
 
+export const InsightOverviewTotalsSchema = Type.Object({
+  agentMessages: Type.Number(),
+  consultingCustomers: Type.Number(),
+  customerMessages: Type.Number(),
+  logicalSessions: Type.Number(),
+  messages: Type.Number(),
+});
+
+export const InsightOverviewTrendPointSchema = Type.Object({
+  agentMessages: Type.Number(),
+  consultingCustomers: Type.Number(),
+  customerMessages: Type.Number(),
+  date: Type.String(),
+  logicalSessions: Type.Number(),
+  messages: Type.Number(),
+});
+
+export const InsightOverviewSessionItemSchema = Type.Object({
+  agentAvatarUrl: Type.Optional(Type.String()),
+  agentMessageCount: Type.Number(),
+  agentName: Type.Optional(Type.String()),
+  analysisStatus: InsightAnalysisStatusSchema,
+  conversationId: Type.String(),
+  customerAvatarUrl: Type.Optional(Type.String()),
+  customerMessageCount: Type.Number(),
+  customerName: Type.String(),
+  endedAt: Type.Optional(Type.Number()),
+  lastMessageAt: Type.Optional(Type.Number()),
+  messageCount: Type.Number(),
+  problemSummary: Type.Optional(Type.String()),
+  resolutionStatus: InsightResolutionStatusSchema,
+  sessionId: Type.String(),
+  startedAt: Type.Number(),
+  summaryCustomerIntent: Type.String(),
+});
+
 export const InsightsOverviewResponseSchema = Type.Object({
   actionItemsOpen: Type.Number(),
   analysis: Type.Object({
@@ -81,7 +117,10 @@ export const InsightsOverviewResponseSchema = Type.Object({
   negativeSessions: Type.Number(),
   problemSessions: Type.Number(),
   readySessions: Type.Number(),
+  sessions: Type.Array(InsightOverviewSessionItemSchema),
   totalSessions: Type.Number(),
+  totals: InsightOverviewTotalsSchema,
+  trend: Type.Array(InsightOverviewTrendPointSchema),
   unresolvedSessions: Type.Number(),
 });
 
@@ -156,7 +195,10 @@ export const InsightsFollowUpsResponseSchema = Type.Object({
 });
 
 export const InsightSessionMetaSchema = Type.Object({
+  agentAvatarUrl: Type.Optional(Type.String()),
+  agentName: Type.Optional(Type.String()),
   conversationId: Type.String(),
+  customerAvatarUrl: Type.Optional(Type.String()),
   customerName: Type.String(),
   endedAt: Type.Optional(Type.Number()),
   phase: Type.Union([Type.Literal("live"), Type.Literal("final")]),

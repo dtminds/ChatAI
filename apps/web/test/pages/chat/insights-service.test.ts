@@ -35,7 +35,7 @@ describe("insights service adapter", () => {
       { data: JSON.parse(config.data ?? "{}"), success: true },
     ]);
 
-    await getInsightOverview();
+    await getInsightOverview({ from: "2026-06-01", to: "2026-06-02" });
     await getInsightQuality();
     await getInsightFollowUps({ priority: "high", status: "open", type: "logistics_check" });
     await getInsightDetail("501");
@@ -45,6 +45,10 @@ describe("insights service adapter", () => {
     await createInsightRescanJob({ from: "2026-06-01T00:00:00.000Z" });
 
     expect(mock.history.get[0]?.url).toBe("/server/insights/overview");
+    expect(mock.history.get[0]?.params).toEqual({
+      from: "2026-06-01",
+      to: "2026-06-02",
+    });
     expect(mock.history.get[1]?.url).toBe("/server/insights/quality");
     expect(mock.history.get[2]?.url).toBe("/server/insights/follow-ups");
     expect(mock.history.get[2]?.params).toEqual({

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { routerConfig } from "@/router";
@@ -61,7 +61,68 @@ function installInsightMocks() {
     negativeSessions: 4,
     problemSessions: 11,
     readySessions: 18,
+    sessions: [
+      {
+        agentAvatarUrl: "https://example.com/agent-1.png",
+        agentMessageCount: 3,
+        agentName: "客服一号",
+        analysisStatus: "ready",
+        conversationId: "301",
+        customerAvatarUrl: "https://example.com/customer-1.png",
+        customerMessageCount: 5,
+        customerName: "张三",
+        lastMessageAt: 1_780_244_950_000,
+        messageCount: 8,
+        problemSummary: "客户反馈物流异常",
+        resolutionStatus: "unresolved",
+        sessionId: "501",
+        startedAt: 1_780_243_200_000,
+        summaryCustomerIntent: "查物流",
+      },
+      {
+        agentAvatarUrl: "https://example.com/agent-2.png",
+        agentMessageCount: 2,
+        agentName: "客服二号",
+        analysisStatus: "partial",
+        conversationId: "302",
+        customerAvatarUrl: "https://example.com/customer-2.png",
+        customerMessageCount: 3,
+        customerName: "李四",
+        lastMessageAt: 1_780_244_500_000,
+        messageCount: 5,
+        problemSummary: "客户咨询退款到账时间",
+        resolutionStatus: "resolved",
+        sessionId: "502",
+        startedAt: 1_780_244_000_000,
+        summaryCustomerIntent: "退款咨询",
+      },
+    ],
     totalSessions: 22,
+    totals: {
+      agentMessages: 38,
+      consultingCustomers: 16,
+      customerMessages: 64,
+      logicalSessions: 22,
+      messages: 102,
+    },
+    trend: [
+      {
+        agentMessages: 18,
+        consultingCustomers: 8,
+        customerMessages: 30,
+        date: "2026-06-01",
+        logicalSessions: 10,
+        messages: 48,
+      },
+      {
+        agentMessages: 20,
+        consultingCustomers: 9,
+        customerMessages: 34,
+        date: "2026-06-02",
+        logicalSessions: 12,
+        messages: 54,
+      },
+    ],
     unresolvedSessions: 5,
   });
   serviceMocks.getInsightQuality.mockResolvedValue({
@@ -180,6 +241,7 @@ function installInsightMocks() {
         customerId: "customer-301",
         messageId: "external-msg-9001",
         seatId: "seat-1",
+        senderAvatar: "https://example.com/agent-1.png",
         senderName: "客服一号",
         senderType: "agent",
         seq: 9001,
@@ -193,6 +255,7 @@ function installInsightMocks() {
         customerId: "customer-301",
         messageId: "external-msg-9002",
         seatId: "seat-1",
+        senderAvatar: "https://example.com/customer-1.png",
         senderName: "张三",
         senderType: "customer",
         seq: 9002,
@@ -248,7 +311,10 @@ function installInsightMocks() {
       },
     ],
     session: {
+      agentAvatarUrl: "https://example.com/agent-1.png",
+      agentName: "客服一号",
       conversationId: "301",
+      customerAvatarUrl: "https://example.com/customer-1.png",
       customerName: "张三",
       endedAt: 1_780_245_000_000,
       phase: "final",
@@ -391,18 +457,26 @@ describe("conversation insights pages", () => {
     expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /服务质检/ })).toHaveAttribute("href", "/chat/insights/quality");
     expect(screen.getByText("逻辑会话数")).toBeInTheDocument();
-    expect(screen.getByText("22")).toBeInTheDocument();
-    expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
-    expect(screen.getByText("已完成")).toBeInTheDocument();
-    expect(screen.getByText("部分完成")).toBeInTheDocument();
-    expect(screen.getByText("失败")).toBeInTheDocument();
-    expect(screen.getByText("已过期")).toBeInTheDocument();
+    expect(screen.getAllByText("22").length).toBeGreaterThan(0);
+    expect(screen.getByText("咨询用户数")).toBeInTheDocument();
+    expect(screen.getByText("消息数")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^消息数/ })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "逻辑会话明细" })).toBeInTheDocument();
+    expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
+    expect(screen.queryByText("优先处理队列")).not.toBeInTheDocument();
+    expect(screen.queryByText("分析完成率和异常状态")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "张三" })).toBeInTheDocument();
     expect(screen.queryByText("会话 301")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /查看高风险会话/ }));
+    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
 
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
+    const detailDialog = screen.getByRole("dialog", { name: "洞察详情" });
+    expect(screen.getByRole("region", { name: "洞察结论" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "证据消息" })).toBeInTheDocument();
+    expect(within(detailDialog).getAllByRole("img", { name: "张三" }).length).toBeGreaterThan(0);
+    expect(within(detailDialog).getAllByRole("img", { name: "客服一号" }).length).toBeGreaterThan(0);
+    expect(within(detailDialog).queryByText("已完成")).not.toBeInTheDocument();
     expect(screen.getAllByText("物流异常").length).toBeGreaterThan(0);
     expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
     expect(screen.getByText("物流停滞怎么处理")).toBeInTheDocument();

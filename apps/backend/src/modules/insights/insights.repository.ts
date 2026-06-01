@@ -24,6 +24,7 @@ import type {
   InsightDetailRow,
   InsightEvidenceMessageRow,
   InsightsFollowUpFilters,
+  InsightsOverviewFilters,
   InsightsRepositoryPort,
   InsightsUidScope,
 } from "./insights.service.js";
@@ -31,17 +32,21 @@ import { buildInsightMessageInput } from "./insight-message-input-builder.js";
 
 type CurrentSessionQueryRow = {
   action_id: number | string | null;
+  agent_message_count: number | string;
   action_status: string | null;
   action_type: string | null;
   action_priority: string | null;
   action_title: string | null;
   conversation_id: number | string;
   current_snapshot_id: number | string;
+  customer_message_count: number | string;
   ended_at: number | string | null;
   evidence_message_id: number | string | null;
   evidence_role: string | null;
   high_risk_id: number | string | null;
+  last_message_at: number | string | null;
   last_customer_message_at: number | string | null;
+  message_count: number | string;
   negative_risk_id: number | string | null;
   phase: string;
   problem_detected: number | string | null;
@@ -189,8 +194,11 @@ const manualActionStatuses = new Set<InsightActionStatus>(["done", "dismissed"])
 export class InsightsRepository implements InsightsRepositoryPort {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async listCurrentSessions(scope: InsightsUidScope): Promise<InsightCurrentSessionRow[]> {
-    const rows = await this.db
+  async listCurrentSessions(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters = {},
+  ): Promise<InsightCurrentSessionRow[]> {
+    let query = this.db
       .selectFrom("xy_wap_embed_session_insight_current as current")
       .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
         join.onRef("snapshot.id", "=", "current.current_snapshot_id"),
@@ -237,7 +245,11 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "risk.risk_level as risk_severity",
         "session.conversation_id as conversation_id",
         "session.ended_at as ended_at",
+        "session.agent_message_count as agent_message_count",
         "session.id as session_id",
+        "session.customer_message_count as customer_message_count",
+        "session.last_message_at as last_message_at",
+        "session.message_count as message_count",
         "session.started_at as started_at",
         "snapshot.phase as phase",
         "snapshot.status as status",
@@ -246,8 +258,20 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "summary.process_summary as summary_process",
         "summary.result_summary as summary_result",
       ])
-      .where("session.uid", "=", scope.uid)
-      .execute() as CurrentSessionQueryRow[];
+      .where("session.uid", "=", scope.uid);
+
+    const from = parseDateBoundary(filters.from);
+    const to = parseDateBoundary(filters.to);
+
+    if (from != null) {
+      query = query.where("session.started_at", ">=", from);
+    }
+
+    if (to != null) {
+      query = query.where("session.started_at", "<=", to);
+    }
+
+    const rows = await query.execute() as CurrentSessionQueryRow[];
 
     const sessionRows = mapCurrentSessionRows(rows);
     await this.hydrateCurrentSessionActors(scope, sessionRows);
@@ -1316,6 +1340,7 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
       {
         actionOpenCount: 0,
         agentAvatarUrl: null,
+        agentMessageCount: parseNumber(row.agent_message_count),
         agentName: readOptionalDetailField<string>(row, "agent_name"),
         agentSeatId: normalizeOptionalString(
           readOptionalDetailField<number | string>(row, "agent_seat_id"),
@@ -1324,10 +1349,13 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         conversationId: String(row.conversation_id),
         currentSnapshotId: String(row.current_snapshot_id),
         customerAvatarUrl: null,
+        customerMessageCount: parseNumber(row.customer_message_count),
         customerName: readOptionalDetailField<string>(row, "customer_name") ?? "未知客户",
         endedAt: parseNullableNumber(row.ended_at),
         highRiskCount: 0,
+        lastMessageAt: parseNullableNumber(row.last_message_at),
         lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at),
+        messageCount: parseNumber(row.message_count),
         negativeCount: 0,
         phase: row.phase === "final" ? "final" : "live",
         problemDetected: row.problem_detected === 1,
@@ -1524,6 +1552,20 @@ function normalizeActionStatus(value: string): InsightActionStatus {
   }
 
   return "open";
+}
+
+function parseDateBoundary(value?: string) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.getTime();
 }
 
 function parseNumber(value: Date | number | string) {

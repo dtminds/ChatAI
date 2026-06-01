@@ -19,9 +19,17 @@ export type InsightFollowUpQuery = {
   type?: string;
 };
 
-export async function getInsightOverview() {
+export type InsightOverviewQuery = {
+  from?: string;
+  to?: string;
+};
+
+export async function getInsightOverview(query: InsightOverviewQuery = {}) {
   const response = await http.get<ApiSuccessEnvelope<InsightsOverviewResponse>>(
     "/server/insights/overview",
+    {
+      params: compactQuery(query),
+    },
   );
 
   return response.data;

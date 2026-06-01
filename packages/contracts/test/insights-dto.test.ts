@@ -43,7 +43,38 @@ describe("insights DTOs", () => {
         negativeSessions: 5,
         problemSessions: 20,
         readySessions: 30,
+        sessions: [
+          {
+            agentMessageCount: 3,
+            analysisStatus: "ready",
+            conversationId: "301",
+            customerMessageCount: 5,
+            customerName: "张三",
+            messageCount: 8,
+            resolutionStatus: "unresolved",
+            sessionId: "session-1",
+            startedAt: 1780243200000,
+            summaryCustomerIntent: "退款咨询",
+          },
+        ],
         totalSessions: 36,
+        totals: {
+          agentMessages: 120,
+          consultingCustomers: 28,
+          customerMessages: 180,
+          logicalSessions: 36,
+          messages: 300,
+        },
+        trend: [
+          {
+            agentMessages: 50,
+            consultingCustomers: 12,
+            customerMessages: 80,
+            date: "2026-06-01",
+            logicalSessions: 16,
+            messages: 130,
+          },
+        ],
         unresolvedSessions: 4,
       }),
     ).toBe(true);

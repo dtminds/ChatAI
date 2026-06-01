@@ -13,16 +13,20 @@ const baseRows = [
   {
     actionOpenCount: 1,
     agentAvatarUrl: "https://example.com/agent-1.png",
+    agentMessageCount: 3,
     agentName: "客服一号",
     agentSeatId: "seat-1",
     analysisStatus: "ready",
     conversationId: "301",
     currentSnapshotId: "7001",
     customerAvatarUrl: "https://example.com/customer-1.png",
+    customerMessageCount: 5,
     customerName: "张三",
     endedAt: 1_780_245_000_000,
     highRiskCount: 1,
+    lastMessageAt: 1_780_244_950_000,
     lastCustomerMessageAt: 1_780_244_900_000,
+    messageCount: 8,
     negativeCount: 1,
     phase: "final",
     problemDetected: true,
@@ -41,16 +45,20 @@ const baseRows = [
   {
     actionOpenCount: 0,
     agentAvatarUrl: "https://example.com/agent-2.png",
+    agentMessageCount: 2,
     agentName: "客服二号",
     agentSeatId: "seat-2",
     analysisStatus: "partial",
     conversationId: "302",
     currentSnapshotId: "7002",
     customerAvatarUrl: "https://example.com/customer-2.png",
+    customerMessageCount: 3,
     customerName: "李四",
     endedAt: null,
     highRiskCount: 0,
+    lastMessageAt: 1_780_243_950_000,
     lastCustomerMessageAt: 1_780_243_900_000,
+    messageCount: 5,
     negativeCount: 0,
     phase: "live",
     problemDetected: true,
@@ -69,16 +77,20 @@ const baseRows = [
   {
     actionOpenCount: 0,
     agentAvatarUrl: null,
+    agentMessageCount: 1,
     agentName: null,
     agentSeatId: null,
     analysisStatus: "stale",
     conversationId: "303",
     currentSnapshotId: "7003",
     customerAvatarUrl: "https://example.com/customer-3.png",
+    customerMessageCount: 1,
     customerName: "王五",
     endedAt: null,
     highRiskCount: 0,
+    lastMessageAt: null,
     lastCustomerMessageAt: null,
+    messageCount: 2,
     negativeCount: 0,
     phase: "live",
     problemDetected: false,
@@ -301,8 +313,9 @@ function createRepository(
 describe("InsightsService", () => {
   it("aggregates overview metrics from current insight snapshots", async () => {
     const service = new InsightsService(createRepository());
+    const result = await service.getOverview(scope);
 
-    await expect(service.getOverview(scope)).resolves.toMatchObject({
+    expect(result).toMatchObject({
       actionItemsOpen: 1,
       analysis: {
         failed: 0,
@@ -327,8 +340,42 @@ describe("InsightsService", () => {
       problemSessions: 2,
       readySessions: 1,
       totalSessions: 3,
+      totals: {
+        agentMessages: 6,
+        consultingCustomers: 3,
+        customerMessages: 9,
+        logicalSessions: 3,
+        messages: 15,
+      },
+      trend: [
+        expect.objectContaining({
+          agentMessages: 3,
+          consultingCustomers: 2,
+          customerMessages: 4,
+          date: "2026-05-31",
+          logicalSessions: 2,
+          messages: 7,
+        }),
+        expect.objectContaining({
+          agentMessages: 3,
+          consultingCustomers: 1,
+          customerMessages: 5,
+          date: "2026-06-01",
+          logicalSessions: 1,
+          messages: 8,
+        }),
+      ],
       unresolvedSessions: 2,
     });
+    expect(result.sessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          customerName: "张三",
+          messageCount: 8,
+          sessionId: "501",
+        }),
+      ]),
+    );
   });
 
   it("builds service quality counts, unresolved ordering and reasons", async () => {
@@ -386,7 +433,10 @@ describe("InsightsService", () => {
     const result = await service.getDetail(scope, "501");
 
     expect(result.session).toMatchObject({
+      agentAvatarUrl: "https://example.com/agent-1.png",
+      agentName: "客服一号",
       conversationId: "301",
+      customerAvatarUrl: "https://example.com/customer-1.png",
       customerName: "张三",
       sessionId: "501",
     });

@@ -10,7 +10,11 @@ import {
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { InsightsRepository } from "./insights.repository.js";
-import { InsightsService, type InsightsUidScope } from "./insights.service.js";
+import {
+  InsightsService,
+  type InsightsOverviewFilters,
+  type InsightsUidScope,
+} from "./insights.service.js";
 import { UnauthorizedError } from "../../shared/errors.js";
 
 const FollowUpsQuerySchema = Type.Object({
@@ -21,6 +25,11 @@ const FollowUpsQuerySchema = Type.Object({
   ])),
   status: Type.Optional(InsightActionStatusSchema),
   type: Type.Optional(Type.String()),
+});
+
+const OverviewQuerySchema = Type.Object({
+  from: Type.Optional(Type.String()),
+  to: Type.Optional(Type.String()),
 });
 
 const SessionParamsSchema = Type.Object({
@@ -36,20 +45,27 @@ const ActionStatusBodySchema = Type.Object({
 });
 
 type FollowUpsQuery = Static<typeof FollowUpsQuerySchema>;
+type OverviewQuery = Static<typeof OverviewQuerySchema>;
 type SessionParams = Static<typeof SessionParamsSchema>;
 type ActionItemParams = Static<typeof ActionItemParamsSchema>;
 type ActionStatusBody = Static<typeof ActionStatusBodySchema>;
 type MessageContextQuery = Static<typeof InsightMessageContextRequestSchema>;
 
 export async function registerInsightsRoutes(app: FastifyInstance) {
-  app.get(
+  app.get<{ Querystring: OverviewQuery }>(
     "/api/server/insights/overview",
     {
       preHandler: app.authenticate,
+      schema: {
+        querystring: OverviewQuerySchema,
+      },
     },
     async (request) => {
       return apiSuccess(
-        await createInsightsService(app).getOverview(await getUidScope(app, request)),
+        await createInsightsService(app).getOverview(
+          await getUidScope(app, request),
+          normalizeOverviewQuery(request.query),
+        ),
       );
     },
   );
@@ -173,6 +189,13 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       );
     },
   );
+}
+
+function normalizeOverviewQuery(query: OverviewQuery): InsightsOverviewFilters {
+  return {
+    from: query.from,
+    to: query.to,
+  };
 }
 
 function createInsightsService(app: FastifyInstance) {

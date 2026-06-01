@@ -6,6 +6,7 @@ type InsightPersonProps = {
   className?: string;
   name?: string | null;
   roleLabel?: string;
+  size?: "md" | "sm";
 };
 
 export function InsightPerson({
@@ -13,16 +14,26 @@ export function InsightPerson({
   className,
   name,
   roleLabel,
+  size = "sm",
 }: InsightPersonProps) {
   const displayName = name?.trim() || "未命名";
 
   return (
     <div className={cn("flex min-w-0 items-center gap-2", className)}>
-      <Avatar aria-label={displayName} className="size-7 rounded-[8px]" role="img">
+      <Avatar
+        aria-label={displayName}
+        className={cn(size === "md" ? "size-10" : "size-7", "rounded-[8px]")}
+        role="img"
+      >
         {avatarUrl ? <AvatarImage alt={displayName} src={avatarUrl} /> : null}
         <AvatarFallback className="text-[11px]">{getFallbackText(displayName)}</AvatarFallback>
       </Avatar>
-      <span className="min-w-0 truncate text-sm font-medium text-foreground">
+      <span
+        className={cn(
+          "min-w-0 truncate font-medium text-foreground",
+          size === "md" ? "text-base" : "text-sm",
+        )}
+      >
         {roleLabel ? `${roleLabel} ${displayName}` : displayName}
       </span>
     </div>

@@ -33,16 +33,20 @@ type InsightSeverity = InsightsQualityResponse["unresolvedSessions"][number]["se
 export type InsightCurrentSessionRow = {
   actionOpenCount: number;
   agentAvatarUrl: string | null;
+  agentMessageCount: number;
   agentName: string | null;
   agentSeatId: string | null;
   analysisStatus: InsightAnalysisStatus;
   conversationId: string;
   currentSnapshotId: string;
   customerAvatarUrl: string | null;
+  customerMessageCount: number;
   customerName: string;
   endedAt: number | null;
   highRiskCount: number;
+  lastMessageAt: number | null;
   lastCustomerMessageAt: number | null;
+  messageCount: number;
   negativeCount: number;
   phase: InsightDetailResponse["session"]["phase"];
   problemDetected: boolean;
@@ -82,6 +86,11 @@ export type InsightsFollowUpFilters = {
   type?: string;
 };
 
+export type InsightsOverviewFilters = {
+  from?: string;
+  to?: string;
+};
+
 export type InsightsRepositoryPort = {
   createRescanJob(
     scope: InsightsUidScope,
@@ -93,7 +102,10 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     filters?: InsightsFollowUpFilters,
   ): Promise<InsightActionItemRow[]>;
-  listCurrentSessions(scope: InsightsUidScope): Promise<InsightCurrentSessionRow[]>;
+  listCurrentSessions(
+    scope: InsightsUidScope,
+    filters?: InsightsOverviewFilters,
+  ): Promise<InsightCurrentSessionRow[]>;
   listEntityHotspots?(
     scope: InsightsUidScope,
   ): Promise<InsightsOverviewResponse["entityHotspots"]>;
@@ -142,8 +154,11 @@ const defaultMessageContextSize = 30;
 export class InsightsService {
   constructor(private readonly repository: InsightsRepositoryPort) {}
 
-  async getOverview(scope: InsightsUidScope): Promise<InsightsOverviewResponse> {
-    const rows = await this.repository.listCurrentSessions(scope);
+  async getOverview(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters = {},
+  ): Promise<InsightsOverviewResponse> {
+    const rows = await this.repository.listCurrentSessions(scope, filters);
     const [entityHotspots, intentDistribution] = await Promise.all([
       this.repository.listEntityHotspots?.(scope) ?? Promise.resolve([]),
       this.repository.listIntentDistribution?.(scope) ?? Promise.resolve(buildIntentDistribution(rows)),
@@ -170,7 +185,10 @@ export class InsightsService {
       negativeSessions: rows.filter((row) => row.negativeCount > 0).length,
       problemSessions: rows.filter((row) => row.problemDetected).length,
       readySessions: analysis.ready,
+      sessions: buildOverviewSessions(rows),
       totalSessions: rows.length,
+      totals: buildOverviewTotals(rows),
+      trend: buildOverviewTrend(rows),
       unresolvedSessions: rows.filter((row) => unresolvedStatuses.has(row.resolutionStatus)).length,
     };
   }
@@ -273,7 +291,10 @@ export class InsightsService {
       risks: detail.risks,
       sentiment: detail.sentiment,
       session: {
+        agentAvatarUrl: detail.current.agentAvatarUrl ?? undefined,
+        agentName: detail.current.agentName ?? undefined,
         conversationId: detail.current.conversationId,
+        customerAvatarUrl: detail.current.customerAvatarUrl ?? undefined,
         customerName: detail.current.customerName,
         endedAt: detail.current.endedAt ?? undefined,
         phase: detail.current.phase,
@@ -389,6 +410,64 @@ function buildIntentDistribution(rows: InsightCurrentSessionRow[]) {
     intentCode: intentLabel,
     intentLabel,
   }));
+}
+
+function buildOverviewTotals(rows: InsightCurrentSessionRow[]) {
+  return {
+    agentMessages: rows.reduce((total, row) => total + row.agentMessageCount, 0),
+    consultingCustomers: new Set(rows.map((row) => row.conversationId)).size,
+    customerMessages: rows.reduce((total, row) => total + row.customerMessageCount, 0),
+    logicalSessions: rows.length,
+    messages: rows.reduce((total, row) => total + row.messageCount, 0),
+  };
+}
+
+function buildOverviewTrend(rows: InsightCurrentSessionRow[]) {
+  const rowsByDate = new Map<string, InsightCurrentSessionRow[]>();
+
+  for (const row of rows) {
+    const date = formatDateKey(row.startedAt);
+    rowsByDate.set(date, [...(rowsByDate.get(date) ?? []), row]);
+  }
+
+  return Array.from(rowsByDate.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, dateRows]) => ({
+      ...buildOverviewTotals(dateRows),
+      date,
+    }));
+}
+
+function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
+  return [...rows]
+    .sort((left, right) => right.startedAt - left.startedAt)
+    .map((row) => ({
+      agentAvatarUrl: row.agentAvatarUrl ?? undefined,
+      agentMessageCount: row.agentMessageCount,
+      agentName: row.agentName ?? undefined,
+      analysisStatus: row.analysisStatus,
+      conversationId: row.conversationId,
+      customerAvatarUrl: row.customerAvatarUrl ?? undefined,
+      customerMessageCount: row.customerMessageCount,
+      customerName: row.customerName,
+      endedAt: row.endedAt ?? undefined,
+      lastMessageAt: row.lastMessageAt ?? undefined,
+      messageCount: row.messageCount,
+      problemSummary: row.problemSummary || undefined,
+      resolutionStatus: row.resolutionStatus,
+      sessionId: row.sessionId,
+      startedAt: row.startedAt,
+      summaryCustomerIntent: row.summaryCustomerIntent,
+    }));
+}
+
+function formatDateKey(value: number) {
+  return new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function buildAgentStats(rows: InsightCurrentSessionRow[]) {

@@ -46,6 +46,19 @@ describe("auth routes", () => {
     });
   });
 
+  it("allows the development insights demo without checking auth", async () => {
+    const router = createMemoryRouter(routerConfig, {
+      initialEntries: ["/demo/insights"],
+    });
+
+    render(<RouterProvider router={router} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "电商洞察" }),
+    ).toBeInTheDocument();
+    expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(0);
+  });
+
   it("allows /chat when the session cookie is valid", async () => {
     mock.onGet("/auth/session").reply(200, {
       data: {

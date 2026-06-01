@@ -18,6 +18,9 @@ export const EnvSchema = Type.Object({
   NODE_ENV: Type.Optional(Type.String()),
   PORT: Type.Optional(Type.String()),
   REDIS_ENABLED: Type.Optional(Type.String()),
+  VOLCENGINE_ARK_API_KEY: Type.Optional(Type.String()),
+  VOLCENGINE_ARK_BASE_URL: Type.Optional(Type.String()),
+  VOLCENGINE_ARK_MODEL: Type.Optional(Type.String()),
 });
 
 export type Env = Static<typeof EnvSchema>;

@@ -11,6 +11,8 @@
     "db:codegen": "node scripts/codegen-db-schema.mjs",
     "dev": "pnpm --filter @chatai/contracts build && NODE_ENV=development tsx watch src/server.ts",
     "start": "node dist/server.js",
+    "worker": "node dist/worker.js",
+    "worker:dev": "pnpm --filter @chatai/contracts build && NODE_ENV=development tsx watch src/worker.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "pnpm --filter @chatai/contracts build && tsc --noEmit"

@@ -268,7 +268,7 @@ describe("MessageHistorySidePanel", () => {
 
   describe("date picker", () => {
     beforeEach(() => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-05-15"));
     });
 

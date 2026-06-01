@@ -1,11 +1,20 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GROUP_MEMBER_TYPE } from "@chatai/contracts";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageHistorySidePanel } from "@/pages/chat/components/message-history-side-panel";
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 
 describe("MessageHistorySidePanel", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-05-15"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("uses a compact underline tab layout for history scopes", () => {
     render(
       <MessageHistorySidePanel

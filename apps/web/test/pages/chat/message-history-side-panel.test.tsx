@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GROUP_MEMBER_TYPE } from "@chatai/contracts";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageHistorySidePanel } from "@/pages/chat/components/message-history-side-panel";
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 
@@ -266,7 +266,17 @@ describe("MessageHistorySidePanel", () => {
     expect(anotherMemberButton.querySelector("svg")).toBeInTheDocument();
   });
 
-  it("closes the date picker after selecting a date", async () => {
+  describe("date picker", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.setSystemTime(new Date("2026-05-15"));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("closes the date picker after selecting a date", async () => {
     const user = userEvent.setup();
     const handleSetDay = vi.fn();
 
@@ -340,6 +350,7 @@ describe("MessageHistorySidePanel", () => {
 
     expect(handleSetDay).toHaveBeenCalledWith(undefined);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 
   it("does not show empty state while loading history data", () => {

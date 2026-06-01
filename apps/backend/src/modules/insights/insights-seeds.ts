@@ -1,0 +1,72 @@
+import type { InsightSettingsResponse } from "@chatai/contracts";
+
+export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
+  analysisPolicy: {
+    finalAnalysisEnabled: true,
+    liveAnalysisEnabled: true,
+    liveMinIntervalMinutes: 10,
+    liveMinNewMeaningfulMessages: 6,
+    lowConfidenceThreshold: 0.6,
+    ruleFallbackEnabled: true,
+  },
+  entityDictionary: [
+    {
+      aliases: ["白鸭绒外套", "直播间羽绒服"],
+      canonicalName: "白色羽绒服",
+      enabled: true,
+      entityType: "product",
+      includeInAggregation: true,
+    },
+  ],
+  labelConfigs: [
+    {
+      enabled: true,
+      includeInStatistics: true,
+      labelCode: "price_sensitive",
+      labelName: "价格敏感",
+    },
+    {
+      enabled: true,
+      includeInStatistics: true,
+      labelCode: "high_intent",
+      labelName: "高意向",
+    },
+  ],
+  qaRuleConfigs: [
+    {
+      enabled: true,
+      ruleCode: "problem_resolution",
+      ruleName: "客户问题是否解决",
+      severity: "high",
+    },
+    {
+      enabled: true,
+      ruleCode: "clear_next_step",
+      ruleName: "是否明确下一步",
+      severity: "medium",
+    },
+  ],
+  riskConfigs: [
+    {
+      enabled: true,
+      priorityBoost: 10,
+      riskCode: "bad_review",
+      riskName: "差评风险",
+      severity: "high",
+    },
+    {
+      enabled: true,
+      priorityBoost: 8,
+      riskCode: "refund",
+      riskName: "退款风险",
+      severity: "medium",
+    },
+  ],
+  sessionization: {
+    analysisDelayMinutes: 10,
+    hardMaxDurationHours: 48,
+    idleTimeoutMinutes: 120,
+    lateArrivalWindowMinutes: 30,
+    preset: "custom",
+  },
+};

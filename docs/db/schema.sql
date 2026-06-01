@@ -150,6 +150,26 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_summary (
   confidence DECIMAL(5,4) NULL
 );
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_session_sentiment (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  snapshot_id BIGINT NOT NULL,
+  polarity VARCHAR(32) NOT NULL,
+  reason TEXT NOT NULL,
+  confidence DECIMAL(5,4) NULL,
+  KEY idx_sentiment_snapshot (snapshot_id),
+  KEY idx_sentiment_polarity (polarity)
+);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_session_tag (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  snapshot_id BIGINT NOT NULL,
+  tag_code VARCHAR(128) NOT NULL,
+  tag_name VARCHAR(128) NOT NULL,
+  confidence DECIMAL(5,4) NULL,
+  KEY idx_tag_snapshot (snapshot_id),
+  KEY idx_tag_code (tag_code)
+);
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_problem_resolution (
   snapshot_id BIGINT PRIMARY KEY,
   problem_detected TINYINT NOT NULL,
@@ -184,6 +204,28 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_risk (
   KEY idx_risk_type_level (risk_type, risk_level)
 );
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_session_entity (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  snapshot_id BIGINT NOT NULL,
+  entity_id VARCHAR(128) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  entity_name VARCHAR(255) NOT NULL,
+  sentiment VARCHAR(32) NULL,
+  confidence DECIMAL(5,4) NULL,
+  KEY idx_session_entity_snapshot (snapshot_id),
+  KEY idx_session_entity_identity (entity_type, entity_id)
+);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_session_intent (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  snapshot_id BIGINT NOT NULL,
+  intent_code VARCHAR(128) NOT NULL,
+  intent_label VARCHAR(128) NOT NULL,
+  confidence DECIMAL(5,4) NULL,
+  KEY idx_session_intent_snapshot (snapshot_id),
+  KEY idx_session_intent_code (intent_code)
+);
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   snapshot_id BIGINT NOT NULL,
@@ -196,6 +238,17 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_action_snapshot (snapshot_id),
   KEY idx_action_status_priority (status, priority)
+);
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_session_faq_candidate (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  snapshot_id BIGINT NOT NULL,
+  question TEXT NOT NULL,
+  answer_hint TEXT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  confidence DECIMAL(5,4) NULL,
+  KEY idx_faq_snapshot (snapshot_id),
+  KEY idx_faq_status (status)
 );
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_evidence (

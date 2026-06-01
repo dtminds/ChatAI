@@ -112,9 +112,50 @@ function createRepository(
         },
       ],
       current: baseRows[0],
+      entities: [
+        {
+          entityId: "entity-1",
+          entityName: "白色羽绒服",
+          entityType: "product",
+          evidenceMessageIds: ["9002"],
+          sentiment: "negative",
+        },
+      ],
+      faqCandidates: [
+        {
+          answerHint: "先核实物流停滞节点，再告知预计回复时间",
+          evidenceMessageIds: ["9002"],
+          question: "物流停滞怎么处理",
+          status: "candidate",
+        },
+      ],
+      intents: [
+        {
+          confidence: 0.84,
+          evidenceMessageIds: ["9002"],
+          intentCode: "logistics_delay",
+          intentLabel: "物流异常",
+        },
+      ],
       problemEvidenceMessageIds: ["9001", "9002"],
       qaFindings: [{ ruleCode: "problem_resolution", passed: false }],
       risks: [{ riskLevel: "high", riskType: "bad_review" }],
+      sentiment: [
+        {
+          confidence: 0.82,
+          evidenceMessageIds: ["9002"],
+          polarity: "negative",
+          reason: "客户明确表达物流不更新的不满",
+        },
+      ],
+      tags: [
+        {
+          confidence: 0.91,
+          evidenceMessageIds: ["9002"],
+          tagCode: "logistics_issue",
+          tagName: "物流异常",
+        },
+      ],
     })),
     listActionItems: vi.fn(async () => [
       {
@@ -254,6 +295,36 @@ describe("InsightsService", () => {
       problemDetected: true,
       resolutionStatus: "unresolved",
     });
+    expect(result.tags).toEqual([
+      expect.objectContaining({
+        evidenceMessageIds: ["9002"],
+        tagCode: "logistics_issue",
+      }),
+    ]);
+    expect(result.sentiment).toEqual([
+      expect.objectContaining({
+        evidenceMessageIds: ["9002"],
+        polarity: "negative",
+      }),
+    ]);
+    expect(result.entities).toEqual([
+      expect.objectContaining({
+        entityName: "白色羽绒服",
+        evidenceMessageIds: ["9002"],
+      }),
+    ]);
+    expect(result.intents).toEqual([
+      expect.objectContaining({
+        intentCode: "logistics_delay",
+        evidenceMessageIds: ["9002"],
+      }),
+    ]);
+    expect(result.faqCandidates).toEqual([
+      expect.objectContaining({
+        evidenceMessageIds: ["9002"],
+        question: "物流停滞怎么处理",
+      }),
+    ]);
   });
 
   it("rejects settings access for non-admin roles at the service boundary", async () => {

@@ -175,21 +175,73 @@ export const InsightProblemResolutionSchema = Type.Object({
   unresolvedReason: Type.Optional(Type.String()),
 });
 
+export const InsightTagSchema = Type.Object({
+  confidence: Type.Number(),
+  evidenceMessageIds: Type.Array(Type.String()),
+  tagCode: Type.String(),
+  tagName: Type.String(),
+});
+
+export const InsightSentimentSchema = Type.Object({
+  confidence: Type.Number(),
+  evidenceMessageIds: Type.Array(Type.String()),
+  polarity: Type.Union([
+    Type.Literal("positive"),
+    Type.Literal("neutral"),
+    Type.Literal("negative"),
+    Type.Literal("mixed"),
+    Type.Literal("unknown"),
+  ]),
+  reason: Type.String(),
+});
+
+export const InsightDetailEntitySchema = Type.Object({
+  entityId: Type.String(),
+  entityName: Type.String(),
+  entityType: Type.String(),
+  evidenceMessageIds: Type.Array(Type.String()),
+  sentiment: Type.Optional(Type.String()),
+});
+
+export const InsightIntentSchema = Type.Object({
+  confidence: Type.Number(),
+  evidenceMessageIds: Type.Array(Type.String()),
+  intentCode: Type.String(),
+  intentLabel: Type.String(),
+});
+
+export const InsightFaqCandidateSchema = Type.Object({
+  answerHint: Type.String(),
+  evidenceMessageIds: Type.Array(Type.String()),
+  question: Type.String(),
+  status: Type.String(),
+});
+
 export const InsightDetailResponseSchema = Type.Object({
-  actionItems: Type.Array(Type.Any()),
+  actionItems: Type.Array(InsightFollowUpItemSchema),
   analysisStatus: InsightAnalysisStatusSchema,
   currentSnapshotId: Type.String(),
-  entities: Type.Array(Type.Any()),
+  entities: Type.Array(InsightDetailEntitySchema),
   evidenceMessages: Type.Array(InsightEvidenceMessageContextSchema),
-  faqCandidates: Type.Array(Type.Any()),
-  intents: Type.Array(Type.Any()),
+  faqCandidates: Type.Array(InsightFaqCandidateSchema),
+  intents: Type.Array(InsightIntentSchema),
   problemResolution: InsightProblemResolutionSchema,
-  qaFindings: Type.Array(Type.Any()),
-  risks: Type.Array(Type.Any()),
-  sentiment: Type.Array(Type.Any()),
+  qaFindings: Type.Array(Type.Object({
+    evidenceMessageIds: Type.Array(Type.String()),
+    passed: Type.Boolean(),
+    reason: Type.String(),
+    ruleCode: Type.String(),
+  })),
+  risks: Type.Array(Type.Object({
+    evidenceMessageIds: Type.Array(Type.String()),
+    reason: Type.String(),
+    riskLevel: InsightSeveritySchema,
+    riskType: Type.String(),
+  })),
+  sentiment: Type.Array(InsightSentimentSchema),
   session: InsightSessionMetaSchema,
   summary: InsightSummarySchema,
-  tags: Type.Array(Type.Any()),
+  tags: Type.Array(InsightTagSchema),
 });
 
 export const InsightSessionizationSettingsSchema = Type.Object({

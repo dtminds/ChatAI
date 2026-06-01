@@ -68,6 +68,48 @@ type DetailQueryRow = CurrentSessionQueryRow & {
   risk_type: string | null;
 };
 
+type DimensionEvidenceRow = {
+  dimension_record_id: number | string | null;
+  dimension_type: string;
+  source_message_id: number | string;
+};
+
+type SentimentQueryRow = {
+  confidence: number | string | null;
+  id: number | string;
+  polarity: string;
+  reason: string;
+};
+
+type TagQueryRow = {
+  confidence: number | string | null;
+  id: number | string;
+  tag_code: string;
+  tag_name: string;
+};
+
+type EntityQueryRow = {
+  entity_id: string;
+  entity_name: string;
+  entity_type: string;
+  id: number | string;
+  sentiment: string | null;
+};
+
+type IntentQueryRow = {
+  confidence: number | string | null;
+  id: number | string;
+  intent_code: string;
+  intent_label: string;
+};
+
+type FaqCandidateQueryRow = {
+  answer_hint: string;
+  id: number | string;
+  question: string;
+  status: string;
+};
+
 type EvidenceMessageQueryRow = {
   chat_type: number;
   content: string | null;
@@ -322,6 +364,23 @@ export class InsightsRepository implements InsightsRepositoryPort {
       return undefined;
     }
 
+    const snapshotId = current.currentSnapshotId;
+    const dimensionEvidence = await this.listDimensionEvidence(scope, current.sessionId, snapshotId);
+
+    const [
+      sentiment,
+      tags,
+      entities,
+      intents,
+      faqCandidates,
+    ] = await Promise.all([
+      this.listSentiment(snapshotId, dimensionEvidence),
+      this.listTags(snapshotId, dimensionEvidence),
+      this.listEntities(snapshotId, dimensionEvidence),
+      this.listIntents(snapshotId, dimensionEvidence),
+      this.listFaqCandidates(snapshotId, dimensionEvidence),
+    ]);
+
     return {
       actionItems: mapActionItemRows(
         rows.filter((row) => row.action_id != null).map((row) => ({
@@ -339,11 +398,19 @@ export class InsightsRepository implements InsightsRepositoryPort {
         })),
       ),
       current,
+      entities,
+      faqCandidates,
+      intents,
       problemEvidenceMessageIds: current.problemEvidenceMessageIds,
       qaFindings: uniqueBy(
         rows
           .filter((row) => row.qa_finding_id != null)
           .map((row) => ({
+            evidenceMessageIds: evidenceForDimension(
+              dimensionEvidence,
+              "qa_finding",
+              row.qa_finding_id,
+            ),
             passed: row.qa_passed === 1,
             reason: row.qa_reason ?? "",
             ruleCode: row.qa_rule_code ?? "",
@@ -354,12 +421,117 @@ export class InsightsRepository implements InsightsRepositoryPort {
         rows
           .filter((row) => row.risk_id != null)
           .map((row) => ({
+            evidenceMessageIds: evidenceForDimension(
+              dimensionEvidence,
+              "risk",
+              row.risk_id,
+            ),
+            reason: "",
             riskLevel: row.risk_level ?? "low",
             riskType: row.risk_type ?? "custom",
           })),
         (row) => `${row.riskType}:${row.riskLevel}`,
       ),
+      sentiment,
+      tags,
     };
+  }
+
+  private async listDimensionEvidence(
+    scope: InsightsTenantScope,
+    sessionId: string,
+    snapshotId: string,
+  ): Promise<DimensionEvidenceRow[]> {
+    return await this.db
+      .selectFrom("xy_wap_embed_insight_evidence")
+      .select([
+        "dimension_record_id",
+        "dimension_type",
+        "source_message_id",
+      ])
+      .where("tenant_id", "=", scope.tenantId)
+      .where("session_id", "=", parsePositiveInteger(sessionId) ?? -1)
+      .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
+      .execute() as DimensionEvidenceRow[];
+  }
+
+  private async listSentiment(
+    snapshotId: string,
+    evidence: DimensionEvidenceRow[],
+  ) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_sentiment")
+      .select(["confidence", "id", "polarity", "reason"])
+      .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
+      .execute() as SentimentQueryRow[];
+
+    return rows.map((row) => ({
+      confidence: parseConfidence(row.confidence),
+      evidenceMessageIds: evidenceForDimension(evidence, "sentiment", row.id),
+      polarity: normalizePolarity(row.polarity),
+      reason: row.reason,
+    }));
+  }
+
+  private async listTags(snapshotId: string, evidence: DimensionEvidenceRow[]) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_tag")
+      .select(["confidence", "id", "tag_code", "tag_name"])
+      .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
+      .execute() as TagQueryRow[];
+
+    return rows.map((row) => ({
+      confidence: parseConfidence(row.confidence),
+      evidenceMessageIds: evidenceForDimension(evidence, "tag", row.id),
+      tagCode: row.tag_code,
+      tagName: row.tag_name,
+    }));
+  }
+
+  private async listEntities(snapshotId: string, evidence: DimensionEvidenceRow[]) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_entity")
+      .select(["entity_id", "entity_name", "entity_type", "id", "sentiment"])
+      .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
+      .execute() as EntityQueryRow[];
+
+    return rows.map((row) => ({
+      entityId: row.entity_id,
+      entityName: row.entity_name,
+      entityType: row.entity_type,
+      evidenceMessageIds: evidenceForDimension(evidence, "entity", row.id),
+      sentiment: row.sentiment ?? undefined,
+    }));
+  }
+
+  private async listIntents(snapshotId: string, evidence: DimensionEvidenceRow[]) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_intent")
+      .select(["confidence", "id", "intent_code", "intent_label"])
+      .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
+      .execute() as IntentQueryRow[];
+
+    return rows.map((row) => ({
+      confidence: parseConfidence(row.confidence),
+      evidenceMessageIds: evidenceForDimension(evidence, "intent", row.id),
+      intentCode: row.intent_code,
+      intentLabel: row.intent_label,
+    }));
+  }
+
+  private async listFaqCandidates(snapshotId: string, evidence: DimensionEvidenceRow[]) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_faq_candidate")
+      .select(["answer_hint", "id", "question", "status"])
+      .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
+      .execute() as FaqCandidateQueryRow[];
+
+    return rows.map((row) => ({
+      answerHint: row.answer_hint,
+      evidenceMessageIds: evidenceForDimension(evidence, "faq_candidate", row.id),
+      question: row.question,
+      status: row.status,
+    }));
   }
 
   async listEvidenceMessages(
@@ -642,6 +814,20 @@ function normalizePriority(value: string) {
   return "medium";
 }
 
+function normalizePolarity(value: string) {
+  if (
+    value === "positive" ||
+    value === "neutral" ||
+    value === "negative" ||
+    value === "mixed" ||
+    value === "unknown"
+  ) {
+    return value;
+  }
+
+  return "unknown";
+}
+
 function normalizeActionStatus(value: string): InsightActionStatus {
   if (
     value === "open" ||
@@ -667,6 +853,16 @@ function parseNumber(value: Date | number | string) {
 
 function parseNullableNumber(value: Date | number | string | null) {
   return value == null ? null : parseNumber(value);
+}
+
+function parseConfidence(value: number | string | null) {
+  if (value == null) {
+    return 0;
+  }
+
+  const parsed = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function parsePositiveInteger(value: string) {
@@ -699,6 +895,29 @@ function uniqueBy<T>(items: T[], keyOf: (item: T) => string) {
 
     return true;
   });
+}
+
+function evidenceForDimension(
+  rows: DimensionEvidenceRow[],
+  dimensionType: string,
+  dimensionRecordId: number | string | null,
+) {
+  const recordId = dimensionRecordId == null ? null : String(dimensionRecordId);
+
+  return sortNumericStrings(
+    Array.from(
+      new Set(
+        rows
+          .filter((row) => row.dimension_type === dimensionType)
+          .filter((row) =>
+            recordId == null
+              ? row.dimension_record_id == null
+              : String(row.dimension_record_id) === recordId,
+          )
+          .map((row) => String(row.source_message_id)),
+      ),
+    ),
+  );
 }
 
 function getAffectedRows(result: unknown) {

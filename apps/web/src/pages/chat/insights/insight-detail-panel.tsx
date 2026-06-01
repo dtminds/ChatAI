@@ -97,6 +97,50 @@ export function InsightDetailPanel({
             </section>
 
             <section className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">结论维度</h3>
+              <InsightPills
+                emptyText="暂无标签"
+                items={detail.tags.map((item) => item.tagName)}
+                label="标签"
+              />
+              <InsightPills
+                emptyText="暂无情绪"
+                items={detail.sentiment.map((item) => `${formatPolarity(item.polarity)} · ${item.reason}`)}
+                label="情绪"
+              />
+              <InsightPills
+                emptyText="暂无风险"
+                items={detail.risks.map((item) => `${item.riskType} · ${item.reason || item.riskLevel}`)}
+                label="风险"
+              />
+              <InsightPills
+                emptyText="暂无质检项"
+                items={detail.qaFindings.map((item) => `${item.ruleCode} · ${item.passed ? "通过" : "未通过"}`)}
+                label="质检"
+              />
+              <InsightPills
+                emptyText="暂无实体"
+                items={detail.entities.map((item) => item.entityName)}
+                label="实体"
+              />
+              <InsightPills
+                emptyText="暂无意图"
+                items={detail.intents.map((item) => item.intentLabel)}
+                label="意图"
+              />
+              <InsightPills
+                emptyText="暂无行动项"
+                items={detail.actionItems.map((item) => item.title)}
+                label="行动项"
+              />
+              <InsightPills
+                emptyText="暂无 FAQ 机会"
+                items={detail.faqCandidates.map((item) => item.question)}
+                label="FAQ"
+              />
+            </section>
+
+            <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-foreground">证据消息</h3>
                 <span className="text-xs text-muted-foreground">
@@ -151,4 +195,51 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
       <div className="text-sm leading-6 text-foreground">{value || "暂无"}</div>
     </div>
   );
+}
+
+function InsightPills({
+  emptyText,
+  items,
+  label,
+}: {
+  emptyText: string;
+  items: string[];
+  label: string;
+}) {
+  return (
+    <div className="grid gap-2 rounded-[8px] border bg-background p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex flex-wrap gap-2">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <Badge key={`${label}:${item}`} variant="secondary">
+              {item}
+            </Badge>
+          ))
+        ) : (
+          <span className="text-sm text-muted-foreground">{emptyText}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatPolarity(polarity: string) {
+  if (polarity === "positive") {
+    return "正向";
+  }
+
+  if (polarity === "negative") {
+    return "负向";
+  }
+
+  if (polarity === "mixed") {
+    return "混合";
+  }
+
+  if (polarity === "neutral") {
+    return "中性";
+  }
+
+  return "未知";
 }

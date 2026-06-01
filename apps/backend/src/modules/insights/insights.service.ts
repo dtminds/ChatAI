@@ -60,11 +60,16 @@ export type InsightActionItemRow = InsightsFollowUpsResponse["items"][number];
 export type InsightEvidenceMessageRow = InsightDetailResponse["evidenceMessages"][number];
 
 export type InsightDetailRow = {
-  actionItems: unknown[];
+  actionItems: InsightDetailResponse["actionItems"];
   current: InsightCurrentSessionRow;
+  entities: InsightDetailResponse["entities"];
+  faqCandidates: InsightDetailResponse["faqCandidates"];
+  intents: InsightDetailResponse["intents"];
   problemEvidenceMessageIds: string[];
-  qaFindings: unknown[];
-  risks: unknown[];
+  qaFindings: InsightDetailResponse["qaFindings"];
+  risks: InsightDetailResponse["risks"];
+  sentiment: InsightDetailResponse["sentiment"];
+  tags: InsightDetailResponse["tags"];
 };
 
 export type InsightsFollowUpFilters = {
@@ -215,10 +220,10 @@ export class InsightsService {
       actionItems: detail.actionItems,
       analysisStatus: detail.current.analysisStatus,
       currentSnapshotId: detail.current.currentSnapshotId,
-      entities: [],
+      entities: detail.entities,
       evidenceMessages,
-      faqCandidates: [],
-      intents: [],
+      faqCandidates: detail.faqCandidates,
+      intents: detail.intents,
       problemResolution: {
         confidence: 0,
         evidenceMessageIds: detail.problemEvidenceMessageIds,
@@ -229,7 +234,7 @@ export class InsightsService {
       },
       qaFindings: detail.qaFindings,
       risks: detail.risks,
-      sentiment: [],
+      sentiment: detail.sentiment,
       session: {
         conversationId: detail.current.conversationId,
         customerName: detail.current.customerName,
@@ -244,7 +249,7 @@ export class InsightsService {
         processSummary: detail.current.summaryProcess,
         resultSummary: detail.current.summaryResult,
       },
-      tags: [],
+      tags: detail.tags,
     };
   }
 

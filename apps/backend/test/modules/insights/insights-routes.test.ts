@@ -66,6 +66,36 @@ describe("insights routes", () => {
       "9001",
       "9002",
     ]);
+    expect(detail.json().data.tags).toEqual([
+      expect.objectContaining({
+        evidenceMessageIds: ["9002"],
+        tagCode: "logistics_issue",
+      }),
+    ]);
+    expect(detail.json().data.sentiment).toEqual([
+      expect.objectContaining({
+        evidenceMessageIds: ["9002"],
+        polarity: "negative",
+      }),
+    ]);
+    expect(detail.json().data.entities).toEqual([
+      expect.objectContaining({
+        entityName: "白色羽绒服",
+        evidenceMessageIds: ["9002"],
+      }),
+    ]);
+    expect(detail.json().data.intents).toEqual([
+      expect.objectContaining({
+        intentCode: "logistics_delay",
+        evidenceMessageIds: ["9002"],
+      }),
+    ]);
+    expect(detail.json().data.faqCandidates).toEqual([
+      expect.objectContaining({
+        evidenceMessageIds: ["9002"],
+        question: "物流停滞怎么处理",
+      }),
+    ]);
     expect(status.statusCode).toBe(200);
     expect(status.json()).toMatchObject({
       data: {
@@ -313,6 +343,102 @@ function createInsightsDbMock() {
             reason: "物流进度未确认",
             session_id: 501,
             title: "确认快递状态",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_insight_evidence") {
+        return createBuilder([
+          {
+            dimension_record_id: 1001,
+            dimension_type: "tag",
+            source_message_id: 9002,
+          },
+          {
+            dimension_record_id: 1101,
+            dimension_type: "sentiment",
+            source_message_id: 9002,
+          },
+          {
+            dimension_record_id: 1201,
+            dimension_type: "entity",
+            source_message_id: 9002,
+          },
+          {
+            dimension_record_id: 1301,
+            dimension_type: "intent",
+            source_message_id: 9002,
+          },
+          {
+            dimension_record_id: 1401,
+            dimension_type: "faq_candidate",
+            source_message_id: 9002,
+          },
+          {
+            dimension_record_id: 701,
+            dimension_type: "qa_finding",
+            source_message_id: 9002,
+          },
+          {
+            dimension_record_id: 601,
+            dimension_type: "risk",
+            source_message_id: 9002,
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_session_sentiment") {
+        return createBuilder([
+          {
+            confidence: "0.8200",
+            id: 1101,
+            polarity: "negative",
+            reason: "客户明确表达物流不更新的不满",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_session_tag") {
+        return createBuilder([
+          {
+            confidence: "0.9100",
+            id: 1001,
+            tag_code: "logistics_issue",
+            tag_name: "物流异常",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_session_entity") {
+        return createBuilder([
+          {
+            entity_id: "sku-1",
+            entity_name: "白色羽绒服",
+            entity_type: "product",
+            id: 1201,
+            sentiment: "negative",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_session_intent") {
+        return createBuilder([
+          {
+            confidence: "0.8400",
+            id: 1301,
+            intent_code: "logistics_delay",
+            intent_label: "物流异常",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_session_faq_candidate") {
+        return createBuilder([
+          {
+            answer_hint: "先核实物流停滞节点，再告知预计回复时间",
+            id: 1401,
+            question: "物流停滞怎么处理",
+            status: "candidate",
           },
         ]);
       }

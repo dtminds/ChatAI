@@ -114,7 +114,15 @@ function installInsightMocks() {
     actionItems: [],
     analysisStatus: "ready",
     currentSnapshotId: "7001",
-    entities: [],
+    entities: [
+      {
+        entityId: "sku-1",
+        entityName: "白色羽绒服",
+        entityType: "product",
+        evidenceMessageIds: ["9002"],
+        sentiment: "negative",
+      },
+    ],
     evidenceMessages: [
       {
         contentText: "帮您催一下快递",
@@ -133,8 +141,22 @@ function installInsightMocks() {
         senderRole: "customer",
       },
     ],
-    faqCandidates: [],
-    intents: [],
+    faqCandidates: [
+      {
+        answerHint: "先核实物流停滞节点，再告知预计回复时间",
+        evidenceMessageIds: ["9002"],
+        question: "物流停滞怎么处理",
+        status: "candidate",
+      },
+    ],
+    intents: [
+      {
+        confidence: 0.84,
+        evidenceMessageIds: ["9002"],
+        intentCode: "logistics_delay",
+        intentLabel: "物流异常",
+      },
+    ],
     problemResolution: {
       confidence: 0.82,
       evidenceMessageIds: ["9001", "9002"],
@@ -143,9 +165,30 @@ function installInsightMocks() {
       resolutionStatus: "unresolved",
       unresolvedReason: "售后/物流/退款进度未确认",
     },
-    qaFindings: [],
-    risks: [],
-    sentiment: [],
+    qaFindings: [
+      {
+        evidenceMessageIds: ["9002"],
+        passed: false,
+        reason: "未确认物流进展",
+        ruleCode: "problem_resolution",
+      },
+    ],
+    risks: [
+      {
+        evidenceMessageIds: ["9002"],
+        reason: "客户可能给出差评",
+        riskLevel: "high",
+        riskType: "bad_review",
+      },
+    ],
+    sentiment: [
+      {
+        confidence: 0.82,
+        evidenceMessageIds: ["9002"],
+        polarity: "negative",
+        reason: "客户明确表达物流不更新的不满",
+      },
+    ],
     session: {
       conversationId: "301",
       customerName: "张三",
@@ -160,7 +203,14 @@ function installInsightMocks() {
       processSummary: "客服要求客户等待",
       resultSummary: "未确认物流进展",
     },
-    tags: [],
+    tags: [
+      {
+        confidence: 0.91,
+        evidenceMessageIds: ["9002"],
+        tagCode: "logistics_issue",
+        tagName: "物流异常",
+      },
+    ],
   });
   serviceMocks.getInsightSettings.mockResolvedValue({
     analysisPolicy: {
@@ -237,11 +287,14 @@ describe("conversation insights pages", () => {
     expect(screen.getByRole("link", { name: /服务质检/ })).toHaveAttribute("href", "/chat/insights/quality");
     expect(screen.getByText("逻辑会话数")).toBeInTheDocument();
     expect(screen.getByText("22")).toBeInTheDocument();
-    expect(screen.getByText("白色羽绒服")).toBeInTheDocument();
+    expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
 
     await userEvent.click(screen.getByRole("button", { name: /查看高风险会话/ }));
 
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
+    expect(screen.getAllByText("物流异常").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
+    expect(screen.getByText("物流停滞怎么处理")).toBeInTheDocument();
     expect(screen.getByText("还没收到货，物流也不更新")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "跳转聊天" })).toHaveAttribute(
       "href",

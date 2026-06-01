@@ -895,6 +895,22 @@ export interface XyWapEmbedSessionSummary {
   snapshot_id: number;
 }
 
+export interface XyWapEmbedSessionSentiment {
+  confidence: number | null;
+  id: Generated<number>;
+  polarity: string;
+  reason: string;
+  snapshot_id: number;
+}
+
+export interface XyWapEmbedSessionTag {
+  confidence: number | null;
+  id: Generated<number>;
+  snapshot_id: number;
+  tag_code: string;
+  tag_name: string;
+}
+
 export interface XyWapEmbedSessionProblemResolution {
   agent_action_summary: string | null;
   confidence: number | null;
@@ -925,6 +941,24 @@ export interface XyWapEmbedSessionRisk {
   snapshot_id: number;
 }
 
+export interface XyWapEmbedSessionEntity {
+  confidence: number | null;
+  entity_id: string;
+  entity_name: string;
+  entity_type: string;
+  id: Generated<number>;
+  sentiment: string | null;
+  snapshot_id: number;
+}
+
+export interface XyWapEmbedSessionIntent {
+  confidence: number | null;
+  id: Generated<number>;
+  intent_code: string;
+  intent_label: string;
+  snapshot_id: number;
+}
+
 export interface XyWapEmbedSessionActionItem {
   action_type: string;
   create_time: Generated<Date>;
@@ -935,6 +969,15 @@ export interface XyWapEmbedSessionActionItem {
   status: string;
   title: string;
   update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionFaqCandidate {
+  answer_hint: string;
+  confidence: number | null;
+  id: Generated<number>;
+  question: string;
+  snapshot_id: number;
+  status: string;
 }
 
 export interface XyWapEmbedInsightEvidence {
@@ -1077,6 +1120,11 @@ export interface DB {
   xy_wap_embed_session_qa_finding: XyWapEmbedSessionQaFinding;
   xy_wap_embed_session_risk: XyWapEmbedSessionRisk;
   xy_wap_embed_session_summary: XyWapEmbedSessionSummary;
+  xy_wap_embed_session_sentiment: XyWapEmbedSessionSentiment;
+  xy_wap_embed_session_tag: XyWapEmbedSessionTag;
+  xy_wap_embed_session_entity: XyWapEmbedSessionEntity;
+  xy_wap_embed_session_intent: XyWapEmbedSessionIntent;
+  xy_wap_embed_session_faq_candidate: XyWapEmbedSessionFaqCandidate;
   xy_wap_embed_sessionization_config: XyWapEmbedSessionizationConfig;
   xy_wap_embed_sider_bar_config: XyWapEmbedSiderBarConfig;
   xy_wap_embed_sub_user: XyWapEmbedSubUser;

@@ -6,7 +6,7 @@ import {
 } from "../../../src/modules/insights/insights.service.js";
 
 const scope = {
-  tenantId: 9001,
+  uid: 9001,
 };
 
 const baseRows = [
@@ -394,7 +394,7 @@ describe("InsightsService", () => {
     );
   });
 
-  it("throws not found when a detail session is outside tenant scope", async () => {
+  it("throws not found when a detail session is outside uid scope", async () => {
     const service = new InsightsService(createRepository({ findDetail: vi.fn(async () => undefined) }));
 
     await expect(service.getDetail(scope, "999")).rejects.toBeInstanceOf(NotFoundError);

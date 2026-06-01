@@ -9,7 +9,7 @@ import {
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { InsightsRepository } from "./insights.repository.js";
-import { InsightsService, type InsightsTenantScope } from "./insights.service.js";
+import { InsightsService, type InsightsUidScope } from "./insights.service.js";
 import { UnauthorizedError } from "../../shared/errors.js";
 
 const FollowUpsQuerySchema = Type.Object({
@@ -47,7 +47,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(
-        await createInsightsService(app).getOverview(await getTenantScope(app, request)),
+        await createInsightsService(app).getOverview(await getUidScope(app, request)),
       );
     },
   );
@@ -59,7 +59,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(
-        await createInsightsService(app).getQuality(await getTenantScope(app, request)),
+        await createInsightsService(app).getQuality(await getUidScope(app, request)),
       );
     },
   );
@@ -75,7 +75,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     async (request) => {
       return apiSuccess(
         await createInsightsService(app).getFollowUps(
-          await getTenantScope(app, request),
+          await getUidScope(app, request),
           request.query,
         ),
       );
@@ -93,7 +93,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     async (request) => {
       return apiSuccess(
         await createInsightsService(app).getDetail(
-          await getTenantScope(app, request),
+          await getUidScope(app, request),
           request.params.sessionId,
         ),
       );
@@ -112,7 +112,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     async (request) => {
       return apiSuccess(
         await createInsightsService(app).updateActionStatus(
-          await getTenantScope(app, request),
+          await getUidScope(app, request),
           request.params.actionItemId,
           request.body.status,
         ),
@@ -128,7 +128,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     async (request) => {
       return apiSuccess(
         await createInsightsService(app).getSettings(
-          await getTenantScope(app, request),
+          await getUidScope(app, request),
           request.user?.roles?.[0] as AccountRole | undefined,
         ),
       );
@@ -146,7 +146,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     async (request) => {
       return apiSuccess(
         await createInsightsService(app).createRescanJob(
-          await getTenantScope(app, request),
+          await getUidScope(app, request),
           request.body,
         ),
       );
@@ -158,10 +158,10 @@ function createInsightsService(app: FastifyInstance) {
   return new InsightsService(new InsightsRepository(app.db));
 }
 
-async function getTenantScope(
+async function getUidScope(
   app: FastifyInstance,
   request: FastifyRequest,
-): Promise<InsightsTenantScope> {
+): Promise<InsightsUidScope> {
   const subUserId = request.user?.subUserId;
 
   if (!subUserId) {
@@ -180,6 +180,6 @@ async function getTenantScope(
   }
 
   return {
-    tenantId: Number(row.uid),
+    uid: Number(row.uid),
   };
 }

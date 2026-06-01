@@ -17,8 +17,8 @@ import {
   NotFoundError,
 } from "../../shared/errors.js";
 
-export type InsightsTenantScope = {
-  tenantId: number;
+export type InsightsUidScope = {
+  uid: number;
 };
 
 type InsightResolutionStatus =
@@ -80,29 +80,29 @@ export type InsightsFollowUpFilters = {
 
 export type InsightsRepositoryPort = {
   createRescanJob(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     from: Date,
     idempotencyKey: string,
   ): Promise<string>;
-  findDetail(scope: InsightsTenantScope, sessionId: string): Promise<InsightDetailRow | undefined>;
+  findDetail(scope: InsightsUidScope, sessionId: string): Promise<InsightDetailRow | undefined>;
   listActionItems(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     filters?: InsightsFollowUpFilters,
   ): Promise<InsightActionItemRow[]>;
-  listCurrentSessions(scope: InsightsTenantScope): Promise<InsightCurrentSessionRow[]>;
+  listCurrentSessions(scope: InsightsUidScope): Promise<InsightCurrentSessionRow[]>;
   listEntityHotspots?(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
   ): Promise<InsightsOverviewResponse["entityHotspots"]>;
   listEvidenceMessages(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     sessionId: string,
     messageIds: string[],
   ): Promise<InsightEvidenceMessageRow[]>;
   listIntentDistribution?(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
   ): Promise<InsightsOverviewResponse["intentDistribution"]>;
   updateActionStatus(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     actionItemId: string,
     status: Extract<InsightActionStatus, "done" | "dismissed">,
   ): Promise<boolean>;
@@ -125,7 +125,7 @@ const analysisStatuses: InsightAnalysisStatus[] = [
 export class InsightsService {
   constructor(private readonly repository: InsightsRepositoryPort) {}
 
-  async getOverview(scope: InsightsTenantScope): Promise<InsightsOverviewResponse> {
+  async getOverview(scope: InsightsUidScope): Promise<InsightsOverviewResponse> {
     const rows = await this.repository.listCurrentSessions(scope);
     const [entityHotspots, intentDistribution] = await Promise.all([
       this.repository.listEntityHotspots?.(scope) ?? Promise.resolve([]),
@@ -158,7 +158,7 @@ export class InsightsService {
     };
   }
 
-  async getQuality(scope: InsightsTenantScope): Promise<InsightsQualityResponse> {
+  async getQuality(scope: InsightsUidScope): Promise<InsightsQualityResponse> {
     const rows = await this.repository.listCurrentSessions(scope);
     const unresolvedSessions = rows
       .filter((row) => unresolvedStatuses.has(row.resolutionStatus))
@@ -195,7 +195,7 @@ export class InsightsService {
   }
 
   async getFollowUps(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     filters: InsightsFollowUpFilters = {},
   ): Promise<InsightsFollowUpsResponse> {
     const rows = await this.repository.listActionItems(scope, filters);
@@ -211,7 +211,7 @@ export class InsightsService {
     };
   }
 
-  async getDetail(scope: InsightsTenantScope, sessionId: string): Promise<InsightDetailResponse> {
+  async getDetail(scope: InsightsUidScope, sessionId: string): Promise<InsightDetailResponse> {
     const detail = await this.repository.findDetail(scope, sessionId);
 
     if (!detail) {
@@ -264,7 +264,7 @@ export class InsightsService {
   }
 
   async getSettings(
-    _scope: InsightsTenantScope,
+    _scope: InsightsUidScope,
     role: AccountRole | string | undefined,
   ): Promise<InsightSettingsResponse> {
     if (role !== "owner" && role !== "admin") {
@@ -275,7 +275,7 @@ export class InsightsService {
   }
 
   async updateActionStatus(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     actionItemId: string,
     status: InsightActionStatus,
   ) {
@@ -296,7 +296,7 @@ export class InsightsService {
   }
 
   async createRescanJob(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     payload: InsightsRescanRequest,
   ): Promise<InsightsRescanResponse> {
     const from = new Date(payload.from);
@@ -309,7 +309,7 @@ export class InsightsService {
     const jobId = await this.repository.createRescanJob(
       scope,
       from,
-      `rescan:${scope.tenantId}:${normalizedFrom}`,
+      `rescan:${scope.uid}:${normalizedFrom}`,
     );
 
     return {

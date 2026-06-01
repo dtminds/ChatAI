@@ -766,7 +766,7 @@ export interface XyWapEmbedInsightSyncCursor {
   cursor_msgtime: number;
   id: Generated<number>;
   source: string;
-  tenant_id: number | null;
+  uid: number | null;
   update_time: Generated<Date>;
 }
 
@@ -780,7 +780,7 @@ export interface XyWapEmbedSessionizationConfig {
   late_arrival_window_minutes: number;
   preset: string;
   rule_version: string;
-  tenant_id: number;
+  uid: number;
   update_time: Generated<Date>;
 }
 
@@ -802,7 +802,7 @@ export interface XyWapEmbedLogicalSession {
   rule_version: string;
   started_at: number;
   status: string;
-  tenant_id: number;
+  uid: number;
   update_time: Generated<Date>;
   customer_message_count: Generated<number>;
 }
@@ -819,7 +819,7 @@ export interface XyWapEmbedLogicalSessionMessage {
   session_id: number;
   source_message_id: number;
   source_message_time: number;
-  tenant_id: number;
+  uid: number;
 }
 
 export interface XyWapEmbedInsightJob {
@@ -839,7 +839,7 @@ export interface XyWapEmbedInsightJob {
   status: string;
   target_id: string;
   target_type: string;
-  tenant_id: number;
+  uid: number;
   update_time: Generated<Date>;
 }
 
@@ -991,7 +991,7 @@ export interface XyWapEmbedInsightEvidence {
   session_id: number;
   snapshot_id: number;
   source_message_id: number;
-  tenant_id: number;
+  uid: number;
 }
 
 export interface XyWapEmbedInsightAnalysisPolicy {
@@ -1003,7 +1003,7 @@ export interface XyWapEmbedInsightAnalysisPolicy {
   live_min_new_meaningful_messages: number;
   low_confidence_threshold: string;
   rule_fallback_enabled: Generated<number>;
-  tenant_id: number;
+  uid: number;
   update_time: Generated<Date>;
 }
 
@@ -1017,7 +1017,7 @@ export interface XyWapEmbedInsightLabelConfig {
   label_name: string;
   negative_examples_json: string | null;
   positive_examples_json: string | null;
-  tenant_id: number;
+  uid: number;
   update_time: Generated<Date>;
 }
 
@@ -1033,7 +1033,7 @@ export interface XyWapEmbedInsightQaRuleConfig {
   rule_code: string;
   rule_name: string;
   severity: string;
-  tenant_id: number;
+  uid: number;
   update_time: Generated<Date>;
 }
 
@@ -1047,7 +1047,7 @@ export interface XyWapEmbedInsightRiskConfig {
   risk_code: string;
   risk_name: string;
   severity: string;
-  tenant_id: number;
+  uid: number;
   unresolved_timeout_minutes: number | null;
   update_time: Generated<Date>;
 }
@@ -1061,7 +1061,7 @@ export interface XyWapEmbedInsightEntityDictionary {
   entity_type: string;
   id: Generated<number>;
   include_in_aggregation: Generated<number>;
-  tenant_id: number;
+  uid: number;
   update_time: Generated<Date>;
 }
 
@@ -1086,7 +1086,7 @@ export interface XyWapEmbedModelProfile {
   retry_count: number;
   task_type: string;
   temperature: string;
-  tenant_id: number | null;
+  uid: number | null;
   timeout_ms: number;
   update_time: Generated<Date>;
 }

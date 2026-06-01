@@ -25,7 +25,7 @@ function createRepository(
     findOpenSession: vi.fn(async () => undefined),
     findPlatformConversation: vi.fn(async () => ({
       conversationId: "301",
-      tenantId: 9001,
+      uid: 9001,
     })),
     getCursor: vi.fn(async () => ({ cursorAuditId: 0, cursorMsgtime: 0 })),
     getSessionizationConfig: vi.fn(async () => defaultConfig),
@@ -38,7 +38,7 @@ function createRepository(
         msgtime: 1_780_244_000_000,
         msgtype: "text",
         platform: 5,
-        tenantId: 9001,
+        uid: 9001,
         thirdExternalId: "external-1",
         thirdGroupId: "",
         thirdUserId: "user-1",
@@ -51,7 +51,7 @@ function createRepository(
         msgtime: 1_780_244_060_000,
         msgtype: "text",
         platform: 5,
-        tenantId: 9001,
+        uid: 9001,
         thirdExternalId: "external-1",
         thirdGroupId: "",
         thirdUserId: "user-1",
@@ -84,7 +84,7 @@ describe("InsightsWorkerService", () => {
       expect.objectContaining({
         conversationId: "301",
         startedAt: 1_780_244_000_000,
-        tenantId: 9001,
+        uid: 9001,
       }),
     );
     expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
@@ -94,7 +94,7 @@ describe("InsightsWorkerService", () => {
         jobType: "analyze_session",
         mode: "live",
         sessionId: "501",
-        tenantId: 9001,
+        uid: 9001,
       }),
     );
     expect(repository.updateCursor).toHaveBeenCalledWith({
@@ -146,7 +146,7 @@ describe("InsightsWorkerService", () => {
         jobId: "job-1",
         mode: "live",
         sessionId: "501",
-        tenantId: 9001,
+        uid: 9001,
       })),
       listIncrementalMessages: vi.fn(async () => []),
       listSessionMessagesForAnalysis: vi.fn(async () => [

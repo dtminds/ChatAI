@@ -19,7 +19,7 @@ export type InsightWorkerMessage = {
   msgtime: number;
   msgtype: string;
   platform: number;
-  tenantId: number;
+  uid: number;
   thirdExternalId: string;
   thirdGroupId: string;
   thirdUserId: string;
@@ -27,14 +27,14 @@ export type InsightWorkerMessage = {
 
 export type InsightAnalysisMessageRow = Omit<
   InsightWorkerMessage,
-  "platform" | "tenantId" | "thirdExternalId" | "thirdGroupId"
+  "platform" | "uid" | "thirdExternalId" | "thirdGroupId"
 > & {
   conversationId: string;
 };
 
 export type InsightWorkerConversation = {
   conversationId: string;
-  tenantId: number;
+  uid: number;
 };
 
 export type InsightWorkerSessionizationConfig = {
@@ -55,7 +55,7 @@ export type CreateLogicalSessionInput = {
   config: InsightWorkerSessionizationConfig;
   conversationId: string;
   startedAt: number;
-  tenantId: number;
+  uid: number;
 };
 
 export type AppendSessionMessageInput = {
@@ -68,7 +68,7 @@ export type AppendSessionMessageInput = {
   sessionId: string;
   sourceMessageId: string;
   sourceMessageTime: number;
-  tenantId: number;
+  uid: number;
 };
 
 export type CloseSessionInput = {
@@ -83,7 +83,7 @@ export type CreateAnalyzeJobInput = {
   mode: "final" | "live";
   runAfter: Date;
   sessionId: string;
-  tenantId: number;
+  uid: number;
 };
 
 export type ClaimedAnalyzeJob = {
@@ -91,7 +91,7 @@ export type ClaimedAnalyzeJob = {
   jobId: string;
   mode: "final" | "live" | "manual_reanalyze";
   sessionId: string;
-  tenantId: number;
+  uid: number;
 };
 
 export type InsightAnalysisRunInput = {
@@ -198,11 +198,11 @@ export type InsightWorkerRepositoryPort = {
   createLogicalSession(input: CreateLogicalSessionInput): Promise<string>;
   findOpenSession(input: {
     conversationId: string;
-    tenantId: number;
+    uid: number;
   }): Promise<InsightWorkerOpenSession | undefined>;
   findPlatformConversation(message: InsightWorkerMessage): Promise<InsightWorkerConversation | undefined>;
   getCursor(): Promise<InsightWorkerCursor>;
-  getSessionizationConfig(tenantId: number): Promise<InsightWorkerSessionizationConfig>;
+  getSessionizationConfig(uid: number): Promise<InsightWorkerSessionizationConfig>;
   listIncrementalMessages(input: {
     cursorAuditId: number;
     cursorMsgtime: number;
@@ -267,10 +267,10 @@ export class InsightsWorkerService {
     }
 
     const input = buildInsightMessageInput(toMessageSourceRow(message, conversation.conversationId));
-    const config = await this.repository.getSessionizationConfig(conversation.tenantId);
+    const config = await this.repository.getSessionizationConfig(conversation.uid);
     const openSession = await this.repository.findOpenSession({
       conversationId: conversation.conversationId,
-      tenantId: conversation.tenantId,
+      uid: conversation.uid,
     });
     const sessionId = await this.resolveSessionId({
       config,
@@ -290,7 +290,7 @@ export class InsightsWorkerService {
       sessionId,
       sourceMessageId: input.sourceMessageId,
       sourceMessageTime: input.occurredAt,
-      tenantId: conversation.tenantId,
+      uid: conversation.uid,
     });
 
     if (input.includedForAi) {
@@ -300,7 +300,7 @@ export class InsightsWorkerService {
         mode: "live",
         runAfter: new Date(Date.now()),
         sessionId,
-        tenantId: conversation.tenantId,
+        uid: conversation.uid,
       });
     }
   }
@@ -320,7 +320,7 @@ export class InsightsWorkerService {
         config,
         conversationId: conversation.conversationId,
         startedAt: occurredAt,
-        tenantId: conversation.tenantId,
+        uid: conversation.uid,
       });
     }
 
@@ -341,14 +341,14 @@ export class InsightsWorkerService {
       mode: "final",
       runAfter: new Date(occurredAt + config.analysisDelayMinutes * 60_000),
       sessionId: openSession.sessionId,
-      tenantId: conversation.tenantId,
+      uid: conversation.uid,
     });
 
     return await this.repository.createLogicalSession({
       config,
       conversationId: conversation.conversationId,
       startedAt: occurredAt,
-      tenantId: conversation.tenantId,
+      uid: conversation.uid,
     });
   }
 

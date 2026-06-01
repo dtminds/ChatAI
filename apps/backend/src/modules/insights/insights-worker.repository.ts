@@ -38,7 +38,7 @@ type MessageRow = {
 
 type ConversationRow = {
   conversation_id: number | string;
-  tenant_id: number | string;
+  uid: number | string;
 };
 
 type ConfigRow = {
@@ -61,7 +61,7 @@ type AnalyzeJobRow = {
   idempotency_key: string;
   job_type: string;
   target_id: string;
-  tenant_id: number | string;
+  uid: number | string;
 };
 
 type AnalysisMessageRow = MessageRow & {
@@ -86,7 +86,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .selectFrom("xy_wap_embed_insight_sync_cursor")
       .select(["cursor_audit_id", "cursor_msgtime"])
       .where("source", "=", cursorSource)
-      .where("tenant_id", "is", null)
+      .where("uid", "is", null)
       .executeTakeFirst() as CursorRow | undefined;
 
     return {
@@ -137,7 +137,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       msgtime: parseNumber(row.msgtime),
       msgtype: row.msgtype,
       platform: parseNumber(row.platform),
-      tenantId: parseNumber(row.uid),
+      uid: parseNumber(row.uid),
       thirdExternalId: row.third_external_id,
       thirdGroupId: row.third_group_id,
       thirdUserId: row.third_user_id,
@@ -147,8 +147,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   async findPlatformConversation(message: InsightWorkerMessage) {
     const base = this.db
       .selectFrom("xy_wap_embed_conversation")
-      .select(["id as conversation_id", "uid as tenant_id"])
-      .where("uid", "=", message.tenantId)
+      .select(["id as conversation_id", "uid as uid"])
+      .where("uid", "=", message.uid)
       .where("platform", "=", message.platform)
       .where("chat_type", "=", message.chatType)
       .where("third_userid", "=", message.thirdUserId)
@@ -163,12 +163,12 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     return row
       ? {
           conversationId: String(row.conversation_id),
-          tenantId: parseNumber(row.tenant_id),
+          uid: parseNumber(row.uid),
         }
       : undefined;
   }
 
-  async getSessionizationConfig(tenantId: number): Promise<InsightWorkerSessionizationConfig> {
+  async getSessionizationConfig(uid: number): Promise<InsightWorkerSessionizationConfig> {
     const row = await this.db
       .selectFrom("xy_wap_embed_sessionization_config")
       .select([
@@ -178,7 +178,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         "late_arrival_window_minutes",
         "rule_version",
       ])
-      .where("tenant_id", "=", tenantId)
+      .where("uid", "=", uid)
       .where("enabled", "=", 1)
       .executeTakeFirst() as ConfigRow | undefined;
 
@@ -195,11 +195,11 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     };
   }
 
-  async findOpenSession(input: { conversationId: string; tenantId: number }) {
+  async findOpenSession(input: { conversationId: string; uid: number }) {
     const row = await this.db
       .selectFrom("xy_wap_embed_logical_session")
       .select(["id", "last_meaningful_message_at", "started_at"])
-      .where("tenant_id", "=", input.tenantId)
+      .where("uid", "=", input.uid)
       .where("conversation_id", "=", parsePositiveInteger(input.conversationId) ?? -1)
       .where("status", "=", "open")
       .orderBy("started_at", "desc")
@@ -230,7 +230,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         rule_version: input.config.ruleVersion,
         started_at: input.startedAt,
         status: "open",
-        tenant_id: input.tenantId,
+        uid: input.uid,
       })
       .executeTakeFirstOrThrow() as InsertResult;
 
@@ -250,7 +250,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         session_id: parsePositiveInteger(input.sessionId) ?? -1,
         source_message_id: parsePositiveInteger(input.sourceMessageId) ?? -1,
         source_message_time: input.sourceMessageTime,
-        tenant_id: input.tenantId,
+        uid: input.uid,
       })
       .ignore()
       .executeTakeFirst();
@@ -294,7 +294,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   async createAnalyzeJob(input: CreateAnalyzeJobInput): Promise<string> {
     const idempotencyKey = [
       input.jobType,
-      input.tenantId,
+      input.uid,
       input.sessionId,
       input.mode,
       input.runAfter.toISOString(),
@@ -310,7 +310,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         status: "pending",
         target_id: input.sessionId,
         target_type: "logical_session",
-        tenant_id: input.tenantId,
+        uid: input.uid,
       })
       .ignore()
       .executeTakeFirst() as InsertResult;
@@ -323,7 +323,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .selectFrom("xy_wap_embed_insight_sync_cursor")
       .select(["id"])
       .where("source", "=", cursorSource)
-      .where("tenant_id", "is", null)
+      .where("uid", "is", null)
       .executeTakeFirst() as { id: number | string } | undefined;
 
     if (existing) {
@@ -345,7 +345,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         cursor_audit_id: cursor.cursorAuditId,
         cursor_msgtime: cursor.cursorMsgtime,
         source: cursorSource,
-        tenant_id: null,
+        uid: null,
       })
       .executeTakeFirst();
   }
@@ -353,7 +353,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   async claimNextAnalyzeJob() {
     const row = await this.db
       .selectFrom("xy_wap_embed_insight_job")
-      .select(["analysis_scope", "id", "idempotency_key", "job_type", "target_id", "tenant_id"])
+      .select(["analysis_scope", "id", "idempotency_key", "job_type", "target_id", "uid"])
       .where("status", "=", "pending")
       .where("target_type", "=", "logical_session")
       .where("job_type", "in", ["analyze_session", "reanalyze_session"])
@@ -384,7 +384,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       jobId: String(row.id),
       mode: parseJobMode(row),
       sessionId: row.target_id,
-      tenantId: parseNumber(row.tenant_id),
+      uid: parseNumber(row.uid),
     };
   }
 
@@ -664,7 +664,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       session_id: parsePositiveInteger(input.job.sessionId) ?? -1,
       snapshot_id: snapshotId,
       source_message_id: parsePositiveInteger(messageId) ?? -1,
-      tenant_id: input.job.tenantId,
+      uid: input.job.uid,
     }));
 
     if (rows.length === 0) {

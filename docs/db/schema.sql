@@ -5,16 +5,16 @@
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_sync_cursor (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   source VARCHAR(128) NOT NULL,
-  tenant_id BIGINT NULL,
+  uid BIGINT NULL,
   cursor_msgtime BIGINT NOT NULL DEFAULT 0,
   cursor_audit_id BIGINT NOT NULL DEFAULT 0,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_insight_sync_source_tenant (source, tenant_id)
+  UNIQUE KEY uk_insight_sync_source_uid (source, uid)
 );
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_sessionization_config (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT NOT NULL,
+  uid BIGINT NOT NULL,
   preset VARCHAR(32) NOT NULL,
   idle_timeout_minutes INT NOT NULL,
   hard_max_duration_hours INT NOT NULL,
@@ -24,12 +24,12 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_sessionization_config (
   rule_version VARCHAR(64) NOT NULL,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_sessionization_tenant (tenant_id)
+  UNIQUE KEY uk_sessionization_uid (uid)
 );
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT NOT NULL,
+  uid BIGINT NOT NULL,
   conversation_id BIGINT NOT NULL,
   started_at BIGINT NOT NULL,
   ended_at BIGINT NULL,
@@ -48,13 +48,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   agent_message_count INT NOT NULL DEFAULT 0,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  KEY idx_logical_session_tenant_conversation_status (tenant_id, conversation_id, status),
+  KEY idx_logical_session_uid_conversation_status (uid, conversation_id, status),
   KEY idx_logical_session_status_time (status, last_meaningful_message_at)
 );
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT NOT NULL,
+  uid BIGINT NOT NULL,
   session_id BIGINT NOT NULL,
   conversation_id BIGINT NOT NULL,
   source_message_id BIGINT NOT NULL,
@@ -67,13 +67,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_session_source_message (session_id, source_message_id),
   KEY idx_session_message_order (session_id, source_message_time, source_message_id),
-  KEY idx_session_message_conversation_time (tenant_id, conversation_id, source_message_time),
+  KEY idx_session_message_conversation_time (uid, conversation_id, source_message_time),
   KEY idx_session_message_source (source_message_id)
 );
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT NOT NULL,
+  uid BIGINT NOT NULL,
   job_type VARCHAR(64) NOT NULL,
   analysis_scope VARCHAR(64) NOT NULL,
   target_type VARCHAR(64) NOT NULL,
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_insight_job_idempotency (idempotency_key),
   KEY idx_insight_job_runnable (status, run_after, priority),
-  KEY idx_insight_job_target (tenant_id, target_type, target_id)
+  KEY idx_insight_job_target (uid, target_type, target_id)
 );
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_analysis_run (
@@ -253,7 +253,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_faq_candidate (
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_evidence (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT NOT NULL,
+  uid BIGINT NOT NULL,
   snapshot_id BIGINT NOT NULL,
   dimension_type VARCHAR(64) NOT NULL,
   dimension_record_id BIGINT NULL,
@@ -270,7 +270,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_evidence (
 );
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_analysis_policy (
-  tenant_id BIGINT PRIMARY KEY,
+  uid BIGINT PRIMARY KEY,
   live_analysis_enabled TINYINT NOT NULL DEFAULT 1,
   live_min_new_meaningful_messages INT NOT NULL,
   live_min_interval_minutes INT NOT NULL,
@@ -284,7 +284,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_analysis_policy (
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_label_config (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT NOT NULL,
+  uid BIGINT NOT NULL,
   label_code VARCHAR(128) NOT NULL,
   label_name VARCHAR(128) NOT NULL,
   description TEXT NULL,
@@ -294,12 +294,12 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_label_config (
   include_in_statistics TINYINT NOT NULL DEFAULT 1,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_label_tenant_code (tenant_id, label_code)
+  UNIQUE KEY uk_label_uid_code (uid, label_code)
 );
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_qa_rule_config (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT NOT NULL,
+  uid BIGINT NOT NULL,
   rule_code VARCHAR(128) NOT NULL,
   rule_name VARCHAR(128) NOT NULL,
   description TEXT NULL,
@@ -311,12 +311,12 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_qa_rule_config (
   enabled TINYINT NOT NULL DEFAULT 1,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_qa_rule_tenant_code (tenant_id, rule_code)
+  UNIQUE KEY uk_qa_rule_uid_code (uid, rule_code)
 );
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_risk_config (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT NOT NULL,
+  uid BIGINT NOT NULL,
   risk_code VARCHAR(128) NOT NULL,
   risk_name VARCHAR(128) NOT NULL,
   description TEXT NULL,
@@ -327,12 +327,12 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_risk_config (
   enabled TINYINT NOT NULL DEFAULT 1,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_risk_tenant_code (tenant_id, risk_code)
+  UNIQUE KEY uk_risk_uid_code (uid, risk_code)
 );
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_entity_dictionary (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT NOT NULL,
+  uid BIGINT NOT NULL,
   entity_type VARCHAR(64) NOT NULL,
   canonical_name VARCHAR(255) NOT NULL,
   aliases_json JSON NULL,
@@ -341,7 +341,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_entity_dictionary (
   include_in_aggregation TINYINT NOT NULL DEFAULT 1,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  KEY idx_entity_dictionary_tenant_type (tenant_id, entity_type)
+  KEY idx_entity_dictionary_uid_type (uid, entity_type)
 );
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_model_provider (
@@ -357,7 +357,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_model_provider (
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_model_profile (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT NULL,
+  uid BIGINT NULL,
   task_type VARCHAR(64) NOT NULL,
   provider_id BIGINT NOT NULL,
   model_name VARCHAR(128) NOT NULL,
@@ -369,5 +369,5 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_model_profile (
   enabled TINYINT NOT NULL DEFAULT 1,
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  KEY idx_model_profile_task_tenant (task_type, tenant_id)
+  KEY idx_model_profile_task_uid (task_type, uid)
 );

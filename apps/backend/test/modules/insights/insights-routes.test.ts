@@ -115,7 +115,7 @@ describe("insights routes", () => {
     expect(db.insertedJob).toMatchObject({
       idempotency_key: "rescan:9001:2026-06-01T00:00:00.000Z",
       job_type: "sync_messages",
-      tenant_id: 9001,
+      uid: 9001,
     });
 
     await app.close();

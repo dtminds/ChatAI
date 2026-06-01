@@ -144,7 +144,7 @@ Node worker 定时扫描平台消息增量。消息事实表使用 `xy_wap_embed
 xy_wap_embed_insight_sync_cursor
 - id
 - source: xy_wap_embed_msg_audit_info
-- tenant_id nullable
+- uid nullable
 - cursor_msgtime
 - cursor_audit_id
 - updated_at
@@ -254,7 +254,7 @@ AiMessageInput
 第一版采用确定性切片规则：
 
 ```text
-聚合 key = tenant_id + conversation_id
+聚合 key = uid + conversation_id
 边界条件 = idle_timeout + hard_max_duration + business_event
 ```
 
@@ -262,7 +262,7 @@ AiMessageInput
 
 ```text
 xy_wap_embed_sessionization_config
-- tenant_id
+- uid
 - preset: realtime_service / private_domain / custom
 - idle_timeout_minutes
 - hard_max_duration_hours
@@ -315,7 +315,7 @@ late_arrival_window_minutes >= analysis_delay_minutes
 ```text
 xy_wap_embed_logical_session
 - id
-- tenant_id
+- uid
 - conversation_id
 - started_at
 - ended_at
@@ -341,7 +341,7 @@ xy_wap_embed_logical_session
 ```text
 xy_wap_embed_logical_session_message
 - id
-- tenant_id
+- uid
 - session_id
 - conversation_id
 - source_message_id
@@ -367,13 +367,13 @@ ORDER BY source_message_time ASC, source_message_id ASC
 ```text
 UNIQUE(session_id, source_message_id)
 INDEX(session_id, source_message_time, source_message_id)
-INDEX(tenant_id, conversation_id, source_message_time)
+INDEX(uid, conversation_id, source_message_time)
 INDEX(source_message_id)
 ```
 
 切片规则：
 
-1. 新有效消息到达时，查找同一 `tenant_id + conversation_id` 下的 open session。
+1. 新有效消息到达时，查找同一 `uid + conversation_id` 下的 open session。
 2. 没有 open session 时创建新 session。
 3. 有 open session 且距离 `last_meaningful_message_at` 未超过 `idle_timeout` 时追加消息。
 4. 超过 `idle_timeout` 时关闭旧 session，并创建新 session。
@@ -416,10 +416,10 @@ final analysis:
 ```text
 xy_wap_embed_insight_job
 - id
-- tenant_id
+- uid
 - job_type: sync_messages / sessionize_messages / close_idle_sessions / analyze_session / reanalyze_session
 - analysis_scope: all / summary / tags / sentiment / qa / entities
-- target_type: conversation / logical_session / tenant
+- target_type: conversation / logical_session / uid
 - target_id
 - status: pending / running / succeeded / failed / dead
 - priority
@@ -484,7 +484,7 @@ xy_wap_embed_model_provider
 ```text
 xy_wap_embed_model_profile
 - id
-- tenant_id nullable
+- uid nullable
 - task_type: session_insight / tag_extraction / sentiment / qa_check / entity_extraction
 - provider_id
 - model_name
@@ -557,7 +557,7 @@ reason
 
 ```text
 xy_wap_embed_insight_analysis_policy
-- tenant_id
+- uid
 - live_analysis_enabled
 - live_min_new_meaningful_messages
 - live_min_interval_minutes
@@ -583,7 +583,7 @@ rule_fallback_enabled = true
 ```text
 xy_wap_embed_insight_label_config
 - id
-- tenant_id
+- uid
 - label_code
 - label_name
 - description
@@ -615,7 +615,7 @@ xy_wap_embed_insight_label_config
 ```text
 xy_wap_embed_insight_qa_rule_config
 - id
-- tenant_id
+- uid
 - rule_code
 - rule_name
 - description
@@ -648,7 +648,7 @@ xy_wap_embed_insight_qa_rule_config
 ```text
 xy_wap_embed_insight_risk_config
 - id
-- tenant_id
+- uid
 - risk_code
 - risk_name
 - description
@@ -682,7 +682,7 @@ xy_wap_embed_insight_risk_config
 ```text
 xy_wap_embed_insight_entity_dictionary
 - id
-- tenant_id
+- uid
 - entity_type
 - canonical_name
 - aliases_json
@@ -853,7 +853,7 @@ xy_wap_embed_session_entity
 ```text
 xy_wap_embed_insight_entity
 - id
-- tenant_id
+- uid
 - entity_type
 - canonical_name
 - normalized_key
@@ -873,7 +873,7 @@ xy_wap_embed_insight_entity
 ```text
 xy_wap_embed_insight_entity_mention
 - id
-- tenant_id
+- uid
 - entity_id
 - session_id
 - conversation_id
@@ -962,7 +962,7 @@ dimension record
 ```text
 xy_wap_embed_insight_evidence
 - id
-- tenant_id
+- uid
 - snapshot_id
 - dimension_type: summary / sentiment / tag / qa / problem_resolution / entity / intent / risk / action_item / faq_candidate
 - dimension_record_id
@@ -997,7 +997,7 @@ INDEX(source_message_id)
 ```sql
 SELECT *
 FROM xy_wap_embed_msg_audit_info
-WHERE uid = :tenant_id
+WHERE uid = :uid
   AND id IN (:evidence_message_ids)
 ORDER BY msgtime ASC, id ASC;
 ```
@@ -1066,7 +1066,7 @@ GET /api/server/insights/intents
 列表接口支持：
 
 ```text
-- tenant context from auth
+- uid context from auth
 - conversation_id
 - phase: live / final
 - sentiment
@@ -1250,7 +1250,7 @@ GET /api/server/insights/intents
 - 分析结果写入不影响聊天主链路。
 - 支持死信任务查看和手动重跑。
 - 保存模型调用耗时、token usage、失败率和成本估算。
-- 关键日志包含 `tenant_id`、`conversation_id`、`session_id`、`job_id`、`analysis_run_id`。
+- 关键日志包含 `uid`、`conversation_id`、`session_id`、`job_id`、`analysis_run_id`。
 
 模型失败时需要提供降级结果：
 

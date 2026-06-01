@@ -12,7 +12,7 @@ import type {
   InsightEvidenceMessageRow,
   InsightsFollowUpFilters,
   InsightsRepositoryPort,
-  InsightsTenantScope,
+  InsightsUidScope,
 } from "./insights.service.js";
 import { buildInsightMessageInput } from "./insight-message-input-builder.js";
 
@@ -153,7 +153,7 @@ const manualActionStatuses = new Set<InsightActionStatus>(["done", "dismissed"])
 export class InsightsRepository implements InsightsRepositoryPort {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async listCurrentSessions(scope: InsightsTenantScope): Promise<InsightCurrentSessionRow[]> {
+  async listCurrentSessions(scope: InsightsUidScope): Promise<InsightCurrentSessionRow[]> {
     const rows = await this.db
       .selectFrom("xy_wap_embed_session_insight_current as current")
       .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
@@ -184,12 +184,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
       )
       .leftJoin("xy_wap_embed_contact as contact", (join) =>
         join
-          .onRef("contact.uid", "=", "session.tenant_id")
+          .onRef("contact.uid", "=", "session.uid")
           .onRef("contact.third_external_userid", "=", "message.third_external_id"),
       )
       .leftJoin("xy_wap_embed_user_seat as seat", (join) =>
         join
-          .onRef("seat.uid", "=", "session.tenant_id")
+          .onRef("seat.uid", "=", "session.uid")
           .onRef("seat.third_userid", "=", "message.third_user_id"),
       )
       .select([
@@ -223,14 +223,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "summary.process_summary as summary_process",
         "summary.result_summary as summary_result",
       ])
-      .where("session.tenant_id", "=", scope.tenantId)
+      .where("session.uid", "=", scope.uid)
       .execute() as CurrentSessionQueryRow[];
 
     return mapCurrentSessionRows(rows);
   }
 
   async listActionItems(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     filters: InsightsFollowUpFilters = {},
   ): Promise<InsightActionItemRow[]> {
     let query = this.db
@@ -252,7 +252,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       )
       .leftJoin("xy_wap_embed_contact as contact", (join) =>
         join
-          .onRef("contact.uid", "=", "session.tenant_id")
+          .onRef("contact.uid", "=", "session.uid")
           .onRef("contact.third_external_userid", "=", "message.third_external_id"),
       )
       .select([
@@ -268,7 +268,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.conversation_id as conversation_id",
         "session.id as session_id",
       ])
-      .where("session.tenant_id", "=", scope.tenantId);
+      .where("session.uid", "=", scope.uid);
 
     if (filters.status) {
       query = query.where("action.status", "=", filters.status);
@@ -287,7 +287,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     return mapActionItemRows(rows);
   }
 
-  async listEntityHotspots(scope: InsightsTenantScope) {
+  async listEntityHotspots(scope: InsightsUidScope) {
     const rows = await this.db
       .selectFrom("xy_wap_embed_session_entity as entity")
       .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
@@ -308,7 +308,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         sql<number>`count(distinct case when risk.risk_level = 'high' then session.id end)`.as("risk_session_count"),
         sql<number>`count(distinct session.id)`.as("session_count"),
       ])
-      .where("session.tenant_id", "=", scope.tenantId)
+      .where("session.uid", "=", scope.uid)
       .groupBy(["entity.entity_id", "entity.entity_name", "entity.entity_type"])
       .orderBy(sql<number>`count(entity.id)`, "desc")
       .limit(10)
@@ -325,7 +325,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }));
   }
 
-  async listIntentDistribution(scope: InsightsTenantScope) {
+  async listIntentDistribution(scope: InsightsUidScope) {
     const rows = await this.db
       .selectFrom("xy_wap_embed_session_intent as intent")
       .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
@@ -339,7 +339,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "intent.intent_code as intent_code",
         "intent.intent_label as intent_label",
       ])
-      .where("session.tenant_id", "=", scope.tenantId)
+      .where("session.uid", "=", scope.uid)
       .groupBy(["intent.intent_code", "intent.intent_label"])
       .orderBy(sql<number>`count(*)`, "desc")
       .limit(10)
@@ -353,7 +353,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   }
 
   async findDetail(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     sessionId: string,
   ): Promise<InsightDetailRow | undefined> {
     const rows = await this.db
@@ -389,12 +389,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
       )
       .leftJoin("xy_wap_embed_contact as contact", (join) =>
         join
-          .onRef("contact.uid", "=", "session.tenant_id")
+          .onRef("contact.uid", "=", "session.uid")
           .onRef("contact.third_external_userid", "=", "message.third_external_id"),
       )
       .leftJoin("xy_wap_embed_user_seat as seat", (join) =>
         join
-          .onRef("seat.uid", "=", "session.tenant_id")
+          .onRef("seat.uid", "=", "session.uid")
           .onRef("seat.third_userid", "=", "message.third_user_id"),
       )
       .select([
@@ -435,7 +435,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "summary.process_summary as summary_process",
         "summary.result_summary as summary_result",
       ])
-      .where("session.tenant_id", "=", scope.tenantId)
+      .where("session.uid", "=", scope.uid)
       .where("session.id", "=", parsePositiveInteger(sessionId) ?? -1)
       .execute() as DetailQueryRow[];
 
@@ -523,7 +523,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   }
 
   private async listDimensionEvidence(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     sessionId: string,
     snapshotId: string,
   ): Promise<DimensionEvidenceRow[]> {
@@ -534,7 +534,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "dimension_type",
         "source_message_id",
       ])
-      .where("tenant_id", "=", scope.tenantId)
+      .where("uid", "=", scope.uid)
       .where("session_id", "=", parsePositiveInteger(sessionId) ?? -1)
       .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
       .execute() as DimensionEvidenceRow[];
@@ -620,7 +620,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   }
 
   async listEvidenceMessages(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     sessionId: string,
     messageIds: string[],
   ): Promise<InsightEvidenceMessageRow[]> {
@@ -654,7 +654,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "message.third_user_id as third_user_id",
         "session_message.conversation_id as conversation_id",
       ])
-      .where("message.uid", "=", scope.tenantId)
+      .where("message.uid", "=", scope.uid)
       .where("message.id", "in", normalizedMessageIds)
       .orderBy("message.msgtime", "asc")
       .orderBy("message.id", "asc")
@@ -675,7 +675,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   }
 
   async updateActionStatus(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     actionItemId: string,
     status: Extract<InsightActionStatus, "done" | "dismissed">,
   ): Promise<boolean> {
@@ -703,7 +703,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   }
 
   async createRescanJob(
-    scope: InsightsTenantScope,
+    scope: InsightsUidScope,
     from: Date,
     idempotencyKey: string,
   ): Promise<string> {
@@ -717,8 +717,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
         run_after: new Date(),
         status: "pending",
         target_id: from.toISOString(),
-        target_type: "tenant",
-        tenant_id: scope.tenantId,
+        target_type: "uid",
+        uid: scope.uid,
       })
       .executeTakeFirstOrThrow() as InsertResult;
 

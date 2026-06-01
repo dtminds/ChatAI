@@ -117,11 +117,11 @@ node dist/worker.js  # 后台 worker
 ```text
 xy_wap_embed_conversation / xy_wap_embed_msg_audit_info
   -> insight sync cursor
-  -> ai_logical_session
-  -> ai_logical_session_message
-  -> ai_insight_job
-  -> ai_analysis_run
-  -> ai_session_insight_snapshot
+  -> xy_wap_embed_logical_session
+  -> xy_wap_embed_logical_session_message
+  -> xy_wap_embed_insight_job
+  -> xy_wap_embed_analysis_run
+  -> xy_wap_embed_session_insight_snapshot
   -> summary / sentiment / tag / qa finding / future dimensions
   -> /api/server/insights/*
 ```
@@ -141,7 +141,7 @@ xy_wap_embed_conversation / xy_wap_embed_msg_audit_info
 Node worker 定时扫描平台消息增量。消息事实表使用 `xy_wap_embed_msg_audit_info`，会话表使用 `xy_wap_embed_conversation`。同步水位保存在 Node 自己的派生表中。
 
 ```text
-ai_insight_sync_cursor
+xy_wap_embed_insight_sync_cursor
 - id
 - source: xy_wap_embed_msg_audit_info
 - tenant_id nullable
@@ -196,7 +196,7 @@ worker 可按批量消息先收集单聊和群聊 lookup key，再批量查询 c
 1. 读取 `xy_wap_embed_msg_audit_info` 增量。
 2. 批量解析对应 `xy_wap_embed_conversation.id` 和 `uid`。
 3. 对可归属会话的消息推进逻辑会话切片。
-4. 写入 `ai_logical_session` 和 `ai_logical_session_message`。
+4. 写入 `xy_wap_embed_logical_session` 和 `xy_wap_embed_logical_session_message`。
 5. 按触发条件创建 live/final analysis job。
 
 无法归属到有效 conversation 的消息不进入切片，并记录诊断日志。为了避免 `xy_wap_embed_conversation.last_msgtime` 摘要字段带来的乱序或补录问题，进入洞察链路的最终同步水位仍然以 `xy_wap_embed_msg_audit_info.msgtime + id` 为准。
@@ -261,7 +261,7 @@ AiMessageInput
 租户级配置：
 
 ```text
-ai_sessionization_config
+xy_wap_embed_sessionization_config
 - tenant_id
 - preset: realtime_service / private_domain / custom
 - idle_timeout_minutes
@@ -313,7 +313,7 @@ late_arrival_window_minutes >= analysis_delay_minutes
 逻辑会话表：
 
 ```text
-ai_logical_session
+xy_wap_embed_logical_session
 - id
 - tenant_id
 - conversation_id
@@ -339,7 +339,7 @@ ai_logical_session
 消息归属表：
 
 ```text
-ai_logical_session_message
+xy_wap_embed_logical_session_message
 - id
 - tenant_id
 - session_id
@@ -354,7 +354,7 @@ ai_logical_session_message
 - created_at
 ```
 
-`ai_logical_session_message` 只表达平台消息和逻辑会话的归属关系，以及该消息是否参与 AI 输入和切片边界判断。动态内容状态由 `insight-message-input-builder` 在构建模型输入时从平台消息实时解析，不在该表维护。
+`xy_wap_embed_logical_session_message` 只表达平台消息和逻辑会话的归属关系，以及该消息是否参与 AI 输入和切片边界判断。动态内容状态由 `insight-message-input-builder` 在构建模型输入时从平台消息实时解析，不在该表维护。
 
 会话内消息顺序按以下规则确定：
 
@@ -414,7 +414,7 @@ final analysis:
 后台任务通过 MySQL 持久化，worker 内部定时唤醒任务。定时器只负责唤醒，可靠性由任务表、cursor、lease、幂等和重试保证。
 
 ```text
-ai_insight_job
+xy_wap_embed_insight_job
 - id
 - tenant_id
 - job_type: sync_messages / sessionize_messages / close_idle_sessions / analyze_session / reanalyze_session
@@ -468,7 +468,7 @@ analysis service
 Provider 配置：
 
 ```text
-ai_model_provider
+xy_wap_embed_model_provider
 - id
 - provider_code: openai / volcengine_ark / dashscope / openai_compatible
 - display_name
@@ -482,7 +482,7 @@ ai_model_provider
 模型档案：
 
 ```text
-ai_model_profile
+xy_wap_embed_model_profile
 - id
 - tenant_id nullable
 - task_type: session_insight / tag_extraction / sentiment / qa_check / entity_extraction
@@ -556,7 +556,7 @@ reason
 ### 11.1 分析策略
 
 ```text
-ai_insight_analysis_policy
+xy_wap_embed_insight_analysis_policy
 - tenant_id
 - live_analysis_enabled
 - live_min_new_meaningful_messages
@@ -581,7 +581,7 @@ rule_fallback_enabled = true
 ### 11.2 标签体系
 
 ```text
-ai_insight_label_config
+xy_wap_embed_insight_label_config
 - id
 - tenant_id
 - label_code
@@ -613,7 +613,7 @@ ai_insight_label_config
 ### 11.3 质检规则
 
 ```text
-ai_insight_qa_rule_config
+xy_wap_embed_insight_qa_rule_config
 - id
 - tenant_id
 - rule_code
@@ -646,7 +646,7 @@ ai_insight_qa_rule_config
 ### 11.4 风险关注项
 
 ```text
-ai_insight_risk_config
+xy_wap_embed_insight_risk_config
 - id
 - tenant_id
 - risk_code
@@ -680,7 +680,7 @@ ai_insight_risk_config
 ### 11.5 实体和业务词库
 
 ```text
-ai_insight_entity_dictionary
+xy_wap_embed_insight_entity_dictionary
 - id
 - tenant_id
 - entity_type
@@ -723,7 +723,7 @@ SKU 规格
 当前有效结果：
 
 ```text
-ai_session_insight_current
+xy_wap_embed_session_insight_current
 - session_id
 - current_snapshot_id
 - updated_at
@@ -732,7 +732,7 @@ ai_session_insight_current
 结果快照：
 
 ```text
-ai_session_insight_snapshot
+xy_wap_embed_session_insight_snapshot
 - id
 - session_id
 - phase: live / final
@@ -749,7 +749,7 @@ ai_session_insight_snapshot
 分析运行记录：
 
 ```text
-ai_analysis_run
+xy_wap_embed_analysis_run
 - id
 - session_id
 - job_id
@@ -774,7 +774,7 @@ ai_analysis_run
 摘要：
 
 ```text
-ai_session_summary
+xy_wap_embed_session_summary
 - snapshot_id
 - customer_intent
 - process_summary
@@ -786,7 +786,7 @@ ai_session_summary
 情绪：
 
 ```text
-ai_session_sentiment
+xy_wap_embed_session_sentiment
 - snapshot_id
 - subject: customer / agent / overall
 - sentiment: positive / neutral / negative
@@ -797,7 +797,7 @@ ai_session_sentiment
 标签：
 
 ```text
-ai_session_tag
+xy_wap_embed_session_tag
 - snapshot_id
 - tag_code
 - tag_name
@@ -808,7 +808,7 @@ ai_session_tag
 质检结果：
 
 ```text
-ai_session_qa_finding
+xy_wap_embed_session_qa_finding
 - snapshot_id
 - rule_code
 - severity: low / medium / high
@@ -821,7 +821,7 @@ ai_session_qa_finding
 问题解决判定：
 
 ```text
-ai_session_problem_resolution
+xy_wap_embed_session_problem_resolution
 - snapshot_id
 - problem_detected
 - problem_summary
@@ -838,7 +838,7 @@ ai_session_problem_resolution
 业务实体：
 
 ```text
-ai_session_entity
+xy_wap_embed_session_entity
 - snapshot_id
 - entity_type: product / order / logistics / after_sale / promotion / inventory / channel / customer / service_issue / custom
 - entity_value
@@ -851,7 +851,7 @@ ai_session_entity
 实体归一化：
 
 ```text
-ai_insight_entity
+xy_wap_embed_insight_entity
 - id
 - tenant_id
 - entity_type
@@ -871,7 +871,7 @@ ai_insight_entity
 实体证据：
 
 ```text
-ai_insight_entity_mention
+xy_wap_embed_insight_entity_mention
 - id
 - tenant_id
 - entity_id
@@ -886,7 +886,7 @@ ai_insight_entity_mention
 意图：
 
 ```text
-ai_session_intent
+xy_wap_embed_session_intent
 - snapshot_id
 - intent_type: pre_sale / transaction / logistics / after_sale / operation / custom
 - intent_code
@@ -899,7 +899,7 @@ ai_session_intent
 风险：
 
 ```text
-ai_session_risk
+xy_wap_embed_session_risk
 - snapshot_id
 - risk_level: low / medium / high
 - risk_type: complaint / bad_review / refund / return / logistics_delay / unanswered / negative_sentiment / custom
@@ -911,7 +911,7 @@ ai_session_risk
 行动项：
 
 ```text
-ai_session_action_item
+xy_wap_embed_session_action_item
 - snapshot_id
 - action_type: follow_up / supervisor_intervention / refund_progress_check / logistics_check / faq_candidate_review / custom
 - title
@@ -926,7 +926,7 @@ ai_session_action_item
 FAQ 机会：
 
 ```text
-ai_session_faq_candidate
+xy_wap_embed_session_faq_candidate
 - snapshot_id
 - question
 - answer_hint
@@ -942,8 +942,8 @@ ai_session_faq_candidate
 ```text
 dimension record
   -> snapshot_id
-  -> ai_session_insight_snapshot.session_id
-  -> ai_logical_session.conversation_id
+  -> xy_wap_embed_session_insight_snapshot.session_id
+  -> xy_wap_embed_logical_session.conversation_id
   -> xy_wap_embed_conversation.id
 ```
 
@@ -951,7 +951,7 @@ dimension record
 
 ```text
 dimension record
-  -> ai_insight_evidence.source_message_id
+  -> xy_wap_embed_insight_evidence.source_message_id
   -> xy_wap_embed_msg_audit_info.id
 ```
 
@@ -960,7 +960,7 @@ dimension record
 建议新增统一证据表：
 
 ```text
-ai_insight_evidence
+xy_wap_embed_insight_evidence
 - id
 - tenant_id
 - snapshot_id
@@ -986,11 +986,11 @@ INDEX(source_message_id)
 写入规则：
 
 - 维度结果表负责保存结构化结论。
-- `ai_insight_evidence` 负责保存结论和原始消息的多对多证据关系。
+- `xy_wap_embed_insight_evidence` 负责保存结论和原始消息的多对多证据关系。
 - 每条风险、质检、问题解决判定、标签、意图、实体、行动项和 FAQ 机会至少应有一条 primary 证据。
 - 摘要可以保存 supporting 或 context 证据，用于展示关键消息来源。
 - 如果模型输出的证据 ID 不存在、跨租户或不属于当前 session，该证据应被丢弃，并在 analysis run 中记录校验告警。
-- API 可以继续返回 `evidence_message_ids`，但服务端应从 `ai_insight_evidence` 聚合生成。
+- API 可以继续返回 `evidence_message_ids`，但服务端应从 `xy_wap_embed_insight_evidence` 聚合生成。
 
 证据回查 SQL：
 
@@ -1107,7 +1107,7 @@ GET /api/server/insights/intents
 ```text
 洞察卡片点击证据
 -> 读取 evidence_message_ids
--> 查询 ai_insight_evidence
+-> 查询 xy_wap_embed_insight_evidence
 -> 查询 xy_wap_embed_msg_audit_info
 -> 展示证据消息上下文
 -> 支持跳转 /chat?conversationId=...&messageId=...
@@ -1302,7 +1302,7 @@ GET /api/server/insights/intents
 9. 租户可以配置切片、分析策略、标签、质检规则、风险关注项和实体词库。
 10. 洞察结果只读展示，不自动影响绩效或业务动作。
 11. 任意维度结果都能通过 `snapshot_id -> session_id -> conversation_id` 反查到 `xy_wap_embed_conversation.id`。
-12. 标签、风险、质检项、问题解决判定、意图、实体、行动项和 FAQ 机会都能通过 `ai_insight_evidence` 反查到至少一条 `xy_wap_embed_msg_audit_info.id` 证据消息。
+12. 标签、风险、质检项、问题解决判定、意图、实体、行动项和 FAQ 机会都能通过 `xy_wap_embed_insight_evidence` 反查到至少一条 `xy_wap_embed_msg_audit_info.id` 证据消息。
 13. 详情 API 能返回证据消息上下文，且证据消息按 `msgtime ASC, id ASC` 排序。
 14. 用户点击任意标签、风险、质检项、问题解决判定、意图、实体、行动项或 FAQ 机会时，可以查看支撑该结论的原始消息，并跳转回 `/chat` 对应会话和消息位置。
 15. 服务质检页能统计有客户问题会话数、已解决数、未解决数、部分解决数，并列出未解决会话及判定理由。

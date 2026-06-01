@@ -73,13 +73,3 @@ export function formatSeverity(severity: "high" | "low" | "medium") {
 
   return labels[severity];
 }
-
-export function chatMessageHref(conversationId: string, messageId?: string) {
-  const params = new URLSearchParams({ conversationId });
-
-  if (messageId) {
-    params.set("messageId", messageId);
-  }
-
-  return `/chat?${params.toString()}`;
-}

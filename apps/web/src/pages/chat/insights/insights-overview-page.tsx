@@ -4,9 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { getInsightFollowUps, getInsightOverview } from "./api/insights-service";
+import { PriorityBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
+import { InsightPerson } from "./insight-person";
 import { InsightsLayout } from "./insights-layout";
-import { formatInsightTime, formatPriority } from "./insights-utils";
+import {
+  formatAnalysisStatus,
+  formatInsightTime,
+} from "./insights-utils";
 import { useInsightDetail } from "./use-insight-detail";
 
 export function InsightsOverviewPage() {
@@ -56,7 +61,7 @@ export function InsightsOverviewPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="flex items-center gap-2">
-                        <Badge>{formatPriority(item.priority)}</Badge>
+                        <PriorityBadge priority={item.priority} />
                         <h3 className="text-sm font-medium">{item.title}</h3>
                       </div>
                       <p className="mt-2 text-sm text-muted-foreground">{item.reason}</p>
@@ -71,9 +76,11 @@ export function InsightsOverviewPage() {
                       查看
                     </Button>
                   </div>
-                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                    <span>{item.customerName}</span>
-                    <span>会话 {item.conversationId}</span>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                    <InsightPerson
+                      avatarUrl={item.customerAvatarUrl}
+                      name={item.customerName}
+                    />
                     <span>{formatInsightTime(item.lastCustomerMessageAt)}</span>
                   </div>
                 </article>
@@ -88,10 +95,10 @@ export function InsightsOverviewPage() {
             <div className="space-y-5 p-5">
               <Progress value={getReadyRate(overview)} />
               <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                <StatusCount label="ready" value={overview?.analysis.ready} />
-                <StatusCount label="partial" value={overview?.analysis.partial} />
-                <StatusCount label="failed" value={overview?.analysis.failed} />
-                <StatusCount label="stale" value={overview?.analysis.stale} />
+                <StatusCount label={formatAnalysisStatus("ready")} value={overview?.analysis.ready} />
+                <StatusCount label={formatAnalysisStatus("partial")} value={overview?.analysis.partial} />
+                <StatusCount label={formatAnalysisStatus("failed")} value={overview?.analysis.failed} />
+                <StatusCount label={formatAnalysisStatus("stale")} value={overview?.analysis.stale} />
               </div>
             </div>
           </div>

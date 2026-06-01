@@ -1,6 +1,7 @@
 import {
   apiSuccess,
   InsightActionStatusSchema,
+  InsightMessageContextRequestSchema,
   InsightsRescanRequestSchema,
   type AccountRole,
   type InsightActionStatus,
@@ -38,6 +39,7 @@ type FollowUpsQuery = Static<typeof FollowUpsQuerySchema>;
 type SessionParams = Static<typeof SessionParamsSchema>;
 type ActionItemParams = Static<typeof ActionItemParamsSchema>;
 type ActionStatusBody = Static<typeof ActionStatusBodySchema>;
+type MessageContextQuery = Static<typeof InsightMessageContextRequestSchema>;
 
 export async function registerInsightsRoutes(app: FastifyInstance) {
   app.get(
@@ -95,6 +97,25 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
         await createInsightsService(app).getDetail(
           await getUidScope(app, request),
           request.params.sessionId,
+        ),
+      );
+    },
+  );
+
+  app.get<{ Querystring: MessageContextQuery }>(
+    "/api/server/insights/messages/context",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: InsightMessageContextRequestSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).getMessageContext(
+          await getUidScope(app, request),
+          request.query.conversationId,
+          request.query.messageId,
         ),
       );
     },

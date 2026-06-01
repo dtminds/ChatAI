@@ -482,6 +482,7 @@ export function HistoryCompactMessageList({
   onDownloadMessageFile,
   onVoicePlaybackReady,
   onTranscribeVoice,
+  renderMetaSuffix,
 }: {
   messages: Message[];
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -490,6 +491,7 @@ export function HistoryCompactMessageList({
     payload: { playbackUrl: string },
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
+  renderMetaSuffix?: (message: ChatMessage) => ReactNode;
 }) {
   const chatMessages = messages.filter(isChatMessage);
 
@@ -519,6 +521,7 @@ export function HistoryCompactMessageList({
               {formatHistoryMessageTime(message.sentAt)}
             </span>
             {message.status === "failed" ? <HistoryCompactDeliveryState /> : null}
+            {renderMetaSuffix?.(message)}
           </div>
           <HistoryCompactMessageContent
             message={message}

@@ -9,6 +9,7 @@ const serviceMocks = vi.hoisted(() => ({
   createInsightRescanJob: vi.fn(),
   getInsightDetail: vi.fn(),
   getInsightFollowUps: vi.fn(),
+  getInsightMessageContext: vi.fn(),
   getInsightOverview: vi.fn(),
   getInsightQuality: vi.fn(),
   getInsightSettings: vi.fn(),
@@ -64,7 +65,19 @@ function installInsightMocks() {
     unresolvedSessions: 5,
   });
   serviceMocks.getInsightQuality.mockResolvedValue({
-    agentStats: [],
+    agentStats: [
+      {
+        agentAvatarUrl: "https://example.com/agent-report.png",
+        agentName: "企微小助手1号",
+        agentSeatId: "seat-1",
+        partial: 2,
+        problemSessions: 21,
+        resolved: 18,
+        totalSessions: 13,
+        unresolved: 3,
+        unresolvedRate: 0.1429,
+      },
+    ],
     overview: {
       analyzedSessions: 20,
       noCustomerProblem: 6,
@@ -79,8 +92,10 @@ function installInsightMocks() {
     ],
     unresolvedSessions: [
       {
+        agentAvatarUrl: "https://example.com/agent-1.png",
         agentName: "客服一号",
         conversationId: "301",
+        customerAvatarUrl: "https://example.com/customer-1.png",
         customerName: "张三",
         evidenceMessageIds: ["9001", "9002"],
         lastCustomerMessageAt: 1_780_244_100_000,
@@ -90,6 +105,20 @@ function installInsightMocks() {
         severity: "high",
         unresolvedReason: "售后/物流/退款进度未确认",
       },
+      {
+        agentAvatarUrl: "https://example.com/agent-2.png",
+        agentName: "客服二号",
+        conversationId: "302",
+        customerAvatarUrl: "https://example.com/customer-2.png",
+        customerName: "李四",
+        evidenceMessageIds: ["9004"],
+        lastCustomerMessageAt: 1_780_244_500_000,
+        problemSummary: "客户咨询退款到账时间",
+        resolutionStatus: "resolved",
+        sessionId: "502",
+        severity: "medium",
+        unresolvedReason: "",
+      },
     ],
   });
   serviceMocks.getInsightFollowUps.mockResolvedValue({
@@ -98,6 +127,7 @@ function installInsightMocks() {
         actionItemId: "801",
         actionType: "logistics_check",
         conversationId: "301",
+        customerAvatarUrl: "https://example.com/customer-1.png",
         customerName: "张三",
         evidenceMessageIds: ["9002"],
         lastCustomerMessageAt: 1_780_244_100_000,
@@ -139,6 +169,34 @@ function installInsightMocks() {
         msgtime: 1_780_244_100_000,
         senderName: "张三",
         senderRole: "customer",
+      },
+    ],
+    evidenceMessageRecords: [
+      {
+        content: { text: "帮您催一下快递" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_000_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9001",
+        seatId: "seat-1",
+        senderName: "客服一号",
+        senderType: "agent",
+        seq: 9001,
+        status: "sent",
+      },
+      {
+        content: { text: "还没收到货，物流也不更新" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_100_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9002",
+        seatId: "seat-1",
+        senderName: "张三",
+        senderType: "customer",
+        seq: 9002,
+        status: "sent",
       },
     ],
     faqCandidates: [
@@ -211,6 +269,53 @@ function installInsightMocks() {
         tagName: "物流异常",
       },
     ],
+  });
+  serviceMocks.getInsightMessageContext.mockResolvedValue({
+    contextAfter: 30,
+    contextBefore: 30,
+    conversationId: "301",
+    messages: [
+      {
+        content: { text: "您好，我帮您看一下" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_243_900_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9000",
+        seatId: "seat-1",
+        senderName: "客服一号",
+        senderType: "agent",
+        seq: 9000,
+        status: "sent",
+      },
+      {
+        content: { text: "帮您催一下快递" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_000_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9001",
+        seatId: "seat-1",
+        senderName: "客服一号",
+        senderType: "agent",
+        seq: 9001,
+        status: "sent",
+      },
+      {
+        content: { text: "还没收到货，物流也不更新" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_100_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9002",
+        seatId: "seat-1",
+        senderName: "张三",
+        senderType: "customer",
+        seq: 9002,
+        status: "sent",
+      },
+    ],
+    targetMessageId: "9002",
   });
   serviceMocks.getInsightSettings.mockResolvedValue({
     analysisPolicy: {
@@ -288,6 +393,12 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("逻辑会话数")).toBeInTheDocument();
     expect(screen.getByText("22")).toBeInTheDocument();
     expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
+    expect(screen.getByText("已完成")).toBeInTheDocument();
+    expect(screen.getByText("部分完成")).toBeInTheDocument();
+    expect(screen.getByText("失败")).toBeInTheDocument();
+    expect(screen.getByText("已过期")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "张三" })).toBeInTheDocument();
+    expect(screen.queryByText("会话 301")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /查看高风险会话/ }));
 
@@ -295,26 +406,61 @@ describe("conversation insights pages", () => {
     expect(screen.getAllByText("物流异常").length).toBeGreaterThan(0);
     expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
     expect(screen.getByText("物流停滞怎么处理")).toBeInTheDocument();
-    expect(screen.getByText("还没收到货，物流也不更新")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "跳转聊天" })).toHaveAttribute(
-      "href",
-      "/chat?conversationId=301&messageId=9002",
-    );
+    expect(screen.getAllByText("还没收到货，物流也不更新").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("history-message-item").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByRole("link", { name: "跳转聊天" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "查看证据上下文" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightMessageContext).toHaveBeenCalledWith({
+        conversationId: "301",
+        messageId: "9002",
+      });
+    });
+    expect(await screen.findByRole("heading", { name: "消息上下文" })).toBeInTheDocument();
+    expect(screen.getByText("您好，我帮您看一下")).toBeInTheDocument();
+    expect(screen.getAllByText("还没收到货，物流也不更新").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("insight-evidence-context-target")).toHaveTextContent("证据");
   });
 
-  it("renders quality unresolved sessions", async () => {
+  it("renders quality problem list and agent report", async () => {
     renderRoute("/chat/insights/quality?resolutionStatus=unresolved");
 
     expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
     expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "问题列表" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "客服报表" })).toBeInTheDocument();
     expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
     expect(screen.getAllByText("售后/物流/退款进度未确认").length).toBeGreaterThan(0);
+    expect(screen.getByRole("img", { name: "张三" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "客服一号" })).toBeInTheDocument();
+    expect(screen.queryByText("会话 301")).not.toBeInTheDocument();
+    expect(screen.queryByText("客户咨询退款到账时间")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.click(await screen.findByRole("option", { name: "全部问题" }));
+
+    expect(screen.getByText("客户咨询退款到账时间")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "客服报表" }));
+
+    expect(screen.getByRole("columnheader", { name: "客服账号" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "接待会话数" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "客户问题数" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "质检通过数" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "质检未通过数" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "质检通过率" })).toBeInTheDocument();
+    expect(screen.getByText("企微小助手1号")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "企微小助手1号" })).toBeInTheDocument();
+    expect(screen.getByText("85.71%")).toBeInTheDocument();
   });
 
   it("updates follow-up status manually", async () => {
     renderRoute("/chat/insights/follow-ups");
 
     expect(await screen.findByRole("heading", { name: "待处理" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "张三" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "标记完成" }));
 
     await waitFor(() => {

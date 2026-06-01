@@ -143,6 +143,19 @@ describe("insights DTOs", () => {
             senderRole: "customer",
           },
         ],
+        evidenceMessageRecords: [
+          {
+            content: { text: "退款什么时候到账？" },
+            contentType: "text",
+            conversationId: "301",
+            customerId: "customer-1",
+            messageId: "external-msg-9001",
+            seatId: "seat-1",
+            senderType: "customer",
+            seq: 9001,
+            status: "sent",
+          },
+        ],
         faqCandidates: [],
         intents: [],
         problemResolution: {

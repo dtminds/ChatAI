@@ -5,6 +5,7 @@ import {
   createInsightRescanJob,
   getInsightDetail,
   getInsightFollowUps,
+  getInsightMessageContext,
   getInsightOverview,
   getInsightQuality,
   getInsightSettings,
@@ -23,6 +24,7 @@ describe("insights service adapter", () => {
     mock.onGet("/server/insights/quality").reply(200, { data: { overview: {} }, success: true });
     mock.onGet("/server/insights/follow-ups").reply(200, { data: { items: [], total: 0 }, success: true });
     mock.onGet("/server/insights/sessions/501").reply(200, { data: { session: {} }, success: true });
+    mock.onGet("/server/insights/messages/context").reply(200, { data: { messages: [] }, success: true });
     mock.onPatch("/server/insights/action-items/801/status").reply((config) => [
       200,
       { data: JSON.parse(config.data ?? "{}"), success: true },
@@ -37,6 +39,7 @@ describe("insights service adapter", () => {
     await getInsightQuality();
     await getInsightFollowUps({ priority: "high", status: "open", type: "logistics_check" });
     await getInsightDetail("501");
+    await getInsightMessageContext({ conversationId: "301", messageId: "9002" });
     await updateInsightActionStatus("801", "done");
     await getInsightSettings();
     await createInsightRescanJob({ from: "2026-06-01T00:00:00.000Z" });
@@ -50,9 +53,14 @@ describe("insights service adapter", () => {
       type: "logistics_check",
     });
     expect(mock.history.get[3]?.url).toBe("/server/insights/sessions/501");
+    expect(mock.history.get[4]?.url).toBe("/server/insights/messages/context");
+    expect(mock.history.get[4]?.params).toEqual({
+      conversationId: "301",
+      messageId: "9002",
+    });
     expect(mock.history.patch[0]?.url).toBe("/server/insights/action-items/801/status");
     expect(JSON.parse(mock.history.patch[0]?.data ?? "{}")).toEqual({ status: "done" });
-    expect(mock.history.get[4]?.url).toBe("/server/insights/settings");
+    expect(mock.history.get[5]?.url).toBe("/server/insights/settings");
     expect(mock.history.post[0]?.url).toBe("/server/insights/jobs/rescan");
     expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
       from: "2026-06-01T00:00:00.000Z",

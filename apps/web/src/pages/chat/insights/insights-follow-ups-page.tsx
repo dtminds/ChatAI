@@ -6,12 +6,13 @@ import {
   getInsightFollowUps,
   updateInsightActionStatus,
 } from "./api/insights-service";
+import { PriorityBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
+import { InsightPerson } from "./insight-person";
 import { InsightsLayout } from "./insights-layout";
 import {
   formatActionStatus,
   formatInsightTime,
-  formatPriority,
 } from "./insights-utils";
 import { useInsightDetail } from "./use-insight-detail";
 
@@ -56,13 +57,16 @@ export function InsightsFollowUpsPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge>{formatPriority(item.priority)}</Badge>
+                    <PriorityBadge priority={item.priority} />
                     <Badge variant="outline">{formatActionStatus(item.status)}</Badge>
                     <h3 className="text-sm font-medium">{item.title}</h3>
                   </div>
                   <p className="mt-2 text-sm text-foreground">{item.reason}</p>
-                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                    <span>{item.customerName}</span>
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                    <InsightPerson
+                      avatarUrl={item.customerAvatarUrl}
+                      name={item.customerName}
+                    />
                     <span>{item.actionType}</span>
                     <span>{formatInsightTime(item.lastCustomerMessageAt)}</span>
                   </div>

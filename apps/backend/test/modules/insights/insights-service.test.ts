@@ -12,11 +12,13 @@ const scope = {
 const baseRows = [
   {
     actionOpenCount: 1,
+    agentAvatarUrl: "https://example.com/agent-1.png",
     agentName: "客服一号",
     agentSeatId: "seat-1",
     analysisStatus: "ready",
     conversationId: "301",
     currentSnapshotId: "7001",
+    customerAvatarUrl: "https://example.com/customer-1.png",
     customerName: "张三",
     endedAt: 1_780_245_000_000,
     highRiskCount: 1,
@@ -38,11 +40,13 @@ const baseRows = [
   },
   {
     actionOpenCount: 0,
+    agentAvatarUrl: "https://example.com/agent-2.png",
     agentName: "客服二号",
     agentSeatId: "seat-2",
     analysisStatus: "partial",
     conversationId: "302",
     currentSnapshotId: "7002",
+    customerAvatarUrl: "https://example.com/customer-2.png",
     customerName: "李四",
     endedAt: null,
     highRiskCount: 0,
@@ -64,11 +68,13 @@ const baseRows = [
   },
   {
     actionOpenCount: 0,
+    agentAvatarUrl: null,
     agentName: null,
     agentSeatId: null,
     analysisStatus: "stale",
     conversationId: "303",
     currentSnapshotId: "7003",
+    customerAvatarUrl: "https://example.com/customer-3.png",
     customerName: "王五",
     endedAt: null,
     highRiskCount: 0,
@@ -101,6 +107,7 @@ function createRepository(
           actionItemId: "801",
           actionType: "logistics_check",
           conversationId: "301",
+          customerAvatarUrl: "https://example.com/customer-1.png",
           customerName: "张三",
           evidenceMessageIds: ["9002"],
           lastCustomerMessageAt: 1_780_244_900_000,
@@ -162,6 +169,7 @@ function createRepository(
         actionItemId: "801",
         actionType: "logistics_check",
         conversationId: "301",
+        customerAvatarUrl: "https://example.com/customer-1.png",
         customerName: "张三",
         evidenceMessageIds: ["9002"],
         lastCustomerMessageAt: 1_780_244_900_000,
@@ -175,6 +183,7 @@ function createRepository(
         actionItemId: "802",
         actionType: "faq_candidate_review",
         conversationId: "302",
+        customerAvatarUrl: "https://example.com/customer-2.png",
         customerName: "李四",
         evidenceMessageIds: ["9004"],
         lastCustomerMessageAt: 1_780_243_900_000,
@@ -222,6 +231,68 @@ function createRepository(
         senderRole: "agent",
       },
     ]),
+    listEvidenceMessageRecords: vi.fn(async () => [
+      {
+        content: { text: "帮您催一下快递" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_000_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9001",
+        seatId: "seat-1",
+        senderName: "客服一号",
+        senderType: "agent",
+        seq: 9001,
+        status: "sent",
+      },
+      {
+        content: { text: "还没收到货，物流也不更新" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_100_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9002",
+        seatId: "seat-1",
+        senderName: "张三",
+        senderType: "customer",
+        seq: 9002,
+        status: "sent",
+      },
+    ]),
+    listMessageContext: vi.fn(async () => ({
+      contextBefore: 30,
+      contextAfter: 30,
+      conversationId: "301",
+      targetMessageId: "9002",
+      messages: [
+        {
+          content: { text: "帮您催一下快递" },
+          contentType: "text",
+          conversationId: "301",
+          createdAt: 1_780_244_000_000,
+          customerId: "customer-301",
+          messageId: "external-msg-9001",
+          seatId: "seat-1",
+          senderName: "客服一号",
+          senderType: "agent",
+          seq: 9001,
+          status: "sent",
+        },
+        {
+          content: { text: "还没收到货，物流也不更新" },
+          contentType: "text",
+          conversationId: "301",
+          createdAt: 1_780_244_100_000,
+          customerId: "customer-301",
+          messageId: "external-msg-9002",
+          seatId: "seat-1",
+          senderName: "张三",
+          senderType: "customer",
+          seq: 9002,
+          status: "sent",
+        },
+      ],
+    })),
     updateActionStatus: vi.fn(async () => true),
     ...overrides,
   };
@@ -320,6 +391,11 @@ describe("InsightsService", () => {
       sessionId: "501",
     });
     expect(result.evidenceMessages.map((item) => item.messageId)).toEqual(["9001", "9002"]);
+    expect(result.evidenceMessageRecords.map((item) => item.seq)).toEqual([9001, 9002]);
+    expect(result.evidenceMessageRecords.map((item) => item.messageId)).toEqual([
+      "external-msg-9001",
+      "external-msg-9002",
+    ]);
     expect(result.problemResolution).toMatchObject({
       evidenceMessageIds: ["9001", "9002"],
       problemDetected: true,
@@ -355,6 +431,27 @@ describe("InsightsService", () => {
         question: "物流停滞怎么处理",
       }),
     ]);
+  });
+
+  it("loads a fixed evidence message context window", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(service.getMessageContext(scope, "301", "9002")).resolves.toMatchObject({
+      contextAfter: 30,
+      contextBefore: 30,
+      conversationId: "301",
+      targetMessageId: "9002",
+      messages: [
+        { messageId: "external-msg-9001", seq: 9001 },
+        { messageId: "external-msg-9002", seq: 9002 },
+      ],
+    });
+
+    expect(repository.listMessageContext).toHaveBeenCalledWith(scope, "301", "9002", {
+      after: 30,
+      before: 30,
+    });
   });
 
   it("rejects settings access for non-admin roles at the service boundary", async () => {

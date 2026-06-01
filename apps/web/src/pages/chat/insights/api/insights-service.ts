@@ -2,6 +2,8 @@ import type {
   ApiSuccessEnvelope,
   InsightActionStatus,
   InsightDetailResponse,
+  InsightMessageContextRequest,
+  InsightMessageContextResponse,
   InsightSettingsResponse,
   InsightsFollowUpsResponse,
   InsightsOverviewResponse,
@@ -47,6 +49,19 @@ export async function getInsightFollowUps(query: InsightFollowUpQuery = {}) {
 export async function getInsightDetail(sessionId: string) {
   const response = await http.get<ApiSuccessEnvelope<InsightDetailResponse>>(
     `/server/insights/sessions/${sessionId}`,
+  );
+
+  return response.data;
+}
+
+export async function getInsightMessageContext(
+  query: InsightMessageContextRequest,
+) {
+  const response = await http.get<ApiSuccessEnvelope<InsightMessageContextResponse>>(
+    "/server/insights/messages/context",
+    {
+      params: compactQuery(query),
+    },
   );
 
   return response.data;

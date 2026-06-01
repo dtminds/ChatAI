@@ -2,9 +2,22 @@ import type {
   InsightActionStatus,
   InsightAnalysisStatus,
   InsightDetailResponse,
+  InsightMessageContextResponse,
+  WorkbenchMessageDto,
 } from "@chatai/contracts";
 import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
+import {
+  buildMissingQuotedMessagePreview,
+  buildQuotedMessagePreview,
+  getQuoteMessageAuditId,
+  hydrateMessageRows,
+  mapMessageRow,
+  type MessageHydrationSources,
+  type MessageRow,
+  type MessageRowQuotePreview,
+} from "../chat/workbench-mappers.js";
+import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 import type {
   InsightActionItemRow,
   InsightCurrentSessionRow,
@@ -22,11 +35,8 @@ type CurrentSessionQueryRow = {
   action_type: string | null;
   action_priority: string | null;
   action_title: string | null;
-  agent_name: string | null;
-  agent_seat_id: string | number | null;
   conversation_id: number | string;
   current_snapshot_id: number | string;
-  customer_name: string | null;
   ended_at: number | string | null;
   evidence_message_id: number | string | null;
   evidence_role: string | null;
@@ -53,7 +63,6 @@ type ActionItemQueryRow = {
   action_status: string;
   action_type: string;
   conversation_id: number | string;
-  customer_name: string | null;
   evidence_message_id: number | string | null;
   last_customer_message_at: number | string | null;
   priority: string;
@@ -63,6 +72,9 @@ type ActionItemQueryRow = {
 };
 
 type DetailQueryRow = CurrentSessionQueryRow & {
+  agent_name: string | null;
+  agent_seat_id: number | string | null;
+  customer_name: string | null;
   qa_finding_id: number | string | null;
   qa_passed: number | string | null;
   qa_reason: string | null;
@@ -130,6 +142,17 @@ type IntentDistributionQueryRow = {
   intent_label: string;
 };
 
+type ContactProfile = {
+  avatarUrl: string;
+  name: string;
+};
+
+type SeatProfile = {
+  avatarUrl: string;
+  name: string;
+  seatId: string;
+};
+
 type EvidenceMessageQueryRow = {
   chat_type: number;
   content: string | null;
@@ -141,6 +164,19 @@ type EvidenceMessageQueryRow = {
   sender_name?: string | null;
   third_from_id?: string | null;
   third_user_id?: string | null;
+};
+
+type InsightConversationRow = {
+  chat_type: number;
+  conversation_external_id: string;
+  conversation_group_id: string;
+  conversation_id: number | string;
+  group_seat_id: number | string | null;
+  platform: number;
+  seat_id: number | string;
+  session_id: number | string;
+  third_userid: string;
+  uid: number;
 };
 
 type InsertResult = {
@@ -182,23 +218,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .leftJoin("xy_wap_embed_msg_audit_info as message", (join) =>
         join.onRef("message.id", "=", "evidence.source_message_id"),
       )
-      .leftJoin("xy_wap_embed_contact as contact", (join) =>
-        join
-          .onRef("contact.uid", "=", "session.uid")
-          .onRef("contact.third_external_userid", "=", "message.third_external_id"),
-      )
-      .leftJoin("xy_wap_embed_user_seat as seat", (join) =>
-        join
-          .onRef("seat.uid", "=", "session.uid")
-          .onRef("seat.third_userid", "=", "message.third_user_id"),
-      )
       .select([
         "action.id as action_id",
         "action.priority as action_priority",
         "action.status as action_status",
         "action.title as action_title",
         "action.action_type as action_type",
-        "contact.name as customer_name",
         "current.current_snapshot_id as current_snapshot_id",
         "evidence.evidence_role as evidence_role",
         "evidence.source_message_id as evidence_message_id",
@@ -210,8 +235,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "risk.id as high_risk_id",
         "risk.id as negative_risk_id",
         "risk.risk_level as risk_severity",
-        "seat.id as agent_seat_id",
-        "seat.third_user_name as agent_name",
         "session.conversation_id as conversation_id",
         "session.ended_at as ended_at",
         "session.id as session_id",
@@ -226,7 +249,10 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .where("session.uid", "=", scope.uid)
       .execute() as CurrentSessionQueryRow[];
 
-    return mapCurrentSessionRows(rows);
+    const sessionRows = mapCurrentSessionRows(rows);
+    await this.hydrateCurrentSessionActors(scope, sessionRows);
+
+    return sessionRows;
   }
 
   async listActionItems(
@@ -250,18 +276,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .leftJoin("xy_wap_embed_msg_audit_info as message", (join) =>
         join.onRef("message.id", "=", "evidence.source_message_id"),
       )
-      .leftJoin("xy_wap_embed_contact as contact", (join) =>
-        join
-          .onRef("contact.uid", "=", "session.uid")
-          .onRef("contact.third_external_userid", "=", "message.third_external_id"),
-      )
       .select([
         "action.id as action_id",
         "action.action_type as action_type",
         "action.priority as priority",
         "action.status as action_status",
         "action.title as title",
-        "contact.name as customer_name",
         "evidence.reason as reason",
         "evidence.source_message_id as evidence_message_id",
         "message.msgtime as last_customer_message_at",
@@ -284,7 +304,10 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     const rows = await query.execute() as ActionItemQueryRow[];
 
-    return mapActionItemRows(rows);
+    const actionItems = mapActionItemRows(rows);
+    await this.hydrateActionItemCustomers(scope, actionItems);
+
+    return actionItems;
   }
 
   async listEntityHotspots(scope: InsightsUidScope) {
@@ -449,8 +472,25 @@ export class InsightsRepository implements InsightsRepositoryPort {
       return undefined;
     }
 
+    await this.hydrateCurrentSessionActors(scope, [current]);
+
     const snapshotId = current.currentSnapshotId;
     const dimensionEvidence = await this.listDimensionEvidence(scope, current.sessionId, snapshotId);
+    const actionItems = mapActionItemRows(
+      rows.filter((row) => row.action_id != null).map((row) => ({
+        action_id: row.action_id ?? "",
+        action_status: row.action_status ?? "open",
+        action_type: row.action_type ?? "follow_up",
+        conversation_id: row.conversation_id,
+        evidence_message_id: row.evidence_message_id,
+        last_customer_message_at: row.last_customer_message_at,
+        priority: row.action_priority ?? "medium",
+        reason: row.unresolved_reason,
+        session_id: row.session_id,
+        title: row.action_title ?? "待跟进事项",
+      })),
+    );
+    await this.hydrateActionItemCustomers(scope, actionItems);
 
     const [
       sentiment,
@@ -467,21 +507,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     ]);
 
     return {
-      actionItems: mapActionItemRows(
-        rows.filter((row) => row.action_id != null).map((row) => ({
-          action_id: row.action_id ?? "",
-          action_status: row.action_status ?? "open",
-          action_type: row.action_type ?? "follow_up",
-          conversation_id: row.conversation_id,
-          customer_name: row.customer_name,
-          evidence_message_id: row.evidence_message_id,
-          last_customer_message_at: row.last_customer_message_at,
-          priority: row.action_priority ?? "medium",
-          reason: row.unresolved_reason,
-          session_id: row.session_id,
-          title: row.action_title ?? "待跟进事项",
-        })),
-      ),
+      actionItems,
       current,
       entities,
       faqCandidates,
@@ -661,17 +687,426 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .execute() as EvidenceMessageQueryRow[];
 
     return rows.map((row) => {
-      const input = buildInsightMessageInput(row);
-
-      return {
-        contentText: input.aiText,
-        contentType: input.messageType,
-        messageId: input.sourceMessageId,
-        msgtime: input.occurredAt,
-        senderName: row.sender_name ?? undefined,
-        senderRole: input.senderRole,
-      };
+      return mapEvidenceMessageRow(row);
     });
+  }
+
+  async listEvidenceMessageRecords(
+    scope: InsightsUidScope,
+    sessionId: string,
+    messageIds: string[],
+  ): Promise<WorkbenchMessageDto[]> {
+    const normalizedMessageIds = normalizePositiveIntegers(messageIds);
+    const targetSessionId = parsePositiveInteger(sessionId);
+
+    if (normalizedMessageIds.length === 0 || targetSessionId == null) {
+      return [];
+    }
+
+    const target = await this.findInsightConversationBySession(
+      scope,
+      targetSessionId,
+    );
+
+    if (!target) {
+      return [];
+    }
+
+    const messageRows = await this.listMessageRowsBySourceIds(
+      target,
+      normalizedMessageIds,
+    );
+
+    return await this.mapMessageRows(target, messageRows);
+  }
+
+  async listMessageContext(
+    scope: InsightsUidScope,
+    conversationId: string,
+    messageId: string,
+    options: { after: number; before: number },
+  ): Promise<InsightMessageContextResponse> {
+    const targetMessageId = parsePositiveInteger(messageId);
+    const targetConversationId = parsePositiveInteger(conversationId);
+
+    if (targetMessageId == null || targetConversationId == null) {
+      return {
+        contextAfter: options.after,
+        contextBefore: options.before,
+        conversationId,
+        messages: [],
+        targetMessageId: messageId,
+      };
+    }
+
+    const target = await this.findInsightConversationByMessage(
+      scope,
+      targetConversationId,
+      targetMessageId,
+    );
+
+    if (!target) {
+      return {
+        contextAfter: options.after,
+        contextBefore: options.before,
+        conversationId,
+        messages: [],
+        targetMessageId: messageId,
+      };
+    }
+
+    const [beforeRows, targetRows, afterRows] = await Promise.all([
+      this.listContextMessageRows(target, targetMessageId, {
+        direction: "before",
+        limit: options.before,
+      }),
+      this.listContextMessageRows(target, targetMessageId, {
+        direction: "target",
+        limit: 1,
+      }),
+      this.listContextMessageRows(target, targetMessageId, {
+        direction: "after",
+        limit: options.after,
+      }),
+    ]);
+    const messageRows = [...beforeRows, ...targetRows, ...afterRows];
+    const messages = await this.mapMessageRows(target, messageRows);
+
+    return {
+      contextAfter: options.after,
+      contextBefore: options.before,
+      conversationId: String(targetConversationId),
+      messages,
+      targetMessageId: String(targetMessageId),
+    };
+  }
+
+  private async findInsightConversationBySession(
+    scope: InsightsUidScope,
+    sessionId: number,
+  ) {
+    return await this.buildInsightConversationQuery(scope)
+      .where("session_message.session_id", "=", sessionId)
+      .executeTakeFirst() as InsightConversationRow | undefined;
+  }
+
+  private async findInsightConversationByMessage(
+    scope: InsightsUidScope,
+    conversationId: number,
+    messageId: number,
+  ) {
+    return await this.buildInsightConversationQuery(scope)
+      .where("session_message.conversation_id", "=", conversationId)
+      .where("session_message.source_message_id", "=", messageId)
+      .executeTakeFirst() as InsightConversationRow | undefined;
+  }
+
+  private buildInsightConversationQuery(scope: InsightsUidScope) {
+    return this.db
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .innerJoin("xy_wap_embed_conversation as conversation", (join) =>
+        join.onRef("conversation.id", "=", "session_message.conversation_id"),
+      )
+      .select([
+        "conversation.chat_type as chat_type",
+        "conversation.id as conversation_id",
+        "conversation.platform as platform",
+        "conversation.third_external_userid as conversation_external_id",
+        "conversation.third_group_id as conversation_group_id",
+        "conversation.third_userid as third_userid",
+        "conversation.uid as uid",
+        "session_message.session_id as session_id",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder
+          .selectFrom("xy_wap_embed_user_seat as seat")
+          .select("seat.id")
+          .whereRef("seat.third_userid", "=", "conversation.third_userid")
+          .whereRef("seat.uid", "=", "conversation.uid")
+          .whereRef("seat.platform", "=", "conversation.platform")
+          .where("seat.biz_status", "=", 1)
+          .as("seat_id"),
+        expressionBuilder
+          .selectFrom("xy_wap_embed_group_seat as group_seat")
+          .select("group_seat.id")
+          .whereRef("group_seat.third_group_id", "=", "conversation.third_group_id")
+          .whereRef("group_seat.third_userid", "=", "conversation.third_userid")
+          .whereRef("group_seat.uid", "=", "conversation.uid")
+          .whereRef("group_seat.platform", "=", "conversation.platform")
+          .as("group_seat_id"),
+      ])
+      .where("session_message.uid", "=", scope.uid);
+  }
+
+  private async mapMessageRows(
+    target: InsightConversationRow,
+    messageRows: MessageRow[],
+  ): Promise<WorkbenchMessageDto[]> {
+    const quotedRows = await this.getQuotedMessageRows(messageRows, target);
+    const allRowsToHydrate = [...messageRows, ...quotedRows.fetchedRows];
+    const hydrationSources = await this.getMessageHydrationSources(
+      allRowsToHydrate,
+      target.uid,
+      target.platform,
+      toOptionalNumber(target.group_seat_id),
+    );
+    const hydratedRows = hydrateMessageRows(messageRows, hydrationSources);
+    const hydratedQuotedRows = hydrateMessageRows(
+      quotedRows.fetchedRows,
+      hydrationSources,
+    );
+    const currentRowsById = new Map(
+      hydratedRows.map((row) => [parseNumber(row.id), row] as const),
+    );
+    const fetchedRowsById = new Map(
+      hydratedQuotedRows.map((row) => [parseNumber(row.id), row] as const),
+    );
+    const quotePreviewsByRowId = buildQuotePreviewsByRowId(
+      hydratedRows,
+      currentRowsById,
+      fetchedRowsById,
+    );
+
+    return hydratedRows.map((row) =>
+      mapMessageRow(row, quotePreviewsByRowId.get(parseNumber(row.id))),
+    );
+  }
+
+  private async listContextMessageRows(
+    conversation: InsightConversationRow,
+    targetMessageId: number,
+    options: {
+      direction: "after" | "before" | "target";
+      limit: number;
+    },
+  ): Promise<MessageRow[]> {
+    let query = this.buildSessionMessageRowsQuery(conversation);
+
+    if (options.direction === "before") {
+      query = query
+        .where("session_message.source_message_id", "<", targetMessageId)
+        .orderBy("session_message.source_message_id", "desc")
+        .limit(options.limit);
+      const rows = await query.execute() as MessageRow[];
+      return rows.reverse();
+    }
+
+    if (options.direction === "after") {
+      query = query
+        .where("session_message.source_message_id", ">", targetMessageId)
+        .orderBy("session_message.source_message_id", "asc")
+        .limit(options.limit);
+      return await query.execute() as MessageRow[];
+    }
+
+    return await query
+      .where("session_message.source_message_id", "=", targetMessageId)
+      .limit(1)
+      .execute() as MessageRow[];
+  }
+
+  private async listMessageRowsBySourceIds(
+    conversation: InsightConversationRow,
+    sourceMessageIds: number[],
+  ): Promise<MessageRow[]> {
+    return await this.buildSessionMessageRowsQuery(conversation)
+      .where("session_message.source_message_id", "in", sourceMessageIds)
+      .orderBy("session_message.source_message_id", "asc")
+      .execute() as MessageRow[];
+  }
+
+  private buildSessionMessageRowsQuery(conversation: InsightConversationRow) {
+    return this.db
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .innerJoin("xy_wap_embed_msg_audit_info as message", (join) =>
+        join.onRef("message.id", "=", "session_message.source_message_id"),
+      )
+      .select([
+        "message.chat_type as chat_type",
+        "message.content as content",
+        "message.from_type as from_type",
+        "message.id as id",
+        "message.msgid as msgid",
+        "message.msgtime as msgtime",
+        "message.msgtype as msgtype",
+        "message.opt_no as opt_no",
+        "message.revoke_status as revoke_status",
+        "message.status as status",
+        "message.third_external_id as third_external_id",
+        "message.third_from_id as third_from_id",
+        "message.third_group_id as third_group_id",
+        "message.third_user_id as third_user_id",
+        "session_message.conversation_id as conversation_id",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder.val(conversation.seat_id).as("seat_id"),
+        expressionBuilder
+          .val(conversation.conversation_external_id)
+          .as("conversation_external_id"),
+        expressionBuilder
+          .val(conversation.conversation_group_id)
+          .as("conversation_group_id"),
+        expressionBuilder
+          .val(conversation.group_seat_id)
+          .as("conversation_group_seat_id"),
+      ])
+      .where("session_message.uid", "=", conversation.uid)
+      .where("session_message.session_id", "=", Number(conversation.session_id))
+      .where("session_message.conversation_id", "=", Number(conversation.conversation_id));
+  }
+
+  private async getQuotedMessageRows(
+    rows: MessageRow[],
+    conversation: InsightConversationRow,
+  ) {
+    const quoteIds = uniquePositiveNumbers(rows.map(getQuoteMessageAuditId));
+    const currentRowIds = new Set(rows.map((row) => parseNumber(row.id)));
+    const missingQuoteIds = quoteIds.filter((id) => !currentRowIds.has(id));
+
+    if (!missingQuoteIds.length) {
+      return { fetchedRows: [] as MessageRow[] };
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.msgid as msgid",
+        "message.chat_type as chat_type",
+        "message.from_type as from_type",
+        "message.third_user_id as third_user_id",
+        "message.third_external_id as third_external_id",
+        "message.third_from_id as third_from_id",
+        "message.third_group_id as third_group_id",
+        "message.content as content",
+        "message.msgtype as msgtype",
+        "message.msgtime as msgtime",
+        "message.opt_no as opt_no",
+        "message.revoke_status as revoke_status",
+        "message.status as status",
+      ])
+      .select((expressionBuilder) => [
+        expressionBuilder.val(conversation.conversation_id).as("conversation_id"),
+        expressionBuilder.val(conversation.seat_id).as("seat_id"),
+        expressionBuilder
+          .val(conversation.conversation_external_id)
+          .as("conversation_external_id"),
+        expressionBuilder
+          .val(conversation.conversation_group_id)
+          .as("conversation_group_id"),
+        expressionBuilder
+          .val(conversation.group_seat_id)
+          .as("conversation_group_seat_id"),
+      ])
+      .where("message.id", "in", missingQuoteIds)
+      .where("message.uid", "=", conversation.uid)
+      .where("message.platform", "=", conversation.platform)
+      .where("message.third_user_id", "=", conversation.third_userid);
+
+    if (conversation.chat_type === 2) {
+      query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
+    } else {
+      query = query.where(
+        "message.third_external_id",
+        "=",
+        conversation.conversation_external_id,
+      );
+    }
+
+    return { fetchedRows: (await query.execute()) as MessageRow[] };
+  }
+
+  private async getMessageHydrationSources(
+    rows: MessageRow[],
+    uid: number,
+    platform: number,
+    groupSeatId?: number,
+  ): Promise<MessageHydrationSources> {
+    const groupMemberIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type === 2)
+        .map((row) => row.third_from_id || row.third_user_id),
+    );
+    const seatThirdUserIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type !== 2 && row.from_type === 1)
+        .map((row) => row.third_user_id),
+    );
+    const contactThirdExternalIds = uniqueNonEmpty(
+      rows
+        .filter((row) => row.chat_type !== 2 && row.from_type === 2)
+        .map((row) => row.third_external_id || row.conversation_external_id),
+    );
+
+    const [groupMembers, seats, contacts] = await Promise.all([
+      groupMemberIds.length && groupSeatId != null
+        ? this.db
+            .selectFrom("xy_wap_embed_group_member as member")
+            .select([
+              "member.third_userid as third_userid",
+              "member.avatar as avatar",
+              "member.name as name",
+              "member.nickname as nickname",
+            ])
+            .where("member.group_seat_id", "=", groupSeatId)
+            .where("member.uid", "=", uid)
+            .where("member.platform", "=", platform)
+            .where("member.third_userid", "in", groupMemberIds)
+            .execute()
+        : [],
+      seatThirdUserIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_user_seat")
+            .select(["third_userid", "third_avatar", "third_user_name"])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_userid", "in", seatThirdUserIds)
+            .where("biz_status", "=", 1)
+            .execute()
+        : [],
+      contactThirdExternalIds.length
+        ? this.db
+            .selectFrom("xy_wap_embed_contact")
+            .select(["third_external_userid", "avatar", "name", "real_name"])
+            .where("uid", "=", uid)
+            .where("platform", "=", platform)
+            .where("third_external_userid", "in", contactThirdExternalIds)
+            .where("biz_status", "=", 1)
+            .execute()
+        : [],
+    ]);
+
+    return {
+      contactsByThirdExternalId: new Map(
+        contacts.map((contact) => [
+          contact.third_external_userid,
+          {
+            avatar: contact.avatar,
+            name: contact.name,
+            realName: contact.real_name,
+          },
+        ]),
+      ),
+      groupMembersByGroupAndThirdUserId: new Map(
+        groupMembers.map((member) => [
+          `${String(groupSeatId)}:${member.third_userid}`,
+          {
+            avatar: member.avatar,
+            name: member.name,
+            nickname: member.nickname,
+          },
+        ]),
+      ),
+      seatsByThirdUserId: new Map(
+        seats.map((seat) => [
+          seat.third_userid,
+          {
+            avatar: seat.third_avatar,
+            name: seat.third_user_name,
+          },
+        ]),
+      ),
+    };
   }
 
   async updateActionStatus(
@@ -724,6 +1159,147 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     return String(parseInsertedMySqlId(inserted) ?? idempotencyKey);
   }
+
+  private async hydrateCurrentSessionActors(
+    scope: InsightsUidScope,
+    rows: InsightCurrentSessionRow[],
+  ) {
+    const conversationIds = uniquePositiveNumbers(
+      rows.map((row) => Number(row.conversationId)),
+    );
+
+    if (conversationIds.length === 0) {
+      return;
+    }
+
+    const conversations = await this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select(["id", "platform", "third_external_userid", "third_userid"])
+      .where("uid", "=", scope.uid)
+      .where("id", "in", conversationIds)
+      .execute();
+
+    const contacts = await this.listContactProfiles(
+      scope.uid,
+      uniqueNonEmpty(conversations.map((row) => row.third_external_userid)),
+    );
+    const seats = await this.listSeatProfiles(
+      scope.uid,
+      uniqueNonEmpty(conversations.map((row) => row.third_userid)),
+    );
+    const conversationsById = new Map(
+      conversations.map((row) => [String(row.id), row]),
+    );
+
+    for (const row of rows) {
+      const conversation = conversationsById.get(row.conversationId);
+
+      if (!conversation) {
+        continue;
+      }
+
+      const contact = contacts.get(conversation.third_external_userid);
+      const seat = seats.get(conversation.third_userid);
+
+      row.customerAvatarUrl = contact?.avatarUrl ?? row.customerAvatarUrl;
+      row.customerName = contact?.name ?? row.customerName;
+      row.agentAvatarUrl = seat?.avatarUrl ?? row.agentAvatarUrl;
+      row.agentName = seat?.name ?? row.agentName;
+      row.agentSeatId = seat?.seatId ?? row.agentSeatId;
+    }
+  }
+
+  private async hydrateActionItemCustomers(
+    scope: InsightsUidScope,
+    rows: InsightActionItemRow[],
+  ) {
+    const conversationIds = uniquePositiveNumbers(
+      rows.map((row) => Number(row.conversationId)),
+    );
+
+    if (conversationIds.length === 0) {
+      return;
+    }
+
+    const conversations = await this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select(["id", "third_external_userid"])
+      .where("uid", "=", scope.uid)
+      .where("id", "in", conversationIds)
+      .execute();
+    const contacts = await this.listContactProfiles(
+      scope.uid,
+      uniqueNonEmpty(conversations.map((row) => row.third_external_userid)),
+    );
+    const conversationsById = new Map(
+      conversations.map((row) => [String(row.id), row]),
+    );
+
+    for (const row of rows) {
+      const conversation = conversationsById.get(row.conversationId);
+      const contact = conversation
+        ? contacts.get(conversation.third_external_userid)
+        : undefined;
+
+      row.customerAvatarUrl = contact?.avatarUrl ?? row.customerAvatarUrl;
+      row.customerName = contact?.name ?? row.customerName;
+    }
+  }
+
+  private async listContactProfiles(
+    uid: number,
+    thirdExternalUserIds: string[],
+  ): Promise<Map<string, ContactProfile>> {
+    if (thirdExternalUserIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_contact")
+      .select(["avatar", "name", "real_name", "third_external_userid"])
+      .where("uid", "=", uid)
+      .where("third_external_userid", "in", thirdExternalUserIds)
+      .where("biz_status", "=", 1)
+      .execute();
+
+    return new Map(
+      rows.map((row) => [
+        row.third_external_userid,
+        {
+          avatarUrl: row.avatar ?? "",
+          name: row.name || row.real_name || "未知客户",
+        },
+      ]),
+    );
+  }
+
+  private async listSeatProfiles(
+    uid: number,
+    thirdUserIds: string[],
+  ): Promise<Map<string, SeatProfile>> {
+    if (thirdUserIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_user_seat")
+      .select(["id", "third_avatar", "third_user_name", "third_userid"])
+      .where("uid", "=", uid)
+      .where("third_userid", "in", thirdUserIds)
+      .where("biz_status", "=", 1)
+      .execute();
+
+    return new Map(
+      rows.map((row) => [
+        row.third_userid,
+        {
+          avatarUrl: row.third_avatar ?? "",
+          name: row.third_user_name || "未分配客服",
+          seatId: String(row.id),
+        },
+      ]),
+    );
+  }
 }
 
 function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSessionRow[] {
@@ -739,12 +1315,16 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
       existing ??
       {
         actionOpenCount: 0,
-        agentName: row.agent_name,
-        agentSeatId: row.agent_seat_id == null ? null : String(row.agent_seat_id),
+        agentAvatarUrl: null,
+        agentName: readOptionalDetailField<string>(row, "agent_name"),
+        agentSeatId: normalizeOptionalString(
+          readOptionalDetailField<number | string>(row, "agent_seat_id"),
+        ),
         analysisStatus: normalizeAnalysisStatus(row.status),
         conversationId: String(row.conversation_id),
         currentSnapshotId: String(row.current_snapshot_id),
-        customerName: row.customer_name ?? "未知客户",
+        customerAvatarUrl: null,
+        customerName: readOptionalDetailField<string>(row, "customer_name") ?? "未知客户",
         endedAt: parseNullableNumber(row.ended_at),
         highRiskCount: 0,
         lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at),
@@ -803,6 +1383,25 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
   return Array.from(bySession.values());
 }
 
+function readOptionalDetailField<T extends string | number>(
+  row: CurrentSessionQueryRow,
+  field: "agent_name" | "agent_seat_id" | "customer_name",
+): T | null {
+  if (!(field in row)) {
+    return null;
+  }
+
+  return (row as unknown as Record<typeof field, T | null>)[field] ?? null;
+}
+
+function normalizeOptionalString(value: number | string | null) {
+  if (value == null) {
+    return null;
+  }
+
+  return String(value);
+}
+
 function sortNumericStrings(values: string[]) {
   return [...values].sort((left, right) => Number(left) - Number(right));
 }
@@ -831,7 +1430,8 @@ function mapActionItemRows(rows: ActionItemQueryRow[]): InsightActionItemRow[] {
         actionItemId,
         actionType: row.action_type,
         conversationId: String(row.conversation_id),
-        customerName: row.customer_name ?? "未知客户",
+        customerAvatarUrl: undefined,
+        customerName: "未知客户",
         evidenceMessageIds: [],
         lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at) ?? undefined,
         priority: normalizePriority(row.priority),
@@ -1003,6 +1603,64 @@ function evidenceForDimension(
       ),
     ),
   );
+}
+
+function mapEvidenceMessageRow(row: EvidenceMessageQueryRow): InsightEvidenceMessageRow {
+  const input = buildInsightMessageInput(row);
+
+  return {
+    contentText: input.aiText,
+    contentType: input.messageType,
+    messageId: input.sourceMessageId,
+    msgtime: input.occurredAt,
+    senderName: row.sender_name ?? undefined,
+    senderRole: input.senderRole,
+  };
+}
+
+function buildQuotePreviewsByRowId(
+  rows: MessageRow[],
+  currentRowsById: Map<number, MessageRow>,
+  fetchedRowsById: Map<number, MessageRow>,
+) {
+  const previews = new Map<number, MessageRowQuotePreview>();
+
+  rows.forEach((row) => {
+    const quoteId = getQuoteMessageAuditId(row);
+
+    if (quoteId == null) {
+      return;
+    }
+
+    const quotedRow = currentRowsById.get(quoteId) ?? fetchedRowsById.get(quoteId);
+    previews.set(
+      parseNumber(row.id),
+      quotedRow ? buildQuotedMessagePreview(quotedRow) : buildMissingQuotedMessagePreview(),
+    );
+  });
+
+  return previews;
+}
+
+function uniqueNonEmpty(values: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(
+      values
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function toOptionalNumber(value: number | string | null) {
+  if (value == null || value === "") {
+    return undefined;
+  }
+
+  const parsed = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function getAffectedRows(result: unknown) {

@@ -3,12 +3,14 @@ import type {
   InsightActionStatus,
   InsightAnalysisStatus,
   InsightDetailResponse,
+  InsightMessageContextResponse,
   InsightSettingsResponse,
   InsightsFollowUpsResponse,
   InsightsOverviewResponse,
   InsightsQualityResponse,
   InsightsRescanRequest,
   InsightsRescanResponse,
+  WorkbenchMessageDto,
 } from "@chatai/contracts";
 import { DEFAULT_INSIGHT_SETTINGS } from "./insights-seeds.js";
 import {
@@ -30,11 +32,13 @@ type InsightSeverity = InsightsQualityResponse["unresolvedSessions"][number]["se
 
 export type InsightCurrentSessionRow = {
   actionOpenCount: number;
+  agentAvatarUrl: string | null;
   agentName: string | null;
   agentSeatId: string | null;
   analysisStatus: InsightAnalysisStatus;
   conversationId: string;
   currentSnapshotId: string;
+  customerAvatarUrl: string | null;
   customerName: string;
   endedAt: number | null;
   highRiskCount: number;
@@ -98,6 +102,17 @@ export type InsightsRepositoryPort = {
     sessionId: string,
     messageIds: string[],
   ): Promise<InsightEvidenceMessageRow[]>;
+  listEvidenceMessageRecords(
+    scope: InsightsUidScope,
+    sessionId: string,
+    messageIds: string[],
+  ): Promise<WorkbenchMessageDto[]>;
+  listMessageContext(
+    scope: InsightsUidScope,
+    conversationId: string,
+    messageId: string,
+    options: { after: number; before: number },
+  ): Promise<InsightMessageContextResponse>;
   listIntentDistribution?(
     scope: InsightsUidScope,
   ): Promise<InsightsOverviewResponse["intentDistribution"]>;
@@ -121,6 +136,8 @@ const analysisStatuses: InsightAnalysisStatus[] = [
   "failed",
   "stale",
 ];
+
+const defaultMessageContextSize = 30;
 
 export class InsightsService {
   constructor(private readonly repository: InsightsRepositoryPort) {}
@@ -164,8 +181,10 @@ export class InsightsService {
       .filter((row) => unresolvedStatuses.has(row.resolutionStatus))
       .sort(compareByRiskAndLastMessage)
       .map((row) => ({
+        agentAvatarUrl: row.agentAvatarUrl ?? undefined,
         agentName: row.agentName ?? undefined,
         conversationId: row.conversationId,
+        customerAvatarUrl: row.customerAvatarUrl ?? undefined,
         customerName: row.customerName,
         evidenceMessageIds: row.problemEvidenceMessageIds,
         lastCustomerMessageAt: row.lastCustomerMessageAt ?? undefined,
@@ -225,12 +244,20 @@ export class InsightsService {
         detail.problemEvidenceMessageIds,
       ),
     );
+    const evidenceMessageRecords = sortWorkbenchMessagesBySeq(
+      await this.repository.listEvidenceMessageRecords(
+        scope,
+        sessionId,
+        detail.problemEvidenceMessageIds,
+      ),
+    );
 
     return {
       actionItems: detail.actionItems,
       analysisStatus: detail.current.analysisStatus,
       currentSnapshotId: detail.current.currentSnapshotId,
       entities: detail.entities,
+      evidenceMessageRecords,
       evidenceMessages,
       faqCandidates: detail.faqCandidates,
       intents: detail.intents,
@@ -261,6 +288,33 @@ export class InsightsService {
       },
       tags: detail.tags,
     };
+  }
+
+  async getMessageContext(
+    scope: InsightsUidScope,
+    conversationId: string,
+    messageId: string,
+  ): Promise<InsightMessageContextResponse> {
+    const context = await this.repository.listMessageContext(
+      scope,
+      conversationId,
+      messageId,
+      {
+        after: defaultMessageContextSize,
+        before: defaultMessageContextSize,
+      },
+    );
+
+    if (
+      !context.messages.some((message) =>
+        message.messageId === context.targetMessageId ||
+        String(message.seq) === context.targetMessageId
+      )
+    ) {
+      throw new NotFoundError("INSIGHT_MESSAGE_NOT_FOUND", "证据消息不存在");
+    }
+
+    return context;
   }
 
   async getSettings(
@@ -342,6 +396,7 @@ function buildAgentStats(rows: InsightCurrentSessionRow[]) {
     string,
     {
       agentName: string;
+      agentAvatarUrl?: string;
       agentSeatId: string;
       partial: number;
       problemSessions: number;
@@ -357,6 +412,7 @@ function buildAgentStats(rows: InsightCurrentSessionRow[]) {
       stats.get(agentSeatId) ??
       {
         agentName: row.agentName ?? "未分配客服",
+        agentAvatarUrl: row.agentAvatarUrl ?? undefined,
         agentSeatId,
         partial: 0,
         problemSessions: 0,
@@ -445,6 +501,10 @@ function sortEvidenceMessages(rows: InsightEvidenceMessageRow[]) {
 
     return Number(left.messageId) - Number(right.messageId);
   });
+}
+
+function sortWorkbenchMessagesBySeq(rows: WorkbenchMessageDto[]) {
+  return [...rows].sort((left, right) => left.seq - right.seq);
 }
 
 function normalizeSeverity(severity: InsightSeverity | null): InsightSeverity {

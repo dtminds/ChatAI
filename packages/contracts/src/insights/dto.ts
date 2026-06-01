@@ -1,4 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
+import type { WorkbenchMessageDto } from "../chat/dto.js";
 
 export const InsightAnalysisStatusSchema = Type.Union([
   Type.Literal("ready"),
@@ -95,6 +96,7 @@ export const InsightsQualityOverviewSchema = Type.Object({
 });
 
 export const InsightsQualityAgentStatSchema = Type.Object({
+  agentAvatarUrl: Type.Optional(Type.String()),
   agentName: Type.String(),
   agentSeatId: Type.String(),
   partial: Type.Number(),
@@ -112,8 +114,10 @@ export const InsightsUnresolvedReasonSchema = Type.Object({
 });
 
 export const InsightsUnresolvedSessionSchema = Type.Object({
+  agentAvatarUrl: Type.Optional(Type.String()),
   agentName: Type.Optional(Type.String()),
   conversationId: Type.String(),
+  customerAvatarUrl: Type.Optional(Type.String()),
   customerName: Type.String(),
   evidenceMessageIds: Type.Array(Type.String()),
   lastCustomerMessageAt: Type.Optional(Type.Number()),
@@ -135,6 +139,7 @@ export const InsightFollowUpItemSchema = Type.Object({
   actionItemId: Type.String(),
   actionType: Type.String(),
   conversationId: Type.String(),
+  customerAvatarUrl: Type.Optional(Type.String()),
   customerName: Type.String(),
   evidenceMessageIds: Type.Array(Type.String()),
   lastCustomerMessageAt: Type.Optional(Type.Number()),
@@ -222,6 +227,7 @@ export const InsightDetailResponseSchema = Type.Object({
   analysisStatus: InsightAnalysisStatusSchema,
   currentSnapshotId: Type.String(),
   entities: Type.Array(InsightDetailEntitySchema),
+  evidenceMessageRecords: Type.Array(Type.Any()),
   evidenceMessages: Type.Array(InsightEvidenceMessageContextSchema),
   faqCandidates: Type.Array(InsightFaqCandidateSchema),
   intents: Type.Array(InsightIntentSchema),
@@ -242,6 +248,19 @@ export const InsightDetailResponseSchema = Type.Object({
   session: InsightSessionMetaSchema,
   summary: InsightSummarySchema,
   tags: Type.Array(InsightTagSchema),
+});
+
+export const InsightMessageContextRequestSchema = Type.Object({
+  conversationId: Type.String({ minLength: 1 }),
+  messageId: Type.String({ minLength: 1 }),
+});
+
+export const InsightMessageContextResponseSchema = Type.Object({
+  contextAfter: Type.Number(),
+  contextBefore: Type.Number(),
+  conversationId: Type.String(),
+  messages: Type.Array(Type.Any()),
+  targetMessageId: Type.String(),
 });
 
 export const InsightSessionizationSettingsSchema = Type.Object({
@@ -315,7 +334,22 @@ export const InsightsRescanResponseSchema = Type.Object({
 
 export type InsightActionStatus = Static<typeof InsightActionStatusSchema>;
 export type InsightAnalysisStatus = Static<typeof InsightAnalysisStatusSchema>;
-export type InsightDetailResponse = Static<typeof InsightDetailResponseSchema>;
+export type InsightDetailResponse = Omit<
+  Static<typeof InsightDetailResponseSchema>,
+  "evidenceMessageRecords"
+> & {
+  evidenceMessageRecords: WorkbenchMessageDto[];
+};
+export type InsightEvidenceMessageContext = Static<
+  typeof InsightEvidenceMessageContextSchema
+>;
+export type InsightMessageContextRequest = Static<typeof InsightMessageContextRequestSchema>;
+export type InsightMessageContextResponse = Omit<
+  Static<typeof InsightMessageContextResponseSchema>,
+  "messages"
+> & {
+  messages: WorkbenchMessageDto[];
+};
 export type InsightSettingsResponse = Static<typeof InsightSettingsResponseSchema>;
 export type InsightsFollowUpsResponse = Static<typeof InsightsFollowUpsResponseSchema>;
 export type InsightsOverviewResponse = Static<typeof InsightsOverviewResponseSchema>;

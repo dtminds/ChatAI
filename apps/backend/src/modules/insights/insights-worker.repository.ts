@@ -58,6 +58,7 @@ type OpenSessionRow = {
 type AnalyzeJobRow = {
   analysis_scope: string;
   id: number | string;
+  idempotency_key: string;
   job_type: string;
   target_id: string;
   tenant_id: number | string;
@@ -352,7 +353,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   async claimNextAnalyzeJob() {
     const row = await this.db
       .selectFrom("xy_wap_embed_insight_job")
-      .select(["analysis_scope", "id", "job_type", "target_id", "tenant_id"])
+      .select(["analysis_scope", "id", "idempotency_key", "job_type", "target_id", "tenant_id"])
       .where("status", "=", "pending")
       .where("target_type", "=", "logical_session")
       .where("job_type", "in", ["analyze_session", "reanalyze_session"])
@@ -381,7 +382,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     return {
       analysisScope: "all" as const,
       jobId: String(row.id),
-      mode: "live" as const,
+      mode: parseJobMode(row),
       sessionId: row.target_id,
       tenantId: parseNumber(row.tenant_id),
     };
@@ -724,6 +725,16 @@ function parseInsertedMySqlId(result: InsertResult) {
   }
 
   return undefined;
+}
+
+function parseJobMode(row: AnalyzeJobRow) {
+  if (row.job_type === "reanalyze_session") {
+    return "manual_reanalyze" as const;
+  }
+
+  const mode = row.idempotency_key.split(":").at(3);
+
+  return mode === "final" ? "final" as const : "live" as const;
 }
 
 function formatError(error: unknown) {

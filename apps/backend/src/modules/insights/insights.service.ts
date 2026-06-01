@@ -90,11 +90,17 @@ export type InsightsRepositoryPort = {
     filters?: InsightsFollowUpFilters,
   ): Promise<InsightActionItemRow[]>;
   listCurrentSessions(scope: InsightsTenantScope): Promise<InsightCurrentSessionRow[]>;
+  listEntityHotspots?(
+    scope: InsightsTenantScope,
+  ): Promise<InsightsOverviewResponse["entityHotspots"]>;
   listEvidenceMessages(
     scope: InsightsTenantScope,
     sessionId: string,
     messageIds: string[],
   ): Promise<InsightEvidenceMessageRow[]>;
+  listIntentDistribution?(
+    scope: InsightsTenantScope,
+  ): Promise<InsightsOverviewResponse["intentDistribution"]>;
   updateActionStatus(
     scope: InsightsTenantScope,
     actionItemId: string,
@@ -121,6 +127,10 @@ export class InsightsService {
 
   async getOverview(scope: InsightsTenantScope): Promise<InsightsOverviewResponse> {
     const rows = await this.repository.listCurrentSessions(scope);
+    const [entityHotspots, intentDistribution] = await Promise.all([
+      this.repository.listEntityHotspots?.(scope) ?? Promise.resolve([]),
+      this.repository.listIntentDistribution?.(scope) ?? Promise.resolve(buildIntentDistribution(rows)),
+    ]);
     const analysis = {
       failed: 0,
       partial: 0,
@@ -137,9 +147,9 @@ export class InsightsService {
     return {
       actionItemsOpen: rows.reduce((total, row) => total + row.actionOpenCount, 0),
       analysis,
-      entityHotspots: [],
+      entityHotspots,
       highRiskSessions: rows.filter((row) => row.highRiskCount > 0).length,
-      intentDistribution: buildIntentDistribution(rows),
+      intentDistribution,
       negativeSessions: rows.filter((row) => row.negativeCount > 0).length,
       problemSessions: rows.filter((row) => row.problemDetected).length,
       readySessions: analysis.ready,

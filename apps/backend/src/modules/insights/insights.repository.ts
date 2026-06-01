@@ -3,7 +3,7 @@ import type {
   InsightAnalysisStatus,
   InsightDetailResponse,
 } from "@chatai/contracts";
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import type {
   InsightActionItemRow,
@@ -112,6 +112,22 @@ type FaqCandidateQueryRow = {
   id: number | string;
   question: string;
   status: string;
+};
+
+type EntityHotspotQueryRow = {
+  entity_id: string;
+  entity_name: string;
+  entity_type: string;
+  mention_count: number | string;
+  negative_count: number | string;
+  risk_session_count: number | string;
+  session_count: number | string;
+};
+
+type IntentDistributionQueryRow = {
+  count: number | string;
+  intent_code: string;
+  intent_label: string;
 };
 
 type EvidenceMessageQueryRow = {
@@ -269,6 +285,71 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const rows = await query.execute() as ActionItemQueryRow[];
 
     return mapActionItemRows(rows);
+  }
+
+  async listEntityHotspots(scope: InsightsTenantScope) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_entity as entity")
+      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
+        join.onRef("snapshot.id", "=", "entity.snapshot_id"),
+      )
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "snapshot.session_id"),
+      )
+      .leftJoin("xy_wap_embed_session_risk as risk", (join) =>
+        join.onRef("risk.snapshot_id", "=", "snapshot.id"),
+      )
+      .select([
+        "entity.entity_id as entity_id",
+        "entity.entity_name as entity_name",
+        "entity.entity_type as entity_type",
+        sql<number>`count(entity.id)`.as("mention_count"),
+        sql<number>`count(case when entity.sentiment = 'negative' then 1 end)`.as("negative_count"),
+        sql<number>`count(distinct case when risk.risk_level = 'high' then session.id end)`.as("risk_session_count"),
+        sql<number>`count(distinct session.id)`.as("session_count"),
+      ])
+      .where("session.tenant_id", "=", scope.tenantId)
+      .groupBy(["entity.entity_id", "entity.entity_name", "entity.entity_type"])
+      .orderBy(sql<number>`count(entity.id)`, "desc")
+      .limit(10)
+      .execute() as EntityHotspotQueryRow[];
+
+    return rows.map((row) => ({
+      entityId: row.entity_id,
+      entityName: row.entity_name,
+      entityType: row.entity_type,
+      mentionCount: parseNumber(row.mention_count),
+      negativeCount: parseNumber(row.negative_count),
+      riskSessionCount: parseNumber(row.risk_session_count),
+      sessionCount: parseNumber(row.session_count),
+    }));
+  }
+
+  async listIntentDistribution(scope: InsightsTenantScope) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_intent as intent")
+      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
+        join.onRef("snapshot.id", "=", "intent.snapshot_id"),
+      )
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "snapshot.session_id"),
+      )
+      .select([
+        sql<number>`count(*)`.as("count"),
+        "intent.intent_code as intent_code",
+        "intent.intent_label as intent_label",
+      ])
+      .where("session.tenant_id", "=", scope.tenantId)
+      .groupBy(["intent.intent_code", "intent.intent_label"])
+      .orderBy(sql<number>`count(*)`, "desc")
+      .limit(10)
+      .execute() as IntentDistributionQueryRow[];
+
+    return rows.map((row) => ({
+      count: parseNumber(row.count),
+      intentCode: row.intent_code,
+      intentLabel: row.intent_label,
+    }));
   }
 
   async findDetail(

@@ -197,6 +197,7 @@ function createInsightsDbMock() {
         const builder = {
           execute: async () => result,
           executeTakeFirst: async () => result[0],
+          groupBy: () => builder,
           innerJoin: (joinTable: string, callback?: (join: ReturnType<typeof createJoinBuilder>) => unknown) => {
             if (callback) {
               const joinBuilder = createJoinBuilder();
@@ -213,6 +214,7 @@ function createInsightsDbMock() {
             }
             return builder;
           },
+          limit: () => builder,
           orderBy: () => builder,
           select: () => builder,
           where: (column: string, operator: string, value: unknown) => {
@@ -421,11 +423,35 @@ function createInsightsDbMock() {
         ]);
       }
 
+      if (table === "xy_wap_embed_session_entity as entity") {
+        return createBuilder([
+          {
+            entity_id: "sku-1",
+            entity_name: "白色羽绒服",
+            entity_type: "product",
+            mention_count: 2,
+            negative_count: 1,
+            risk_session_count: 1,
+            session_count: 1,
+          },
+        ]);
+      }
+
       if (table === "xy_wap_embed_session_intent") {
         return createBuilder([
           {
             confidence: "0.8400",
             id: 1301,
+            intent_code: "logistics_delay",
+            intent_label: "物流异常",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_session_intent as intent") {
+        return createBuilder([
+          {
+            count: 1,
             intent_code: "logistics_delay",
             intent_label: "物流异常",
           },

@@ -186,6 +186,24 @@ function createRepository(
       },
     ]),
     listCurrentSessions: vi.fn(async () => baseRows),
+    listEntityHotspots: vi.fn(async () => [
+      {
+        entityId: "sku-1",
+        entityName: "白色羽绒服",
+        entityType: "product",
+        mentionCount: 2,
+        negativeCount: 1,
+        riskSessionCount: 1,
+        sessionCount: 1,
+      },
+    ]),
+    listIntentDistribution: vi.fn(async () => [
+      {
+        count: 2,
+        intentCode: "logistics_delay",
+        intentLabel: "物流异常",
+      },
+    ]),
     listEvidenceMessages: vi.fn(async () => [
       {
         contentText: "还没收到货，物流也不更新",
@@ -222,6 +240,18 @@ describe("InsightsService", () => {
         stale: 1,
       },
       highRiskSessions: 1,
+      entityHotspots: [
+        expect.objectContaining({
+          entityName: "白色羽绒服",
+          mentionCount: 2,
+        }),
+      ],
+      intentDistribution: [
+        expect.objectContaining({
+          count: 2,
+          intentCode: "logistics_delay",
+        }),
+      ],
       negativeSessions: 1,
       problemSessions: 2,
       readySessions: 1,

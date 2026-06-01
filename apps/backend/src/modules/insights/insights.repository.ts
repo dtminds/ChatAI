@@ -1,4 +1,8 @@
-import type { InsightActionStatus, InsightAnalysisStatus } from "@chatai/contracts";
+import type {
+  InsightActionStatus,
+  InsightAnalysisStatus,
+  InsightDetailResponse,
+} from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import type {
@@ -427,7 +431,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
               row.risk_id,
             ),
             reason: "",
-            riskLevel: row.risk_level ?? "low",
+            riskLevel: normalizeRiskSeverity(row.risk_level) ?? "low",
             riskType: row.risk_type ?? "custom",
           })),
         (row) => `${row.riskType}:${row.riskLevel}`,
@@ -798,7 +802,7 @@ function normalizeResolutionStatus(value: string | null) {
   return "unknown";
 }
 
-function normalizeRiskSeverity(value: string | null) {
+function normalizeRiskSeverity(value: string | null): InsightDetailResponse["risks"][number]["riskLevel"] | null {
   if (value === "low" || value === "medium" || value === "high") {
     return value;
   }
@@ -814,7 +818,7 @@ function normalizePriority(value: string) {
   return "medium";
 }
 
-function normalizePolarity(value: string) {
+function normalizePolarity(value: string): InsightDetailResponse["sentiment"][number]["polarity"] {
   if (
     value === "positive" ||
     value === "neutral" ||

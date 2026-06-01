@@ -1,7 +1,13 @@
 import Fastify from "fastify";
 import { loadBackendEnv, validateBackendEnv } from "./config/env.js";
-import { createVolcengineArkProviderConfig, maskProviderConfigForLog } from "./modules/insights/llm-provider.js";
-import { startInsightsWorker } from "./modules/insights/insights-worker.js";
+import { createDatabase } from "./db/mysql.js";
+import {
+  OpenAiCompatibleInsightAnalyzer,
+  createVolcengineArkProviderConfig,
+  maskProviderConfigForLog,
+} from "./modules/insights/llm-provider.js";
+import { InsightsWorkerService, startInsightsWorker } from "./modules/insights/insights-worker.js";
+import { MysqlInsightWorkerRepository } from "./modules/insights/insights-worker.repository.js";
 
 loadBackendEnv();
 validateBackendEnv();
@@ -18,10 +24,25 @@ logger.info(
   "会话洞察模型 Provider 已加载",
 );
 
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL must be configured");
+}
+
+const db = createDatabase(databaseUrl);
+const workerService = new InsightsWorkerService(new MysqlInsightWorkerRepository(db), {
+  model: new OpenAiCompatibleInsightAnalyzer(providerConfig),
+});
+
 startInsightsWorker({
   logger,
-  runOnce: async () => {
-    // The first worker slice wires scheduling and provider configuration.
-    // Message sync, sessionization and analysis job execution are attached in later slices.
-  },
+  runOnce: () => workerService.runOnce(),
+});
+
+process.once("SIGINT", () => {
+  void db.destroy().finally(() => process.exit(0));
+});
+process.once("SIGTERM", () => {
+  void db.destroy().finally(() => process.exit(0));
 });

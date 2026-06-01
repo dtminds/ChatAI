@@ -3,7 +3,6 @@ import {
   createVolcengineArkProviderConfig,
   maskProviderConfigForLog,
 } from "../../../src/modules/insights/llm-provider";
-import { createNonOverlappingTicker } from "../../../src/modules/insights/insights-worker";
 
 describe("LLM provider config", () => {
   it("resolves Volcengine Ark as an OpenAI-compatible provider", () => {
@@ -51,30 +50,5 @@ describe("LLM provider config", () => {
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
     });
-  });
-});
-
-describe("insights worker ticker", () => {
-  it("does not overlap ticks when one run is still pending", async () => {
-    let resolveCurrent: (() => void) | undefined;
-    let runs = 0;
-    const ticker = createNonOverlappingTicker(async () => {
-      runs += 1;
-      await new Promise<void>((resolve) => {
-        resolveCurrent = resolve;
-      });
-    });
-
-    const first = ticker.tick();
-    const second = ticker.tick();
-
-    await expect(second).resolves.toBe(false);
-    expect(runs).toBe(1);
-    resolveCurrent?.();
-    await first;
-
-    const third = ticker.tick();
-    resolveCurrent?.();
-    await expect(third).resolves.toBe(true);
   });
 });

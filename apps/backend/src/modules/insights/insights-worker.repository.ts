@@ -1,0 +1,735 @@
+import { sql, type Kysely } from "kysely";
+import type { Database } from "../../db/schema.js";
+import type {
+  AppendSessionMessageInput,
+  CloseSessionInput,
+  CreateAnalyzeJobInput,
+  CreateLogicalSessionInput,
+  SaveAnalysisResultInput,
+  InsightWorkerCursor,
+  InsightWorkerMessage,
+  InsightWorkerRepositoryPort,
+  InsightWorkerSessionizationConfig,
+} from "./insights-worker.js";
+
+type InsertResult = {
+  id?: bigint | number | string | null;
+  insertId?: bigint | number | string | null;
+};
+
+type CursorRow = {
+  cursor_audit_id: number | string;
+  cursor_msgtime: number | string;
+};
+
+type MessageRow = {
+  chat_type: number | string;
+  content: string | null;
+  from_type: number | string | null;
+  id: number | string;
+  msgtime: number | string | Date;
+  msgtype: string;
+  platform: number | string;
+  third_external_id: string;
+  third_group_id: string;
+  third_user_id: string;
+  uid: number | string;
+};
+
+type ConversationRow = {
+  conversation_id: number | string;
+  tenant_id: number | string;
+};
+
+type ConfigRow = {
+  analysis_delay_minutes: number | string;
+  hard_max_duration_hours: number | string;
+  idle_timeout_minutes: number | string;
+  late_arrival_window_minutes: number | string;
+  rule_version: string;
+};
+
+type OpenSessionRow = {
+  id: number | string;
+  last_meaningful_message_at: number | string | null;
+  started_at: number | string;
+};
+
+type AnalyzeJobRow = {
+  analysis_scope: string;
+  id: number | string;
+  job_type: string;
+  target_id: string;
+  tenant_id: number | string;
+};
+
+type AnalysisMessageRow = MessageRow & {
+  conversation_id: number | string;
+};
+
+const defaultConfig: InsightWorkerSessionizationConfig = {
+  analysisDelayMinutes: 10,
+  hardMaxDurationHours: 48,
+  idleTimeoutMinutes: 120,
+  lateArrivalWindowMinutes: 30,
+  ruleVersion: "insights-v1",
+};
+
+const cursorSource = "xy_wap_embed_msg_audit_info";
+
+export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort {
+  constructor(private readonly db: Kysely<Database>) {}
+
+  async getCursor(): Promise<InsightWorkerCursor> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_sync_cursor")
+      .select(["cursor_audit_id", "cursor_msgtime"])
+      .where("source", "=", cursorSource)
+      .where("tenant_id", "is", null)
+      .executeTakeFirst() as CursorRow | undefined;
+
+    return {
+      cursorAuditId: parseNumber(row?.cursor_audit_id),
+      cursorMsgtime: parseNumber(row?.cursor_msgtime),
+    };
+  }
+
+  async listIncrementalMessages(input: {
+    cursorAuditId: number;
+    cursorMsgtime: number;
+    limit: number;
+  }): Promise<InsightWorkerMessage[]> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_info")
+      .select([
+        "chat_type",
+        "content",
+        "from_type",
+        "id",
+        "msgtime",
+        "msgtype",
+        "platform",
+        "third_external_id",
+        "third_group_id",
+        "third_user_id",
+        "uid",
+      ])
+      .where((eb) =>
+        eb.or([
+          eb("msgtime", ">", input.cursorMsgtime),
+          eb.and([
+            eb("msgtime", "=", input.cursorMsgtime),
+            eb("id", ">", input.cursorAuditId),
+          ]),
+        ]),
+      )
+      .orderBy("msgtime", "asc")
+      .orderBy("id", "asc")
+      .limit(input.limit)
+      .execute() as MessageRow[];
+
+    return rows.map((row) => ({
+      chatType: parseNumber(row.chat_type),
+      content: row.content,
+      fromType: row.from_type == null ? null : parseNumber(row.from_type),
+      id: String(row.id),
+      msgtime: parseNumber(row.msgtime),
+      msgtype: row.msgtype,
+      platform: parseNumber(row.platform),
+      tenantId: parseNumber(row.uid),
+      thirdExternalId: row.third_external_id,
+      thirdGroupId: row.third_group_id,
+      thirdUserId: row.third_user_id,
+    }));
+  }
+
+  async findPlatformConversation(message: InsightWorkerMessage) {
+    const base = this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select(["id as conversation_id", "uid as tenant_id"])
+      .where("uid", "=", message.tenantId)
+      .where("platform", "=", message.platform)
+      .where("chat_type", "=", message.chatType)
+      .where("third_userid", "=", message.thirdUserId)
+      .where("biz_status", "=", 1);
+
+    const row = await (
+      message.chatType === 2
+        ? base.where("third_group_id", "=", message.thirdGroupId)
+        : base.where("third_external_userid", "=", message.thirdExternalId)
+    ).executeTakeFirst() as ConversationRow | undefined;
+
+    return row
+      ? {
+          conversationId: String(row.conversation_id),
+          tenantId: parseNumber(row.tenant_id),
+        }
+      : undefined;
+  }
+
+  async getSessionizationConfig(tenantId: number): Promise<InsightWorkerSessionizationConfig> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_sessionization_config")
+      .select([
+        "analysis_delay_minutes",
+        "hard_max_duration_hours",
+        "idle_timeout_minutes",
+        "late_arrival_window_minutes",
+        "rule_version",
+      ])
+      .where("tenant_id", "=", tenantId)
+      .where("enabled", "=", 1)
+      .executeTakeFirst() as ConfigRow | undefined;
+
+    if (!row) {
+      return defaultConfig;
+    }
+
+    return {
+      analysisDelayMinutes: parseNumber(row.analysis_delay_minutes),
+      hardMaxDurationHours: parseNumber(row.hard_max_duration_hours),
+      idleTimeoutMinutes: parseNumber(row.idle_timeout_minutes),
+      lateArrivalWindowMinutes: parseNumber(row.late_arrival_window_minutes),
+      ruleVersion: row.rule_version,
+    };
+  }
+
+  async findOpenSession(input: { conversationId: string; tenantId: number }) {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_logical_session")
+      .select(["id", "last_meaningful_message_at", "started_at"])
+      .where("tenant_id", "=", input.tenantId)
+      .where("conversation_id", "=", parsePositiveInteger(input.conversationId) ?? -1)
+      .where("status", "=", "open")
+      .orderBy("started_at", "desc")
+      .executeTakeFirst() as OpenSessionRow | undefined;
+
+    return row
+      ? {
+          lastMeaningfulMessageAt:
+            row.last_meaningful_message_at == null
+              ? null
+              : parseNumber(row.last_meaningful_message_at),
+          sessionId: String(row.id),
+          startedAt: parseNumber(row.started_at),
+        }
+      : undefined;
+  }
+
+  async createLogicalSession(input: CreateLogicalSessionInput): Promise<string> {
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_logical_session")
+      .values({
+        analysis_delay_minutes: input.config.analysisDelayMinutes,
+        conversation_id: parsePositiveInteger(input.conversationId) ?? -1,
+        hard_max_duration_hours: input.config.hardMaxDurationHours,
+        idle_timeout_minutes: input.config.idleTimeoutMinutes,
+        last_meaningful_message_at: input.startedAt,
+        last_message_at: input.startedAt,
+        rule_version: input.config.ruleVersion,
+        started_at: input.startedAt,
+        status: "open",
+        tenant_id: input.tenantId,
+      })
+      .executeTakeFirstOrThrow() as InsertResult;
+
+    return String(parseInsertedMySqlId(inserted));
+  }
+
+  async appendSessionMessage(input: AppendSessionMessageInput): Promise<void> {
+    await this.db
+      .insertInto("xy_wap_embed_logical_session_message")
+      .values({
+        conversation_id: parsePositiveInteger(input.conversationId) ?? -1,
+        included_for_ai: input.includedForAi ? 1 : 0,
+        meaningful_for_boundary: input.meaningfulForBoundary ? 1 : 0,
+        message_type: input.messageType,
+        occurred_at: input.occurredAt,
+        sender_role: input.senderRole,
+        session_id: parsePositiveInteger(input.sessionId) ?? -1,
+        source_message_id: parsePositiveInteger(input.sourceMessageId) ?? -1,
+        source_message_time: input.sourceMessageTime,
+        tenant_id: input.tenantId,
+      })
+      .ignore()
+      .executeTakeFirst();
+
+    await this.db
+      .updateTable("xy_wap_embed_logical_session")
+      .set({
+        agent_message_count:
+          input.senderRole === "agent"
+            ? sql<number>`agent_message_count + 1`
+            : sql<number>`agent_message_count`,
+        customer_message_count:
+          input.senderRole === "customer"
+            ? sql<number>`customer_message_count + 1`
+            : sql<number>`customer_message_count`,
+        last_meaningful_message_at: input.meaningfulForBoundary
+          ? input.occurredAt
+          : sql<number>`last_meaningful_message_at`,
+        last_message_at: input.occurredAt,
+        message_count: sql<number>`message_count + 1`,
+        update_time: new Date(),
+      })
+      .where("id", "=", parsePositiveInteger(input.sessionId) ?? -1)
+      .executeTakeFirst();
+  }
+
+  async closeSession(input: CloseSessionInput): Promise<void> {
+    await this.db
+      .updateTable("xy_wap_embed_logical_session")
+      .set({
+        close_reason: input.closeReason,
+        ended_at: input.endedAt,
+        status: "closed_pending_analysis",
+        update_time: new Date(),
+      })
+      .where("id", "=", parsePositiveInteger(input.sessionId) ?? -1)
+      .where("status", "=", "open")
+      .executeTakeFirst();
+  }
+
+  async createAnalyzeJob(input: CreateAnalyzeJobInput): Promise<string> {
+    const idempotencyKey = [
+      input.jobType,
+      input.tenantId,
+      input.sessionId,
+      input.mode,
+      input.runAfter.toISOString(),
+    ].join(":");
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_insight_job")
+      .values({
+        analysis_scope: input.analysisScope,
+        idempotency_key: idempotencyKey,
+        job_type: input.jobType,
+        priority: input.mode === "final" ? 20 : 10,
+        run_after: input.runAfter,
+        status: "pending",
+        target_id: input.sessionId,
+        target_type: "logical_session",
+        tenant_id: input.tenantId,
+      })
+      .ignore()
+      .executeTakeFirst() as InsertResult;
+
+    return String(parseInsertedMySqlId(inserted) ?? idempotencyKey);
+  }
+
+  async updateCursor(cursor: InsightWorkerCursor): Promise<void> {
+    const existing = await this.db
+      .selectFrom("xy_wap_embed_insight_sync_cursor")
+      .select(["id"])
+      .where("source", "=", cursorSource)
+      .where("tenant_id", "is", null)
+      .executeTakeFirst() as { id: number | string } | undefined;
+
+    if (existing) {
+      await this.db
+        .updateTable("xy_wap_embed_insight_sync_cursor")
+        .set({
+          cursor_audit_id: cursor.cursorAuditId,
+          cursor_msgtime: cursor.cursorMsgtime,
+          update_time: new Date(),
+        })
+        .where("id", "=", parseNumber(existing.id))
+        .executeTakeFirst();
+      return;
+    }
+
+    await this.db
+      .insertInto("xy_wap_embed_insight_sync_cursor")
+      .values({
+        cursor_audit_id: cursor.cursorAuditId,
+        cursor_msgtime: cursor.cursorMsgtime,
+        source: cursorSource,
+        tenant_id: null,
+      })
+      .executeTakeFirst();
+  }
+
+  async claimNextAnalyzeJob() {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_job")
+      .select(["analysis_scope", "id", "job_type", "target_id", "tenant_id"])
+      .where("status", "=", "pending")
+      .where("target_type", "=", "logical_session")
+      .where("job_type", "in", ["analyze_session", "reanalyze_session"])
+      .where("run_after", "<=", new Date())
+      .orderBy("priority", "desc")
+      .orderBy("id", "asc")
+      .executeTakeFirst() as AnalyzeJobRow | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_job")
+      .set({
+        attempt_count: sql<number>`attempt_count + 1`,
+        lease_until: new Date(Date.now() + 60_000),
+        locked_by: "node-worker",
+        status: "running",
+        update_time: new Date(),
+      })
+      .where("id", "=", parseNumber(row.id))
+      .where("status", "=", "pending")
+      .executeTakeFirst();
+
+    return {
+      analysisScope: "all" as const,
+      jobId: String(row.id),
+      mode: "live" as const,
+      sessionId: row.target_id,
+      tenantId: parseNumber(row.tenant_id),
+    };
+  }
+
+  async listSessionMessagesForAnalysis(sessionId: string) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .innerJoin("xy_wap_embed_msg_audit_info as message", (join) =>
+        join.onRef("message.id", "=", "session_message.source_message_id"),
+      )
+      .select([
+        "message.chat_type as chat_type",
+        "message.content as content",
+        "message.from_type as from_type",
+        "message.id as id",
+        "message.msgtime as msgtime",
+        "message.msgtype as msgtype",
+        "message.platform as platform",
+        "message.third_external_id as third_external_id",
+        "message.third_group_id as third_group_id",
+        "message.third_user_id as third_user_id",
+        "message.uid as uid",
+        "session_message.conversation_id as conversation_id",
+      ])
+      .where("session_message.session_id", "=", parsePositiveInteger(sessionId) ?? -1)
+      .where("session_message.included_for_ai", "=", 1)
+      .orderBy("session_message.source_message_time", "asc")
+      .orderBy("session_message.source_message_id", "asc")
+      .execute() as AnalysisMessageRow[];
+
+    return rows.map((row) => ({
+      chatType: parseNumber(row.chat_type),
+      content: row.content,
+      conversationId: String(row.conversation_id),
+      fromType: row.from_type == null ? null : parseNumber(row.from_type),
+      id: String(row.id),
+      msgtime: parseNumber(row.msgtime),
+      msgtype: row.msgtype,
+      thirdUserId: row.third_user_id,
+    }));
+  }
+
+  async startAnalysisRun(input: {
+    analysisScope: "all";
+    jobId: string;
+    mode: "final" | "live" | "manual_reanalyze";
+    sessionId: string;
+    sourceMessageFrom: string | null;
+    sourceMessageTo: string | null;
+  }): Promise<string> {
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_analysis_run")
+      .values({
+        analysis_scope: input.analysisScope,
+        job_id: parsePositiveInteger(input.jobId) ?? null,
+        mode: input.mode,
+        session_id: parsePositiveInteger(input.sessionId) ?? -1,
+        source_message_from: input.sourceMessageFrom == null ? null : parsePositiveInteger(input.sourceMessageFrom) ?? null,
+        source_message_to: input.sourceMessageTo == null ? null : parsePositiveInteger(input.sourceMessageTo) ?? null,
+        status: "running",
+      })
+      .executeTakeFirstOrThrow() as InsertResult;
+
+    return String(parseInsertedMySqlId(inserted));
+  }
+
+  async saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string> {
+    const sessionId = parsePositiveInteger(input.job.sessionId) ?? -1;
+    const insertedSnapshot = await this.db
+      .insertInto("xy_wap_embed_session_insight_snapshot")
+      .values({
+        analysis_version: "insights-v1",
+        phase: input.job.mode === "final" ? "final" : "live",
+        prompt_version: "insights-v1",
+        rule_version: "insights-v1",
+        session_id: sessionId,
+        source_message_high_watermark:
+          input.sourceMessageHighWatermark == null
+            ? null
+            : parsePositiveInteger(input.sourceMessageHighWatermark) ?? null,
+        status: input.validationWarnings.length > 0 ? "partial" : "ready",
+      })
+      .executeTakeFirstOrThrow() as InsertResult;
+    const snapshotId = parseInsertedMySqlId(insertedSnapshot) ?? -1;
+    const output = input.output;
+
+    await this.db.insertInto("xy_wap_embed_session_summary").values({
+      confidence: output.summary.confidence,
+      customer_intent: output.summary.customerIntent,
+      follow_up: output.summary.followUp ?? null,
+      process_summary: output.summary.processSummary,
+      result_summary: output.summary.resultSummary,
+      snapshot_id: snapshotId,
+    }).executeTakeFirst();
+
+    await this.db.insertInto("xy_wap_embed_session_problem_resolution").values({
+      agent_action_summary: null,
+      confidence: output.problemResolution.confidence,
+      customer_final_state: null,
+      problem_detected: output.problemResolution.problemDetected ? 1 : 0,
+      problem_summary: output.problemResolution.problemSummary,
+      resolution_status: output.problemResolution.resolutionStatus,
+      snapshot_id: snapshotId,
+      unresolved_reason: output.problemResolution.unresolvedReason ?? null,
+    }).executeTakeFirst();
+    await this.insertEvidenceRows(input, snapshotId, "problem_resolution", null, output.problemResolution.evidenceMessageIds);
+
+    for (const item of output.sentiment) {
+      const id = await this.insertAndGetId("xy_wap_embed_session_sentiment", {
+        confidence: item.confidence,
+        polarity: item.polarity,
+        reason: item.reason,
+        snapshot_id: snapshotId,
+      });
+      await this.insertEvidenceRows(input, snapshotId, "sentiment", id, item.evidenceMessageIds);
+    }
+
+    for (const item of output.tags) {
+      const id = await this.insertAndGetId("xy_wap_embed_session_tag", {
+        confidence: item.confidence,
+        snapshot_id: snapshotId,
+        tag_code: item.tagCode,
+        tag_name: item.tagName,
+      });
+      await this.insertEvidenceRows(input, snapshotId, "tag", id, item.evidenceMessageIds);
+    }
+
+    for (const item of output.qaFindings) {
+      const id = await this.insertAndGetId("xy_wap_embed_session_qa_finding", {
+        confidence: item.confidence,
+        passed: item.passed ? 1 : 0,
+        reason: item.reason,
+        rule_code: item.ruleCode,
+        severity: item.severity,
+        snapshot_id: snapshotId,
+      });
+      await this.insertEvidenceRows(input, snapshotId, "qa_finding", id, item.evidenceMessageIds);
+    }
+
+    for (const item of output.risks) {
+      const id = await this.insertAndGetId("xy_wap_embed_session_risk", {
+        confidence: item.confidence,
+        reason: item.reason,
+        risk_level: item.riskLevel,
+        risk_type: item.riskType,
+        snapshot_id: snapshotId,
+      });
+      await this.insertEvidenceRows(input, snapshotId, "risk", id, item.evidenceMessageIds);
+    }
+
+    for (const item of output.entities) {
+      const id = await this.insertAndGetId("xy_wap_embed_session_entity", {
+        confidence: item.confidence,
+        entity_id: item.entityId,
+        entity_name: item.entityName,
+        entity_type: item.entityType,
+        sentiment: item.sentiment ?? null,
+        snapshot_id: snapshotId,
+      });
+      await this.insertEvidenceRows(input, snapshotId, "entity", id, item.evidenceMessageIds);
+    }
+
+    for (const item of output.intents) {
+      const id = await this.insertAndGetId("xy_wap_embed_session_intent", {
+        confidence: item.confidence,
+        intent_code: item.intentCode,
+        intent_label: item.intentLabel,
+        snapshot_id: snapshotId,
+      });
+      await this.insertEvidenceRows(input, snapshotId, "intent", id, item.evidenceMessageIds);
+    }
+
+    for (const item of output.actionItems) {
+      const id = await this.insertAndGetId("xy_wap_embed_session_action_item", {
+        action_type: item.actionType,
+        due_hint: item.dueHint ?? null,
+        priority: item.priority,
+        snapshot_id: snapshotId,
+        status: "open",
+        title: item.title,
+      });
+      await this.insertEvidenceRows(input, snapshotId, "action_item", id, item.evidenceMessageIds);
+    }
+
+    for (const item of output.faqCandidates) {
+      const id = await this.insertAndGetId("xy_wap_embed_session_faq_candidate", {
+        answer_hint: item.answerHint,
+        question: item.question,
+        snapshot_id: snapshotId,
+        status: item.status,
+      });
+      await this.insertEvidenceRows(input, snapshotId, "faq_candidate", id, item.evidenceMessageIds);
+    }
+
+    await this.db
+      .insertInto("xy_wap_embed_session_insight_current")
+      .values({
+        current_snapshot_id: snapshotId,
+        session_id: sessionId,
+      })
+      .onDuplicateKeyUpdate({ current_snapshot_id: snapshotId })
+      .executeTakeFirst();
+    await this.db
+      .updateTable("xy_wap_embed_logical_session")
+      .set({
+        current_snapshot_id: snapshotId,
+        status: input.job.mode === "final" ? "analyzed" : "open",
+        update_time: new Date(),
+      })
+      .where("id", "=", sessionId)
+      .executeTakeFirst();
+    await this.db
+      .updateTable("xy_wap_embed_analysis_run")
+      .set({
+        error_message: input.validationWarnings.length > 0 ? input.validationWarnings.join("; ") : null,
+        finished_at: new Date(),
+        status: input.validationWarnings.length > 0 ? "partial" : "succeeded",
+        update_time: new Date(),
+      })
+      .where("id", "=", parsePositiveInteger(input.runId) ?? -1)
+      .executeTakeFirst();
+
+    return String(snapshotId);
+  }
+
+  async markAnalysisJobSucceeded(jobId: string): Promise<void> {
+    await this.db.updateTable("xy_wap_embed_insight_job").set({
+      lease_until: null,
+      locked_by: null,
+      status: "succeeded",
+      update_time: new Date(),
+    }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
+  }
+
+  async markAnalysisJobFailed(jobId: string, error: unknown): Promise<void> {
+    await this.db.updateTable("xy_wap_embed_insight_job").set({
+      error_code: "ANALYSIS_FAILED",
+      error_message: formatError(error),
+      lease_until: null,
+      locked_by: null,
+      status: "failed",
+      update_time: new Date(),
+    }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
+  }
+
+  async markAnalysisRunFailed(runId: string, error: unknown): Promise<void> {
+    await this.db.updateTable("xy_wap_embed_analysis_run").set({
+      error_code: "ANALYSIS_FAILED",
+      error_message: formatError(error),
+      finished_at: new Date(),
+      status: "failed",
+      update_time: new Date(),
+    }).where("id", "=", parsePositiveInteger(runId) ?? -1).executeTakeFirst();
+  }
+
+  private async insertAndGetId(table: string, values: Record<string, unknown>) {
+    const inserted = await this.db
+      .insertInto(table as never)
+      .values(values as never)
+      .executeTakeFirstOrThrow() as InsertResult;
+
+    return parseInsertedMySqlId(inserted) ?? -1;
+  }
+
+  private async insertEvidenceRows(
+    input: SaveAnalysisResultInput,
+    snapshotId: number,
+    dimensionType: string,
+    dimensionRecordId: number | null,
+    evidenceMessageIds: string[],
+  ) {
+    const rows = evidenceMessageIds.map((messageId) => ({
+      conversation_id: -1,
+      dimension_record_id: dimensionRecordId,
+      dimension_type: dimensionType,
+      evidence_role: "primary",
+      reason: null,
+      session_id: parsePositiveInteger(input.job.sessionId) ?? -1,
+      snapshot_id: snapshotId,
+      source_message_id: parsePositiveInteger(messageId) ?? -1,
+      tenant_id: input.job.tenantId,
+    }));
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    const session = await this.db
+      .selectFrom("xy_wap_embed_logical_session")
+      .select(["conversation_id"])
+      .where("id", "=", parsePositiveInteger(input.job.sessionId) ?? -1)
+      .executeTakeFirst() as { conversation_id: number | string } | undefined;
+    const conversationId = parseNumber(session?.conversation_id);
+
+    await this.db
+      .insertInto("xy_wap_embed_insight_evidence")
+      .values(rows.map((row) => ({ ...row, conversation_id: conversationId })))
+      .executeTakeFirst();
+  }
+}
+
+function parseNumber(value: Date | number | string | undefined) {
+  if (value == null) {
+    return 0;
+  }
+
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  const parsed = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parsePositiveInteger(value: string) {
+  if (!/^[1-9]\d*$/.test(value)) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+function parseInsertedMySqlId(result: InsertResult) {
+  const value = result.insertId ?? result.id;
+
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value === "string" && value) {
+    return Number(value);
+  }
+
+  return undefined;
+}
+
+function formatError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}

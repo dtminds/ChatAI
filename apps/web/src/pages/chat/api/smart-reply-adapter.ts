@@ -221,7 +221,12 @@ export function isSmartReplyGenerationFailed(
 export function isSmartReplyContentIncompleteSkip(
   suggestion?: SmartReplySuggestion | null,
 ) {
-  return suggestion?.failReason?.trim() === SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT;
+  const failReason = suggestion?.failReason?.trim();
+
+  return (
+    failReason === SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT ||
+    failReason === SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE
+  );
 }
 
 export function shouldShowSmartReplyCard(suggestion?: SmartReplySuggestion | null) {

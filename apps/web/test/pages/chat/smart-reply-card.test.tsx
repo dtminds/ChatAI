@@ -1199,6 +1199,34 @@ describe("SmartReplyCard", () => {
     expect(screen.getByText(SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT)).toBeInTheDocument();
   });
 
+  it("renders raw incomplete content skip as the localized hint", () => {
+    const message = {
+      content: {
+        text: "这个多少钱",
+        type: "text",
+      },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "",
+          failReason: "content_incomplete_skip",
+          generateStatus: 3,
+          pollComplete: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText(SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT)).toBeInTheDocument();
+    expect(screen.queryByText("content_incomplete_skip")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+  });
+
   it("disables send actions when the workbench cannot send messages", () => {
     render(
       <SmartReplyCard

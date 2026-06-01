@@ -42,6 +42,7 @@ import {
   isSmartReplySent,
   resolveSmartReplyProcessingLabel,
   SMART_REPLY_BUSY_TIMEOUT_MS,
+  SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_MEDIA_PROCESSING_HINT_MS,
   SMART_REPLY_THINKING_LABEL,
   type SmartReplySendPayload,
@@ -828,7 +829,7 @@ export function SmartReplyMessageAnchor({
       <SmartReplyContentIncompleteSkipHint
         message={message}
         onDismiss={onDismiss}
-        text={resolvedSuggestion.failReason ?? ""}
+        text={SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT}
       />
     );
   }

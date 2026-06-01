@@ -596,6 +596,20 @@ describe("smart-reply-adapter", () => {
     expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
   });
 
+  it("treats raw incomplete content skips from history as a non-failure hint", () => {
+    const suggestion = {
+      assistantName: "护肤小助手",
+      content: "",
+      failReason: "content_incomplete_skip",
+      generateStatus: 3,
+      pollComplete: true,
+    };
+
+    expect(isSmartReplyContentIncompleteSkip(suggestion)).toBe(true);
+    expect(isSmartReplyGenerationFailed(suggestion)).toBe(false);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
+  });
+
   it("shows smart reply card while poll is still active", () => {
     expect(shouldShowSmartReplyCard(undefined)).toBe(false);
     expect(

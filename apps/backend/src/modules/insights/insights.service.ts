@@ -2,9 +2,23 @@ import type {
   AccountRole,
   InsightActionStatus,
   InsightAnalysisStatus,
+  InsightAnalysisPolicy,
+  InsightAnalysisPolicyUpdateRequest,
+  InsightConfigDeletedResponse,
+  InsightConfigStatusUpdateRequest,
   InsightDetailResponse,
+  InsightEntityDictionaryItem,
+  InsightEntityDictionaryMutationRequest,
+  InsightLabelConfig,
+  InsightLabelConfigMutationRequest,
   InsightMessageContextResponse,
+  InsightQaRuleConfig,
+  InsightQaRuleConfigMutationRequest,
+  InsightRiskConfig,
+  InsightRiskConfigMutationRequest,
   InsightSettingsResponse,
+  InsightSessionizationSettings,
+  InsightSessionizationSettingsUpdateRequest,
   InsightsFollowUpsResponse,
   InsightsOverviewResponse,
   InsightsQualityResponse,
@@ -133,6 +147,75 @@ export type InsightsRepositoryPort = {
     actionItemId: string,
     status: Extract<InsightActionStatus, "done" | "dismissed">,
   ): Promise<boolean>;
+  getSettings(scope: InsightsUidScope): Promise<InsightSettingsResponse>;
+  upsertAnalysisPolicy(
+    scope: InsightsUidScope,
+    payload: InsightAnalysisPolicyUpdateRequest,
+  ): Promise<InsightAnalysisPolicy>;
+  upsertSessionizationSettings(
+    scope: InsightsUidScope,
+    payload: InsightSessionizationSettingsUpdateRequest,
+  ): Promise<InsightSessionizationSettings>;
+  createLabelConfig(
+    scope: InsightsUidScope,
+    payload: InsightLabelConfigMutationRequest,
+  ): Promise<InsightLabelConfig>;
+  updateLabelConfig(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightLabelConfigMutationRequest,
+  ): Promise<InsightLabelConfig | undefined>;
+  updateLabelConfigStatus(
+    scope: InsightsUidScope,
+    id: string,
+    enabled: boolean,
+  ): Promise<InsightLabelConfig | undefined>;
+  deleteLabelConfig(scope: InsightsUidScope, id: string): Promise<boolean>;
+  createQaRuleConfig(
+    scope: InsightsUidScope,
+    payload: InsightQaRuleConfigMutationRequest,
+  ): Promise<InsightQaRuleConfig>;
+  updateQaRuleConfig(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightQaRuleConfigMutationRequest,
+  ): Promise<InsightQaRuleConfig | undefined>;
+  updateQaRuleConfigStatus(
+    scope: InsightsUidScope,
+    id: string,
+    enabled: boolean,
+  ): Promise<InsightQaRuleConfig | undefined>;
+  deleteQaRuleConfig(scope: InsightsUidScope, id: string): Promise<boolean>;
+  createRiskConfig(
+    scope: InsightsUidScope,
+    payload: InsightRiskConfigMutationRequest,
+  ): Promise<InsightRiskConfig>;
+  updateRiskConfig(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightRiskConfigMutationRequest,
+  ): Promise<InsightRiskConfig | undefined>;
+  updateRiskConfigStatus(
+    scope: InsightsUidScope,
+    id: string,
+    enabled: boolean,
+  ): Promise<InsightRiskConfig | undefined>;
+  deleteRiskConfig(scope: InsightsUidScope, id: string): Promise<boolean>;
+  createEntityDictionaryItem(
+    scope: InsightsUidScope,
+    payload: InsightEntityDictionaryMutationRequest,
+  ): Promise<InsightEntityDictionaryItem>;
+  updateEntityDictionaryItem(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightEntityDictionaryMutationRequest,
+  ): Promise<InsightEntityDictionaryItem | undefined>;
+  updateEntityDictionaryItemStatus(
+    scope: InsightsUidScope,
+    id: string,
+    enabled: boolean,
+  ): Promise<InsightEntityDictionaryItem | undefined>;
+  deleteEntityDictionaryItem(scope: InsightsUidScope, id: string): Promise<boolean>;
 };
 
 const unresolvedStatuses = new Set<InsightResolutionStatus>([
@@ -339,14 +422,190 @@ export class InsightsService {
   }
 
   async getSettings(
-    _scope: InsightsUidScope,
+    scope: InsightsUidScope,
     role: AccountRole | string | undefined,
   ): Promise<InsightSettingsResponse> {
-    if (role !== "owner" && role !== "admin") {
-      throw new ForbiddenError("FORBIDDEN", "无权限访问");
-    }
+    assertInsightSettingsAdmin(role);
 
-    return DEFAULT_INSIGHT_SETTINGS;
+    return this.repository.getSettings(scope);
+  }
+
+  async updateSessionizationSettings(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    payload: InsightSessionizationSettingsUpdateRequest,
+  ): Promise<InsightSessionizationSettings> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.upsertSessionizationSettings(scope, payload);
+  }
+
+  async updateAnalysisPolicy(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    payload: InsightAnalysisPolicyUpdateRequest,
+  ): Promise<InsightAnalysisPolicy> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.upsertAnalysisPolicy(scope, payload);
+  }
+
+  async createLabelConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    payload: InsightLabelConfigMutationRequest,
+  ): Promise<InsightLabelConfig> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.createLabelConfig(scope, payload);
+  }
+
+  async updateLabelConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+    payload: InsightLabelConfigMutationRequest,
+  ): Promise<InsightLabelConfig> {
+    assertInsightSettingsAdmin(role);
+    return await this.repository.updateLabelConfig(scope, id, payload)
+      ?? raiseConfigNotFound();
+  }
+
+  async updateLabelConfigStatus(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+    payload: InsightConfigStatusUpdateRequest,
+  ): Promise<InsightLabelConfig> {
+    assertInsightSettingsAdmin(role);
+    return await this.repository.updateLabelConfigStatus(scope, id, payload.enabled)
+      ?? raiseConfigNotFound();
+  }
+
+  async deleteLabelConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+  ): Promise<InsightConfigDeletedResponse> {
+    assertInsightSettingsAdmin(role);
+    return { deleted: await this.deleteConfigOrThrow(() => this.repository.deleteLabelConfig(scope, id)) };
+  }
+
+  async createQaRuleConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    payload: InsightQaRuleConfigMutationRequest,
+  ): Promise<InsightQaRuleConfig> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.createQaRuleConfig(scope, payload);
+  }
+
+  async updateQaRuleConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+    payload: InsightQaRuleConfigMutationRequest,
+  ): Promise<InsightQaRuleConfig> {
+    assertInsightSettingsAdmin(role);
+    return await this.repository.updateQaRuleConfig(scope, id, payload)
+      ?? raiseConfigNotFound();
+  }
+
+  async updateQaRuleConfigStatus(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+    payload: InsightConfigStatusUpdateRequest,
+  ): Promise<InsightQaRuleConfig> {
+    assertInsightSettingsAdmin(role);
+    return await this.repository.updateQaRuleConfigStatus(scope, id, payload.enabled)
+      ?? raiseConfigNotFound();
+  }
+
+  async deleteQaRuleConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+  ): Promise<InsightConfigDeletedResponse> {
+    assertInsightSettingsAdmin(role);
+    return { deleted: await this.deleteConfigOrThrow(() => this.repository.deleteQaRuleConfig(scope, id)) };
+  }
+
+  async createRiskConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    payload: InsightRiskConfigMutationRequest,
+  ): Promise<InsightRiskConfig> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.createRiskConfig(scope, payload);
+  }
+
+  async updateRiskConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+    payload: InsightRiskConfigMutationRequest,
+  ): Promise<InsightRiskConfig> {
+    assertInsightSettingsAdmin(role);
+    return await this.repository.updateRiskConfig(scope, id, payload)
+      ?? raiseConfigNotFound();
+  }
+
+  async updateRiskConfigStatus(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+    payload: InsightConfigStatusUpdateRequest,
+  ): Promise<InsightRiskConfig> {
+    assertInsightSettingsAdmin(role);
+    return await this.repository.updateRiskConfigStatus(scope, id, payload.enabled)
+      ?? raiseConfigNotFound();
+  }
+
+  async deleteRiskConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+  ): Promise<InsightConfigDeletedResponse> {
+    assertInsightSettingsAdmin(role);
+    return { deleted: await this.deleteConfigOrThrow(() => this.repository.deleteRiskConfig(scope, id)) };
+  }
+
+  async createEntityDictionaryItem(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    payload: InsightEntityDictionaryMutationRequest,
+  ): Promise<InsightEntityDictionaryItem> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.createEntityDictionaryItem(scope, payload);
+  }
+
+  async updateEntityDictionaryItem(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+    payload: InsightEntityDictionaryMutationRequest,
+  ): Promise<InsightEntityDictionaryItem> {
+    assertInsightSettingsAdmin(role);
+    return await this.repository.updateEntityDictionaryItem(scope, id, payload)
+      ?? raiseConfigNotFound();
+  }
+
+  async updateEntityDictionaryItemStatus(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+    payload: InsightConfigStatusUpdateRequest,
+  ): Promise<InsightEntityDictionaryItem> {
+    assertInsightSettingsAdmin(role);
+    return await this.repository.updateEntityDictionaryItemStatus(scope, id, payload.enabled)
+      ?? raiseConfigNotFound();
+  }
+
+  async deleteEntityDictionaryItem(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+  ): Promise<InsightConfigDeletedResponse> {
+    assertInsightSettingsAdmin(role);
+    return { deleted: await this.deleteConfigOrThrow(() => this.repository.deleteEntityDictionaryItem(scope, id)) };
   }
 
   async updateActionStatus(
@@ -392,6 +651,26 @@ export class InsightsService {
       status: "accepted",
     };
   }
+
+  private async deleteConfigOrThrow(deleteConfig: () => Promise<boolean>) {
+    const deleted = await deleteConfig();
+
+    if (!deleted) {
+      throw new NotFoundError("INSIGHT_CONFIG_NOT_FOUND", "配置不存在");
+    }
+
+    return true;
+  }
+}
+
+function assertInsightSettingsAdmin(role: AccountRole | string | undefined) {
+  if (role !== "owner" && role !== "admin") {
+    throw new ForbiddenError("FORBIDDEN", "无权限访问");
+  }
+}
+
+function raiseConfigNotFound(): never {
+  throw new NotFoundError("INSIGHT_CONFIG_NOT_FOUND", "配置不存在");
 }
 
 function buildIntentDistribution(rows: InsightCurrentSessionRow[]) {

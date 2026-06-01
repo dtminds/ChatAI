@@ -13,6 +13,24 @@ const serviceMocks = vi.hoisted(() => ({
   getInsightOverview: vi.fn(),
   getInsightQuality: vi.fn(),
   getInsightSettings: vi.fn(),
+  createInsightLabelConfig: vi.fn(),
+  updateInsightAnalysisPolicy: vi.fn(),
+  updateInsightEntityDictionaryItem: vi.fn(),
+  updateInsightEntityDictionaryItemStatus: vi.fn(),
+  updateInsightLabelConfig: vi.fn(),
+  updateInsightLabelConfigStatus: vi.fn(),
+  updateInsightQaRuleConfig: vi.fn(),
+  updateInsightQaRuleConfigStatus: vi.fn(),
+  updateInsightRiskConfig: vi.fn(),
+  updateInsightRiskConfigStatus: vi.fn(),
+  updateInsightSessionizationSettings: vi.fn(),
+  createInsightEntityDictionaryItem: vi.fn(),
+  createInsightQaRuleConfig: vi.fn(),
+  createInsightRiskConfig: vi.fn(),
+  deleteInsightEntityDictionaryItem: vi.fn(),
+  deleteInsightLabelConfig: vi.fn(),
+  deleteInsightQaRuleConfig: vi.fn(),
+  deleteInsightRiskConfig: vi.fn(),
   updateInsightActionStatus: vi.fn(),
 }));
 
@@ -398,12 +416,14 @@ function installInsightMocks() {
         canonicalName: "白色羽绒服",
         enabled: true,
         entityType: "product",
+        id: "41",
         includeInAggregation: true,
       },
     ],
     labelConfigs: [
       {
         enabled: true,
+        id: "11",
         includeInStatistics: true,
         labelCode: "price_sensitive",
         labelName: "价格敏感",
@@ -412,6 +432,7 @@ function installInsightMocks() {
     qaRuleConfigs: [
       {
         enabled: true,
+        id: "21",
         ruleCode: "problem_resolution",
         ruleName: "客户问题是否解决",
         severity: "high",
@@ -420,6 +441,7 @@ function installInsightMocks() {
     riskConfigs: [
       {
         enabled: true,
+        id: "31",
         priorityBoost: 10,
         riskCode: "bad_review",
         riskName: "差评风险",
@@ -441,6 +463,13 @@ function installInsightMocks() {
   serviceMocks.createInsightRescanJob.mockResolvedValue({
     jobId: "8801",
     status: "accepted",
+  });
+  serviceMocks.createInsightLabelConfig.mockResolvedValue({
+    enabled: true,
+    id: "12",
+    includeInStatistics: true,
+    labelCode: "high_intent",
+    labelName: "高意向",
   });
 }
 
@@ -546,8 +575,25 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights/settings");
 
     expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
-    expect(screen.getByText("切片策略")).toBeInTheDocument();
+    expect(screen.getAllByText("会话切片")[0]).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "质检规则" }));
     expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "标签体系" }));
+    await userEvent.click(screen.getByRole("button", { name: "新增标签" }));
+    expect(await screen.findByRole("dialog", { name: "新增标签" })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("标签名称"), "高意向");
+    await userEvent.type(screen.getByLabelText("标签编码"), "high_intent");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.createInsightLabelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          labelCode: "high_intent",
+          labelName: "高意向",
+        }),
+      );
+    });
 
     cleanup();
     mockSession("admin");

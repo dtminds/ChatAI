@@ -305,6 +305,105 @@ function createRepository(
         },
       ],
     })),
+    getSettings: vi.fn(async () => ({
+      analysisPolicy: {
+        finalAnalysisEnabled: true,
+        liveAnalysisEnabled: true,
+        liveMinIntervalMinutes: 10,
+        liveMinNewMeaningfulMessages: 6,
+        lowConfidenceThreshold: 0.6,
+        ruleFallbackEnabled: true,
+      },
+      entityDictionary: [
+        {
+          aliases: ["白鸭绒外套"],
+          canonicalName: "白色羽绒服",
+          enabled: true,
+          entityType: "product",
+          id: "41",
+          includeInAggregation: true,
+        },
+      ],
+      labelConfigs: [
+        {
+          enabled: true,
+          id: "11",
+          includeInStatistics: true,
+          labelCode: "price_sensitive",
+          labelName: "价格敏感",
+        },
+      ],
+      qaRuleConfigs: [
+        {
+          enabled: true,
+          id: "21",
+          ruleCode: "problem_resolution",
+          ruleName: "客户问题是否解决",
+          severity: "high",
+        },
+      ],
+      riskConfigs: [
+        {
+          enabled: true,
+          id: "31",
+          priorityBoost: 10,
+          riskCode: "bad_review",
+          riskName: "差评风险",
+          severity: "high",
+        },
+      ],
+      sessionization: {
+        analysisDelayMinutes: 10,
+        hardMaxDurationHours: 48,
+        idleTimeoutMinutes: 120,
+        lateArrivalWindowMinutes: 30,
+        preset: "custom",
+      },
+    })),
+    upsertAnalysisPolicy: vi.fn(async (_scope, payload) => payload),
+    upsertSessionizationSettings: vi.fn(async (_scope, payload) => payload),
+    createLabelConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "91" })),
+    updateLabelConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
+    updateLabelConfigStatus: vi.fn(async (_scope, id, enabled) => ({
+      enabled,
+      id,
+      includeInStatistics: true,
+      labelCode: "price_sensitive",
+      labelName: "价格敏感",
+    })),
+    deleteLabelConfig: vi.fn(async () => true),
+    createQaRuleConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "92" })),
+    updateQaRuleConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
+    updateQaRuleConfigStatus: vi.fn(async (_scope, id, enabled) => ({
+      enabled,
+      id,
+      ruleCode: "problem_resolution",
+      ruleName: "客户问题是否解决",
+      severity: "high",
+    })),
+    deleteQaRuleConfig: vi.fn(async () => true),
+    createRiskConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "93" })),
+    updateRiskConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
+    updateRiskConfigStatus: vi.fn(async (_scope, id, enabled) => ({
+      enabled,
+      id,
+      priorityBoost: 10,
+      riskCode: "bad_review",
+      riskName: "差评风险",
+      severity: "high",
+    })),
+    deleteRiskConfig: vi.fn(async () => true),
+    createEntityDictionaryItem: vi.fn(async (_scope, payload) => ({ ...payload, id: "94" })),
+    updateEntityDictionaryItem: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
+    updateEntityDictionaryItemStatus: vi.fn(async (_scope, id, enabled) => ({
+      aliases: ["白鸭绒外套"],
+      canonicalName: "白色羽绒服",
+      enabled,
+      entityType: "product",
+      id,
+      includeInAggregation: true,
+    })),
+    deleteEntityDictionaryItem: vi.fn(async () => true),
     updateActionStatus: vi.fn(async () => true),
     ...overrides,
   };
@@ -513,6 +612,44 @@ describe("InsightsService", () => {
         idleTimeoutMinutes: 120,
       },
     });
+  });
+
+  it("persists insight settings mutations for admin roles", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.updateSessionizationSettings(scope, "admin", {
+        analysisDelayMinutes: 8,
+        hardMaxDurationHours: 36,
+        idleTimeoutMinutes: 90,
+        lateArrivalWindowMinutes: 20,
+        preset: "custom",
+      }),
+    ).resolves.toMatchObject({ idleTimeoutMinutes: 90 });
+    expect(repository.upsertSessionizationSettings).toHaveBeenCalledWith(scope, {
+      analysisDelayMinutes: 8,
+      hardMaxDurationHours: 36,
+      idleTimeoutMinutes: 90,
+      lateArrivalWindowMinutes: 20,
+      preset: "custom",
+    });
+
+    await expect(
+      service.createLabelConfig(scope, "admin", {
+        enabled: true,
+        includeInStatistics: true,
+        labelCode: "retention",
+        labelName: "挽留机会",
+      }),
+    ).resolves.toMatchObject({ id: "91", labelCode: "retention" });
+    expect(repository.createLabelConfig).toHaveBeenCalled();
+  });
+
+  it("throws not found when deleting missing insight config records", async () => {
+    const service = new InsightsService(createRepository({ deleteRiskConfig: vi.fn(async () => false) }));
+
+    await expect(service.deleteRiskConfig(scope, "admin", "999")).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("updates action item status only for supported manual statuses", async () => {

@@ -2,8 +2,14 @@ import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   InsightActionStatusSchema,
+  InsightAnalysisPolicyUpdateRequestSchema,
+  InsightEntityDictionaryMutationRequestSchema,
   InsightDetailResponseSchema,
+  InsightLabelConfigMutationRequestSchema,
+  InsightQaRuleConfigMutationRequestSchema,
+  InsightRiskConfigMutationRequestSchema,
   InsightSettingsResponseSchema,
+  InsightSessionizationSettingsUpdateRequestSchema,
   InsightsFollowUpsResponseSchema,
   InsightsOverviewResponseSchema,
   InsightsQualityResponseSchema,
@@ -235,12 +241,14 @@ describe("insights DTOs", () => {
             canonicalName: "白色羽绒服",
             enabled: true,
             entityType: "product",
+            id: "1",
             includeInAggregation: true,
           },
         ],
         labelConfigs: [
           {
             enabled: true,
+            id: "1",
             includeInStatistics: true,
             labelCode: "price_sensitive",
             labelName: "价格敏感",
@@ -249,6 +257,7 @@ describe("insights DTOs", () => {
         qaRuleConfigs: [
           {
             enabled: true,
+            id: "1",
             ruleCode: "problem_resolution",
             ruleName: "客户问题是否解决",
             severity: "high",
@@ -257,6 +266,7 @@ describe("insights DTOs", () => {
         riskConfigs: [
           {
             enabled: true,
+            id: "1",
             priorityBoost: 10,
             riskCode: "bad_review",
             riskName: "差评风险",
@@ -276,6 +286,75 @@ describe("insights DTOs", () => {
     expect(
       Value.Check(InsightsRescanRequestSchema, {
         from: "2026-06-01T00:00:00.000Z",
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts insight configuration mutation requests", () => {
+    expect(
+      Value.Check(InsightSessionizationSettingsUpdateRequestSchema, {
+        analysisDelayMinutes: 10,
+        hardMaxDurationHours: 48,
+        idleTimeoutMinutes: 90,
+        lateArrivalWindowMinutes: 20,
+        preset: "custom",
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(InsightAnalysisPolicyUpdateRequestSchema, {
+        finalAnalysisEnabled: true,
+        liveAnalysisEnabled: true,
+        liveMinIntervalMinutes: 8,
+        liveMinNewMeaningfulMessages: 5,
+        lowConfidenceThreshold: 0.55,
+        ruleFallbackEnabled: true,
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(InsightLabelConfigMutationRequestSchema, {
+        description: "客户对价格较敏感",
+        enabled: true,
+        includeInStatistics: true,
+        labelCode: "price_sensitive",
+        labelName: "价格敏感",
+        negativeExamples: ["只问库存"],
+        positiveExamples: ["太贵了"],
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(InsightQaRuleConfigMutationRequestSchema, {
+        applicableScene: "售后",
+        enabled: true,
+        judgmentCriteria: "客户问题需要有明确处理结果",
+        ruleCode: "problem_resolution",
+        ruleName: "客户问题是否解决",
+        severity: "high",
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(InsightRiskConfigMutationRequestSchema, {
+        enabled: true,
+        keywords: ["差评", "投诉"],
+        priorityBoost: 10,
+        riskCode: "bad_review",
+        riskName: "差评风险",
+        severity: "high",
+        unresolvedTimeoutMinutes: 60,
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(InsightEntityDictionaryMutationRequestSchema, {
+        aliases: ["直播间羽绒服"],
+        attributes: { brand: "A" },
+        canonicalName: "白色羽绒服",
+        enabled: true,
+        entityType: "product",
+        includeInAggregation: true,
       }),
     ).toBe(true);
   });

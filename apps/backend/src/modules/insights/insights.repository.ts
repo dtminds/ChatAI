@@ -1,9 +1,22 @@
 import type {
+  InsightAnalysisPolicy,
+  InsightAnalysisPolicyUpdateRequest,
   InsightActionStatus,
   InsightAnalysisStatus,
   InsightDetailResponse,
+  InsightEntityDictionaryItem,
+  InsightEntityDictionaryMutationRequest,
+  InsightLabelConfig,
+  InsightLabelConfigMutationRequest,
   InsightMessageContextResponse,
+  InsightQaRuleConfig,
+  InsightQaRuleConfigMutationRequest,
+  InsightRiskConfig,
+  InsightRiskConfigMutationRequest,
   WorkbenchMessageDto,
+  InsightSettingsResponse,
+  InsightSessionizationSettings,
+  InsightSessionizationSettingsUpdateRequest,
 } from "@chatai/contracts";
 import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
@@ -29,6 +42,7 @@ import type {
   InsightsUidScope,
 } from "./insights.service.js";
 import { buildInsightMessageInput } from "./insight-message-input-builder.js";
+import { DEFAULT_INSIGHT_SETTINGS } from "./insights-seeds.js";
 
 type CurrentSessionQueryRow = {
   action_id: number | string | null;
@@ -193,6 +207,789 @@ const manualActionStatuses = new Set<InsightActionStatus>(["done", "dismissed"])
 
 export class InsightsRepository implements InsightsRepositoryPort {
   constructor(private readonly db: Kysely<Database>) {}
+
+  async getSettings(scope: InsightsUidScope): Promise<InsightSettingsResponse> {
+    const [
+      sessionization,
+      analysisPolicy,
+      labelConfigs,
+      qaRuleConfigs,
+      riskConfigs,
+      entityDictionary,
+    ] = await Promise.all([
+      this.getSessionizationSettings(scope),
+      this.getAnalysisPolicy(scope),
+      this.listLabelConfigs(scope),
+      this.listQaRuleConfigs(scope),
+      this.listRiskConfigs(scope),
+      this.listEntityDictionary(scope),
+    ]);
+
+    return {
+      analysisPolicy,
+      entityDictionary,
+      labelConfigs,
+      qaRuleConfigs,
+      riskConfigs,
+      sessionization,
+    };
+  }
+
+  async upsertSessionizationSettings(
+    scope: InsightsUidScope,
+    payload: InsightSessionizationSettingsUpdateRequest,
+  ): Promise<InsightSessionizationSettings> {
+    await this.db
+      .insertInto("xy_wap_embed_sessionization_config")
+      .values({
+        analysis_delay_minutes: payload.analysisDelayMinutes,
+        enabled: 1,
+        hard_max_duration_hours: payload.hardMaxDurationHours,
+        idle_timeout_minutes: payload.idleTimeoutMinutes,
+        late_arrival_window_minutes: payload.lateArrivalWindowMinutes,
+        preset: payload.preset,
+        rule_version: "v1",
+        uid: scope.uid,
+      })
+      .onDuplicateKeyUpdate({
+        analysis_delay_minutes: payload.analysisDelayMinutes,
+        enabled: 1,
+        hard_max_duration_hours: payload.hardMaxDurationHours,
+        idle_timeout_minutes: payload.idleTimeoutMinutes,
+        late_arrival_window_minutes: payload.lateArrivalWindowMinutes,
+        preset: payload.preset,
+        update_time: new Date(),
+      })
+      .execute();
+
+    return this.getSessionizationSettings(scope);
+  }
+
+  async upsertAnalysisPolicy(
+    scope: InsightsUidScope,
+    payload: InsightAnalysisPolicyUpdateRequest,
+  ): Promise<InsightAnalysisPolicy> {
+    await this.db
+      .insertInto("xy_wap_embed_insight_analysis_policy")
+      .values({
+        enabled: 1,
+        final_analysis_enabled: payload.finalAnalysisEnabled ? 1 : 0,
+        live_analysis_enabled: payload.liveAnalysisEnabled ? 1 : 0,
+        live_min_interval_minutes: payload.liveMinIntervalMinutes,
+        live_min_new_meaningful_messages: payload.liveMinNewMeaningfulMessages,
+        low_confidence_threshold: String(payload.lowConfidenceThreshold),
+        rule_fallback_enabled: payload.ruleFallbackEnabled ? 1 : 0,
+        uid: scope.uid,
+      })
+      .onDuplicateKeyUpdate({
+        enabled: 1,
+        final_analysis_enabled: payload.finalAnalysisEnabled ? 1 : 0,
+        live_analysis_enabled: payload.liveAnalysisEnabled ? 1 : 0,
+        live_min_interval_minutes: payload.liveMinIntervalMinutes,
+        live_min_new_meaningful_messages: payload.liveMinNewMeaningfulMessages,
+        low_confidence_threshold: String(payload.lowConfidenceThreshold),
+        rule_fallback_enabled: payload.ruleFallbackEnabled ? 1 : 0,
+        update_time: new Date(),
+      })
+      .execute();
+
+    return this.getAnalysisPolicy(scope);
+  }
+
+  async createLabelConfig(
+    scope: InsightsUidScope,
+    payload: InsightLabelConfigMutationRequest,
+  ): Promise<InsightLabelConfig> {
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_insight_label_config")
+      .values({
+        description: payload.description ?? null,
+        enabled: payload.enabled ? 1 : 0,
+        include_in_statistics: payload.includeInStatistics ? 1 : 0,
+        label_code: payload.labelCode,
+        label_name: payload.labelName,
+        negative_examples_json: encodeJson(payload.negativeExamples),
+        positive_examples_json: encodeJson(payload.positiveExamples),
+        uid: scope.uid,
+      })
+      .executeTakeFirstOrThrow() as InsertResult;
+
+    return await this.getLabelConfigById(scope, String(parseInsertedMySqlId(inserted) ?? ""))
+      ?? await this.getLabelConfigByCode(scope, payload.labelCode)
+      ?? mapLabelPayload("0", payload);
+  }
+
+  async updateLabelConfig(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightLabelConfigMutationRequest,
+  ): Promise<InsightLabelConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getLabelConfigById(scope, id)) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_label_config")
+      .set({
+        description: payload.description ?? null,
+        enabled: payload.enabled ? 1 : 0,
+        include_in_statistics: payload.includeInStatistics ? 1 : 0,
+        label_code: payload.labelCode,
+        label_name: payload.labelName,
+        negative_examples_json: encodeJson(payload.negativeExamples),
+        positive_examples_json: encodeJson(payload.positiveExamples),
+        update_time: new Date(),
+      })
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return this.getLabelConfigById(scope, id);
+  }
+
+  async updateLabelConfigStatus(
+    scope: InsightsUidScope,
+    id: string,
+    enabled: boolean,
+  ): Promise<InsightLabelConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getLabelConfigById(scope, id)) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_label_config")
+      .set({ enabled: enabled ? 1 : 0, update_time: new Date() })
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return this.getLabelConfigById(scope, id);
+  }
+
+  async deleteLabelConfig(scope: InsightsUidScope, id: string): Promise<boolean> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getLabelConfigById(scope, id)) {
+      return false;
+    }
+
+    await this.db
+      .deleteFrom("xy_wap_embed_insight_label_config")
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return true;
+  }
+
+  async createQaRuleConfig(
+    scope: InsightsUidScope,
+    payload: InsightQaRuleConfigMutationRequest,
+  ): Promise<InsightQaRuleConfig> {
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_insight_qa_rule_config")
+      .values({
+        applicable_scene: payload.applicableScene ?? null,
+        description: payload.description ?? null,
+        enabled: payload.enabled ? 1 : 0,
+        judgment_criteria: payload.judgmentCriteria ?? null,
+        negative_examples_json: encodeJson(payload.negativeExamples),
+        positive_examples_json: encodeJson(payload.positiveExamples),
+        rule_code: payload.ruleCode,
+        rule_name: payload.ruleName,
+        severity: payload.severity,
+        uid: scope.uid,
+      })
+      .executeTakeFirstOrThrow() as InsertResult;
+
+    return await this.getQaRuleConfigById(scope, String(parseInsertedMySqlId(inserted) ?? ""))
+      ?? await this.getQaRuleConfigByCode(scope, payload.ruleCode)
+      ?? mapQaRulePayload("0", payload);
+  }
+
+  async updateQaRuleConfig(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightQaRuleConfigMutationRequest,
+  ): Promise<InsightQaRuleConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getQaRuleConfigById(scope, id)) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_qa_rule_config")
+      .set({
+        applicable_scene: payload.applicableScene ?? null,
+        description: payload.description ?? null,
+        enabled: payload.enabled ? 1 : 0,
+        judgment_criteria: payload.judgmentCriteria ?? null,
+        negative_examples_json: encodeJson(payload.negativeExamples),
+        positive_examples_json: encodeJson(payload.positiveExamples),
+        rule_code: payload.ruleCode,
+        rule_name: payload.ruleName,
+        severity: payload.severity,
+        update_time: new Date(),
+      })
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return this.getQaRuleConfigById(scope, id);
+  }
+
+  async updateQaRuleConfigStatus(
+    scope: InsightsUidScope,
+    id: string,
+    enabled: boolean,
+  ): Promise<InsightQaRuleConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getQaRuleConfigById(scope, id)) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_qa_rule_config")
+      .set({ enabled: enabled ? 1 : 0, update_time: new Date() })
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return this.getQaRuleConfigById(scope, id);
+  }
+
+  async deleteQaRuleConfig(scope: InsightsUidScope, id: string): Promise<boolean> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getQaRuleConfigById(scope, id)) {
+      return false;
+    }
+
+    await this.db
+      .deleteFrom("xy_wap_embed_insight_qa_rule_config")
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return true;
+  }
+
+  async createRiskConfig(
+    scope: InsightsUidScope,
+    payload: InsightRiskConfigMutationRequest,
+  ): Promise<InsightRiskConfig> {
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_insight_risk_config")
+      .values({
+        description: payload.description ?? null,
+        enabled: payload.enabled ? 1 : 0,
+        keywords_json: encodeJson(payload.keywords),
+        priority_boost: payload.priorityBoost,
+        risk_code: payload.riskCode,
+        risk_name: payload.riskName,
+        severity: payload.severity,
+        uid: scope.uid,
+        unresolved_timeout_minutes: payload.unresolvedTimeoutMinutes ?? null,
+      })
+      .executeTakeFirstOrThrow() as InsertResult;
+
+    return await this.getRiskConfigById(scope, String(parseInsertedMySqlId(inserted) ?? ""))
+      ?? await this.getRiskConfigByCode(scope, payload.riskCode)
+      ?? mapRiskPayload("0", payload);
+  }
+
+  async updateRiskConfig(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightRiskConfigMutationRequest,
+  ): Promise<InsightRiskConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getRiskConfigById(scope, id)) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_risk_config")
+      .set({
+        description: payload.description ?? null,
+        enabled: payload.enabled ? 1 : 0,
+        keywords_json: encodeJson(payload.keywords),
+        priority_boost: payload.priorityBoost,
+        risk_code: payload.riskCode,
+        risk_name: payload.riskName,
+        severity: payload.severity,
+        unresolved_timeout_minutes: payload.unresolvedTimeoutMinutes ?? null,
+        update_time: new Date(),
+      })
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return this.getRiskConfigById(scope, id);
+  }
+
+  async updateRiskConfigStatus(
+    scope: InsightsUidScope,
+    id: string,
+    enabled: boolean,
+  ): Promise<InsightRiskConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getRiskConfigById(scope, id)) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_risk_config")
+      .set({ enabled: enabled ? 1 : 0, update_time: new Date() })
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return this.getRiskConfigById(scope, id);
+  }
+
+  async deleteRiskConfig(scope: InsightsUidScope, id: string): Promise<boolean> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getRiskConfigById(scope, id)) {
+      return false;
+    }
+
+    await this.db
+      .deleteFrom("xy_wap_embed_insight_risk_config")
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return true;
+  }
+
+  async createEntityDictionaryItem(
+    scope: InsightsUidScope,
+    payload: InsightEntityDictionaryMutationRequest,
+  ): Promise<InsightEntityDictionaryItem> {
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_insight_entity_dictionary")
+      .values({
+        aliases_json: encodeJson(payload.aliases),
+        attributes_json: encodeJson(payload.attributes),
+        canonical_name: payload.canonicalName,
+        enabled: payload.enabled ? 1 : 0,
+        entity_type: payload.entityType,
+        include_in_aggregation: payload.includeInAggregation ? 1 : 0,
+        uid: scope.uid,
+      })
+      .executeTakeFirstOrThrow() as InsertResult;
+
+    return await this.getEntityDictionaryItemById(scope, String(parseInsertedMySqlId(inserted) ?? ""))
+      ?? mapEntityPayload("0", payload);
+  }
+
+  async updateEntityDictionaryItem(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightEntityDictionaryMutationRequest,
+  ): Promise<InsightEntityDictionaryItem | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getEntityDictionaryItemById(scope, id)) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_entity_dictionary")
+      .set({
+        aliases_json: encodeJson(payload.aliases),
+        attributes_json: encodeJson(payload.attributes),
+        canonical_name: payload.canonicalName,
+        enabled: payload.enabled ? 1 : 0,
+        entity_type: payload.entityType,
+        include_in_aggregation: payload.includeInAggregation ? 1 : 0,
+        update_time: new Date(),
+      })
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return this.getEntityDictionaryItemById(scope, id);
+  }
+
+  async updateEntityDictionaryItemStatus(
+    scope: InsightsUidScope,
+    id: string,
+    enabled: boolean,
+  ): Promise<InsightEntityDictionaryItem | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getEntityDictionaryItemById(scope, id)) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_entity_dictionary")
+      .set({ enabled: enabled ? 1 : 0, update_time: new Date() })
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return this.getEntityDictionaryItemById(scope, id);
+  }
+
+  async deleteEntityDictionaryItem(scope: InsightsUidScope, id: string): Promise<boolean> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getEntityDictionaryItemById(scope, id)) {
+      return false;
+    }
+
+    await this.db
+      .deleteFrom("xy_wap_embed_insight_entity_dictionary")
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return true;
+  }
+
+  private async getSessionizationSettings(
+    scope: InsightsUidScope,
+  ): Promise<InsightSessionizationSettings> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_sessionization_config")
+      .select([
+        "analysis_delay_minutes",
+        "hard_max_duration_hours",
+        "idle_timeout_minutes",
+        "late_arrival_window_minutes",
+        "preset",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("enabled", "=", 1)
+      .executeTakeFirst();
+
+    if (!row) {
+      return DEFAULT_INSIGHT_SETTINGS.sessionization;
+    }
+
+    return {
+      analysisDelayMinutes: Number(row.analysis_delay_minutes),
+      hardMaxDurationHours: Number(row.hard_max_duration_hours),
+      idleTimeoutMinutes: Number(row.idle_timeout_minutes),
+      lateArrivalWindowMinutes: Number(row.late_arrival_window_minutes),
+      preset: normalizePreset(row.preset),
+    };
+  }
+
+  private async getAnalysisPolicy(scope: InsightsUidScope): Promise<InsightAnalysisPolicy> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_analysis_policy")
+      .select([
+        "final_analysis_enabled",
+        "live_analysis_enabled",
+        "live_min_interval_minutes",
+        "live_min_new_meaningful_messages",
+        "low_confidence_threshold",
+        "rule_fallback_enabled",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("enabled", "=", 1)
+      .executeTakeFirst();
+
+    if (!row) {
+      return DEFAULT_INSIGHT_SETTINGS.analysisPolicy;
+    }
+
+    return {
+      finalAnalysisEnabled: row.final_analysis_enabled === 1,
+      liveAnalysisEnabled: row.live_analysis_enabled === 1,
+      liveMinIntervalMinutes: Number(row.live_min_interval_minutes),
+      liveMinNewMeaningfulMessages: Number(row.live_min_new_meaningful_messages),
+      lowConfidenceThreshold: Number(row.low_confidence_threshold),
+      ruleFallbackEnabled: row.rule_fallback_enabled === 1,
+    };
+  }
+
+  private async listLabelConfigs(scope: InsightsUidScope): Promise<InsightLabelConfig[]> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_insight_label_config")
+      .select([
+        "description",
+        "enabled",
+        "id",
+        "include_in_statistics",
+        "label_code",
+        "label_name",
+        "negative_examples_json",
+        "positive_examples_json",
+      ])
+      .where("uid", "=", scope.uid)
+      .orderBy("id", "asc")
+      .execute();
+
+    return rows.length > 0 ? rows.map(mapLabelRow) : DEFAULT_INSIGHT_SETTINGS.labelConfigs;
+  }
+
+  private async getLabelConfigById(
+    scope: InsightsUidScope,
+    id: string,
+  ): Promise<InsightLabelConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_label_config")
+      .select([
+        "description",
+        "enabled",
+        "id",
+        "include_in_statistics",
+        "label_code",
+        "label_name",
+        "negative_examples_json",
+        "positive_examples_json",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("id", "=", numericId)
+      .executeTakeFirst();
+
+    return row ? mapLabelRow(row) : undefined;
+  }
+
+  private async getLabelConfigByCode(
+    scope: InsightsUidScope,
+    labelCode: string,
+  ): Promise<InsightLabelConfig | undefined> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_label_config")
+      .select([
+        "description",
+        "enabled",
+        "id",
+        "include_in_statistics",
+        "label_code",
+        "label_name",
+        "negative_examples_json",
+        "positive_examples_json",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("label_code", "=", labelCode)
+      .executeTakeFirst();
+
+    return row ? mapLabelRow(row) : undefined;
+  }
+
+  private async listQaRuleConfigs(scope: InsightsUidScope): Promise<InsightQaRuleConfig[]> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_insight_qa_rule_config")
+      .select([
+        "applicable_scene",
+        "description",
+        "enabled",
+        "id",
+        "judgment_criteria",
+        "negative_examples_json",
+        "positive_examples_json",
+        "rule_code",
+        "rule_name",
+        "severity",
+      ])
+      .where("uid", "=", scope.uid)
+      .orderBy("id", "asc")
+      .execute();
+
+    return rows.length > 0 ? rows.map(mapQaRuleRow) : DEFAULT_INSIGHT_SETTINGS.qaRuleConfigs;
+  }
+
+  private async getQaRuleConfigById(
+    scope: InsightsUidScope,
+    id: string,
+  ): Promise<InsightQaRuleConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_qa_rule_config")
+      .select([
+        "applicable_scene",
+        "description",
+        "enabled",
+        "id",
+        "judgment_criteria",
+        "negative_examples_json",
+        "positive_examples_json",
+        "rule_code",
+        "rule_name",
+        "severity",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("id", "=", numericId)
+      .executeTakeFirst();
+
+    return row ? mapQaRuleRow(row) : undefined;
+  }
+
+  private async getQaRuleConfigByCode(
+    scope: InsightsUidScope,
+    ruleCode: string,
+  ): Promise<InsightQaRuleConfig | undefined> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_qa_rule_config")
+      .select([
+        "applicable_scene",
+        "description",
+        "enabled",
+        "id",
+        "judgment_criteria",
+        "negative_examples_json",
+        "positive_examples_json",
+        "rule_code",
+        "rule_name",
+        "severity",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("rule_code", "=", ruleCode)
+      .executeTakeFirst();
+
+    return row ? mapQaRuleRow(row) : undefined;
+  }
+
+  private async listRiskConfigs(scope: InsightsUidScope): Promise<InsightRiskConfig[]> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_insight_risk_config")
+      .select([
+        "description",
+        "enabled",
+        "id",
+        "keywords_json",
+        "priority_boost",
+        "risk_code",
+        "risk_name",
+        "severity",
+        "unresolved_timeout_minutes",
+      ])
+      .where("uid", "=", scope.uid)
+      .orderBy("id", "asc")
+      .execute();
+
+    return rows.length > 0 ? rows.map(mapRiskRow) : DEFAULT_INSIGHT_SETTINGS.riskConfigs;
+  }
+
+  private async getRiskConfigById(
+    scope: InsightsUidScope,
+    id: string,
+  ): Promise<InsightRiskConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_risk_config")
+      .select([
+        "description",
+        "enabled",
+        "id",
+        "keywords_json",
+        "priority_boost",
+        "risk_code",
+        "risk_name",
+        "severity",
+        "unresolved_timeout_minutes",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("id", "=", numericId)
+      .executeTakeFirst();
+
+    return row ? mapRiskRow(row) : undefined;
+  }
+
+  private async getRiskConfigByCode(
+    scope: InsightsUidScope,
+    riskCode: string,
+  ): Promise<InsightRiskConfig | undefined> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_risk_config")
+      .select([
+        "description",
+        "enabled",
+        "id",
+        "keywords_json",
+        "priority_boost",
+        "risk_code",
+        "risk_name",
+        "severity",
+        "unresolved_timeout_minutes",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("risk_code", "=", riskCode)
+      .executeTakeFirst();
+
+    return row ? mapRiskRow(row) : undefined;
+  }
+
+  private async listEntityDictionary(
+    scope: InsightsUidScope,
+  ): Promise<InsightEntityDictionaryItem[]> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_insight_entity_dictionary")
+      .select([
+        "aliases_json",
+        "attributes_json",
+        "canonical_name",
+        "enabled",
+        "entity_type",
+        "id",
+        "include_in_aggregation",
+      ])
+      .where("uid", "=", scope.uid)
+      .orderBy("id", "asc")
+      .execute();
+
+    return rows.length > 0 ? rows.map(mapEntityRow) : DEFAULT_INSIGHT_SETTINGS.entityDictionary;
+  }
+
+  private async getEntityDictionaryItemById(
+    scope: InsightsUidScope,
+    id: string,
+  ): Promise<InsightEntityDictionaryItem | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_entity_dictionary")
+      .select([
+        "aliases_json",
+        "attributes_json",
+        "canonical_name",
+        "enabled",
+        "entity_type",
+        "id",
+        "include_in_aggregation",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("id", "=", numericId)
+      .executeTakeFirst();
+
+    return row ? mapEntityRow(row) : undefined;
+  }
 
   async listCurrentSessions(
     scope: InsightsUidScope,
@@ -1600,6 +2397,201 @@ function parsePositiveInteger(value: string) {
   const parsed = Number(value);
 
   return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+function normalizePreset(value: string): InsightSessionizationSettings["preset"] {
+  return value === "realtime_service" || value === "private_domain" || value === "custom"
+    ? value
+    : "custom";
+}
+
+function normalizeConfigSeverity(value: string): "low" | "medium" | "high" {
+  return value === "low" || value === "medium" || value === "high" ? value : "medium";
+}
+
+function encodeJson(value: unknown) {
+  return value == null ? null : JSON.stringify(value);
+}
+
+function parseJsonArray(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonObject(value: string | null | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function optionalString(value: string | null | undefined) {
+  return value || undefined;
+}
+
+function mapLabelPayload(id: string, payload: InsightLabelConfigMutationRequest): InsightLabelConfig {
+  return {
+    description: payload.description,
+    enabled: payload.enabled,
+    id,
+    includeInStatistics: payload.includeInStatistics,
+    labelCode: payload.labelCode,
+    labelName: payload.labelName,
+    negativeExamples: payload.negativeExamples,
+    positiveExamples: payload.positiveExamples,
+  };
+}
+
+function mapQaRulePayload(id: string, payload: InsightQaRuleConfigMutationRequest): InsightQaRuleConfig {
+  return {
+    applicableScene: payload.applicableScene,
+    description: payload.description,
+    enabled: payload.enabled,
+    id,
+    judgmentCriteria: payload.judgmentCriteria,
+    negativeExamples: payload.negativeExamples,
+    positiveExamples: payload.positiveExamples,
+    ruleCode: payload.ruleCode,
+    ruleName: payload.ruleName,
+    severity: payload.severity,
+  };
+}
+
+function mapRiskPayload(id: string, payload: InsightRiskConfigMutationRequest): InsightRiskConfig {
+  return {
+    description: payload.description,
+    enabled: payload.enabled,
+    id,
+    keywords: payload.keywords,
+    priorityBoost: payload.priorityBoost,
+    riskCode: payload.riskCode,
+    riskName: payload.riskName,
+    severity: payload.severity,
+    unresolvedTimeoutMinutes: payload.unresolvedTimeoutMinutes,
+  };
+}
+
+function mapEntityPayload(
+  id: string,
+  payload: InsightEntityDictionaryMutationRequest,
+): InsightEntityDictionaryItem {
+  return {
+    aliases: payload.aliases,
+    attributes: payload.attributes,
+    canonicalName: payload.canonicalName,
+    enabled: payload.enabled,
+    entityType: payload.entityType,
+    id,
+    includeInAggregation: payload.includeInAggregation,
+  };
+}
+
+function mapLabelRow(row: {
+  description: string | null;
+  enabled: number;
+  id: number | string;
+  include_in_statistics: number;
+  label_code: string;
+  label_name: string;
+  negative_examples_json: string | null;
+  positive_examples_json: string | null;
+}): InsightLabelConfig {
+  return {
+    description: optionalString(row.description),
+    enabled: row.enabled === 1,
+    id: String(row.id),
+    includeInStatistics: row.include_in_statistics === 1,
+    labelCode: row.label_code,
+    labelName: row.label_name,
+    negativeExamples: parseJsonArray(row.negative_examples_json),
+    positiveExamples: parseJsonArray(row.positive_examples_json),
+  };
+}
+
+function mapQaRuleRow(row: {
+  applicable_scene: string | null;
+  description: string | null;
+  enabled: number;
+  id: number | string;
+  judgment_criteria: string | null;
+  negative_examples_json: string | null;
+  positive_examples_json: string | null;
+  rule_code: string;
+  rule_name: string;
+  severity: string;
+}): InsightQaRuleConfig {
+  return {
+    applicableScene: optionalString(row.applicable_scene),
+    description: optionalString(row.description),
+    enabled: row.enabled === 1,
+    id: String(row.id),
+    judgmentCriteria: optionalString(row.judgment_criteria),
+    negativeExamples: parseJsonArray(row.negative_examples_json),
+    positiveExamples: parseJsonArray(row.positive_examples_json),
+    ruleCode: row.rule_code,
+    ruleName: row.rule_name,
+    severity: normalizeConfigSeverity(row.severity),
+  };
+}
+
+function mapRiskRow(row: {
+  description: string | null;
+  enabled: number;
+  id: number | string;
+  keywords_json: string | null;
+  priority_boost: number;
+  risk_code: string;
+  risk_name: string;
+  severity: string;
+  unresolved_timeout_minutes: number | null;
+}): InsightRiskConfig {
+  return {
+    description: optionalString(row.description),
+    enabled: row.enabled === 1,
+    id: String(row.id),
+    keywords: parseJsonArray(row.keywords_json),
+    priorityBoost: Number(row.priority_boost),
+    riskCode: row.risk_code,
+    riskName: row.risk_name,
+    severity: normalizeConfigSeverity(row.severity),
+    unresolvedTimeoutMinutes: row.unresolved_timeout_minutes ?? undefined,
+  };
+}
+
+function mapEntityRow(row: {
+  aliases_json: string | null;
+  attributes_json: string | null;
+  canonical_name: string;
+  enabled: number;
+  entity_type: string;
+  id: number | string;
+  include_in_aggregation: number;
+}): InsightEntityDictionaryItem {
+  return {
+    aliases: parseJsonArray(row.aliases_json),
+    attributes: parseJsonObject(row.attributes_json),
+    canonicalName: row.canonical_name,
+    enabled: row.enabled === 1,
+    entityType: row.entity_type,
+    id: String(row.id),
+    includeInAggregation: row.include_in_aggregation === 1,
+  };
 }
 
 function normalizePositiveIntegers(values: string[]) {

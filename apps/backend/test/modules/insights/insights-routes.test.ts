@@ -250,6 +250,126 @@ function createInsightsDbMock() {
         ]);
       }
 
+      if (table === "xy_wap_embed_sessionization_config") {
+        return createBuilder([
+          {
+            analysis_delay_minutes: 10,
+            hard_max_duration_hours: 48,
+            idle_timeout_minutes: 120,
+            late_arrival_window_minutes: 30,
+            preset: "custom",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_insight_analysis_policy") {
+        return createBuilder([
+          {
+            final_analysis_enabled: 1,
+            live_analysis_enabled: 1,
+            live_min_interval_minutes: 10,
+            live_min_new_meaningful_messages: 6,
+            low_confidence_threshold: "0.6000",
+            rule_fallback_enabled: 1,
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_insight_label_config") {
+        return createBuilder([
+          {
+            description: null,
+            enabled: 1,
+            id: 1,
+            include_in_statistics: 1,
+            label_code: "price_sensitive",
+            label_name: "价格敏感",
+            negative_examples_json: null,
+            positive_examples_json: null,
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_insight_qa_rule_config") {
+        return createBuilder([
+          {
+            applicable_scene: null,
+            description: null,
+            enabled: 1,
+            id: 1,
+            judgment_criteria: null,
+            negative_examples_json: null,
+            positive_examples_json: null,
+            rule_code: "problem_resolution",
+            rule_name: "客户问题是否解决",
+            severity: "high",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_insight_risk_config") {
+        return createBuilder([
+          {
+            description: null,
+            enabled: 1,
+            id: 1,
+            keywords_json: null,
+            priority_boost: 10,
+            risk_code: "bad_review",
+            risk_name: "差评风险",
+            severity: "high",
+            unresolved_timeout_minutes: null,
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_insight_entity_dictionary") {
+        return createBuilder([
+          {
+            aliases_json: JSON.stringify(["白鸭绒外套"]),
+            attributes_json: null,
+            canonical_name: "白色羽绒服",
+            enabled: 1,
+            entity_type: "product",
+            id: 1,
+            include_in_aggregation: 1,
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_conversation") {
+        return createBuilder([
+          {
+            id: 301,
+            platform: 5,
+            third_external_userid: "customer-1",
+            third_userid: "seat-1",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_contact") {
+        return createBuilder([
+          {
+            avatar: "https://example.com/customer-1.png",
+            name: "张三",
+            real_name: "",
+            third_external_userid: "customer-1",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_user_seat") {
+        return createBuilder([
+          {
+            id: 11,
+            third_avatar: "https://example.com/agent-1.png",
+            third_user_name: "客服一号",
+            third_userid: "seat-1",
+          },
+        ]);
+      }
+
       if (table === "xy_wap_embed_session_insight_current as current") {
         return createBuilder([
           {
@@ -494,6 +614,23 @@ function createInsightsDbMock() {
             sender_name: "张三",
             third_from_id: "customer-1",
             third_user_id: "seat-1",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_logical_session_message as session_message") {
+        return createBuilder([
+          {
+            chat_type: 1,
+            conversation_external_id: "customer-1",
+            conversation_group_id: "",
+            conversation_id: 301,
+            group_seat_id: null,
+            platform: 5,
+            seat_id: 11,
+            session_id: 501,
+            third_userid: "seat-1",
+            uid: 9001,
           },
         ]);
       }

@@ -1,10 +1,24 @@
 import type {
   ApiSuccessEnvelope,
   InsightActionStatus,
+  InsightAnalysisPolicy,
+  InsightAnalysisPolicyUpdateRequest,
+  InsightConfigDeletedResponse,
+  InsightConfigStatusUpdateRequest,
   InsightDetailResponse,
+  InsightEntityDictionaryItem,
+  InsightEntityDictionaryMutationRequest,
+  InsightLabelConfig,
+  InsightLabelConfigMutationRequest,
   InsightMessageContextRequest,
   InsightMessageContextResponse,
+  InsightQaRuleConfig,
+  InsightQaRuleConfigMutationRequest,
+  InsightRiskConfig,
+  InsightRiskConfigMutationRequest,
   InsightSettingsResponse,
+  InsightSessionizationSettings,
+  InsightSessionizationSettingsUpdateRequest,
   InsightsFollowUpsResponse,
   InsightsOverviewResponse,
   InsightsQualityResponse,
@@ -90,6 +104,194 @@ export async function updateInsightActionStatus(
 export async function getInsightSettings() {
   const response = await http.get<ApiSuccessEnvelope<InsightSettingsResponse>>(
     "/server/insights/settings",
+  );
+
+  return response.data;
+}
+
+export async function updateInsightSessionizationSettings(
+  payload: InsightSessionizationSettingsUpdateRequest,
+) {
+  const response = await http.put<
+    ApiSuccessEnvelope<InsightSessionizationSettings>,
+    InsightSessionizationSettingsUpdateRequest
+  >("/server/insights/settings/sessionization", payload);
+
+  return response.data;
+}
+
+export async function updateInsightAnalysisPolicy(
+  payload: InsightAnalysisPolicyUpdateRequest,
+) {
+  const response = await http.put<
+    ApiSuccessEnvelope<InsightAnalysisPolicy>,
+    InsightAnalysisPolicyUpdateRequest
+  >("/server/insights/settings/analysis-policy", payload);
+
+  return response.data;
+}
+
+export async function createInsightLabelConfig(payload: InsightLabelConfigMutationRequest) {
+  const response = await http.post<
+    ApiSuccessEnvelope<InsightLabelConfig>,
+    InsightLabelConfigMutationRequest
+  >("/server/insights/settings/label-configs", payload);
+
+  return response.data;
+}
+
+export async function updateInsightLabelConfig(
+  configId: string,
+  payload: InsightLabelConfigMutationRequest,
+) {
+  const response = await http.put<
+    ApiSuccessEnvelope<InsightLabelConfig>,
+    InsightLabelConfigMutationRequest
+  >(`/server/insights/settings/label-configs/${configId}`, payload);
+
+  return response.data;
+}
+
+export async function updateInsightLabelConfigStatus(
+  configId: string,
+  payload: InsightConfigStatusUpdateRequest,
+) {
+  const response = await http.patch<
+    ApiSuccessEnvelope<InsightLabelConfig>,
+    InsightConfigStatusUpdateRequest
+  >(`/server/insights/settings/label-configs/${configId}/status`, payload);
+
+  return response.data;
+}
+
+export async function deleteInsightLabelConfig(configId: string) {
+  const response = await http.delete<ApiSuccessEnvelope<InsightConfigDeletedResponse>>(
+    `/server/insights/settings/label-configs/${configId}`,
+  );
+
+  return response.data;
+}
+
+export async function createInsightQaRuleConfig(payload: InsightQaRuleConfigMutationRequest) {
+  const response = await http.post<
+    ApiSuccessEnvelope<InsightQaRuleConfig>,
+    InsightQaRuleConfigMutationRequest
+  >("/server/insights/settings/qa-rule-configs", payload);
+
+  return response.data;
+}
+
+export async function updateInsightQaRuleConfig(
+  configId: string,
+  payload: InsightQaRuleConfigMutationRequest,
+) {
+  const response = await http.put<
+    ApiSuccessEnvelope<InsightQaRuleConfig>,
+    InsightQaRuleConfigMutationRequest
+  >(`/server/insights/settings/qa-rule-configs/${configId}`, payload);
+
+  return response.data;
+}
+
+export async function updateInsightQaRuleConfigStatus(
+  configId: string,
+  payload: InsightConfigStatusUpdateRequest,
+) {
+  const response = await http.patch<
+    ApiSuccessEnvelope<InsightQaRuleConfig>,
+    InsightConfigStatusUpdateRequest
+  >(`/server/insights/settings/qa-rule-configs/${configId}/status`, payload);
+
+  return response.data;
+}
+
+export async function deleteInsightQaRuleConfig(configId: string) {
+  const response = await http.delete<ApiSuccessEnvelope<InsightConfigDeletedResponse>>(
+    `/server/insights/settings/qa-rule-configs/${configId}`,
+  );
+
+  return response.data;
+}
+
+export async function createInsightRiskConfig(payload: InsightRiskConfigMutationRequest) {
+  const response = await http.post<
+    ApiSuccessEnvelope<InsightRiskConfig>,
+    InsightRiskConfigMutationRequest
+  >("/server/insights/settings/risk-configs", payload);
+
+  return response.data;
+}
+
+export async function updateInsightRiskConfig(
+  configId: string,
+  payload: InsightRiskConfigMutationRequest,
+) {
+  const response = await http.put<
+    ApiSuccessEnvelope<InsightRiskConfig>,
+    InsightRiskConfigMutationRequest
+  >(`/server/insights/settings/risk-configs/${configId}`, payload);
+
+  return response.data;
+}
+
+export async function updateInsightRiskConfigStatus(
+  configId: string,
+  payload: InsightConfigStatusUpdateRequest,
+) {
+  const response = await http.patch<
+    ApiSuccessEnvelope<InsightRiskConfig>,
+    InsightConfigStatusUpdateRequest
+  >(`/server/insights/settings/risk-configs/${configId}/status`, payload);
+
+  return response.data;
+}
+
+export async function deleteInsightRiskConfig(configId: string) {
+  const response = await http.delete<ApiSuccessEnvelope<InsightConfigDeletedResponse>>(
+    `/server/insights/settings/risk-configs/${configId}`,
+  );
+
+  return response.data;
+}
+
+export async function createInsightEntityDictionaryItem(
+  payload: InsightEntityDictionaryMutationRequest,
+) {
+  const response = await http.post<
+    ApiSuccessEnvelope<InsightEntityDictionaryItem>,
+    InsightEntityDictionaryMutationRequest
+  >("/server/insights/settings/entity-dictionary", payload);
+
+  return response.data;
+}
+
+export async function updateInsightEntityDictionaryItem(
+  configId: string,
+  payload: InsightEntityDictionaryMutationRequest,
+) {
+  const response = await http.put<
+    ApiSuccessEnvelope<InsightEntityDictionaryItem>,
+    InsightEntityDictionaryMutationRequest
+  >(`/server/insights/settings/entity-dictionary/${configId}`, payload);
+
+  return response.data;
+}
+
+export async function updateInsightEntityDictionaryItemStatus(
+  configId: string,
+  payload: InsightConfigStatusUpdateRequest,
+) {
+  const response = await http.patch<
+    ApiSuccessEnvelope<InsightEntityDictionaryItem>,
+    InsightConfigStatusUpdateRequest
+  >(`/server/insights/settings/entity-dictionary/${configId}/status`, payload);
+
+  return response.data;
+}
+
+export async function deleteInsightEntityDictionaryItem(configId: string) {
+  const response = await http.delete<ApiSuccessEnvelope<InsightConfigDeletedResponse>>(
+    `/server/insights/settings/entity-dictionary/${configId}`,
   );
 
   return response.data;

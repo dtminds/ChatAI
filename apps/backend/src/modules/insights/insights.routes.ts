@@ -1,10 +1,24 @@
 import {
   apiSuccess,
+  InsightAnalysisPolicyUpdateRequestSchema,
+  InsightConfigStatusUpdateRequestSchema,
+  InsightEntityDictionaryMutationRequestSchema,
+  InsightLabelConfigMutationRequestSchema,
   InsightActionStatusSchema,
   InsightMessageContextRequestSchema,
+  InsightQaRuleConfigMutationRequestSchema,
+  InsightRiskConfigMutationRequestSchema,
+  InsightSessionizationSettingsUpdateRequestSchema,
   InsightsRescanRequestSchema,
   type AccountRole,
+  type InsightAnalysisPolicyUpdateRequest,
+  type InsightConfigStatusUpdateRequest,
+  type InsightEntityDictionaryMutationRequest,
+  type InsightLabelConfigMutationRequest,
   type InsightActionStatus,
+  type InsightQaRuleConfigMutationRequest,
+  type InsightRiskConfigMutationRequest,
+  type InsightSessionizationSettingsUpdateRequest,
   type InsightsRescanRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
@@ -44,11 +58,16 @@ const ActionStatusBodySchema = Type.Object({
   status: InsightActionStatusSchema,
 });
 
+const ConfigParamsSchema = Type.Object({
+  configId: Type.String({ minLength: 1 }),
+});
+
 type FollowUpsQuery = Static<typeof FollowUpsQuerySchema>;
 type OverviewQuery = Static<typeof OverviewQuerySchema>;
 type SessionParams = Static<typeof SessionParamsSchema>;
 type ActionItemParams = Static<typeof ActionItemParamsSchema>;
 type ActionStatusBody = Static<typeof ActionStatusBodySchema>;
+type ConfigParams = Static<typeof ConfigParamsSchema>;
 type MessageContextQuery = Static<typeof InsightMessageContextRequestSchema>;
 
 export async function registerInsightsRoutes(app: FastifyInstance) {
@@ -167,6 +186,364 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
         await createInsightsService(app).getSettings(
           await getUidScope(app, request),
           request.user?.roles?.[0] as AccountRole | undefined,
+        ),
+      );
+    },
+  );
+
+  app.put<{ Body: InsightSessionizationSettingsUpdateRequest }>(
+    "/api/server/insights/settings/sessionization",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightSessionizationSettingsUpdateRequestSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateSessionizationSettings(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.put<{ Body: InsightAnalysisPolicyUpdateRequest }>(
+    "/api/server/insights/settings/analysis-policy",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightAnalysisPolicyUpdateRequestSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateAnalysisPolicy(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Body: InsightLabelConfigMutationRequest }>(
+    "/api/server/insights/settings/label-configs",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightLabelConfigMutationRequestSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).createLabelConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.put<{ Body: InsightLabelConfigMutationRequest; Params: ConfigParams }>(
+    "/api/server/insights/settings/label-configs/:configId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightLabelConfigMutationRequestSchema,
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateLabelConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.patch<{ Body: InsightConfigStatusUpdateRequest; Params: ConfigParams }>(
+    "/api/server/insights/settings/label-configs/:configId/status",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightConfigStatusUpdateRequestSchema,
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateLabelConfigStatus(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.delete<{ Params: ConfigParams }>(
+    "/api/server/insights/settings/label-configs/:configId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).deleteLabelConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Body: InsightQaRuleConfigMutationRequest }>(
+    "/api/server/insights/settings/qa-rule-configs",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightQaRuleConfigMutationRequestSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).createQaRuleConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.put<{ Body: InsightQaRuleConfigMutationRequest; Params: ConfigParams }>(
+    "/api/server/insights/settings/qa-rule-configs/:configId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightQaRuleConfigMutationRequestSchema,
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateQaRuleConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.patch<{ Body: InsightConfigStatusUpdateRequest; Params: ConfigParams }>(
+    "/api/server/insights/settings/qa-rule-configs/:configId/status",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightConfigStatusUpdateRequestSchema,
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateQaRuleConfigStatus(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.delete<{ Params: ConfigParams }>(
+    "/api/server/insights/settings/qa-rule-configs/:configId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).deleteQaRuleConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Body: InsightRiskConfigMutationRequest }>(
+    "/api/server/insights/settings/risk-configs",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightRiskConfigMutationRequestSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).createRiskConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.put<{ Body: InsightRiskConfigMutationRequest; Params: ConfigParams }>(
+    "/api/server/insights/settings/risk-configs/:configId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightRiskConfigMutationRequestSchema,
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateRiskConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.patch<{ Body: InsightConfigStatusUpdateRequest; Params: ConfigParams }>(
+    "/api/server/insights/settings/risk-configs/:configId/status",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightConfigStatusUpdateRequestSchema,
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateRiskConfigStatus(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.delete<{ Params: ConfigParams }>(
+    "/api/server/insights/settings/risk-configs/:configId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).deleteRiskConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Body: InsightEntityDictionaryMutationRequest }>(
+    "/api/server/insights/settings/entity-dictionary",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightEntityDictionaryMutationRequestSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).createEntityDictionaryItem(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.put<{ Body: InsightEntityDictionaryMutationRequest; Params: ConfigParams }>(
+    "/api/server/insights/settings/entity-dictionary/:configId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightEntityDictionaryMutationRequestSchema,
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateEntityDictionaryItem(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.patch<{ Body: InsightConfigStatusUpdateRequest; Params: ConfigParams }>(
+    "/api/server/insights/settings/entity-dictionary/:configId/status",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightConfigStatusUpdateRequestSchema,
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateEntityDictionaryItemStatus(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.delete<{ Params: ConfigParams }>(
+    "/api/server/insights/settings/entity-dictionary/:configId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).deleteEntityDictionaryItem(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
         ),
       );
     },

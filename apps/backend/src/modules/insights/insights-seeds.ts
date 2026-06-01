@@ -15,18 +15,21 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
       canonicalName: "白色羽绒服",
       enabled: true,
       entityType: "product",
+      id: "1",
       includeInAggregation: true,
     },
   ],
   labelConfigs: [
     {
       enabled: true,
+      id: "1",
       includeInStatistics: true,
       labelCode: "price_sensitive",
       labelName: "价格敏感",
     },
     {
       enabled: true,
+      id: "2",
       includeInStatistics: true,
       labelCode: "high_intent",
       labelName: "高意向",
@@ -35,12 +38,14 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
   qaRuleConfigs: [
     {
       enabled: true,
+      id: "1",
       ruleCode: "problem_resolution",
       ruleName: "客户问题是否解决",
       severity: "high",
     },
     {
       enabled: true,
+      id: "2",
       ruleCode: "clear_next_step",
       ruleName: "是否明确下一步",
       severity: "medium",
@@ -49,6 +54,7 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
   riskConfigs: [
     {
       enabled: true,
+      id: "1",
       priorityBoost: 10,
       riskCode: "bad_review",
       riskName: "差评风险",
@@ -56,6 +62,7 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
     },
     {
       enabled: true,
+      id: "2",
       priorityBoost: 8,
       riskCode: "refund",
       riskName: "退款风险",

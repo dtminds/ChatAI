@@ -2,14 +2,23 @@ import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it } from "vitest";
 import { requestInstance } from "@/lib/request";
 import {
+  createInsightEntityDictionaryItem,
+  createInsightLabelConfig,
+  createInsightQaRuleConfig,
   createInsightRescanJob,
+  createInsightRiskConfig,
+  deleteInsightLabelConfig,
   getInsightDetail,
   getInsightFollowUps,
   getInsightMessageContext,
   getInsightOverview,
   getInsightQuality,
   getInsightSettings,
+  updateInsightAnalysisPolicy,
   updateInsightActionStatus,
+  updateInsightLabelConfig,
+  updateInsightLabelConfigStatus,
+  updateInsightSessionizationSettings,
 } from "@/pages/chat/insights/api/insights-service";
 
 const mock = new MockAdapter(requestInstance);
@@ -69,5 +78,95 @@ describe("insights service adapter", () => {
     expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
       from: "2026-06-01T00:00:00.000Z",
     });
+  });
+
+  it("uses public /server insights endpoints for settings CRUD", async () => {
+    mock.onPut("/server/insights/settings/sessionization").reply((config) => [
+      200,
+      { data: JSON.parse(config.data ?? "{}"), success: true },
+    ]);
+    mock.onPut("/server/insights/settings/analysis-policy").reply((config) => [
+      200,
+      { data: JSON.parse(config.data ?? "{}"), success: true },
+    ]);
+    mock.onPost("/server/insights/settings/label-configs").reply((config) => [
+      200,
+      { data: { ...JSON.parse(config.data ?? "{}"), id: "11" }, success: true },
+    ]);
+    mock.onPut("/server/insights/settings/label-configs/11").reply((config) => [
+      200,
+      { data: { ...JSON.parse(config.data ?? "{}"), id: "11" }, success: true },
+    ]);
+    mock.onPatch("/server/insights/settings/label-configs/11/status").reply((config) => [
+      200,
+      { data: { ...JSON.parse(config.data ?? "{}"), id: "11" }, success: true },
+    ]);
+    mock.onDelete("/server/insights/settings/label-configs/11").reply(200, {
+      data: { deleted: true },
+      success: true,
+    });
+    mock.onPost("/server/insights/settings/qa-rule-configs").reply(200, { data: { id: "21" }, success: true });
+    mock.onPost("/server/insights/settings/risk-configs").reply(200, { data: { id: "31" }, success: true });
+    mock.onPost("/server/insights/settings/entity-dictionary").reply(200, { data: { id: "41" }, success: true });
+
+    await updateInsightSessionizationSettings({
+      analysisDelayMinutes: 10,
+      hardMaxDurationHours: 48,
+      idleTimeoutMinutes: 120,
+      lateArrivalWindowMinutes: 30,
+      preset: "custom",
+    });
+    await updateInsightAnalysisPolicy({
+      finalAnalysisEnabled: true,
+      liveAnalysisEnabled: true,
+      liveMinIntervalMinutes: 10,
+      liveMinNewMeaningfulMessages: 6,
+      lowConfidenceThreshold: 0.6,
+      ruleFallbackEnabled: true,
+    });
+    await createInsightLabelConfig({
+      enabled: true,
+      includeInStatistics: true,
+      labelCode: "price_sensitive",
+      labelName: "价格敏感",
+    });
+    await updateInsightLabelConfig("11", {
+      enabled: true,
+      includeInStatistics: true,
+      labelCode: "price_sensitive",
+      labelName: "价格敏感",
+    });
+    await updateInsightLabelConfigStatus("11", { enabled: false });
+    await deleteInsightLabelConfig("11");
+    await createInsightQaRuleConfig({
+      enabled: true,
+      ruleCode: "problem_resolution",
+      ruleName: "客户问题是否解决",
+      severity: "high",
+    });
+    await createInsightRiskConfig({
+      enabled: true,
+      priorityBoost: 10,
+      riskCode: "bad_review",
+      riskName: "差评风险",
+      severity: "high",
+    });
+    await createInsightEntityDictionaryItem({
+      aliases: ["白鸭绒外套"],
+      canonicalName: "白色羽绒服",
+      enabled: true,
+      entityType: "product",
+      includeInAggregation: true,
+    });
+
+    expect(mock.history.put[0]?.url).toBe("/server/insights/settings/sessionization");
+    expect(mock.history.put[1]?.url).toBe("/server/insights/settings/analysis-policy");
+    expect(mock.history.post[0]?.url).toBe("/server/insights/settings/label-configs");
+    expect(mock.history.put[2]?.url).toBe("/server/insights/settings/label-configs/11");
+    expect(mock.history.patch[0]?.url).toBe("/server/insights/settings/label-configs/11/status");
+    expect(mock.history.delete[0]?.url).toBe("/server/insights/settings/label-configs/11");
+    expect(mock.history.post[1]?.url).toBe("/server/insights/settings/qa-rule-configs");
+    expect(mock.history.post[2]?.url).toBe("/server/insights/settings/risk-configs");
+    expect(mock.history.post[3]?.url).toBe("/server/insights/settings/entity-dictionary");
   });
 });

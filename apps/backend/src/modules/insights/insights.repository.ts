@@ -1,0 +1,705 @@
+import type { InsightActionStatus, InsightAnalysisStatus } from "@chatai/contracts";
+import type { Kysely } from "kysely";
+import type { Database } from "../../db/schema.js";
+import type {
+  InsightActionItemRow,
+  InsightCurrentSessionRow,
+  InsightDetailRow,
+  InsightEvidenceMessageRow,
+  InsightsFollowUpFilters,
+  InsightsRepositoryPort,
+  InsightsTenantScope,
+} from "./insights.service.js";
+import { buildInsightMessageInput } from "./insight-message-input-builder.js";
+
+type CurrentSessionQueryRow = {
+  action_id: number | string | null;
+  action_status: string | null;
+  action_type: string | null;
+  action_priority: string | null;
+  action_title: string | null;
+  agent_name: string | null;
+  agent_seat_id: string | number | null;
+  conversation_id: number | string;
+  current_snapshot_id: number | string;
+  customer_name: string | null;
+  ended_at: number | string | null;
+  evidence_message_id: number | string | null;
+  evidence_role: string | null;
+  high_risk_id: number | string | null;
+  last_customer_message_at: number | string | null;
+  negative_risk_id: number | string | null;
+  phase: string;
+  problem_detected: number | string | null;
+  problem_summary: string | null;
+  resolution_status: string | null;
+  risk_severity: string | null;
+  session_id: number | string;
+  started_at: number | string;
+  status: string;
+  summary_customer_intent: string | null;
+  summary_follow_up: string | null;
+  summary_process: string | null;
+  summary_result: string | null;
+  unresolved_reason: string | null;
+};
+
+type ActionItemQueryRow = {
+  action_id: number | string;
+  action_status: string;
+  action_type: string;
+  conversation_id: number | string;
+  customer_name: string | null;
+  evidence_message_id: number | string | null;
+  last_customer_message_at: number | string | null;
+  priority: string;
+  reason: string | null;
+  session_id: number | string;
+  title: string;
+};
+
+type DetailQueryRow = CurrentSessionQueryRow & {
+  qa_finding_id: number | string | null;
+  qa_passed: number | string | null;
+  qa_reason: string | null;
+  qa_rule_code: string | null;
+  risk_id: number | string | null;
+  risk_level: string | null;
+  risk_type: string | null;
+};
+
+type EvidenceMessageQueryRow = {
+  chat_type: number;
+  content: string | null;
+  conversation_id: number | string;
+  from_type: number | null;
+  id: number | string;
+  msgtime: number | string | Date;
+  msgtype: string;
+  sender_name?: string | null;
+  third_from_id?: string | null;
+  third_user_id?: string | null;
+};
+
+type InsertResult = {
+  id?: bigint | number | string | null;
+  insertId?: bigint | number | string | null;
+};
+
+const manualActionStatuses = new Set<InsightActionStatus>(["done", "dismissed"]);
+
+export class InsightsRepository implements InsightsRepositoryPort {
+  constructor(private readonly db: Kysely<Database>) {}
+
+  async listCurrentSessions(scope: InsightsTenantScope): Promise<InsightCurrentSessionRow[]> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_insight_current as current")
+      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
+        join.onRef("snapshot.id", "=", "current.current_snapshot_id"),
+      )
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "current.session_id"),
+      )
+      .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
+        join.onRef("summary.snapshot_id", "=", "snapshot.id"),
+      )
+      .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
+        join.onRef("problem.snapshot_id", "=", "snapshot.id"),
+      )
+      .leftJoin("xy_wap_embed_session_risk as risk", (join) =>
+        join.onRef("risk.snapshot_id", "=", "snapshot.id"),
+      )
+      .leftJoin("xy_wap_embed_session_action_item as action", (join) =>
+        join.onRef("action.snapshot_id", "=", "snapshot.id"),
+      )
+      .leftJoin("xy_wap_embed_insight_evidence as evidence", (join) =>
+        join
+          .onRef("evidence.snapshot_id", "=", "snapshot.id")
+          .on("evidence.dimension_type", "=", "problem_resolution"),
+      )
+      .leftJoin("xy_wap_embed_msg_audit_info as message", (join) =>
+        join.onRef("message.id", "=", "evidence.source_message_id"),
+      )
+      .leftJoin("xy_wap_embed_contact as contact", (join) =>
+        join
+          .onRef("contact.uid", "=", "session.tenant_id")
+          .onRef("contact.third_external_userid", "=", "message.third_external_id"),
+      )
+      .leftJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.uid", "=", "session.tenant_id")
+          .onRef("seat.third_userid", "=", "message.third_user_id"),
+      )
+      .select([
+        "action.id as action_id",
+        "action.priority as action_priority",
+        "action.status as action_status",
+        "action.title as action_title",
+        "action.action_type as action_type",
+        "contact.name as customer_name",
+        "current.current_snapshot_id as current_snapshot_id",
+        "evidence.evidence_role as evidence_role",
+        "evidence.source_message_id as evidence_message_id",
+        "message.msgtime as last_customer_message_at",
+        "problem.problem_detected as problem_detected",
+        "problem.problem_summary as problem_summary",
+        "problem.resolution_status as resolution_status",
+        "problem.unresolved_reason as unresolved_reason",
+        "risk.id as high_risk_id",
+        "risk.id as negative_risk_id",
+        "risk.risk_level as risk_severity",
+        "seat.id as agent_seat_id",
+        "seat.third_user_name as agent_name",
+        "session.conversation_id as conversation_id",
+        "session.ended_at as ended_at",
+        "session.id as session_id",
+        "session.started_at as started_at",
+        "snapshot.phase as phase",
+        "snapshot.status as status",
+        "summary.customer_intent as summary_customer_intent",
+        "summary.follow_up as summary_follow_up",
+        "summary.process_summary as summary_process",
+        "summary.result_summary as summary_result",
+      ])
+      .where("session.tenant_id", "=", scope.tenantId)
+      .execute() as CurrentSessionQueryRow[];
+
+    return mapCurrentSessionRows(rows);
+  }
+
+  async listActionItems(
+    scope: InsightsTenantScope,
+    filters: InsightsFollowUpFilters = {},
+  ): Promise<InsightActionItemRow[]> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_session_action_item as action")
+      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
+        join.onRef("snapshot.id", "=", "action.snapshot_id"),
+      )
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "snapshot.session_id"),
+      )
+      .leftJoin("xy_wap_embed_insight_evidence as evidence", (join) =>
+        join
+          .onRef("evidence.snapshot_id", "=", "snapshot.id")
+          .onRef("evidence.dimension_record_id", "=", "action.id")
+          .on("evidence.dimension_type", "=", "action_item"),
+      )
+      .leftJoin("xy_wap_embed_msg_audit_info as message", (join) =>
+        join.onRef("message.id", "=", "evidence.source_message_id"),
+      )
+      .leftJoin("xy_wap_embed_contact as contact", (join) =>
+        join
+          .onRef("contact.uid", "=", "session.tenant_id")
+          .onRef("contact.third_external_userid", "=", "message.third_external_id"),
+      )
+      .select([
+        "action.id as action_id",
+        "action.action_type as action_type",
+        "action.priority as priority",
+        "action.status as action_status",
+        "action.title as title",
+        "contact.name as customer_name",
+        "evidence.reason as reason",
+        "evidence.source_message_id as evidence_message_id",
+        "message.msgtime as last_customer_message_at",
+        "session.conversation_id as conversation_id",
+        "session.id as session_id",
+      ])
+      .where("session.tenant_id", "=", scope.tenantId);
+
+    if (filters.status) {
+      query = query.where("action.status", "=", filters.status);
+    }
+
+    if (filters.priority) {
+      query = query.where("action.priority", "=", filters.priority);
+    }
+
+    if (filters.type) {
+      query = query.where("action.action_type", "=", filters.type);
+    }
+
+    const rows = await query.execute() as ActionItemQueryRow[];
+
+    return mapActionItemRows(rows);
+  }
+
+  async findDetail(
+    scope: InsightsTenantScope,
+    sessionId: string,
+  ): Promise<InsightDetailRow | undefined> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_insight_current as current")
+      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
+        join.onRef("snapshot.id", "=", "current.current_snapshot_id"),
+      )
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "current.session_id"),
+      )
+      .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
+        join.onRef("summary.snapshot_id", "=", "snapshot.id"),
+      )
+      .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
+        join.onRef("problem.snapshot_id", "=", "snapshot.id"),
+      )
+      .leftJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
+        join.onRef("qa.snapshot_id", "=", "snapshot.id"),
+      )
+      .leftJoin("xy_wap_embed_session_risk as risk", (join) =>
+        join.onRef("risk.snapshot_id", "=", "snapshot.id"),
+      )
+      .leftJoin("xy_wap_embed_session_action_item as action", (join) =>
+        join.onRef("action.snapshot_id", "=", "snapshot.id"),
+      )
+      .leftJoin("xy_wap_embed_insight_evidence as evidence", (join) =>
+        join
+          .onRef("evidence.snapshot_id", "=", "snapshot.id")
+          .on("evidence.dimension_type", "=", "problem_resolution"),
+      )
+      .leftJoin("xy_wap_embed_msg_audit_info as message", (join) =>
+        join.onRef("message.id", "=", "evidence.source_message_id"),
+      )
+      .leftJoin("xy_wap_embed_contact as contact", (join) =>
+        join
+          .onRef("contact.uid", "=", "session.tenant_id")
+          .onRef("contact.third_external_userid", "=", "message.third_external_id"),
+      )
+      .leftJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.uid", "=", "session.tenant_id")
+          .onRef("seat.third_userid", "=", "message.third_user_id"),
+      )
+      .select([
+        "action.id as action_id",
+        "action.action_type as action_type",
+        "action.priority as action_priority",
+        "action.status as action_status",
+        "action.title as action_title",
+        "contact.name as customer_name",
+        "current.current_snapshot_id as current_snapshot_id",
+        "evidence.evidence_role as evidence_role",
+        "evidence.source_message_id as evidence_message_id",
+        "message.msgtime as last_customer_message_at",
+        "problem.problem_detected as problem_detected",
+        "problem.problem_summary as problem_summary",
+        "problem.resolution_status as resolution_status",
+        "problem.unresolved_reason as unresolved_reason",
+        "qa.id as qa_finding_id",
+        "qa.passed as qa_passed",
+        "qa.reason as qa_reason",
+        "qa.rule_code as qa_rule_code",
+        "risk.id as high_risk_id",
+        "risk.id as negative_risk_id",
+        "risk.id as risk_id",
+        "risk.risk_level as risk_level",
+        "risk.risk_level as risk_severity",
+        "risk.risk_type as risk_type",
+        "seat.id as agent_seat_id",
+        "seat.third_user_name as agent_name",
+        "session.conversation_id as conversation_id",
+        "session.ended_at as ended_at",
+        "session.id as session_id",
+        "session.started_at as started_at",
+        "snapshot.phase as phase",
+        "snapshot.status as status",
+        "summary.customer_intent as summary_customer_intent",
+        "summary.follow_up as summary_follow_up",
+        "summary.process_summary as summary_process",
+        "summary.result_summary as summary_result",
+      ])
+      .where("session.tenant_id", "=", scope.tenantId)
+      .where("session.id", "=", parsePositiveInteger(sessionId) ?? -1)
+      .execute() as DetailQueryRow[];
+
+    if (rows.length === 0) {
+      return undefined;
+    }
+
+    const [current] = mapCurrentSessionRows(rows);
+
+    if (!current) {
+      return undefined;
+    }
+
+    return {
+      actionItems: mapActionItemRows(
+        rows.filter((row) => row.action_id != null).map((row) => ({
+          action_id: row.action_id ?? "",
+          action_status: row.action_status ?? "open",
+          action_type: row.action_type ?? "follow_up",
+          conversation_id: row.conversation_id,
+          customer_name: row.customer_name,
+          evidence_message_id: row.evidence_message_id,
+          last_customer_message_at: row.last_customer_message_at,
+          priority: row.action_priority ?? "medium",
+          reason: row.unresolved_reason,
+          session_id: row.session_id,
+          title: row.action_title ?? "待跟进事项",
+        })),
+      ),
+      current,
+      problemEvidenceMessageIds: current.problemEvidenceMessageIds,
+      qaFindings: uniqueBy(
+        rows
+          .filter((row) => row.qa_finding_id != null)
+          .map((row) => ({
+            passed: row.qa_passed === 1,
+            reason: row.qa_reason ?? "",
+            ruleCode: row.qa_rule_code ?? "",
+          })),
+        (row) => row.ruleCode,
+      ),
+      risks: uniqueBy(
+        rows
+          .filter((row) => row.risk_id != null)
+          .map((row) => ({
+            riskLevel: row.risk_level ?? "low",
+            riskType: row.risk_type ?? "custom",
+          })),
+        (row) => `${row.riskType}:${row.riskLevel}`,
+      ),
+    };
+  }
+
+  async listEvidenceMessages(
+    scope: InsightsTenantScope,
+    sessionId: string,
+    messageIds: string[],
+  ): Promise<InsightEvidenceMessageRow[]> {
+    const normalizedMessageIds = normalizePositiveIntegers(messageIds);
+
+    if (normalizedMessageIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .innerJoin("xy_wap_embed_logical_session_message as session_message", (join) =>
+        join
+          .onRef("session_message.source_message_id", "=", "message.id")
+          .on("session_message.session_id", "=", parsePositiveInteger(sessionId) ?? -1),
+      )
+      .leftJoin("xy_wap_embed_contact as contact", (join) =>
+        join
+          .onRef("contact.uid", "=", "message.uid")
+          .onRef("contact.third_external_userid", "=", "message.third_external_id"),
+      )
+      .select([
+        "contact.name as sender_name",
+        "message.chat_type as chat_type",
+        "message.content as content",
+        "message.from_type as from_type",
+        "message.id as id",
+        "message.msgtime as msgtime",
+        "message.msgtype as msgtype",
+        "message.third_from_id as third_from_id",
+        "message.third_user_id as third_user_id",
+        "session_message.conversation_id as conversation_id",
+      ])
+      .where("message.uid", "=", scope.tenantId)
+      .where("message.id", "in", normalizedMessageIds)
+      .orderBy("message.msgtime", "asc")
+      .orderBy("message.id", "asc")
+      .execute() as EvidenceMessageQueryRow[];
+
+    return rows.map((row) => {
+      const input = buildInsightMessageInput(row);
+
+      return {
+        contentText: input.aiText,
+        contentType: input.messageType,
+        messageId: input.sourceMessageId,
+        msgtime: input.occurredAt,
+        senderName: row.sender_name ?? undefined,
+        senderRole: input.senderRole,
+      };
+    });
+  }
+
+  async updateActionStatus(
+    scope: InsightsTenantScope,
+    actionItemId: string,
+    status: Extract<InsightActionStatus, "done" | "dismissed">,
+  ): Promise<boolean> {
+    if (!manualActionStatuses.has(status)) {
+      return false;
+    }
+
+    const id = parsePositiveInteger(actionItemId);
+
+    if (id == null) {
+      return false;
+    }
+
+    const result = await this.db
+      .updateTable("xy_wap_embed_session_action_item")
+      .set({
+        status,
+        update_time: new Date(),
+      })
+      .where("id", "=", id)
+      .where("status", "=", "open")
+      .executeTakeFirst();
+
+    return getAffectedRows(result) !== 0;
+  }
+
+  async createRescanJob(
+    scope: InsightsTenantScope,
+    from: Date,
+    idempotencyKey: string,
+  ): Promise<string> {
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_insight_job")
+      .values({
+        analysis_scope: "all",
+        idempotency_key: idempotencyKey,
+        job_type: "sync_messages",
+        priority: 10,
+        run_after: new Date(),
+        status: "pending",
+        target_id: from.toISOString(),
+        target_type: "tenant",
+        tenant_id: scope.tenantId,
+      })
+      .executeTakeFirstOrThrow() as InsertResult;
+
+    return String(parseInsertedMySqlId(inserted) ?? idempotencyKey);
+  }
+}
+
+function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSessionRow[] {
+  const bySession = new Map<string, InsightCurrentSessionRow>();
+
+  for (const row of rows) {
+    const sessionId = String(row.session_id);
+    const existing = bySession.get(sessionId);
+    const current =
+      existing ??
+      {
+        actionOpenCount: 0,
+        agentName: row.agent_name,
+        agentSeatId: row.agent_seat_id == null ? null : String(row.agent_seat_id),
+        analysisStatus: normalizeAnalysisStatus(row.status),
+        conversationId: String(row.conversation_id),
+        currentSnapshotId: String(row.current_snapshot_id),
+        customerName: row.customer_name ?? "未知客户",
+        endedAt: parseNullableNumber(row.ended_at),
+        highRiskCount: 0,
+        lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at),
+        negativeCount: 0,
+        phase: row.phase === "final" ? "final" : "live",
+        problemDetected: row.problem_detected === 1,
+        problemEvidenceMessageIds: [],
+        problemSummary: row.problem_summary ?? "",
+        resolutionStatus: normalizeResolutionStatus(row.resolution_status),
+        riskSeverity: normalizeRiskSeverity(row.risk_severity),
+        sessionId,
+        startedAt: parseNumber(row.started_at),
+        summaryCustomerIntent: row.summary_customer_intent ?? "",
+        summaryFollowUp: row.summary_follow_up,
+        summaryProcess: row.summary_process ?? "",
+        summaryResult: row.summary_result ?? "",
+        unresolvedReason: row.unresolved_reason,
+      };
+
+    if (row.action_id != null && row.action_status === "open") {
+      current.actionOpenCount += 1;
+    }
+
+    if (row.high_risk_id != null && row.risk_severity === "high") {
+      current.highRiskCount += 1;
+    }
+
+    if (row.negative_risk_id != null) {
+      current.negativeCount += 1;
+    }
+
+    if (row.evidence_message_id != null) {
+      current.problemEvidenceMessageIds.push(String(row.evidence_message_id));
+    }
+
+    bySession.set(sessionId, current);
+  }
+
+  for (const current of bySession.values()) {
+    current.problemEvidenceMessageIds = Array.from(new Set(current.problemEvidenceMessageIds));
+  }
+
+  return Array.from(bySession.values());
+}
+
+function mapActionItemRows(rows: ActionItemQueryRow[]): InsightActionItemRow[] {
+  const byAction = new Map<string, InsightActionItemRow>();
+
+  for (const row of rows) {
+    const actionItemId = String(row.action_id);
+    const current =
+      byAction.get(actionItemId) ??
+      {
+        actionItemId,
+        actionType: row.action_type,
+        conversationId: String(row.conversation_id),
+        customerName: row.customer_name ?? "未知客户",
+        evidenceMessageIds: [],
+        lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at) ?? undefined,
+        priority: normalizePriority(row.priority),
+        reason: row.reason ?? "",
+        sessionId: String(row.session_id),
+        status: normalizeActionStatus(row.action_status),
+        title: row.title,
+      };
+
+    if (row.evidence_message_id != null) {
+      current.evidenceMessageIds.push(String(row.evidence_message_id));
+    }
+
+    byAction.set(actionItemId, current);
+  }
+
+  for (const current of byAction.values()) {
+    current.evidenceMessageIds = Array.from(new Set(current.evidenceMessageIds));
+  }
+
+  return Array.from(byAction.values());
+}
+
+function normalizeAnalysisStatus(value: string): InsightAnalysisStatus {
+  if (
+    value === "ready" ||
+    value === "analyzing" ||
+    value === "failed" ||
+    value === "stale" ||
+    value === "partial"
+  ) {
+    return value;
+  }
+
+  return "ready";
+}
+
+function normalizeResolutionStatus(value: string | null) {
+  if (
+    value === "resolved" ||
+    value === "unresolved" ||
+    value === "partially_resolved" ||
+    value === "no_customer_problem" ||
+    value === "unknown"
+  ) {
+    return value;
+  }
+
+  return "unknown";
+}
+
+function normalizeRiskSeverity(value: string | null) {
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+
+  return null;
+}
+
+function normalizePriority(value: string) {
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+
+  return "medium";
+}
+
+function normalizeActionStatus(value: string): InsightActionStatus {
+  if (
+    value === "open" ||
+    value === "done" ||
+    value === "dismissed" ||
+    value === "expired"
+  ) {
+    return value;
+  }
+
+  return "open";
+}
+
+function parseNumber(value: Date | number | string) {
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  const parsed = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseNullableNumber(value: Date | number | string | null) {
+  return value == null ? null : parseNumber(value);
+}
+
+function parsePositiveInteger(value: string) {
+  if (!/^[1-9]\d*$/.test(value)) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+function normalizePositiveIntegers(values: string[]) {
+  return Array.from(new Set(values.map(parsePositiveInteger))).filter(
+    (value): value is number => value != null,
+  );
+}
+
+function uniqueBy<T>(items: T[], keyOf: (item: T) => string) {
+  const seen = new Set<string>();
+
+  return items.filter((item) => {
+    const key = keyOf(item);
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+
+    return true;
+  });
+}
+
+function getAffectedRows(result: unknown) {
+  if (!result || typeof result !== "object") {
+    return 0;
+  }
+
+  const affectedRows = (result as { numAffectedRows?: bigint | number }).numAffectedRows;
+
+  if (typeof affectedRows === "bigint") {
+    return Number(affectedRows);
+  }
+
+  return affectedRows ?? 0;
+}
+
+function parseInsertedMySqlId(result: InsertResult) {
+  const value = result.insertId ?? result.id;
+
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  }
+
+  if (typeof value === "bigint") {
+    return value > 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)
+      ? Number(value)
+      : undefined;
+  }
+
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  return Number.isSafeInteger(parsed) && String(parsed) === value ? parsed : undefined;
+}

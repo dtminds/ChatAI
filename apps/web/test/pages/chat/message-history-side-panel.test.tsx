@@ -6,6 +6,15 @@ import { MessageHistorySidePanel } from "@/pages/chat/components/message-history
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 
 describe("MessageHistorySidePanel", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-05-15"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("uses a compact underline tab layout for history scopes", () => {
     render(
       <MessageHistorySidePanel
@@ -266,17 +275,7 @@ describe("MessageHistorySidePanel", () => {
     expect(anotherMemberButton.querySelector("svg")).toBeInTheDocument();
   });
 
-  describe("date picker", () => {
-    beforeEach(() => {
-      vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(new Date("2026-05-15"));
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it("closes the date picker after selecting a date", async () => {
+  it("closes the date picker after selecting a date", async () => {
     const user = userEvent.setup();
     const handleSetDay = vi.fn();
 
@@ -350,7 +349,6 @@ describe("MessageHistorySidePanel", () => {
 
     expect(handleSetDay).toHaveBeenCalledWith(undefined);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
   });
 
   it("does not show empty state while loading history data", () => {

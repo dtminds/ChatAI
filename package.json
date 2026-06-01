@@ -23,5 +23,5 @@
     "test": "pnpm -r test",
     "test:watch": "pnpm --filter @chatai/web test:watch"
   },
-  "packageManager": "pnpm@10.0.0"
+  "packageManager": "pnpm@10.34.1"
 }

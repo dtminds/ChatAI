@@ -762,6 +762,7 @@ export interface XyWapEmbedUserSeatSubRelation {
 }
 
 export interface XyWapEmbedInsightSyncCursor {
+  create_time: Generated<Date>;
   cursor_audit_id: number;
   cursor_msgtime: number;
   id: Generated<number>;
@@ -820,6 +821,7 @@ export interface XyWapEmbedLogicalSessionMessage {
   source_message_id: number;
   source_message_time: number;
   uid: number;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedInsightJob {
@@ -881,6 +883,7 @@ export interface XyWapEmbedSessionInsightSnapshot {
 }
 
 export interface XyWapEmbedSessionInsightCurrent {
+  create_time: Generated<Date>;
   current_snapshot_id: number;
   session_id: number;
   update_time: Generated<Date>;
@@ -888,75 +891,91 @@ export interface XyWapEmbedSessionInsightCurrent {
 
 export interface XyWapEmbedSessionSummary {
   confidence: number | null;
+  create_time: Generated<Date>;
   customer_intent: string;
   follow_up: string | null;
   process_summary: string;
   result_summary: string;
   snapshot_id: number;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedSessionSentiment {
   confidence: number | null;
+  create_time: Generated<Date>;
   id: Generated<number>;
   polarity: string;
   reason: string;
   snapshot_id: number;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedSessionTag {
   confidence: number | null;
+  create_time: Generated<Date>;
   id: Generated<number>;
   snapshot_id: number;
   tag_code: string;
   tag_name: string;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedSessionProblemResolution {
   agent_action_summary: string | null;
   confidence: number | null;
+  create_time: Generated<Date>;
   customer_final_state: string | null;
   problem_detected: number;
   problem_summary: string;
   resolution_status: string;
   snapshot_id: number;
   unresolved_reason: string | null;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedSessionQaFinding {
   confidence: number | null;
+  create_time: Generated<Date>;
   id: Generated<number>;
   passed: number;
   reason: string;
   rule_code: string;
   severity: string;
   snapshot_id: number;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedSessionRisk {
   confidence: number | null;
+  create_time: Generated<Date>;
   id: Generated<number>;
   reason: string;
   risk_level: string;
   risk_type: string;
   snapshot_id: number;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedSessionEntity {
   confidence: number | null;
+  create_time: Generated<Date>;
   entity_id: string;
   entity_name: string;
   entity_type: string;
   id: Generated<number>;
   sentiment: string | null;
   snapshot_id: number;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedSessionIntent {
   confidence: number | null;
+  create_time: Generated<Date>;
   id: Generated<number>;
   intent_code: string;
   intent_label: string;
   snapshot_id: number;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedSessionActionItem {
@@ -974,10 +993,12 @@ export interface XyWapEmbedSessionActionItem {
 export interface XyWapEmbedSessionFaqCandidate {
   answer_hint: string;
   confidence: number | null;
+  create_time: Generated<Date>;
   id: Generated<number>;
   question: string;
   snapshot_id: number;
   status: string;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedInsightEvidence {
@@ -992,6 +1013,7 @@ export interface XyWapEmbedInsightEvidence {
   snapshot_id: number;
   source_message_id: number;
   uid: number;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedInsightAnalysisPolicy {

@@ -25,7 +25,9 @@ import { mapJavaKnowledgeConfig } from "./knowledge-config-mappers.js";
 import { mapJavaTextModerationPlus } from "./text-moderation-mappers.js";
 import {
   BadGatewayError,
+  BusinessError,
   ServiceUnavailableError,
+  UpstreamHttpError,
 } from "../../shared/errors.js";
 import {
   mapJavaGeneralAnswer,
@@ -40,10 +42,12 @@ import {
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 const DEFAULT_JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS = 60000;
-export const JAVA_INTERNAL_API_USER_MESSAGE = "工作台服务繁忙，请稍后重试";
+export const JAVA_INTERNAL_API_USER_MESSAGE = "服务繁忙，请稍后重试";
 export const WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE =
   "WORKBENCH_INTERNAL_API_NOT_CONFIGURED";
 export const WORKBENCH_INTERNAL_API_FAILED_CODE = "WORKBENCH_INTERNAL_API_FAILED";
+export const WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE =
+  "WORKBENCH_INTERNAL_API_BUSINESS_FAILED";
 export const WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE =
   "WORKBENCH_INTERNAL_API_CONTRACT_INVALID";
 
@@ -308,7 +312,6 @@ export function createWorkbenchJavaClient(
         },
         logger,
         "request-general-answer",
-        { exposeErrorMessage: true },
       ).then((data) => {
         return {
           suggestion: mapJavaGeneralAnswer(data),
@@ -329,7 +332,6 @@ export function createWorkbenchJavaClient(
         },
         logger,
         "request-auto-general-answer",
-        { exposeErrorMessage: true },
       ).then((data) => {
         const id = readJavaNonEmptyId(data);
 
@@ -340,7 +342,7 @@ export function createWorkbenchJavaClient(
               path: "/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
               requestId: getLoggerRequestId(logger),
             },
-            "上游工作台接口响应契约异常",
+            "上游接口响应异常",
           );
           throw new BadGatewayError(
             WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
@@ -616,7 +618,6 @@ export function createWorkbenchJavaClient(
         input,
         logger,
         "sentence-recognition",
-        { exposeErrorMessage: true },
       );
     },
     revokeMessage(input) {
@@ -627,7 +628,6 @@ export function createWorkbenchJavaClient(
         input,
         logger,
         "revoke-message",
-        { exposeErrorMessage: true },
       );
     },
     async sendMessage(input) {
@@ -730,7 +730,7 @@ async function postJava<T>(
         operation,
         path,
       },
-      "Java 内部工作台接口未配置",
+      "内部接口未配置",
     );
     throw new ServiceUnavailableError(
       WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE,
@@ -763,7 +763,7 @@ async function postJava<T>(
         path,
         reason: error instanceof Error ? error.name : "unknown",
       },
-      "Java 内部工作台接口调用失败",
+      "内部接口调用失败",
     );
     throw new BadGatewayError(
       WORKBENCH_INTERNAL_API_FAILED_CODE,
@@ -785,11 +785,12 @@ async function postJava<T>(
         path,
         status: response.status,
       },
-      "Java 内部工作台接口返回异常状态",
+      "内部接口返回异常状态",
     );
-    throw new BadGatewayError(
+    throw new UpstreamHttpError(
       WORKBENCH_INTERNAL_API_FAILED_CODE,
       JAVA_INTERNAL_API_USER_MESSAGE,
+      mapJavaHttpFailureStatus(response.status),
       {
         status: response.status,
       },
@@ -813,7 +814,7 @@ async function streamJavaPostText(
         operation,
         path,
       },
-      "Java 内部工作台接口未配置",
+      "内部接口未配置",
     );
     throw new ServiceUnavailableError(
       WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE,
@@ -858,7 +859,7 @@ async function streamJavaPostText(
           path,
           reason: error instanceof Error ? error.name : "unknown",
         },
-        "Java 内部工作台接口调用失败",
+        "内部接口调用失败",
       );
       throw new BadGatewayError(
         WORKBENCH_INTERNAL_API_FAILED_CODE,
@@ -878,11 +879,12 @@ async function streamJavaPostText(
           path,
           status: response.status,
         },
-        "Java 内部工作台接口返回异常状态",
+        "内部接口返回异常状态",
       );
-      throw new BadGatewayError(
+      throw new UpstreamHttpError(
         WORKBENCH_INTERNAL_API_FAILED_CODE,
         JAVA_INTERNAL_API_USER_MESSAGE,
+        mapJavaHttpFailureStatus(response.status),
         {
           status: response.status,
         },
@@ -927,7 +929,7 @@ async function streamJavaPostText(
           path,
           reason: error instanceof Error ? error.name : "unknown",
         },
-        "Java 内部工作台流式接口读取失败",
+        "内部流式接口读取失败",
       );
       throw new BadGatewayError(
         WORKBENCH_INTERNAL_API_FAILED_CODE,
@@ -955,7 +957,6 @@ async function postJavaEnvelope<T>(
   body: unknown,
   logger: AppLogger,
   operation: string,
-  options: { exposeErrorMessage?: boolean } = {},
 ): Promise<T> {
   const response = await postJava<JavaApiResponse<T>>(
     baseUrl,
@@ -977,17 +978,14 @@ async function postJavaEnvelope<T>(
         path,
         success: response.success,
       },
-      "Java 内部工作台接口业务失败",
+      "内部接口业务失败",
     );
-    throw new BadGatewayError(
-      WORKBENCH_INTERNAL_API_FAILED_CODE,
-      // Only use this for Java business messages that product has approved
-      // for direct customer-service operator display.
-      options.exposeErrorMessage
-        ? response.errorMsg?.trim() || JAVA_INTERNAL_API_USER_MESSAGE
-        : JAVA_INTERNAL_API_USER_MESSAGE,
+    throw new BusinessError(
+      WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
+      response.errorMsg?.trim() || JAVA_INTERNAL_API_USER_MESSAGE,
       {
         error: response.error,
+        errorMsg: response.errorMsg,
       },
     );
   }
@@ -1023,13 +1021,14 @@ async function postJavaPageEnvelope(
         path,
         success: response.success,
       },
-      "Java 内部工作台接口业务失败",
+      "内部接口业务失败",
     );
-    throw new BadGatewayError(
-      WORKBENCH_INTERNAL_API_FAILED_CODE,
-      JAVA_INTERNAL_API_USER_MESSAGE,
+    throw new BusinessError(
+      WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
+      response.errorMsg?.trim() || JAVA_INTERNAL_API_USER_MESSAGE,
       {
         error: response.error,
+        errorMsg: response.errorMsg,
       },
     );
   }
@@ -1045,7 +1044,7 @@ async function postJavaPageEnvelope(
       requestId: getLoggerRequestId(logger),
       response,
     },
-    "Java 分页接口原始响应",
+    "分页接口原始响应",
   );
 
   return response;
@@ -1058,6 +1057,14 @@ function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
 
   // SCRM 部分内部接口用 numeric error 表示结果：0 为成功。个别接口在空结果时仍会返回 success:false。
   return response.error === 0;
+}
+
+function mapJavaHttpFailureStatus(status: number) {
+  if (status === 429 || status === 503 || status === 504) {
+    return status;
+  }
+
+  return 502;
 }
 
 function buildJavaLogContext(body: unknown) {

@@ -58,6 +58,9 @@ describe("request", () => {
     mock.onGet("/server/accounts").reply(401, {
       error: {
         code: "UNAUTHORIZED",
+        details: {
+          reason: "expired",
+        },
         message: "登录已失效",
       },
       success: false,
@@ -69,6 +72,7 @@ describe("request", () => {
         error instanceof RequestNormalizedError &&
         error.message === "登录已失效" &&
         error.code === "UNAUTHORIZED" &&
+        error.details?.reason === "expired" &&
         error.status === 401,
     );
   });
@@ -77,6 +81,9 @@ describe("request", () => {
     mock.onPost("/server/seats/ndt/take-over").reply(200, {
       error: {
         code: "FORBIDDEN",
+        details: {
+          javaErrorCode: 999,
+        },
         message: "无权限访问",
       },
       success: false,
@@ -88,6 +95,7 @@ describe("request", () => {
         error instanceof RequestNormalizedError &&
         error.message === "无权限访问" &&
         error.code === "FORBIDDEN" &&
+        error.details?.javaErrorCode === 999 &&
         error.status === 200,
     );
   });

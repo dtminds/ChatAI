@@ -4,7 +4,10 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
-import { SMART_REPLY_MEDIA_PROCESSING_HINT_MS } from "@/pages/chat/api/smart-reply-adapter";
+import {
+  SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
+  SMART_REPLY_MEDIA_PROCESSING_HINT_MS,
+} from "@/pages/chat/api/smart-reply-adapter";
 import {
   SmartReplyCard,
   SmartReplyInlineProcessingHint,
@@ -1114,6 +1117,114 @@ describe("SmartReplyCard", () => {
     await user.click(screen.getByRole("button", { name: "重试" }));
 
     expect(onRegenerate).toHaveBeenCalledWith(message);
+  });
+
+  it("shows incomplete content skip as plain text with direct dismiss", async () => {
+    const user = userEvent.setup();
+    const onDismiss = vi.fn();
+    const animate = vi.fn();
+    const message = {
+      content: {
+        text: "这个多少钱",
+        type: "text",
+      },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: animate,
+    });
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        onDismiss={onDismiss}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "",
+          failReason: SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
+          generateStatus: 3,
+          pollComplete: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText(SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT)).toBeInTheDocument();
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("AI 智能回复")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^生成失败/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "发送" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "收起" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "收起" }));
+
+    expect(onDismiss).toHaveBeenCalledWith(message);
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it("does not auto dismiss incomplete content skip", async () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    const message = {
+      content: {
+        text: "这个多少钱",
+        type: "text",
+      },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        onDismiss={onDismiss}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "",
+          failReason: SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
+          generateStatus: 3,
+          pollComplete: true,
+        }}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(screen.getByText(SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT)).toBeInTheDocument();
+  });
+
+  it("renders raw incomplete content skip as the localized hint", () => {
+    const message = {
+      content: {
+        text: "这个多少钱",
+        type: "text",
+      },
+      id: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "",
+          failReason: "content_incomplete_skip",
+          generateStatus: 3,
+          pollComplete: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText(SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT)).toBeInTheDocument();
+    expect(screen.queryByText("content_incomplete_skip")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
   });
 
   it("disables send actions when the workbench cannot send messages", () => {

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   JAVA_INTERNAL_API_USER_MESSAGE,
+  WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
   WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
   WORKBENCH_INTERNAL_API_FAILED_CODE,
   createWorkbenchJavaClient,
@@ -42,11 +43,11 @@ describe("createWorkbenchJavaClient", () => {
         reason: "TypeError",
         uid: 9001,
       }),
-      "Java 内部工作台接口调用失败",
+      "内部接口调用失败",
     );
   });
 
-  it("does not leak Java response errorMsg into the client error", async () => {
+  it("maps Java envelope business failures to business errors and preserves Java errorMsg", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -65,14 +66,56 @@ describe("createWorkbenchJavaClient", () => {
     await expect(
       createWorkbenchJavaClient().getUploadCredential({ uid: 9001 }),
     ).rejects.toMatchObject({
-      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
-      message: JAVA_INTERNAL_API_USER_MESSAGE,
+      code: WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
+      message: "secret-url=https://example.com?a=b",
+      statusCode: 200,
       details: {
         error: 123,
+        errorMsg: "secret-url=https://example.com?a=b",
       },
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes through Java HTTP failure status codes", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("Service Unavailable", {
+        status: 503,
+      }),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().getUploadCredential({ uid: 9001 }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
+      statusCode: 503,
+      details: {
+        status: 503,
+      },
+    });
+  });
+
+  it("maps Java HTTP auth failures to bad gateway without hiding the upstream status", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("Unauthorized", {
+        status: 401,
+      }),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().getUploadCredential({ uid: 9001 }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      message: JAVA_INTERNAL_API_USER_MESSAGE,
+      statusCode: 502,
+      details: {
+        status: 401,
+      },
+    });
   });
 
   it("passes an abort signal to Java internal API requests", async () => {
@@ -185,7 +228,7 @@ describe("createWorkbenchJavaClient", () => {
         requestId: "req-001",
         reason: "TypeError",
       }),
-      "Java 内部工作台接口调用失败",
+      "内部接口调用失败",
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "https://java.internal/third-internal/wap-embed/conversation/download-msg-file",
@@ -396,6 +439,7 @@ describe("createWorkbenchJavaClient", () => {
     ).rejects.toMatchObject({
       details: {
         error: 1201,
+        errorMsg: "语音识别音频无法解析",
       },
       message: "语音识别音频无法解析",
     });
@@ -585,6 +629,7 @@ describe("createWorkbenchJavaClient", () => {
     ).rejects.toMatchObject({
       details: {
         error: 601,
+        errorMsg: "已超过撤回时间",
       },
       message: "已超过撤回时间",
     });
@@ -921,12 +966,13 @@ describe("createWorkbenchJavaClient", () => {
         uid: 272,
       }),
     ).rejects.toMatchObject({
-      code: WORKBENCH_INTERNAL_API_FAILED_CODE,
+      code: WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
       details: {
         error: 999,
+        errorMsg: "当前未配置可用AI助手",
       },
       message: "当前未配置可用AI助手",
-      statusCode: 502,
+      statusCode: 200,
     });
   });
 

@@ -16,6 +16,12 @@ export class AppError extends Error {
   }
 }
 
+export class BusinessError extends AppError {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
+    super(code, message, 200, details);
+  }
+}
+
 export class UnauthorizedError extends AppError {
   constructor() {
     super("UNAUTHORIZED", "登录已失效", 401);
@@ -49,5 +55,16 @@ export class BadGatewayError extends AppError {
 export class ServiceUnavailableError extends AppError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
     super(code, message, 503, details);
+  }
+}
+
+export class UpstreamHttpError extends AppError {
+  constructor(
+    code: string,
+    message: string,
+    statusCode: number,
+    details?: Record<string, unknown>,
+  ) {
+    super(code, message, statusCode, details);
   }
 }

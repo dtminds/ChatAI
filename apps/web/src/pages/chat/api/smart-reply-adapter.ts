@@ -15,6 +15,9 @@ import type { WorkbenchSmartReplyTextModerationResponse } from "@chatai/contract
 
 const DEFAULT_SMART_REPLY_ASSISTANT_NAME = "智能助手";
 export const SMART_REPLY_THINKING_LABEL = "思考中..";
+export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE = "content_incomplete_skip";
+export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT =
+  "这条消息信息不足，已跳过话术推荐";
 
 const SMART_REPLY_TRIGGER_CONTENT_TYPES = new Set<MessageContent["type"]>([
   "text",
@@ -198,6 +201,10 @@ export function isSmartReplyGenerationFailed(
     return false;
   }
 
+  if (isSmartReplyContentIncompleteSkip(suggestion)) {
+    return false;
+  }
+
   if (isSmartReplyBusy(suggestion) || isSmartReplyReady(suggestion)) {
     return false;
   }
@@ -211,12 +218,24 @@ export function isSmartReplyGenerationFailed(
   return readNonNegativeInteger(suggestion.generateStatus) === 3;
 }
 
+export function isSmartReplyContentIncompleteSkip(
+  suggestion?: SmartReplySuggestion | null,
+) {
+  const failReason = suggestion?.failReason?.trim();
+
+  return (
+    failReason === SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT ||
+    failReason === SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE
+  );
+}
+
 export function shouldShowSmartReplyCard(suggestion?: SmartReplySuggestion | null) {
   if (!suggestion) {
     return false;
   }
 
   if (
+    isSmartReplyContentIncompleteSkip(suggestion) ||
     isSmartReplyKnowledgeMiss(suggestion) ||
     isSmartReplyGenerationFailed(suggestion)
   ) {

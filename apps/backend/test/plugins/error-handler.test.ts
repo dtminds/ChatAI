@@ -1,6 +1,10 @@
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import { registerErrorHandler } from "../../src/plugins/error-handler.js";
+import {
+  BusinessError,
+  UpstreamHttpError,
+} from "../../src/shared/errors.js";
 
 describe("error handler logging", () => {
   it("logs unhandled errors with pino err serialization field", async () => {
@@ -34,6 +38,70 @@ describe("error handler logging", () => {
       url: "/boom",
     });
     expect(loggedErrors[0]).not.toHaveProperty("error");
+
+    await app.close();
+  });
+
+  it("returns business errors as successful HTTP requests with an error envelope", async () => {
+    const app = Fastify({
+      logger: false,
+    });
+
+    await registerErrorHandler(app);
+    app.get("/business-failed", async () => {
+      throw new BusinessError("JAVA_BUSINESS_FAILED", "对话语意未完整", {
+        error: 999,
+      });
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/business-failed",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      error: {
+        code: "JAVA_BUSINESS_FAILED",
+        details: {
+          error: 999,
+        },
+        message: "对话语意未完整",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("passes through upstream HTTP error status codes", async () => {
+    const app = Fastify({
+      logger: false,
+    });
+
+    await registerErrorHandler(app);
+    app.get("/upstream-failed", async () => {
+      throw new UpstreamHttpError("WORKBENCH_INTERNAL_API_FAILED", "上游服务失败", 503, {
+        status: 503,
+      });
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/upstream-failed",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      error: {
+        code: "WORKBENCH_INTERNAL_API_FAILED",
+        details: {
+          status: 503,
+        },
+        message: "上游服务失败",
+      },
+      success: false,
+    });
 
     await app.close();
   });

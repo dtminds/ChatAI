@@ -761,15 +761,323 @@ export interface XyWapEmbedUserSeatSubRelation {
   user_seat_id: Generated<number>;
 }
 
+export interface XyWapEmbedInsightSyncCursor {
+  cursor_audit_id: number;
+  cursor_msgtime: number;
+  id: Generated<number>;
+  source: string;
+  tenant_id: number | null;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionizationConfig {
+  analysis_delay_minutes: number;
+  create_time: Generated<Date>;
+  enabled: Generated<number>;
+  hard_max_duration_hours: number;
+  id: Generated<number>;
+  idle_timeout_minutes: number;
+  late_arrival_window_minutes: number;
+  preset: string;
+  rule_version: string;
+  tenant_id: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedLogicalSession {
+  agent_message_count: Generated<number>;
+  analysis_delay_minutes: number;
+  close_reason: string | null;
+  conversation_id: number;
+  create_time: Generated<Date>;
+  current_snapshot_id: number | null;
+  ended_at: number | null;
+  final_snapshot_id: number | null;
+  hard_max_duration_hours: number;
+  id: Generated<number>;
+  idle_timeout_minutes: number;
+  last_meaningful_message_at: number | null;
+  last_message_at: number | null;
+  message_count: Generated<number>;
+  rule_version: string;
+  started_at: number;
+  status: string;
+  tenant_id: number;
+  update_time: Generated<Date>;
+  customer_message_count: Generated<number>;
+}
+
+export interface XyWapEmbedLogicalSessionMessage {
+  conversation_id: number;
+  create_time: Generated<Date>;
+  id: Generated<number>;
+  included_for_ai: Generated<number>;
+  meaningful_for_boundary: Generated<number>;
+  message_type: string;
+  occurred_at: number;
+  sender_role: string;
+  session_id: number;
+  source_message_id: number;
+  source_message_time: number;
+  tenant_id: number;
+}
+
+export interface XyWapEmbedInsightJob {
+  attempt_count: Generated<number>;
+  create_time: Generated<Date>;
+  error_code: string | null;
+  error_message: string | null;
+  id: Generated<number>;
+  idempotency_key: string;
+  job_type: string;
+  analysis_scope: string;
+  lease_until: Date | null;
+  locked_by: string | null;
+  max_attempts: Generated<number>;
+  priority: Generated<number>;
+  run_after: Generated<Date>;
+  status: string;
+  target_id: string;
+  target_type: string;
+  tenant_id: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedAnalysisRun {
+  analysis_scope: string;
+  cost_estimate: string | null;
+  create_time: Generated<Date>;
+  error_code: string | null;
+  error_message: string | null;
+  finished_at: Date | null;
+  id: Generated<number>;
+  input_token_count: number | null;
+  job_id: number | null;
+  mode: string;
+  model_name: string | null;
+  output_token_count: number | null;
+  prompt_version: string | null;
+  provider_code: string | null;
+  raw_output_ref: string | null;
+  session_id: number;
+  source_message_from: number | null;
+  source_message_to: number | null;
+  status: string;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionInsightSnapshot {
+  analysis_version: string;
+  create_time: Generated<Date>;
+  id: Generated<number>;
+  model_profile_id: number | null;
+  phase: string;
+  prompt_version: string;
+  rule_version: string;
+  session_id: number;
+  source_message_high_watermark: number | null;
+  status: string;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionInsightCurrent {
+  current_snapshot_id: number;
+  session_id: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionSummary {
+  confidence: number | null;
+  customer_intent: string;
+  follow_up: string | null;
+  process_summary: string;
+  result_summary: string;
+  snapshot_id: number;
+}
+
+export interface XyWapEmbedSessionProblemResolution {
+  agent_action_summary: string | null;
+  confidence: number | null;
+  customer_final_state: string | null;
+  problem_detected: number;
+  problem_summary: string;
+  resolution_status: string;
+  snapshot_id: number;
+  unresolved_reason: string | null;
+}
+
+export interface XyWapEmbedSessionQaFinding {
+  confidence: number | null;
+  id: Generated<number>;
+  passed: number;
+  reason: string;
+  rule_code: string;
+  severity: string;
+  snapshot_id: number;
+}
+
+export interface XyWapEmbedSessionRisk {
+  confidence: number | null;
+  id: Generated<number>;
+  reason: string;
+  risk_level: string;
+  risk_type: string;
+  snapshot_id: number;
+}
+
+export interface XyWapEmbedSessionActionItem {
+  action_type: string;
+  create_time: Generated<Date>;
+  due_hint: string | null;
+  id: Generated<number>;
+  priority: string;
+  snapshot_id: number;
+  status: string;
+  title: string;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightEvidence {
+  conversation_id: number;
+  create_time: Generated<Date>;
+  dimension_record_id: number | null;
+  dimension_type: string;
+  evidence_role: string;
+  id: Generated<number>;
+  reason: string | null;
+  session_id: number;
+  snapshot_id: number;
+  source_message_id: number;
+  tenant_id: number;
+}
+
+export interface XyWapEmbedInsightAnalysisPolicy {
+  create_time: Generated<Date>;
+  enabled: Generated<number>;
+  final_analysis_enabled: Generated<number>;
+  live_analysis_enabled: Generated<number>;
+  live_min_interval_minutes: number;
+  live_min_new_meaningful_messages: number;
+  low_confidence_threshold: string;
+  rule_fallback_enabled: Generated<number>;
+  tenant_id: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightLabelConfig {
+  create_time: Generated<Date>;
+  description: string | null;
+  enabled: Generated<number>;
+  id: Generated<number>;
+  include_in_statistics: Generated<number>;
+  label_code: string;
+  label_name: string;
+  negative_examples_json: string | null;
+  positive_examples_json: string | null;
+  tenant_id: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightQaRuleConfig {
+  applicable_scene: string | null;
+  create_time: Generated<Date>;
+  description: string | null;
+  enabled: Generated<number>;
+  id: Generated<number>;
+  judgment_criteria: string | null;
+  negative_examples_json: string | null;
+  positive_examples_json: string | null;
+  rule_code: string;
+  rule_name: string;
+  severity: string;
+  tenant_id: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightRiskConfig {
+  create_time: Generated<Date>;
+  description: string | null;
+  enabled: Generated<number>;
+  id: Generated<number>;
+  keywords_json: string | null;
+  priority_boost: number;
+  risk_code: string;
+  risk_name: string;
+  severity: string;
+  tenant_id: number;
+  unresolved_timeout_minutes: number | null;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightEntityDictionary {
+  aliases_json: string | null;
+  attributes_json: string | null;
+  canonical_name: string;
+  create_time: Generated<Date>;
+  enabled: Generated<number>;
+  entity_type: string;
+  id: Generated<number>;
+  include_in_aggregation: Generated<number>;
+  tenant_id: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedModelProvider {
+  base_url: string;
+  create_time: Generated<Date>;
+  display_name: string;
+  enabled: Generated<number>;
+  id: Generated<number>;
+  provider_code: string;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedModelProfile {
+  create_time: Generated<Date>;
+  enabled: Generated<number>;
+  id: Generated<number>;
+  max_output_tokens: number;
+  model_name: string;
+  prompt_version: string;
+  provider_id: number;
+  retry_count: number;
+  task_type: string;
+  temperature: string;
+  tenant_id: number | null;
+  timeout_ms: number;
+  update_time: Generated<Date>;
+}
+
 export interface DB {
+  xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
   xy_wap_embed_broadcast_event: XyWapEmbedBroadcastEvent;
   xy_wap_embed_contact: XyWapEmbedContact;
   xy_wap_embed_conversation: XyWapEmbedConversation;
   xy_wap_embed_customer_bind_relation: XyWapEmbedCustomerBindRelation;
   xy_wap_embed_group_member: XyWapEmbedGroupMember;
   xy_wap_embed_group_seat: XyWapEmbedGroupSeat;
+  xy_wap_embed_insight_analysis_policy: XyWapEmbedInsightAnalysisPolicy;
+  xy_wap_embed_insight_entity_dictionary: XyWapEmbedInsightEntityDictionary;
+  xy_wap_embed_insight_evidence: XyWapEmbedInsightEvidence;
+  xy_wap_embed_insight_job: XyWapEmbedInsightJob;
+  xy_wap_embed_insight_label_config: XyWapEmbedInsightLabelConfig;
+  xy_wap_embed_insight_qa_rule_config: XyWapEmbedInsightQaRuleConfig;
+  xy_wap_embed_insight_risk_config: XyWapEmbedInsightRiskConfig;
+  xy_wap_embed_insight_sync_cursor: XyWapEmbedInsightSyncCursor;
+  xy_wap_embed_logical_session: XyWapEmbedLogicalSession;
+  xy_wap_embed_logical_session_message: XyWapEmbedLogicalSessionMessage;
+  xy_wap_embed_model_profile: XyWapEmbedModelProfile;
+  xy_wap_embed_model_provider: XyWapEmbedModelProvider;
   xy_wap_embed_msg_audit_info: XyWapEmbedMsgAuditInfo;
   xy_wap_embed_msg_audit_info_extend: XyWapEmbedMsgAuditInfoExtend;
+  xy_wap_embed_session_action_item: XyWapEmbedSessionActionItem;
+  xy_wap_embed_session_insight_current: XyWapEmbedSessionInsightCurrent;
+  xy_wap_embed_session_insight_snapshot: XyWapEmbedSessionInsightSnapshot;
+  xy_wap_embed_session_problem_resolution: XyWapEmbedSessionProblemResolution;
+  xy_wap_embed_session_qa_finding: XyWapEmbedSessionQaFinding;
+  xy_wap_embed_session_risk: XyWapEmbedSessionRisk;
+  xy_wap_embed_session_summary: XyWapEmbedSessionSummary;
+  xy_wap_embed_sessionization_config: XyWapEmbedSessionizationConfig;
   xy_wap_embed_sider_bar_config: XyWapEmbedSiderBarConfig;
   xy_wap_embed_sub_user: XyWapEmbedSubUser;
   xy_wap_embed_sub_user_session: XyWapEmbedSubUserSession;

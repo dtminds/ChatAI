@@ -312,7 +312,6 @@ export function createWorkbenchJavaClient(
         },
         logger,
         "request-general-answer",
-        { exposeErrorMessage: true },
       ).then((data) => {
         return {
           suggestion: mapJavaGeneralAnswer(data),
@@ -333,7 +332,6 @@ export function createWorkbenchJavaClient(
         },
         logger,
         "request-auto-general-answer",
-        { exposeErrorMessage: true },
       ).then((data) => {
         const id = readJavaNonEmptyId(data);
 
@@ -620,7 +618,6 @@ export function createWorkbenchJavaClient(
         input,
         logger,
         "sentence-recognition",
-        { exposeErrorMessage: true },
       );
     },
     revokeMessage(input) {
@@ -631,7 +628,6 @@ export function createWorkbenchJavaClient(
         input,
         logger,
         "revoke-message",
-        { exposeErrorMessage: true },
       );
     },
     async sendMessage(input) {
@@ -933,7 +929,7 @@ async function streamJavaPostText(
           path,
           reason: error instanceof Error ? error.name : "unknown",
         },
-        "Java 内部流式接口读取失败",
+        "内部流式接口读取失败",
       );
       throw new BadGatewayError(
         WORKBENCH_INTERNAL_API_FAILED_CODE,
@@ -961,7 +957,6 @@ async function postJavaEnvelope<T>(
   body: unknown,
   logger: AppLogger,
   operation: string,
-  options: { exposeErrorMessage?: boolean } = {},
 ): Promise<T> {
   const response = await postJava<JavaApiResponse<T>>(
     baseUrl,
@@ -987,13 +982,10 @@ async function postJavaEnvelope<T>(
     );
     throw new BusinessError(
       WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
-      // Only use this for Java business messages that product has approved
-      // for direct customer-service operator display.
-      options.exposeErrorMessage
-        ? response.errorMsg?.trim() || JAVA_INTERNAL_API_USER_MESSAGE
-        : JAVA_INTERNAL_API_USER_MESSAGE,
+      response.errorMsg?.trim() || JAVA_INTERNAL_API_USER_MESSAGE,
       {
         error: response.error,
+        errorMsg: response.errorMsg,
       },
     );
   }
@@ -1036,6 +1028,7 @@ async function postJavaPageEnvelope(
       response.errorMsg?.trim() || JAVA_INTERNAL_API_USER_MESSAGE,
       {
         error: response.error,
+        errorMsg: response.errorMsg,
       },
     );
   }

@@ -65,6 +65,7 @@ import {
   isSmartReplyEligibleMessage,
   isSmartReplySupportedConversation,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
+  SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE,
   SMART_REPLY_BUSY_TIMEOUT_MS,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
@@ -316,7 +317,6 @@ const MESSAGE_PAGE_SIZE = 50;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const REVOKE_PENDING_TIMEOUT_MS = 5 * 1000;
-const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE = "content_incomplete_skip";
 export const MAX_CONVERSATION_LIST_CACHE_SEATS = 3;
 
 function createInitialState(): Omit<
@@ -762,6 +762,8 @@ function buildSmartReplyHiddenKeys(
       isSmartReplyGenerationFailed(suggestion) ||
       isSmartReplyKnowledgeMiss(suggestion)
     ) {
+      // Historical terminal failures are kept for auto-generation guards but
+      // hidden from the chat feed because they are not useful operator replies.
       hidden[key] = true;
       continue;
     }
@@ -5455,9 +5457,27 @@ function getRequestApiErrorMessage(error: unknown) {
 
 function isSmartReplyContentIncompleteSkipError(error: unknown) {
   return (
+    getRequestApiErrorDetailText(error, "errorMsg") ===
+      SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE ||
     getRequestApiErrorMessage(error)?.trim() ===
     SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE
   );
+}
+
+function getRequestApiErrorDetailText(error: unknown, key: string) {
+  if (!error || typeof error !== "object" || !("details" in error)) {
+    return undefined;
+  }
+
+  const details = (error as { details?: unknown }).details;
+
+  if (!details || typeof details !== "object" || !(key in details)) {
+    return undefined;
+  }
+
+  const value = (details as Record<string, unknown>)[key];
+
+  return typeof value === "string" ? value.trim() : undefined;
 }
 
 function isErrorWithStatus(error: unknown): error is { status: number | string } {

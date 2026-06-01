@@ -15,6 +15,7 @@ import type { WorkbenchSmartReplyTextModerationResponse } from "@chatai/contract
 
 const DEFAULT_SMART_REPLY_ASSISTANT_NAME = "智能助手";
 export const SMART_REPLY_THINKING_LABEL = "思考中..";
+export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE = "content_incomplete_skip";
 export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT =
   "这条消息信息不足，已跳过话术推荐";
 

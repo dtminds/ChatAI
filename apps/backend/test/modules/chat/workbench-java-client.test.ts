@@ -47,7 +47,7 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
-  it("maps Java envelope business failures to business errors", async () => {
+  it("maps Java envelope business failures to business errors and preserves Java errorMsg", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -67,10 +67,11 @@ describe("createWorkbenchJavaClient", () => {
       createWorkbenchJavaClient().getUploadCredential({ uid: 9001 }),
     ).rejects.toMatchObject({
       code: WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
-      message: JAVA_INTERNAL_API_USER_MESSAGE,
+      message: "secret-url=https://example.com?a=b",
       statusCode: 200,
       details: {
         error: 123,
+        errorMsg: "secret-url=https://example.com?a=b",
       },
     });
 
@@ -438,6 +439,7 @@ describe("createWorkbenchJavaClient", () => {
     ).rejects.toMatchObject({
       details: {
         error: 1201,
+        errorMsg: "语音识别音频无法解析",
       },
       message: "语音识别音频无法解析",
     });
@@ -627,6 +629,7 @@ describe("createWorkbenchJavaClient", () => {
     ).rejects.toMatchObject({
       details: {
         error: 601,
+        errorMsg: "已超过撤回时间",
       },
       message: "已超过撤回时间",
     });
@@ -966,6 +969,7 @@ describe("createWorkbenchJavaClient", () => {
       code: WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
       details: {
         error: 999,
+        errorMsg: "当前未配置可用AI助手",
       },
       message: "当前未配置可用AI助手",
       statusCode: 200,

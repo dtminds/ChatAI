@@ -769,8 +769,9 @@ describe("useWorkbenchStore", () => {
           code: "WORKBENCH_INTERNAL_API_BUSINESS_FAILED",
           details: {
             error: 999,
+            errorMsg: "content_incomplete_skip",
           },
-          message: "content_incomplete_skip",
+          message: "对话语意未完整",
           status: 200,
         };
       },

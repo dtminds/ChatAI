@@ -1205,7 +1205,7 @@ function triggerSmartReplyAutoGeneration(
       options.schedulePoll(conversationId, { force: true });
     })
     .catch((error) => {
-      const shouldSkipRecommendation = isSmartReplyContentIncompleteSkip(error);
+      const shouldSkipRecommendation = isSmartReplyContentIncompleteSkipError(error);
 
       set((currentState) => {
         if (currentState.activeConversationId !== conversationId) {
@@ -5453,7 +5453,7 @@ function getRequestApiErrorMessage(error: unknown) {
   return undefined;
 }
 
-function isSmartReplyContentIncompleteSkip(error: unknown) {
+function isSmartReplyContentIncompleteSkipError(error: unknown) {
   return (
     getRequestApiErrorMessage(error)?.trim() ===
     SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE

@@ -471,6 +471,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
 function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSessionRow[] {
   const bySession = new Map<string, InsightCurrentSessionRow>();
+  const seenOpenActionsBySession = new Map<string, Set<string>>();
+  const seenHighRisksBySession = new Map<string, Set<string>>();
+  const seenNegativeRisksBySession = new Map<string, Set<string>>();
 
   for (const row of rows) {
     const sessionId = String(row.session_id);
@@ -504,15 +507,26 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         unresolvedReason: row.unresolved_reason,
       };
 
-    if (row.action_id != null && row.action_status === "open") {
+    if (
+      row.action_id != null &&
+      row.action_status === "open" &&
+      markSeen(seenOpenActionsBySession, sessionId, String(row.action_id))
+    ) {
       current.actionOpenCount += 1;
     }
 
-    if (row.high_risk_id != null && row.risk_severity === "high") {
+    if (
+      row.high_risk_id != null &&
+      row.risk_severity === "high" &&
+      markSeen(seenHighRisksBySession, sessionId, String(row.high_risk_id))
+    ) {
       current.highRiskCount += 1;
     }
 
-    if (row.negative_risk_id != null) {
+    if (
+      row.negative_risk_id != null &&
+      markSeen(seenNegativeRisksBySession, sessionId, String(row.negative_risk_id))
+    ) {
       current.negativeCount += 1;
     }
 
@@ -524,10 +538,29 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
   }
 
   for (const current of bySession.values()) {
-    current.problemEvidenceMessageIds = Array.from(new Set(current.problemEvidenceMessageIds));
+    current.problemEvidenceMessageIds = sortNumericStrings(
+      Array.from(new Set(current.problemEvidenceMessageIds)),
+    );
   }
 
   return Array.from(bySession.values());
+}
+
+function sortNumericStrings(values: string[]) {
+  return [...values].sort((left, right) => Number(left) - Number(right));
+}
+
+function markSeen(map: Map<string, Set<string>>, scopeKey: string, value: string) {
+  const values = map.get(scopeKey) ?? new Set<string>();
+
+  if (values.has(value)) {
+    return false;
+  }
+
+  values.add(value);
+  map.set(scopeKey, values);
+
+  return true;
 }
 
 function mapActionItemRows(rows: ActionItemQueryRow[]): InsightActionItemRow[] {

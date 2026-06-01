@@ -9,6 +9,7 @@ import { useAuthStore } from "@/store/auth-store";
 import type { AuthRefreshResponse } from "@chatai/contracts";
 
 export type RequestError = {
+  details?: Record<string, unknown>;
   message: string;
   status?: number;
   code?: string;
@@ -17,6 +18,7 @@ export type RequestError = {
 type ApiErrorEnvelope = {
   error?: {
     code?: string;
+    details?: Record<string, unknown>;
     message?: string;
   };
   success?: false;
@@ -24,23 +26,27 @@ type ApiErrorEnvelope = {
 
 class ApiEnvelopeError extends Error {
   readonly code?: string;
+  readonly details?: Record<string, unknown>;
   readonly status?: number;
 
   constructor(envelope: ApiErrorEnvelope, status?: number) {
     super(envelope.error?.message ?? "Request failed");
     this.code = envelope.error?.code;
+    this.details = envelope.error?.details;
     this.status = status;
   }
 }
 
 export class RequestNormalizedError extends Error {
   readonly code?: string;
+  readonly details?: Record<string, unknown>;
   readonly status?: number;
 
   constructor(error: RequestError, cause?: unknown) {
     super(error.message, cause === undefined ? undefined : { cause });
     this.name = "RequestNormalizedError";
     this.code = error.code;
+    this.details = error.details;
     this.status = error.status;
 
     if (cause instanceof Error && cause.stack) {
@@ -86,6 +92,7 @@ function normalizeError(error: unknown): RequestError {
         "Request failed",
       status: axiosError.response?.status,
       code: apiError?.code ?? axiosError.code,
+      details: apiError?.details,
     };
   }
 
@@ -94,6 +101,7 @@ function normalizeError(error: unknown): RequestError {
       message: error.message,
       status: error.status,
       code: error.code,
+      details: error.details,
     };
   }
 

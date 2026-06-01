@@ -59,9 +59,12 @@ import {
   createSentSmartReplySuggestion,
   createTriggeredSmartReplySuggestion,
   getSmartReplyLookupKey,
+  isSmartReplyGenerationFailed,
+  isSmartReplyKnowledgeMiss,
   isSmartReplyPollComplete,
   isSmartReplyEligibleMessage,
   isSmartReplySupportedConversation,
+  SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_BUSY_TIMEOUT_MS,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
@@ -313,6 +316,7 @@ const MESSAGE_PAGE_SIZE = 50;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const REVOKE_PENDING_TIMEOUT_MS = 5 * 1000;
+const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE = "content_incomplete_skip";
 export const MAX_CONVERSATION_LIST_CACHE_SEATS = 3;
 
 function createInitialState(): Omit<
@@ -753,7 +757,15 @@ function buildSmartReplyHiddenKeys(
 ) {
   const hidden: Record<string, true> = {};
 
-  for (const key of Object.keys(suggestions)) {
+  for (const [key, suggestion] of Object.entries(suggestions)) {
+    if (
+      isSmartReplyGenerationFailed(suggestion) ||
+      isSmartReplyKnowledgeMiss(suggestion)
+    ) {
+      hidden[key] = true;
+      continue;
+    }
+
     const messageIndex = messages.findIndex(
       (message) => getSmartReplyLookupKey(message) === key,
     );
@@ -811,6 +823,21 @@ function createSmartReplyTimeoutSuggestion(
     assistantName: previous?.assistantName ?? "智能助手",
     content: previous?.content ?? "",
     failReason: "智能回复生成超时，请稍后重试",
+    generateStatus: 3,
+    pollComplete: true,
+    refAttachIds: previous?.refAttachIds,
+    status: undefined,
+    recordId: previous?.recordId,
+  };
+}
+
+function createSkippedSmartReplySuggestion(
+  previous: SmartReplySuggestion | undefined,
+): SmartReplySuggestion {
+  return {
+    assistantName: previous?.assistantName ?? "智能助手",
+    content: "",
+    failReason: SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
     generateStatus: 3,
     pollComplete: true,
     refAttachIds: previous?.refAttachIds,
@@ -1178,6 +1205,8 @@ function triggerSmartReplyAutoGeneration(
       options.schedulePoll(conversationId, { force: true });
     })
     .catch((error) => {
+      const shouldSkipRecommendation = isSmartReplyContentIncompleteSkip(error);
+
       set((currentState) => {
         if (currentState.activeConversationId !== conversationId) {
           return currentState;
@@ -1185,6 +1214,19 @@ function triggerSmartReplyAutoGeneration(
 
         const errorMessage =
           getRequestApiErrorMessage(error) ?? "智能回复生成失败，请稍后重试";
+        const previousSuggestion =
+          currentState.smartReplyByMessageIdByConversationId[conversationId]?.[
+            lookupKey
+          ];
+        const nextSuggestion = shouldSkipRecommendation
+          ? createSkippedSmartReplySuggestion(previousSuggestion)
+          : {
+              ...optimisticSuggestion,
+              failReason: errorMessage,
+              generateStatus: 3,
+              pollComplete: true,
+              status: undefined,
+            };
 
         return {
           smartReplyByMessageIdByConversationId: {
@@ -1192,13 +1234,7 @@ function triggerSmartReplyAutoGeneration(
             [conversationId]: {
               ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ??
                 {}),
-              [lookupKey]: {
-                ...optimisticSuggestion,
-                failReason: errorMessage,
-                generateStatus: 3,
-                pollComplete: true,
-                status: undefined,
-              },
+              [lookupKey]: nextSuggestion,
             },
           },
           smartReplyPendingMessageKeysByConversationId: {
@@ -5415,6 +5451,13 @@ function getRequestApiErrorMessage(error: unknown) {
   }
 
   return undefined;
+}
+
+function isSmartReplyContentIncompleteSkip(error: unknown) {
+  return (
+    getRequestApiErrorMessage(error)?.trim() ===
+    SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE
+  );
 }
 
 function isErrorWithStatus(error: unknown): error is { status: number | string } {

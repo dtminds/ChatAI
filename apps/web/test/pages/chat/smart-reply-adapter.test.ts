@@ -21,6 +21,7 @@ import {
   getSmartReplyCustomerQuestion,
   getSmartReplyLookupKey,
   getSmartReplyProcessingLabel,
+  isSmartReplyContentIncompleteSkip,
   isSmartReplyEligibleMessage,
   isSmartReplySupportedConversation,
   isSmartReplyGenerationFailed,
@@ -32,6 +33,7 @@ import {
   resolveSmartReplyProcessingLabel,
   shouldShowSmartReplyCard,
   shouldShowSmartReplyTriggerIcon,
+  SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
 } from "@/pages/chat/api/smart-reply-adapter";
 
 describe("smart-reply-adapter", () => {
@@ -578,6 +580,20 @@ describe("smart-reply-adapter", () => {
       } as ChatMessage,
       suggestion,
     )).toBe(false);
+  });
+
+  it("treats incomplete content skips as a visible non-failure hint", () => {
+    const suggestion = {
+      assistantName: "护肤小助手",
+      content: "",
+      failReason: SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
+      generateStatus: 3,
+      pollComplete: true,
+    };
+
+    expect(isSmartReplyContentIncompleteSkip(suggestion)).toBe(true);
+    expect(isSmartReplyGenerationFailed(suggestion)).toBe(false);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
   });
 
   it("shows smart reply card while poll is still active", () => {

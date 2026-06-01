@@ -12,7 +12,7 @@ import {
   Loading03Icon,
   MessageNotification01Icon,
   MoreHorizontalIcon,
-  Remove01Icon,
+  Cancel01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
   getSmartReplyCustomerQuestion,
   canRequestSmartReplyMakeShorter,
+  isSmartReplyContentIncompleteSkip,
   isSmartReplyGenerationFailed,
   isSmartReplyKnowledgeMiss,
   isSmartReplyMediaContentType,
@@ -258,7 +259,7 @@ export function SmartReplyCard({
             >
               <HugeiconsIcon
                 aria-hidden="true"
-                icon={Remove01Icon}
+                icon={Cancel01Icon}
                 size={15}
                 strokeWidth={2}
               />
@@ -813,11 +814,24 @@ export function SmartReplyMessageAnchor({
   }
 
   const resolvedSuggestion = suggestion;
+  const isContentIncompleteSkip =
+    isSmartReplyContentIncompleteSkip(resolvedSuggestion);
   const isKnowledgeMiss = isSmartReplyKnowledgeMiss(resolvedSuggestion);
   const isGenerationFailed = isSmartReplyGenerationFailed(resolvedSuggestion);
-  const isKnowledgeHit = !isKnowledgeMiss && !isGenerationFailed;
+  const isKnowledgeHit =
+    !isKnowledgeMiss && !isGenerationFailed && !isContentIncompleteSkip;
   const isSent = isSmartReplySent(resolvedSuggestion);
   const canMakeShorter = canRequestSmartReplyMakeShorter(resolvedSuggestion);
+
+  if (isContentIncompleteSkip) {
+    return (
+      <SmartReplyContentIncompleteSkipHint
+        message={message}
+        onDismiss={onDismiss}
+        text={resolvedSuggestion.failReason ?? ""}
+      />
+    );
+  }
 
   return (
     <>
@@ -917,6 +931,38 @@ export function SmartReplyMessageAnchor({
         open={isEditDialogOpen}
       />
     </>
+  );
+}
+
+function SmartReplyContentIncompleteSkipHint({
+  message,
+  onDismiss,
+  text,
+}: {
+  message: ChatMessage;
+  onDismiss?: (message: ChatMessage) => void;
+  text: string;
+}) {
+  return (
+    <div className="flex max-w-[640px] items-center gap-2 text-[13px] leading-5 text-muted-foreground">
+      <span>{text}</span>
+      {onDismiss ? (
+        <button
+          aria-label="收起"
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
+          onClick={() => onDismiss(message)}
+          title="收起"
+          type="button"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={Cancel01Icon}
+            size={14}
+            strokeWidth={2}
+          />
+        </button>
+      ) : null}
+    </div>
   );
 }
 

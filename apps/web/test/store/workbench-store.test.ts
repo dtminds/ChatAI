@@ -497,6 +497,60 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("keeps but hides failed smart replies returned with the latest message page", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "最新客户问题",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              failReason: "model_error",
+              generateStatus: 3,
+              messageId: "9",
+              pollComplete: true,
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.smartReplyByMessageIdByConversationId["conv-001"]).toMatchObject({
+      "9": {
+        failReason: "model_error",
+        generateStatus: 3,
+        pollComplete: true,
+      },
+    });
+    expect(state.smartReplyHiddenMessageKeysByConversationId["conv-001"]).toEqual({
+      "9": true,
+    });
+    expect(state.smartReplyPendingMessageKeysByConversationId["conv-001"]).toEqual(
+      {},
+    );
+  });
+
   it("adds non-terminal smart replies from the message page to pending", async () => {
     const baseService = createMockWorkbenchService();
     const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
@@ -695,6 +749,103 @@ describe("useWorkbenchStore", () => {
         msgId: 11,
       },
     ]);
+  });
+
+  it("keeps skipped smart reply auto-generation as a dismissible local suggestion for incomplete content", async () => {
+    vi.setSystemTime(new Date("2026-05-29T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedGeneralAnswerRequests: Array<{
+      conversationId: string;
+      msgId: number;
+    }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        throw {
+          code: "WORKBENCH_INTERNAL_API_BUSINESS_FAILED",
+          details: {
+            error: 999,
+          },
+          message: "content_incomplete_skip",
+          status: 200,
+        };
+      },
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+
+        return { suggestion: null };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
+        "9"
+      ],
+    ).toMatchObject({
+      failReason: "这条消息信息不足，已跳过话术推荐",
+      pollComplete: true,
+      status: undefined,
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).not.toHaveProperty("9");
+    expect(
+      useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).not.toHaveProperty("9");
+
+    const skippedMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 9,
+      );
+
+    expect(skippedMessage).toBeDefined();
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedAutoRequests).toEqual([
+      {
+        conversationId: "conv-001",
+        msgId: 9,
+      },
+    ]);
+
+    useWorkbenchStore.getState().dismissSmartReply(skippedMessage!);
+
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
+        "9"
+      ],
+    ).toMatchObject({
+      failReason: "这条消息信息不足，已跳过话术推荐",
+      pollComplete: true,
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).toMatchObject({
+      "9": true,
+    });
+
+    await useWorkbenchStore
+      .getState()
+      .requestSmartReplyGeneralAnswer(skippedMessage!);
+
+    expect(observedGeneralAnswerRequests).toEqual([]);
   });
 
   it("keeps visible smart replies when an ordinary agent reply arrives", async () => {

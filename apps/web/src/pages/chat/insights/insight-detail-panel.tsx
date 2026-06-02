@@ -1,28 +1,19 @@
-import { useState } from "react";
-import {
-  ArrowRight01Icon,
-  BubbleChatIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   InsightDetailResponse,
   InsightMessageContextResponse,
 } from "@chatai/contracts";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
-  SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { HistoryCompactMessageList } from "@/pages/chat/components/message-history-side-panel";
 import type { Account, CustomerProfile } from "@/pages/chat/chat-types";
-import { getInsightMessageContext } from "./api/insights-service";
 import { ResolutionBadge } from "./insight-badges";
-import { InsightMessageContextSheet } from "./insight-message-context-sheet";
 import { InsightPerson } from "./insight-person";
 
 export function InsightDetailPanel({
@@ -34,61 +25,26 @@ export function InsightDetailPanel({
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [messageContext, setMessageContext] = useState<InsightMessageContextResponse>();
-  const [messageContextError, setMessageContextError] = useState<string>();
-  const [messageContextOpen, setMessageContextOpen] = useState(false);
-  const [messageContextLoading, setMessageContextLoading] = useState(false);
   const evidenceRecordMessages = detail
-    ? adaptInsightMessages(detail.evidenceMessageRecords)
+    ? adaptInsightMessages(detail.sessionMessageRecords)
     : [];
-  const messageContextMessages = messageContext
-    ? adaptInsightMessages(messageContext.messages)
-    : [];
-
-  const handleOpenMessageContext = async (messageId?: string) => {
-    if (!detail || !messageId || messageContextLoading) {
-      return;
-    }
-
-    setMessageContextOpen(true);
-    setMessageContextError(undefined);
-    setMessageContextLoading(true);
-
-    try {
-      const context = await getInsightMessageContext({
-        conversationId: detail.session.conversationId,
-        messageId,
-      });
-
-      setMessageContext(context);
-    } catch (error) {
-      setMessageContext(undefined);
-      setMessageContextError(
-        error instanceof Error && error.message
-          ? error.message
-          : "消息上下文加载失败",
-      );
-    } finally {
-      setMessageContextLoading(false);
-    }
-  };
+  const evidenceByMessageId = detail ? buildEvidenceByMessageId(detail.evidenceItems) : new Map<string, EvidenceViewItem[]>();
+  const showIntent = Boolean(
+    detail?.summary.customerIntent
+      && !isSimilarText(detail.summary.customerIntent, detail.problemResolution.problemSummary),
+  );
 
   return (
-    <>
-      <Sheet onOpenChange={onOpenChange} open={isOpen}>
-        <SheetContent className="w-full overflow-hidden sm:max-w-[min(1180px,calc(100vw-48px))]">
-          <SheetHeader className="border-b px-6 py-5">
-            <SheetTitle className="text-base">洞察详情</SheetTitle>
-            <SheetDescription>
-              {detail
-                ? "客户问题、处理结论和证据消息"
-                : "正在读取洞察结论"}
-            </SheetDescription>
-          </SheetHeader>
+    <Sheet onOpenChange={onOpenChange} open={isOpen}>
+      <SheetContent className="w-full overflow-hidden sm:max-w-[min(1180px,calc(100vw-48px))]">
+          <SheetTitle className="sr-only">洞察详情</SheetTitle>
+          <SheetDescription className="sr-only">
+            查看本轮逻辑会话的分析结果和对话证据
+          </SheetDescription>
 
           {detail ? (
             <div className="flex min-h-0 flex-1 flex-col">
-              <section className="border-b bg-muted/20 px-6 py-4">
+              <section className="border-b bg-muted/20 px-6 py-4 pr-16">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0 space-y-2">
                     <div className="flex flex-wrap items-center gap-3">
@@ -110,20 +66,6 @@ export function InsightDetailPanel({
                       {detail.problemResolution.problemSummary || "暂无客户问题摘要"}
                     </p>
                   </div>
-                  <Button
-                    className="h-8 rounded-[8px]"
-                    disabled={!detail.evidenceMessages.at(-1)?.messageId}
-                    onClick={() => {
-                      void handleOpenMessageContext(
-                        detail.evidenceMessages.at(-1)?.messageId,
-                      );
-                    }}
-                    size="sm"
-                    variant="outline"
-                  >
-                    <HugeiconsIcon icon={BubbleChatIcon} size={15} />
-                    查看证据上下文
-                  </Button>
                 </div>
               </section>
 
@@ -131,120 +73,95 @@ export function InsightDetailPanel({
                 <div className="min-h-0 overflow-y-auto px-6 py-5">
                   <section
                     aria-label="洞察结论"
-                    className="space-y-5"
+                    className="max-w-[880px] space-y-5"
                     role="region"
                   >
-                    <div className="grid gap-3 xl:grid-cols-2">
-                      <SummaryItem label="客户诉求" value={detail.summary.customerIntent} />
-                      <SummaryItem label="当前结果" value={detail.summary.resultSummary} />
-                      <SummaryItem label="处理过程" value={detail.summary.processSummary} />
-                      <SummaryItem label="跟进建议" value={detail.summary.followUp ?? ""} />
+                    <div className="space-y-4">
+                      <div className="grid gap-5 xl:grid-cols-2">
+                        <SummaryBlock
+                          label="当前结果"
+                          strong
+                          value={detail.summary.resultSummary}
+                        />
+                        <SummaryBlock
+                          label="处理过程"
+                          value={detail.summary.processSummary}
+                        />
+                        {detail.summary.followUp ? (
+                          <SummaryBlock
+                            label="跟进建议"
+                            value={detail.summary.followUp}
+                          />
+                        ) : null}
+                      </div>
+
+                      {detail.problemResolution.unresolvedReason ? (
+                        <div className="rounded-[8px] border border-destructive/20 bg-destructive/5 px-4 py-3">
+                          <div className="text-xs font-medium text-destructive">
+                            未解决判定理由
+                          </div>
+                          <p className="mt-1.5 text-sm leading-6 text-foreground">
+                            {detail.problemResolution.unresolvedReason}
+                          </p>
+                        </div>
+                      ) : null}
+
                     </div>
 
-                    {detail.problemResolution.unresolvedReason ? (
-                      <div className="rounded-[8px] border border-destructive/25 bg-destructive/5 p-4">
-                        <div className="text-xs font-medium text-destructive">
-                          未解决判定理由
-                        </div>
-                        <p className="mt-2 text-sm leading-6 text-foreground">
-                          {detail.problemResolution.unresolvedReason}
-                        </p>
-                      </div>
-                    ) : null}
-
-                    <div className="space-y-3">
+                    <div className="space-y-4 border-t pt-5">
                       <h3 className="text-sm font-semibold text-foreground">
-                        结论维度
+                        提取结果
                       </h3>
-                      <div className="grid gap-x-6 gap-y-3 xl:grid-cols-2">
-                        <InsightPills
-                          emptyText="暂无标签"
-                          items={detail.tags.map((item) => item.tagName)}
-                          label="标签"
+                      <div className="grid gap-5 xl:grid-cols-2">
+                        <InsightResultGroup
+                          items={buildKeyInsightItems(detail, showIntent)}
+                          title="关键信息"
                         />
-                        <InsightPills
-                          emptyText="暂无情绪"
-                          items={detail.sentiment.map(
-                            (item) => `${formatPolarity(item.polarity)} · ${item.reason}`,
-                          )}
-                          label="情绪"
+                        <InsightResultGroup
+                          items={buildServiceInsightItems(detail)}
+                          title="服务判断"
                         />
-                        <InsightPills
-                          emptyText="暂无风险"
-                          items={detail.risks.map(
-                            (item) =>
-                              `${item.riskType} · ${item.reason || item.riskLevel}`,
-                          )}
-                          label="风险"
-                        />
-                        <InsightPills
-                          emptyText="暂无质检项"
-                          items={detail.qaFindings.map(
-                            (item) =>
-                              `${item.ruleCode} · ${item.passed ? "通过" : "未通过"}`,
-                          )}
-                          label="质检"
-                        />
-                        <InsightPills
-                          emptyText="暂无实体"
-                          items={detail.entities.map((item) => item.entityName)}
-                          label="实体"
-                        />
-                        <InsightPills
-                          emptyText="暂无意图"
-                          items={detail.intents.map((item) => item.intentLabel)}
-                          label="意图"
-                        />
-                        <InsightPills
-                          emptyText="暂无行动项"
-                          items={detail.actionItems.map((item) => item.title)}
-                          label="行动项"
-                        />
-                        <InsightPills
-                          emptyText="暂无 FAQ 机会"
-                          items={detail.faqCandidates.map((item) => item.question)}
-                          label="FAQ"
-                        />
+                        {detail.faqCandidates.length > 0 ? (
+                          <InsightFaqList
+                            items={detail.faqCandidates.map((item) => item.question)}
+                          />
+                        ) : null}
                       </div>
                     </div>
                   </section>
                 </div>
 
                 <aside
-                  aria-label="证据消息"
+                  aria-label="本轮对话"
                   className="min-h-0 border-l bg-muted/20"
                   role="region"
                 >
                   <div className="flex h-full min-h-0 flex-col">
                     <div className="flex items-center justify-between border-b bg-background px-5 py-4">
                       <h3 className="text-sm font-semibold text-foreground">
-                        证据消息
+                        本轮对话
                       </h3>
                       <span className="text-xs text-muted-foreground">
                         {evidenceRecordMessages.length} 条
                       </span>
                     </div>
 
-                    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-                      {evidenceRecordMessages.map((message) => (
-                        <article
-                          className="relative rounded-[8px] border bg-background p-3 pr-11"
-                          key={message.clientMessageId ?? message.optNo ?? message.id}
-                        >
-                          <Button
-                            aria-label={`查看证据上下文 ${message.seq}`}
-                            className="absolute right-2 top-2 h-7 px-2"
-                            onClick={() => {
-                              void handleOpenMessageContext(String(message.seq));
-                            }}
-                            size="sm"
-                            variant="ghost"
-                          >
-                            <HugeiconsIcon icon={ArrowRight01Icon} size={14} />
-                          </Button>
-                          <HistoryCompactMessageList messages={[message]} />
-                        </article>
-                      ))}
+                    <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                      {evidenceRecordMessages.length > 0 ? (
+                        <HistoryCompactMessageList
+                          messages={evidenceRecordMessages}
+                          renderMetaSuffix={(message) => {
+                            const evidence = evidenceByMessageId.get(String(message.seq ?? ""));
+
+                            return evidence?.length ? <EvidenceBadge evidence={evidence} /> : null;
+                          }}
+                          textWeight="normal"
+                        />
+                      ) : (
+                        <div className="rounded-[8px] border border-dashed bg-background p-6 text-center text-sm text-muted-foreground">
+                          暂无本轮对话消息
+                        </div>
+                      )}
                     </div>
                   </div>
                 </aside>
@@ -255,17 +172,8 @@ export function InsightDetailPanel({
               正在加载详情
             </div>
           )}
-        </SheetContent>
-      </Sheet>
-      <InsightMessageContextSheet
-        context={messageContext}
-        error={messageContextError}
-        isLoading={messageContextLoading}
-        isOpen={messageContextOpen}
-        messages={messageContextMessages}
-        onOpenChange={setMessageContextOpen}
-      />
-    </>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -334,40 +242,232 @@ function buildInsightAccounts(
   );
 }
 
-function SummaryItem({ label, value }: { label: string; value: string }) {
+function SummaryBlock({
+  label,
+  strong,
+  value,
+}: {
+  label: string;
+  strong?: boolean;
+  value: string;
+}) {
   return (
-    <div className="grid gap-1">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-sm leading-6 text-foreground">{value || "暂无"}</div>
+    <div className="space-y-1.5">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <p
+        className={cn(
+          "text-foreground",
+          strong ? "text-base font-medium leading-7" : "text-sm leading-6",
+        )}
+      >
+        {value || "暂无"}
+      </p>
     </div>
   );
 }
 
-function InsightPills({
-  emptyText,
-  items,
-  label,
-}: {
-  emptyText: string;
+type EvidenceViewItem = InsightDetailResponse["evidenceItems"][number];
+
+function EvidenceBadge({ evidence }: { evidence: EvidenceViewItem[] }) {
+  const primary = pickPrimaryEvidence(evidence);
+
+  if (!primary) {
+    return null;
+  }
+
+  return (
+    <span
+      className="inline-flex max-w-[220px] items-center gap-1 rounded-[6px] bg-primary/10 px-1.5 text-[11px] font-medium leading-5 text-primary"
+      title={buildEvidenceTitle(evidence)}
+    >
+      {evidenceRoleText(primary.evidenceRole)}
+    </span>
+  );
+}
+
+function buildEvidenceByMessageId(items: InsightDetailResponse["evidenceItems"]) {
+  const map = new Map<string, EvidenceViewItem[]>();
+
+  for (const item of items) {
+    const current = map.get(item.messageId) ?? [];
+    current.push(item);
+    map.set(item.messageId, current);
+  }
+
+  return map;
+}
+
+function pickPrimaryEvidence(evidence: EvidenceViewItem[]) {
+  const priority = [
+    "customer_problem",
+    "unresolved_signal",
+    "agent_solution",
+    "closure_signal",
+    "primary",
+  ];
+
+  return [...evidence].sort((left, right) =>
+    evidenceRolePriority(left.evidenceRole, priority) - evidenceRolePriority(right.evidenceRole, priority),
+  )[0];
+}
+
+function evidenceRolePriority(role: string, priority: string[]) {
+  const index = priority.indexOf(role);
+
+  return index === -1 ? priority.length : index;
+}
+
+function buildEvidenceTitle(evidence: EvidenceViewItem[]) {
+  return evidence
+    .map((item) =>
+      item.reason
+        ? `${evidenceRoleText(item.evidenceRole)}：${item.reason}`
+        : evidenceRoleText(item.evidenceRole),
+    )
+    .join("\n");
+}
+
+function evidenceRoleText(role: string) {
+  const text: Record<string, string> = {
+    agent_solution: "解决方案",
+    closure_signal: "闭环证据",
+    customer_problem: "客户问题",
+    primary: "证据",
+    unresolved_signal: "未解决信号",
+  };
+
+  return text[role] ?? "证据";
+}
+
+function isSimilarText(left: string, right: string) {
+  const normalizedLeft = normalizeComparableText(left);
+  const normalizedRight = normalizeComparableText(right);
+
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+
+  return normalizedLeft.includes(normalizedRight)
+    || normalizedRight.includes(normalizedLeft);
+}
+
+function normalizeComparableText(value: string) {
+  return value.replace(/[，。！？、\s]/g, "").trim();
+}
+
+type InsightResultItem = {
   items: string[];
   label: string;
+};
+
+function InsightResultGroup({
+  items,
+  title,
+}: {
+  items: InsightResultItem[];
+  title: string;
 }) {
+  const visibleItems = items.filter((item) => item.items.length > 0);
+
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
   return (
-    <div className="grid gap-2 border-b pb-3 last:border-b-0 xl:grid-cols-[4.5rem_minmax(0,1fr)]">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div className="flex min-w-0 flex-wrap gap-2">
-        {items.length > 0 ? (
-          items.map((item) => (
-            <Badge key={`${label}:${item}`} variant="secondary">
-              {item}
-            </Badge>
-          ))
-        ) : (
-          <span className="text-sm text-muted-foreground">{emptyText}</span>
-        )}
+    <div className="space-y-3">
+      <div className="text-xs font-medium text-muted-foreground">{title}</div>
+      <div className="space-y-3">
+        {visibleItems.map((item) => (
+          <div
+            className="grid gap-2 sm:grid-cols-[4rem_minmax(0,1fr)]"
+            key={item.label}
+          >
+            <div className="text-xs leading-6 text-muted-foreground">{item.label}</div>
+            <div className="flex min-w-0 flex-wrap gap-2">
+              {item.items.map((value) => (
+                <Badge
+                  className="max-w-full whitespace-normal rounded-[8px] px-2.5 py-1 text-[13px] font-normal leading-5"
+                  key={`${item.label}:${value}`}
+                  variant="secondary"
+                >
+                  {value}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
+}
+
+function InsightFaqList({ items }: { items: string[] }) {
+  return (
+    <div className="space-y-3 xl:col-span-2">
+      <div className="text-xs font-medium text-muted-foreground">FAQ 机会</div>
+      <div className="grid gap-2 xl:grid-cols-2">
+        {items.map((item) => (
+          <div
+            className="rounded-[8px] bg-muted/55 px-3 py-2 text-sm leading-6 text-foreground"
+            key={item}
+          >
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function buildKeyInsightItems(
+  detail: InsightDetailResponse,
+  showIntent: boolean,
+): InsightResultItem[] {
+  return [
+    {
+      items: showIntent ? [detail.summary.customerIntent] : [],
+      label: "意图",
+    },
+    {
+      items: detail.intents.map((item) => item.intentLabel),
+      label: "细分",
+    },
+    {
+      items: detail.entities.map((item) => item.entityName),
+      label: "实体",
+    },
+    {
+      items: detail.tags.map((item) => item.tagName),
+      label: "标签",
+    },
+    {
+      items: detail.sentiment.map(
+        (item) => `${formatPolarity(item.polarity)}：${item.reason}`,
+      ),
+      label: "情绪",
+    },
+  ];
+}
+
+function buildServiceInsightItems(detail: InsightDetailResponse): InsightResultItem[] {
+  return [
+    {
+      items: detail.qaFindings.map((item) =>
+        `${item.passed ? "通过" : "未通过"}：${item.ruleCode}`,
+      ),
+      label: "质检",
+    },
+    {
+      items: detail.risks.map((item) =>
+        item.reason ? `${item.riskType}：${item.reason}` : item.riskType,
+      ),
+      label: "风险",
+    },
+    {
+      items: detail.actionItems.map((item) => item.title),
+      label: "待办",
+    },
+  ];
 }
 
 function formatPolarity(polarity: string) {

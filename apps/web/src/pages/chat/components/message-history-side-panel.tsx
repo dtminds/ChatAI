@@ -482,7 +482,9 @@ export function HistoryCompactMessageList({
   onDownloadMessageFile,
   onVoicePlaybackReady,
   onTranscribeVoice,
+  renderMessageSuffix,
   renderMetaSuffix,
+  textWeight = "medium",
 }: {
   messages: Message[];
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -491,7 +493,9 @@ export function HistoryCompactMessageList({
     payload: { playbackUrl: string },
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
+  renderMessageSuffix?: (message: ChatMessage) => ReactNode;
   renderMetaSuffix?: (message: ChatMessage) => ReactNode;
+  textWeight?: "medium" | "normal";
 }) {
   const chatMessages = messages.filter(isChatMessage);
 
@@ -528,7 +532,9 @@ export function HistoryCompactMessageList({
             onDownloadMessageFile={onDownloadMessageFile}
             onTranscribeVoice={onTranscribeVoice}
             onVoicePlaybackReady={onVoicePlaybackReady}
+            textWeight={textWeight}
           />
+          {renderMessageSuffix?.(message)}
           {message.isRevoked ? <HistoryCompactRevokedState /> : null}
         </div>
       ))}
@@ -546,6 +552,7 @@ function HistoryCompactMessageContent({
   onDownloadMessageFile,
   onVoicePlaybackReady,
   onTranscribeVoice,
+  textWeight,
 }: {
   message: ChatMessage;
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -554,15 +561,16 @@ function HistoryCompactMessageContent({
     payload: { playbackUrl: string },
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
+  textWeight: "medium" | "normal";
 }) {
   if (message.content.type === "text") {
-    return <HistoryCompactText text={message.content.text} />;
+    return <HistoryCompactText text={message.content.text} textWeight={textWeight} />;
   }
 
   if (message.content.type === "quote") {
     return (
       <div className="flex w-full max-w-full min-w-0 flex-col items-start gap-2">
-        <HistoryCompactText text={message.content.text} />
+        <HistoryCompactText text={message.content.text} textWeight={textWeight} />
         <QuoteMessagePreview
           quoteMsgId={message.content.quoteMsgId}
           quotedMessage={message.content.quotedMessage}
@@ -597,10 +605,19 @@ function HistoryCompactDeliveryState() {
   );
 }
 
-function HistoryCompactText({ text }: { text: string }) {
+function HistoryCompactText({
+  text,
+  textWeight,
+}: {
+  text: string;
+  textWeight: "medium" | "normal";
+}) {
   return (
     <div
-      className="w-full max-w-full min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm font-medium leading-6 text-foreground"
+      className={cn(
+        "w-full max-w-full min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-6 text-foreground",
+        textWeight === "medium" ? "font-medium" : "font-normal",
+      )}
       data-testid="history-message-text"
     >
       <WechatEmojiText text={normalizeHistoryText(text)} />

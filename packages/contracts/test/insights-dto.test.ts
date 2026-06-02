@@ -169,6 +169,14 @@ describe("insights DTOs", () => {
         analysisStatus: "ready",
         currentSnapshotId: "snapshot-1",
         entities: [],
+        evidenceItems: [
+          {
+            dimensionType: "problem_resolution",
+            evidenceRole: "customer_problem",
+            messageId: "9001",
+            reason: "客户明确询问退款进度",
+          },
+        ],
         evidenceMessages: [
           {
             contentText: "退款什么时候到账？",
@@ -180,6 +188,19 @@ describe("insights DTOs", () => {
           },
         ],
         evidenceMessageRecords: [
+          {
+            content: { text: "退款什么时候到账？" },
+            contentType: "text",
+            conversationId: "301",
+            customerId: "customer-1",
+            messageId: "external-msg-9001",
+            seatId: "seat-1",
+            senderType: "customer",
+            seq: 9001,
+            status: "sent",
+          },
+        ],
+        sessionMessageRecords: [
           {
             content: { text: "退款什么时候到账？" },
             contentType: "text",

@@ -140,6 +140,14 @@ function createRepository(
           sentiment: "negative",
         },
       ],
+      evidenceItems: [
+        {
+          dimensionType: "problem_resolution",
+          evidenceRole: "customer_problem",
+          messageId: "9002",
+          reason: "客户说明还没收到货且物流不更新",
+        },
+      ],
       faqCandidates: [
         {
           answerHint: "先核实物流停滞节点，再告知预计回复时间",
@@ -244,6 +252,34 @@ function createRepository(
       },
     ]),
     listEvidenceMessageRecords: vi.fn(async () => [
+      {
+        content: { text: "帮您催一下快递" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_000_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9001",
+        seatId: "seat-1",
+        senderName: "客服一号",
+        senderType: "agent",
+        seq: 9001,
+        status: "sent",
+      },
+      {
+        content: { text: "还没收到货，物流也不更新" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_100_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9002",
+        seatId: "seat-1",
+        senderName: "张三",
+        senderType: "customer",
+        seq: 9002,
+        status: "sent",
+      },
+    ]),
+    listSessionMessageRecords: vi.fn(async () => [
       {
         content: { text: "帮您催一下快递" },
         contentType: "text",
@@ -523,6 +559,13 @@ describe("InsightsService", () => {
     expect(result.evidenceMessageRecords.map((item) => item.messageId)).toEqual([
       "external-msg-9001",
       "external-msg-9002",
+    ]);
+    expect(result.sessionMessageRecords.map((item) => item.seq)).toEqual([9001, 9002]);
+    expect(result.evidenceItems).toEqual([
+      expect.objectContaining({
+        evidenceRole: "customer_problem",
+        messageId: "9002",
+      }),
     ]);
     expect(result.problemResolution).toMatchObject({
       evidenceMessageIds: ["9001", "9002"],

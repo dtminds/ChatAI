@@ -139,6 +139,13 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
   const record = isRecord(value) ? value : {};
   const summary = isRecord(record.summary) ? record.summary : {};
   const problem = isRecord(record.problemResolution) ? record.problemResolution : {};
+  const problemEvidence = readEvidenceReferences(problem, "evidence");
+  const problemEvidenceMessageIds = Array.from(
+    new Set([
+      ...problemEvidence.map((item) => item.messageId),
+      ...readStringArray(problem, "evidenceMessageIds"),
+    ]),
+  );
 
   return {
     actionItems: readArray(record.actionItems).map((item) => ({
@@ -170,7 +177,8 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
     })),
     problemResolution: {
       confidence: readNumber(problem, "confidence"),
-      evidenceMessageIds: readStringArray(problem, "evidenceMessageIds"),
+      evidence: problemEvidence,
+      evidenceMessageIds: problemEvidenceMessageIds,
       problemDetected: readBoolean(problem, "problemDetected"),
       problemSummary: readString(problem, "problemSummary"),
       resolutionStatus: readResolutionStatus(readString(problem, "resolutionStatus")),
@@ -266,6 +274,18 @@ function readStringArray(record: unknown, key: string) {
     : [];
 }
 
+function readEvidenceReferences(record: unknown, key: string) {
+  if (!isRecord(record) || !Array.isArray(record[key])) {
+    return [];
+  }
+
+  return record[key].filter(isRecord).map((item) => ({
+    evidenceRole: readEvidenceRole(readString(item, "evidenceRole") || readString(item, "role")),
+    messageId: readString(item, "messageId") || readString(item, "sourceMessageId"),
+    reason: readOptionalString(item, "reason"),
+  })).filter((item) => item.messageId);
+}
+
 function readNumber(record: unknown, key: string) {
   const value = isRecord(record) ? Number(record[key]) : 0;
 
@@ -290,6 +310,20 @@ function readPriority(value: string) {
   }
 
   return "medium";
+}
+
+function readEvidenceRole(value: string) {
+  if (
+    value === "customer_problem" ||
+    value === "agent_solution" ||
+    value === "closure_signal" ||
+    value === "unresolved_signal" ||
+    value === "primary"
+  ) {
+    return value;
+  }
+
+  return "primary";
 }
 
 function readPolarity(value: string) {

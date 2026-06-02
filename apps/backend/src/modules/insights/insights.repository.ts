@@ -104,6 +104,8 @@ type DetailQueryRow = CurrentSessionQueryRow & {
 type DimensionEvidenceRow = {
   dimension_record_id: number | string | null;
   dimension_type: string;
+  evidence_role: string;
+  reason: string | null;
   source_message_id: number | string;
 };
 
@@ -1159,6 +1161,13 @@ export class InsightsRepository implements InsightsRepositoryPort {
       actionItems,
       current,
       entities,
+      evidenceItems: dimensionEvidence.map((row) => ({
+        dimensionRecordId: row.dimension_record_id == null ? undefined : String(row.dimension_record_id),
+        dimensionType: row.dimension_type,
+        evidenceRole: row.evidence_role,
+        messageId: String(row.source_message_id),
+        reason: row.reason ?? undefined,
+      })),
       faqCandidates,
       intents,
       problemEvidenceMessageIds: current.problemEvidenceMessageIds,
@@ -1207,6 +1216,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .select([
         "dimension_record_id",
         "dimension_type",
+        "evidence_role",
+        "reason",
         "source_message_id",
       ])
       .where("uid", "=", scope.uid)
@@ -1367,6 +1378,30 @@ export class InsightsRepository implements InsightsRepositoryPort {
     );
 
     return await this.mapMessageRows(target, messageRows);
+  }
+
+  async listSessionMessageRecords(
+    scope: InsightsUidScope,
+    sessionId: string,
+  ): Promise<WorkbenchMessageDto[]> {
+    const targetSessionId = parsePositiveInteger(sessionId);
+
+    if (targetSessionId == null) {
+      return [];
+    }
+
+    const target = await this.findInsightConversationBySession(scope, targetSessionId);
+
+    if (!target) {
+      return [];
+    }
+
+    const rows = await this.buildSessionMessageRowsQuery(target)
+      .orderBy("session_message.source_message_time", "asc")
+      .orderBy("session_message.source_message_id", "asc")
+      .execute() as MessageRow[];
+
+    return await this.mapMessageRows(target, rows);
   }
 
   async listMessageContext(

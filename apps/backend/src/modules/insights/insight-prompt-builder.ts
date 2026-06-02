@@ -68,6 +68,9 @@ function buildSystemPrompt() {
     "只输出一个 JSON object，不要输出 Markdown、解释文字或代码块。",
     "所有 evidenceMessageIds 必须来自输入 messages.sourceMessageId；没有证据时输出空数组，不允许编造消息 ID。",
     "问题是否解决只判断当前逻辑会话内是否解决，不要推断会话外后续处理。",
+    "summary.customerIntent 必须是 2-10 个字的短意图标签，例如“产品咨询”“物流异常”“退款咨询”，不要写完整句子，不要复述 problemSummary。",
+    "problemResolution.problemSummary 才用于描述客户提出的具体问题，可写成一句完整摘要。",
+    "problemResolution.evidence 必须说明关键证据消息、证据角色和引用原因，用于前端高亮对话消息。",
     "标签只能从 tenantContext.labelConfigs 中选择；没有命中的标签时 tags 输出空数组。",
     "质检只能评估 tenantContext.qaRuleConfigs 中启用的规则；没有配置规则时 qaFindings 输出空数组。",
     "实体优先匹配 tenantContext.entityDictionary；可提取消息里明确出现但词库未配置的实体，entityType 使用 custom。",
@@ -117,7 +120,14 @@ function buildUserPrompt(messages: AiMessageInput[], context: InsightPromptConte
       ],
       problemResolution: {
         confidence: 0.8,
-        evidenceMessageIds: ["sourceMessageId"],
+        evidence: [
+          {
+            evidenceRole: "customer_problem | agent_solution | closure_signal | unresolved_signal",
+            messageId: "sourceMessageId",
+            reason: "这条消息作为证据的原因",
+          },
+        ],
+        evidenceMessageIds: ["兼容字段，填入 evidence 中所有 messageId"],
         problemDetected: true,
         problemSummary: "客户提到的问题；没有问题时为空字符串",
         resolutionStatus: "resolved | partially_resolved | unresolved | no_customer_problem | unknown",
@@ -144,7 +154,7 @@ function buildUserPrompt(messages: AiMessageInput[], context: InsightPromptConte
       ],
       summary: {
         confidence: 0.8,
-        customerIntent: "客户主要诉求",
+        customerIntent: "短意图标签",
         followUp: "可选，后续建议",
         processSummary: "客服处理过程摘要",
         resultSummary: "当前结果摘要",

@@ -76,6 +76,13 @@ describe("LLM provider config", () => {
                     intents: [],
                     problemResolution: {
                       confidence: 0.8,
+                      evidence: [
+                        {
+                          evidenceRole: "customer_problem",
+                          messageId: "1",
+                          reason: "客户提出咨询问题",
+                        },
+                      ],
                       evidenceMessageIds: ["1"],
                       problemDetected: false,
                       problemSummary: "",
@@ -147,7 +154,19 @@ describe("LLM provider config", () => {
                       intents: [],
                       problemResolution: {
                         confidence: 0.8,
-                        evidenceMessageIds: ["1"],
+                        evidence: [
+                          {
+                            evidenceRole: "customer_problem",
+                            messageId: "1",
+                            reason: "客户反馈物流异常",
+                          },
+                          {
+                            evidenceRole: "random_role",
+                            messageId: "2",
+                            reason: "模型返回了非法证据角色",
+                          },
+                        ],
+                        evidenceMessageIds: ["1", "2"],
                         problemDetected: true,
                         problemSummary: "客户反馈物流异常",
                         resolutionStatus: "unresolved",
@@ -200,6 +219,16 @@ describe("LLM provider config", () => {
       }),
     ).resolves.toMatchObject({
       problemResolution: {
+        evidence: [
+          expect.objectContaining({
+            evidenceRole: "customer_problem",
+            messageId: "1",
+          }),
+          expect.objectContaining({
+            evidenceRole: "primary",
+            messageId: "2",
+          }),
+        ],
         resolutionStatus: "unresolved",
       },
     });

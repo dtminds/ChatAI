@@ -160,6 +160,7 @@ export type InsightAnalysisOutput = {
   }>;
   problemResolution: {
     confidence: number;
+    evidence: InsightEvidenceReference[];
     evidenceMessageIds: string[];
     problemDetected: boolean;
     problemSummary: string;
@@ -200,6 +201,12 @@ export type InsightAnalysisOutput = {
     tagCode: string;
     tagName: string;
   }>;
+};
+
+export type InsightEvidenceReference = {
+  evidenceRole: string;
+  messageId: string;
+  reason?: string;
 };
 
 export type SaveAnalysisResultInput = {
@@ -741,6 +748,28 @@ function normalizeEvidenceIds(output: InsightAnalysisOutput, validIds: Set<strin
 
     return Array.from(new Set(valid));
   };
+  const cleanEvidence = (dimension: string, evidence: InsightEvidenceReference[]) => {
+    const seen = new Set<string>();
+    const valid: InsightEvidenceReference[] = [];
+
+    for (const item of evidence) {
+      if (!validIds.has(item.messageId)) {
+        validationWarnings.push(`${dimension} evidence message ${item.messageId} is not in current logical session`);
+        continue;
+      }
+
+      const key = `${item.messageId}:${item.evidenceRole}:${item.reason ?? ""}`;
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      valid.push(item);
+    }
+
+    return valid;
+  };
 
   return {
     output: {
@@ -763,6 +792,10 @@ function normalizeEvidenceIds(output: InsightAnalysisOutput, validIds: Set<strin
       })),
       problemResolution: {
         ...output.problemResolution,
+        evidence: cleanEvidence(
+          "problem_resolution",
+          output.problemResolution.evidence,
+        ),
         evidenceMessageIds: clean(
           "problem_resolution",
           output.problemResolution.evidenceMessageIds,

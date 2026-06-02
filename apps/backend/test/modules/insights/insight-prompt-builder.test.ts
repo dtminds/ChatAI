@@ -58,6 +58,9 @@ describe("insight prompt builder", () => {
     expect(serialized).toContain("售后跟进");
     expect(serialized).toContain("玻尿酸补水面膜");
     expect(serialized).toContain("resolutionStatus");
+    expect(serialized).toContain("2-10 个字的短意图标签");
+    expect(serialized).toContain("customer_problem");
+    expect(serialized).toContain("这条消息作为证据的原因");
     expect(serialized).toContain("risks 必须输出空数组");
     expect(serialized).toContain("9001");
   });

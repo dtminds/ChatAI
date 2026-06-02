@@ -396,6 +396,18 @@ describe("InsightsWorkerService", () => {
         ],
         problemResolution: {
           confidence: 0.82,
+          evidence: [
+            {
+              evidenceRole: "customer_problem",
+              messageId: "9001",
+              reason: "客户反馈物流异常",
+            },
+            {
+              evidenceRole: "unresolved_signal",
+              messageId: "9999",
+              reason: "非法证据",
+            },
+          ],
           evidenceMessageIds: ["9001", "9999"],
           problemDetected: true,
           problemSummary: "客户反馈物流异常",

@@ -222,6 +222,14 @@ export const InsightProblemResolutionSchema = Type.Object({
   unresolvedReason: Type.Optional(Type.String()),
 });
 
+export const InsightEvidenceItemSchema = Type.Object({
+  dimensionRecordId: Type.Optional(Type.String()),
+  dimensionType: Type.String(),
+  evidenceRole: Type.String(),
+  messageId: Type.String(),
+  reason: Type.Optional(Type.String()),
+});
+
 export const InsightTagSchema = Type.Object({
   confidence: Type.Number(),
   evidenceMessageIds: Type.Array(Type.String()),
@@ -269,6 +277,7 @@ export const InsightDetailResponseSchema = Type.Object({
   analysisStatus: InsightAnalysisStatusSchema,
   currentSnapshotId: Type.String(),
   entities: Type.Array(InsightDetailEntitySchema),
+  evidenceItems: Type.Array(InsightEvidenceItemSchema),
   evidenceMessageRecords: Type.Array(Type.Any()),
   evidenceMessages: Type.Array(InsightEvidenceMessageContextSchema),
   faqCandidates: Type.Array(InsightFaqCandidateSchema),
@@ -288,6 +297,7 @@ export const InsightDetailResponseSchema = Type.Object({
   })),
   sentiment: Type.Array(InsightSentimentSchema),
   session: InsightSessionMetaSchema,
+  sessionMessageRecords: Type.Array(Type.Any()),
   summary: InsightSummarySchema,
   tags: Type.Array(InsightTagSchema),
 });

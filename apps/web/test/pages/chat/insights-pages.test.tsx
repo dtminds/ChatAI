@@ -228,6 +228,20 @@ function installInsightMocks() {
         sentiment: "negative",
       },
     ],
+    evidenceItems: [
+      {
+        dimensionType: "problem_resolution",
+        evidenceRole: "customer_problem",
+        messageId: "9002",
+        reason: "客户明确反馈物流不更新",
+      },
+      {
+        dimensionType: "problem_resolution",
+        evidenceRole: "unresolved_signal",
+        messageId: "9002",
+        reason: "当前会话未确认物流处理结果",
+      },
+    ],
     evidenceMessages: [
       {
         contentText: "帮您催一下快递",
@@ -247,6 +261,36 @@ function installInsightMocks() {
       },
     ],
     evidenceMessageRecords: [
+      {
+        content: { text: "帮您催一下快递" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_000_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9001",
+        seatId: "seat-1",
+        senderAvatar: "https://example.com/agent-1.png",
+        senderName: "客服一号",
+        senderType: "agent",
+        seq: 9001,
+        status: "sent",
+      },
+      {
+        content: { text: "还没收到货，物流也不更新" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_100_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9002",
+        seatId: "seat-1",
+        senderAvatar: "https://example.com/customer-1.png",
+        senderName: "张三",
+        senderType: "customer",
+        seq: 9002,
+        status: "sent",
+      },
+    ],
+    sessionMessageRecords: [
       {
         content: { text: "帮您催一下快递" },
         contentType: "text",
@@ -487,8 +531,10 @@ describe("conversation insights pages", () => {
 
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
     const detailDialog = screen.getByRole("dialog", { name: "洞察详情" });
-    expect(screen.getByRole("region", { name: "洞察结论" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "证据消息" })).toBeInTheDocument();
+    const insightRegion = screen.getByRole("region", { name: "洞察结论" });
+    const conversationRegion = screen.getByRole("region", { name: "本轮对话" });
+    expect(insightRegion).toBeInTheDocument();
+    expect(conversationRegion).toBeInTheDocument();
     expect(within(detailDialog).getAllByRole("img", { name: "张三" }).length).toBeGreaterThan(0);
     expect(within(detailDialog).getAllByRole("img", { name: "客服一号" }).length).toBeGreaterThan(0);
     expect(within(detailDialog).queryByText("已完成")).not.toBeInTheDocument();
@@ -496,21 +542,22 @@ describe("conversation insights pages", () => {
     expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
     expect(screen.getByText("物流停滞怎么处理")).toBeInTheDocument();
     expect(screen.getAllByText("还没收到货，物流也不更新").length).toBeGreaterThan(0);
+    expect(within(conversationRegion).getByText("客户问题")).toBeInTheDocument();
+    expect(within(conversationRegion).getByText("客户问题")).toHaveAttribute(
+      "title",
+      expect.stringContaining("客户明确反馈物流不更新"),
+    );
+    expect(within(detailDialog).queryByText("2 条证据")).not.toBeInTheDocument();
+    expect(within(detailDialog).queryByText("+1")).not.toBeInTheDocument();
+    expect(within(insightRegion).queryByText("判定依据")).not.toBeInTheDocument();
+    expect(within(insightRegion).queryByText("客户明确反馈物流不更新")).not.toBeInTheDocument();
+    expect(within(insightRegion).queryByText("当前会话未确认物流处理结果")).not.toBeInTheDocument();
+    expect(within(conversationRegion).queryByText("客户明确反馈物流不更新")).not.toBeInTheDocument();
+    expect(within(conversationRegion).queryByText("当前会话未确认物流处理结果")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("history-message-item").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole("link", { name: "跳转聊天" })).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "查看证据上下文" }));
-
-    await waitFor(() => {
-      expect(serviceMocks.getInsightMessageContext).toHaveBeenCalledWith({
-        conversationId: "301",
-        messageId: "9002",
-      });
-    });
-    expect(await screen.findByRole("heading", { name: "消息上下文" })).toBeInTheDocument();
-    expect(screen.getByText("您好，我帮您看一下")).toBeInTheDocument();
-    expect(screen.getAllByText("还没收到货，物流也不更新").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("insight-evidence-context-target")).toHaveTextContent("证据");
+    expect(screen.queryByRole("button", { name: "查看上下文" })).not.toBeInTheDocument();
+    expect(serviceMocks.getInsightMessageContext).not.toHaveBeenCalled();
   });
 
   it("renders quality problem list and agent report", async () => {

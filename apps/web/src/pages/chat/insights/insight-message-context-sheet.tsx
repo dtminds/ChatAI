@@ -36,7 +36,7 @@ export function InsightMessageContextSheet({
           <SheetDescription>
             {context
               ? `会话 ${context.conversationId} · 前后各 ${context.contextBefore} 条`
-              : "查看证据消息前后的原始对话"}
+              : "查看指定消息前后的原始对话"}
           </SheetDescription>
         </SheetHeader>
 
@@ -76,13 +76,13 @@ export function InsightMessageContextSheet({
                 </div>
               ) : (
                 <div className="rounded-[8px] border border-dashed bg-background/70 p-6 text-center text-sm text-muted-foreground">
-                  未找到证据消息上下文
+                  未找到消息上下文
                 </div>
               )}
             </div>
           ) : (
             <div className="px-6 py-8 text-sm text-muted-foreground">
-              请选择一条证据消息查看上下文
+              请选择一条消息查看上下文
             </div>
           )}
         </div>

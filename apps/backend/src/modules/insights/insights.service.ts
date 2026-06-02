@@ -83,6 +83,7 @@ export type InsightDetailRow = {
   actionItems: InsightDetailResponse["actionItems"];
   current: InsightCurrentSessionRow;
   entities: InsightDetailResponse["entities"];
+  evidenceItems: InsightDetailResponse["evidenceItems"];
   faqCandidates: InsightDetailResponse["faqCandidates"];
   intents: InsightDetailResponse["intents"];
   problemEvidenceMessageIds: string[];
@@ -130,6 +131,10 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     sessionId: string,
     messageIds: string[],
+  ): Promise<WorkbenchMessageDto[]>;
+  listSessionMessageRecords(
+    scope: InsightsUidScope,
+    sessionId: string,
   ): Promise<WorkbenchMessageDto[]>;
   listMessageContext(
     scope: InsightsUidScope,
@@ -335,12 +340,16 @@ export class InsightsService {
         detail.problemEvidenceMessageIds,
       ),
     );
+    const sessionMessageRecords = sortWorkbenchMessagesBySeq(
+      await this.repository.listSessionMessageRecords(scope, sessionId),
+    );
 
     return {
       actionItems: detail.actionItems,
       analysisStatus: detail.current.analysisStatus,
       currentSnapshotId: detail.current.currentSnapshotId,
       entities: detail.entities,
+      evidenceItems: detail.evidenceItems,
       evidenceMessageRecords,
       evidenceMessages,
       faqCandidates: detail.faqCandidates,
@@ -367,6 +376,7 @@ export class InsightsService {
         sessionId: detail.current.sessionId,
         startedAt: detail.current.startedAt,
       },
+      sessionMessageRecords,
       summary: {
         customerIntent: detail.current.summaryCustomerIntent,
         followUp: detail.current.summaryFollowUp ?? undefined,
@@ -398,7 +408,7 @@ export class InsightsService {
         String(message.seq) === context.targetMessageId
       )
     ) {
-      throw new NotFoundError("INSIGHT_MESSAGE_NOT_FOUND", "证据消息不存在");
+      throw new NotFoundError("INSIGHT_MESSAGE_NOT_FOUND", "消息不存在");
     }
 
     return context;

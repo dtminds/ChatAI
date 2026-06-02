@@ -262,8 +262,9 @@ function ResolutionDistribution({
 }: {
   overview: InsightsOverviewResponse | undefined;
 }) {
-  const data = useMemo(() => buildResolutionData(overview), [overview]);
+  const data = useMemo(() => overview ? buildResolutionData(overview) : [], [overview]);
   const total = data.reduce((sum, item) => sum + item.value, 0);
+  const isReady = Boolean(overview);
 
   return (
     <section className="flex min-h-[260px] flex-col rounded-xl border bg-card p-4">
@@ -294,7 +295,7 @@ function ResolutionDistribution({
             </PieChart>
           </ResponsiveContainer>
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-semibold">{formatNumber(total)}</span>
+            <span className="text-2xl font-semibold">{isReady ? formatNumber(total) : "-"}</span>
             <span className="text-xs text-muted-foreground">逻辑会话</span>
           </div>
         </div>
@@ -403,6 +404,7 @@ function TrendPanel({
                 <Area
                   dataKey={activeMetric}
                   fill="url(#insightTrendArea)"
+                  key={activeMetric}
                   stroke="#5b5ff0"
                   strokeWidth={2.4}
                   type="monotone"

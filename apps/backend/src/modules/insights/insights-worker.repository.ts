@@ -828,7 +828,15 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       snapshot_id: snapshotId,
       unresolved_reason: output.problemResolution.unresolvedReason ?? null,
     }).executeTakeFirst();
-    await this.insertEvidenceRows(input, snapshotId, "problem_resolution", null, output.problemResolution.evidenceMessageIds);
+    await this.insertEvidenceRows(
+      input,
+      snapshotId,
+      "problem_resolution",
+      null,
+      output.problemResolution.evidence.length > 0
+        ? output.problemResolution.evidence
+        : output.problemResolution.evidenceMessageIds,
+    );
 
     for (const item of output.sentiment) {
       const id = await this.insertAndGetId("xy_wap_embed_session_sentiment", {
@@ -1012,19 +1020,23 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     snapshotId: number,
     dimensionType: string,
     dimensionRecordId: number | null,
-    evidenceMessageIds: string[],
+    evidenceMessageIds: Array<string | { evidenceRole: string; messageId: string; reason?: string }>,
   ) {
-    const rows = evidenceMessageIds.map((messageId) => ({
-      conversation_id: -1,
-      dimension_record_id: dimensionRecordId,
-      dimension_type: dimensionType,
-      evidence_role: "primary",
-      reason: null,
-      session_id: parsePositiveInteger(input.job.sessionId) ?? -1,
-      snapshot_id: snapshotId,
-      source_message_id: parsePositiveInteger(messageId) ?? -1,
-      uid: input.job.uid,
-    }));
+    const rows = evidenceMessageIds.map((evidence) => {
+      const messageId = typeof evidence === "string" ? evidence : evidence.messageId;
+
+      return {
+        conversation_id: -1,
+        dimension_record_id: dimensionRecordId,
+        dimension_type: dimensionType,
+        evidence_role: typeof evidence === "string" ? "primary" : evidence.evidenceRole,
+        reason: typeof evidence === "string" ? null : evidence.reason ?? null,
+        session_id: parsePositiveInteger(input.job.sessionId) ?? -1,
+        snapshot_id: snapshotId,
+        source_message_id: parsePositiveInteger(messageId) ?? -1,
+        uid: input.job.uid,
+      };
+    });
 
     if (rows.length === 0) {
       return;

@@ -50,7 +50,7 @@ import { getInsightOverview } from "./api/insights-service";
 import { ResolutionBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
-import { InsightsLayout } from "./insights-layout";
+import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import { formatInsightTime } from "./insights-utils";
 import { useInsightDetail } from "./use-insight-detail";
 
@@ -177,8 +177,11 @@ function OverviewHeader({
   return (
     <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="space-y-2">
-        <h2 className="text-[22px] font-semibold leading-tight">会话数据总览</h2>
-        <p className="text-sm text-muted-foreground">
+        <InsightsPageHeader
+          description={`当前范围内有 ${overview?.totals.logicalSessions ?? "-"} 个逻辑会话，${overview?.totals.consultingCustomers ?? "-"} 位咨询用户，最近一天新增 ${lastPoint?.logicalSessions ?? "-"} 个会话`}
+          title="会话数据总览"
+        />
+        <p className="sr-only">
           当前范围内有{" "}
           <span className="font-medium text-foreground">
             {overview?.totals.logicalSessions ?? "-"} 个逻辑会话

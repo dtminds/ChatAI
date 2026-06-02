@@ -9,7 +9,7 @@ import {
 import { PriorityBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
-import { InsightsLayout } from "./insights-layout";
+import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import {
   formatActionStatus,
   formatInsightTime,
@@ -40,68 +40,68 @@ export function InsightsFollowUpsPage() {
 
   return (
     <InsightsLayout title="待处理">
-      <div className="rounded-[8px] border bg-background">
-        <div className="flex items-center justify-between border-b px-5 py-4">
-          <div>
-            <h2 className="text-base font-semibold">行动队列</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              风险、跟进和异常事项只在洞察模块内标记状态
-            </p>
-          </div>
-          <Badge variant="outline">{followUps?.total ?? 0} 项</Badge>
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <InsightsPageHeader
+            description="集中处理风险、跟进和异常事项，状态只在洞察模块内生效"
+            title="待处理"
+          />
+          <Badge className="mt-1" variant="outline">{followUps?.total ?? 0} 项</Badge>
         </div>
 
-        <div className="divide-y">
-          {(followUps?.items ?? []).map((item) => (
-            <article className="grid gap-3 px-5 py-4" key={item.actionItemId}>
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <PriorityBadge priority={item.priority} />
-                    <Badge variant="outline">{formatActionStatus(item.status)}</Badge>
-                    <h3 className="text-sm font-medium">{item.title}</h3>
+        <div className="rounded-[8px] border bg-background">
+          <div className="divide-y">
+            {(followUps?.items ?? []).map((item) => (
+              <article className="grid gap-3 px-5 py-4" key={item.actionItemId}>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <PriorityBadge priority={item.priority} />
+                      <Badge variant="outline">{formatActionStatus(item.status)}</Badge>
+                      <h3 className="text-sm font-medium">{item.title}</h3>
+                    </div>
+                    <p className="mt-2 text-sm text-foreground">{item.reason}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                      <InsightPerson
+                        avatarUrl={item.customerAvatarUrl}
+                        name={item.customerName}
+                      />
+                      <span>{item.actionType}</span>
+                      <span>{formatInsightTime(item.lastCustomerMessageAt)}</span>
+                    </div>
                   </div>
-                  <p className="mt-2 text-sm text-foreground">{item.reason}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                    <InsightPerson
-                      avatarUrl={item.customerAvatarUrl}
-                      name={item.customerName}
-                    />
-                    <span>{item.actionType}</span>
-                    <span>{formatInsightTime(item.lastCustomerMessageAt)}</span>
-                  </div>
-                </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    className="h-8 rounded-[8px]"
-                    onClick={() => void detail.openDetail(item.sessionId)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    查看证据
-                  </Button>
-                  <Button
-                    className="h-8 rounded-[8px]"
-                    disabled={item.status !== "open"}
-                    onClick={() => void updateStatus(item.actionItemId, "done")}
-                    size="sm"
-                  >
-                    标记完成
-                  </Button>
-                  <Button
-                    className="h-8 rounded-[8px]"
-                    disabled={item.status !== "open"}
-                    onClick={() => void updateStatus(item.actionItemId, "dismissed")}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    忽略
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      className="h-8 rounded-[8px]"
+                      onClick={() => void detail.openDetail(item.sessionId)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      查看证据
+                    </Button>
+                    <Button
+                      className="h-8 rounded-[8px]"
+                      disabled={item.status !== "open"}
+                      onClick={() => void updateStatus(item.actionItemId, "done")}
+                      size="sm"
+                    >
+                      标记完成
+                    </Button>
+                    <Button
+                      className="h-8 rounded-[8px]"
+                      disabled={item.status !== "open"}
+                      onClick={() => void updateStatus(item.actionItemId, "dismissed")}
+                      size="sm"
+                      variant="ghost"
+                    >
+                      忽略
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            ))}
+          </div>
         </div>
       </div>
 

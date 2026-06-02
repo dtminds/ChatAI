@@ -77,7 +77,7 @@ import {
   updateInsightQaRuleConfigStatus,
   updateInsightSessionizationSettings,
 } from "./api/insights-service";
-import { InsightsLayout } from "./insights-layout";
+import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 
 type MutableCollection = "entity" | "label" | "qa";
 
@@ -194,6 +194,7 @@ export function InsightsSettingsPage() {
   const [rescanFrom, setRescanFrom] = useState(() => toDateTimeLocalValue(Date.now() - 24 * 60 * 60 * 1000));
   const [rescanState, setRescanState] = useState<string>();
   const [settings, setSettings] = useState<InsightSettingsResponse>();
+  const [settingsTab, setSettingsTab] = useState("policy");
   const canAccessSettings = role === "owner" || role === "admin";
 
   useEffect(() => {
@@ -439,17 +440,34 @@ export function InsightsSettingsPage() {
 
   return (
     <InsightsLayout title="洞察配置">
-      <div className="space-y-4">
+      <div className="space-y-5">
+        <InsightsPageHeader
+          description="调整洞察策略、标签、质检规则和实体词库，影响后续会话分析"
+          title="洞察配置"
+        />
         <SettingsSummary settings={currentSettings} />
 
-        <Tabs className="gap-4" defaultValue="policy">
-          <TabsList className="h-auto w-full justify-start gap-8 overflow-x-auto rounded-none border-b border-divider bg-transparent p-0 text-muted-foreground">
-            <SettingsTabTrigger value="policy">洞察策略</SettingsTabTrigger>
-            <SettingsTabTrigger value="labels">标签体系</SettingsTabTrigger>
-            <SettingsTabTrigger value="qa">质检规则</SettingsTabTrigger>
-            <SettingsTabTrigger value="entities">实体词库</SettingsTabTrigger>
-            <SettingsTabTrigger value="rescan">历史重刷</SettingsTabTrigger>
-          </TabsList>
+        <Tabs className="gap-4" onValueChange={setSettingsTab} value={settingsTab}>
+          <div className="flex items-center justify-between gap-4 border-b border-divider">
+            <TabsList className="h-auto min-w-0 flex-1 justify-start gap-8 overflow-x-auto rounded-none bg-transparent p-0 text-muted-foreground">
+              <SettingsTabTrigger value="policy">洞察策略</SettingsTabTrigger>
+              <SettingsTabTrigger value="labels">标签体系</SettingsTabTrigger>
+              <SettingsTabTrigger value="qa">质检规则</SettingsTabTrigger>
+              <SettingsTabTrigger value="entities">实体词库</SettingsTabTrigger>
+              <SettingsTabTrigger value="rescan">历史重刷</SettingsTabTrigger>
+            </TabsList>
+            {settingsTab === "policy" ? (
+              <Button
+                className="mb-2 shrink-0"
+                disabled={isLoading || pendingKey === "insight-policy"}
+                form="insight-policy-form"
+                size="sm"
+                type="submit"
+              >
+                保存
+              </Button>
+            ) : null}
+          </div>
 
           <TabsContent value="policy">
             <InsightPolicyPanel
@@ -614,7 +632,6 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
 
   return (
     <FormPanel
-      disabled={disabled}
       onSubmit={() =>
         onSubmit({
           analysisPolicy: {
@@ -627,7 +644,6 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
             lateArrivalWindowMinutes: sessionizationForm.analysisDelayMinutes,
           },
         })}
-      title="洞察策略"
     >
       <div>
         <h3 className="text-sm font-semibold text-foreground">服务节奏</h3>
@@ -944,25 +960,18 @@ function nearestOption(value: number, options: readonly number[]) {
 
 function FormPanel({
   children,
-  disabled,
   onSubmit,
-  title,
 }: {
   children: ReactNode;
-  disabled: boolean;
   onSubmit: () => void;
-  title: string;
 }) {
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold">{title}</h2>
-        <Button disabled={disabled} onClick={onSubmit} size="sm">
-          保存
-        </Button>
-      </div>
-      <div>{children}</div>
-    </section>
+    <form className="space-y-4" id="insight-policy-form" onSubmit={(event) => {
+      event.preventDefault();
+      onSubmit();
+    }}>
+      {children}
+    </form>
   );
 }
 

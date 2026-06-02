@@ -469,7 +469,7 @@ describe("conversation insights pages", () => {
   it("renders overview navigation, metrics and detail evidence", async () => {
     renderRoute("/chat/insights");
 
-    expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /服务质检/ })).toHaveAttribute("href", "/chat/insights/quality");
     expect(screen.getByText("逻辑会话数")).toBeInTheDocument();
     expect(screen.getAllByText("22").length).toBeGreaterThan(0);

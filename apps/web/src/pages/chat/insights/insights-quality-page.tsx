@@ -22,7 +22,7 @@ import { getInsightQuality } from "./api/insights-service";
 import { SeverityBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
-import { InsightsLayout } from "./insights-layout";
+import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import {
   formatInsightTime,
   formatResolutionStatus,
@@ -70,6 +70,10 @@ export function InsightsQualityPage() {
   return (
     <InsightsLayout title="服务质检">
       <div className="space-y-5">
+        <InsightsPageHeader
+          description="按逻辑会话判断客户问题是否解决，辅助主管复核服务质量"
+          title="服务质检"
+        />
         <section className="rounded-[8px] border bg-background p-5">
           <div className="mb-4">
             <h2 className="text-base font-semibold">客户问题是否解决</h2>

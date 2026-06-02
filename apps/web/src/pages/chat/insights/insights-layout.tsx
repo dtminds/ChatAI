@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
   AiIdeaIcon,
-  Alert01Icon,
   Analytics02Icon,
   ArrowLeft02Icon,
   ClipboardCheckIcon,
@@ -57,8 +56,8 @@ export function InsightsLayout({
 }) {
   return (
     <div className="fixed inset-0 overflow-hidden bg-sidebar text-foreground">
-      <div className="grid h-full grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden max-lg:grid-cols-1">
-        <aside className="flex h-full min-h-0 flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 text-sidebar-foreground max-lg:hidden">
+      <div className="grid h-full grid-cols-[13.5rem_minmax(0,1fr)] overflow-hidden max-lg:grid-cols-1">
+        <aside className="flex h-full min-h-0 flex-col bg-sidebar px-4 py-5 text-sidebar-foreground max-lg:hidden">
           <Button
             asChild
             className="mb-5 h-10 justify-start rounded-[8px] px-2 text-[14px] font-normal text-muted-foreground hover:text-foreground"
@@ -101,31 +100,9 @@ export function InsightsLayout({
           </nav>
         </aside>
 
-        <main className="h-full min-h-0 overflow-hidden rounded-[14px_0_0_14px] bg-surface shadow max-lg:rounded-none">
-          <div className="flex h-full min-h-0 flex-col">
-            <header className="border-b bg-background/90 px-7 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <HugeiconsIcon icon={Alert01Icon} size={14} />
-                    质检结果用于主管辅助复核
-                  </div>
-                  <h1 className="mt-1 text-xl font-semibold tracking-normal">{title}</h1>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="rounded-[8px] border bg-background px-3 py-1.5">
-                    今日 00:00 至当前
-                  </span>
-                  <span className="rounded-[8px] border bg-background px-3 py-1.5">
-                    当前洞察
-                  </span>
-                </div>
-              </div>
-            </header>
-
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="mx-auto w-full max-w-[1360px] px-7 py-6">{children}</div>
-            </div>
+        <main className="h-full min-h-0 overflow-hidden rounded-[14px_0_0_14px] bg-surface pl-0 shadow max-lg:rounded-none">
+          <div className="h-full min-h-0 overflow-y-auto">
+            <div className="mx-auto w-full max-w-[1360px] px-8 py-8">{children}</div>
           </div>
         </main>
       </div>
@@ -136,15 +113,36 @@ export function InsightsLayout({
 export function InsightsPlaceholder({ title }: { title: string }) {
   return (
     <InsightsLayout title={title}>
-      <div className="flex min-h-[420px] items-center justify-center rounded-[8px] border border-dashed bg-background">
-        <div className="max-w-sm text-center">
-          <div className="mx-auto mb-3 flex size-11 items-center justify-center rounded-[8px] bg-muted text-muted-foreground">
-            <HugeiconsIcon icon={Analytics02Icon} size={22} />
+      <div className="space-y-5">
+        <InsightsPageHeader
+          description="该能力将在后续版本接入，目前先保留导航入口"
+          title={title}
+        />
+        <div className="flex min-h-[420px] items-center justify-center rounded-[8px] border border-dashed bg-background">
+          <div className="max-w-sm text-center">
+            <div className="mx-auto mb-3 flex size-11 items-center justify-center rounded-[8px] bg-muted text-muted-foreground">
+              <HugeiconsIcon icon={Analytics02Icon} size={22} />
+            </div>
+            <h2 className="text-lg font-semibold">功能建设中</h2>
+            <p className="mt-2 text-sm text-muted-foreground">后续版本接入</p>
           </div>
-          <h2 className="text-lg font-semibold">{title}</h2>
-          <p className="mt-2 text-sm text-muted-foreground">后续版本接入</p>
         </div>
       </div>
     </InsightsLayout>
+  );
+}
+
+export function InsightsPageHeader({
+  description,
+  title,
+}: {
+  description: string;
+  title: string;
+}) {
+  return (
+    <header>
+      <h1 className="text-[22px] font-semibold leading-tight text-foreground">{title}</h1>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+    </header>
   );
 }

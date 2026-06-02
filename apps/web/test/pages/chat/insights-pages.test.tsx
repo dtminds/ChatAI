@@ -562,9 +562,23 @@ describe("conversation insights pages", () => {
 
     expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
     expect(screen.getAllByText("洞察策略")[0]).toBeInTheDocument();
-    expect(screen.getByText("服务节奏")).toBeInTheDocument();
+    expect(screen.getByText("会话切分规则")).toBeInTheDocument();
+    expect(screen.queryByText("实时客服")).not.toBeInTheDocument();
+    expect(screen.queryByText("私域运营")).not.toBeInTheDocument();
+    expect(screen.queryByText("自定义")).not.toBeInTheDocument();
     expect(screen.getByText("未完结会话提前分析")).toBeInTheDocument();
     expect(screen.getByText("未完结会话分析频率")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("combobox", { name: "未完结会话分析频率" }));
+    const frequencyListbox = await screen.findByRole("listbox");
+    expect(within(frequencyListbox).getByText("标准（推荐）")).toBeInTheDocument();
+    expect(within(frequencyListbox).getByText("较快")).toBeInTheDocument();
+    expect(within(frequencyListbox).getByText("高频")).toBeInTheDocument();
+    expect(within(frequencyListbox).getByText("兼顾时效性和成本")).toBeInTheDocument();
+    expect(within(frequencyListbox).getByText("追求更优的时效性，成本略有提升")).toBeInTheDocument();
+    expect(within(frequencyListbox).getByText("更早发现风险和待办，对成本不敏感时开启")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
 
     await userEvent.click(screen.getByRole("combobox", { name: "单轮会话最长持续" }));
     expect(await screen.findByRole("option", { name: "2 小时" })).toBeInTheDocument();
@@ -579,11 +593,15 @@ describe("conversation insights pages", () => {
 
     await userEvent.click(screen.getByRole("switch", { name: "未完结会话提前分析" }));
     expect(screen.queryByText("未完结会话分析频率")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
 
     await userEvent.click(screen.getByRole("tab", { name: "质检规则" }));
     expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
+    expect(screen.getByRole("table").parentElement).not.toHaveClass("rounded-[8px]", "border");
 
     await userEvent.click(screen.getByRole("tab", { name: "标签体系" }));
+    expect(screen.getAllByText("标签体系")).toHaveLength(1);
+    expect(screen.getByRole("table").parentElement).not.toHaveClass("rounded-[8px]", "border");
     await userEvent.click(screen.getByRole("button", { name: "新增标签" }));
     expect(await screen.findByRole("dialog", { name: "新增标签" })).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("标签名称"), "高意向");

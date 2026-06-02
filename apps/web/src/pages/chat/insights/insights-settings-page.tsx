@@ -36,7 +36,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -57,7 +56,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { isRequestError } from "@/lib/request";
-import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import {
   createInsightEntityDictionaryItem,
@@ -110,71 +108,27 @@ const defaultSettings: InsightSettingsResponse = {
   },
 };
 
-const sessionizationPresets: Array<{
-  description: string;
-  label: string;
-  settings: InsightSessionizationSettings;
-  value: InsightSessionizationSettings["preset"];
-}> = [
-  {
-    description: "适合在线客服高频咨询，较快形成逻辑会话并触发分析",
-    label: "实时客服",
-    settings: {
-      analysisDelayMinutes: 10,
-      hardMaxDurationHours: 6,
-      idleTimeoutMinutes: 60,
-      lateArrivalWindowMinutes: 20,
-      preset: "realtime_service",
-    },
-    value: "realtime_service",
-  },
-  {
-    description: "适合私域长周期沟通，保留更长上下文后再切片",
-    label: "私域运营",
-    settings: {
-      analysisDelayMinutes: 20,
-      hardMaxDurationHours: 24,
-      idleTimeoutMinutes: 240,
-      lateArrivalWindowMinutes: 60,
-      preset: "private_domain",
-    },
-    value: "private_domain",
-  },
-  {
-    description: "手动设置切片参数，适合已经有明确服务节奏的团队",
-    label: "自定义",
-    settings: {
-      analysisDelayMinutes: 10,
-      hardMaxDurationHours: 8,
-      idleTimeoutMinutes: 120,
-      lateArrivalWindowMinutes: 30,
-      preset: "custom",
-    },
-    value: "custom",
-  },
-];
-
 const analysisFrequencyPresets = [
   {
-    description: "更快发现风险和待办，可能产生更多中间判断",
-    label: "较快",
-    liveMinIntervalMinutes: 5,
-    liveMinNewMeaningfulMessages: 10,
-    value: "fast",
+    description: "兼顾时效性和成本",
+    label: "标准（推荐）",
+    liveMinIntervalMinutes: 20,
+    liveMinNewMeaningfulMessages: 12,
+    value: "stable",
   },
   {
-    description: "兼顾及时性和稳定性，适合大多数客服场景",
-    label: "标准",
-    liveMinIntervalMinutes: 15,
-    liveMinNewMeaningfulMessages: 20,
+    description: "追求更优的时效性，成本略有提升",
+    label: "较快",
+    liveMinIntervalMinutes: 10,
+    liveMinNewMeaningfulMessages: 8,
     value: "standard",
   },
   {
-    description: "减少重复分析，适合长沟通和低频跟进",
-    label: "较稳",
-    liveMinIntervalMinutes: 30,
-    liveMinNewMeaningfulMessages: 30,
-    value: "stable",
+    description: "更早发现风险和待办，对成本不敏感时开启",
+    label: "高频",
+    liveMinIntervalMinutes: 5,
+    liveMinNewMeaningfulMessages: 4,
+    value: "fast",
   },
 ] as const;
 
@@ -456,17 +410,6 @@ export function InsightsSettingsPage() {
               <SettingsTabTrigger value="entities">实体词库</SettingsTabTrigger>
               <SettingsTabTrigger value="rescan">历史重刷</SettingsTabTrigger>
             </TabsList>
-            {settingsTab === "policy" ? (
-              <Button
-                className="mb-2 shrink-0"
-                disabled={isLoading || pendingKey === "insight-policy"}
-                form="insight-policy-form"
-                size="sm"
-                type="submit"
-              >
-                保存
-              </Button>
-            ) : null}
           </div>
 
           <TabsContent value="policy">
@@ -558,7 +501,7 @@ function SettingsTabTrigger({
 
 function SettingsSummary({ settings }: { settings: InsightSettingsResponse }) {
   const stats = [
-    { icon: BubbleChatIcon, label: "策略模式", value: presetText(settings.sessionization.preset) },
+    { icon: BubbleChatIcon, label: "切分规则", value: `${settings.sessionization.idleTimeoutMinutes} 分钟结束` },
     { icon: ChartAreaIcon, label: "提前分析", value: settings.analysisPolicy.liveAnalysisEnabled ? "开启" : "关闭" },
     { icon: Setting07Icon, label: "启用标签", value: `${settings.labelConfigs.filter((item) => item.enabled).length} 个` },
     { icon: ClipboardCheckIcon, label: "质检规则", value: `${settings.qaRuleConfigs.filter((item) => item.enabled).length} 条` },
@@ -600,9 +543,24 @@ function InsightPolicyPanel({
   const [sessionizationForm, setSessionizationForm] = useState(() =>
     normalizeSessionizationSettings(sessionization),
   );
+  const baselineAnalysisPolicy = useMemo(
+    () => normalizeAnalysisPolicyForCompare(analysisPolicy),
+    [analysisPolicy],
+  );
+  const baselineSessionization = useMemo(
+    () => normalizeSessionizationSettings(sessionization),
+    [sessionization],
+  );
+  const isDirty = !isInsightPolicySame({
+    analysisPolicy: analysisForm,
+    sessionization: sessionizationForm,
+  }, {
+    analysisPolicy: baselineAnalysisPolicy,
+    sessionization: baselineSessionization,
+  });
 
   useEffect(() => setAnalysisForm(analysisPolicy), [analysisPolicy]);
-  useEffect(() => setSessionizationForm(normalizeSessionizationSettings(sessionization)), [sessionization]);
+  useEffect(() => setSessionizationForm(baselineSessionization), [baselineSessionization]);
 
 function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationSettings, "preset">>(
     key: Key,
@@ -645,51 +603,7 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
           },
         })}
     >
-      <div>
-        <h3 className="text-sm font-semibold text-foreground">服务节奏</h3>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          选择最接近团队接待方式的策略，再微调结束和分析时机
-        </p>
-      </div>
-
-      <RadioGroup
-        aria-label="服务节奏"
-        className="grid gap-3 md:grid-cols-3"
-        onValueChange={(preset: InsightSessionizationSettings["preset"]) => {
-          const selectedPreset = sessionizationPresets.find((item) => item.value === preset);
-
-          setSessionizationForm((current) => selectedPreset
-            ? { ...selectedPreset.settings }
-            : { ...current, preset });
-        }}
-        value={sessionizationForm.preset}
-      >
-        {sessionizationPresets.map((preset) => {
-          const isSelected = sessionizationForm.preset === preset.value;
-
-          return (
-            <Label
-              className={cn(
-                "flex min-h-[118px] cursor-pointer items-start gap-3 rounded-[10px] border border-border px-4 py-4 transition-colors hover:border-primary/40",
-                isSelected && "border-primary bg-primary/5",
-              )}
-              key={preset.value}
-            >
-              <RadioGroupItem className="mt-0.5" value={preset.value} />
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-foreground">
-                  {preset.label}
-                </span>
-                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                  {preset.description}
-                </span>
-              </span>
-            </Label>
-          );
-        })}
-      </RadioGroup>
-
-      <div className="mt-5 rounded-[8px] border bg-background">
+      <SettingsSection title="会话切分规则">
         <PresetSelectRow
           description="空闲多久后结束本轮服务；越短越快出结果，越长上下文越完整"
           label="会话空闲多久后视为结束"
@@ -706,20 +620,6 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
           suffix="小时"
           value={sessionizationForm.hardMaxDurationHours}
         />
-        <BooleanSettingRow
-          checked={analysisForm.liveAnalysisEnabled}
-          description="会话未结束时提前生成风险、待办和问题判断"
-          label="未完结会话提前分析"
-          onChange={(liveAnalysisEnabled) => setAnalysisForm((current) => ({ ...current, liveAnalysisEnabled }))}
-        />
-        {analysisForm.liveAnalysisEnabled ? (
-          <FrequencyPresetRow
-            description="较快更及时，较稳可减少重复判断"
-            label="未完结会话分析频率"
-            onChange={updateFrequency}
-            value={detectAnalysisFrequencyPreset(analysisForm)}
-          />
-        ) : null}
         <PresetSelectRow
           description="会话结束后多久生成最终结果；等待越久越能覆盖补充消息"
           label="会话结束后多久生成最终结果"
@@ -728,12 +628,38 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
           suffix="分钟"
           value={sessionizationForm.analysisDelayMinutes}
         />
+      </SettingsSection>
+
+      <SettingsSection title="未完结会话">
+        <BooleanSettingRow
+          checked={analysisForm.liveAnalysisEnabled}
+          description="会话未结束时提前生成风险、待办和问题判断"
+          label="未完结会话提前分析"
+          onChange={(liveAnalysisEnabled) => setAnalysisForm((current) => ({ ...current, liveAnalysisEnabled }))}
+        />
+        {analysisForm.liveAnalysisEnabled ? (
+          <FrequencyPresetRow
+            description="高频更及时，标准可减少重复判断"
+            label="未完结会话分析频率"
+            onChange={updateFrequency}
+            value={detectAnalysisFrequencyPreset(analysisForm)}
+          />
+        ) : null}
+      </SettingsSection>
+
+      <SettingsSection title="低可信提示">
         <SliderSettingRow
           description="阈值越高，越多结果会提示人工复核"
           label="低可信提示阈值"
           onChange={(lowConfidenceThreshold) => setAnalysisForm((current) => ({ ...current, lowConfidenceThreshold }))}
           value={analysisForm.lowConfidenceThreshold}
         />
+      </SettingsSection>
+
+      <div className="flex justify-end">
+        <Button className="min-w-24" disabled={disabled || !isDirty} type="submit">
+          保存
+        </Button>
       </div>
 
       <SessionizationTimeline settings={sessionizationForm} />
@@ -762,21 +688,50 @@ function SessionizationTimeline({
   ];
 
   return (
-    <section className="mt-5 rounded-[8px] border bg-muted/20 p-4">
-      <div className="grid gap-3 md:grid-cols-3">
+    <section className="mt-2 border-t border-dashed pt-5">
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-medium text-muted-foreground">分析时序预览</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            展示当前策略下从最后一条消息到 AI 洞察生成的关键节点
+          </p>
+        </div>
+        <div className="hidden rounded-full bg-primary/8 px-3 py-1 text-xs font-medium text-primary md:block">
+          {settings.hardMaxDurationHours} 小时自动拆分
+        </div>
+      </div>
+      <div className="relative grid gap-5 md:grid-cols-3 md:gap-8">
+        <span className="absolute left-6 right-6 top-4 hidden h-px bg-gradient-to-r from-primary/20 via-border to-primary/20 md:block" />
         {steps.map((step, index) => (
-          <div className="relative min-h-[86px] rounded-[8px] bg-background px-4 py-3" key={step.title}>
-            {index < steps.length - 1 ? (
-              <span className="absolute right-[-10px] top-1/2 hidden h-px w-5 bg-border md:block" />
-            ) : null}
-            <div className="text-sm font-semibold text-foreground">{step.title}</div>
-            <div className="mt-2 text-xs leading-5 text-muted-foreground">{step.description}</div>
+          <div className="relative" key={step.title}>
+            <div className="mb-3 flex size-8 items-center justify-center rounded-full border bg-surface text-xs font-semibold text-foreground shadow-sm">
+              {index + 1}
+            </div>
+            <div className="pl-0.5">
+              <div className="text-sm font-medium text-foreground">{step.title}</div>
+              <div className="mt-1 text-xs leading-5 text-muted-foreground">{step.description}</div>
+            </div>
           </div>
         ))}
       </div>
-      <div className="mt-3 text-right text-xs leading-5 text-muted-foreground">
-        会话结束后 {settings.analysisDelayMinutes === 0 ? "立即" : `${settings.analysisDelayMinutes} 分钟`}生成最终结果；连续沟通超过 {settings.hardMaxDurationHours} 小时会自动拆分
+      <div className="mt-4 text-xs leading-5 text-muted-foreground md:text-right">
+        会话结束后 {settings.analysisDelayMinutes} 分钟生成最终结果
       </div>
+    </section>
+  );
+}
+
+function SettingsSection({
+  children,
+  title,
+}: {
+  children: ReactNode;
+  title: string;
+}) {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+      <div className="overflow-hidden rounded-[8px] border bg-background">{children}</div>
     </section>
   );
 }
@@ -869,16 +824,21 @@ function FrequencyPresetRow({
   onChange: (value: AnalysisFrequencyPresetValue) => void;
   value: AnalysisFrequencyPresetValue;
 }) {
+  const selectedPreset = analysisFrequencyPresets.find((preset) => preset.value === value);
+
   return (
     <SettingsRow description={description} label={label}>
       <Select onValueChange={(next) => onChange(next as AnalysisFrequencyPresetValue)} value={value}>
-        <SelectTrigger className="w-40">
-          <SelectValue />
+        <SelectTrigger aria-label={label} className="w-40">
+          <span>{selectedPreset?.label}</span>
         </SelectTrigger>
         <SelectContent>
           {analysisFrequencyPresets.map((preset) => (
-            <SelectItem key={preset.value} value={preset.value}>
-              {preset.label}
+            <SelectItem className="h-auto py-2" key={preset.value} textValue={preset.label} value={preset.value}>
+              <div className="grid gap-1 text-left">
+                <span className="text-sm font-medium text-foreground">{preset.label}</span>
+                <span className="text-xs leading-5 text-muted-foreground">{preset.description}</span>
+              </div>
             </SelectItem>
           ))}
         </SelectContent>
@@ -930,6 +890,38 @@ function detectAnalysisFrequencyPreset(policy: InsightAnalysisPolicy): AnalysisF
   );
 
   return matchedPreset?.value ?? "standard";
+}
+
+function normalizeAnalysisPolicyForCompare(policy: InsightAnalysisPolicy) {
+  return {
+    liveAnalysisEnabled: policy.liveAnalysisEnabled,
+    liveMinIntervalMinutes: policy.liveMinIntervalMinutes,
+    liveMinNewMeaningfulMessages: policy.liveMinNewMeaningfulMessages,
+    lowConfidenceThreshold: policy.lowConfidenceThreshold,
+  };
+}
+
+function isInsightPolicySame(
+  current: {
+    analysisPolicy: InsightAnalysisPolicy;
+    sessionization: InsightSessionizationSettings;
+  },
+  baseline: {
+    analysisPolicy: ReturnType<typeof normalizeAnalysisPolicyForCompare>;
+    sessionization: InsightSessionizationSettings;
+  },
+) {
+  const currentAnalysisPolicy = normalizeAnalysisPolicyForCompare(current.analysisPolicy);
+
+  return currentAnalysisPolicy.liveAnalysisEnabled === baseline.analysisPolicy.liveAnalysisEnabled
+    && currentAnalysisPolicy.liveMinIntervalMinutes === baseline.analysisPolicy.liveMinIntervalMinutes
+    && currentAnalysisPolicy.liveMinNewMeaningfulMessages === baseline.analysisPolicy.liveMinNewMeaningfulMessages
+    && currentAnalysisPolicy.lowConfidenceThreshold === baseline.analysisPolicy.lowConfidenceThreshold
+    && current.sessionization.analysisDelayMinutes === baseline.sessionization.analysisDelayMinutes
+    && current.sessionization.hardMaxDurationHours === baseline.sessionization.hardMaxDurationHours
+    && current.sessionization.idleTimeoutMinutes === baseline.sessionization.idleTimeoutMinutes
+    && current.sessionization.lateArrivalWindowMinutes === baseline.sessionization.lateArrivalWindowMinutes
+    && current.sessionization.preset === baseline.sessionization.preset;
 }
 
 function normalizeSessionizationSettings(
@@ -995,7 +987,6 @@ function LabelConfigTable({
       actionText="新增标签"
       description="维护模型可提取、可统计的业务标签"
       onCreate={onCreate}
-      title="标签体系"
     >
       <Table>
         <TableHeader>
@@ -1057,7 +1048,6 @@ function QaRuleConfigTable({
       actionText="新增规则"
       description="定义问题是否解决、服务是否达标的判定标准"
       onCreate={onCreate}
-      title="质检规则"
     >
       <Table>
         <TableHeader>
@@ -1140,7 +1130,6 @@ function EntityDictionaryTable({
         </div>
       )}
       onCreate={onCreate}
-      title="实体词库"
     >
       <Table>
         <TableHeader>
@@ -1190,22 +1179,17 @@ function ConfigTableShell({
   description,
   extra,
   onCreate,
-  title,
 }: {
   actionText: string;
   children: ReactNode;
   description: string;
   extra?: ReactNode;
   onCreate: () => void;
-  title: string;
 }) {
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold">{title}</h2>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
-        </div>
+        <p className="max-w-2xl text-xs leading-5 text-muted-foreground">{description}</p>
         <div className="flex shrink-0 items-center gap-2">
           {extra}
           <Button onClick={onCreate} size="sm">
@@ -1214,7 +1198,7 @@ function ConfigTableShell({
           </Button>
         </div>
       </div>
-      <div className="rounded-[8px] border bg-background">{children}</div>
+      <div className="overflow-x-auto bg-background">{children}</div>
     </section>
   );
 }
@@ -1255,12 +1239,9 @@ function RescanPanel({
 }) {
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-base font-semibold">历史重刷</h2>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          从指定时间重新生成逻辑会话和洞察结果，适合规则调整后的数据修正
-        </p>
-      </div>
+      <p className="text-xs leading-5 text-muted-foreground">
+        从指定时间重新生成逻辑会话和洞察结果，适合规则调整后的数据修正
+      </p>
       <div className="rounded-[8px] border bg-background px-5 py-1">
         <section className="grid gap-4 py-4 md:grid-cols-[minmax(0,1fr)_22rem] md:items-center">
           <div className="min-w-0">
@@ -1615,10 +1596,6 @@ function trimOptional(value: unknown) {
 
 function normalizeSeverityFormValue(value: unknown): "high" | "low" | "medium" {
   return value === "high" || value === "medium" || value === "low" ? value : "medium";
-}
-
-function presetText(value: InsightSessionizationSettings["preset"]) {
-  return value === "realtime_service" ? "实时客服" : value === "private_domain" ? "私域运营" : "自定义";
 }
 
 function collectionText(value: MutableCollection) {

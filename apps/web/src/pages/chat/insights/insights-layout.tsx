@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
-  AiBrain02Icon,
+  AiIdeaIcon,
   Alert01Icon,
   Analytics02Icon,
   ArrowLeft02Icon,
@@ -71,12 +71,11 @@ export function InsightsLayout({
           </Button>
 
           <div className="mb-5 flex items-center gap-2 px-2">
-            <div className="flex size-9 items-center justify-center rounded-[8px] bg-primary text-primary-foreground">
-              <HugeiconsIcon icon={AiBrain02Icon} size={19} />
+            <div className="flex size-8 items-center justify-center rounded-[8px] bg-primary text-primary-foreground">
+              <HugeiconsIcon icon={AiIdeaIcon} size={16} />
             </div>
             <div>
               <div className="text-sm font-semibold">会话洞察</div>
-              <div className="text-xs text-muted-foreground">服务风险与机会</div>
             </div>
           </div>
 

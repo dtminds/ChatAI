@@ -121,7 +121,7 @@ const sessionizationPresets: Array<{
     label: "实时客服",
     settings: {
       analysisDelayMinutes: 10,
-      hardMaxDurationHours: 24,
+      hardMaxDurationHours: 6,
       idleTimeoutMinutes: 60,
       lateArrivalWindowMinutes: 20,
       preset: "realtime_service",
@@ -133,7 +133,7 @@ const sessionizationPresets: Array<{
     label: "私域运营",
     settings: {
       analysisDelayMinutes: 20,
-      hardMaxDurationHours: 72,
+      hardMaxDurationHours: 24,
       idleTimeoutMinutes: 240,
       lateArrivalWindowMinutes: 60,
       preset: "private_domain",
@@ -145,7 +145,7 @@ const sessionizationPresets: Array<{
     label: "自定义",
     settings: {
       analysisDelayMinutes: 10,
-      hardMaxDurationHours: 48,
+      hardMaxDurationHours: 8,
       idleTimeoutMinutes: 120,
       lateArrivalWindowMinutes: 30,
       preset: "custom",
@@ -179,6 +179,11 @@ const analysisFrequencyPresets = [
 ] as const;
 
 type AnalysisFrequencyPresetValue = (typeof analysisFrequencyPresets)[number]["value"];
+
+const insightPolicyOptionLimits = {
+  analysisDelayMinutes: [5, 10, 20, 30],
+  hardMaxDurationHours: [2, 4, 6, 8, 12, 24],
+} as const;
 
 export function InsightsSettingsPage() {
   const role = useAuthStore((state) => state.subUser?.role);
@@ -574,10 +579,12 @@ function InsightPolicyPanel({
   sessionization: InsightSessionizationSettings;
 }) {
   const [analysisForm, setAnalysisForm] = useState(analysisPolicy);
-  const [sessionizationForm, setSessionizationForm] = useState(sessionization);
+  const [sessionizationForm, setSessionizationForm] = useState(() =>
+    normalizeSessionizationSettings(sessionization),
+  );
 
   useEffect(() => setAnalysisForm(analysisPolicy), [analysisPolicy]);
-  useEffect(() => setSessionizationForm(sessionization), [sessionization]);
+  useEffect(() => setSessionizationForm(normalizeSessionizationSettings(sessionization)), [sessionization]);
 
 function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationSettings, "preset">>(
     key: Key,
@@ -679,28 +686,29 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
           description="单轮服务最长持续多久；超过后会自动拆分，避免上下文过长"
           label="单轮会话最长持续"
           onChange={(hardMaxDurationHours) => updateSessionizationValue("hardMaxDurationHours", hardMaxDurationHours)}
-          options={[24, 48, 72]}
+          options={[2, 4, 6, 8, 12, 24]}
           suffix="小时"
           value={sessionizationForm.hardMaxDurationHours}
         />
         <BooleanSettingRow
           checked={analysisForm.liveAnalysisEnabled}
-          description="会话进行中提前生成风险、待办和问题判断"
-          label="会话进行中提前分析"
+          description="会话未结束时提前生成风险、待办和问题判断"
+          label="未完结会话提前分析"
           onChange={(liveAnalysisEnabled) => setAnalysisForm((current) => ({ ...current, liveAnalysisEnabled }))}
         />
-        <FrequencyPresetRow
-          description="较快更及时，较稳可减少重复判断"
-          label="提前分析频率"
-          onChange={updateFrequency}
-          value={detectAnalysisFrequencyPreset(analysisForm)}
-        />
+        {analysisForm.liveAnalysisEnabled ? (
+          <FrequencyPresetRow
+            description="较快更及时，较稳可减少重复判断"
+            label="未完结会话分析频率"
+            onChange={updateFrequency}
+            value={detectAnalysisFrequencyPreset(analysisForm)}
+          />
+        ) : null}
         <PresetSelectRow
           description="会话结束后多久生成最终结果；等待越久越能覆盖补充消息"
           label="会话结束后多久生成最终结果"
           onChange={(analysisDelayMinutes) => updateSessionizationValue("analysisDelayMinutes", analysisDelayMinutes)}
-          options={[0, 10, 20, 30]}
-          renderOption={(option) => (option === 0 ? "立即" : `${option} 分钟`)}
+          options={[5, 10, 20, 30]}
           suffix="分钟"
           value={sessionizationForm.analysisDelayMinutes}
         />
@@ -792,7 +800,7 @@ function BooleanSettingRow({
 }) {
   return (
     <SettingsRow description={description} label={label}>
-      <Switch checked={checked} onCheckedChange={onChange} />
+      <Switch aria-label={label} checked={checked} onCheckedChange={onChange} />
     </SettingsRow>
   );
 }
@@ -814,17 +822,16 @@ function PresetSelectRow({
   suffix?: string;
   value: number;
 }) {
-  const normalizedOptions = options.includes(value) ? options : [value, ...options];
   const formatOption = (option: number) => renderOption?.(option) ?? (suffix ? `${option} ${suffix}` : String(option));
 
   return (
     <SettingsRow description={description} label={label}>
       <Select onValueChange={(next) => onChange(Number(next))} value={String(value)}>
-        <SelectTrigger className="w-40">
+        <SelectTrigger aria-label={label} className="w-40">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {normalizedOptions.map((option) => (
+          {options.map((option) => (
             <SelectItem key={option} value={String(option)}>
               {formatOption(option)}
             </SelectItem>
@@ -907,6 +914,32 @@ function detectAnalysisFrequencyPreset(policy: InsightAnalysisPolicy): AnalysisF
   );
 
   return matchedPreset?.value ?? "standard";
+}
+
+function normalizeSessionizationSettings(
+  settings: InsightSessionizationSettings,
+): InsightSessionizationSettings {
+  return {
+    ...settings,
+    analysisDelayMinutes: nearestOption(
+      settings.analysisDelayMinutes,
+      insightPolicyOptionLimits.analysisDelayMinutes,
+    ),
+    hardMaxDurationHours: nearestOption(
+      settings.hardMaxDurationHours,
+      insightPolicyOptionLimits.hardMaxDurationHours,
+    ),
+    lateArrivalWindowMinutes: nearestOption(
+      settings.analysisDelayMinutes,
+      insightPolicyOptionLimits.analysisDelayMinutes,
+    ),
+  };
+}
+
+function nearestOption(value: number, options: readonly number[]) {
+  return options.reduce((best, option) =>
+    Math.abs(option - value) < Math.abs(best - value) ? option : best,
+  );
 }
 
 function FormPanel({

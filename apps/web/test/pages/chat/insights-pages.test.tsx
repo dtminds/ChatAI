@@ -563,7 +563,23 @@ describe("conversation insights pages", () => {
     expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
     expect(screen.getAllByText("洞察策略")[0]).toBeInTheDocument();
     expect(screen.getByText("服务节奏")).toBeInTheDocument();
-    expect(screen.getByText("提前分析频率")).toBeInTheDocument();
+    expect(screen.getByText("未完结会话提前分析")).toBeInTheDocument();
+    expect(screen.getByText("未完结会话分析频率")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("combobox", { name: "单轮会话最长持续" }));
+    expect(await screen.findByRole("option", { name: "2 小时" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "24 小时" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "48 小时" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(screen.getByRole("combobox", { name: "会话结束后多久生成最终结果" }));
+    expect(await screen.findByRole("option", { name: "5 分钟" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "立即" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(screen.getByRole("switch", { name: "未完结会话提前分析" }));
+    expect(screen.queryByText("未完结会话分析频率")).not.toBeInTheDocument();
+
     await userEvent.click(screen.getByRole("tab", { name: "质检规则" }));
     expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
 

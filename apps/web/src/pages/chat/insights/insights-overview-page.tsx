@@ -93,10 +93,20 @@ export function InsightsOverviewPage() {
   const detail = useInsightDetail();
 
   useEffect(() => {
+    let isActive = true;
+
     void getInsightOverview({
       from: toBoundaryDate(from, "start"),
       to: toBoundaryDate(to, "end"),
-    }).then(setOverview);
+    }).then((response) => {
+      if (isActive) {
+        setOverview(response);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, [from, to]);
 
   const sessions = useMemo(() => {
@@ -291,7 +301,10 @@ function ResolutionDistribution({
                   <Cell fill={item.color} key={item.name} />
                 ))}
               </Pie>
-              <Tooltip content={<DistributionTooltip />} />
+              <Tooltip
+                content={<DistributionTooltip />}
+                wrapperStyle={{ zIndex: 20 }}
+              />
             </PieChart>
           </ResponsiveContainer>
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">

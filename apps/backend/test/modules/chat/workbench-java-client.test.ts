@@ -851,6 +851,7 @@ describe("createWorkbenchJavaClient", () => {
           thirdExternalId: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
+          withCacheSeat: true,
         }),
         method: "POST",
       }),

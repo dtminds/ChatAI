@@ -1,7 +1,20 @@
+import type { ReactNode } from "react";
 import type {
   InsightDetailResponse,
   InsightMessageContextResponse,
 } from "@chatai/contracts";
+import {
+  AiIdeaIcon,
+  Analytics02Icon,
+  ClipboardCheckIcon,
+  Database01Icon,
+  Layers01Icon,
+  SmileIcon,
+  Tag01Icon,
+  Target01Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
@@ -45,27 +58,26 @@ export function InsightDetailPanel({
           {detail ? (
             <div className="flex min-h-0 flex-1 flex-col">
               <section className="border-b bg-muted/20 px-6 py-4 pr-16">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex flex-wrap items-center gap-3">
+                <div className="flex min-w-0 flex-col gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2.5">
                       <InsightPerson
                         avatarUrl={detail.session.customerAvatarUrl}
                         name={detail.session.customerName}
-                        size="md"
+                        size="sm"
                       />
-                      <span className="text-sm text-muted-foreground">由</span>
+                      <span className="text-xs text-muted-foreground">由</span>
                       <InsightPerson
                         avatarUrl={detail.session.agentAvatarUrl}
                         name={detail.session.agentName ?? "未分配客服"}
                         roleLabel="客服"
-                        size="md"
+                        size="sm"
                       />
-                      <ResolutionBadge status={detail.problemResolution.resolutionStatus} />
                     </div>
-                    <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-                      {detail.problemResolution.problemSummary || "暂无客户问题摘要"}
-                    </p>
                   </div>
+                  <p className="max-w-4xl text-sm leading-6 text-muted-foreground">
+                    {detail.problemResolution.problemSummary || "暂无客户问题摘要"}
+                  </p>
                 </div>
               </section>
 
@@ -77,8 +89,11 @@ export function InsightDetailPanel({
                     role="region"
                   >
                     <div className="space-y-4">
-                      <div className="grid gap-5 xl:grid-cols-2">
+                      <div className="space-y-4">
                         <SummaryBlock
+                          labelExtra={(
+                            <ResolutionBadge status={detail.problemResolution.resolutionStatus} />
+                          )}
                           label="当前结果"
                           strong
                           value={detail.summary.resultSummary}
@@ -112,21 +127,14 @@ export function InsightDetailPanel({
                       <h3 className="text-sm font-semibold text-foreground">
                         提取结果
                       </h3>
-                      <div className="grid gap-5 xl:grid-cols-2">
-                        <InsightResultGroup
-                          items={buildKeyInsightItems(detail, showIntent)}
-                          title="关键信息"
+                      <InsightResultTable
+                        items={buildInsightResultItems(detail, showIntent)}
+                      />
+                      {detail.faqCandidates.length > 0 ? (
+                        <InsightFaqList
+                          items={detail.faqCandidates.map((item) => item.question)}
                         />
-                        <InsightResultGroup
-                          items={buildServiceInsightItems(detail)}
-                          title="服务判断"
-                        />
-                        {detail.faqCandidates.length > 0 ? (
-                          <InsightFaqList
-                            items={detail.faqCandidates.map((item) => item.question)}
-                          />
-                        ) : null}
-                      </div>
+                      ) : null}
                     </div>
                   </section>
                 </div>
@@ -244,16 +252,21 @@ function buildInsightAccounts(
 
 function SummaryBlock({
   label,
+  labelExtra,
   strong,
   value,
 }: {
   label: string;
+  labelExtra?: ReactNode;
   strong?: boolean;
   value: string;
 }) {
   return (
-    <div className="space-y-1.5">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+    <div className={cn("space-y-1.5", strong ? "max-w-3xl" : "max-w-4xl")}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">{label}</span>
+        {labelExtra}
+      </div>
       <p
         className={cn(
           "text-foreground",
@@ -356,16 +369,16 @@ function normalizeComparableText(value: string) {
 }
 
 type InsightResultItem = {
+  display?: "badge" | "text";
+  icon: IconSvgElement;
   items: string[];
   label: string;
 };
 
-function InsightResultGroup({
+function InsightResultTable({
   items,
-  title,
 }: {
   items: InsightResultItem[];
-  title: string;
 }) {
   const visibleItems = items.filter((item) => item.items.length > 0);
 
@@ -374,17 +387,25 @@ function InsightResultGroup({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="text-xs font-medium text-muted-foreground">{title}</div>
-      <div className="space-y-3">
-        {visibleItems.map((item) => (
-          <div
-            className="grid gap-2 sm:grid-cols-[4rem_minmax(0,1fr)]"
-            key={item.label}
-          >
-            <div className="text-xs leading-6 text-muted-foreground">{item.label}</div>
-            <div className="flex min-w-0 flex-wrap gap-2">
-              {item.items.map((value) => (
+    <dl className="divide-y rounded-[8px] border bg-background">
+      {visibleItems.map((item) => (
+        <div
+          className="grid gap-2 px-3 py-3 sm:grid-cols-[5.5rem_minmax(0,1fr)]"
+          key={item.label}
+        >
+          <dt className="text-xs leading-6 text-muted-foreground">
+            <SectionLabel icon={item.icon}>{item.label}</SectionLabel>
+          </dt>
+          <dd className="flex min-w-0 flex-wrap gap-2">
+            {item.items.map((value) =>
+              item.display === "text" ? (
+                <span
+                  className="min-w-0 text-sm leading-6 text-foreground"
+                  key={`${item.label}:${value}`}
+                >
+                  {value}
+                </span>
+              ) : (
                 <Badge
                   className="max-w-full whitespace-normal rounded-[8px] px-2.5 py-1 text-[13px] font-normal leading-5"
                   key={`${item.label}:${value}`}
@@ -392,84 +413,112 @@ function InsightResultGroup({
                 >
                   {value}
                 </Badge>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+              )
+            )}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
 function InsightFaqList({ items }: { items: string[] }) {
   return (
-    <div className="space-y-3 xl:col-span-2">
+    <div className="space-y-3">
       <div className="text-xs font-medium text-muted-foreground">FAQ 机会</div>
-      <div className="grid gap-2 xl:grid-cols-2">
-        {items.map((item) => (
-          <div
-            className="rounded-[8px] bg-muted/55 px-3 py-2 text-sm leading-6 text-foreground"
+      <ol className="space-y-2">
+        {items.map((item, index) => (
+          <li
+            className="grid gap-2 rounded-[8px] bg-muted/45 px-3 py-2 text-sm leading-6 text-foreground sm:grid-cols-[2rem_minmax(0,1fr)]"
             key={item}
           >
-            {item}
-          </div>
+            <span className="text-xs leading-6 text-muted-foreground">
+              {index + 1}
+            </span>
+            <span>{item}</span>
+          </li>
         ))}
-      </div>
+      </ol>
     </div>
   );
 }
 
-function buildKeyInsightItems(
+function SectionLabel({
+  children,
+  icon,
+}: {
+  children: ReactNode;
+  icon: IconSvgElement;
+}) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+      <HugeiconsIcon
+        aria-hidden
+        className="shrink-0"
+        color="currentColor"
+        icon={icon}
+        size={14}
+        strokeWidth={1.9}
+      />
+      <span className="truncate">{children}</span>
+    </span>
+  );
+}
+
+function buildInsightResultItems(
   detail: InsightDetailResponse,
   showIntent: boolean,
 ): InsightResultItem[] {
   return [
     {
+      icon: AiIdeaIcon,
       items: showIntent ? [detail.summary.customerIntent] : [],
       label: "意图",
     },
     {
+      icon: Layers01Icon,
       items: detail.intents.map((item) => item.intentLabel),
       label: "细分",
     },
     {
+      icon: Database01Icon,
       items: detail.entities.map((item) => item.entityName),
       label: "实体",
     },
     {
+      icon: Tag01Icon,
       items: detail.tags.map((item) => item.tagName),
       label: "标签",
     },
     {
+      display: "text",
+      icon: SmileIcon,
       items: detail.sentiment.map(
         (item) => `${formatPolarity(item.polarity)}：${item.reason}`,
       ),
       label: "情绪",
     },
-  ];
-}
-
-function buildServiceInsightItems(detail: InsightDetailResponse): InsightResultItem[] {
-  return [
     {
+      icon: ClipboardCheckIcon,
       items: detail.qaFindings.map((item) =>
         `${item.passed ? "通过" : "未通过"}：${item.ruleCode}`,
       ),
       label: "质检",
     },
     {
+      icon: Target01Icon,
       items: detail.risks.map((item) =>
         item.reason ? `${item.riskType}：${item.reason}` : item.riskType,
       ),
       label: "风险",
     },
     {
+      icon: Analytics02Icon,
       items: detail.actionItems.map((item) => item.title),
       label: "待办",
     },
   ];
 }
-
 function formatPolarity(polarity: string) {
   if (polarity === "positive") {
     return "正向";

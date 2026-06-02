@@ -21,16 +21,12 @@ const serviceMocks = vi.hoisted(() => ({
   updateInsightLabelConfigStatus: vi.fn(),
   updateInsightQaRuleConfig: vi.fn(),
   updateInsightQaRuleConfigStatus: vi.fn(),
-  updateInsightRiskConfig: vi.fn(),
-  updateInsightRiskConfigStatus: vi.fn(),
   updateInsightSessionizationSettings: vi.fn(),
   createInsightEntityDictionaryItem: vi.fn(),
   createInsightQaRuleConfig: vi.fn(),
-  createInsightRiskConfig: vi.fn(),
   deleteInsightEntityDictionaryItem: vi.fn(),
   deleteInsightLabelConfig: vi.fn(),
   deleteInsightQaRuleConfig: vi.fn(),
-  deleteInsightRiskConfig: vi.fn(),
   updateInsightActionStatus: vi.fn(),
 }));
 
@@ -438,16 +434,6 @@ function installInsightMocks() {
         severity: "high",
       },
     ],
-    riskConfigs: [
-      {
-        enabled: true,
-        id: "31",
-        priorityBoost: 10,
-        riskCode: "bad_review",
-        riskName: "差评风险",
-        severity: "high",
-      },
-    ],
     sessionization: {
       analysisDelayMinutes: 10,
       hardMaxDurationHours: 48,
@@ -575,7 +561,9 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights/settings");
 
     expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
-    expect(screen.getAllByText("会话切片")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("洞察策略")[0]).toBeInTheDocument();
+    expect(screen.getByText("服务节奏")).toBeInTheDocument();
+    expect(screen.getByText("提前分析频率")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "质检规则" }));
     expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
 

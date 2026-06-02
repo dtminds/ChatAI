@@ -7,7 +7,6 @@ import {
   InsightActionStatusSchema,
   InsightMessageContextRequestSchema,
   InsightQaRuleConfigMutationRequestSchema,
-  InsightRiskConfigMutationRequestSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
   InsightsRescanRequestSchema,
   type AccountRole,
@@ -17,7 +16,6 @@ import {
   type InsightLabelConfigMutationRequest,
   type InsightActionStatus,
   type InsightQaRuleConfigMutationRequest,
-  type InsightRiskConfigMutationRequest,
   type InsightSessionizationSettingsUpdateRequest,
   type InsightsRescanRequest,
 } from "@chatai/contracts";
@@ -381,86 +379,6 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     async (request) => {
       return apiSuccess(
         await createInsightsService(app).deleteQaRuleConfig(
-          await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
-          request.params.configId,
-        ),
-      );
-    },
-  );
-
-  app.post<{ Body: InsightRiskConfigMutationRequest }>(
-    "/api/server/insights/settings/risk-configs",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        body: InsightRiskConfigMutationRequestSchema,
-      },
-    },
-    async (request) => {
-      return apiSuccess(
-        await createInsightsService(app).createRiskConfig(
-          await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
-          request.body,
-        ),
-      );
-    },
-  );
-
-  app.put<{ Body: InsightRiskConfigMutationRequest; Params: ConfigParams }>(
-    "/api/server/insights/settings/risk-configs/:configId",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        body: InsightRiskConfigMutationRequestSchema,
-        params: ConfigParamsSchema,
-      },
-    },
-    async (request) => {
-      return apiSuccess(
-        await createInsightsService(app).updateRiskConfig(
-          await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
-          request.params.configId,
-          request.body,
-        ),
-      );
-    },
-  );
-
-  app.patch<{ Body: InsightConfigStatusUpdateRequest; Params: ConfigParams }>(
-    "/api/server/insights/settings/risk-configs/:configId/status",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        body: InsightConfigStatusUpdateRequestSchema,
-        params: ConfigParamsSchema,
-      },
-    },
-    async (request) => {
-      return apiSuccess(
-        await createInsightsService(app).updateRiskConfigStatus(
-          await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
-          request.params.configId,
-          request.body,
-        ),
-      );
-    },
-  );
-
-  app.delete<{ Params: ConfigParams }>(
-    "/api/server/insights/settings/risk-configs/:configId",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        params: ConfigParamsSchema,
-      },
-    },
-    async (request) => {
-      return apiSuccess(
-        await createInsightsService(app).deleteRiskConfig(
           await getUidScope(app, request),
           request.user?.roles?.[0] as AccountRole | undefined,
           request.params.configId,

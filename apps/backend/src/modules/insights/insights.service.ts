@@ -14,8 +14,6 @@ import type {
   InsightMessageContextResponse,
   InsightQaRuleConfig,
   InsightQaRuleConfigMutationRequest,
-  InsightRiskConfig,
-  InsightRiskConfigMutationRequest,
   InsightSettingsResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
@@ -186,21 +184,6 @@ export type InsightsRepositoryPort = {
     enabled: boolean,
   ): Promise<InsightQaRuleConfig | undefined>;
   deleteQaRuleConfig(scope: InsightsUidScope, id: string): Promise<boolean>;
-  createRiskConfig(
-    scope: InsightsUidScope,
-    payload: InsightRiskConfigMutationRequest,
-  ): Promise<InsightRiskConfig>;
-  updateRiskConfig(
-    scope: InsightsUidScope,
-    id: string,
-    payload: InsightRiskConfigMutationRequest,
-  ): Promise<InsightRiskConfig | undefined>;
-  updateRiskConfigStatus(
-    scope: InsightsUidScope,
-    id: string,
-    enabled: boolean,
-  ): Promise<InsightRiskConfig | undefined>;
-  deleteRiskConfig(scope: InsightsUidScope, id: string): Promise<boolean>;
   createEntityDictionaryItem(
     scope: InsightsUidScope,
     payload: InsightEntityDictionaryMutationRequest,
@@ -526,46 +509,6 @@ export class InsightsService {
   ): Promise<InsightConfigDeletedResponse> {
     assertInsightSettingsAdmin(role);
     return { deleted: await this.deleteConfigOrThrow(() => this.repository.deleteQaRuleConfig(scope, id)) };
-  }
-
-  async createRiskConfig(
-    scope: InsightsUidScope,
-    role: AccountRole | string | undefined,
-    payload: InsightRiskConfigMutationRequest,
-  ): Promise<InsightRiskConfig> {
-    assertInsightSettingsAdmin(role);
-    return this.repository.createRiskConfig(scope, payload);
-  }
-
-  async updateRiskConfig(
-    scope: InsightsUidScope,
-    role: AccountRole | string | undefined,
-    id: string,
-    payload: InsightRiskConfigMutationRequest,
-  ): Promise<InsightRiskConfig> {
-    assertInsightSettingsAdmin(role);
-    return await this.repository.updateRiskConfig(scope, id, payload)
-      ?? raiseConfigNotFound();
-  }
-
-  async updateRiskConfigStatus(
-    scope: InsightsUidScope,
-    role: AccountRole | string | undefined,
-    id: string,
-    payload: InsightConfigStatusUpdateRequest,
-  ): Promise<InsightRiskConfig> {
-    assertInsightSettingsAdmin(role);
-    return await this.repository.updateRiskConfigStatus(scope, id, payload.enabled)
-      ?? raiseConfigNotFound();
-  }
-
-  async deleteRiskConfig(
-    scope: InsightsUidScope,
-    role: AccountRole | string | undefined,
-    id: string,
-  ): Promise<InsightConfigDeletedResponse> {
-    assertInsightSettingsAdmin(role);
-    return { deleted: await this.deleteConfigOrThrow(() => this.repository.deleteRiskConfig(scope, id)) };
   }
 
   async createEntityDictionaryItem(

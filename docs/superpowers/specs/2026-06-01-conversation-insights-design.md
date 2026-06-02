@@ -26,7 +26,7 @@
 6. 通过独立 Node worker 执行同步、切片、分析任务，任务状态持久化到 MySQL。
 7. 大模型通过可切换 Provider 接入，支持 OpenAI 官方、火山、阿里和其它 OpenAI-compatible API。
 8. 结构化保存摘要、情绪、标签、质检结果、业务实体、意图、风险、行动项和 FAQ 机会，并支持后续新增分析维度。
-9. 支持租户自定义会话切片、标签、质检规则、风险关注项、实体词库和分析策略。
+9. 支持租户自定义洞察策略、标签、质检规则和实体词库。
 10. 洞察结果第一版只读展示，不自动影响客服绩效、自动打标或自动触发业务动作。
 
 ### 2.2 非目标
@@ -542,7 +542,6 @@ reason
 ```text
 租户标签体系
 租户质检规则
-租户风险关注项
 租户实体和业务词库
 租户分析策略
 ```
@@ -643,41 +642,9 @@ xy_wap_embed_insight_qa_rule_config
 
 第一版质检规则是模型判断依据，不作为自动扣分或绩效结算规则。
 
-### 11.4 风险关注项
+风险类判断并入质检规则和代办触发，不再维护独立的租户风险关注配置。
 
-```text
-xy_wap_embed_insight_risk_config
-- id
-- uid
-- risk_code
-- risk_name
-- description
-- severity
-- keywords_json
-- priority_boost
-- unresolved_timeout_minutes nullable
-- enabled
-- created_at
-- updated_at
-```
-
-用户可配置示例：
-
-```text
-投诉
-差评
-退款
-退货
-催发货
-质量问题
-高意向未跟进
-长时间未回复
-群聊集中负面反馈
-```
-
-风险关注项影响优先处理队列排序、风险筛选和规则降级结果。
-
-### 11.5 实体和业务词库
+### 11.4 实体和业务词库
 
 ```text
 xy_wap_embed_insight_entity_dictionary
@@ -1035,8 +1002,6 @@ GET /api/server/insights/label-configs
 PUT /api/server/insights/label-configs
 GET /api/server/insights/qa-rule-configs
 PUT /api/server/insights/qa-rule-configs
-GET /api/server/insights/risk-configs
-PUT /api/server/insights/risk-configs
 GET /api/server/insights/entity-dictionary
 PUT /api/server/insights/entity-dictionary
 ```
@@ -1142,15 +1107,13 @@ GET /api/server/insights/intents
 用户配置入口第一版建议覆盖：
 
 ```text
-会话切片策略
-分析频率策略
+洞察策略
 自定义标签
 质检规则
-风险关注项
 实体和业务词库
 ```
 
-配置页不提供原始 prompt 编辑和模型参数细调。
+洞察策略合并会话结束判定和分析触发配置，对用户呈现为“服务节奏”和“分析时机”。配置页不提供原始 prompt 编辑、模型参数细调，也不开放新增有效消息数阈值、最小分析间隔、最终分析开关、规则降级开关、迟到消息窗口等底层参数。
 
 优先处理队列建议按以下信号排序：
 
@@ -1299,7 +1262,7 @@ GET /api/server/insights/intents
 6. 每个 AI 结论能追溯到模型、prompt、规则版本、平台会话和平台消息证据。
 7. 失败任务可重试，超过次数后进入 dead 状态。
 8. 重新分析通过任务异步执行，不阻塞 API 请求。
-9. 租户可以配置切片、分析策略、标签、质检规则、风险关注项和实体词库。
+9. 租户可以配置洞察策略、标签、质检规则和实体词库。
 10. 洞察结果只读展示，不自动影响绩效或业务动作。
 11. 任意维度结果都能通过 `snapshot_id -> session_id -> conversation_id` 反查到 `xy_wap_embed_conversation.id`。
 12. 标签、风险、质检项、问题解决判定、意图、实体、行动项和 FAQ 机会都能通过 `xy_wap_embed_insight_evidence` 反查到至少一条 `xy_wap_embed_msg_audit_info.id` 证据消息。

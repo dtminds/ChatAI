@@ -1,4 +1,11 @@
 import type { ReactNode } from "react";
+import {
+  CheckmarkCircle02Icon,
+  InformationCircleIcon,
+  Progress01Icon,
+  Progress03Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
@@ -50,14 +57,40 @@ export function ResolutionBadge({
 }: {
   status: "no_customer_problem" | "partially_resolved" | "resolved" | "unknown" | "unresolved";
 }) {
-  const className =
-    status === "resolved"
-      ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
-      : status === "unresolved"
-        ? "bg-destructive/12 text-destructive"
-        : status === "partially_resolved"
-          ? "bg-amber-500/16 text-amber-700 dark:text-amber-300"
-          : "bg-muted text-muted-foreground";
+  const config = resolutionBadgeConfig[status];
 
-  return <Badge className={className}>{formatResolutionStatus(status)}</Badge>;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 text-[11px] font-semibold",
+        config.className,
+      )}
+    >
+      <HugeiconsIcon icon={config.icon} size={13} strokeWidth={2} />
+      {formatResolutionStatus(status)}
+    </span>
+  );
 }
+
+const resolutionBadgeConfig = {
+  no_customer_problem: {
+    className: "text-slate-600",
+    icon: InformationCircleIcon,
+  },
+  partially_resolved: {
+    className: "text-amber-700",
+    icon: Progress03Icon,
+  },
+  resolved: {
+    className: "text-emerald-700",
+    icon: CheckmarkCircle02Icon,
+  },
+  unknown: {
+    className: "text-slate-600",
+    icon: InformationCircleIcon,
+  },
+  unresolved: {
+    className: "text-red-700",
+    icon: Progress01Icon,
+  },
+} as const;

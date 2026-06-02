@@ -6,7 +6,6 @@ import {
   createInsightLabelConfig,
   createInsightQaRuleConfig,
   createInsightRescanJob,
-  createInsightRiskConfig,
   deleteInsightLabelConfig,
   getInsightDetail,
   getInsightFollowUps,
@@ -106,7 +105,6 @@ describe("insights service adapter", () => {
       success: true,
     });
     mock.onPost("/server/insights/settings/qa-rule-configs").reply(200, { data: { id: "21" }, success: true });
-    mock.onPost("/server/insights/settings/risk-configs").reply(200, { data: { id: "31" }, success: true });
     mock.onPost("/server/insights/settings/entity-dictionary").reply(200, { data: { id: "41" }, success: true });
 
     await updateInsightSessionizationSettings({
@@ -144,13 +142,6 @@ describe("insights service adapter", () => {
       ruleName: "客户问题是否解决",
       severity: "high",
     });
-    await createInsightRiskConfig({
-      enabled: true,
-      priorityBoost: 10,
-      riskCode: "bad_review",
-      riskName: "差评风险",
-      severity: "high",
-    });
     await createInsightEntityDictionaryItem({
       aliases: ["白鸭绒外套"],
       canonicalName: "白色羽绒服",
@@ -166,7 +157,6 @@ describe("insights service adapter", () => {
     expect(mock.history.patch[0]?.url).toBe("/server/insights/settings/label-configs/11/status");
     expect(mock.history.delete[0]?.url).toBe("/server/insights/settings/label-configs/11");
     expect(mock.history.post[1]?.url).toBe("/server/insights/settings/qa-rule-configs");
-    expect(mock.history.post[2]?.url).toBe("/server/insights/settings/risk-configs");
-    expect(mock.history.post[3]?.url).toBe("/server/insights/settings/entity-dictionary");
+    expect(mock.history.post[2]?.url).toBe("/server/insights/settings/entity-dictionary");
   });
 });

@@ -1,6 +1,13 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  render as testingLibraryRender,
+  screen,
+  waitFor,
+  within,
+  type RenderOptions,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
@@ -58,6 +65,10 @@ const currentEmployee: EmployeeProfile = {
   displayName: "林洒",
   id: "emp-001",
 };
+
+function render(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
+  return testingLibraryRender(ui, { wrapper: MemoryRouter, ...options });
+}
 
 describe("AccountRail", () => {
   it("shows only the signed-in sub user name in the footer menu", async () => {
@@ -146,6 +157,19 @@ describe("AccountRail", () => {
     await user.click(screen.getByRole("button", { name: "客户" }));
 
     expect(handleNavItemSelect).toHaveBeenCalledWith("客户");
+  });
+
+  it("links the insight nav item to the insights overview", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "洞察" })).toHaveAttribute("href", "/chat/insights");
   });
 
   it("shows account takeover state and takes over from the status popover", async () => {

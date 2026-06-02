@@ -11,8 +11,6 @@ import type {
   InsightMessageContextResponse,
   InsightQaRuleConfig,
   InsightQaRuleConfigMutationRequest,
-  InsightRiskConfig,
-  InsightRiskConfigMutationRequest,
   WorkbenchMessageDto,
   InsightSettingsResponse,
   InsightSessionizationSettings,
@@ -214,14 +212,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
       analysisPolicy,
       labelConfigs,
       qaRuleConfigs,
-      riskConfigs,
       entityDictionary,
     ] = await Promise.all([
       this.getSessionizationSettings(scope),
       this.getAnalysisPolicy(scope),
       this.listLabelConfigs(scope),
       this.listQaRuleConfigs(scope),
-      this.listRiskConfigs(scope),
       this.listEntityDictionary(scope),
     ]);
 
@@ -230,7 +226,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       entityDictionary,
       labelConfigs,
       qaRuleConfigs,
-      riskConfigs,
       sessionization,
     };
   }
@@ -473,98 +468,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     await this.db
       .deleteFrom("xy_wap_embed_insight_qa_rule_config")
-      .where("id", "=", numericId)
-      .where("uid", "=", scope.uid)
-      .execute();
-
-    return true;
-  }
-
-  async createRiskConfig(
-    scope: InsightsUidScope,
-    payload: InsightRiskConfigMutationRequest,
-  ): Promise<InsightRiskConfig> {
-    const inserted = await this.db
-      .insertInto("xy_wap_embed_insight_risk_config")
-      .values({
-        description: payload.description ?? null,
-        enabled: payload.enabled ? 1 : 0,
-        keywords_json: encodeJson(payload.keywords),
-        priority_boost: payload.priorityBoost,
-        risk_code: payload.riskCode,
-        risk_name: payload.riskName,
-        severity: payload.severity,
-        uid: scope.uid,
-        unresolved_timeout_minutes: payload.unresolvedTimeoutMinutes ?? null,
-      })
-      .executeTakeFirstOrThrow() as InsertResult;
-
-    return await this.getRiskConfigById(scope, String(parseInsertedMySqlId(inserted) ?? ""))
-      ?? await this.getRiskConfigByCode(scope, payload.riskCode)
-      ?? mapRiskPayload("0", payload);
-  }
-
-  async updateRiskConfig(
-    scope: InsightsUidScope,
-    id: string,
-    payload: InsightRiskConfigMutationRequest,
-  ): Promise<InsightRiskConfig | undefined> {
-    const numericId = parsePositiveInteger(id);
-
-    if (numericId == null || !await this.getRiskConfigById(scope, id)) {
-      return undefined;
-    }
-
-    await this.db
-      .updateTable("xy_wap_embed_insight_risk_config")
-      .set({
-        description: payload.description ?? null,
-        enabled: payload.enabled ? 1 : 0,
-        keywords_json: encodeJson(payload.keywords),
-        priority_boost: payload.priorityBoost,
-        risk_code: payload.riskCode,
-        risk_name: payload.riskName,
-        severity: payload.severity,
-        unresolved_timeout_minutes: payload.unresolvedTimeoutMinutes ?? null,
-        update_time: new Date(),
-      })
-      .where("id", "=", numericId)
-      .where("uid", "=", scope.uid)
-      .execute();
-
-    return this.getRiskConfigById(scope, id);
-  }
-
-  async updateRiskConfigStatus(
-    scope: InsightsUidScope,
-    id: string,
-    enabled: boolean,
-  ): Promise<InsightRiskConfig | undefined> {
-    const numericId = parsePositiveInteger(id);
-
-    if (numericId == null || !await this.getRiskConfigById(scope, id)) {
-      return undefined;
-    }
-
-    await this.db
-      .updateTable("xy_wap_embed_insight_risk_config")
-      .set({ enabled: enabled ? 1 : 0, update_time: new Date() })
-      .where("id", "=", numericId)
-      .where("uid", "=", scope.uid)
-      .execute();
-
-    return this.getRiskConfigById(scope, id);
-  }
-
-  async deleteRiskConfig(scope: InsightsUidScope, id: string): Promise<boolean> {
-    const numericId = parsePositiveInteger(id);
-
-    if (numericId == null || !await this.getRiskConfigById(scope, id)) {
-      return false;
-    }
-
-    await this.db
-      .deleteFrom("xy_wap_embed_insight_risk_config")
       .where("id", "=", numericId)
       .where("uid", "=", scope.uid)
       .execute();
@@ -865,81 +768,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .executeTakeFirst();
 
     return row ? mapQaRuleRow(row) : undefined;
-  }
-
-  private async listRiskConfigs(scope: InsightsUidScope): Promise<InsightRiskConfig[]> {
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_insight_risk_config")
-      .select([
-        "description",
-        "enabled",
-        "id",
-        "keywords_json",
-        "priority_boost",
-        "risk_code",
-        "risk_name",
-        "severity",
-        "unresolved_timeout_minutes",
-      ])
-      .where("uid", "=", scope.uid)
-      .orderBy("id", "asc")
-      .execute();
-
-    return rows.length > 0 ? rows.map(mapRiskRow) : DEFAULT_INSIGHT_SETTINGS.riskConfigs;
-  }
-
-  private async getRiskConfigById(
-    scope: InsightsUidScope,
-    id: string,
-  ): Promise<InsightRiskConfig | undefined> {
-    const numericId = parsePositiveInteger(id);
-
-    if (numericId == null) {
-      return undefined;
-    }
-
-    const row = await this.db
-      .selectFrom("xy_wap_embed_insight_risk_config")
-      .select([
-        "description",
-        "enabled",
-        "id",
-        "keywords_json",
-        "priority_boost",
-        "risk_code",
-        "risk_name",
-        "severity",
-        "unresolved_timeout_minutes",
-      ])
-      .where("uid", "=", scope.uid)
-      .where("id", "=", numericId)
-      .executeTakeFirst();
-
-    return row ? mapRiskRow(row) : undefined;
-  }
-
-  private async getRiskConfigByCode(
-    scope: InsightsUidScope,
-    riskCode: string,
-  ): Promise<InsightRiskConfig | undefined> {
-    const row = await this.db
-      .selectFrom("xy_wap_embed_insight_risk_config")
-      .select([
-        "description",
-        "enabled",
-        "id",
-        "keywords_json",
-        "priority_boost",
-        "risk_code",
-        "risk_name",
-        "severity",
-        "unresolved_timeout_minutes",
-      ])
-      .where("uid", "=", scope.uid)
-      .where("risk_code", "=", riskCode)
-      .executeTakeFirst();
-
-    return row ? mapRiskRow(row) : undefined;
   }
 
   private async listEntityDictionary(
@@ -2473,20 +2301,6 @@ function mapQaRulePayload(id: string, payload: InsightQaRuleConfigMutationReques
   };
 }
 
-function mapRiskPayload(id: string, payload: InsightRiskConfigMutationRequest): InsightRiskConfig {
-  return {
-    description: payload.description,
-    enabled: payload.enabled,
-    id,
-    keywords: payload.keywords,
-    priorityBoost: payload.priorityBoost,
-    riskCode: payload.riskCode,
-    riskName: payload.riskName,
-    severity: payload.severity,
-    unresolvedTimeoutMinutes: payload.unresolvedTimeoutMinutes,
-  };
-}
-
 function mapEntityPayload(
   id: string,
   payload: InsightEntityDictionaryMutationRequest,
@@ -2547,30 +2361,6 @@ function mapQaRuleRow(row: {
     ruleCode: row.rule_code,
     ruleName: row.rule_name,
     severity: normalizeConfigSeverity(row.severity),
-  };
-}
-
-function mapRiskRow(row: {
-  description: string | null;
-  enabled: number;
-  id: number | string;
-  keywords_json: string | null;
-  priority_boost: number;
-  risk_code: string;
-  risk_name: string;
-  severity: string;
-  unresolved_timeout_minutes: number | null;
-}): InsightRiskConfig {
-  return {
-    description: optionalString(row.description),
-    enabled: row.enabled === 1,
-    id: String(row.id),
-    keywords: parseJsonArray(row.keywords_json),
-    priorityBoost: Number(row.priority_boost),
-    riskCode: row.risk_code,
-    riskName: row.risk_name,
-    severity: normalizeConfigSeverity(row.severity),
-    unresolvedTimeoutMinutes: row.unresolved_timeout_minutes ?? undefined,
   };
 }
 

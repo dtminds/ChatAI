@@ -7,7 +7,6 @@ import {
   InsightDetailResponseSchema,
   InsightLabelConfigMutationRequestSchema,
   InsightQaRuleConfigMutationRequestSchema,
-  InsightRiskConfigMutationRequestSchema,
   InsightSettingsResponseSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
   InsightsFollowUpsResponseSchema,
@@ -263,16 +262,6 @@ describe("insights DTOs", () => {
             severity: "high",
           },
         ],
-        riskConfigs: [
-          {
-            enabled: true,
-            id: "1",
-            priorityBoost: 10,
-            riskCode: "bad_review",
-            riskName: "差评风险",
-            severity: "high",
-          },
-        ],
         sessionization: {
           analysisDelayMinutes: 10,
           hardMaxDurationHours: 48,
@@ -332,18 +321,6 @@ describe("insights DTOs", () => {
         ruleCode: "problem_resolution",
         ruleName: "客户问题是否解决",
         severity: "high",
-      }),
-    ).toBe(true);
-
-    expect(
-      Value.Check(InsightRiskConfigMutationRequestSchema, {
-        enabled: true,
-        keywords: ["差评", "投诉"],
-        priorityBoost: 10,
-        riskCode: "bad_review",
-        riskName: "差评风险",
-        severity: "high",
-        unresolvedTimeoutMinutes: 60,
       }),
     ).toBe(true);
 

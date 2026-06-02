@@ -1,5 +1,6 @@
 import { startTransition, type PointerEvent as ReactPointerEvent } from "react";
 import {
+  AiIdeaIcon,
   ChatIcon,
   ChartBreakoutCircleIcon,
   LayoutAlignLeftIcon,
@@ -12,6 +13,7 @@ import {
   UserSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { NavLink } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +39,7 @@ const railItems = [
   { label: "工作台", icon: DashboardCircleIcon },
   { label: "聊天", icon: ChatIcon },
   { label: "客户", icon: UserSquareIcon },
+  { label: "洞察", icon: AiIdeaIcon, to: "/chat/insights" },
   { label: "任务", icon: Notification01Icon },
 ];
 
@@ -187,27 +190,46 @@ export function AccountRail({
           >
             {railItems.map((item) => {
               const isActive = item.label === activeNavItem;
+              const itemContent = (
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={item.icon}
+                  size={18}
+                  strokeWidth={1.6}
+                />
+              );
 
               return (
                 <Tooltip key={item.label}>
                   <TooltipTrigger asChild>
-                    <button
-                      aria-label={item.label}
-                      className={cn(
-                        "flex size-9 items-center justify-center rounded-[8px] text-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25",
-                        isActive &&
-                          "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
-                      )}
-                      onClick={() => onNavItemSelect?.(item.label)}
-                      type="button"
-                    >
-                      <HugeiconsIcon
-                        color="currentColor"
-                        icon={item.icon}
-                        size={18}
-                        strokeWidth={1.6}
-                      />
-                    </button>
+                    {item.to ? (
+                      <NavLink
+                        aria-label={item.label}
+                        className={({ isActive: isRouteActive }) =>
+                          cn(
+                            "flex size-9 items-center justify-center rounded-[8px] text-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25",
+                            (isActive || isRouteActive) &&
+                              "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+                          )
+                        }
+                        to={item.to}
+                      >
+                        {itemContent}
+                      </NavLink>
+                    ) : (
+                      <button
+                        aria-label={item.label}
+                        className={cn(
+                          "flex size-9 items-center justify-center rounded-[8px] text-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25",
+                          isActive &&
+                            "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+                        )}
+                        onClick={() => onNavItemSelect?.(item.label)}
+                        type="button"
+                      >
+                        {itemContent}
+                      </button>
+                    )}
                   </TooltipTrigger>
                   <TooltipContent side="right" sideOffset={8}>
                     {item.label}
@@ -313,8 +335,34 @@ export function AccountRail({
       <div className="flex flex-col gap-1 px-1">
         {railItems.map((item) => {
           const isActive = item.label === activeNavItem;
+          const itemContent = (
+            <>
+              <HugeiconsIcon
+                color="currentColor"
+                icon={item.icon}
+                size={16}
+                strokeWidth={1.6}
+              />
+              <span>{item.label}</span>
+            </>
+          );
 
-          return (
+          return item.to ? (
+            <NavLink
+              className={({ isActive: isRouteActive }) =>
+                cn(
+                  "flex h-8.5 w-full items-center gap-2 rounded-[8px] px-3 text-[14px] text-foreground transition-colors",
+                  isActive || isRouteActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                )
+              }
+              key={item.label}
+              to={item.to}
+            >
+              {itemContent}
+            </NavLink>
+          ) : (
             <button
               className={cn(
                 "flex h-8.5 w-full items-center gap-2 rounded-[8px] px-3 text-[14px] text-foreground transition-colors",
@@ -326,13 +374,7 @@ export function AccountRail({
               onClick={() => onNavItemSelect?.(item.label)}
               type="button"
             >
-              <HugeiconsIcon
-                color="currentColor"
-                icon={item.icon}
-                size={16}
-                strokeWidth={1.6}
-              />
-              <span>{item.label}</span>
+              {itemContent}
             </button>
           );
         })}

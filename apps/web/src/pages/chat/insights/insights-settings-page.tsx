@@ -7,7 +7,6 @@ import {
   Edit02Icon,
   Search01Icon,
   Setting07Icon,
-  Task01Icon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -19,8 +18,6 @@ import type {
   InsightLabelConfigMutationRequest,
   InsightQaRuleConfig,
   InsightQaRuleConfigMutationRequest,
-  InsightRiskConfig,
-  InsightRiskConfigMutationRequest,
   InsightSettingsResponse,
   InsightSessionizationSettings,
 } from "@chatai/contracts";
@@ -47,6 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -66,11 +64,9 @@ import {
   createInsightLabelConfig,
   createInsightQaRuleConfig,
   createInsightRescanJob,
-  createInsightRiskConfig,
   deleteInsightEntityDictionaryItem,
   deleteInsightLabelConfig,
   deleteInsightQaRuleConfig,
-  deleteInsightRiskConfig,
   getInsightSettings,
   updateInsightAnalysisPolicy,
   updateInsightEntityDictionaryItem,
@@ -79,21 +75,17 @@ import {
   updateInsightLabelConfigStatus,
   updateInsightQaRuleConfig,
   updateInsightQaRuleConfigStatus,
-  updateInsightRiskConfig,
-  updateInsightRiskConfigStatus,
   updateInsightSessionizationSettings,
 } from "./api/insights-service";
 import { InsightsLayout } from "./insights-layout";
 
-type MutableCollection = "entity" | "label" | "qa" | "risk";
+type MutableCollection = "entity" | "label" | "qa";
 
 type ConfigDialogState =
   | { collection: "label"; mode: "create" }
   | { collection: "label"; item: InsightLabelConfig; mode: "edit" }
   | { collection: "qa"; mode: "create" }
   | { collection: "qa"; item: InsightQaRuleConfig; mode: "edit" }
-  | { collection: "risk"; mode: "create" }
-  | { collection: "risk"; item: InsightRiskConfig; mode: "edit" }
   | { collection: "entity"; mode: "create" }
   | { collection: "entity"; item: InsightEntityDictionaryItem; mode: "edit" };
 
@@ -109,7 +101,6 @@ const defaultSettings: InsightSettingsResponse = {
   entityDictionary: [],
   labelConfigs: [],
   qaRuleConfigs: [],
-  riskConfigs: [],
   sessionization: {
     analysisDelayMinutes: 10,
     hardMaxDurationHours: 48,
@@ -162,6 +153,32 @@ const sessionizationPresets: Array<{
     value: "custom",
   },
 ];
+
+const analysisFrequencyPresets = [
+  {
+    description: "更快发现风险和待办，可能产生更多中间判断",
+    label: "较快",
+    liveMinIntervalMinutes: 5,
+    liveMinNewMeaningfulMessages: 3,
+    value: "fast",
+  },
+  {
+    description: "兼顾及时性和稳定性，适合大多数客服场景",
+    label: "标准",
+    liveMinIntervalMinutes: 10,
+    liveMinNewMeaningfulMessages: 6,
+    value: "standard",
+  },
+  {
+    description: "减少重复分析，适合长沟通和低频跟进",
+    label: "较稳",
+    liveMinIntervalMinutes: 30,
+    liveMinNewMeaningfulMessages: 10,
+    value: "stable",
+  },
+] as const;
+
+type AnalysisFrequencyPresetValue = (typeof analysisFrequencyPresets)[number]["value"];
 
 export function InsightsSettingsPage() {
   const role = useAuthStore((state) => state.subUser?.role);
@@ -223,27 +240,24 @@ export function InsightsSettingsPage() {
     );
   }, [currentSettings.entityDictionary, entityQuery]);
 
-  async function handleSessionizationSubmit(payload: InsightSessionizationSettings) {
-    setPendingKey("sessionization");
+  async function handleInsightPolicySubmit(payload: {
+    analysisPolicy: InsightAnalysisPolicy;
+    sessionization: InsightSessionizationSettings;
+  }) {
+    setPendingKey("insight-policy");
 
     try {
-      const next = await updateInsightSessionizationSettings(payload);
-      setSettings((current) => ({ ...(current ?? defaultSettings), sessionization: next }));
-      toast.success("切片策略已保存");
-    } catch (error) {
-      toast.error(getErrorMessage(error));
-    } finally {
-      setPendingKey(undefined);
-    }
-  }
+      const [sessionization, analysisPolicy] = await Promise.all([
+        updateInsightSessionizationSettings(payload.sessionization),
+        updateInsightAnalysisPolicy(payload.analysisPolicy),
+      ]);
 
-  async function handleAnalysisPolicySubmit(payload: InsightAnalysisPolicy) {
-    setPendingKey("analysis");
-
-    try {
-      const next = await updateInsightAnalysisPolicy(payload);
-      setSettings((current) => ({ ...(current ?? defaultSettings), analysisPolicy: next }));
-      toast.success("分析策略已保存");
+      setSettings((current) => ({
+        ...(current ?? defaultSettings),
+        analysisPolicy,
+        sessionization,
+      }));
+      toast.success("洞察策略已保存");
     } catch (error) {
       toast.error(getErrorMessage(error));
     } finally {
@@ -261,9 +275,6 @@ export function InsightsSettingsPage() {
       } else if (collection === "qa") {
         const next = await updateInsightQaRuleConfigStatus(id, { enabled });
         updateSettingsList("qa", next);
-      } else if (collection === "risk") {
-        const next = await updateInsightRiskConfigStatus(id, { enabled });
-        updateSettingsList("risk", next);
       } else {
         const next = await updateInsightEntityDictionaryItemStatus(id, { enabled });
         updateSettingsList("entity", next);
@@ -285,8 +296,6 @@ export function InsightsSettingsPage() {
         await deleteInsightLabelConfig(id);
       } else if (collection === "qa") {
         await deleteInsightQaRuleConfig(id);
-      } else if (collection === "risk") {
-        await deleteInsightRiskConfig(id);
       } else {
         await deleteInsightEntityDictionaryItem(id);
       }
@@ -327,15 +336,6 @@ export function InsightsSettingsPage() {
           );
 
         updateSettingsList("qa", next);
-      } else if (dialogState.collection === "risk") {
-        const next = dialogState.mode === "create"
-          ? await createInsightRiskConfig(payload as InsightRiskConfigMutationRequest)
-          : await updateInsightRiskConfig(
-            dialogState.item.id,
-            payload as InsightRiskConfigMutationRequest,
-          );
-
-        updateSettingsList("risk", next);
       } else {
         const next = dialogState.mode === "create"
           ? await createInsightEntityDictionaryItem(payload as InsightEntityDictionaryMutationRequest)
@@ -390,13 +390,6 @@ export function InsightsSettingsPage() {
         };
       }
 
-      if (collection === "risk") {
-        return {
-          ...next,
-          riskConfigs: upsertById(next.riskConfigs, item as InsightRiskConfig),
-        };
-      }
-
       return {
         ...next,
         entityDictionary: upsertById(
@@ -417,10 +410,6 @@ export function InsightsSettingsPage() {
 
       if (collection === "qa") {
         return { ...next, qaRuleConfigs: next.qaRuleConfigs.filter((item) => item.id !== id) };
-      }
-
-      if (collection === "risk") {
-        return { ...next, riskConfigs: next.riskConfigs.filter((item) => item.id !== id) };
       }
 
       return {
@@ -448,30 +437,21 @@ export function InsightsSettingsPage() {
       <div className="space-y-4">
         <SettingsSummary settings={currentSettings} />
 
-        <Tabs className="gap-4" defaultValue="sessionization">
+        <Tabs className="gap-4" defaultValue="policy">
           <TabsList className="h-auto w-full justify-start gap-8 overflow-x-auto rounded-none border-b border-divider bg-transparent p-0 text-muted-foreground">
-            <SettingsTabTrigger value="sessionization">会话切片</SettingsTabTrigger>
-            <SettingsTabTrigger value="analysis">分析策略</SettingsTabTrigger>
+            <SettingsTabTrigger value="policy">洞察策略</SettingsTabTrigger>
             <SettingsTabTrigger value="labels">标签体系</SettingsTabTrigger>
             <SettingsTabTrigger value="qa">质检规则</SettingsTabTrigger>
-            <SettingsTabTrigger value="risks">风险关注</SettingsTabTrigger>
             <SettingsTabTrigger value="entities">实体词库</SettingsTabTrigger>
             <SettingsTabTrigger value="rescan">历史重刷</SettingsTabTrigger>
           </TabsList>
 
-          <TabsContent value="sessionization">
-            <SessionizationPanel
-              disabled={isLoading || pendingKey === "sessionization"}
-              onSubmit={(payload) => void handleSessionizationSubmit(payload)}
-              value={currentSettings.sessionization}
-            />
-          </TabsContent>
-
-          <TabsContent value="analysis">
-            <AnalysisPolicyPanel
-              disabled={isLoading || pendingKey === "analysis"}
-              onSubmit={(payload) => void handleAnalysisPolicySubmit(payload)}
-              value={currentSettings.analysisPolicy}
+          <TabsContent value="policy">
+            <InsightPolicyPanel
+              analysisPolicy={currentSettings.analysisPolicy}
+              disabled={isLoading || pendingKey === "insight-policy"}
+              onSubmit={(payload) => void handleInsightPolicySubmit(payload)}
+              sessionization={currentSettings.sessionization}
             />
           </TabsContent>
 
@@ -493,17 +473,6 @@ export function InsightsSettingsPage() {
               onDelete={(item) => void handleDelete("qa", item.id)}
               onEdit={(item) => setDialogState({ collection: "qa", item, mode: "edit" })}
               onToggle={(item) => void handleStatusToggle("qa", item.id, !item.enabled)}
-              pendingKey={pendingKey}
-            />
-          </TabsContent>
-
-          <TabsContent value="risks">
-            <RiskConfigTable
-              items={currentSettings.riskConfigs}
-              onCreate={() => setDialogState({ collection: "risk", mode: "create" })}
-              onDelete={(item) => void handleDelete("risk", item.id)}
-              onEdit={(item) => setDialogState({ collection: "risk", item, mode: "edit" })}
-              onToggle={(item) => void handleStatusToggle("risk", item.id, !item.enabled)}
               pendingKey={pendingKey}
             />
           </TabsContent>
@@ -566,11 +535,10 @@ function SettingsTabTrigger({
 
 function SettingsSummary({ settings }: { settings: InsightSettingsResponse }) {
   const stats = [
-    { icon: BubbleChatIcon, label: "切片预设", value: presetText(settings.sessionization.preset) },
-    { icon: ChartAreaIcon, label: "准实时分析", value: settings.analysisPolicy.liveAnalysisEnabled ? "开启" : "关闭" },
+    { icon: BubbleChatIcon, label: "策略模式", value: presetText(settings.sessionization.preset) },
+    { icon: ChartAreaIcon, label: "提前分析", value: settings.analysisPolicy.liveAnalysisEnabled ? "开启" : "关闭" },
     { icon: Setting07Icon, label: "启用标签", value: `${settings.labelConfigs.filter((item) => item.enabled).length} 个` },
     { icon: ClipboardCheckIcon, label: "质检规则", value: `${settings.qaRuleConfigs.filter((item) => item.enabled).length} 条` },
-    { icon: Task01Icon, label: "风险关注", value: `${settings.riskConfigs.filter((item) => item.enabled).length} 项` },
     { icon: UserGroupIcon, label: "实体词库", value: `${settings.entityDictionary.length} 个` },
   ];
 
@@ -591,50 +559,90 @@ function SettingsSummary({ settings }: { settings: InsightSettingsResponse }) {
   );
 }
 
-function SessionizationPanel({
+function InsightPolicyPanel({
+  analysisPolicy,
   disabled,
   onSubmit,
-  value,
+  sessionization,
 }: {
+  analysisPolicy: InsightAnalysisPolicy;
   disabled: boolean;
-  onSubmit: (value: InsightSessionizationSettings) => void;
-  value: InsightSessionizationSettings;
+  onSubmit: (value: {
+    analysisPolicy: InsightAnalysisPolicy;
+    sessionization: InsightSessionizationSettings;
+  }) => void;
+  sessionization: InsightSessionizationSettings;
 }) {
-  const [form, setForm] = useState(value);
+  const [analysisForm, setAnalysisForm] = useState(analysisPolicy);
+  const [sessionizationForm, setSessionizationForm] = useState(sessionization);
 
-  useEffect(() => setForm(value), [value]);
+  useEffect(() => setAnalysisForm(analysisPolicy), [analysisPolicy]);
+  useEffect(() => setSessionizationForm(sessionization), [sessionization]);
 
-  function updateCustomValue<Key extends keyof Omit<InsightSessionizationSettings, "preset">>(
+function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationSettings, "preset">>(
     key: Key,
     nextValue: InsightSessionizationSettings[Key],
   ) {
-    setForm((current) => ({
+    setSessionizationForm((current) => ({
       ...current,
       [key]: nextValue,
+      ...(key === "analysisDelayMinutes" ? { lateArrivalWindowMinutes: nextValue } : {}),
       preset: "custom",
+    }));
+  }
+
+  function updateFrequency(value: AnalysisFrequencyPresetValue) {
+    const preset = analysisFrequencyPresets.find((item) => item.value === value);
+
+    if (!preset) {
+      return;
+    }
+
+    setAnalysisForm((current) => ({
+      ...current,
+      liveMinIntervalMinutes: preset.liveMinIntervalMinutes,
+      liveMinNewMeaningfulMessages: preset.liveMinNewMeaningfulMessages,
     }));
   }
 
   return (
     <FormPanel
       disabled={disabled}
-      onSubmit={() => onSubmit(form)}
-      title="会话切片"
+      onSubmit={() =>
+        onSubmit({
+          analysisPolicy: {
+            ...analysisForm,
+            finalAnalysisEnabled: true,
+            ruleFallbackEnabled: true,
+          },
+          sessionization: {
+            ...sessionizationForm,
+            lateArrivalWindowMinutes: sessionizationForm.analysisDelayMinutes,
+          },
+        })}
+      title="洞察策略"
     >
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">服务节奏</h3>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          选择最接近团队接待方式的策略，再微调结束和分析时机
+        </p>
+      </div>
+
       <RadioGroup
-        aria-label="切片预设"
+        aria-label="服务节奏"
         className="grid gap-3 md:grid-cols-3"
         onValueChange={(preset: InsightSessionizationSettings["preset"]) => {
           const selectedPreset = sessionizationPresets.find((item) => item.value === preset);
 
-          setForm((current) => selectedPreset
+          setSessionizationForm((current) => selectedPreset
             ? { ...selectedPreset.settings }
             : { ...current, preset });
         }}
-        value={form.preset}
+        value={sessionizationForm.preset}
       >
         {sessionizationPresets.map((preset) => {
-          const isSelected = form.preset === preset.value;
+          const isSelected = sessionizationForm.preset === preset.value;
 
           return (
             <Label
@@ -659,101 +667,52 @@ function SessionizationPanel({
       </RadioGroup>
 
       <div className="mt-5 rounded-[8px] border bg-background">
-        <SessionizationParameterRow
+        <PresetSelectRow
           description="空闲多久后结束本轮服务；越短越快出结果，越长上下文越完整"
-          label="结束时长"
-          onChange={(idleTimeoutMinutes) => updateCustomValue("idleTimeoutMinutes", idleTimeoutMinutes)}
+          label="会话空闲多久后视为结束"
+          onChange={(idleTimeoutMinutes) => updateSessionizationValue("idleTimeoutMinutes", idleTimeoutMinutes)}
+          options={[60, 120, 240]}
           suffix="分钟"
-          value={form.idleTimeoutMinutes}
+          value={sessionizationForm.idleTimeoutMinutes}
         />
-        <SessionizationParameterRow
-          description="单个逻辑会话最多持续多久；越短拆分越细，越长单次分析上下文越大"
-          label="最长会话"
-          onChange={(hardMaxDurationHours) => updateCustomValue("hardMaxDurationHours", hardMaxDurationHours)}
+        <PresetSelectRow
+          description="单轮服务最长持续多久；超过后会自动拆分，避免上下文过长"
+          label="单轮会话最长持续"
+          onChange={(hardMaxDurationHours) => updateSessionizationValue("hardMaxDurationHours", hardMaxDurationHours)}
+          options={[24, 48, 72]}
           suffix="小时"
-          value={form.hardMaxDurationHours}
+          value={sessionizationForm.hardMaxDurationHours}
         />
-        <SessionizationParameterRow
-          description="会话结束后多久启动分析；越短越实时，越长越能等待补充消息"
-          label="分析延迟"
-          onChange={(analysisDelayMinutes) => updateCustomValue("analysisDelayMinutes", analysisDelayMinutes)}
-          suffix="分钟"
-          value={form.analysisDelayMinutes}
+        <BooleanSettingRow
+          checked={analysisForm.liveAnalysisEnabled}
+          description="会话进行中提前生成风险、待办和问题判断"
+          label="会话进行中提前分析"
+          onChange={(liveAnalysisEnabled) => setAnalysisForm((current) => ({ ...current, liveAnalysisEnabled }))}
         />
-        <SessionizationParameterRow
-          description="结束后多久内的新消息仍可补入本轮；越短结果越稳定，越长覆盖越完整"
-          label="迟到窗口"
-          onChange={(lateArrivalWindowMinutes) => updateCustomValue("lateArrivalWindowMinutes", lateArrivalWindowMinutes)}
+        <FrequencyPresetRow
+          description="较快更及时，较稳可减少重复判断"
+          label="提前分析频率"
+          onChange={updateFrequency}
+          value={detectAnalysisFrequencyPreset(analysisForm)}
+        />
+        <PresetSelectRow
+          description="会话结束后多久生成最终结果；等待越久越能覆盖补充消息"
+          label="会话结束后多久生成最终结果"
+          onChange={(analysisDelayMinutes) => updateSessionizationValue("analysisDelayMinutes", analysisDelayMinutes)}
+          options={[0, 10, 20, 30]}
+          renderOption={(option) => (option === 0 ? "立即" : `${option} 分钟`)}
           suffix="分钟"
-          value={form.lateArrivalWindowMinutes}
+          value={sessionizationForm.analysisDelayMinutes}
+        />
+        <SliderSettingRow
+          description="阈值越高，越多结果会提示人工复核"
+          label="低可信提示阈值"
+          onChange={(lowConfidenceThreshold) => setAnalysisForm((current) => ({ ...current, lowConfidenceThreshold }))}
+          value={analysisForm.lowConfidenceThreshold}
         />
       </div>
 
-      <SessionizationTimeline settings={form} />
-    </FormPanel>
-  );
-}
-
-function AnalysisPolicyPanel({
-  disabled,
-  onSubmit,
-  value,
-}: {
-  disabled: boolean;
-  onSubmit: (value: InsightAnalysisPolicy) => void;
-  value: InsightAnalysisPolicy;
-}) {
-  const [form, setForm] = useState(value);
-
-  useEffect(() => setForm(value), [value]);
-
-  return (
-    <FormPanel
-      disabled={disabled}
-      onSubmit={() => onSubmit(form)}
-      title="分析策略"
-    >
-      <div className="rounded-[8px] border bg-background">
-        <BooleanSettingRow
-          checked={form.liveAnalysisEnabled}
-          description="会话进行中满足条件时提前分析，用于更快生成风险、待办和问题判断"
-          label="准实时分析"
-          onChange={(liveAnalysisEnabled) => setForm((current) => ({ ...current, liveAnalysisEnabled }))}
-        />
-        <BooleanSettingRow
-          checked={form.finalAnalysisEnabled}
-          description="逻辑会话结束后做最终分析，用于覆盖准实时阶段的不完整判断"
-          label="终局分析"
-          onChange={(finalAnalysisEnabled) => setForm((current) => ({ ...current, finalAnalysisEnabled }))}
-        />
-        <BooleanSettingRow
-          checked={form.ruleFallbackEnabled}
-          description="模型不可用或置信度不足时启用规则兜底，减少关键结果缺失"
-          label="规则降级"
-          onChange={(ruleFallbackEnabled) => setForm((current) => ({ ...current, ruleFallbackEnabled }))}
-        />
-        <NumberSettingRow
-          description="准实时分析前至少新增多少条有效消息，避免频繁重复分析"
-          label="最少新增有效消息"
-          onChange={(liveMinNewMeaningfulMessages) => setForm((current) => ({ ...current, liveMinNewMeaningfulMessages }))}
-          suffix="条"
-          value={form.liveMinNewMeaningfulMessages}
-        />
-        <NumberSettingRow
-          description="同一逻辑会话两次准实时分析之间的最短间隔"
-          label="最短分析间隔"
-          onChange={(liveMinIntervalMinutes) => setForm((current) => ({ ...current, liveMinIntervalMinutes }))}
-          suffix="分钟"
-          value={form.liveMinIntervalMinutes}
-        />
-        <NumberSettingRow
-          description="低于该置信度的结果会被标记为低可信，便于人工复核"
-          label="低置信阈值"
-          onChange={(lowConfidenceThreshold) => setForm((current) => ({ ...current, lowConfidenceThreshold }))}
-          step="0.01"
-          value={form.lowConfidenceThreshold}
-        />
-      </div>
+      <SessionizationTimeline settings={sessionizationForm} />
     </FormPanel>
   );
 }
@@ -792,40 +751,7 @@ function SessionizationTimeline({
         ))}
       </div>
       <div className="mt-3 text-right text-xs leading-5 text-muted-foreground">
-        会话结束后 {settings.lateArrivalWindowMinutes} 分钟内到达的补充消息会进入迟到窗口；连续沟通超过 {settings.hardMaxDurationHours} 小时会强制切片
-      </div>
-    </section>
-  );
-}
-
-function SessionizationParameterRow({
-  description,
-  label,
-  onChange,
-  suffix,
-  value,
-}: {
-  description: string;
-  label: string;
-  onChange: (value: number) => void;
-  suffix: string;
-  value: number;
-}) {
-  return (
-    <section className="grid gap-4 border-b px-4 py-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_13rem] md:items-center">
-      <div className="min-w-0">
-        <h3 className="text-sm font-semibold text-foreground">{label}</h3>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">{description}</p>
-      </div>
-      <div className="flex items-center justify-start gap-2 md:justify-end">
-        <Input
-          className="h-10 w-32 text-right text-base font-semibold"
-          min={0}
-          onChange={(event) => onChange(Number(event.target.value))}
-          type="number"
-          value={value}
-        />
-        <span className="w-10 shrink-0 text-sm text-muted-foreground">{suffix}</span>
+        会话结束后 {settings.analysisDelayMinutes === 0 ? "立即" : `${settings.analysisDelayMinutes} 分钟`}生成最终结果；连续沟通超过 {settings.hardMaxDurationHours} 小时会自动拆分
       </div>
     </section>
   );
@@ -841,7 +767,7 @@ function SettingsRow({
   label: string;
 }) {
   return (
-    <section className="grid gap-4 border-b px-4 py-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_13rem] md:items-center">
+    <section className="grid gap-4 border-b px-4 py-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_10rem] md:items-center">
       <div className="min-w-0">
         <h3 className="text-sm font-semibold text-foreground">{label}</h3>
         <p className="mt-2 text-xs leading-5 text-muted-foreground">{description}</p>
@@ -871,34 +797,116 @@ function BooleanSettingRow({
   );
 }
 
-function NumberSettingRow({
+function PresetSelectRow({
   description,
   label,
   onChange,
-  step,
+  options,
+  renderOption,
   suffix,
   value,
 }: {
   description: string;
   label: string;
   onChange: (value: number) => void;
-  step?: string;
+  options: number[];
+  renderOption?: (value: number) => string;
   suffix?: string;
+  value: number;
+}) {
+  const normalizedOptions = options.includes(value) ? options : [value, ...options];
+  const formatOption = (option: number) => renderOption?.(option) ?? (suffix ? `${option} ${suffix}` : String(option));
+
+  return (
+    <SettingsRow description={description} label={label}>
+      <Select onValueChange={(next) => onChange(Number(next))} value={String(value)}>
+        <SelectTrigger className="w-40">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {normalizedOptions.map((option) => (
+            <SelectItem key={option} value={String(option)}>
+              {formatOption(option)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SettingsRow>
+  );
+}
+
+function FrequencyPresetRow({
+  description,
+  label,
+  onChange,
+  value,
+}: {
+  description: string;
+  label: string;
+  onChange: (value: AnalysisFrequencyPresetValue) => void;
+  value: AnalysisFrequencyPresetValue;
+}) {
+  return (
+    <SettingsRow description={description} label={label}>
+      <Select onValueChange={(next) => onChange(next as AnalysisFrequencyPresetValue)} value={value}>
+        <SelectTrigger className="w-40">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {analysisFrequencyPresets.map((preset) => (
+            <SelectItem key={preset.value} value={preset.value}>
+              {preset.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SettingsRow>
+  );
+}
+
+function SliderSettingRow({
+  description,
+  label,
+  onChange,
+  value,
+}: {
+  description: string;
+  label: string;
+  onChange: (value: number) => void;
   value: number;
 }) {
   return (
     <SettingsRow description={description} label={label}>
-      <Input
-        className="h-10 w-32 text-right text-base font-semibold"
-        min={0}
-        onChange={(event) => onChange(Number(event.target.value))}
-        step={step}
-        type="number"
-        value={value}
-      />
-      {suffix ? <span className="w-10 shrink-0 text-sm text-muted-foreground">{suffix}</span> : null}
+      <div className="flex w-48 items-center gap-3">
+        <Slider
+          aria-label={label}
+          className="flex-1"
+          max={0.9}
+          min={0.1}
+          onValueChange={([next]) => {
+            if (next != null) {
+              onChange(Number(next.toFixed(1)));
+            }
+          }}
+          step={0.1}
+          value={[value]}
+        />
+        <span className="w-8 text-right text-sm font-semibold text-foreground">
+          {value.toFixed(1)}
+        </span>
+      </div>
     </SettingsRow>
   );
+}
+
+function detectAnalysisFrequencyPreset(policy: InsightAnalysisPolicy): AnalysisFrequencyPresetValue {
+  const matchedPreset = analysisFrequencyPresets.find(
+    (preset) =>
+      preset.liveMinIntervalMinutes === policy.liveMinIntervalMinutes
+      && preset.liveMinNewMeaningfulMessages === policy.liveMinNewMeaningfulMessages,
+  );
+
+  return matchedPreset?.value ?? "standard";
 }
 
 function FormPanel({
@@ -913,14 +921,14 @@ function FormPanel({
   title: string;
 }) {
   return (
-    <section className="rounded-[8px] border bg-background">
-      <div className="flex items-center justify-between border-b px-5 py-4">
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold">{title}</h2>
         <Button disabled={disabled} onClick={onSubmit} size="sm">
           保存
         </Button>
       </div>
-      <div className="p-5">{children}</div>
+      <div>{children}</div>
     </section>
   );
 }
@@ -1049,70 +1057,6 @@ function QaRuleConfigTable({
   );
 }
 
-function RiskConfigTable({
-  items,
-  onCreate,
-  onDelete,
-  onEdit,
-  onToggle,
-  pendingKey,
-}: {
-  items: InsightRiskConfig[];
-  onCreate: () => void;
-  onDelete: (item: InsightRiskConfig) => void;
-  onEdit: (item: InsightRiskConfig) => void;
-  onToggle: (item: InsightRiskConfig) => void;
-  pendingKey?: string;
-}) {
-  return (
-    <ConfigTableShell
-      actionText="新增风险项"
-      description="维护需要优先提醒和加权处理的风险信号"
-      onCreate={onCreate}
-      title="风险关注"
-    >
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>风险项</TableHead>
-            <TableHead>编码</TableHead>
-            <TableHead>严重度</TableHead>
-            <TableHead>加权</TableHead>
-            <TableHead>状态</TableHead>
-            <TableHead className="text-right">操作</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>
-                <PrimaryText main={item.riskName} sub={item.description} />
-              </TableCell>
-              <TableCell className="font-mono text-xs text-muted-foreground">{item.riskCode}</TableCell>
-              <TableCell><SeverityBadge severity={item.severity} /></TableCell>
-              <TableCell>{item.priorityBoost}</TableCell>
-              <TableCell>
-                <Switch
-                  checked={item.enabled}
-                  disabled={pendingKey === `status:risk:${item.id}`}
-                  onCheckedChange={() => onToggle(item)}
-                />
-              </TableCell>
-              <TableCell className="text-right">
-                <RowActions
-                  disabled={pendingKey === `delete:risk:${item.id}`}
-                  onDelete={() => onDelete(item)}
-                  onEdit={() => onEdit(item)}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </ConfigTableShell>
-  );
-}
-
 function EntityDictionaryTable({
   items,
   onCreate,
@@ -1214,8 +1158,8 @@ function ConfigTableShell({
   title: string;
 }) {
   return (
-    <section className="rounded-[8px] border bg-background">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-base font-semibold">{title}</h2>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
@@ -1228,7 +1172,7 @@ function ConfigTableShell({
           </Button>
         </div>
       </div>
-      <div>{children}</div>
+      <div className="rounded-[8px] border bg-background">{children}</div>
     </section>
   );
 }
@@ -1268,14 +1212,14 @@ function RescanPanel({
   state?: string;
 }) {
   return (
-    <section className="rounded-[8px] border bg-background">
-      <div className="border-b px-5 py-4">
+    <section className="space-y-4">
+      <div>
         <h2 className="text-base font-semibold">历史重刷</h2>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           从指定时间重新生成逻辑会话和洞察结果，适合规则调整后的数据修正
         </p>
       </div>
-      <div className="px-5 py-1">
+      <div className="rounded-[8px] border bg-background px-5 py-1">
         <section className="grid gap-4 py-4 md:grid-cols-[minmax(0,1fr)_22rem] md:items-center">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-foreground">重刷开始时间</h3>
@@ -1366,19 +1310,6 @@ function ConfigMutationDialog({
               <TextareaField className="md:col-span-2" form={form} label="判定标准" name="judgmentCriteria" onChange={setValue} />
               <TextareaField form={form} label="正例" name="positiveExamplesText" onChange={setValue} placeholder="每行一个例子" />
               <TextareaField form={form} label="反例" name="negativeExamplesText" onChange={setValue} placeholder="每行一个例子" />
-              <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
-            </>
-          ) : null}
-
-          {state.collection === "risk" ? (
-            <>
-              <TextField form={form} label="风险名称" name="riskName" onChange={setValue} />
-              <TextField form={form} label="风险编码" name="riskCode" onChange={setValue} />
-              <SeverityField form={form} onChange={setValue} />
-              <NumberEditorField form={form} label="优先级加权" name="priorityBoost" onChange={setValue} />
-              <NumberEditorField form={form} label="未解决超时分钟" name="unresolvedTimeoutMinutes" onChange={setValue} />
-              <TextareaField form={form} label="关键词" name="keywordsText" onChange={setValue} placeholder="每行一个关键词" />
-              <TextareaField className="md:col-span-2" form={form} label="说明" name="description" onChange={setValue} />
               <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
             </>
           ) : null}
@@ -1480,34 +1411,6 @@ function TextareaField({
   );
 }
 
-function NumberEditorField({
-  form,
-  label,
-  name,
-  onChange,
-}: {
-  form: Record<string, unknown>;
-  label: string;
-  name: string;
-  onChange: (name: string, value: number | undefined) => void;
-}) {
-  const id = `insight-field-${name}`;
-
-  return (
-    <Field htmlFor={id} label={label}>
-      <Input
-        id={id}
-        min={0}
-        onChange={(event) =>
-          onChange(name, event.target.value === "" ? undefined : Number(event.target.value))
-        }
-        type="number"
-        value={form[name] == null ? "" : Number(form[name])}
-      />
-    </Field>
-  );
-}
-
 function SeverityField({
   form,
   onChange,
@@ -1604,20 +1507,6 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
     };
   }
 
-  if (state.collection === "risk") {
-    const item = state.mode === "edit" ? state.item : undefined;
-    return {
-      description: item?.description ?? "",
-      enabled: item?.enabled ?? true,
-      keywordsText: (item?.keywords ?? []).join("\n"),
-      priorityBoost: item?.priorityBoost ?? 0,
-      riskCode: item?.riskCode ?? "",
-      riskName: item?.riskName ?? "",
-      severity: item?.severity ?? "medium",
-      unresolvedTimeoutMinutes: item?.unresolvedTimeoutMinutes,
-    };
-  }
-
   const item = state.mode === "edit" ? state.item : undefined;
   return {
     aliasesText: (item?.aliases ?? []).join("\n"),
@@ -1652,21 +1541,6 @@ function normalizeDialogPayload(collection: MutableCollection, form: Record<stri
       ruleCode: String(form.ruleCode ?? "").trim(),
       ruleName: String(form.ruleName ?? "").trim(),
       severity: normalizeSeverityFormValue(form.severity),
-    };
-  }
-
-  if (collection === "risk") {
-    return {
-      description: trimOptional(form.description),
-      enabled: Boolean(form.enabled),
-      keywords: splitLines(form.keywordsText),
-      priorityBoost: Number(form.priorityBoost ?? 0),
-      riskCode: String(form.riskCode ?? "").trim(),
-      riskName: String(form.riskName ?? "").trim(),
-      severity: normalizeSeverityFormValue(form.severity),
-      unresolvedTimeoutMinutes: form.unresolvedTimeoutMinutes == null
-        ? undefined
-        : Number(form.unresolvedTimeoutMinutes),
     };
   }
 
@@ -1710,7 +1584,6 @@ function collectionText(value: MutableCollection) {
     entity: "实体",
     label: "标签",
     qa: "规则",
-    risk: "风险项",
   };
 
   return text[value];

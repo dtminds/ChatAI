@@ -51,24 +51,6 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
       severity: "medium",
     },
   ],
-  riskConfigs: [
-    {
-      enabled: true,
-      id: "1",
-      priorityBoost: 10,
-      riskCode: "bad_review",
-      riskName: "差评风险",
-      severity: "high",
-    },
-    {
-      enabled: true,
-      id: "2",
-      priorityBoost: 8,
-      riskCode: "refund",
-      riskName: "退款风险",
-      severity: "medium",
-    },
-  ],
   sessionization: {
     analysisDelayMinutes: 10,
     hardMaxDurationHours: 48,

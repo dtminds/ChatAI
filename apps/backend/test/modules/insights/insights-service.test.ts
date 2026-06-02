@@ -342,16 +342,6 @@ function createRepository(
           severity: "high",
         },
       ],
-      riskConfigs: [
-        {
-          enabled: true,
-          id: "31",
-          priorityBoost: 10,
-          riskCode: "bad_review",
-          riskName: "差评风险",
-          severity: "high",
-        },
-      ],
       sessionization: {
         analysisDelayMinutes: 10,
         hardMaxDurationHours: 48,
@@ -382,17 +372,6 @@ function createRepository(
       severity: "high",
     })),
     deleteQaRuleConfig: vi.fn(async () => true),
-    createRiskConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "93" })),
-    updateRiskConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
-    updateRiskConfigStatus: vi.fn(async (_scope, id, enabled) => ({
-      enabled,
-      id,
-      priorityBoost: 10,
-      riskCode: "bad_review",
-      riskName: "差评风险",
-      severity: "high",
-    })),
-    deleteRiskConfig: vi.fn(async () => true),
     createEntityDictionaryItem: vi.fn(async (_scope, payload) => ({ ...payload, id: "94" })),
     updateEntityDictionaryItem: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
     updateEntityDictionaryItemStatus: vi.fn(async (_scope, id, enabled) => ({
@@ -647,9 +626,9 @@ describe("InsightsService", () => {
   });
 
   it("throws not found when deleting missing insight config records", async () => {
-    const service = new InsightsService(createRepository({ deleteRiskConfig: vi.fn(async () => false) }));
+    const service = new InsightsService(createRepository({ deleteQaRuleConfig: vi.fn(async () => false) }));
 
-    await expect(service.deleteRiskConfig(scope, "admin", "999")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(service.deleteQaRuleConfig(scope, "admin", "999")).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("updates action item status only for supported manual statuses", async () => {

@@ -378,29 +378,6 @@ export const InsightQaRuleConfigMutationRequestSchema = Type.Object({
   severity: InsightSeveritySchema,
 });
 
-export const InsightRiskConfigSchema = Type.Object({
-  description: Type.Optional(Type.String()),
-  enabled: Type.Boolean(),
-  id: Type.String(),
-  keywords: Type.Optional(Type.Array(Type.String())),
-  priorityBoost: Type.Number(),
-  riskCode: Type.String(),
-  riskName: Type.String(),
-  severity: InsightSeveritySchema,
-  unresolvedTimeoutMinutes: Type.Optional(Type.Number()),
-});
-
-export const InsightRiskConfigMutationRequestSchema = Type.Object({
-  description: Type.Optional(Type.String()),
-  enabled: Type.Boolean(),
-  keywords: Type.Optional(Type.Array(Type.String())),
-  priorityBoost: Type.Number(),
-  riskCode: Type.String({ minLength: 1 }),
-  riskName: Type.String({ minLength: 1 }),
-  severity: InsightSeveritySchema,
-  unresolvedTimeoutMinutes: Type.Optional(Type.Number()),
-});
-
 export const InsightEntityDictionaryItemSchema = Type.Object({
   aliases: Type.Array(Type.String()),
   attributes: Type.Optional(Type.Record(Type.String(), Type.Any())),
@@ -425,7 +402,6 @@ export const InsightSettingsResponseSchema = Type.Object({
   entityDictionary: Type.Array(InsightEntityDictionaryItemSchema),
   labelConfigs: Type.Array(InsightLabelConfigSchema),
   qaRuleConfigs: Type.Array(InsightQaRuleConfigSchema),
-  riskConfigs: Type.Array(InsightRiskConfigSchema),
   sessionization: InsightSessionizationSettingsSchema,
 });
 
@@ -481,10 +457,6 @@ export type InsightLabelConfigMutationRequest = Static<
 export type InsightQaRuleConfig = Static<typeof InsightQaRuleConfigSchema>;
 export type InsightQaRuleConfigMutationRequest = Static<
   typeof InsightQaRuleConfigMutationRequestSchema
->;
-export type InsightRiskConfig = Static<typeof InsightRiskConfigSchema>;
-export type InsightRiskConfigMutationRequest = Static<
-  typeof InsightRiskConfigMutationRequestSchema
 >;
 export type InsightSettingsResponse = Static<typeof InsightSettingsResponseSchema>;
 export type InsightSessionizationSettings = Static<typeof InsightSessionizationSettingsSchema>;

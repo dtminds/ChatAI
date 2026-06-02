@@ -14,8 +14,6 @@ import type {
   InsightMessageContextResponse,
   InsightQaRuleConfig,
   InsightQaRuleConfigMutationRequest,
-  InsightRiskConfig,
-  InsightRiskConfigMutationRequest,
   InsightSettingsResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
@@ -208,47 +206,6 @@ export async function updateInsightQaRuleConfigStatus(
 export async function deleteInsightQaRuleConfig(configId: string) {
   const response = await http.delete<ApiSuccessEnvelope<InsightConfigDeletedResponse>>(
     `/server/insights/settings/qa-rule-configs/${configId}`,
-  );
-
-  return response.data;
-}
-
-export async function createInsightRiskConfig(payload: InsightRiskConfigMutationRequest) {
-  const response = await http.post<
-    ApiSuccessEnvelope<InsightRiskConfig>,
-    InsightRiskConfigMutationRequest
-  >("/server/insights/settings/risk-configs", payload);
-
-  return response.data;
-}
-
-export async function updateInsightRiskConfig(
-  configId: string,
-  payload: InsightRiskConfigMutationRequest,
-) {
-  const response = await http.put<
-    ApiSuccessEnvelope<InsightRiskConfig>,
-    InsightRiskConfigMutationRequest
-  >(`/server/insights/settings/risk-configs/${configId}`, payload);
-
-  return response.data;
-}
-
-export async function updateInsightRiskConfigStatus(
-  configId: string,
-  payload: InsightConfigStatusUpdateRequest,
-) {
-  const response = await http.patch<
-    ApiSuccessEnvelope<InsightRiskConfig>,
-    InsightConfigStatusUpdateRequest
-  >(`/server/insights/settings/risk-configs/${configId}/status`, payload);
-
-  return response.data;
-}
-
-export async function deleteInsightRiskConfig(configId: string) {
-  const response = await http.delete<ApiSuccessEnvelope<InsightConfigDeletedResponse>>(
-    `/server/insights/settings/risk-configs/${configId}`,
   );
 
   return response.data;

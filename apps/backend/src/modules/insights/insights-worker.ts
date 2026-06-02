@@ -45,10 +45,23 @@ export type InsightWorkerSessionizationConfig = {
   ruleVersion: string;
 };
 
+export type ShouldCreateLiveAnalyzeJobInput = {
+  occurredAt: number;
+  sessionId: string;
+  uid: number;
+};
+
 export type InsightWorkerOpenSession = {
   lastMeaningfulMessageAt: number | null;
   sessionId: string;
   startedAt: number;
+};
+
+export type ClosableOpenSession = {
+  closeReason: CloseSessionInput["closeReason"];
+  endedAt: number;
+  sessionId: string;
+  uid: number;
 };
 
 export type CreateLogicalSessionInput = {
@@ -203,6 +216,11 @@ export type InsightWorkerRepositoryPort = {
   findPlatformConversation(message: InsightWorkerMessage): Promise<InsightWorkerConversation | undefined>;
   getCursor(): Promise<InsightWorkerCursor>;
   getSessionizationConfig(uid: number): Promise<InsightWorkerSessionizationConfig>;
+  listClosableOpenSessions(input: {
+    limit: number;
+    now: number;
+    uidAllowlist?: Set<number>;
+  }): Promise<ClosableOpenSession[]>;
   listIncrementalMessages(input: {
     cursorAuditId: number;
     cursorMsgtime: number;
@@ -213,6 +231,7 @@ export type InsightWorkerRepositoryPort = {
   markAnalysisJobSucceeded(jobId: string): Promise<void>;
   markAnalysisRunFailed(runId: string, error: unknown): Promise<void>;
   saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string>;
+  shouldCreateLiveAnalyzeJob(input: ShouldCreateLiveAnalyzeJobInput): Promise<boolean>;
   startAnalysisRun(input: InsightAnalysisRunInput): Promise<string>;
   updateCursor(cursor: InsightWorkerCursor): Promise<void>;
 };
@@ -224,13 +243,19 @@ export type NonOverlappingTicker = {
 export class InsightsWorkerService {
   private readonly batchSize: number;
   private readonly model?: InsightSessionAnalyzer;
+  private readonly uidAllowlist?: Set<number>;
 
   constructor(
     private readonly repository: InsightWorkerRepositoryPort,
-    options: { batchSize?: number; model?: InsightSessionAnalyzer } = {},
+    options: {
+      batchSize?: number;
+      model?: InsightSessionAnalyzer;
+      uidAllowlist?: Set<number>;
+    } = {},
   ) {
     this.batchSize = options.batchSize ?? 200;
     this.model = options.model;
+    this.uidAllowlist = options.uidAllowlist;
   }
 
   async runOnce() {
@@ -242,6 +267,10 @@ export class InsightsWorkerService {
     });
 
     for (const message of messages) {
+      if (this.uidAllowlist && !this.uidAllowlist.has(message.uid)) {
+        continue;
+      }
+
       await this.sessionizeMessage(message);
     }
 
@@ -256,6 +285,32 @@ export class InsightsWorkerService {
 
     if (this.model) {
       await this.runAnalyzeJob();
+    }
+
+    await this.closeTimedOutOpenSessions();
+  }
+
+  private async closeTimedOutOpenSessions() {
+    const sessions = await this.repository.listClosableOpenSessions({
+      limit: this.batchSize,
+      now: Date.now(),
+      uidAllowlist: this.uidAllowlist,
+    });
+
+    for (const session of sessions) {
+      await this.repository.closeSession({
+        closeReason: session.closeReason,
+        endedAt: session.endedAt,
+        sessionId: session.sessionId,
+      });
+      await this.repository.createAnalyzeJob({
+        analysisScope: "all",
+        jobType: "analyze_session",
+        mode: "final",
+        runAfter: new Date(session.endedAt),
+        sessionId: session.sessionId,
+        uid: session.uid,
+      });
     }
   }
 
@@ -293,7 +348,14 @@ export class InsightsWorkerService {
       uid: conversation.uid,
     });
 
-    if (input.includedForAi) {
+    if (
+      input.includedForAi
+      && await this.repository.shouldCreateLiveAnalyzeJob({
+        occurredAt: input.occurredAt,
+        sessionId,
+        uid: conversation.uid,
+      })
+    ) {
       await this.repository.createAnalyzeJob({
         analysisScope: "all",
         jobType: "analyze_session",

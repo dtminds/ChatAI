@@ -267,8 +267,8 @@ function createInsightsDbMock() {
           {
             final_analysis_enabled: 1,
             live_analysis_enabled: 1,
-            live_min_interval_minutes: 10,
-            live_min_new_meaningful_messages: 6,
+            live_min_interval_minutes: 15,
+            live_min_new_meaningful_messages: 20,
             low_confidence_threshold: "0.6000",
             rule_fallback_enabled: 1,
           },
@@ -303,22 +303,6 @@ function createInsightsDbMock() {
             rule_code: "problem_resolution",
             rule_name: "客户问题是否解决",
             severity: "high",
-          },
-        ]);
-      }
-
-      if (table === "xy_wap_embed_insight_risk_config") {
-        return createBuilder([
-          {
-            description: null,
-            enabled: 1,
-            id: 1,
-            keywords_json: null,
-            priority_boost: 10,
-            risk_code: "bad_review",
-            risk_name: "差评风险",
-            severity: "high",
-            unresolved_timeout_minutes: null,
           },
         ]);
       }

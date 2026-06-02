@@ -1059,21 +1059,6 @@ export interface XyWapEmbedInsightQaRuleConfig {
   update_time: Generated<Date>;
 }
 
-export interface XyWapEmbedInsightRiskConfig {
-  create_time: Generated<Date>;
-  description: string | null;
-  enabled: Generated<number>;
-  id: Generated<number>;
-  keywords_json: string | null;
-  priority_boost: number;
-  risk_code: string;
-  risk_name: string;
-  severity: string;
-  uid: number;
-  unresolved_timeout_minutes: number | null;
-  update_time: Generated<Date>;
-}
-
 export interface XyWapEmbedInsightEntityDictionary {
   aliases_json: string | null;
   attributes_json: string | null;
@@ -1127,7 +1112,6 @@ export interface DB {
   xy_wap_embed_insight_job: XyWapEmbedInsightJob;
   xy_wap_embed_insight_label_config: XyWapEmbedInsightLabelConfig;
   xy_wap_embed_insight_qa_rule_config: XyWapEmbedInsightQaRuleConfig;
-  xy_wap_embed_insight_risk_config: XyWapEmbedInsightRiskConfig;
   xy_wap_embed_insight_sync_cursor: XyWapEmbedInsightSyncCursor;
   xy_wap_embed_logical_session: XyWapEmbedLogicalSession;
   xy_wap_embed_logical_session_message: XyWapEmbedLogicalSessionMessage;

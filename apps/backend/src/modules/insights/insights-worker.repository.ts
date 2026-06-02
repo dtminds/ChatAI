@@ -3,14 +3,17 @@ import type { Database } from "../../db/schema.js";
 import type {
   AppendSessionMessageInput,
   CloseSessionInput,
+  ClosableOpenSession,
   CreateAnalyzeJobInput,
   CreateLogicalSessionInput,
   SaveAnalysisResultInput,
+  ShouldCreateLiveAnalyzeJobInput,
   InsightWorkerCursor,
   InsightWorkerMessage,
   InsightWorkerRepositoryPort,
   InsightWorkerSessionizationConfig,
 } from "./insights-worker.js";
+import { getInitialInsightWorkerCursor } from "./insights-worker-runtime.js";
 
 type InsertResult = {
   id?: bigint | number | string | null;
@@ -70,16 +73,21 @@ type AnalysisMessageRow = MessageRow & {
 
 const defaultConfig: InsightWorkerSessionizationConfig = {
   analysisDelayMinutes: 10,
-  hardMaxDurationHours: 48,
+  hardMaxDurationHours: 8,
   idleTimeoutMinutes: 120,
   lateArrivalWindowMinutes: 30,
   ruleVersion: "insights-v1",
 };
 
+const DEFAULT_LIVE_MIN_INTERVAL_MINUTES = 15;
+const DEFAULT_LIVE_MIN_NEW_MEANINGFUL_MESSAGES = 20;
 const cursorSource = "xy_wap_embed_msg_audit_info";
 
 export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly options: { startLookbackDays?: number } = {},
+  ) {}
 
   async getCursor(): Promise<InsightWorkerCursor> {
     const row = await this.db
@@ -89,10 +97,16 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .where("uid", "is", null)
       .executeTakeFirst() as CursorRow | undefined;
 
-    return {
-      cursorAuditId: parseNumber(row?.cursor_audit_id),
-      cursorMsgtime: parseNumber(row?.cursor_msgtime),
-    };
+    if (row) {
+      return {
+        cursorAuditId: parseNumber(row.cursor_audit_id),
+        cursorMsgtime: parseNumber(row.cursor_msgtime),
+      };
+    }
+
+    return getInitialInsightWorkerCursor({
+      startLookbackDays: this.options.startLookbackDays ?? 3,
+    });
   }
 
   async listIncrementalMessages(input: {
@@ -215,6 +229,72 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           startedAt: parseNumber(row.started_at),
         }
       : undefined;
+  }
+
+  async listClosableOpenSessions(input: {
+    limit: number;
+    now: number;
+    uidAllowlist?: Set<number>;
+  }): Promise<ClosableOpenSession[]> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_logical_session")
+      .select([
+        "analysis_delay_minutes",
+        "hard_max_duration_hours",
+        "id",
+        "idle_timeout_minutes",
+        "last_meaningful_message_at",
+        "started_at",
+        "uid",
+      ])
+      .where("status", "=", "open")
+      .where((eb) =>
+        eb.or([
+          eb(
+            sql<number>`(${input.now} - started_at)`,
+            ">",
+            sql<number>`hard_max_duration_hours * 3600000`,
+          ),
+          eb(
+            sql<number>`(${input.now} - COALESCE(last_meaningful_message_at, started_at))`,
+            ">",
+            sql<number>`idle_timeout_minutes * 60000`,
+          ),
+        ]),
+      )
+      .orderBy("started_at", "asc")
+      .limit(input.limit);
+
+    if (input.uidAllowlist && input.uidAllowlist.size > 0) {
+      query = query.where("uid", "in", Array.from(input.uidAllowlist));
+    }
+
+    const rows = await query.execute() as Array<{
+      hard_max_duration_hours: number | string;
+      id: number | string;
+      idle_timeout_minutes: number | string;
+      last_meaningful_message_at: number | string | null;
+      started_at: number | string;
+      uid: number | string;
+    }>;
+
+    return rows.map((row) => {
+      const startedAt = parseNumber(row.started_at);
+      const idleBase = row.last_meaningful_message_at == null
+        ? startedAt
+        : parseNumber(row.last_meaningful_message_at);
+      const hardMaxEndedAt = startedAt + parseNumber(row.hard_max_duration_hours) * 60 * 60_000;
+      const idleEndedAt = idleBase + parseNumber(row.idle_timeout_minutes) * 60_000;
+      const closeReason: ClosableOpenSession["closeReason"] =
+        hardMaxEndedAt <= idleEndedAt ? "hard_max_duration" : "idle_timeout";
+
+      return {
+        closeReason,
+        endedAt: Math.min(hardMaxEndedAt, idleEndedAt),
+        sessionId: String(row.id),
+        uid: parseNumber(row.uid),
+      };
+    });
   }
 
   async createLogicalSession(input: CreateLogicalSessionInput): Promise<string> {
@@ -448,6 +528,78 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .executeTakeFirstOrThrow() as InsertResult;
 
     return String(parseInsertedMySqlId(inserted));
+  }
+
+  async shouldCreateLiveAnalyzeJob(input: ShouldCreateLiveAnalyzeJobInput): Promise<boolean> {
+    const policy = await this.db
+      .selectFrom("xy_wap_embed_insight_analysis_policy")
+      .select([
+        "live_analysis_enabled",
+        "live_min_interval_minutes",
+        "live_min_new_meaningful_messages",
+      ])
+      .where("uid", "=", input.uid)
+      .where("enabled", "=", 1)
+      .executeTakeFirst() as {
+        live_analysis_enabled: number | string;
+        live_min_interval_minutes: number | string;
+        live_min_new_meaningful_messages: number | string;
+      } | undefined;
+    const liveEnabled = policy ? Number(policy.live_analysis_enabled) === 1 : true;
+
+    if (!liveEnabled) {
+      return false;
+    }
+
+    const pendingLiveJob = await this.db
+      .selectFrom("xy_wap_embed_insight_job")
+      .select(["id"])
+      .where("target_type", "=", "logical_session")
+      .where("target_id", "=", input.sessionId)
+      .where("job_type", "=", "analyze_session")
+      .where("status", "in", ["pending", "running"])
+      .where("idempotency_key", "like", `analyze_session:${input.uid}:${input.sessionId}:live:%`)
+      .executeTakeFirst();
+
+    if (pendingLiveJob) {
+      return false;
+    }
+
+    const minMessages = policy
+      ? parseNumber(policy.live_min_new_meaningful_messages)
+      : DEFAULT_LIVE_MIN_NEW_MEANINGFUL_MESSAGES;
+    const minIntervalMs = (policy
+      ? parseNumber(policy.live_min_interval_minutes)
+      : DEFAULT_LIVE_MIN_INTERVAL_MINUTES) * 60_000;
+    const latestLiveRun = await this.db
+      .selectFrom("xy_wap_embed_analysis_run")
+      .select(["source_message_to", "create_time"])
+      .where("session_id", "=", parsePositiveInteger(input.sessionId) ?? -1)
+      .where("mode", "=", "live")
+      .where("status", "in", ["running", "succeeded"])
+      .orderBy("id", "desc")
+      .executeTakeFirst() as {
+        create_time: Date | string;
+        source_message_to: number | string | null;
+      } | undefined;
+
+    if (latestLiveRun && Date.now() - new Date(latestLiveRun.create_time).getTime() < minIntervalMs) {
+      return false;
+    }
+
+    const sinceMessageId = latestLiveRun?.source_message_to == null
+      ? 0
+      : parseNumber(latestLiveRun.source_message_to);
+    const row = await this.db
+      .selectFrom("xy_wap_embed_logical_session_message")
+      .select((eb) => eb.fn.count<number>("id").as("count"))
+      .where("session_id", "=", parsePositiveInteger(input.sessionId) ?? -1)
+      .where("included_for_ai", "=", 1)
+      .where("meaningful_for_boundary", "=", 1)
+      .where("source_message_id", ">", sinceMessageId)
+      .executeTakeFirst() as { count: number | string } | undefined;
+
+    return parseNumber(row?.count) >= minMessages;
   }
 
   async saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string> {

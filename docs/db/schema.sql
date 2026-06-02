@@ -336,22 +336,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_qa_rule_config (
   UNIQUE KEY uk_qa_rule_uid_code (uid, rule_code)
 ) COMMENT='会话洞察质检规则配置表';
 
-CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_risk_config (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
-  risk_code VARCHAR(128) NOT NULL COMMENT '风险编码',
-  risk_name VARCHAR(128) NOT NULL COMMENT '风险名称',
-  description VARCHAR(512) NULL COMMENT '风险说明',
-  severity VARCHAR(32) NOT NULL COMMENT '严重程度',
-  keywords_json JSON NULL COMMENT '关键词JSON',
-  priority_boost INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '优先级加权',
-  unresolved_timeout_minutes INT UNSIGNED NULL COMMENT '未解决超时时长，单位分钟',
-  enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用',
-  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  UNIQUE KEY uk_risk_uid_code (uid, risk_code)
-) COMMENT='会话洞察风险关注项配置表';
-
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_entity_dictionary (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',

@@ -16,7 +16,6 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_insight_job",
   "xy_wap_embed_insight_label_config",
   "xy_wap_embed_insight_qa_rule_config",
-  "xy_wap_embed_insight_risk_config",
   "xy_wap_embed_insight_sync_cursor",
   "xy_wap_embed_logical_session",
   "xy_wap_embed_logical_session_message",

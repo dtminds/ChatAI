@@ -229,8 +229,8 @@ describe("insights DTOs", () => {
         analysisPolicy: {
           finalAnalysisEnabled: true,
           liveAnalysisEnabled: true,
-          liveMinIntervalMinutes: 10,
-          liveMinNewMeaningfulMessages: 6,
+          liveMinIntervalMinutes: 15,
+          liveMinNewMeaningfulMessages: 20,
           lowConfidenceThreshold: 0.6,
           ruleFallbackEnabled: true,
         },
@@ -264,7 +264,7 @@ describe("insights DTOs", () => {
         ],
         sessionization: {
           analysisDelayMinutes: 10,
-          hardMaxDurationHours: 48,
+          hardMaxDurationHours: 8,
           idleTimeoutMinutes: 120,
           lateArrivalWindowMinutes: 30,
           preset: "custom",
@@ -283,7 +283,7 @@ describe("insights DTOs", () => {
     expect(
       Value.Check(InsightSessionizationSettingsUpdateRequestSchema, {
         analysisDelayMinutes: 10,
-        hardMaxDurationHours: 48,
+        hardMaxDurationHours: 8,
         idleTimeoutMinutes: 90,
         lateArrivalWindowMinutes: 20,
         preset: "custom",

@@ -62,7 +62,9 @@ P0:
 第一版关键决策：
 
 - 大模型优先接入火山方舟。
+- 第一版火山方舟先走 OpenAI-compatible chat completions，不接 Responses API。
 - 模型 API Key 先放 `.env`，不在页面配置。
+- worker 独立进程部署，通过 uid allowlist 灰度；首次启动默认从 3 天前开始扫描。
 - 支持从指定时间开始重刷历史数据。
 - 语音转写读取 `xy_wap_embed_msg_audit_info.content.transVoiceText`。
 - 数据页第一版不做额外角色权限，仍遵守登录态、租户和会话数据隔离；配置页仅管理员可见。
@@ -500,7 +502,7 @@ xy_wap_embed_model_profile
 
 第一版优先实现 `openai_compatible` provider。OpenAI 官方、火山方舟、阿里 DashScope 和公司自建模型网关均可通过 `base_url + api_key + model_name` 接入。底层 SDK 可选 Vercel AI SDK 或 OpenAI Node SDK，但业务代码只依赖内部 Provider 接口。
 
-第一版默认 provider 使用火山方舟，通过 OpenAI-compatible 协议接入。API Key 从 `.env` 读取，model profile 可通过种子数据写入数据库。
+第一版默认 provider 使用火山方舟，通过 OpenAI-compatible chat completions 协议接入。API Key 从 `.env` 读取，model profile 可通过种子数据写入数据库。Responses API、`previous_response_id` 和 provider 侧缓存先不接入，后续只在 Provider Adapter 内扩展，不让 worker 和结果模型直接依赖 Responses 状态。
 
 模型输出要求：
 
@@ -571,8 +573,8 @@ xy_wap_embed_insight_analysis_policy
 默认建议：
 
 ```text
-live_min_new_meaningful_messages = 6
-live_min_interval_minutes = 10
+live_min_new_meaningful_messages = 20
+live_min_interval_minutes = 15
 low_confidence_threshold = 0.6
 rule_fallback_enabled = true
 ```
@@ -1234,7 +1236,7 @@ GET /api/server/insights/intents
 
 上线分阶段：
 
-1. 灰度租户开启消息同步和切片，不调用模型。
+1. 通过 uid allowlist 灰度租户开启消息同步和切片，不调用模型。
 2. 从指定时间开始重刷少量历史逻辑会话，校验摘要和标签质量。
 3. 开启 live analysis，但限制模型并发和每日调用量。
 4. 开启 final analysis。

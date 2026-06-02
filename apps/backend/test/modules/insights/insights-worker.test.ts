@@ -7,7 +7,7 @@ import {
 
 const defaultConfig = {
   analysisDelayMinutes: 10,
-  hardMaxDurationHours: 48,
+  hardMaxDurationHours: 8,
   idleTimeoutMinutes: 120,
   lateArrivalWindowMinutes: 30,
   ruleVersion: "insights-v1",
@@ -29,6 +29,7 @@ function createRepository(
     })),
     getCursor: vi.fn(async () => ({ cursorAuditId: 0, cursorMsgtime: 0 })),
     getSessionizationConfig: vi.fn(async () => defaultConfig),
+    listClosableOpenSessions: vi.fn(async () => []),
     listIncrementalMessages: vi.fn(async () => [
       {
         chatType: 1,
@@ -62,6 +63,7 @@ function createRepository(
     markAnalysisJobSucceeded: vi.fn(async () => undefined),
     markAnalysisRunFailed: vi.fn(async () => undefined),
     saveAnalysisResult: vi.fn(async () => "7001"),
+    shouldCreateLiveAnalyzeJob: vi.fn(async () => true),
     startAnalysisRun: vi.fn(async () => "run-1"),
     updateCursor: vi.fn(async () => undefined),
     ...overrides,
@@ -97,18 +99,66 @@ describe("InsightsWorkerService", () => {
         uid: 9001,
       }),
     );
+    expect(repository.shouldCreateLiveAnalyzeJob).toHaveBeenCalledWith({
+      occurredAt: 1_780_244_000_000,
+      sessionId: "501",
+      uid: 9001,
+    });
     expect(repository.updateCursor).toHaveBeenCalledWith({
       cursorAuditId: 9002,
       cursorMsgtime: 1_780_244_060_000,
     });
   });
 
+  it("does not create a live analysis job before policy thresholds are reached", async () => {
+    const repository = createRepository({
+      shouldCreateLiveAnalyzeJob: vi.fn(async () => false),
+    });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runOnce();
+
+    expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+  });
+
+  it("closes timed-out open sessions even when no new message arrives", async () => {
+    const repository = createRepository({
+      listClosableOpenSessions: vi.fn(async () => [
+        {
+          closeReason: "idle_timeout",
+          endedAt: 1_780_244_000_000,
+          sessionId: "501",
+          uid: 9001,
+        },
+      ]),
+      listIncrementalMessages: vi.fn(async () => []),
+    });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runOnce();
+
+    expect(repository.closeSession).toHaveBeenCalledWith({
+      closeReason: "idle_timeout",
+      endedAt: 1_780_244_000_000,
+      sessionId: "501",
+    });
+    expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobType: "analyze_session",
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    );
+  });
+
   it("closes an idle open session before creating a new one", async () => {
     const repository = createRepository({
       findOpenSession: vi.fn(async () => ({
-        lastMeaningfulMessageAt: 1_780_200_000_000,
+        lastMeaningfulMessageAt: 1_780_235_000_000,
         sessionId: "500",
-        startedAt: 1_780_199_000_000,
+        startedAt: 1_780_230_000_000,
       })),
     });
     const service = new InsightsWorkerService(repository);
@@ -133,6 +183,23 @@ describe("InsightsWorkerService", () => {
     await service.runOnce();
 
     expect(repository.appendSessionMessage).not.toHaveBeenCalled();
+    expect(repository.updateCursor).toHaveBeenCalledWith({
+      cursorAuditId: 9002,
+      cursorMsgtime: 1_780_244_060_000,
+    });
+  });
+
+  it("skips sessionization and analysis jobs for uids outside the worker allowlist", async () => {
+    const repository = createRepository();
+    const service = new InsightsWorkerService(repository, {
+      uidAllowlist: new Set([9002]),
+    });
+
+    await service.runOnce();
+
+    expect(repository.findPlatformConversation).not.toHaveBeenCalled();
+    expect(repository.appendSessionMessage).not.toHaveBeenCalled();
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
     expect(repository.updateCursor).toHaveBeenCalledWith({
       cursorAuditId: 9002,
       cursorMsgtime: 1_780_244_060_000,

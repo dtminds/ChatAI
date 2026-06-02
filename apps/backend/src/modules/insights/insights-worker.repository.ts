@@ -1,5 +1,6 @@
 import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
+import type { InsightPromptContext } from "./insight-prompt-builder.js";
 import type {
   AppendSessionMessageInput,
   CloseSessionInput,
@@ -8,6 +9,7 @@ import type {
   CreateLogicalSessionInput,
   SaveAnalysisResultInput,
   ShouldCreateLiveAnalyzeJobInput,
+  ClaimedSyncMessagesJob,
   InsightWorkerCursor,
   InsightWorkerMessage,
   InsightWorkerRepositoryPort,
@@ -18,6 +20,7 @@ import { getInitialInsightWorkerCursor } from "./insights-worker-runtime.js";
 type InsertResult = {
   id?: bigint | number | string | null;
   insertId?: bigint | number | string | null;
+  numInsertedOrUpdatedRows?: bigint | number | string | null;
 };
 
 type CursorRow = {
@@ -109,12 +112,111 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     });
   }
 
+  async getPromptContext(uid: number): Promise<InsightPromptContext> {
+    const [labelRows, qaRuleRows, entityRows] = await Promise.all([
+      this.db
+        .selectFrom("xy_wap_embed_insight_label_config")
+        .select([
+          "description",
+          "include_in_statistics",
+          "label_code",
+          "label_name",
+          "negative_examples_json",
+          "positive_examples_json",
+        ])
+        .where("uid", "=", uid)
+        .where("enabled", "=", 1)
+        .orderBy("id", "asc")
+        .execute() as Promise<Array<{
+          description: string | null;
+          include_in_statistics: number | string;
+          label_code: string;
+          label_name: string;
+          negative_examples_json: string | null;
+          positive_examples_json: string | null;
+        }>>,
+      this.db
+        .selectFrom("xy_wap_embed_insight_qa_rule_config")
+        .select([
+          "applicable_scene",
+          "description",
+          "judgment_criteria",
+          "negative_examples_json",
+          "positive_examples_json",
+          "rule_code",
+          "rule_name",
+          "severity",
+        ])
+        .where("uid", "=", uid)
+        .where("enabled", "=", 1)
+        .orderBy("id", "asc")
+        .execute() as Promise<Array<{
+          applicable_scene: string | null;
+          description: string | null;
+          judgment_criteria: string | null;
+          negative_examples_json: string | null;
+          positive_examples_json: string | null;
+          rule_code: string;
+          rule_name: string;
+          severity: string;
+        }>>,
+      this.db
+        .selectFrom("xy_wap_embed_insight_entity_dictionary")
+        .select([
+          "aliases_json",
+          "attributes_json",
+          "canonical_name",
+          "entity_type",
+          "include_in_aggregation",
+        ])
+        .where("uid", "=", uid)
+        .where("enabled", "=", 1)
+        .orderBy("id", "asc")
+        .execute() as Promise<Array<{
+          aliases_json: string | null;
+          attributes_json: string | null;
+          canonical_name: string;
+          entity_type: string;
+          include_in_aggregation: number | string;
+        }>>,
+    ]);
+
+    return {
+      entityDictionary: entityRows.map((row) => ({
+        aliases: parseJsonArray(row.aliases_json),
+        attributes: parseJsonObject(row.attributes_json),
+        canonicalName: row.canonical_name,
+        entityType: row.entity_type,
+        includeInAggregation: parseNumber(row.include_in_aggregation) === 1,
+      })),
+      labelConfigs: labelRows.map((row) => ({
+        description: optionalString(row.description),
+        includeInStatistics: parseNumber(row.include_in_statistics) === 1,
+        labelCode: row.label_code,
+        labelName: row.label_name,
+        negativeExamples: parseJsonArray(row.negative_examples_json),
+        positiveExamples: parseJsonArray(row.positive_examples_json),
+      })),
+      qaRuleConfigs: qaRuleRows.map((row) => ({
+        applicableScene: optionalString(row.applicable_scene),
+        description: optionalString(row.description),
+        judgmentCriteria: optionalString(row.judgment_criteria),
+        negativeExamples: parseJsonArray(row.negative_examples_json),
+        positiveExamples: parseJsonArray(row.positive_examples_json),
+        ruleCode: row.rule_code,
+        ruleName: row.rule_name,
+        severity: normalizeSeverity(row.severity),
+      })),
+    };
+  }
+
   async listIncrementalMessages(input: {
     cursorAuditId: number;
     cursorMsgtime: number;
     limit: number;
+    uid?: number;
   }): Promise<InsightWorkerMessage[]> {
-    const rows = await this.db
+    let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info")
       .select([
         "chat_type",
@@ -137,7 +239,13 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
             eb("id", ">", input.cursorAuditId),
           ]),
         ]),
-      )
+      );
+
+    if (input.uid != null) {
+      query = query.where("uid", "=", input.uid);
+    }
+
+    const rows = await query
       .orderBy("msgtime", "asc")
       .orderBy("id", "asc")
       .limit(input.limit)
@@ -270,6 +378,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }
 
     const rows = await query.execute() as Array<{
+      analysis_delay_minutes: number | string;
       hard_max_duration_hours: number | string;
       id: number | string;
       idle_timeout_minutes: number | string;
@@ -289,12 +398,39 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         hardMaxEndedAt <= idleEndedAt ? "hard_max_duration" : "idle_timeout";
 
       return {
+        analysisDelayMinutes: parseNumber(row.analysis_delay_minutes),
         closeReason,
         endedAt: Math.min(hardMaxEndedAt, idleEndedAt),
         sessionId: String(row.id),
         uid: parseNumber(row.uid),
       };
     });
+  }
+
+  async listOpenSessionsForLiveAnalysis(input: {
+    limit: number;
+    uidAllowlist?: Set<number>;
+  }) {
+    let query = this.db
+      .selectFrom("xy_wap_embed_logical_session")
+      .select(["id", "uid"])
+      .where("status", "=", "open")
+      .orderBy("last_message_at", "asc")
+      .limit(input.limit);
+
+    if (input.uidAllowlist && input.uidAllowlist.size > 0) {
+      query = query.where("uid", "in", Array.from(input.uidAllowlist));
+    }
+
+    const rows = await query.execute() as Array<{
+      id: number | string;
+      uid: number | string;
+    }>;
+
+    return rows.map((row) => ({
+      sessionId: String(row.id),
+      uid: parseNumber(row.uid),
+    }));
   }
 
   async createLogicalSession(input: CreateLogicalSessionInput): Promise<string> {
@@ -318,7 +454,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }
 
   async appendSessionMessage(input: AppendSessionMessageInput): Promise<void> {
-    await this.db
+    const result = await this.db
       .insertInto("xy_wap_embed_logical_session_message")
       .values({
         conversation_id: parsePositiveInteger(input.conversationId) ?? -1,
@@ -333,7 +469,11 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         uid: input.uid,
       })
       .ignore()
-      .executeTakeFirst();
+      .executeTakeFirst() as InsertResult;
+
+    if (getInsertedRows(result) === 0) {
+      return;
+    }
 
     await this.db
       .updateTable("xy_wap_embed_logical_session")
@@ -428,6 +568,53 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         uid: null,
       })
       .executeTakeFirst();
+  }
+
+  async claimNextSyncMessagesJob(input: {
+    uidAllowlist?: Set<number>;
+  }): Promise<ClaimedSyncMessagesJob | undefined> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_insight_job")
+      .select(["id", "target_id", "uid"])
+      .where("status", "=", "pending")
+      .where("target_type", "=", "uid")
+      .where("job_type", "=", "sync_messages")
+      .where("run_after", "<=", new Date())
+      .orderBy("priority", "desc")
+      .orderBy("id", "asc");
+
+    if (input.uidAllowlist && input.uidAllowlist.size > 0) {
+      query = query.where("uid", "in", Array.from(input.uidAllowlist));
+    }
+
+    const row = await query.executeTakeFirst() as {
+      id: number | string;
+      target_id: string;
+      uid: number | string;
+    } | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_job")
+      .set({
+        attempt_count: sql<number>`attempt_count + 1`,
+        lease_until: new Date(Date.now() + 60_000),
+        locked_by: "node-worker",
+        status: "running",
+        update_time: new Date(),
+      })
+      .where("id", "=", parseNumber(row.id))
+      .where("status", "=", "pending")
+      .executeTakeFirst();
+
+    return {
+      cursorMsgtime: new Date(row.target_id).getTime(),
+      jobId: String(row.id),
+      uid: parseNumber(row.uid),
+    };
   }
 
   async claimNextAnalyzeJob() {
@@ -770,9 +957,29 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
   }
 
+  async markSyncMessagesJobSucceeded(jobId: string): Promise<void> {
+    await this.db.updateTable("xy_wap_embed_insight_job").set({
+      lease_until: null,
+      locked_by: null,
+      status: "succeeded",
+      update_time: new Date(),
+    }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
+  }
+
   async markAnalysisJobFailed(jobId: string, error: unknown): Promise<void> {
     await this.db.updateTable("xy_wap_embed_insight_job").set({
       error_code: "ANALYSIS_FAILED",
+      error_message: formatError(error),
+      lease_until: null,
+      locked_by: null,
+      status: "failed",
+      update_time: new Date(),
+    }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
+  }
+
+  async markSyncMessagesJobFailed(jobId: string, error: unknown): Promise<void> {
+    await this.db.updateTable("xy_wap_embed_insight_job").set({
+      error_code: "SYNC_MESSAGES_FAILED",
       error_message: formatError(error),
       lease_until: null,
       locked_by: null,
@@ -851,6 +1058,48 @@ function parseNumber(value: Date | number | string | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseJsonArray(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonObject(value: string | null | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function optionalString(value: string | null | undefined) {
+  return value || undefined;
+}
+
+function normalizeSeverity(value: string) {
+  return value === "high" || value === "medium" || value === "low"
+    ? value
+    : "medium";
+}
+
 function parsePositiveInteger(value: string) {
   if (!/^[1-9]\d*$/.test(value)) {
     return undefined;
@@ -877,6 +1126,16 @@ function parseInsertedMySqlId(result: InsertResult) {
   }
 
   return undefined;
+}
+
+function getInsertedRows(result: InsertResult | undefined) {
+  const value = result?.numInsertedOrUpdatedRows;
+
+  if (value == null) {
+    return 1;
+  }
+
+  return Number(value);
 }
 
 function parseJobMode(row: AnalyzeJobRow) {

@@ -21,6 +21,7 @@ function createRepository(
     closeSession: vi.fn(async () => undefined),
     createAnalyzeJob: vi.fn(async () => "job-1"),
     claimNextAnalyzeJob: vi.fn(async () => undefined),
+    claimNextSyncMessagesJob: vi.fn(async () => undefined),
     createLogicalSession: vi.fn(async () => "501"),
     findOpenSession: vi.fn(async () => undefined),
     findPlatformConversation: vi.fn(async () => ({
@@ -28,6 +29,11 @@ function createRepository(
       uid: 9001,
     })),
     getCursor: vi.fn(async () => ({ cursorAuditId: 0, cursorMsgtime: 0 })),
+    getPromptContext: vi.fn(async () => ({
+      entityDictionary: [],
+      labelConfigs: [],
+      qaRuleConfigs: [],
+    })),
     getSessionizationConfig: vi.fn(async () => defaultConfig),
     listClosableOpenSessions: vi.fn(async () => []),
     listIncrementalMessages: vi.fn(async () => [
@@ -58,10 +64,13 @@ function createRepository(
         thirdUserId: "user-1",
       },
     ]),
+    listOpenSessionsForLiveAnalysis: vi.fn(async () => []),
     listSessionMessagesForAnalysis: vi.fn(async () => []),
     markAnalysisJobFailed: vi.fn(async () => undefined),
     markAnalysisJobSucceeded: vi.fn(async () => undefined),
     markAnalysisRunFailed: vi.fn(async () => undefined),
+    markSyncMessagesJobFailed: vi.fn(async () => undefined),
+    markSyncMessagesJobSucceeded: vi.fn(async () => undefined),
     saveAnalysisResult: vi.fn(async () => "7001"),
     shouldCreateLiveAnalyzeJob: vi.fn(async () => true),
     startAnalysisRun: vi.fn(async () => "run-1"),
@@ -110,6 +119,26 @@ describe("InsightsWorkerService", () => {
     });
   });
 
+  it("logs incremental worker activity when messages are scanned", async () => {
+    const repository = createRepository();
+    const logger = {
+      error: vi.fn(),
+      info: vi.fn(),
+    };
+    const service = new InsightsWorkerService(repository, { batchSize: 50, logger });
+
+    await service.runOnce();
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scannedMessages: 2,
+        sessionizedMessages: 2,
+        skippedByAllowlist: 0,
+      }),
+      "会话洞察 worker 已扫描增量消息",
+    );
+  });
+
   it("does not create a live analysis job before policy thresholds are reached", async () => {
     const repository = createRepository({
       shouldCreateLiveAnalyzeJob: vi.fn(async () => false),
@@ -126,6 +155,7 @@ describe("InsightsWorkerService", () => {
     const repository = createRepository({
       listClosableOpenSessions: vi.fn(async () => [
         {
+          analysisDelayMinutes: 10,
           closeReason: "idle_timeout",
           endedAt: 1_780_244_000_000,
           sessionId: "501",
@@ -147,8 +177,39 @@ describe("InsightsWorkerService", () => {
       expect.objectContaining({
         jobType: "analyze_session",
         mode: "final",
+        runAfter: new Date(1_780_244_000_000 + 10 * 60_000),
         sessionId: "501",
         uid: 9001,
+      }),
+    );
+  });
+
+  it("creates live analysis jobs for open sessions without waiting for a new message", async () => {
+    const repository = createRepository({
+      listIncrementalMessages: vi.fn(async () => []),
+      listOpenSessionsForLiveAnalysis: vi.fn(async () => [
+        {
+          sessionId: "24",
+          uid: 272,
+        },
+      ]),
+      shouldCreateLiveAnalyzeJob: vi.fn(async () => true),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.shouldCreateLiveAnalyzeJob).toHaveBeenCalledWith({
+      occurredAt: expect.any(Number),
+      sessionId: "24",
+      uid: 272,
+    });
+    expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobType: "analyze_session",
+        mode: "live",
+        sessionId: "24",
+        uid: 272,
       }),
     );
   });
@@ -206,7 +267,80 @@ describe("InsightsWorkerService", () => {
     });
   });
 
+  it("runs one due historical rescan job from the requested time", async () => {
+    const firstBatchMessage = {
+      chatType: 1,
+      content: JSON.stringify({ content: "第一批历史消息" }),
+      fromType: 2,
+      id: "8001",
+      msgtime: 1_780_000_010_000,
+      msgtype: "text",
+      platform: 5,
+      uid: 9001,
+      thirdExternalId: "external-1",
+      thirdGroupId: "",
+      thirdUserId: "user-1",
+    };
+    const secondBatchMessage = {
+      ...firstBatchMessage,
+      content: JSON.stringify({ content: "第二批历史消息" }),
+      id: "8002",
+      msgtime: 1_780_000_020_000,
+    };
+    const repository = createRepository({
+      claimNextSyncMessagesJob: vi.fn(async () => ({
+        cursorMsgtime: 1_780_000_000_000,
+        jobId: "rescan-job-1",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async ({ cursorMsgtime }) => {
+        if (cursorMsgtime === 1_780_000_000_000) {
+          return [firstBatchMessage];
+        }
+
+        if (cursorMsgtime === 1_780_000_010_000) {
+          return [secondBatchMessage];
+        }
+
+        return [];
+      }),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 1 });
+
+    await service.runOnce();
+
+    expect(repository.claimNextSyncMessagesJob).toHaveBeenCalled();
+    expect(repository.listIncrementalMessages).toHaveBeenCalledWith({
+      cursorAuditId: 0,
+      cursorMsgtime: 1_780_000_000_000,
+      limit: 1,
+      uid: 9001,
+    });
+    expect(repository.listIncrementalMessages).toHaveBeenCalledWith({
+      cursorAuditId: 8001,
+      cursorMsgtime: 1_780_000_010_000,
+      limit: 1,
+      uid: 9001,
+    });
+    expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
+    expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith("rescan-job-1");
+  });
+
   it("runs one due analysis job, validates evidence ids and saves structured result", async () => {
+    const promptContext = {
+      entityDictionary: [],
+      labelConfigs: [
+        {
+          description: "物流相关咨询",
+          includeInStatistics: true,
+          labelCode: "logistics",
+          labelName: "物流咨询",
+          negativeExamples: [],
+          positiveExamples: ["快递什么时候到"],
+        },
+      ],
+      qaRuleConfigs: [],
+    };
     const repository = createRepository({
       claimNextAnalyzeJob: vi.fn(async () => ({
         analysisScope: "all",
@@ -215,6 +349,7 @@ describe("InsightsWorkerService", () => {
         sessionId: "501",
         uid: 9001,
       })),
+      getPromptContext: vi.fn(async () => promptContext),
       listIncrementalMessages: vi.fn(async () => []),
       listSessionMessagesForAnalysis: vi.fn(async () => [
         {
@@ -291,6 +426,7 @@ describe("InsightsWorkerService", () => {
     );
     expect(model.analyzeSession).toHaveBeenCalledWith(
       expect.objectContaining({
+        context: promptContext,
         messages: expect.arrayContaining([
           expect.objectContaining({ sourceMessageId: "9001" }),
         ]),

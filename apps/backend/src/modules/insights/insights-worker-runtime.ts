@@ -96,6 +96,7 @@ export function createInsightsWorkerRuntime(input: {
   const model = config.modelEnabled ? createInsightAnalyzer(input.env, input.logger) : undefined;
   const service = new InsightsWorkerService(repository, {
     batchSize: config.batchSize,
+    logger: input.logger,
     model,
     uidAllowlist: config.uidAllowlist,
   });

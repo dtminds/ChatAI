@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  OpenAiCompatibleInsightAnalyzer,
   createVolcengineArkProviderConfig,
   maskProviderConfigForLog,
 } from "../../../src/modules/insights/llm-provider";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("LLM provider config", () => {
   it("resolves Volcengine Ark as an OpenAI-compatible provider", () => {
@@ -49,6 +54,154 @@ describe("LLM provider config", () => {
       model: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
+    });
+  });
+
+  it("does not send JSON response_format by default", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body));
+
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    actionItems: [],
+                    entities: [],
+                    faqCandidates: [],
+                    intents: [],
+                    problemResolution: {
+                      confidence: 0.8,
+                      evidenceMessageIds: ["1"],
+                      problemDetected: false,
+                      problemSummary: "",
+                      resolutionStatus: "resolved",
+                    },
+                    qaFindings: [],
+                    risks: [],
+                    sentiment: [],
+                    summary: {
+                      confidence: 0.8,
+                      customerIntent: "咨询",
+                      processSummary: "已回复",
+                      resultSummary: "已解决",
+                    },
+                    tags: [],
+                  }),
+                },
+              },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }),
+    );
+
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      model: "ep-test",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+    });
+
+    await analyzer.analyzeSession({
+      messages: [
+        {
+          aiText: "你好",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "1",
+        },
+      ],
+    });
+
+    expect(requestBody).toBeDefined();
+    expect(requestBody).not.toHaveProperty("response_format");
+  });
+
+  it("parses JSON object even when the model wraps it in a markdown fence", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: [
+                    "```json",
+                    JSON.stringify({
+                      actionItems: [],
+                      entities: [],
+                      faqCandidates: [],
+                      intents: [],
+                      problemResolution: {
+                        confidence: 0.8,
+                        evidenceMessageIds: ["1"],
+                        problemDetected: true,
+                        problemSummary: "客户反馈物流异常",
+                        resolutionStatus: "unresolved",
+                      },
+                      qaFindings: [],
+                      risks: [],
+                      sentiment: [],
+                      summary: {
+                        confidence: 0.8,
+                        customerIntent: "查物流",
+                        processSummary: "客服承诺处理",
+                        resultSummary: "尚未解决",
+                      },
+                      tags: [],
+                    }),
+                    "```",
+                  ].join("\n"),
+                },
+              },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        ),
+      ),
+    );
+
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      model: "ep-test",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+    });
+
+    await expect(
+      analyzer.analyzeSession({
+        messages: [
+          {
+            aiText: "快递一直没更新",
+            contentStatus: "ready",
+            messageType: "text",
+            occurredAt: 1,
+            senderRole: "customer",
+            sourceMessageId: "1",
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      problemResolution: {
+        resolutionStatus: "unresolved",
+      },
     });
   });
 });

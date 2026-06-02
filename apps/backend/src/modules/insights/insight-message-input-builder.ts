@@ -1,6 +1,5 @@
 import {
   isRecord,
-  parseJsonRecord,
   readRecordNumber,
   readRecordString,
 } from "../chat/workbench-content-utils.js";
@@ -12,7 +11,7 @@ import type {
 } from "./insights.types.js";
 
 export function buildInsightMessageInput(row: InsightMessageSourceRow): AiMessageInput {
-  const parsed = parseJsonRecord(row.content);
+  const parsed = parseInsightMessageContent(row.content);
   const messageType = mapInsightMessageType(row.msgtype);
   const senderRole = mapInsightSenderRole(row.from_type, messageType);
   const content = buildAiText(messageType, parsed);
@@ -35,11 +34,12 @@ export function buildInsightMessageInput(row: InsightMessageSourceRow): AiMessag
 
 function buildAiText(
   messageType: InsightMessageType,
-  parsed: Record<string, unknown> | undefined,
+  parsed: InsightParsedMessageContent,
 ) {
   switch (messageType) {
     case "text": {
       const text =
+        readPlainContent(parsed) ||
         readString(parsed, "content") ||
         readString(parsed, "text") ||
         readString(parsed, "title");
@@ -161,12 +161,36 @@ function mapInsightSenderRole(
   return "unknown";
 }
 
-function readString(value: Record<string, unknown> | undefined, key: string) {
+function readString(value: InsightParsedMessageContent, key: string) {
   if (!value || !isRecord(value)) {
     return "";
   }
 
   return readRecordString(value, key).trim();
+}
+
+type InsightParsedMessageContent = Record<string, unknown> | string | undefined;
+
+function parseInsightMessageContent(value: string | null): InsightParsedMessageContent {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return value;
+  }
+}
+
+function readPlainContent(value: InsightParsedMessageContent) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function compactText(parts: string[]) {
@@ -187,7 +211,7 @@ function toTimestamp(value: Date | number | string) {
 }
 
 export function readVoiceDurationSeconds(content: string | null) {
-  const parsed = parseJsonRecord(content);
+  const parsed = parseInsightMessageContent(content);
 
-  return parsed ? readRecordNumber(parsed, "duration") : undefined;
+  return isRecord(parsed) ? readRecordNumber(parsed, "duration") : undefined;
 }

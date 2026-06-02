@@ -1,6 +1,6 @@
 import { BadRequestError } from "../../shared/errors.js";
 import type { InsightAnalysisOutput, InsightSessionAnalyzer } from "./insights-worker.js";
-import type { AiMessageInput } from "./insights.types.js";
+import { buildInsightPromptMessages } from "./insight-prompt-builder.js";
 
 export type OpenAiCompatibleProviderConfig = {
   apiKey: string;
@@ -8,6 +8,7 @@ export type OpenAiCompatibleProviderConfig = {
   model: string;
   providerCode: "volcengine_ark";
   protocol: "openai-compatible";
+  responseFormat?: "json_object";
 };
 
 type ProviderEnv = {
@@ -74,25 +75,24 @@ export function maskProviderConfigForLog(config: OpenAiCompatibleProviderConfig)
 export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
   constructor(private readonly config: OpenAiCompatibleProviderConfig) {}
 
-  async analyzeSession(input: {
-    messages: AiMessageInput[];
-  }): Promise<InsightAnalysisOutput> {
-    const response = await fetch(`${this.config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-      body: JSON.stringify({
-        messages: [
-          {
-            content: buildSystemPrompt(),
-            role: "system",
-          },
-          {
-            content: buildUserPrompt(input.messages),
-            role: "user",
-          },
-        ],
-        model: this.config.model,
-        response_format: { type: "json_object" },
-        temperature: 0.2,
+  async analyzeSession(
+    input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
+  ): Promise<InsightAnalysisOutput> {
+    const requestBody: Record<string, unknown> = {
+      messages: buildInsightPromptMessages({
+        context: input.context,
+        messages: input.messages,
       }),
+      model: this.config.model,
+      temperature: 0.2,
+    };
+
+    if (this.config.responseFormat) {
+      requestBody.response_format = { type: this.config.responseFormat };
+    }
+
+    const response = await fetch(`${this.config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      body: JSON.stringify(requestBody),
       headers: {
         Authorization: `Bearer ${this.config.apiKey}`,
         "Content-Type": "application/json",
@@ -101,7 +101,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     });
 
     if (!response.ok) {
-      throw new Error(`LLM request failed: ${response.status}`);
+      throw new Error(`LLM request failed: ${response.status} ${await readResponseText(response)}`);
     }
 
     const payload = await response.json() as {
@@ -113,8 +113,14 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       throw new Error("LLM response content is empty");
     }
 
-    return normalizeAnalysisOutput(JSON.parse(content));
+    return normalizeAnalysisOutput(parseModelJsonObject(content));
   }
+}
+
+async function readResponseText(response: Response) {
+  const text = await response.text();
+
+  return text.slice(0, 1_000);
 }
 
 function isHttpsUrl(value: string | undefined): value is string {
@@ -127,28 +133,6 @@ function isHttpsUrl(value: string | undefined): value is string {
   } catch {
     return false;
   }
-}
-
-function buildSystemPrompt() {
-  return [
-    "你是客服会话洞察分析器。",
-    "只输出 JSON object，不要输出 Markdown。",
-    "所有 evidenceMessageIds 必须使用输入消息中的 sourceMessageId。",
-    "字段包括 summary, sentiment, tags, qaFindings, problemResolution, entities, intents, risks, actionItems, faqCandidates。",
-  ].join("\n");
-}
-
-function buildUserPrompt(messages: AiMessageInput[]) {
-  return JSON.stringify({
-    messages: messages.map((message) => ({
-      content: message.aiText,
-      contentStatus: message.contentStatus,
-      messageType: message.messageType,
-      senderRole: message.senderRole,
-      sourceMessageId: message.sourceMessageId,
-      time: message.occurredAt,
-    })),
-  });
 }
 
 function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
@@ -227,6 +211,35 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
       tagName: readString(item, "tagName") || "自定义标签",
     })),
   };
+}
+
+function parseModelJsonObject(content: string) {
+  const trimmed = content.trim();
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const unfenced = stripMarkdownFence(trimmed);
+
+    if (unfenced !== trimmed) {
+      return JSON.parse(unfenced);
+    }
+
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+
+    if (start !== -1 && end > start) {
+      return JSON.parse(trimmed.slice(start, end + 1));
+    }
+
+    throw new Error("LLM response is not a JSON object");
+  }
+}
+
+function stripMarkdownFence(value: string) {
+  const match = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(value);
+
+  return match?.[1]?.trim() ?? value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

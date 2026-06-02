@@ -30,6 +30,19 @@ describe("buildInsightMessageInput", () => {
     });
   });
 
+  it("uses plain JSON string content as text", () => {
+    expect(
+      buildInsightMessageInput({
+        ...baseRow,
+        content: JSON.stringify("你们提供AI客服系统吗"),
+      }),
+    ).toMatchObject({
+      aiText: "你们提供AI客服系统吗",
+      contentStatus: "ready",
+      messageType: "text",
+    });
+  });
+
   it("uses voice transcription when content.transVoiceText is ready", () => {
     expect(
       buildInsightMessageInput({

@@ -1,8 +1,10 @@
 import { buildInsightMessageInput } from "./insight-message-input-builder.js";
+import type { InsightPromptContext } from "./insight-prompt-builder.js";
 import type { AiMessageInput, InsightMessageSourceRow } from "./insights.types.js";
 
 type WorkerLogger = {
   error(payload: Record<string, unknown>, message: string): void;
+  debug?(payload: Record<string, unknown>, message: string): void;
   info(payload: Record<string, unknown>, message: string): void;
 };
 
@@ -58,8 +60,14 @@ export type InsightWorkerOpenSession = {
 };
 
 export type ClosableOpenSession = {
+  analysisDelayMinutes: number;
   closeReason: CloseSessionInput["closeReason"];
   endedAt: number;
+  sessionId: string;
+  uid: number;
+};
+
+export type OpenSessionForLiveAnalysis = {
   sessionId: string;
   uid: number;
 };
@@ -104,6 +112,12 @@ export type ClaimedAnalyzeJob = {
   jobId: string;
   mode: "final" | "live" | "manual_reanalyze";
   sessionId: string;
+  uid: number;
+};
+
+export type ClaimedSyncMessagesJob = {
+  cursorMsgtime: number;
+  jobId: string;
   uid: number;
 };
 
@@ -198,6 +212,7 @@ export type SaveAnalysisResultInput = {
 
 export type InsightSessionAnalyzer = {
   analyzeSession(input: {
+    context: InsightPromptContext;
     job: ClaimedAnalyzeJob;
     messages: AiMessageInput[];
   }): Promise<InsightAnalysisOutput>;
@@ -206,6 +221,9 @@ export type InsightSessionAnalyzer = {
 export type InsightWorkerRepositoryPort = {
   appendSessionMessage(input: AppendSessionMessageInput): Promise<void>;
   claimNextAnalyzeJob(): Promise<ClaimedAnalyzeJob | undefined>;
+  claimNextSyncMessagesJob(input: {
+    uidAllowlist?: Set<number>;
+  }): Promise<ClaimedSyncMessagesJob | undefined>;
   closeSession(input: CloseSessionInput): Promise<void>;
   createAnalyzeJob(input: CreateAnalyzeJobInput): Promise<string>;
   createLogicalSession(input: CreateLogicalSessionInput): Promise<string>;
@@ -215,6 +233,7 @@ export type InsightWorkerRepositoryPort = {
   }): Promise<InsightWorkerOpenSession | undefined>;
   findPlatformConversation(message: InsightWorkerMessage): Promise<InsightWorkerConversation | undefined>;
   getCursor(): Promise<InsightWorkerCursor>;
+  getPromptContext(uid: number): Promise<InsightPromptContext>;
   getSessionizationConfig(uid: number): Promise<InsightWorkerSessionizationConfig>;
   listClosableOpenSessions(input: {
     limit: number;
@@ -225,11 +244,18 @@ export type InsightWorkerRepositoryPort = {
     cursorAuditId: number;
     cursorMsgtime: number;
     limit: number;
+    uid?: number;
   }): Promise<InsightWorkerMessage[]>;
+  listOpenSessionsForLiveAnalysis(input: {
+    limit: number;
+    uidAllowlist?: Set<number>;
+  }): Promise<OpenSessionForLiveAnalysis[]>;
   listSessionMessagesForAnalysis(sessionId: string): Promise<InsightAnalysisMessageRow[]>;
   markAnalysisJobFailed(jobId: string, error: unknown): Promise<void>;
   markAnalysisJobSucceeded(jobId: string): Promise<void>;
   markAnalysisRunFailed(runId: string, error: unknown): Promise<void>;
+  markSyncMessagesJobFailed(jobId: string, error: unknown): Promise<void>;
+  markSyncMessagesJobSucceeded(jobId: string): Promise<void>;
   saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string>;
   shouldCreateLiveAnalyzeJob(input: ShouldCreateLiveAnalyzeJobInput): Promise<boolean>;
   startAnalysisRun(input: InsightAnalysisRunInput): Promise<string>;
@@ -249,29 +275,40 @@ export class InsightsWorkerService {
     private readonly repository: InsightWorkerRepositoryPort,
     options: {
       batchSize?: number;
+      logger?: WorkerLogger;
       model?: InsightSessionAnalyzer;
       uidAllowlist?: Set<number>;
     } = {},
   ) {
     this.batchSize = options.batchSize ?? 200;
+    this.logger = options.logger;
     this.model = options.model;
     this.uidAllowlist = options.uidAllowlist;
   }
 
+  private readonly logger?: WorkerLogger;
+
   async runOnce() {
+    await this.runSyncMessagesJob();
+
     const cursor = await this.repository.getCursor();
     const messages = await this.repository.listIncrementalMessages({
       cursorAuditId: cursor.cursorAuditId,
       cursorMsgtime: cursor.cursorMsgtime,
       limit: this.batchSize,
     });
+    let sessionizedMessages = 0;
+    let skippedByAllowlist = 0;
 
     for (const message of messages) {
       if (this.uidAllowlist && !this.uidAllowlist.has(message.uid)) {
+        skippedByAllowlist += 1;
         continue;
       }
 
-      await this.sessionizeMessage(message);
+      if (await this.sessionizeMessage(message)) {
+        sessionizedMessages += 1;
+      }
     }
 
     const lastMessage = messages.at(-1);
@@ -283,11 +320,124 @@ export class InsightsWorkerService {
       });
     }
 
+    if (messages.length > 0) {
+      this.logger?.info(
+        {
+          cursorAuditId: lastMessage ? Number(lastMessage.id) : cursor.cursorAuditId,
+          cursorMsgtime: lastMessage?.msgtime ?? cursor.cursorMsgtime,
+          scannedMessages: messages.length,
+          sessionizedMessages,
+          skippedByAllowlist,
+        },
+        "会话洞察 worker 已扫描增量消息",
+      );
+    }
+
     if (this.model) {
       await this.runAnalyzeJob();
     }
 
+    await this.scheduleLiveAnalysisForOpenSessions();
     await this.closeTimedOutOpenSessions();
+  }
+
+  private async scheduleLiveAnalysisForOpenSessions() {
+    const sessions = await this.repository.listOpenSessionsForLiveAnalysis({
+      limit: this.batchSize,
+      uidAllowlist: this.uidAllowlist,
+    });
+    let scheduledJobs = 0;
+
+    for (const session of sessions) {
+      if (
+        await this.repository.shouldCreateLiveAnalyzeJob({
+          occurredAt: Date.now(),
+          sessionId: session.sessionId,
+          uid: session.uid,
+        })
+      ) {
+        await this.repository.createAnalyzeJob({
+          analysisScope: "all",
+          jobType: "analyze_session",
+          mode: "live",
+          runAfter: new Date(),
+          sessionId: session.sessionId,
+          uid: session.uid,
+        });
+        scheduledJobs += 1;
+      }
+    }
+
+    if (scheduledJobs > 0) {
+      this.logger?.info(
+        { checkedOpenSessions: sessions.length, scheduledJobs },
+        "会话洞察 worker 已创建未完结会话提前分析任务",
+      );
+    }
+  }
+
+  private async runSyncMessagesJob() {
+    const job = await this.repository.claimNextSyncMessagesJob({
+      uidAllowlist: this.uidAllowlist,
+    });
+
+    if (!job) {
+      return;
+    }
+
+    this.logger?.info(
+      { cursorMsgtime: job.cursorMsgtime, jobId: job.jobId, uid: job.uid },
+      "会话洞察 worker 开始历史重刷",
+    );
+
+    try {
+      let cursorAuditId = 0;
+      let cursorMsgtime = job.cursorMsgtime;
+      let scannedMessages = 0;
+      let sessionizedMessages = 0;
+
+      while (true) {
+        const messages = await this.repository.listIncrementalMessages({
+          cursorAuditId,
+          cursorMsgtime,
+          limit: this.batchSize,
+          uid: job.uid,
+        });
+
+        for (const message of messages) {
+          if (await this.sessionizeMessage(message)) {
+            sessionizedMessages += 1;
+          }
+        }
+        scannedMessages += messages.length;
+
+        const lastMessage = messages.at(-1);
+
+        if (!lastMessage || messages.length < this.batchSize) {
+          break;
+        }
+
+        cursorAuditId = Number(lastMessage.id);
+        cursorMsgtime = lastMessage.msgtime;
+      }
+
+      await this.repository.markSyncMessagesJobSucceeded(job.jobId);
+      this.logger?.info(
+        {
+          jobId: job.jobId,
+          scannedMessages,
+          sessionizedMessages,
+          uid: job.uid,
+        },
+        "会话洞察 worker 历史重刷完成",
+      );
+    } catch (error) {
+      await this.repository.markSyncMessagesJobFailed(job.jobId, error);
+      this.logger?.error(
+        { err: error, jobId: job.jobId, uid: job.uid },
+        "会话洞察 worker 历史重刷失败",
+      );
+    }
   }
 
   private async closeTimedOutOpenSessions() {
@@ -307,10 +457,17 @@ export class InsightsWorkerService {
         analysisScope: "all",
         jobType: "analyze_session",
         mode: "final",
-        runAfter: new Date(session.endedAt),
+        runAfter: new Date(session.endedAt + session.analysisDelayMinutes * 60_000),
         sessionId: session.sessionId,
         uid: session.uid,
       });
+    }
+
+    if (sessions.length > 0) {
+      this.logger?.info(
+        { closedSessions: sessions.length },
+        "会话洞察 worker 已关闭超时逻辑会话",
+      );
     }
   }
 
@@ -318,7 +475,7 @@ export class InsightsWorkerService {
     const conversation = await this.repository.findPlatformConversation(message);
 
     if (!conversation) {
-      return;
+      return false;
     }
 
     const input = buildInsightMessageInput(toMessageSourceRow(message, conversation.conversationId));
@@ -365,6 +522,8 @@ export class InsightsWorkerService {
         uid: conversation.uid,
       });
     }
+
+    return true;
   }
 
   private async resolveSessionId(input: {
@@ -422,6 +581,17 @@ export class InsightsWorkerService {
     }
 
     let runId: string | undefined;
+    const startedAt = Date.now();
+
+    this.logger?.info(
+      {
+        jobId: job.jobId,
+        mode: job.mode,
+        sessionId: job.sessionId,
+        uid: job.uid,
+      },
+      "会话洞察 worker 开始分析任务",
+    );
 
     try {
       const sourceRows = await this.repository.listSessionMessagesForAnalysis(job.sessionId);
@@ -437,13 +607,14 @@ export class InsightsWorkerService {
         sourceMessageFrom: sourceMessageIds.at(0) ?? null,
         sourceMessageTo: sourceMessageIds.at(-1) ?? null,
       });
+      const context = await this.repository.getPromptContext(job.uid);
 
       const output = normalizeEvidenceIds(
-        await this.model.analyzeSession({ job, messages }),
+        await this.model.analyzeSession({ context, job, messages }),
         new Set(sourceMessageIds),
       );
 
-      await this.repository.saveAnalysisResult({
+      const snapshotId = await this.repository.saveAnalysisResult({
         job,
         output: output.output,
         runId,
@@ -451,12 +622,35 @@ export class InsightsWorkerService {
         validationWarnings: output.validationWarnings,
       });
       await this.repository.markAnalysisJobSucceeded(job.jobId);
+      this.logger?.info(
+        {
+          durationMs: Date.now() - startedAt,
+          jobId: job.jobId,
+          messageCount: messages.length,
+          mode: job.mode,
+          sessionId: job.sessionId,
+          snapshotId,
+          validationWarningCount: output.validationWarnings.length,
+        },
+        "会话洞察 worker 分析任务完成",
+      );
     } catch (error) {
       if (runId) {
         await this.repository.markAnalysisRunFailed(runId, error);
       }
 
       await this.repository.markAnalysisJobFailed(job.jobId, error);
+      this.logger?.error(
+        {
+          durationMs: Date.now() - startedAt,
+          err: error,
+          jobId: job.jobId,
+          mode: job.mode,
+          sessionId: job.sessionId,
+          uid: job.uid,
+        },
+        "会话洞察 worker 分析任务失败",
+      );
     }
   }
 }

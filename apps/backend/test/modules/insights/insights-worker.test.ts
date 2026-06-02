@@ -164,7 +164,11 @@ describe("InsightsWorkerService", () => {
       ]),
       listIncrementalMessages: vi.fn(async () => []),
     });
-    const service = new InsightsWorkerService(repository);
+    const logger = {
+      error: vi.fn(),
+      info: vi.fn(),
+    };
+    const service = new InsightsWorkerService(repository, { logger });
 
     await service.runOnce();
 
@@ -181,6 +185,13 @@ describe("InsightsWorkerService", () => {
         sessionId: "501",
         uid: 9001,
       }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        closedSessions: 1,
+        sessionIds: ["501"],
+      }),
+      "会话洞察 worker 已关闭超时逻辑会话",
     );
   });
 

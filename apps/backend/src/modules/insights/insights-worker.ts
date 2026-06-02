@@ -472,7 +472,10 @@ export class InsightsWorkerService {
 
     if (sessions.length > 0) {
       this.logger?.info(
-        { closedSessions: sessions.length },
+        {
+          closedSessions: sessions.length,
+          sessionIds: sessions.map((session) => session.sessionId),
+        },
         "会话洞察 worker 已关闭超时逻辑会话",
       );
     }

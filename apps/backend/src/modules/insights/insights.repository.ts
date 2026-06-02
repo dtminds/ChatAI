@@ -1808,6 +1808,24 @@ export class InsightsRepository implements InsightsRepositoryPort {
       return false;
     }
 
+    const ownedAction = await this.db
+      .selectFrom("xy_wap_embed_session_action_item as action")
+      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
+        join.onRef("snapshot.id", "=", "action.snapshot_id"),
+      )
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "snapshot.session_id"),
+      )
+      .select(["action.id"])
+      .where("action.id", "=", id)
+      .where("action.status", "=", "open")
+      .where("session.uid", "=", scope.uid)
+      .executeTakeFirst();
+
+    if (!ownedAction) {
+      return false;
+    }
+
     const result = await this.db
       .updateTable("xy_wap_embed_session_action_item")
       .set({
@@ -1826,22 +1844,43 @@ export class InsightsRepository implements InsightsRepositoryPort {
     from: Date,
     idempotencyKey: string,
   ): Promise<string> {
-    const inserted = await this.db
-      .insertInto("xy_wap_embed_insight_job")
-      .values({
-        analysis_scope: "all",
-        idempotency_key: idempotencyKey,
-        job_type: "sync_messages",
-        priority: 10,
-        run_after: new Date(),
-        status: "pending",
-        target_id: from.toISOString(),
-        target_type: "uid",
-        uid: scope.uid,
-      })
-      .executeTakeFirstOrThrow() as InsertResult;
+    try {
+      const inserted = await this.db
+        .insertInto("xy_wap_embed_insight_job")
+        .values({
+          analysis_scope: "all",
+          idempotency_key: idempotencyKey,
+          job_type: "sync_messages",
+          priority: 10,
+          run_after: new Date(),
+          status: "pending",
+          target_id: from.toISOString(),
+          target_type: "uid",
+          uid: scope.uid,
+        })
+        .executeTakeFirstOrThrow() as InsertResult;
 
-    return String(parseInsertedMySqlId(inserted) ?? idempotencyKey);
+      return String(parseInsertedMySqlId(inserted) ?? idempotencyKey);
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+
+      return await this.getInsightJobIdByIdempotencyKey(idempotencyKey)
+        ?? idempotencyKey;
+    }
+  }
+
+  private async getInsightJobIdByIdempotencyKey(
+    idempotencyKey: string,
+  ): Promise<string | undefined> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_job")
+      .select(["id"])
+      .where("idempotency_key", "=", idempotencyKey)
+      .executeTakeFirst() as { id: number | string } | undefined;
+
+    return row ? String(row.id) : undefined;
   }
 
   private async hydrateCurrentSessionActors(
@@ -2527,13 +2566,33 @@ function getAffectedRows(result: unknown) {
     return 0;
   }
 
-  const affectedRows = (result as { numAffectedRows?: bigint | number }).numAffectedRows;
+  const values = result as {
+    affectedRows?: bigint | number;
+    numAffectedRows?: bigint | number;
+    numChangedRows?: bigint | number;
+    numUpdatedRows?: bigint | number;
+  };
+  const affectedRows =
+    values.numAffectedRows ??
+    values.numUpdatedRows ??
+    values.numChangedRows ??
+    values.affectedRows;
 
   if (typeof affectedRows === "bigint") {
     return Number(affectedRows);
   }
 
   return affectedRows ?? 0;
+}
+
+function isDuplicateKeyError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const value = error as { code?: unknown; errno?: unknown };
+
+  return value.code === "ER_DUP_ENTRY" || value.errno === 1062;
 }
 
 function parseInsertedMySqlId(result: InsertResult) {

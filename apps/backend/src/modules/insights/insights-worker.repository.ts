@@ -597,7 +597,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       return undefined;
     }
 
-    await this.db
+    const result = await this.db
       .updateTable("xy_wap_embed_insight_job")
       .set({
         attempt_count: sql<number>`attempt_count + 1`,
@@ -609,6 +609,10 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .where("id", "=", parseNumber(row.id))
       .where("status", "=", "pending")
       .executeTakeFirst();
+
+    if (getAffectedRows(result) === 0) {
+      return undefined;
+    }
 
     return {
       cursorMsgtime: new Date(row.target_id).getTime(),
@@ -633,7 +637,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       return undefined;
     }
 
-    await this.db
+    const result = await this.db
       .updateTable("xy_wap_embed_insight_job")
       .set({
         attempt_count: sql<number>`attempt_count + 1`,
@@ -645,6 +649,10 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .where("id", "=", parseNumber(row.id))
       .where("status", "=", "pending")
       .executeTakeFirst();
+
+    if (getAffectedRows(result) === 0) {
+      return undefined;
+    }
 
     return {
       analysisScope: "all" as const,
@@ -1148,6 +1156,30 @@ function getInsertedRows(result: InsertResult | undefined) {
   }
 
   return Number(value);
+}
+
+function getAffectedRows(result: unknown) {
+  if (!result || typeof result !== "object") {
+    return 0;
+  }
+
+  const values = result as {
+    affectedRows?: bigint | number;
+    numAffectedRows?: bigint | number;
+    numChangedRows?: bigint | number;
+    numUpdatedRows?: bigint | number;
+  };
+  const affectedRows =
+    values.numAffectedRows ??
+    values.numUpdatedRows ??
+    values.numChangedRows ??
+    values.affectedRows;
+
+  if (typeof affectedRows === "bigint") {
+    return Number(affectedRows);
+  }
+
+  return affectedRows ?? 0;
 }
 
 function parseJobMode(row: AnalyzeJobRow) {

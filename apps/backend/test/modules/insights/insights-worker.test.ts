@@ -395,7 +395,15 @@ describe("InsightsWorkerService", () => {
             title: "确认快递状态",
           },
         ],
-        entities: [],
+        entities: [
+          {
+            confidence: 0.8,
+            entityId: "ai-service",
+            entityName: "AI客服系统",
+            entityType: "custom",
+            evidenceMessageIds: ["9001"],
+          },
+        ],
         faqCandidates: [],
         intents: [
           {
@@ -425,8 +433,25 @@ describe("InsightsWorkerService", () => {
           resolutionStatus: "unresolved",
           unresolvedReason: "物流状态未确认",
         },
-        qaFindings: [],
-        risks: [],
+        qaFindings: [
+          {
+            confidence: 0.7,
+            evidenceMessageIds: ["9001"],
+            passed: false,
+            reason: "模型越界输出未配置质检规则",
+            ruleCode: "undefined_rule",
+            severity: "medium",
+          },
+        ],
+        risks: [
+          {
+            confidence: 0.6,
+            evidenceMessageIds: ["9001"],
+            reason: "模型越界输出风险",
+            riskLevel: "medium",
+            riskType: "custom_risk",
+          },
+        ],
         sentiment: [],
         summary: {
           confidence: 0.88,
@@ -459,8 +484,12 @@ describe("InsightsWorkerService", () => {
       expect.objectContaining({
         validationWarnings: expect.arrayContaining([
           expect.stringContaining("9999"),
+          expect.stringContaining("entity ai-service is not configured"),
+          expect.stringContaining("qa rule undefined_rule is not configured"),
+          expect.stringContaining("risk custom_risk is not accepted"),
         ]),
         output: expect.objectContaining({
+          entities: [],
           intents: [
             expect.objectContaining({
               evidenceMessageIds: ["9001"],
@@ -470,6 +499,8 @@ describe("InsightsWorkerService", () => {
           problemResolution: expect.objectContaining({
             evidenceMessageIds: ["9001"],
           }),
+          qaFindings: [],
+          risks: [],
         }),
       }),
     );

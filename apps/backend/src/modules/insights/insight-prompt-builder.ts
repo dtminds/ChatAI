@@ -71,9 +71,9 @@ function buildSystemPrompt() {
     "summary.customerIntent 必须是 2-10 个字的短意图标签，例如“产品咨询”“物流异常”“退款咨询”，不要写完整句子，不要复述 problemSummary。",
     "problemResolution.problemSummary 才用于描述客户提出的具体问题，可写成一句完整摘要。",
     "problemResolution.evidence 必须说明关键证据消息、证据角色和引用原因，用于前端高亮对话消息。",
-    "标签只能从 tenantContext.labelConfigs 中选择；没有命中的标签时 tags 输出空数组。",
-    "质检只能评估 tenantContext.qaRuleConfigs 中启用的规则；没有配置规则时 qaFindings 输出空数组。",
-    "实体优先匹配 tenantContext.entityDictionary；可提取消息里明确出现但词库未配置的实体，entityType 使用 custom。",
+    "标签只能从 tenantContext.labelConfigs 中选择；tenantContext.labelConfigs 为空时 tags 必须输出空数组；没有命中的标签时 tags 输出空数组。",
+    "质检只能评估 tenantContext.qaRuleConfigs 中启用的规则；tenantContext.qaRuleConfigs 为空时 qaFindings 必须输出空数组；没有配置规则时 qaFindings 输出空数组。",
+    "实体只能从 tenantContext.entityDictionary 中选择；tenantContext.entityDictionary 为空时 entities 必须输出空数组；消息里出现但词库未配置的实体不得输出。",
     "风险关注已并入质检规则和待办触发，risks 必须输出空数组。",
     "置信度 confidence 取 0 到 1 之间的小数；证据不足时降低 confidence，不要强行下结论。",
     "必须输出完整字段：summary, sentiment, tags, qaFindings, problemResolution, entities, intents, risks, actionItems, faqCandidates。",
@@ -82,92 +82,7 @@ function buildSystemPrompt() {
 
 function buildUserPrompt(messages: AiMessageInput[], context: InsightPromptContext) {
   return JSON.stringify({
-    outputContract: {
-      actionItems: [
-        {
-          actionType: "follow_up | refund_check | logistics_check | complaint_handle | custom",
-          dueHint: "可选，处理时效或时间提示",
-          evidenceMessageIds: ["sourceMessageId"],
-          priority: "high | medium | low",
-          title: "待跟进事项标题",
-        },
-      ],
-      entities: [
-        {
-          confidence: 0.8,
-          entityId: "优先使用词库标准名称或稳定编码",
-          entityName: "实体名称",
-          entityType: "product | order | promotion | custom",
-          evidenceMessageIds: ["sourceMessageId"],
-          sentiment: "positive | neutral | negative | mixed，可选",
-        },
-      ],
-      faqCandidates: [
-        {
-          answerHint: "建议答案方向",
-          evidenceMessageIds: ["sourceMessageId"],
-          question: "可沉淀为知识库的问题",
-          status: "candidate",
-        },
-      ],
-      intents: [
-        {
-          confidence: 0.8,
-          evidenceMessageIds: ["sourceMessageId"],
-          intentCode: "英文或拼音稳定编码",
-          intentLabel: "中文意图名称",
-        },
-      ],
-      problemResolution: {
-        confidence: 0.8,
-        evidence: [
-          {
-            evidenceRole: "customer_problem | agent_solution | closure_signal | unresolved_signal",
-            messageId: "sourceMessageId",
-            reason: "这条消息作为证据的原因",
-          },
-        ],
-        evidenceMessageIds: ["兼容字段，填入 evidence 中所有 messageId"],
-        problemDetected: true,
-        problemSummary: "客户提到的问题；没有问题时为空字符串",
-        resolutionStatus: "resolved | partially_resolved | unresolved | no_customer_problem | unknown",
-        unresolvedReason: "未解决或部分解决时必须说明理由",
-      },
-      qaFindings: [
-        {
-          confidence: 0.8,
-          evidenceMessageIds: ["sourceMessageId"],
-          passed: false,
-          reason: "判定理由",
-          ruleCode: "必须来自 tenantContext.qaRuleConfigs.ruleCode",
-          severity: "high | medium | low",
-        },
-      ],
-      risks: [],
-      sentiment: [
-        {
-          confidence: 0.8,
-          evidenceMessageIds: ["sourceMessageId"],
-          polarity: "positive | neutral | negative | mixed | unknown",
-          reason: "情绪判定理由",
-        },
-      ],
-      summary: {
-        confidence: 0.8,
-        customerIntent: "短意图标签",
-        followUp: "可选，后续建议",
-        processSummary: "客服处理过程摘要",
-        resultSummary: "当前结果摘要",
-      },
-      tags: [
-        {
-          confidence: 0.8,
-          evidenceMessageIds: ["sourceMessageId"],
-          tagCode: "必须来自 tenantContext.labelConfigs.labelCode",
-          tagName: "必须来自 tenantContext.labelConfigs.labelName",
-        },
-      ],
-    },
+    outputContract: buildOutputContract(context),
     resolutionStatusGuide: {
       no_customer_problem: "客户没有提出需要客服解决的问题，例如寒暄、确认信息、单纯感谢",
       partially_resolved: "客服给出部分处理或承诺，但仍缺少关键结果、确认或闭环",
@@ -187,6 +102,95 @@ function buildUserPrompt(messages: AiMessageInput[], context: InsightPromptConte
         time: message.occurredAt,
       })),
   });
+}
+
+function buildOutputContract(context: InsightPromptContext) {
+  return {
+    actionItems: [
+      {
+        actionType: "follow_up | refund_check | logistics_check | complaint_handle | custom",
+        dueHint: "可选，处理时效或时间提示",
+        evidenceMessageIds: ["sourceMessageId"],
+        priority: "high | medium | low",
+        title: "待跟进事项标题",
+      },
+    ],
+    entities: context.entityDictionary.length > 0 ? [
+      {
+        confidence: 0.8,
+        entityId: "必须来自 tenantContext.entityDictionary.canonicalName 或 aliases",
+        entityName: "必须来自 tenantContext.entityDictionary.canonicalName",
+        entityType: "必须来自 tenantContext.entityDictionary.entityType",
+        evidenceMessageIds: ["sourceMessageId"],
+        sentiment: "positive | neutral | negative | mixed，可选",
+      },
+    ] : [],
+    faqCandidates: [
+      {
+        answerHint: "建议答案方向",
+        evidenceMessageIds: ["sourceMessageId"],
+        question: "可沉淀为知识库的问题",
+        status: "candidate",
+      },
+    ],
+    intents: [
+      {
+        confidence: 0.8,
+        evidenceMessageIds: ["sourceMessageId"],
+        intentCode: "英文或拼音稳定编码",
+        intentLabel: "中文意图名称",
+      },
+    ],
+    problemResolution: {
+      confidence: 0.8,
+      evidence: [
+        {
+          evidenceRole: "customer_problem | agent_solution | closure_signal | unresolved_signal",
+          messageId: "sourceMessageId",
+          reason: "这条消息作为证据的原因",
+        },
+      ],
+      evidenceMessageIds: ["兼容字段，填入 evidence 中所有 messageId"],
+      problemDetected: true,
+      problemSummary: "客户提到的问题；没有问题时为空字符串",
+      resolutionStatus: "resolved | partially_resolved | unresolved | no_customer_problem | unknown",
+      unresolvedReason: "未解决或部分解决时必须说明理由",
+    },
+    qaFindings: context.qaRuleConfigs.length > 0 ? [
+      {
+        confidence: 0.8,
+        evidenceMessageIds: ["sourceMessageId"],
+        passed: false,
+        reason: "判定理由",
+        ruleCode: "必须来自 tenantContext.qaRuleConfigs.ruleCode",
+        severity: "high | medium | low",
+      },
+    ] : [],
+    risks: [],
+    sentiment: [
+      {
+        confidence: 0.8,
+        evidenceMessageIds: ["sourceMessageId"],
+        polarity: "positive | neutral | negative | mixed | unknown",
+        reason: "情绪判定理由",
+      },
+    ],
+    summary: {
+      confidence: 0.8,
+      customerIntent: "短意图标签",
+      followUp: "可选，后续建议",
+      processSummary: "客服处理过程摘要",
+      resultSummary: "当前结果摘要",
+    },
+    tags: context.labelConfigs.length > 0 ? [
+      {
+        confidence: 0.8,
+        evidenceMessageIds: ["sourceMessageId"],
+        tagCode: "必须来自 tenantContext.labelConfigs.labelCode",
+        tagName: "必须来自 tenantContext.labelConfigs.labelName",
+      },
+    ] : [],
+  };
 }
 
 function normalizeContext(context: InsightPromptContext) {

@@ -64,4 +64,46 @@ describe("insight prompt builder", () => {
     expect(serialized).toContain("risks 必须输出空数组");
     expect(serialized).toContain("9001");
   });
+
+  it("requires empty config-driven dimensions when tenant config is empty", () => {
+    const prompt = buildInsightPromptMessages({
+      context: {
+        entityDictionary: [],
+        labelConfigs: [],
+        qaRuleConfigs: [],
+      },
+      messages: [
+        {
+          aiText: "想了解 AI 客服知识库",
+          contentStatus: "ready",
+          conversationId: "301",
+          evidenceLabel: "[9001]",
+          includedForAi: true,
+          meaningfulForBoundary: true,
+          messageType: "text",
+          occurredAt: 1_780_244_000_000,
+          senderRole: "customer",
+          sourceMessageId: "9001",
+        },
+      ],
+    });
+    const serialized = JSON.stringify(prompt);
+    const userPayload = JSON.parse(prompt[1]?.content ?? "{}") as {
+      outputContract: {
+        entities: unknown[];
+        qaFindings: unknown[];
+        tags: unknown[];
+      };
+    };
+
+    expect(serialized).toContain("tenantContext.entityDictionary 为空时 entities 必须输出空数组");
+    expect(serialized).toContain("tenantContext.labelConfigs 为空时 tags 必须输出空数组");
+    expect(serialized).toContain("tenantContext.qaRuleConfigs 为空时 qaFindings 必须输出空数组");
+    expect(serialized).toContain("实体只能从 tenantContext.entityDictionary 中选择");
+    expect(userPayload.outputContract.entities).toEqual([]);
+    expect(userPayload.outputContract.tags).toEqual([]);
+    expect(userPayload.outputContract.qaFindings).toEqual([]);
+    expect(serialized).not.toContain("entityId");
+    expect(serialized).not.toContain("entityType 使用 custom");
+  });
 });

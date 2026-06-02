@@ -619,17 +619,22 @@ export class InsightsWorkerService {
       });
       const context = await this.repository.getPromptContext(job.uid);
 
-      const output = normalizeEvidenceIds(
+      const configuredOutput = filterConfiguredAnalysisOutput(
         await this.model.analyzeSession({ context, job, messages }),
-        new Set(sourceMessageIds),
+        context,
       );
+      const output = normalizeEvidenceIds(configuredOutput.output, new Set(sourceMessageIds));
+      const validationWarnings = [
+        ...configuredOutput.validationWarnings,
+        ...output.validationWarnings,
+      ];
 
       const snapshotId = await this.repository.saveAnalysisResult({
         job,
         output: output.output,
         runId,
         sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
-        validationWarnings: output.validationWarnings,
+        validationWarnings,
       });
       await this.repository.markAnalysisJobSucceeded(job.jobId);
       this.logger?.info(
@@ -640,7 +645,7 @@ export class InsightsWorkerService {
           mode: job.mode,
           sessionId: job.sessionId,
           snapshotId,
-          validationWarningCount: output.validationWarnings.length,
+          validationWarningCount: validationWarnings.length,
         },
         "会话洞察 worker 分析任务完成",
       );
@@ -823,6 +828,70 @@ function normalizeEvidenceIds(output: InsightAnalysisOutput, validIds: Set<strin
     },
     validationWarnings,
   };
+}
+
+function filterConfiguredAnalysisOutput(
+  output: InsightAnalysisOutput,
+  context: InsightPromptContext,
+) {
+  const validationWarnings: string[] = [];
+  const labelCodes = new Set(context.labelConfigs.map((item) => item.labelCode));
+  const qaRuleCodes = new Set(context.qaRuleConfigs.map((item) => item.ruleCode));
+  const configuredEntities = context.entityDictionary.map((item) => ({
+    aliases: new Set([item.canonicalName, ...item.aliases].map(normalizeMatchText)),
+    canonicalName: item.canonicalName,
+    entityType: item.entityType,
+  }));
+  const entities = output.entities.filter((item) => {
+    const matched = configuredEntities.some((entity) => {
+      const entityId = normalizeMatchText(item.entityId);
+      const entityName = normalizeMatchText(item.entityName);
+
+      return entity.entityType === item.entityType
+        && (entity.aliases.has(entityId) || entity.aliases.has(entityName));
+    });
+
+    if (!matched) {
+      validationWarnings.push(`entity ${item.entityId} is not configured`);
+    }
+
+    return matched;
+  });
+  const tags = output.tags.filter((item) => {
+    if (labelCodes.has(item.tagCode)) {
+      return true;
+    }
+
+    validationWarnings.push(`tag ${item.tagCode} is not configured`);
+    return false;
+  });
+  const qaFindings = output.qaFindings.filter((item) => {
+    if (qaRuleCodes.has(item.ruleCode)) {
+      return true;
+    }
+
+    validationWarnings.push(`qa rule ${item.ruleCode} is not configured`);
+    return false;
+  });
+
+  for (const risk of output.risks) {
+    validationWarnings.push(`risk ${risk.riskType} is not accepted`);
+  }
+
+  return {
+    output: {
+      ...output,
+      entities,
+      qaFindings,
+      risks: [],
+      tags,
+    },
+    validationWarnings,
+  };
+}
+
+function normalizeMatchText(value: string) {
+  return value.trim().toLowerCase();
 }
 
 export function startInsightsWorker(options: {

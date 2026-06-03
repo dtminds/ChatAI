@@ -2,10 +2,10 @@ import {
   FileEmpty01Icon,
   Image01Icon,
   Link04Icon,
-  Loading03Icon,
   PlayCircle02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
@@ -64,12 +64,7 @@ export function SmartReplyRecommendedAttachmentsSection({
     return (
       <section className={className}>
         <p className="flex items-center gap-1 text-[13px] leading-[22px] text-muted-foreground">
-          <HugeiconsIcon
-            className="animate-spin"
-            icon={Loading03Icon}
-            size={14}
-            strokeWidth={2}
-          />
+          <Spinner variant="classic" size={14} />
           正在加载推荐附件
         </p>
       </section>

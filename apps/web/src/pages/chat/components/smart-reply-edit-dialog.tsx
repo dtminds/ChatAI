@@ -9,10 +9,10 @@ import {
 import {
   Cancel01Icon,
   BookOpen01Icon,
-  Loading03Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -264,12 +264,7 @@ export function SmartReplyEditDialog({
                 variant="outline"
               >
                 {isCheckingViolations ? (
-                  <HugeiconsIcon
-                    className="animate-spin"
-                    icon={Loading03Icon}
-                    size={14}
-                    strokeWidth={2}
-                  />
+                  <Spinner variant="classic" size={14} className="text-current" />
                 ) : (
                   <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={2} />
                 )}

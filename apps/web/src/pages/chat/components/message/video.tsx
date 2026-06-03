@@ -1,5 +1,6 @@
-import { Download04Icon, Loading03Icon, PlayIcon } from "@hugeicons/core-free-icons";
+import { Download04Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import { useEffect, useState, type CSSProperties, type SyntheticEvent } from "react";
 import type { VideoMessageContent } from "@/pages/chat/chat-types";
 import {
@@ -91,12 +92,7 @@ export function VideoMessageCard({
           className="absolute left-1/2 top-1/2 z-1 inline-flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/90 bg-black/15 text-white shadow-[0_2px_12px_var(--shadow-medium)] backdrop-blur-[1px]"
           role="status"
         >
-          <HugeiconsIcon
-            className="animate-spin"
-            icon={Loading03Icon}
-            size={24}
-            strokeWidth={2.2}
-          />
+          <Spinner variant="classic" size={24} strokeWidth={2.2} className="text-white" />
         </span>
       ) : needsTransfer ? (
         <button

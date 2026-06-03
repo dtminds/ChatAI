@@ -4,13 +4,13 @@ import {
   ArrowTurnBackwardIcon,
   Bug02Icon,
   ExclamationMarkIcon,
-  Loading03Icon,
   Male02Icon,
   MoreHorizontalIcon,
   QuoteUpSquareIcon,
   UserIdVerificationIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import {
   type RefObject,
   useEffect,
@@ -821,12 +821,15 @@ function MessageInlineStatusSlot({
           title={isRetryingMessage ? "正在重试发送" : "重试发送"}
           type="button"
         >
-          <HugeiconsIcon
-            className={cn(isRetryingMessage && "animate-spin")}
-            icon={isRetryingMessage ? Loading03Icon : ExclamationMarkIcon}
-            size={10}
-            strokeWidth={2.4}
-          />
+          {isRetryingMessage ? (
+            <Spinner variant="classic" size={10} strokeWidth={2.4} className="text-current" />
+          ) : (
+            <HugeiconsIcon
+              icon={ExclamationMarkIcon}
+              size={10}
+              strokeWidth={2.4}
+            />
+          )}
         </button>
       </div>
     );

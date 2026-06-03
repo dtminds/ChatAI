@@ -2,11 +2,11 @@ import { startTransition, useEffect, useMemo, useState } from "react";
 import {
   Cancel01Icon,
   LicenseNoIcon,
-  Loading03Icon,
   Male02Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -366,13 +366,7 @@ function SearchResultDropdown({
   if (isLoading) {
     return (
       <div className="flex h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
-        <HugeiconsIcon
-          className="animate-spin"
-          color="currentColor"
-          icon={Loading03Icon}
-          size={18}
-          strokeWidth={1.8}
-        />
+        <Spinner variant="classic" size={18} />
         <span>正在搜索中...</span>
       </div>
     );

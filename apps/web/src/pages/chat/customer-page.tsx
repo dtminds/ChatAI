@@ -4,13 +4,13 @@ import { toast } from "sonner";
 import {
   AlertCircleIcon,
   Chat01Icon,
-  Loading03Icon,
   Male02Icon,
   Refresh03Icon,
   Search01Icon,
   UserMultiple02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import type {
   WorkbenchCustomerLastConversationDto,
   WorkbenchCustomerSeatRelationDto,
@@ -341,12 +341,7 @@ export function CustomerPage({
                           variant="outline"
                         >
                           {isLoadingMore ? (
-                            <HugeiconsIcon
-                              className="animate-spin"
-                              color="currentColor"
-                              icon={Loading03Icon}
-                              size={14}
-                            />
+                            <Spinner variant="classic" size={14} className="text-current" />
                           ) : null}
                           加载更多客户
                         </Button>
@@ -545,12 +540,15 @@ function CustomerLastConversationPopover({
         type="button"
         variant="ghost"
       >
-        <HugeiconsIcon
-          className={cn(refreshStatus === "loading" && "animate-spin")}
-          color="currentColor"
-          icon={refreshStatus === "loading" ? Loading03Icon : Refresh03Icon}
-          size={14}
-        />
+        {refreshStatus === "loading" ? (
+          <Spinner variant="classic" size={14} className="text-current" />
+        ) : (
+          <HugeiconsIcon
+            color="currentColor"
+            icon={Refresh03Icon}
+            size={14}
+          />
+        )}
         {refreshStatus === "error" ? "重试" : "获取"}
       </Button>
     );

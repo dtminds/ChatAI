@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Loading03Icon, UserCheck01Icon } from "@hugeicons/core-free-icons";
+import { UserCheck01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Avatar,
   AvatarBadge,
@@ -277,13 +278,16 @@ export function AccountSidebarItem({
               size="sm"
               type="button"
             >
-              <HugeiconsIcon
-                className={cn(isTakingOver && "animate-spin")}
-                color="currentColor"
-                icon={isTakingOver ? Loading03Icon : UserCheck01Icon}
-                size={14}
-                strokeWidth={1.8}
-              />
+              {isTakingOver ? (
+                <Spinner variant="classic" size={14} className="text-current" />
+              ) : (
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={UserCheck01Icon}
+                  size={14}
+                  strokeWidth={1.8}
+                />
+              )}
               <span>{isTakingOver ? "接管中" : "接管账号"}</span>
             </Button>
           </PopoverContent>
@@ -310,13 +314,7 @@ export function AccountSidebarItem({
                 variant="default"
               >
                 {isTakeoverConfirmPending ? (
-                  <HugeiconsIcon
-                    className="animate-spin"
-                    color="currentColor"
-                    icon={Loading03Icon}
-                    size={16}
-                    strokeWidth={1.8}
-                  />
+                  <Spinner variant="classic" size={16} className="text-current" />
                 ) : null}
                 <span>{isTakeoverConfirmPending ? "接管中" : "确认接管"}</span>
               </AlertDialogAction>
@@ -436,13 +434,16 @@ export function AccountSidebarItem({
             size="sm"
             type="button"
           >
-            <HugeiconsIcon
-              className={cn(isTakingOver && "animate-spin")}
-              color="currentColor"
-              icon={isTakingOver ? Loading03Icon : UserCheck01Icon}
-              size={14}
-              strokeWidth={1.8}
-            />
+            {isTakingOver ? (
+              <Spinner variant="classic" size={14} className="text-current" />
+            ) : (
+              <HugeiconsIcon
+                color="currentColor"
+                icon={UserCheck01Icon}
+                size={14}
+                strokeWidth={1.8}
+              />
+            )}
             <span>{isTakingOver ? "接管中" : "接管账号"}</span>
           </Button>
         </PopoverContent>
@@ -469,13 +470,7 @@ export function AccountSidebarItem({
               variant="default"
             >
               {isTakeoverConfirmPending ? (
-                <HugeiconsIcon
-                  className="animate-spin"
-                  color="currentColor"
-                  icon={Loading03Icon}
-                  size={16}
-                  strokeWidth={1.8}
-                />
+                <Spinner variant="classic" size={16} className="text-current" />
               ) : null}
               <span>{isTakeoverConfirmPending ? "接管中" : "确认接管"}</span>
             </AlertDialogAction>

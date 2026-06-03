@@ -5,10 +5,10 @@ import {
   ChatDelayIcon,
   Folder01Icon,
   Image01Icon,
-  Loading03Icon,
   SmileIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
@@ -518,12 +518,15 @@ export function ChatComposer({
             onMouseDown={(event) => event.preventDefault()}
             size="icon"
           >
-            <HugeiconsIcon
-              className={cn(isSending && "animate-spin")}
-              icon={isSending ? Loading03Icon : ArrowUp02Icon}
-              size={14}
-              strokeWidth={2}
-            />
+            {isSending ? (
+              <Spinner variant="classic" size={14} className="text-current" />
+            ) : (
+              <HugeiconsIcon
+                icon={ArrowUp02Icon}
+                size={14}
+                strokeWidth={2}
+              />
+            )}
           </Button>
         </div>
       </div>

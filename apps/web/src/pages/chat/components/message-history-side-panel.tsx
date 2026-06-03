@@ -5,12 +5,12 @@ import {
   Cancel01Icon,
   ExclamationMarkIcon,
   Download04Icon,
-  Loading03Icon,
   Male02Icon,
   PlayIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Avatar,
   AvatarFallback,
@@ -439,12 +439,7 @@ function HistoryMessageViewport({
         ) : null}
         {activeHistoryLoading && !(activeHistory?.messages.length ?? 0) ? (
           <div className="flex min-h-[140px] items-center justify-center text-sm text-muted-foreground">
-            <HugeiconsIcon
-              className="animate-spin"
-              icon={Loading03Icon}
-              size={18}
-              strokeWidth={1.8}
-            />
+            <Spinner variant="classic" size={18} />
           </div>
         ) : (
           <div>{children}</div>
@@ -661,12 +656,7 @@ function HistoryFileList({
                   className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-muted-foreground"
                   role="status"
                 >
-                  <HugeiconsIcon
-                    className="animate-spin"
-                    icon={Loading03Icon}
-                    size={14}
-                    strokeWidth={1.8}
-                  />
+                  <Spinner variant="classic" size={14} />
                   下载中
                 </span>
               ) : onDownloadMessageFile ? (
@@ -1004,12 +994,7 @@ function HistoryMediaTile({
             className="absolute left-1/2 top-1/2 z-1 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-black/25 text-white shadow-sm backdrop-blur-[1px]"
             role="status"
           >
-            <HugeiconsIcon
-              className="animate-spin"
-              icon={Loading03Icon}
-              size={21}
-              strokeWidth={2.1}
-            />
+            <Spinner variant="classic" size={21} strokeWidth={2.1} className="text-white" />
           </span>
         ) : needsVideoTransfer ? (
           onDownloadMessageFile ? (

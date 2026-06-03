@@ -1,5 +1,6 @@
-import { AlertCircleIcon, Loading03Icon } from "@hugeicons/core-free-icons";
+import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import type { InsightMessageContextResponse } from "@chatai/contracts";
 import {
   Sheet,
@@ -43,12 +44,7 @@ export function InsightMessageContextSheet({
         <div className="min-h-0 flex-1 px-6 py-5">
           {isLoading ? (
             <div className="flex h-full min-h-[240px] items-center justify-center gap-2 text-sm text-muted-foreground">
-              <HugeiconsIcon
-                className="animate-spin"
-                icon={Loading03Icon}
-                size={18}
-                strokeWidth={1.8}
-              />
+              <Spinner variant="classic" size={18} />
               <span>正在加载消息上下文</span>
             </div>
           ) : error ? (

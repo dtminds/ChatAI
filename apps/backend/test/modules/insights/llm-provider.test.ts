@@ -14,15 +14,18 @@ describe("LLM provider config", () => {
     const config = createVolcengineArkProviderConfig({
       VOLCENGINE_ARK_API_KEY: "secret",
       VOLCENGINE_ARK_BASE_URL: "https://ark.cn-beijing.volces.com/api/v3",
+      VOLCENGINE_ARK_MAX_TOKENS: "2048",
       VOLCENGINE_ARK_MODEL: "ep-20260601000000-test",
     });
 
     expect(config).toEqual({
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 2048,
       model: "ep-20260601000000-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
+      responseFormat: "json_object",
     });
   });
 
@@ -44,20 +47,24 @@ describe("LLM provider config", () => {
       maskProviderConfigForLog({
         apiKey: "secret",
         baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+        maxTokens: 4096,
         model: "ep-test",
         providerCode: "volcengine_ark",
         protocol: "openai-compatible",
+        responseFormat: "json_object",
       }),
     ).toEqual({
       apiKey: "[redacted]",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
       model: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
+      responseFormat: "json_object",
     });
   });
 
-  it("does not send JSON response_format by default", async () => {
+  it("sends JSON response format and max tokens by default", async () => {
     let requestBody: Record<string, unknown> | undefined;
     vi.stubGlobal(
       "fetch",
@@ -114,9 +121,11 @@ describe("LLM provider config", () => {
     const analyzer = new OpenAiCompatibleInsightAnalyzer({
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
       model: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
+      responseFormat: "json_object",
     });
 
     await analyzer.analyzeSession({
@@ -133,7 +142,95 @@ describe("LLM provider config", () => {
     });
 
     expect(requestBody).toBeDefined();
-    expect(requestBody).not.toHaveProperty("response_format");
+    expect(requestBody).toMatchObject({
+      max_tokens: 4096,
+      response_format: { type: "json_object" },
+    });
+  });
+
+  it("retries retryable LLM failures with exponential backoff", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => {
+      if (fetchMock.mock.calls.length < 3) {
+        return new Response("rate limited", { status: 429 });
+      }
+
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  actionItems: [],
+                  entities: [],
+                  faqCandidates: [],
+                  intents: [],
+                  problemResolution: {
+                    confidence: 0.8,
+                    evidence: [],
+                    evidenceMessageIds: [],
+                    problemDetected: false,
+                    problemSummary: "",
+                    resolutionStatus: "no_customer_problem",
+                  },
+                  qaFindings: [],
+                  risks: [],
+                  sentiment: [],
+                  summary: {
+                    confidence: 0.8,
+                    customerIntent: "寒暄",
+                    processSummary: "无明确问题",
+                    resultSummary: "无需处理",
+                  },
+                  tags: [],
+                }),
+              },
+            },
+          ],
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
+      model: "ep-test",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      responseFormat: "json_object",
+      retry: {
+        baseDelayMs: 1_000,
+        maxAttempts: 3,
+      },
+    });
+
+    const resultPromise = analyzer.analyzeSession({
+      messages: [
+        {
+          aiText: "你好",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "1",
+        },
+      ],
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    await expect(resultPromise).resolves.toMatchObject({
+      summary: { customerIntent: "寒暄" },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
   });
 
   it("parses JSON object even when the model wraps it in a markdown fence", async () => {
@@ -199,9 +296,11 @@ describe("LLM provider config", () => {
     const analyzer = new OpenAiCompatibleInsightAnalyzer({
       apiKey: "secret",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
       model: "ep-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
+      responseFormat: "json_object",
     });
 
     await expect(

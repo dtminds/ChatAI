@@ -67,6 +67,8 @@ describe("buildInsightMessageInput", () => {
     ).toMatchObject({
       aiText: "[语音消息，转写中]",
       contentStatus: "pending_transcription",
+      includedForAi: true,
+      meaningfulForBoundary: false,
       messageType: "voice",
     });
   });
@@ -107,7 +109,8 @@ describe("buildInsightMessageInput", () => {
     ).toMatchObject({
       aiText: "[图片]",
       contentStatus: "unsupported",
-      includedForAi: true,
+      includedForAi: false,
+      meaningfulForBoundary: false,
       messageType: "image",
     });
   });

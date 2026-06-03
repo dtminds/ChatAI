@@ -13,7 +13,7 @@ import {
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { InsightsOverviewResponse } from "@chatai/contracts";
+import type { InsightSettingsResponse, InsightsOverviewResponse } from "@chatai/contracts";
 import {
   Area,
   AreaChart,
@@ -53,7 +53,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { getInsightOverview } from "./api/insights-service";
+import { getInsightOverview, getInsightSettings } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { ResolutionBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
@@ -95,6 +95,7 @@ const resolutionColors: Record<string, string> = {
 
 export function InsightsOverviewPage() {
   const [overview, setOverview] = useState<InsightsOverviewResponse>();
+  const [settings, setSettings] = useState<InsightSettingsResponse>();
   const [activeMetric, setActiveMetric] = useState<TrendMetric>("logicalSessions");
   const [analysisStatusFilter, setAnalysisStatusFilter] = useState("all");
   const [entityFilter, setEntityFilter] = useState("all");
@@ -124,6 +125,26 @@ export function InsightsOverviewPage() {
     };
   }, [from, to]);
 
+  useEffect(() => {
+    let isActive = true;
+
+    void getInsightSettings()
+      .then((response) => {
+        if (isActive) {
+          setSettings(response);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setSettings(undefined);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
   const sessions = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
 
@@ -142,10 +163,15 @@ export function InsightsOverviewPage() {
       (resolutionFilter === "all" || session.resolutionStatus === resolutionFilter) &&
       (analysisStatusFilter === "all" || session.analysisStatus === analysisStatusFilter) &&
       (tagFilter === "all" || (session.tags ?? []).some((tag) => tag.tagCode === tagFilter)) &&
-      (entityFilter === "all" || (session.entities ?? []).some((entity) => entity.entityId === entityFilter)) &&
+      (entityFilter === "all" ||
+        (session.entities ?? []).some((entity) =>
+          entity.entityId === entityFilter || entity.entityName === entityFilter
+        )) &&
       (intentFilter === "all" || (session.intents ?? []).some((intent) => intent.intentCode === intentFilter)) &&
       (problemFilter === "all" ||
-        (problemFilter === "problem" && session.resolutionStatus !== "no_customer_problem") ||
+        (problemFilter === "problem" &&
+          session.resolutionStatus !== "no_customer_problem" &&
+          session.resolutionStatus !== "unknown") ||
         (problemFilter === "unresolved" && (
           session.resolutionStatus === "unresolved" ||
           session.resolutionStatus === "partially_resolved"
@@ -163,8 +189,8 @@ export function InsightsOverviewPage() {
   ]);
 
   const filterOptions = useMemo(
-    () => buildSessionFilterOptions(overview?.sessions ?? []),
-    [overview?.sessions],
+    () => buildSessionFilterOptions(overview?.sessions ?? [], settings),
+    [overview?.sessions, settings],
   );
 
   return (
@@ -568,8 +594,8 @@ function SessionTableCard({
               { label: "已解决", value: "resolved" },
               { label: "未解决", value: "unresolved" },
               { label: "部分解决", value: "partially_resolved" },
-              { label: "无客户问题", value: "no_customer_problem" },
-              { label: "待判断", value: "unknown" },
+              { label: "无需客服处理", value: "no_customer_problem" },
+              { label: "消息不足", value: "unknown" },
             ]}
             value={resolutionFilter}
             widthClassName="w-[136px]"
@@ -765,15 +791,16 @@ function PanelTitle({
 
 function buildSessionFilterOptions(
   sessions: InsightsOverviewResponse["sessions"],
+  settings: InsightSettingsResponse | undefined,
 ): SessionFilterOptions {
   return {
     entities: toFilterOptions(
-      sessions.flatMap((session) =>
-        (session.entities ?? []).map((entity) => ({
-          label: entity.entityName,
-          value: entity.entityId,
-        })),
-      ),
+      settings?.entityDictionary
+        .filter((entity) => entity.enabled && entity.includeInAggregation)
+        .map((entity) => ({
+          label: entity.canonicalName,
+          value: entity.canonicalName,
+        })) ?? [],
     ),
     intents: toFilterOptions(
       sessions.flatMap((session) =>
@@ -784,12 +811,12 @@ function buildSessionFilterOptions(
       ),
     ),
     tags: toFilterOptions(
-      sessions.flatMap((session) =>
-        (session.tags ?? []).map((tag) => ({
-          label: tag.tagName,
-          value: tag.tagCode,
-        })),
-      ),
+      settings?.labelConfigs
+        .filter((label) => label.enabled && label.includeInStatistics)
+        .map((label) => ({
+          label: label.labelName,
+          value: label.labelCode,
+        })) ?? [],
     ),
   };
 }
@@ -865,8 +892,8 @@ function buildResolutionData(overview: InsightsOverviewResponse | undefined) {
     { color: resolutionColors.resolved, name: "已解决", value: counts.resolved },
     { color: resolutionColors.unresolved, name: "未解决", value: counts.unresolved },
     { color: resolutionColors.partially_resolved, name: "部分解决", value: counts.partially_resolved },
-    { color: resolutionColors.no_customer_problem, name: "无客户问题", value: counts.no_customer_problem },
-    { color: resolutionColors.unknown, name: "待判断", value: counts.unknown },
+    { color: resolutionColors.no_customer_problem, name: "无需客服处理", value: counts.no_customer_problem },
+    { color: resolutionColors.unknown, name: "消息不足", value: counts.unknown },
   ].filter((item) => item.value > 0);
 
   return data.length > 0

@@ -7,6 +7,7 @@ import type {
   ClosableOpenSession,
   CreateAnalyzeJobInput,
   CreateLogicalSessionInput,
+  InsightWorkerAnalysisPolicy,
   SaveAnalysisResultInput,
   ShouldCreateLiveAnalyzeJobInput,
   ClaimedSyncMessagesJob,
@@ -63,9 +64,11 @@ type OpenSessionRow = {
 
 type AnalyzeJobRow = {
   analysis_scope: string;
+  attempt_count: number | string;
   id: number | string;
   idempotency_key: string;
   job_type: string;
+  max_attempts: number | string;
   target_id: string;
   uid: number | string;
 };
@@ -84,6 +87,7 @@ const defaultConfig: InsightWorkerSessionizationConfig = {
 
 const DEFAULT_LIVE_MIN_INTERVAL_MINUTES = 15;
 const DEFAULT_LIVE_MIN_NEW_MEANINGFUL_MESSAGES = 20;
+const DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.6;
 const cursorSource = "xy_wap_embed_msg_audit_info";
 
 export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort {
@@ -207,6 +211,22 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         ruleName: row.rule_name,
         severity: normalizeSeverity(row.severity),
       })),
+    };
+  }
+
+  async getAnalysisPolicy(uid: number): Promise<InsightWorkerAnalysisPolicy> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_analysis_policy")
+      .select(["low_confidence_threshold"])
+      .where("uid", "=", uid)
+      .where("enabled", "=", 1)
+      .executeTakeFirst() as { low_confidence_threshold: number | string } | undefined;
+    const threshold = Number(row?.low_confidence_threshold);
+
+    return {
+      lowConfidenceThreshold: Number.isFinite(threshold)
+        ? threshold
+        : DEFAULT_LOW_CONFIDENCE_THRESHOLD,
     };
   }
 
@@ -624,7 +644,16 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   async claimNextAnalyzeJob() {
     const row = await this.db
       .selectFrom("xy_wap_embed_insight_job")
-      .select(["analysis_scope", "id", "idempotency_key", "job_type", "target_id", "uid"])
+      .select([
+        "analysis_scope",
+        "attempt_count",
+        "id",
+        "idempotency_key",
+        "job_type",
+        "max_attempts",
+        "target_id",
+        "uid",
+      ])
       .where("status", "=", "pending")
       .where("target_type", "=", "logical_session")
       .where("job_type", "in", ["analyze_session", "reanalyze_session"])
@@ -656,7 +685,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
 
     return {
       analysisScope: "all" as const,
+      attemptCount: parseNumber(row.attempt_count) + 1,
       jobId: String(row.id),
+      maxAttempts: parseNumber(row.max_attempts),
       mode: parseJobMode(row),
       sessionId: row.target_id,
       uid: parseNumber(row.uid),
@@ -969,6 +1000,21 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       lease_until: null,
       locked_by: null,
       status: "succeeded",
+      update_time: new Date(),
+    }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
+  }
+
+  async postponeAnalysisJobForInputReadiness(
+    jobId: string,
+    input: { delayMs: number; reason: string },
+  ): Promise<void> {
+    await this.db.updateTable("xy_wap_embed_insight_job").set({
+      error_code: input.reason.toUpperCase(),
+      error_message: "Input is not ready for analysis",
+      lease_until: null,
+      locked_by: null,
+      run_after: new Date(Date.now() + input.delayMs),
+      status: "pending",
       update_time: new Date(),
     }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
   }

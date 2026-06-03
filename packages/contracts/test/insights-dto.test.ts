@@ -309,6 +309,7 @@ describe("insights DTOs", () => {
         session: {
           conversationId: "301",
           customerName: "张三",
+          generatedAt: 1780245000000,
           phase: "live",
           sessionId: "session-1",
           startedAt: 1780240000000,

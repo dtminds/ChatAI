@@ -5,17 +5,27 @@ import { buildInsightPromptMessages } from "./insight-prompt-builder.js";
 export type OpenAiCompatibleProviderConfig = {
   apiKey: string;
   baseUrl: string;
+  maxTokens: number;
   model: string;
   providerCode: "volcengine_ark";
   protocol: "openai-compatible";
   responseFormat?: "json_object";
+  retry?: {
+    baseDelayMs: number;
+    maxAttempts: number;
+  };
 };
 
 type ProviderEnv = {
   VOLCENGINE_ARK_API_KEY?: string;
   VOLCENGINE_ARK_BASE_URL?: string;
+  VOLCENGINE_ARK_MAX_TOKENS?: string;
   VOLCENGINE_ARK_MODEL?: string;
 };
+
+const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
+const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
 
 export function createVolcengineArkProviderConfig(
   env: ProviderEnv = process.env,
@@ -23,6 +33,7 @@ export function createVolcengineArkProviderConfig(
   const apiKey = env.VOLCENGINE_ARK_API_KEY?.trim();
   const baseUrl = env.VOLCENGINE_ARK_BASE_URL?.trim();
   const model = env.VOLCENGINE_ARK_MODEL?.trim();
+  const maxTokens = parsePositiveInteger(env.VOLCENGINE_ARK_MAX_TOKENS) ?? DEFAULT_MAX_TOKENS;
   const missing = [
     ["VOLCENGINE_ARK_API_KEY", apiKey],
     ["VOLCENGINE_ARK_BASE_URL", baseUrl],
@@ -48,9 +59,11 @@ export function createVolcengineArkProviderConfig(
   return {
     apiKey: requireString(apiKey),
     baseUrl,
+    maxTokens,
     model: requireString(model),
     providerCode: "volcengine_ark",
     protocol: "openai-compatible",
+    responseFormat: "json_object",
   };
 }
 
@@ -78,7 +91,14 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
   async analyzeSession(
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
   ): Promise<InsightAnalysisOutput> {
+    return retryLlmRequest(() => this.doAnalyzeSession(input), this.config.retry);
+  }
+
+  private async doAnalyzeSession(
+    input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
+  ): Promise<InsightAnalysisOutput> {
     const requestBody: Record<string, unknown> = {
+      max_tokens: this.config.maxTokens,
       messages: buildInsightPromptMessages({
         context: input.context,
         messages: input.messages,
@@ -101,7 +121,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     });
 
     if (!response.ok) {
-      throw new Error(`LLM request failed: ${response.status} ${await readResponseText(response)}`);
+      throw new LlmRequestError(response.status, await readResponseText(response));
     }
 
     const payload = await response.json() as {
@@ -115,6 +135,52 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
 
     return normalizeAnalysisOutput(parseModelJsonObject(content));
   }
+}
+
+class LlmRequestError extends Error {
+  constructor(
+    readonly status: number,
+    responseText: string,
+  ) {
+    super(`LLM request failed: ${status} ${responseText}`);
+  }
+}
+
+async function retryLlmRequest<T>(
+  run: () => Promise<T>,
+  config: OpenAiCompatibleProviderConfig["retry"],
+) {
+  const maxAttempts = config?.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
+  const baseDelayMs = config?.baseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await run();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt >= maxAttempts || !isRetryableLlmError(error)) {
+        throw error;
+      }
+
+      await sleep(baseDelayMs * 2 ** (attempt - 1));
+    }
+  }
+
+  throw lastError;
+}
+
+function isRetryableLlmError(error: unknown) {
+  if (error instanceof LlmRequestError) {
+    return [429, 500, 502, 503, 504].includes(error.status);
+  }
+
+  return error instanceof TypeError;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function readResponseText(response: Response) {
@@ -133,6 +199,12 @@ function isHttpsUrl(value: string | undefined): value is string {
   } catch {
     return false;
   }
+}
+
+function parsePositiveInteger(value: string | undefined) {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {

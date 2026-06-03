@@ -21,10 +21,10 @@ export function formatResolutionStatus(
   status: InsightDetailResponse["problemResolution"]["resolutionStatus"],
 ) {
   const labels = {
-    no_customer_problem: "无明确问题",
+    no_customer_problem: "无需客服处理",
     partially_resolved: "部分解决",
     resolved: "已解决",
-    unknown: "待复核",
+    unknown: "消息不足",
     unresolved: "未解决",
   } as const;
 

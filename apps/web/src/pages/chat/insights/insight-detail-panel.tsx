@@ -28,6 +28,7 @@ import { HistoryCompactMessageList } from "@/pages/chat/components/message-histo
 import type { Account, CustomerProfile } from "@/pages/chat/chat-types";
 import { ResolutionBadge } from "./insight-badges";
 import { InsightPerson } from "./insight-person";
+import { formatInsightTime } from "./insights-utils";
 
 export function InsightDetailPanel({
   detail,
@@ -78,6 +79,9 @@ export function InsightDetailPanel({
                   <p className="max-w-4xl text-sm leading-6 text-muted-foreground">
                     {detail.problemResolution.problemSummary || "暂无客户问题摘要"}
                   </p>
+                  <div className="text-xs text-muted-foreground">
+                    生成于 {formatInsightTime(detail.session.generatedAt)}
+                  </div>
                 </div>
               </section>
 

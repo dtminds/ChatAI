@@ -34,6 +34,9 @@ function createRepository(
       labelConfigs: [],
       qaRuleConfigs: [],
     })),
+    getAnalysisPolicy: vi.fn(async () => ({
+      lowConfidenceThreshold: 0.6,
+    })),
     getSessionizationConfig: vi.fn(async () => defaultConfig),
     listClosableOpenSessions: vi.fn(async () => []),
     listIncrementalMessages: vi.fn(async () => [
@@ -67,6 +70,7 @@ function createRepository(
     listOpenSessionsForLiveAnalysis: vi.fn(async () => []),
     listSessionMessagesForAnalysis: vi.fn(async () => []),
     markAnalysisJobFailed: vi.fn(async () => undefined),
+    postponeAnalysisJobForInputReadiness: vi.fn(async () => undefined),
     markAnalysisJobSucceeded: vi.fn(async () => undefined),
     markAnalysisRunFailed: vi.fn(async () => undefined),
     markSyncMessagesJobFailed: vi.fn(async () => undefined),
@@ -355,7 +359,9 @@ describe("InsightsWorkerService", () => {
     const repository = createRepository({
       claimNextAnalyzeJob: vi.fn(async () => ({
         analysisScope: "all",
+        attemptCount: 1,
         jobId: "job-1",
+        maxAttempts: 3,
         mode: "live",
         sessionId: "501",
         uid: 9001,
@@ -505,6 +511,215 @@ describe("InsightsWorkerService", () => {
       }),
     );
     expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
+  });
+
+  it("marks low-confidence analysis output as partial using tenant policy", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "live",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      getAnalysisPolicy: vi.fn(async () => ({
+        lowConfidenceThreshold: 0.75,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.62,
+          evidence: [],
+          evidenceMessageIds: [],
+          problemDetected: true,
+          problemSummary: "客户反馈物流异常",
+          resolutionStatus: "unknown",
+        },
+        qaFindings: [],
+        risks: [],
+        sentiment: [],
+        summary: {
+          confidence: 0.9,
+          customerIntent: "物流异常",
+          processSummary: "客服已回复",
+          resultSummary: "结果不明确",
+        },
+        tags: [],
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.getAnalysisPolicy).toHaveBeenCalledWith(9001);
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        validationWarnings: expect.arrayContaining([
+          expect.stringContaining("confidence 0.62 is below threshold 0.75"),
+        ]),
+      }),
+    );
+  });
+
+  it("postpones analysis once when voice transcription is still pending", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "live",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ duration: 8, transVoiceText: "" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "voice",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "好的" }),
+          conversationId: "301",
+          fromType: 1,
+          id: "9002",
+          msgtime: 1_780_244_060_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => {
+        throw new Error("model should not be called before input is ready");
+      }),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.startAnalysisRun).not.toHaveBeenCalled();
+    expect(model.analyzeSession).not.toHaveBeenCalled();
+    expect(repository.postponeAnalysisJobForInputReadiness).toHaveBeenCalledWith(
+      "job-1",
+      expect.objectContaining({
+        delayMs: 5 * 60_000,
+        reason: "pending_transcription",
+      }),
+    );
+    expect(repository.markAnalysisJobFailed).not.toHaveBeenCalled();
+  });
+
+  it("continues analysis with a warning when voice transcription is still pending after postponement", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 2,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "live",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ duration: 8, transVoiceText: "" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "voice",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "帮您确认一下" }),
+          conversationId: "301",
+          fromType: 1,
+          id: "9002",
+          msgtime: 1_780_244_060_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: [],
+          problemDetected: false,
+          problemSummary: "",
+          resolutionStatus: "no_customer_problem",
+        },
+        qaFindings: [],
+        risks: [],
+        sentiment: [],
+        summary: {
+          confidence: 0.8,
+          customerIntent: "寒暄",
+          processSummary: "客服已回复",
+          resultSummary: "无需处理",
+        },
+        tags: [],
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.postponeAnalysisJobForInputReadiness).not.toHaveBeenCalled();
+    expect(model.analyzeSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          expect.objectContaining({
+            contentStatus: "ready",
+            sourceMessageId: "9002",
+          }),
+        ],
+      }),
+    );
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        validationWarnings: expect.arrayContaining([
+          "存在未完成语音转写",
+        ]),
+      }),
+    );
   });
 });
 

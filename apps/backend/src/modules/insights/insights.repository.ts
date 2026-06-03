@@ -60,6 +60,7 @@ type CurrentSessionQueryRow = {
   ended_at: number | string | null;
   evidence_message_id: number | string | null;
   evidence_role: string | null;
+  generated_at: number | string | Date;
   high_risk_id: number | string | null;
   last_message_at: number | string | null;
   last_customer_message_at: number | string | null;
@@ -89,6 +90,7 @@ type ActionItemQueryRow = {
   last_customer_message_at: number | string | null;
   priority: string;
   reason: string | null;
+  resolution_status: string | null;
   session_id: number | string;
   title: string;
 };
@@ -925,6 +927,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.message_count as message_count",
         "session.started_at as started_at",
         "snapshot.phase as phase",
+        "snapshot.create_time as generated_at",
         "snapshot.status as status",
         "summary.customer_intent as summary_customer_intent",
         "summary.follow_up as summary_follow_up",
@@ -1182,6 +1185,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .innerJoin("xy_wap_embed_logical_session as session", (join) =>
         join.onRef("session.id", "=", "snapshot.session_id"),
       )
+      .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
+        join.onRef("problem.snapshot_id", "=", "snapshot.id"),
+      )
       .leftJoin("xy_wap_embed_insight_evidence as evidence", (join) =>
         join
           .onRef("evidence.snapshot_id", "=", "snapshot.id")
@@ -1200,6 +1206,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "evidence.reason as reason",
         "evidence.source_message_id as evidence_message_id",
         "message.msgtime as last_customer_message_at",
+        "problem.resolution_status as resolution_status",
         "session.conversation_id as conversation_id",
         "session.id as session_id",
       ])
@@ -1367,6 +1374,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.id as session_id",
         "session.started_at as started_at",
         "snapshot.phase as phase",
+        "snapshot.create_time as generated_at",
         "snapshot.status as status",
         "summary.customer_intent as summary_customer_intent",
         "summary.follow_up as summary_follow_up",
@@ -1401,6 +1409,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         last_customer_message_at: row.last_customer_message_at,
         priority: row.action_priority ?? "medium",
         reason: row.unresolved_reason,
+        resolution_status: row.resolution_status,
         session_id: row.session_id,
         title: row.action_title ?? "待跟进事项",
       })),
@@ -2392,6 +2401,7 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         customerMessageCount: parseNumber(row.customer_message_count),
         customerName: readOptionalDetailField<string>(row, "customer_name") ?? "未知客户",
         endedAt: parseNullableNumber(row.ended_at),
+        generatedAt: parseNumber(row.generated_at),
         highRiskCount: 0,
         lastMessageAt: parseNullableNumber(row.last_message_at),
         lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at),
@@ -2504,6 +2514,7 @@ function mapActionItemRows(rows: ActionItemQueryRow[]): InsightActionItemRow[] {
         lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at) ?? undefined,
         priority: normalizePriority(row.priority),
         reason: row.reason ?? "",
+        resolutionStatus: normalizeResolutionStatus(row.resolution_status),
         sessionId: String(row.session_id),
         status: normalizeActionStatus(row.action_status),
         title: row.title,

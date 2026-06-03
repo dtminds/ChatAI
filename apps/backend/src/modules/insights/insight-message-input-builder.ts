@@ -15,7 +15,8 @@ export function buildInsightMessageInput(row: InsightMessageSourceRow): AiMessag
   const messageType = mapInsightMessageType(row.msgtype);
   const senderRole = mapInsightSenderRole(row.from_type, messageType);
   const content = buildAiText(messageType, parsed);
-  const includedForAi = messageType !== "system";
+  const includedForAi = messageType !== "system"
+    && (content.contentStatus === "ready" || content.contentStatus === "pending_transcription");
   const meaningfulForBoundary = includedForAi && content.contentStatus === "ready";
 
   return {

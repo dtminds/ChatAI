@@ -58,6 +58,7 @@ export type InsightCurrentSessionRow = {
   assets?: NonNullable<InsightsOverviewResponse["sessions"][number]["assets"]>;
   endedAt: number | null;
   entities?: NonNullable<InsightsOverviewResponse["sessions"][number]["entities"]>;
+  generatedAt: number;
   highRiskCount: number;
   intents?: NonNullable<InsightsOverviewResponse["sessions"][number]["intents"]>;
   lastMessageAt: number | null;
@@ -80,7 +81,9 @@ export type InsightCurrentSessionRow = {
   unresolvedReason: string | null;
 };
 
-export type InsightActionItemRow = InsightsFollowUpsResponse["items"][number];
+export type InsightActionItemRow = InsightsFollowUpsResponse["items"][number] & {
+  resolutionStatus?: InsightResolutionStatus;
+};
 
 export type InsightEvidenceMessageRow = InsightDetailResponse["evidenceMessages"][number];
 
@@ -269,13 +272,15 @@ export class InsightsService {
     }
 
     return {
-      actionItemsOpen: rows.reduce((total, row) => total + row.actionOpenCount, 0),
+      actionItemsOpen: rows
+        .filter(requiresHumanIntervention)
+        .reduce((total, row) => total + row.actionOpenCount, 0),
       analysis,
       entityHotspots,
       highRiskSessions: rows.filter((row) => row.highRiskCount > 0).length,
       intentDistribution,
       negativeSessions: rows.filter((row) => row.negativeCount > 0).length,
-      problemSessions: rows.filter((row) => row.problemDetected).length,
+      problemSessions: rows.filter(isCustomerProblemSession).length,
       readySessions: analysis.ready,
       sessions: buildOverviewSessions(rows),
       totalSessions: rows.length,
@@ -313,7 +318,7 @@ export class InsightsService {
           (row) => row.resolutionStatus === "no_customer_problem",
         ).length,
         partial: rows.filter((row) => row.resolutionStatus === "partially_resolved").length,
-        problemSessions: rows.filter((row) => row.problemDetected).length,
+        problemSessions: rows.filter(isCustomerProblemSession).length,
         resolved: rows.filter((row) => row.resolutionStatus === "resolved").length,
         totalSessions: rows.length,
         unresolved: rows.filter((row) => row.resolutionStatus === "unresolved").length,
@@ -339,7 +344,9 @@ export class InsightsService {
       qualityTopics: topicCollections.qualityTopics,
       tagDistribution: topicCollections.tagDistribution,
       totals: {
-        actionItemsOpen: rows.reduce((total, row) => total + row.actionOpenCount, 0),
+        actionItemsOpen: rows
+          .filter(requiresHumanIntervention)
+          .reduce((total, row) => total + row.actionOpenCount, 0),
         analyzedSessions: rows.filter((row) => analyzedStatuses.has(row.analysisStatus)).length,
         assetMentions: sumTopicMentions(topicCollections.assetHotspots),
         entityMentions: sumTopicMentions(topicCollections.entityHotspots),
@@ -359,10 +366,12 @@ export class InsightsService {
   ): Promise<InsightsFollowUpsResponse> {
     const rows = await this.repository.listActionItems(scope, filters);
     const items = rows
+      .filter((row) => !row.resolutionStatus || requiresHumanIntervention(row.resolutionStatus))
       .filter((row) => !filters.status || row.status === filters.status)
       .filter((row) => !filters.priority || row.priority === filters.priority)
       .filter((row) => !filters.type || row.actionType === filters.type)
-      .sort(compareActionItems);
+      .sort(compareActionItems)
+      .map(stripActionItemInternalFields);
 
     return {
       items,
@@ -423,6 +432,7 @@ export class InsightsService {
         customerAvatarUrl: detail.current.customerAvatarUrl ?? undefined,
         customerName: detail.current.customerName,
         endedAt: detail.current.endedAt ?? undefined,
+        generatedAt: detail.current.generatedAt,
         phase: detail.current.phase,
         sessionId: detail.current.sessionId,
         startedAt: detail.current.startedAt,
@@ -747,6 +757,26 @@ function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
     }));
 }
 
+function requiresHumanIntervention(
+  value: InsightCurrentSessionRow | InsightResolutionStatus,
+) {
+  const status = typeof value === "string" ? value : value.resolutionStatus;
+
+  return unresolvedStatuses.has(status);
+}
+
+function isCustomerProblemSession(row: InsightCurrentSessionRow) {
+  return row.problemDetected &&
+    row.resolutionStatus !== "no_customer_problem" &&
+    row.resolutionStatus !== "unknown";
+}
+
+function stripActionItemInternalFields(row: InsightActionItemRow): InsightsFollowUpsResponse["items"][number] {
+  const { resolutionStatus: _resolutionStatus, ...item } = row;
+
+  return item;
+}
+
 type BusinessTopicAccumulator = {
   actionItemSessions: Set<string>;
   code: string;
@@ -796,7 +826,7 @@ function buildBusinessTopicCollections(
       accumulator.negativeSessions.add(session.sessionId);
     }
 
-    if (session.actionOpenCount > 0) {
+    if (requiresHumanIntervention(session) && session.actionOpenCount > 0) {
       accumulator.actionItemSessions.add(session.sessionId);
     }
 
@@ -999,7 +1029,7 @@ function buildAgentStats(rows: InsightCurrentSessionRow[]) {
 
     stat.totalSessions += 1;
 
-    if (row.problemDetected) {
+    if (isCustomerProblemSession(row)) {
       stat.problemSessions += 1;
     }
 

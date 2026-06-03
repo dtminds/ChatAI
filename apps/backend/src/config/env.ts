@@ -26,6 +26,7 @@ export const EnvSchema = Type.Object({
   REDIS_ENABLED: Type.Optional(Type.String()),
   VOLCENGINE_ARK_API_KEY: Type.Optional(Type.String()),
   VOLCENGINE_ARK_BASE_URL: Type.Optional(Type.String()),
+  VOLCENGINE_ARK_MAX_TOKENS: Type.Optional(Type.String()),
   VOLCENGINE_ARK_MODEL: Type.Optional(Type.String()),
 });
 

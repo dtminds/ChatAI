@@ -272,6 +272,7 @@ export const InsightSessionMetaSchema = Type.Object({
   customerAvatarUrl: Type.Optional(Type.String()),
   customerName: Type.String(),
   endedAt: Type.Optional(Type.Number()),
+  generatedAt: Type.Number(),
   phase: Type.Union([Type.Literal("live"), Type.Literal("final")]),
   sessionId: Type.String(),
   startedAt: Type.Number(),

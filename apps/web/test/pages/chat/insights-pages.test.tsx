@@ -148,6 +148,26 @@ function installInsightMocks() {
           { tagCode: "refund", tagName: "退款咨询" },
         ],
       },
+      {
+        agentAvatarUrl: "https://example.com/agent-3.png",
+        agentMessageCount: 1,
+        agentName: "客服三号",
+        analysisStatus: "ready",
+        conversationId: "303",
+        customerAvatarUrl: "https://example.com/customer-3.png",
+        customerMessageCount: 1,
+        customerName: "赵六",
+        entities: [],
+        intents: [],
+        lastMessageAt: 1_780_243_500_000,
+        messageCount: 2,
+        problemSummary: "消息不足，无法判断客户问题",
+        resolutionStatus: "unknown",
+        sessionId: "503",
+        startedAt: 1_780_243_400_000,
+        summaryCustomerIntent: "消息不足",
+        tags: [],
+      },
     ],
     totalSessions: 22,
     totals: {
@@ -526,6 +546,7 @@ function installInsightMocks() {
       customerAvatarUrl: "https://example.com/customer-1.png",
       customerName: "张三",
       endedAt: 1_780_245_000_000,
+      generatedAt: 1_780_245_100_000,
       phase: "final",
       sessionId: "501",
       startedAt: 1_780_243_200_000,
@@ -610,14 +631,51 @@ function installInsightMocks() {
         id: "41",
         includeInAggregation: true,
       },
+      {
+        aliases: ["雨伞"],
+        canonicalName: "黑色雨伞",
+        enabled: true,
+        entityType: "product",
+        id: "42",
+        includeInAggregation: true,
+      },
+      {
+        aliases: [],
+        canonicalName: "隐藏实体",
+        enabled: false,
+        entityType: "product",
+        id: "43",
+        includeInAggregation: true,
+      },
     ],
     labelConfigs: [
       {
         enabled: true,
         id: "11",
         includeInStatistics: true,
+        labelCode: "refund",
+        labelName: "退款咨询",
+      },
+      {
+        enabled: true,
+        id: "12",
+        includeInStatistics: true,
         labelCode: "price_sensitive",
         labelName: "价格敏感",
+      },
+      {
+        enabled: true,
+        id: "13",
+        includeInStatistics: true,
+        labelCode: "high_intent",
+        labelName: "高意向",
+      },
+      {
+        enabled: false,
+        id: "14",
+        includeInStatistics: true,
+        labelCode: "hidden_label",
+        labelName: "隐藏标签",
       },
     ],
     qaRuleConfigs: [
@@ -687,20 +745,50 @@ describe("conversation insights pages", () => {
     expect(screen.getByRole("button", { name: /^消息数/ })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "逻辑会话明细" })).toBeInTheDocument();
     expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
+    expect(screen.getAllByText("消息不足").length).toBeGreaterThan(0);
+    expect(screen.queryByText("待复核")).not.toBeInTheDocument();
+    expect(screen.queryByText("待判断")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("combobox", { name: "解决状态" }));
+    expect(await screen.findByRole("option", { name: "无需客服处理" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "无明确问题" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
     expect(screen.queryByText("优先处理队列")).not.toBeInTheDocument();
     expect(screen.queryByText("分析完成率和异常状态")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "张三" })).toBeInTheDocument();
     expect(screen.queryByText("会话 301")).not.toBeInTheDocument();
     expect(document.querySelector("#insightTrendArea stop[offset='100%']")).toHaveAttribute("stop-opacity", "0");
 
+    await waitFor(() => {
+      expect(serviceMocks.getInsightSettings).toHaveBeenCalled();
+    });
     await userEvent.click(screen.getByRole("combobox", { name: "标签" }));
-    await userEvent.click(await screen.findByRole("option", { name: "退款咨询" }));
+    const tagListbox = await screen.findByRole("listbox");
+    expect(within(tagListbox).getByRole("option", { name: "退款咨询" })).toBeInTheDocument();
+    expect(within(tagListbox).getByRole("option", { name: "高意向" })).toBeInTheDocument();
+    expect(within(tagListbox).queryByRole("option", { name: "物流异常" })).not.toBeInTheDocument();
+    expect(within(tagListbox).queryByRole("option", { name: "隐藏标签" })).not.toBeInTheDocument();
+    await userEvent.click(within(tagListbox).getByRole("option", { name: "退款咨询" }));
 
     expect(screen.getByText("客户咨询退款到账时间")).toBeInTheDocument();
     expect(screen.queryByText("客户反馈物流异常")).not.toBeInTheDocument();
+    expect(screen.queryByText("消息不足，无法判断客户问题")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("combobox", { name: "实体" }));
+    const entityListbox = await screen.findByRole("listbox");
+    expect(within(entityListbox).getByRole("option", { name: "白色羽绒服" })).toBeInTheDocument();
+    expect(within(entityListbox).getByRole("option", { name: "黑色雨伞" })).toBeInTheDocument();
+    expect(within(entityListbox).queryByRole("option", { name: "隐藏实体" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
 
     await userEvent.click(screen.getByRole("combobox", { name: "标签" }));
     await userEvent.click(await screen.findByRole("option", { name: "全部标签" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "问题范围" }));
+    await userEvent.click(await screen.findByRole("option", { name: "有客户问题" }));
+
+    expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
+    expect(screen.getByText("客户咨询退款到账时间")).toBeInTheDocument();
+    expect(screen.queryByText("消息不足，无法判断客户问题")).not.toBeInTheDocument();
+
     await userEvent.click(screen.getByRole("combobox", { name: "问题范围" }));
     await userEvent.click(await screen.findByRole("option", { name: "未解决/部分解决" }));
 
@@ -717,6 +805,7 @@ describe("conversation insights pages", () => {
     expect(conversationRegion).toBeInTheDocument();
     expect(within(detailDialog).getAllByRole("img", { name: "张三" }).length).toBeGreaterThan(0);
     expect(within(detailDialog).getAllByRole("img", { name: "客服一号" }).length).toBeGreaterThan(0);
+    expect(within(detailDialog).getByText(/生成于/)).toBeInTheDocument();
     expect(within(detailDialog).queryByText("已完成")).not.toBeInTheDocument();
     expect(screen.getAllByText("物流异常").length).toBeGreaterThan(0);
     expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
@@ -776,6 +865,8 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "问题列表" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "客服报表" })).toBeInTheDocument();
+    expect(screen.getByText("无需客服处理")).toBeInTheDocument();
+    expect(screen.queryByText("无明确问题")).not.toBeInTheDocument();
     expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
     expect(screen.getAllByText("售后/物流/退款进度未确认").length).toBeGreaterThan(0);
     expect(screen.getByRole("img", { name: "张三" })).toBeInTheDocument();

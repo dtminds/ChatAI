@@ -88,7 +88,7 @@ export function InsightsQualityPage() {
             <Stat label="已解决" value={overview?.resolved} />
             <Stat label="未解决" value={overview?.unresolved} tone="danger" />
             <Stat label="部分解决" value={overview?.partial} tone="warning" />
-            <Stat label="无明确问题" value={overview?.noCustomerProblem} />
+            <Stat label="无需客服处理" value={overview?.noCustomerProblem} />
           </div>
         </section>
 

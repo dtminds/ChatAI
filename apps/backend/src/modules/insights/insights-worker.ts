@@ -109,7 +109,9 @@ export type CreateAnalyzeJobInput = {
 
 export type ClaimedAnalyzeJob = {
   analysisScope: "all";
+  attemptCount: number;
   jobId: string;
+  maxAttempts: number;
   mode: "final" | "live" | "manual_reanalyze";
   sessionId: string;
   uid: number;
@@ -217,6 +219,10 @@ export type SaveAnalysisResultInput = {
   validationWarnings: string[];
 };
 
+export type InsightWorkerAnalysisPolicy = {
+  lowConfidenceThreshold: number;
+};
+
 export type InsightSessionAnalyzer = {
   analyzeSession(input: {
     context: InsightPromptContext;
@@ -239,6 +245,7 @@ export type InsightWorkerRepositoryPort = {
     uid: number;
   }): Promise<InsightWorkerOpenSession | undefined>;
   findPlatformConversation(message: InsightWorkerMessage): Promise<InsightWorkerConversation | undefined>;
+  getAnalysisPolicy(uid: number): Promise<InsightWorkerAnalysisPolicy>;
   getCursor(): Promise<InsightWorkerCursor>;
   getPromptContext(uid: number): Promise<InsightPromptContext>;
   getSessionizationConfig(uid: number): Promise<InsightWorkerSessionizationConfig>;
@@ -263,6 +270,10 @@ export type InsightWorkerRepositoryPort = {
   markAnalysisRunFailed(runId: string, error: unknown): Promise<void>;
   markSyncMessagesJobFailed(jobId: string, error: unknown): Promise<void>;
   markSyncMessagesJobSucceeded(jobId: string): Promise<void>;
+  postponeAnalysisJobForInputReadiness(
+    jobId: string,
+    input: { delayMs: number; reason: string },
+  ): Promise<void>;
   saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string>;
   shouldCreateLiveAnalyzeJob(input: ShouldCreateLiveAnalyzeJobInput): Promise<boolean>;
   startAnalysisRun(input: InsightAnalysisRunInput): Promise<string>;
@@ -272,6 +283,9 @@ export type InsightWorkerRepositoryPort = {
 export type NonOverlappingTicker = {
   tick(): Promise<boolean>;
 };
+
+const INPUT_READINESS_RETRY_DELAY_MS = 5 * 60_000;
+const INPUT_READINESS_MAX_POSTPONES = 1;
 
 export class InsightsWorkerService {
   private readonly batchSize: number;
@@ -609,6 +623,33 @@ export class InsightsWorkerService {
         buildInsightMessageInput(toAnalysisMessageSourceRow(row)),
       );
       const sourceMessageIds = messages.map((message) => message.sourceMessageId);
+      const pendingTranscriptionCount = messages.filter((message) =>
+        message.contentStatus === "pending_transcription"
+      ).length;
+
+      if (pendingTranscriptionCount > 0 && job.attemptCount <= INPUT_READINESS_MAX_POSTPONES) {
+        await this.repository.postponeAnalysisJobForInputReadiness(job.jobId, {
+          delayMs: INPUT_READINESS_RETRY_DELAY_MS,
+          reason: "pending_transcription",
+        });
+        this.logger?.info(
+          {
+            jobId: job.jobId,
+            pendingTranscriptionCount,
+            sessionId: job.sessionId,
+            uid: job.uid,
+          },
+          "会话洞察 worker 延后分析任务，等待语音转写",
+        );
+        return;
+      }
+
+      const modelMessages = messages.filter((message) =>
+        message.includedForAi !== false && message.contentStatus === "ready"
+      );
+      const pendingInputWarnings = pendingTranscriptionCount > 0
+        ? ["存在未完成语音转写"]
+        : [];
       runId = await this.repository.startAnalysisRun({
         analysisScope: job.analysisScope,
         jobId: job.jobId,
@@ -620,13 +661,15 @@ export class InsightsWorkerService {
       const context = await this.repository.getPromptContext(job.uid);
 
       const configuredOutput = filterConfiguredAnalysisOutput(
-        await this.model.analyzeSession({ context, job, messages }),
+        await this.model.analyzeSession({ context, job, messages: modelMessages }),
         context,
       );
-      const output = normalizeEvidenceIds(configuredOutput.output, new Set(sourceMessageIds));
+const output = normalizeEvidenceIds(configuredOutput.output, new Set(sourceMessageIds));
       const validationWarnings = [
         ...configuredOutput.validationWarnings,
         ...output.validationWarnings,
+        ...pendingInputWarnings,
+        ...await this.getConfidenceWarnings(job.uid, output.output),
       ];
 
       const snapshotId = await this.repository.saveAnalysisResult({
@@ -667,6 +710,17 @@ export class InsightsWorkerService {
         "会话洞察 worker 分析任务失败",
       );
     }
+  }
+
+  private async getConfidenceWarnings(uid: number, output: InsightAnalysisOutput) {
+    const policy = await this.repository.getAnalysisPolicy(uid);
+    const confidence = Math.min(output.summary.confidence, output.problemResolution.confidence);
+
+    if (confidence >= policy.lowConfidenceThreshold) {
+      return [];
+    }
+
+    return [`confidence ${confidence} is below threshold ${policy.lowConfidenceThreshold}`];
   }
 }
 

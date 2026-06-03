@@ -90,6 +90,7 @@ function installInsightMocks() {
     highRiskSessions: 2,
     intentDistribution: [
       { count: 8, intentCode: "logistics", intentLabel: "查物流" },
+      { count: 2, intentCode: "ai_customer_service_info", intentLabel: "咨询AI客服系统相关信息" },
     ],
     negativeSessions: 4,
     problemSessions: 11,
@@ -144,6 +145,7 @@ function installInsightMocks() {
           entities: [],
           intents: [
             { intentCode: "refund", intentLabel: "退款咨询" },
+            { intentCode: "ai_customer_service_info", intentLabel: "咨询AI客服系统相关信息" },
           ],
           lastMessageAt: 1_780_244_500_000,
           messageCount: 5,
@@ -783,13 +785,16 @@ describe("conversation insights pages", () => {
     await waitFor(() => {
       expect(serviceMocks.getInsightSettings).toHaveBeenCalled();
     });
-    await userEvent.click(screen.getByRole("combobox", { name: "标签" }));
-    const tagListbox = await screen.findByRole("listbox");
-    expect(within(tagListbox).getByRole("option", { name: "退款咨询" })).toBeInTheDocument();
-    expect(within(tagListbox).getByRole("option", { name: "高意向" })).toBeInTheDocument();
-    expect(within(tagListbox).queryByRole("option", { name: "物流异常" })).not.toBeInTheDocument();
-    expect(within(tagListbox).queryByRole("option", { name: "隐藏标签" })).not.toBeInTheDocument();
-    await userEvent.click(within(tagListbox).getByRole("option", { name: "退款咨询" }));
+    await userEvent.click(screen.getByRole("button", { name: "更多筛选" }));
+    let advancedFilters = await screen.findByRole("menu", { name: /更多筛选/ });
+    expect(within(advancedFilters).queryByRole("menuitemradio", { name: "退款咨询" })).not.toBeInTheDocument();
+    await userEvent.click(within(advancedFilters).getByRole("menuitem", { name: "标签" }));
+    let refundTagOption = await screen.findByRole("menuitemradio", { name: "退款咨询" });
+    expect(refundTagOption).toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: "高意向" })).toBeInTheDocument();
+    expect(within(advancedFilters).queryByRole("menuitemradio", { name: "物流异常" })).not.toBeInTheDocument();
+    expect(within(advancedFilters).queryByRole("menuitemradio", { name: "隐藏标签" })).not.toBeInTheDocument();
+    await userEvent.click(refundTagOption);
 
     await waitFor(() => {
       expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith(
@@ -800,15 +805,18 @@ describe("conversation insights pages", () => {
       );
     });
 
-    await userEvent.click(screen.getByRole("combobox", { name: "实体" }));
-    const entityListbox = await screen.findByRole("listbox");
-    expect(within(entityListbox).getByRole("option", { name: "白色羽绒服" })).toBeInTheDocument();
-    expect(within(entityListbox).getByRole("option", { name: "黑色雨伞" })).toBeInTheDocument();
-    expect(within(entityListbox).queryByRole("option", { name: "隐藏实体" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "更多筛选" }));
+    advancedFilters = await screen.findByRole("menu", { name: /更多筛选/ });
+    await userEvent.click(within(advancedFilters).getByRole("menuitem", { name: "实体" }));
+    expect(await screen.findByRole("menuitemradio", { name: "白色羽绒服" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: "黑色雨伞" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio", { name: "隐藏实体" })).not.toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
 
-    await userEvent.click(screen.getByRole("combobox", { name: "标签" }));
-    await userEvent.click(await screen.findByRole("option", { name: "全部标签" }));
+    await userEvent.click(screen.getByRole("button", { name: "更多筛选" }));
+    advancedFilters = await screen.findByRole("menu", { name: /更多筛选/ });
+    await userEvent.click(within(advancedFilters).getByRole("menuitem", { name: /标签/ }));
+    await userEvent.click(await screen.findByRole("menuitemradio", { name: "全部标签" }));
     await userEvent.click(screen.getByRole("combobox", { name: "问题范围" }));
     await userEvent.click(await screen.findByRole("option", { name: "有客户问题" }));
 
@@ -903,6 +911,58 @@ describe("conversation insights pages", () => {
       });
     });
     expect(screen.getByRole("button", { name: /日期范围.*近7天.*2026-05-28.*2026-06-03/ })).toBeInTheDocument();
+  });
+
+  it("keeps advanced session filters inside the more filters dropdown", async () => {
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(serviceMocks.getInsightSettings).toHaveBeenCalled();
+    });
+
+    expect(screen.getByRole("textbox", { name: "搜索问题摘要和诉求" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "解决状态" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "标签" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "实体" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "意图" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "分析状态" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "更多筛选" }));
+    const advancedFilters = await screen.findByRole("menu", { name: /更多筛选/ });
+    expect(within(advancedFilters).queryByRole("menuitemradio", { name: "退款咨询" })).not.toBeInTheDocument();
+    await userEvent.click(within(advancedFilters).getByRole("menuitem", { name: "标签" }));
+    const refundTagOption = await screen.findByRole("menuitemradio", { name: "退款咨询" });
+    await userEvent.click(refundTagOption);
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          page: 1,
+          tagCode: "refund",
+        }),
+      );
+    });
+    expect(screen.getByRole("button", { name: "更多筛选" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "移除筛选 标签：退款咨询" })).toBeInTheDocument();
+  });
+
+  it("keeps long advanced filter option labels on one line", async () => {
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(serviceMocks.getInsightSettings).toHaveBeenCalled();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "更多筛选" }));
+    const advancedFilters = await screen.findByRole("menu", { name: /更多筛选/ });
+    await userEvent.click(within(advancedFilters).getByRole("menuitem", { name: "意图" }));
+
+    const longIntentOption = await screen.findByRole("menuitemradio", {
+      name: "咨询AI客服系统相关信息",
+    });
+    expect(within(longIntentOption).getByText("咨询AI客服系统相关信息")).toHaveClass("truncate");
   });
 
   it("starts a new custom date range when clicking the calendar after a complete range is selected", async () => {

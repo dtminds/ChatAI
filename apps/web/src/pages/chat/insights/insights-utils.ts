@@ -9,12 +9,58 @@ export function formatInsightTime(value?: number) {
     return "暂无";
   }
 
-  return new Intl.DateTimeFormat("zh-CN", {
-    day: "2-digit",
+  const date = new Date(value);
+  const now = new Date();
+  const time = new Intl.DateTimeFormat("zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
-    month: "2-digit",
-  }).format(new Date(value));
+    hour12: false,
+  }).format(date);
+
+  if (isSameCalendarDay(date, now)) {
+    return `今天 ${time}`;
+  }
+
+  if (isSameCalendarDay(date, addDays(now, -1))) {
+    return `昨天 ${time}`;
+  }
+
+  const nowMonday = getMondayStartOfDay(now);
+
+  if (date.getTime() >= nowMonday.getTime() && date.getTime() < addDays(nowMonday, 7).getTime()) {
+    return `${formatWeekday(date)} ${time}`;
+  }
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+  }
+
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+}
+
+function isSameCalendarDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function addDays(value: Date, days: number) {
+  const date = new Date(value);
+  date.setDate(date.getDate() + days);
+  return date;
+}
+
+function getMondayStartOfDay(value: Date) {
+  const date = new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  const day = date.getDay();
+  const daysSinceMonday = day === 0 ? 6 : day - 1;
+  return addDays(date, -daysSinceMonday);
+}
+
+function formatWeekday(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", { weekday: "short" }).format(date);
 }
 
 export function formatResolutionStatus(

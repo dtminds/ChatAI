@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
+  AiIdeaIcon,
   ArrowDown01Icon,
+  ArrowRight01Icon,
   BubbleChatIcon,
-  Calendar03Icon,
   ChartAreaIcon,
   ChartBubbleIcon,
+  CubeIcon,
   FilterIcon,
   Message01Icon,
   MoreHorizontalIcon,
   Search01Icon,
+  TagIcon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -27,13 +30,18 @@ import {
   YAxis,
   type TooltipProps,
 } from "recharts";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -86,6 +94,29 @@ const trendOptions: Array<{ key: TrendMetric; label: string }> = [
   { key: "messages", label: "消息" },
   { key: "customerMessages", label: "客户消息" },
   { key: "agentMessages", label: "客服消息" },
+];
+
+const problemFilterOptions = [
+  { label: "全部会话", value: "all" },
+  { label: "有客户问题", value: "problem" },
+  { label: "未解决/部分解决", value: "unresolved" },
+];
+
+const resolutionFilterOptions = [
+  { label: "全部状态", value: "all" },
+  { label: "已解决", value: "resolved" },
+  { label: "未解决", value: "unresolved" },
+  { label: "部分解决", value: "partially_resolved" },
+  { label: "无需客服处理", value: "no_customer_problem" },
+  { label: "消息不足", value: "unknown" },
+];
+
+const analysisStatusFilterOptions = [
+  { label: "全部分析", value: "all" },
+  { label: "已完成", value: "ready" },
+  { label: "部分完成", value: "partial" },
+  { label: "分析失败", value: "failed" },
+  { label: "已过期", value: "stale" },
 ];
 
 const resolutionColors: Record<string, string> = {
@@ -559,103 +590,105 @@ function SessionTableCard({
   const startRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const endRow = Math.min(total, page * pageSize);
   const pageNumbers = buildPaginationNumbers(page, totalPages);
+  const advancedFilterCount = [analysisStatusFilter, entityFilter, intentFilter, tagFilter]
+    .filter((value) => value !== "all").length;
+  const activeFilters = buildActiveSessionFilters({
+    analysisStatus: analysisStatusFilter,
+    entity: entityFilter,
+    filterOptions,
+    intent: intentFilter,
+    onAnalysisStatusRemove: () => onAnalysisStatusFilterChange("all"),
+    onEntityRemove: () => onEntityFilterChange("all"),
+    onIntentRemove: () => onIntentFilterChange("all"),
+    onProblemRemove: () => onProblemFilterChange("all"),
+    onResolutionRemove: () => onResolutionFilterChange("all"),
+    onTagRemove: () => onTagFilterChange("all"),
+    problem: problemFilter,
+    resolution: resolutionFilter,
+    tag: tagFilter,
+  });
 
   return (
     <section className="rounded-xl border bg-card">
       <div className="grid gap-3 p-4 sm:px-6 sm:py-4">
-        <div className="flex flex-1 items-center gap-2.5">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-[8px] border bg-background text-muted-foreground">
-            <HugeiconsIcon icon={Calendar03Icon} size={17} />
-          </span>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <h2 className="text-base font-medium">逻辑会话明细</h2>
-          <Badge className="ml-1" variant="secondary">{total} 条</Badge>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 sm:flex-none">
-            <HugeiconsIcon
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              icon={Search01Icon}
-              size={17}
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <div className="relative flex-1 sm:flex-none">
+              <HugeiconsIcon
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                icon={Search01Icon}
+                size={17}
+              />
+              <Input
+                aria-label="搜索问题摘要和诉求"
+                className="h-9 w-full pl-9 sm:w-[220px]"
+                onChange={(event) => onKeywordChange(event.target.value)}
+                placeholder="搜索问题摘要和诉求"
+                value={keyword}
+              />
+            </div>
+            <FilterSelect
+              label="问题范围"
+              onValueChange={onProblemFilterChange}
+              options={problemFilterOptions}
+              value={problemFilter}
+              widthClassName="w-[132px]"
             />
-            <Input
-              className="h-9 w-full pl-9 sm:w-[220px]"
-              onChange={(event) => onKeywordChange(event.target.value)}
-              placeholder="搜索问题摘要和诉求"
-              aria-label="搜索问题摘要和诉求"
-              value={keyword}
+            <FilterSelect
+              label="解决状态"
+              onValueChange={onResolutionFilterChange}
+              options={resolutionFilterOptions}
+              value={resolutionFilter}
+              widthClassName="w-[136px]"
+            />
+            <AdvancedSessionFilterDropdown
+              activeCount={advancedFilterCount}
+              analysisStatusFilter={analysisStatusFilter}
+              entityFilter={entityFilter}
+              filterOptions={filterOptions}
+              intentFilter={intentFilter}
+              onAnalysisStatusFilterChange={onAnalysisStatusFilterChange}
+              onEntityFilterChange={onEntityFilterChange}
+              onIntentFilterChange={onIntentFilterChange}
+              onReset={() => {
+                onAnalysisStatusFilterChange("all");
+                onEntityFilterChange("all");
+                onIntentFilterChange("all");
+                onTagFilterChange("all");
+              }}
+              onTagFilterChange={onTagFilterChange}
+              tagFilter={tagFilter}
             />
           </div>
-          <FilterSelect
-            label="问题范围"
-            onValueChange={onProblemFilterChange}
-            options={[
-              { label: "全部会话", value: "all" },
-              { label: "有客户问题", value: "problem" },
-              { label: "未解决/部分解决", value: "unresolved" },
-            ]}
-            value={problemFilter}
-            widthClassName="w-[152px]"
-          />
-          <FilterSelect
-            label="解决状态"
-            onValueChange={onResolutionFilterChange}
-            options={[
-              { label: "全部状态", value: "all" },
-              { label: "已解决", value: "resolved" },
-              { label: "未解决", value: "unresolved" },
-              { label: "部分解决", value: "partially_resolved" },
-              { label: "无需客服处理", value: "no_customer_problem" },
-              { label: "消息不足", value: "unknown" },
-            ]}
-            value={resolutionFilter}
-            widthClassName="w-[136px]"
-          />
-          <FilterSelect
-            label="分析状态"
-            onValueChange={onAnalysisStatusFilterChange}
-            options={[
-              { label: "全部分析", value: "all" },
-              { label: "已完成", value: "ready" },
-              { label: "部分完成", value: "partial" },
-              { label: "分析失败", value: "failed" },
-              { label: "已过期", value: "stale" },
-            ]}
-            value={analysisStatusFilter}
-            widthClassName="w-[128px]"
-          />
-          <FilterSelect
-            label="标签"
-            onValueChange={onTagFilterChange}
-            options={[{ label: "全部标签", value: "all" }, ...filterOptions.tags]}
-            value={tagFilter}
-            widthClassName="w-[136px]"
-          />
-          <FilterSelect
-            label="实体"
-            onValueChange={onEntityFilterChange}
-            options={[{ label: "全部实体", value: "all" }, ...filterOptions.entities]}
-            value={entityFilter}
-            widthClassName="w-[136px]"
-          />
-          <FilterSelect
-            label="意图"
-            onValueChange={onIntentFilterChange}
-            options={[{ label: "全部意图", value: "all" }, ...filterOptions.intents]}
-            value={intentFilter}
-            widthClassName="w-[136px]"
-          />
         </div>
+        {activeFilters.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {activeFilters.map((filter) => (
+              <button
+                className="inline-flex h-7 items-center gap-1.5 rounded-full border bg-background px-2.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                key={filter.key}
+                onClick={filter.onRemove}
+                type="button"
+                aria-label={`移除筛选 ${filter.label}`}
+              >
+                <span>{filter.label}</span>
+                <span aria-hidden="true" className="text-sm leading-none">×</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="overflow-x-auto px-4 pb-4 sm:px-6">
         <Table aria-label="逻辑会话明细">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="h-11 min-w-[150px]">时间</TableHead>
-              <TableHead className="h-11 min-w-[120px]">状态</TableHead>
-              <TableHead className="h-11 min-w-[210px]">客户</TableHead>
-              <TableHead className="h-11 min-w-[170px]">客服</TableHead>
+              <TableHead className="h-11 min-w-[180px]">客户</TableHead>
+              <TableHead className="h-11 min-w-[180px]">客服</TableHead>
               <TableHead className="h-11 min-w-[260px]">诉求/问题</TableHead>
-              <TableHead className="h-11 min-w-[120px]">消息</TableHead>
+              <TableHead className="h-11 min-w-[160px]">状态</TableHead>
+              <TableHead className="h-11 min-w-[150px]">时间</TableHead>
+              <TableHead className="h-11 min-w-[80px]">消息</TableHead>
               <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -663,12 +696,6 @@ function SessionTableCard({
             {rows.length > 0 ? (
               rows.map((row) => (
                 <TableRow key={row.sessionId}>
-                  <TableCell className="py-4 text-sm text-muted-foreground">
-                    {formatInsightTime(row.startedAt)}
-                  </TableCell>
-                  <TableCell className="py-4">
-                    <ResolutionBadge status={row.resolutionStatus} />
-                  </TableCell>
                   <TableCell className="py-4">
                     <InsightPerson
                       avatarUrl={row.customerAvatarUrl}
@@ -689,17 +716,24 @@ function SessionTableCard({
                       {row.problemSummary || "暂无客户问题摘要"}
                     </div>
                   </TableCell>
+                  <TableCell className="py-4">
+                    <ResolutionBadge status={row.resolutionStatus} />
+                  </TableCell>
+                  <TableCell className="py-4 text-sm text-muted-foreground">
+                    {formatInsightTime(row.startedAt)}
+                  </TableCell>
                   <TableCell className="py-4 text-sm">
                     {row.messageCount} 条
                   </TableCell>
                   <TableCell className="py-4 text-right">
                     <Button
-                      className="h-8 rounded-[8px]"
+                      aria-label="查看详情"
+                      className="size-8 rounded-[8px]"
                       onClick={() => onOpenDetail(row.sessionId)}
-                      size="sm"
-                      variant="outline"
+                      size="icon"
+                      variant="ghost"
                     >
-                      查看详情
+                      <HugeiconsIcon icon={ArrowRight01Icon} size={16} strokeWidth={2} />
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -822,6 +856,127 @@ function normalizeResolutionStatusFilter(value: string): InsightOverviewQuery["r
     : undefined;
 }
 
+function AdvancedSessionFilterDropdown({
+  activeCount,
+  analysisStatusFilter,
+  entityFilter,
+  filterOptions,
+  intentFilter,
+  onAnalysisStatusFilterChange,
+  onEntityFilterChange,
+  onIntentFilterChange,
+  onReset,
+  onTagFilterChange,
+  tagFilter,
+}: {
+  activeCount: number;
+  analysisStatusFilter: string;
+  entityFilter: string;
+  filterOptions: SessionFilterOptions;
+  intentFilter: string;
+  onAnalysisStatusFilterChange: (value: string) => void;
+  onEntityFilterChange: (value: string) => void;
+  onIntentFilterChange: (value: string) => void;
+  onReset: () => void;
+  onTagFilterChange: (value: string) => void;
+  tagFilter: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button className="relative h-9 rounded-[8px]" variant="outline">
+          <HugeiconsIcon icon={FilterIcon} size={16} />
+          更多筛选
+          {activeCount > 0 ? (
+            <span
+              aria-hidden="true"
+              className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary"
+            />
+          ) : null}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" aria-label="更多筛选" className="w-48">
+        <DropdownMenuLabel className="text-muted-foreground">更多筛选</DropdownMenuLabel>
+        <AdvancedFilterSubMenu
+          icon={TagIcon}
+          label="标签"
+          onValueChange={onTagFilterChange}
+          options={[{ label: "全部标签", value: "all" }, ...filterOptions.tags]}
+          value={tagFilter}
+        />
+        <AdvancedFilterSubMenu
+          icon={CubeIcon}
+          label="实体"
+          onValueChange={onEntityFilterChange}
+          options={[{ label: "全部实体", value: "all" }, ...filterOptions.entities]}
+          value={entityFilter}
+        />
+        <AdvancedFilterSubMenu
+          icon={AiIdeaIcon}
+          label="意图"
+          onValueChange={onIntentFilterChange}
+          options={[{ label: "全部意图", value: "all" }, ...filterOptions.intents]}
+          value={intentFilter}
+        />
+        <DropdownMenuSeparator />
+        <AdvancedFilterSubMenu
+          label="分析状态"
+          onValueChange={onAnalysisStatusFilterChange}
+          options={analysisStatusFilterOptions}
+          value={analysisStatusFilter}
+        />
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled={activeCount === 0} onClick={onReset}>
+          重置筛选
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function AdvancedFilterSubMenu({
+  icon,
+  label,
+  onValueChange,
+  options,
+  value,
+}: {
+  icon?: typeof TagIcon;
+  label: string;
+  onValueChange: (value: string) => void;
+  options: Array<{ label: string; value: string }>;
+  value: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <DropdownMenuSub onOpenChange={setIsOpen} open={isOpen}>
+      <DropdownMenuSubTrigger
+        onClick={() => {
+          setIsOpen(true);
+        }}
+      >
+        {icon ? <HugeiconsIcon icon={icon} size={15} strokeWidth={1.8} /> : null}
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {value !== "all" ? (
+          <span className="mr-1 max-w-[5.5rem] truncate text-xs text-muted-foreground">
+            {findOptionLabel(options, value)}
+          </span>
+        ) : null}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-56">
+        <DropdownMenuRadioGroup onValueChange={onValueChange} value={value}>
+          {options.map((option) => (
+            <DropdownMenuRadioItem className="min-w-0" key={option.value} value={option.value}>
+              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+}
+
 function FilterSelect({
   label,
   onValueChange,
@@ -849,6 +1004,92 @@ function FilterSelect({
       </SelectContent>
     </Select>
   );
+}
+
+function buildActiveSessionFilters({
+  analysisStatus,
+  entity,
+  filterOptions,
+  intent,
+  onAnalysisStatusRemove,
+  onEntityRemove,
+  onIntentRemove,
+  onProblemRemove,
+  onResolutionRemove,
+  onTagRemove,
+  problem,
+  resolution,
+  tag,
+}: {
+  analysisStatus: string;
+  entity: string;
+  filterOptions: SessionFilterOptions;
+  intent: string;
+  onAnalysisStatusRemove: () => void;
+  onEntityRemove: () => void;
+  onIntentRemove: () => void;
+  onProblemRemove: () => void;
+  onResolutionRemove: () => void;
+  onTagRemove: () => void;
+  problem: string;
+  resolution: string;
+  tag: string;
+}) {
+  const filters: Array<{ key: string; label: string; onRemove: () => void }> = [];
+
+  if (problem !== "all") {
+    filters.push({
+      key: "problem",
+      label: `问题范围：${findOptionLabel(problemFilterOptions, problem)}`,
+      onRemove: onProblemRemove,
+    });
+  }
+
+  if (resolution !== "all") {
+    filters.push({
+      key: "resolution",
+      label: `解决状态：${findOptionLabel(resolutionFilterOptions, resolution)}`,
+      onRemove: onResolutionRemove,
+    });
+  }
+
+  if (tag !== "all") {
+    filters.push({
+      key: "tag",
+      label: `标签：${findOptionLabel(filterOptions.tags, tag)}`,
+      onRemove: onTagRemove,
+    });
+  }
+
+  if (entity !== "all") {
+    filters.push({
+      key: "entity",
+      label: `实体：${findOptionLabel(filterOptions.entities, entity)}`,
+      onRemove: onEntityRemove,
+    });
+  }
+
+  if (intent !== "all") {
+    filters.push({
+      key: "intent",
+      label: `意图：${findOptionLabel(filterOptions.intents, intent)}`,
+      onRemove: onIntentRemove,
+    });
+  }
+
+  if (analysisStatus !== "all") {
+    filters.push({
+      key: "analysis",
+      label: `分析状态：${findOptionLabel(analysisStatusFilterOptions, analysisStatus)}`,
+      onRemove: onAnalysisStatusRemove,
+    });
+  }
+
+  return filters;
+}
+
+function findOptionLabel(options: Array<{ label: string; value: string }>, value: string) {
+  return options.find((option) => option.value === value)?.label ?? value;
 }
 
 function PanelTitle({

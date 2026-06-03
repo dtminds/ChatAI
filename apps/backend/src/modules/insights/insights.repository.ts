@@ -48,24 +48,24 @@ import {
 import { DEFAULT_INSIGHT_SETTINGS } from "./insights-seeds.js";
 
 type CurrentSessionQueryRow = {
-  action_id: number | string | null;
+  action_id?: number | string | null;
+  action_status?: string | null;
+  action_type?: string | null;
+  action_priority?: string | null;
+  action_title?: string | null;
   agent_message_count: number | string;
-  action_status: string | null;
-  action_type: string | null;
-  action_priority: string | null;
-  action_title: string | null;
   conversation_id: number | string;
   current_snapshot_id: number | string;
   customer_message_count: number | string;
   ended_at: number | string | null;
-  evidence_message_id: number | string | null;
-  evidence_role: string | null;
+  evidence_message_id?: number | string | null;
+  evidence_role?: string | null;
   generated_at: number | string | Date;
-  high_risk_id: number | string | null;
+  high_risk_id?: number | string | null;
   last_message_at: number | string | null;
   last_customer_message_at: number | string | null;
   message_count: number | string;
-  negative_risk_id: number | string | null;
+  negative_risk_id?: number | string | null;
   phase: string;
   problem_detected: number | string | null;
   problem_summary: string | null;
@@ -92,17 +92,45 @@ type ActionItemQueryRow = {
   reason: string | null;
   resolution_status: string | null;
   session_id: number | string;
+  snapshot_id?: number | string;
   title: string;
 };
 
-type DetailQueryRow = CurrentSessionQueryRow & {
-  agent_name: string | null;
-  agent_seat_id: number | string | null;
-  customer_name: string | null;
+type CurrentSessionCoreQueryRow = Omit<CurrentSessionQueryRow,
+  "last_customer_message_at" | "risk_severity"
+> & {
+  last_customer_message_at?: number | string | null;
+  risk_severity?: string | null;
+};
+
+type CurrentSessionRiskAggregateRow = {
+  high_risk_count: number | string;
+  negative_count: number | string;
+  risk_severity: string | null;
+  snapshot_id: number | string;
+};
+
+type CurrentSessionActionAggregateRow = {
+  action_open_count: number | string;
+  snapshot_id: number | string;
+};
+
+type ProblemEvidenceMessageRow = {
+  evidence_message_id: number | string;
+  last_customer_message_at: number | string | null;
+  snapshot_id: number | string;
+};
+
+type DetailQueryRow = CurrentSessionCoreQueryRow;
+
+type QaFindingQueryRow = {
   qa_finding_id: number | string | null;
   qa_passed: number | string | null;
   qa_reason: string | null;
   qa_rule_code: string | null;
+};
+
+type RiskQueryRow = {
   risk_id: number | string | null;
   risk_level: string | null;
   risk_type: string | null;
@@ -158,8 +186,14 @@ type EntityHotspotQueryRow = {
   entity_type: string;
   mention_count: number | string;
   negative_count: number | string;
-  risk_session_count: number | string;
+  risk_session_count?: number | string;
   session_count: number | string;
+};
+
+type EntityHotspotRiskQueryRow = {
+  entity_id: string;
+  entity_type: string;
+  risk_session_count: number | string;
 };
 
 type IntentDistributionQueryRow = {
@@ -177,6 +211,12 @@ type BusinessTopicFactQueryRow = {
   snapshot_id: number | string;
   started_at: number | string;
   type: string | null;
+};
+
+type BusinessSessionScopeRow = {
+  session_id: number | string;
+  snapshot_id: number | string;
+  started_at: number | string;
 };
 
 type AssetTopicMessageQueryRow = {
@@ -887,37 +927,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
         join.onRef("problem.snapshot_id", "=", "snapshot.id"),
       )
-      .leftJoin("xy_wap_embed_session_risk as risk", (join) =>
-        join.onRef("risk.snapshot_id", "=", "snapshot.id"),
-      )
-      .leftJoin("xy_wap_embed_session_action_item as action", (join) =>
-        join.onRef("action.snapshot_id", "=", "snapshot.id"),
-      )
-      .leftJoin("xy_wap_embed_insight_evidence as evidence", (join) =>
-        join
-          .onRef("evidence.snapshot_id", "=", "snapshot.id")
-          .on("evidence.dimension_type", "=", "problem_resolution"),
-      )
-      .leftJoin("xy_wap_embed_msg_audit_info as message", (join) =>
-        join.onRef("message.id", "=", "evidence.source_message_id"),
-      )
       .select([
-        "action.id as action_id",
-        "action.priority as action_priority",
-        "action.status as action_status",
-        "action.title as action_title",
-        "action.action_type as action_type",
         "current.current_snapshot_id as current_snapshot_id",
-        "evidence.evidence_role as evidence_role",
-        "evidence.source_message_id as evidence_message_id",
-        "message.msgtime as last_customer_message_at",
         "problem.problem_detected as problem_detected",
         "problem.problem_summary as problem_summary",
         "problem.resolution_status as resolution_status",
         "problem.unresolved_reason as unresolved_reason",
-        "risk.id as high_risk_id",
-        "risk.id as negative_risk_id",
-        "risk.risk_level as risk_severity",
         "session.conversation_id as conversation_id",
         "session.ended_at as ended_at",
         "session.agent_message_count as agent_message_count",
@@ -947,9 +962,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
       query = query.where("session.started_at", "<=", to);
     }
 
-    const rows = await query.execute() as CurrentSessionQueryRow[];
+    const rows = (await query.execute() as CurrentSessionCoreQueryRow[]).map((row) => ({
+      ...row,
+      last_customer_message_at: row.last_customer_message_at ?? null,
+      risk_severity: row.risk_severity ?? null,
+    }));
 
     const sessionRows = mapCurrentSessionRows(rows);
+    await this.hydrateCurrentSessionAggregates(sessionRows);
     await Promise.all([
       this.hydrateCurrentSessionActors(scope, sessionRows),
       this.hydrateCurrentSessionTopics(sessionRows),
@@ -1005,7 +1025,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .where("session.uid", "=", scope.uid)
       .groupBy(["tag.tag_code", "tag.tag_name", "session.id", "session.started_at", "tag.snapshot_id"])
       .orderBy(sql<number>`count(tag.id)`, "desc")
-      .limit(5_000);
+      .limit(500);
 
     query = applyTopicDateFilters(query, filters);
 
@@ -1055,7 +1075,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "entity.snapshot_id",
       ])
       .orderBy(sql<number>`count(entity.id)`, "desc")
-      .limit(5_000);
+      .limit(500);
 
     query = applyTopicDateFilters(query, filters);
 
@@ -1097,7 +1117,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .where("session.uid", "=", scope.uid)
       .groupBy(["intent.intent_code", "intent.intent_label", "session.id", "session.started_at", "intent.snapshot_id"])
       .orderBy(sql<number>`count(intent.id)`, "desc")
-      .limit(5_000);
+      .limit(500);
 
     query = applyTopicDateFilters(query, filters);
 
@@ -1118,7 +1138,15 @@ export class InsightsRepository implements InsightsRepositoryPort {
     scope: InsightsUidScope,
     filters: InsightsOverviewFilters,
   ): Promise<InsightBusinessTopicFactRow[]> {
-    let query = this.db
+    const sessionScope = await this.listBusinessSessionScope(scope, filters);
+    const sessionIds = normalizePositiveIntegers(sessionScope.map((row) => row.session_id));
+    const snapshotIds = normalizePositiveIntegers(sessionScope.map((row) => row.snapshot_id));
+
+    if (sessionIds.length === 0 || snapshotIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
       .selectFrom("xy_wap_embed_logical_session_message as session_message")
       .innerJoin("xy_wap_embed_logical_session as session", (join) =>
         join.onRef("session.id", "=", "session_message.session_id"),
@@ -1138,13 +1166,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session_message.source_message_id as source_message_id",
       ])
       .where("session.uid", "=", scope.uid)
+      .where("session_message.session_id", "in", sessionIds)
+      .where("current.current_snapshot_id", "in", snapshotIds)
       .where("session_message.message_type", "in", ["link", "miniapp", "file"])
       .orderBy("session_message.source_message_id", "asc")
-      .limit(10_000);
-
-    query = applyTopicDateFilters(query, filters);
-
-    const rows = await query.execute() as AssetTopicMessageQueryRow[];
+      .limit(2_000)
+      .execute() as AssetTopicMessageQueryRow[];
     const factsByKey = new Map<string, InsightBusinessTopicFactRow>();
 
     for (const row of rows) {
@@ -1173,6 +1200,27 @@ export class InsightsRepository implements InsightsRepositoryPort {
     return Array.from(factsByKey.values());
   }
 
+  private async listBusinessSessionScope(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters,
+  ) {
+    let query = this.db
+      .selectFrom("xy_wap_embed_session_insight_current as current")
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "current.session_id"),
+      )
+      .select([
+        "session.id as session_id",
+        "session.started_at as started_at",
+        "current.current_snapshot_id as snapshot_id",
+      ])
+      .where("session.uid", "=", scope.uid);
+
+    query = applyTopicDateFilters(query, filters);
+
+    return await query.execute() as BusinessSessionScopeRow[];
+  }
+
   async listActionItems(
     scope: InsightsUidScope,
     filters: InsightsFollowUpFilters = {},
@@ -1188,27 +1236,16 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
         join.onRef("problem.snapshot_id", "=", "snapshot.id"),
       )
-      .leftJoin("xy_wap_embed_insight_evidence as evidence", (join) =>
-        join
-          .onRef("evidence.snapshot_id", "=", "snapshot.id")
-          .onRef("evidence.dimension_record_id", "=", "action.id")
-          .on("evidence.dimension_type", "=", "action_item"),
-      )
-      .leftJoin("xy_wap_embed_msg_audit_info as message", (join) =>
-        join.onRef("message.id", "=", "evidence.source_message_id"),
-      )
       .select([
         "action.id as action_id",
         "action.action_type as action_type",
         "action.priority as priority",
         "action.status as action_status",
         "action.title as title",
-        "evidence.reason as reason",
-        "evidence.source_message_id as evidence_message_id",
-        "message.msgtime as last_customer_message_at",
         "problem.resolution_status as resolution_status",
         "session.conversation_id as conversation_id",
         "session.id as session_id",
+        "snapshot.id as snapshot_id",
       ])
       .where("session.uid", "=", scope.uid);
 
@@ -1224,9 +1261,15 @@ export class InsightsRepository implements InsightsRepositoryPort {
       query = query.where("action.action_type", "=", filters.type);
     }
 
-    const rows = await query.execute() as ActionItemQueryRow[];
+    const rows = (await query
+      .limit(1_000)
+      .execute() as ActionItemQueryRow[]).map(toActionItemBaseRow);
 
     const actionItems = mapActionItemRows(rows);
+    await this.hydrateActionItemEvidence(
+      normalizePositiveIntegers(rows.map((row) => row.snapshot_id)),
+      actionItems,
+    );
     await this.hydrateActionItemCustomers(scope, actionItems);
 
     return actionItems;
@@ -1241,16 +1284,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .innerJoin("xy_wap_embed_logical_session as session", (join) =>
         join.onRef("session.id", "=", "snapshot.session_id"),
       )
-      .leftJoin("xy_wap_embed_session_risk as risk", (join) =>
-        join.onRef("risk.snapshot_id", "=", "snapshot.id"),
-      )
       .select([
         "entity.entity_id as entity_id",
         "entity.entity_name as entity_name",
         "entity.entity_type as entity_type",
         sql<number>`count(entity.id)`.as("mention_count"),
         sql<number>`count(case when entity.sentiment = 'negative' then 1 end)`.as("negative_count"),
-        sql<number>`count(distinct case when risk.risk_level = 'high' then session.id end)`.as("risk_session_count"),
         sql<number>`count(distinct session.id)`.as("session_count"),
       ])
       .where("session.uid", "=", scope.uid)
@@ -1258,6 +1297,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .orderBy(sql<number>`count(entity.id)`, "desc")
       .limit(10)
       .execute() as EntityHotspotQueryRow[];
+    const riskCountsByEntityKey = await this.listEntityHotspotRiskCounts(scope, rows);
 
     return rows.map((row) => ({
       entityId: row.entity_id,
@@ -1265,9 +1305,47 @@ export class InsightsRepository implements InsightsRepositoryPort {
       entityType: row.entity_type,
       mentionCount: parseNumber(row.mention_count),
       negativeCount: parseNumber(row.negative_count),
-      riskSessionCount: parseNumber(row.risk_session_count),
+      riskSessionCount: riskCountsByEntityKey.get(entityHotspotKey(row)) ?? 0,
       sessionCount: parseNumber(row.session_count),
     }));
+  }
+
+  private async listEntityHotspotRiskCounts(
+    scope: InsightsUidScope,
+    hotspots: EntityHotspotQueryRow[],
+  ) {
+    const keys = uniqueEntityHotspotKeys(hotspots);
+
+    if (keys.length === 0) {
+      return new Map<string, number>();
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_entity as entity")
+      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
+        join.onRef("snapshot.id", "=", "entity.snapshot_id"),
+      )
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "snapshot.session_id"),
+      )
+      .innerJoin("xy_wap_embed_session_risk as risk", (join) =>
+        join
+          .onRef("risk.snapshot_id", "=", "snapshot.id")
+          .on("risk.risk_level", "=", "high"),
+      )
+      .select([
+        "entity.entity_id as entity_id",
+        "entity.entity_type as entity_type",
+        sql<number>`count(distinct session.id)`.as("risk_session_count"),
+      ])
+      .where("session.uid", "=", scope.uid)
+      .where(sql<boolean>`concat(entity.entity_id, ':', entity.entity_type) in (${sql.join(keys)})`)
+      .groupBy(["entity.entity_id", "entity.entity_type"])
+      .execute() as EntityHotspotRiskQueryRow[];
+
+    return new Map(
+      rows.map((row) => [entityHotspotKey(row), parseNumber(row.risk_session_count)]),
+    );
   }
 
   async listIntentDistribution(scope: InsightsUidScope) {
@@ -1315,63 +1393,19 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
         join.onRef("problem.snapshot_id", "=", "snapshot.id"),
       )
-      .leftJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
-        join.onRef("qa.snapshot_id", "=", "snapshot.id"),
-      )
-      .leftJoin("xy_wap_embed_session_risk as risk", (join) =>
-        join.onRef("risk.snapshot_id", "=", "snapshot.id"),
-      )
-      .leftJoin("xy_wap_embed_session_action_item as action", (join) =>
-        join.onRef("action.snapshot_id", "=", "snapshot.id"),
-      )
-      .leftJoin("xy_wap_embed_insight_evidence as evidence", (join) =>
-        join
-          .onRef("evidence.snapshot_id", "=", "snapshot.id")
-          .on("evidence.dimension_type", "=", "problem_resolution"),
-      )
-      .leftJoin("xy_wap_embed_msg_audit_info as message", (join) =>
-        join.onRef("message.id", "=", "evidence.source_message_id"),
-      )
-      .leftJoin("xy_wap_embed_contact as contact", (join) =>
-        join
-          .onRef("contact.uid", "=", "session.uid")
-          .onRef("contact.third_external_userid", "=", "message.third_external_id"),
-      )
-      .leftJoin("xy_wap_embed_user_seat as seat", (join) =>
-        join
-          .onRef("seat.uid", "=", "session.uid")
-          .onRef("seat.third_userid", "=", "message.third_user_id"),
-      )
       .select([
-        "action.id as action_id",
-        "action.action_type as action_type",
-        "action.priority as action_priority",
-        "action.status as action_status",
-        "action.title as action_title",
-        "contact.name as customer_name",
         "current.current_snapshot_id as current_snapshot_id",
-        "evidence.evidence_role as evidence_role",
-        "evidence.source_message_id as evidence_message_id",
-        "message.msgtime as last_customer_message_at",
         "problem.problem_detected as problem_detected",
         "problem.problem_summary as problem_summary",
         "problem.resolution_status as resolution_status",
         "problem.unresolved_reason as unresolved_reason",
-        "qa.id as qa_finding_id",
-        "qa.passed as qa_passed",
-        "qa.reason as qa_reason",
-        "qa.rule_code as qa_rule_code",
-        "risk.id as high_risk_id",
-        "risk.id as negative_risk_id",
-        "risk.id as risk_id",
-        "risk.risk_level as risk_level",
-        "risk.risk_level as risk_severity",
-        "risk.risk_type as risk_type",
-        "seat.id as agent_seat_id",
-        "seat.third_user_name as agent_name",
         "session.conversation_id as conversation_id",
         "session.ended_at as ended_at",
+        "session.agent_message_count as agent_message_count",
+        "session.customer_message_count as customer_message_count",
         "session.id as session_id",
+        "session.last_message_at as last_message_at",
+        "session.message_count as message_count",
         "session.started_at as started_at",
         "snapshot.phase as phase",
         "snapshot.create_time as generated_at",
@@ -1389,31 +1423,32 @@ export class InsightsRepository implements InsightsRepositoryPort {
       return undefined;
     }
 
-    const [current] = mapCurrentSessionRows(rows);
+    const [current] = mapCurrentSessionRows(
+      rows.map((row) => ({
+        ...row,
+        last_customer_message_at: null,
+        risk_severity: null,
+      })),
+    );
 
     if (!current) {
       return undefined;
     }
 
+    await this.hydrateCurrentSessionAggregates([current]);
     await this.hydrateCurrentSessionActors(scope, [current]);
 
     const snapshotId = current.currentSnapshotId;
     const dimensionEvidence = await this.listDimensionEvidence(scope, current.sessionId, snapshotId);
-    const actionItems = mapActionItemRows(
-      rows.filter((row) => row.action_id != null).map((row) => ({
-        action_id: row.action_id ?? "",
-        action_status: row.action_status ?? "open",
-        action_type: row.action_type ?? "follow_up",
-        conversation_id: row.conversation_id,
-        evidence_message_id: row.evidence_message_id,
-        last_customer_message_at: row.last_customer_message_at,
-        priority: row.action_priority ?? "medium",
-        reason: row.unresolved_reason,
-        resolution_status: row.resolution_status,
-        session_id: row.session_id,
-        title: row.action_title ?? "待跟进事项",
-      })),
-    );
+    const [
+      qaFindingRows,
+      riskRows,
+      actionItems,
+    ] = await Promise.all([
+      this.listQaFindings(snapshotId),
+      this.listRisks(snapshotId),
+      this.listSessionActionItems(snapshotId, current.conversationId, current.sessionId, current.resolutionStatus),
+    ]);
     await this.hydrateActionItemCustomers(scope, actionItems);
 
     const [
@@ -1445,7 +1480,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       intents,
       problemEvidenceMessageIds: current.problemEvidenceMessageIds,
       qaFindings: uniqueBy(
-        rows
+        qaFindingRows
           .filter((row) => row.qa_finding_id != null)
           .map((row) => ({
             evidenceMessageIds: evidenceForDimension(
@@ -1460,7 +1495,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         (row) => row.ruleCode,
       ),
       risks: uniqueBy(
-        rows
+        riskRows
           .filter((row) => row.risk_id != null)
           .map((row) => ({
             evidenceMessageIds: evidenceForDimension(
@@ -1497,6 +1532,69 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .where("session_id", "=", parsePositiveInteger(sessionId) ?? -1)
       .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
       .execute() as DimensionEvidenceRow[];
+  }
+
+  private async listQaFindings(snapshotId: string) {
+    return await this.db
+      .selectFrom("xy_wap_embed_session_qa_finding")
+      .select([
+        "id as qa_finding_id",
+        "passed as qa_passed",
+        "reason as qa_reason",
+        "rule_code as qa_rule_code",
+      ])
+      .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
+      .execute() as QaFindingQueryRow[];
+  }
+
+  private async listRisks(snapshotId: string) {
+    return await this.db
+      .selectFrom("xy_wap_embed_session_risk")
+      .select([
+        "id as risk_id",
+        "risk_level as risk_level",
+        "risk_type as risk_type",
+      ])
+      .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
+      .execute() as RiskQueryRow[];
+  }
+
+  private async listSessionActionItems(
+    snapshotId: string,
+    conversationId: string,
+    sessionId: string,
+    resolutionStatus: string | null,
+  ) {
+    const snapshotNumericId = parsePositiveInteger(snapshotId);
+
+    if (snapshotNumericId == null) {
+      return [];
+    }
+
+    const rows = (await this.db
+      .selectFrom("xy_wap_embed_session_action_item as action")
+      .select([
+        "action.id as action_id",
+        "action.action_type as action_type",
+        "action.priority as priority",
+        "action.status as action_status",
+        "action.title as title",
+        "action.snapshot_id as snapshot_id",
+      ])
+      .where("action.snapshot_id", "=", snapshotNumericId)
+      .execute() as Array<Pick<ActionItemQueryRow,
+        "action_id" | "action_status" | "action_type" | "priority" | "snapshot_id" | "title"
+      >>).map((row) => toActionItemBaseRow({
+        ...row,
+        conversation_id: conversationId,
+        resolution_status: resolutionStatus,
+        session_id: sessionId,
+      }));
+    const actionItems = mapActionItemRows(rows);
+
+    await this.hydrateActionItemEvidence([snapshotNumericId], actionItems);
+
+    return actionItems;
   }
 
   private async listSentiment(
@@ -2205,6 +2303,93 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }
   }
 
+  private async hydrateCurrentSessionAggregates(rows: InsightCurrentSessionRow[]) {
+    const snapshotIds = normalizePositiveIntegers(
+      rows.map((row) => row.currentSnapshotId),
+    );
+
+    if (snapshotIds.length === 0) {
+      return;
+    }
+
+    const [
+      risks,
+      actions,
+      problemEvidence,
+    ] = await Promise.all([
+      this.db
+        .selectFrom("xy_wap_embed_session_risk")
+        .select([
+          "snapshot_id",
+          sql<number>`count(*)`.as("negative_count"),
+          sql<number>`count(case when risk_level = 'high' then 1 end)`.as("high_risk_count"),
+          sql<string | null>`
+            case
+              when count(case when risk_level = 'high' then 1 end) > 0 then 'high'
+              when count(case when risk_level = 'medium' then 1 end) > 0 then 'medium'
+              when count(case when risk_level = 'low' then 1 end) > 0 then 'low'
+              else null
+            end
+          `.as("risk_severity"),
+        ])
+        .where("snapshot_id", "in", snapshotIds)
+        .groupBy(["snapshot_id"])
+        .execute() as Promise<CurrentSessionRiskAggregateRow[]>,
+      this.db
+        .selectFrom("xy_wap_embed_session_action_item")
+        .select([
+          "snapshot_id",
+          sql<number>`count(*)`.as("action_open_count"),
+        ])
+        .where("snapshot_id", "in", snapshotIds)
+        .where("status", "=", "open")
+        .groupBy(["snapshot_id"])
+        .execute() as Promise<CurrentSessionActionAggregateRow[]>,
+      this.listProblemEvidenceMessages(snapshotIds),
+    ]);
+
+    const risksBySnapshotId = new Map(risks.map((row) => [String(row.snapshot_id), row]));
+    const actionsBySnapshotId = new Map(actions.map((row) => [String(row.snapshot_id), row]));
+    const problemEvidenceBySnapshotId = groupProblemEvidenceMessages(problemEvidence);
+
+    for (const row of rows) {
+      const risk = risksBySnapshotId.get(row.currentSnapshotId);
+      const action = actionsBySnapshotId.get(row.currentSnapshotId);
+      const evidence = problemEvidenceBySnapshotId.get(row.currentSnapshotId) ?? [];
+
+      row.highRiskCount = risk ? parseNumber(risk.high_risk_count) : 0;
+      row.negativeCount = risk ? parseNumber(risk.negative_count) : 0;
+      row.riskSeverity = normalizeRiskSeverity(risk?.risk_severity ?? null);
+      row.actionOpenCount = action ? parseNumber(action.action_open_count) : 0;
+      row.problemEvidenceMessageIds = sortNumericStrings(
+        evidence.map((item) => String(item.evidence_message_id)),
+      );
+      row.lastCustomerMessageAt = latestNullableNumber(
+        evidence.map((item) => item.last_customer_message_at),
+      );
+    }
+  }
+
+  private async listProblemEvidenceMessages(snapshotIds: number[]) {
+    if (snapshotIds.length === 0) {
+      return [];
+    }
+
+    return await this.db
+      .selectFrom("xy_wap_embed_insight_evidence as evidence")
+      .leftJoin("xy_wap_embed_msg_audit_info as message", (join) =>
+        join.onRef("message.id", "=", "evidence.source_message_id"),
+      )
+      .select([
+        "evidence.snapshot_id as snapshot_id",
+        "evidence.source_message_id as evidence_message_id",
+        "message.msgtime as last_customer_message_at",
+      ])
+      .where("evidence.snapshot_id", "in", snapshotIds)
+      .where("evidence.dimension_type", "=", "problem_resolution")
+      .execute() as ProblemEvidenceMessageRow[];
+  }
+
   private async hydrateCurrentSessionTopics(rows: InsightCurrentSessionRow[]) {
     const snapshotIds = uniquePositiveNumbers(
       rows.map((row) => Number(row.currentSnapshotId)),
@@ -2319,6 +2504,57 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }
   }
 
+  private async hydrateActionItemEvidence(
+    snapshotIds: number[],
+    actionItems: InsightActionItemRow[],
+  ) {
+    if (snapshotIds.length === 0 || actionItems.length === 0) {
+      return;
+    }
+
+    const evidenceRows = await this.listActionItemEvidenceMessages(snapshotIds);
+    const evidenceByActionId = groupByActionId(evidenceRows);
+
+    for (const item of actionItems) {
+      const evidence = evidenceByActionId.get(item.actionItemId) ?? [];
+      const firstReason = evidence.find((row) => row.reason)?.reason;
+
+      item.evidenceMessageIds = sortNumericStrings(
+        evidence.map((row) => String(row.evidence_message_id)),
+      );
+      item.lastCustomerMessageAt = latestNullableNumber(
+        evidence.map((row) => row.last_customer_message_at),
+      ) ?? undefined;
+      item.reason = firstReason ?? item.reason;
+    }
+  }
+
+  private async listActionItemEvidenceMessages(snapshotIds: number[]) {
+    if (snapshotIds.length === 0) {
+      return [];
+    }
+
+    return await this.db
+      .selectFrom("xy_wap_embed_insight_evidence as evidence")
+      .leftJoin("xy_wap_embed_msg_audit_info as message", (join) =>
+        join.onRef("message.id", "=", "evidence.source_message_id"),
+      )
+      .select([
+        "evidence.dimension_record_id as action_id",
+        "evidence.reason as reason",
+        "evidence.source_message_id as evidence_message_id",
+        "message.msgtime as last_customer_message_at",
+      ])
+      .where("evidence.snapshot_id", "in", snapshotIds)
+      .where("evidence.dimension_type", "=", "action_item")
+      .execute() as Array<{
+        action_id: number | string;
+        evidence_message_id: number | string;
+        last_customer_message_at: number | string | null;
+        reason: string | null;
+      }>;
+  }
+
   private async listContactProfiles(
     uid: number,
     thirdExternalUserIds: string[],
@@ -2377,9 +2613,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
 function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSessionRow[] {
   const bySession = new Map<string, InsightCurrentSessionRow>();
-  const seenOpenActionsBySession = new Map<string, Set<string>>();
-  const seenHighRisksBySession = new Map<string, Set<string>>();
-  const seenNegativeRisksBySession = new Map<string, Set<string>>();
 
   for (const row of rows) {
     const sessionId = String(row.session_id);
@@ -2422,40 +2655,7 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         unresolvedReason: row.unresolved_reason,
       };
 
-    if (
-      row.action_id != null &&
-      row.action_status === "open" &&
-      markSeen(seenOpenActionsBySession, sessionId, String(row.action_id))
-    ) {
-      current.actionOpenCount += 1;
-    }
-
-    if (
-      row.high_risk_id != null &&
-      row.risk_severity === "high" &&
-      markSeen(seenHighRisksBySession, sessionId, String(row.high_risk_id))
-    ) {
-      current.highRiskCount += 1;
-    }
-
-    if (
-      row.negative_risk_id != null &&
-      markSeen(seenNegativeRisksBySession, sessionId, String(row.negative_risk_id))
-    ) {
-      current.negativeCount += 1;
-    }
-
-    if (row.evidence_message_id != null) {
-      current.problemEvidenceMessageIds.push(String(row.evidence_message_id));
-    }
-
     bySession.set(sessionId, current);
-  }
-
-  for (const current of bySession.values()) {
-    current.problemEvidenceMessageIds = sortNumericStrings(
-      Array.from(new Set(current.problemEvidenceMessageIds)),
-    );
   }
 
   return Array.from(bySession.values());
@@ -2484,17 +2684,48 @@ function sortNumericStrings(values: string[]) {
   return [...values].sort((left, right) => Number(left) - Number(right));
 }
 
-function markSeen(map: Map<string, Set<string>>, scopeKey: string, value: string) {
-  const values = map.get(scopeKey) ?? new Set<string>();
+function latestNullableNumber(values: Array<Date | number | string | null>) {
+  const numbers = values
+    .map(parseNullableNumber)
+    .filter((value): value is number => value != null);
 
-  if (values.has(value)) {
-    return false;
+  return numbers.length ? Math.max(...numbers) : null;
+}
+
+function groupProblemEvidenceMessages(rows: ProblemEvidenceMessageRow[]) {
+  const bySnapshotId = new Map<string, ProblemEvidenceMessageRow[]>();
+
+  for (const row of rows) {
+    const snapshotId = String(row.snapshot_id);
+    const current = bySnapshotId.get(snapshotId) ?? [];
+
+    current.push(row);
+    bySnapshotId.set(snapshotId, current);
   }
 
-  values.add(value);
-  map.set(scopeKey, values);
+  return bySnapshotId;
+}
 
-  return true;
+function groupByActionId<T extends { action_id: number | string }>(rows: T[]) {
+  const byActionId = new Map<string, T[]>();
+
+  for (const row of rows) {
+    const actionId = String(row.action_id);
+    const current = byActionId.get(actionId) ?? [];
+
+    current.push(row);
+    byActionId.set(actionId, current);
+  }
+
+  return byActionId;
+}
+
+function entityHotspotKey(row: Pick<EntityHotspotQueryRow, "entity_id" | "entity_type">) {
+  return `${row.entity_id}:${row.entity_type}`;
+}
+
+function uniqueEntityHotspotKeys(rows: EntityHotspotQueryRow[]) {
+  return Array.from(new Set(rows.map(entityHotspotKey)));
 }
 
 function mapActionItemRows(rows: ActionItemQueryRow[]): InsightActionItemRow[] {
@@ -2532,6 +2763,17 @@ function mapActionItemRows(rows: ActionItemQueryRow[]): InsightActionItemRow[] {
   }
 
   return Array.from(byAction.values());
+}
+
+function toActionItemBaseRow(row: Omit<ActionItemQueryRow,
+  "evidence_message_id" | "last_customer_message_at" | "reason"
+>): ActionItemQueryRow {
+  return {
+    ...row,
+    evidence_message_id: null,
+    last_customer_message_at: null,
+    reason: null,
+  };
 }
 
 function normalizeAnalysisStatus(value: string): InsightAnalysisStatus {
@@ -2643,7 +2885,15 @@ function parseConfidence(value: number | string | null) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function parsePositiveInteger(value: string) {
+function parsePositiveInteger(value: number | string | undefined) {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  }
+
   if (!/^[1-9]\d*$/.test(value)) {
     return undefined;
   }
@@ -2810,7 +3060,7 @@ function mapEntityRow(row: {
   };
 }
 
-function normalizePositiveIntegers(values: string[]) {
+function normalizePositiveIntegers(values: Array<number | string | undefined>) {
   return Array.from(new Set(values.map(parsePositiveInteger))).filter(
     (value): value is number => value != null,
   );

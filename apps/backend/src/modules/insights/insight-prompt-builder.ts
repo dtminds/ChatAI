@@ -34,6 +34,18 @@ export type InsightPromptContext = {
   qaRuleConfigs: InsightPromptQaRuleConfig[];
 };
 
+export type InsightPreviousSessionContext = {
+  endedAt?: number;
+  followUp?: string;
+  problemSummary: string;
+  processSummary: string;
+  resolutionStatus: "no_customer_problem" | "partially_resolved" | "resolved" | "unknown" | "unresolved";
+  resultSummary: string;
+  sessionId: string;
+  startedAt: number;
+  unresolvedReason?: string;
+};
+
 export type InsightPromptMessage = {
   content: string;
   role: "system" | "user";
@@ -42,6 +54,7 @@ export type InsightPromptMessage = {
 export function buildInsightPromptMessages(input: {
   context?: InsightPromptContext;
   messages: AiMessageInput[];
+  previousSessionContexts?: InsightPreviousSessionContext[];
 }): InsightPromptMessage[] {
   return [
     {
@@ -49,7 +62,11 @@ export function buildInsightPromptMessages(input: {
       role: "system",
     },
     {
-      content: buildUserPrompt(input.messages, input.context ?? emptyPromptContext),
+      content: buildUserPrompt(
+        input.messages,
+        input.context ?? emptyPromptContext,
+        input.previousSessionContexts ?? [],
+      ),
       role: "user",
     },
   ];
@@ -76,6 +93,8 @@ function buildSystemPrompt() {
     "</evidence_rules>",
     "<analysis_rules>",
     "问题是否解决只判断当前逻辑会话内是否解决，不要推断会话外后续处理。",
+    "前序逻辑会话摘要只能作为背景，帮助理解客户连续诉求和客服处理习惯；不得改变当前逻辑会话的问题是否解决判定边界。",
+    "problemResolution、qaFindings 和所有 evidenceMessageIds 必须只基于当前 messages，不得把前序逻辑会话内容作为当前证据。",
     "summary.customerIntent 必须是 2-6 个汉字的短意图标签，优先使用 XX问题/XX咨询/XX需求/XX异常/XX申请 等格式，不要写完整句子，不要复述 problemSummary。",
     "customerIntent 正例：产品咨询、价格咨询、物流异常、退款申请、售后维修、发货催促、优惠咨询。",
     "customerIntent 负例：客户询问了白色羽绒服多少钱（太长）、咨询（太模糊）、关于退款（介词结构）。",
@@ -90,9 +109,14 @@ function buildSystemPrompt() {
   ].join("\n");
 }
 
-function buildUserPrompt(messages: AiMessageInput[], context: InsightPromptContext) {
+function buildUserPrompt(
+  messages: AiMessageInput[],
+  context: InsightPromptContext,
+  previousSessionContexts: InsightPreviousSessionContext[],
+) {
   return JSON.stringify({
     outputContract: buildOutputContract(context),
+    previousSessionContexts: normalizePreviousSessionContexts(previousSessionContexts),
     resolutionStatusGuide: {
       no_customer_problem: "客户没有提出需要客服解决的问题，例如寒暄、确认信息、单纯感谢",
       partially_resolved: "客服给出部分处理或承诺，但仍缺少关键结果、确认或闭环",
@@ -201,6 +225,20 @@ function buildOutputContract(context: InsightPromptContext) {
       },
     ] : [],
   };
+}
+
+function normalizePreviousSessionContexts(contexts: InsightPreviousSessionContext[]) {
+  return contexts.slice(0, 3).map((context) => ({
+    endedAt: context.endedAt,
+    followUp: context.followUp,
+    problemSummary: context.problemSummary,
+    processSummary: context.processSummary,
+    resolutionStatus: context.resolutionStatus,
+    resultSummary: context.resultSummary,
+    sessionId: context.sessionId,
+    startedAt: context.startedAt,
+    unresolvedReason: context.unresolvedReason,
+  }));
 }
 
 function normalizeContext(context: InsightPromptContext) {

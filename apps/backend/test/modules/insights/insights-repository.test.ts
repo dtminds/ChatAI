@@ -406,6 +406,108 @@ describe("InsightsRepository", () => {
 });
 
 describe("MysqlInsightWorkerRepository", () => {
+  it("finds an existing logical session by source message during rescan", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            session_id: 501,
+            uid: 9001,
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.findSessionBySourceMessage({
+      sourceMessageId: "8001",
+      uid: 9001,
+    })).resolves.toEqual({
+      sessionId: "501",
+      uid: 9001,
+    });
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_logical_session_message");
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual(["source_message_id", "=", 8001]);
+  });
+
+  it("loads compact previous session summaries without tags, entities or evidence", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const rowsByTable = new Map<string, unknown[]>([
+      [
+        "xy_wap_embed_logical_session as current_session",
+        [
+          {
+            conversation_id: 301,
+            started_at: 1_780_244_000_000,
+          },
+        ],
+      ],
+      [
+        "xy_wap_embed_logical_session as previous_session",
+        [
+          {
+            ended_at: 1_780_100_000_000,
+            follow_up: "建议关注补发物流",
+            problem_summary: "客户反馈上次订单少发",
+            process_summary: "客服登记并承诺补寄",
+            resolution_status: "partially_resolved",
+            result_summary: "已登记补寄，物流未确认",
+            session_id: 200,
+            started_at: 1_780_090_000_000,
+            unresolved_reason: "尚未给出补寄单号",
+          },
+        ],
+      ],
+    ]);
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(rowsByTable.get(table) ?? [], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.listPreviousSessionContexts({
+      currentSessionId: "501",
+      limit: 3,
+      lookbackHours: 48,
+      uid: 9001,
+    })).resolves.toEqual([
+      {
+        endedAt: 1_780_100_000_000,
+        followUp: "建议关注补发物流",
+        problemSummary: "客户反馈上次订单少发",
+        processSummary: "客服登记并承诺补寄",
+        resolutionStatus: "partially_resolved",
+        resultSummary: "已登记补寄，物流未确认",
+        sessionId: "200",
+        startedAt: 1_780_090_000_000,
+        unresolvedReason: "尚未给出补寄单号",
+      },
+    ]);
+
+    const previousQuery = builders.find((builder) => builder.table === "xy_wap_embed_logical_session as previous_session");
+    expect(previousQuery?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(previousQuery?.joins).toContain("xy_wap_embed_session_summary as summary");
+    expect(previousQuery?.joins).toContain("xy_wap_embed_session_problem_resolution as problem");
+    expect(previousQuery?.joins).not.toContain("xy_wap_embed_session_tag");
+    expect(previousQuery?.joins).not.toContain("xy_wap_embed_session_entity");
+    expect(previousQuery?.joins).not.toContain("xy_wap_embed_insight_evidence");
+    expect(previousQuery?.whereCalls).toContainEqual(["previous_session.uid", "=", 9001]);
+    expect(previousQuery?.whereCalls).toContainEqual(["previous_session.conversation_id", "=", 301]);
+    expect(previousQuery?.whereCalls).toContainEqual(["previous_session.id", "!=", 501]);
+    expect(previousQuery?.whereCalls).toContainEqual(["previous_session.ended_at", "<=", 1_780_244_000_000]);
+    expect(previousQuery?.whereCalls).toContainEqual(["previous_session.ended_at", ">=", 1_780_071_200_000]);
+    expect(previousQuery?.orderByCalls).toContainEqual(["previous_session.ended_at", "desc"]);
+    expect(previousQuery?.limitCalls).toEqual([3]);
+  });
+
   it("does not claim an analysis job when another worker wins the status update", async () => {
     const db = {
       selectFrom: vi.fn(() =>
@@ -425,6 +527,49 @@ describe("MysqlInsightWorkerRepository", () => {
     const repository = new MysqlInsightWorkerRepository(db as never);
 
     await expect(repository.claimNextAnalyzeJob()).resolves.toBeUndefined();
+  });
+
+  it("claims an expired running analysis job for retry", async () => {
+    const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
+    const builders: SelectBuilderStub[] = [];
+    const updateTables: string[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            analysis_scope: "all",
+            attempt_count: 1,
+            id: 40,
+            idempotency_key: "reanalyze_session:272:29:final:2026-06-03T12:25:25.258Z",
+            job_type: "reanalyze_session",
+            max_attempts: 3,
+            target_id: "29",
+            uid: 272,
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+      updateTable: vi.fn((table: string) => {
+        updateTables.push(table);
+        return createUpdateBuilder(updateExecute);
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.claimNextAnalyzeJob()).resolves.toEqual({
+      analysisScope: "all",
+      attemptCount: 2,
+      jobId: "40",
+      maxAttempts: 3,
+      mode: "manual_reanalyze",
+      sessionId: "29",
+      uid: 272,
+    });
+
+    expect(builders[0]?.whereCalls[0]?.[0]).toEqual(expect.any(Function));
+    expect(updateTables).toContain("xy_wap_embed_analysis_run");
+    expect(updateExecute).toHaveBeenCalled();
   });
 
   it("does not claim a sync job when another worker wins the status update", async () => {

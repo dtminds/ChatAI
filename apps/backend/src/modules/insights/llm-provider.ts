@@ -9,6 +9,7 @@ export type OpenAiCompatibleProviderConfig = {
   model: string;
   providerCode: "volcengine_ark";
   protocol: "openai-compatible";
+  requestTimeoutMs?: number;
   responseFormat?: "json_object";
   retry?: {
     baseDelayMs: number;
@@ -26,6 +27,7 @@ type ProviderEnv = {
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
 const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 export function createVolcengineArkProviderConfig(
   env: ProviderEnv = process.env,
@@ -63,6 +65,7 @@ export function createVolcengineArkProviderConfig(
     model: requireString(model),
     providerCode: "volcengine_ark",
     protocol: "openai-compatible",
+    requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
     responseFormat: "json_object",
   };
 }
@@ -86,12 +89,29 @@ export function maskProviderConfigForLog(config: OpenAiCompatibleProviderConfig)
 }
 
 export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
+  private responseFormatUnsupported = false;
+
   constructor(private readonly config: OpenAiCompatibleProviderConfig) {}
 
   async analyzeSession(
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
   ): Promise<InsightAnalysisOutput> {
-    return retryLlmRequest(() => this.doAnalyzeSession(input), this.config.retry);
+    return retryLlmRequest(() => this.doAnalyzeSessionWithResponseFormatFallback(input), this.config.retry);
+  }
+
+  private async doAnalyzeSessionWithResponseFormatFallback(
+    input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
+  ): Promise<InsightAnalysisOutput> {
+    try {
+      return await this.doAnalyzeSession(input);
+    } catch (error) {
+      if (!this.config.responseFormat || this.responseFormatUnsupported || !isResponseFormatUnsupportedError(error)) {
+        throw error;
+      }
+
+      this.responseFormatUnsupported = true;
+      return this.doAnalyzeSession(input);
+    }
   }
 
   private async doAnalyzeSession(
@@ -102,23 +122,28 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       messages: buildInsightPromptMessages({
         context: input.context,
         messages: input.messages,
+        previousSessionContexts: input.previousSessionContexts,
       }),
       model: this.config.model,
       temperature: 0.2,
     };
 
-    if (this.config.responseFormat) {
+    if (this.config.responseFormat && !this.responseFormatUnsupported) {
       requestBody.response_format = { type: this.config.responseFormat };
     }
 
-    const response = await fetch(`${this.config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-      body: JSON.stringify(requestBody),
-      headers: {
-        Authorization: `Bearer ${this.config.apiKey}`,
-        "Content-Type": "application/json",
+    const response = await fetchWithTimeout(
+      `${this.config.baseUrl.replace(/\/$/, "")}/chat/completions`,
+      {
+        body: JSON.stringify(requestBody),
+        headers: {
+          Authorization: `Bearer ${this.config.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
       },
-      method: "POST",
-    });
+      this.config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    );
 
     if (!response.ok) {
       throw new LlmRequestError(response.status, await readResponseText(response));
@@ -140,10 +165,22 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
 class LlmRequestError extends Error {
   constructor(
     readonly status: number,
-    responseText: string,
+    readonly responseText: string,
   ) {
     super(`LLM request failed: ${status} ${responseText}`);
   }
+}
+
+function isResponseFormatUnsupportedError(error: unknown) {
+  if (!(error instanceof LlmRequestError) || error.status !== 400) {
+    return false;
+  }
+
+  const message = error.responseText.toLowerCase();
+
+  return message.includes("response_format")
+    && message.includes("json_object")
+    && message.includes("not supported");
 }
 
 async function retryLlmRequest<T>(
@@ -181,6 +218,32 @@ function isRetryableLlmError(error: unknown) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error(`LLM request timed out after ${timeoutMs}ms`);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
 }
 
 async function readResponseText(response: Response) {

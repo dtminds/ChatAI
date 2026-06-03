@@ -171,4 +171,61 @@ describe("insight prompt builder", () => {
     expect(serialized).not.toContain("entityId");
     expect(serialized).not.toContain("entityType 使用 custom");
   });
+
+  it("passes only compact textual previous session context as background", () => {
+    const prompt = buildInsightPromptMessages({
+      messages: [
+        {
+          aiText: "这个订单今天还能发吗",
+          contentStatus: "ready",
+          conversationId: "301",
+          evidenceLabel: "[9001]",
+          includedForAi: true,
+          meaningfulForBoundary: true,
+          messageType: "text",
+          occurredAt: 1_780_244_000_000,
+          senderRole: "customer",
+          sourceMessageId: "9001",
+        },
+      ],
+      previousSessionContexts: [
+        {
+          endedAt: 1_780_100_000_000,
+          followUp: "建议继续关注补发物流",
+          problemSummary: "客户反馈之前订单少发",
+          processSummary: "客服登记少发并承诺补寄",
+          resolutionStatus: "partially_resolved",
+          resultSummary: "已登记补寄，物流未确认",
+          sessionId: "200",
+          startedAt: 1_780_090_000_000,
+          unresolvedReason: "尚未提供补寄单号",
+        },
+      ],
+    });
+    const userPayload = JSON.parse(prompt[1]?.content ?? "{}") as {
+      previousSessionContexts: Array<Record<string, unknown>>;
+    };
+    const previousContextJson = JSON.stringify(userPayload.previousSessionContexts);
+
+    expect(prompt[0]?.content).toContain("前序逻辑会话摘要只能作为背景");
+    expect(prompt[0]?.content).toContain("不得改变当前逻辑会话的问题是否解决判定边界");
+    expect(userPayload.previousSessionContexts).toEqual([
+      {
+        endedAt: 1_780_100_000_000,
+        followUp: "建议继续关注补发物流",
+        problemSummary: "客户反馈之前订单少发",
+        processSummary: "客服登记少发并承诺补寄",
+        resolutionStatus: "partially_resolved",
+        resultSummary: "已登记补寄，物流未确认",
+        sessionId: "200",
+        startedAt: 1_780_090_000_000,
+        unresolvedReason: "尚未提供补寄单号",
+      },
+    ]);
+    expect(previousContextJson).not.toContain("tagCode");
+    expect(previousContextJson).not.toContain("entityName");
+    expect(previousContextJson).not.toContain("intentCode");
+    expect(previousContextJson).not.toContain("polarity");
+    expect(previousContextJson).not.toContain("evidenceMessageIds");
+  });
 });

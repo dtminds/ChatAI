@@ -25,6 +25,7 @@ describe("LLM provider config", () => {
       model: "ep-20260601000000-test",
       providerCode: "volcengine_ark",
       protocol: "openai-compatible",
+      requestTimeoutMs: 60_000,
       responseFormat: "json_object",
     });
   });
@@ -230,6 +231,146 @@ describe("LLM provider config", () => {
       summary: { customerIntent: "寒暄" },
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+
+  it("falls back without JSON response format when the model does not support it", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      requestBodies.push(JSON.parse(String(init?.body)));
+
+      if (fetchMock.mock.calls.length === 1) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: "InvalidParameter",
+              message: "The parameter `response_format.type` specified in the request are not valid: `json_object` is not supported by this model.",
+              param: "response_format.type",
+              type: "BadRequest",
+            },
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 400,
+          },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  actionItems: [],
+                  entities: [],
+                  faqCandidates: [],
+                  intents: [],
+                  problemResolution: {
+                    confidence: 0.8,
+                    evidence: [],
+                    evidenceMessageIds: [],
+                    problemDetected: false,
+                    problemSummary: "",
+                    resolutionStatus: "no_customer_problem",
+                  },
+                  qaFindings: [],
+                  risks: [],
+                  sentiment: [],
+                  summary: {
+                    confidence: 0.8,
+                    customerIntent: "寒暄",
+                    processSummary: "无明确问题",
+                    resultSummary: "无需处理",
+                  },
+                  tags: [],
+                }),
+              },
+            },
+          ],
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
+      model: "ep-test",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      responseFormat: "json_object",
+    });
+
+    await expect(
+      analyzer.analyzeSession({
+        messages: [
+          {
+            aiText: "你好",
+            contentStatus: "ready",
+            messageType: "text",
+            occurredAt: 1,
+            senderRole: "customer",
+            sourceMessageId: "1",
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      summary: { customerIntent: "寒暄" },
+    });
+
+    expect(requestBodies[0]).toHaveProperty("response_format");
+    expect(requestBodies[1]).not.toHaveProperty("response_format");
+  });
+
+  it("times out stalled LLM requests", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+      ),
+    );
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
+      model: "ep-test",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      requestTimeoutMs: 2_000,
+      retry: {
+        baseDelayMs: 1_000,
+        maxAttempts: 1,
+      },
+    });
+
+    const resultPromise = analyzer.analyzeSession({
+      messages: [
+        {
+          aiText: "你好",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "1",
+        },
+      ],
+    });
+
+    const expectation = expect(resultPromise).rejects.toThrow("LLM request timed out after 2000ms");
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expectation;
     vi.useRealTimers();
   });
 

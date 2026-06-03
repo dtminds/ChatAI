@@ -1,6 +1,9 @@
 import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
-import type { InsightPromptContext } from "./insight-prompt-builder.js";
+import type {
+  InsightPreviousSessionContext,
+  InsightPromptContext,
+} from "./insight-prompt-builder.js";
 import type {
   AppendSessionMessageInput,
   CloseSessionInput,
@@ -75,6 +78,23 @@ type AnalyzeJobRow = {
 
 type AnalysisMessageRow = MessageRow & {
   conversation_id: number | string;
+};
+
+type CurrentSessionLookupRow = {
+  conversation_id: number | string;
+  started_at: number | string;
+};
+
+type PreviousSessionContextRow = {
+  ended_at: number | string | null;
+  follow_up: string | null;
+  problem_summary: string | null;
+  process_summary: string | null;
+  resolution_status: string | null;
+  result_summary: string | null;
+  session_id: number | string;
+  started_at: number | string;
+  unresolved_reason: string | null;
 };
 
 const defaultConfig: InsightWorkerSessionizationConfig = {
@@ -517,6 +537,25 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .executeTakeFirst();
   }
 
+  async findSessionBySourceMessage(input: {
+    sourceMessageId: string;
+    uid: number;
+  }) {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_logical_session_message")
+      .select(["session_id", "uid"])
+      .where("uid", "=", input.uid)
+      .where("source_message_id", "=", parsePositiveInteger(input.sourceMessageId) ?? -1)
+      .executeTakeFirst() as { session_id: number | string; uid: number | string } | undefined;
+
+    return row
+      ? {
+          sessionId: String(row.session_id),
+          uid: parseNumber(row.uid),
+        }
+      : undefined;
+  }
+
   async closeSession(input: CloseSessionInput): Promise<void> {
     await this.db
       .updateTable("xy_wap_embed_logical_session")
@@ -642,6 +681,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }
 
   async claimNextAnalyzeJob() {
+    const now = new Date();
     const row = await this.db
       .selectFrom("xy_wap_embed_insight_job")
       .select([
@@ -654,10 +694,18 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         "target_id",
         "uid",
       ])
-      .where("status", "=", "pending")
+      .where((eb) =>
+        eb.or([
+          eb("status", "=", "pending"),
+          eb.and([
+            eb("status", "=", "running"),
+            eb("lease_until", "<=", now),
+          ]),
+        ]),
+      )
       .where("target_type", "=", "logical_session")
       .where("job_type", "in", ["analyze_session", "reanalyze_session"])
-      .where("run_after", "<=", new Date())
+      .where("run_after", "<=", now)
       .orderBy("priority", "desc")
       .orderBy("id", "asc")
       .executeTakeFirst() as AnalyzeJobRow | undefined;
@@ -676,11 +724,23 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         update_time: new Date(),
       })
       .where("id", "=", parseNumber(row.id))
-      .where("status", "=", "pending")
+      .where((eb) =>
+        eb.or([
+          eb("status", "=", "pending"),
+          eb.and([
+            eb("status", "=", "running"),
+            eb("lease_until", "<=", now),
+          ]),
+        ]),
+      )
       .executeTakeFirst();
 
     if (getAffectedRows(result) === 0) {
       return undefined;
+    }
+
+    if (parseNumber(row.attempt_count) > 0) {
+      await this.markExpiredAnalysisRunsFailed(String(row.id));
     }
 
     return {
@@ -692,6 +752,19 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       sessionId: row.target_id,
       uid: parseNumber(row.uid),
     };
+  }
+
+  private async markExpiredAnalysisRunsFailed(jobId: string) {
+    await this.db.updateTable("xy_wap_embed_analysis_run").set({
+      error_code: "LEASE_EXPIRED",
+      error_message: "Analysis job lease expired before completion",
+      finished_at: new Date(),
+      status: "failed",
+      update_time: new Date(),
+    })
+      .where("job_id", "=", parsePositiveInteger(jobId) ?? -1)
+      .where("status", "=", "running")
+      .executeTakeFirst();
   }
 
   async listSessionMessagesForAnalysis(sessionId: string) {
@@ -729,6 +802,70 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       msgtime: parseNumber(row.msgtime),
       msgtype: row.msgtype,
       thirdUserId: row.third_user_id,
+    }));
+  }
+
+  async listPreviousSessionContexts(input: {
+    currentSessionId: string;
+    limit: number;
+    lookbackHours: number;
+    uid: number;
+  }): Promise<InsightPreviousSessionContext[]> {
+    const currentSessionId = parsePositiveInteger(input.currentSessionId) ?? -1;
+    const current = await this.db
+      .selectFrom("xy_wap_embed_logical_session as current_session")
+      .select(["conversation_id", "started_at"])
+      .where("current_session.id", "=", currentSessionId)
+      .where("current_session.uid", "=", input.uid)
+      .executeTakeFirst() as CurrentSessionLookupRow | undefined;
+
+    if (!current) {
+      return [];
+    }
+
+    const currentStartedAt = parseNumber(current.started_at);
+    const lookbackFrom = currentStartedAt - input.lookbackHours * 60 * 60_000;
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_logical_session as previous_session")
+      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
+        join.onRef("current.session_id", "=", "previous_session.id"),
+      )
+      .innerJoin("xy_wap_embed_session_summary as summary", (join) =>
+        join.onRef("summary.snapshot_id", "=", "current.current_snapshot_id"),
+      )
+      .innerJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
+        join.onRef("problem.snapshot_id", "=", "current.current_snapshot_id"),
+      )
+      .select([
+        "previous_session.id as session_id",
+        "previous_session.started_at as started_at",
+        "previous_session.ended_at as ended_at",
+        "summary.follow_up as follow_up",
+        "summary.process_summary as process_summary",
+        "summary.result_summary as result_summary",
+        "problem.problem_summary as problem_summary",
+        "problem.resolution_status as resolution_status",
+        "problem.unresolved_reason as unresolved_reason",
+      ])
+      .where("previous_session.uid", "=", input.uid)
+      .where("previous_session.conversation_id", "=", parseNumber(current.conversation_id))
+      .where("previous_session.id", "!=", currentSessionId)
+      .where("previous_session.ended_at", "<=", currentStartedAt)
+      .where("previous_session.ended_at", ">=", lookbackFrom)
+      .orderBy("previous_session.ended_at", "desc")
+      .limit(Math.max(0, Math.min(input.limit, 3)))
+      .execute() as PreviousSessionContextRow[];
+
+    return rows.map((row) => ({
+      endedAt: row.ended_at == null ? undefined : parseNumber(row.ended_at),
+      followUp: optionalString(row.follow_up),
+      problemSummary: row.problem_summary ?? "",
+      processSummary: row.process_summary ?? "",
+      resolutionStatus: normalizeResolutionStatus(row.resolution_status),
+      resultSummary: row.result_summary ?? "",
+      sessionId: String(row.session_id),
+      startedAt: parseNumber(row.started_at),
+      unresolvedReason: optionalString(row.unresolved_reason),
     }));
   }
 
@@ -976,7 +1113,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .updateTable("xy_wap_embed_logical_session")
       .set({
         current_snapshot_id: snapshotId,
-        status: input.job.mode === "final" ? "analyzed" : "open",
+        status: input.job.mode === "live" ? "open" : "analyzed",
         update_time: new Date(),
       })
       .where("id", "=", sessionId)
@@ -1164,6 +1301,18 @@ function normalizeSeverity(value: string) {
   return value === "high" || value === "medium" || value === "low"
     ? value
     : "medium";
+}
+
+function normalizeResolutionStatus(
+  value: string | null | undefined,
+): InsightPreviousSessionContext["resolutionStatus"] {
+  return value === "no_customer_problem"
+    || value === "partially_resolved"
+    || value === "resolved"
+    || value === "unknown"
+    || value === "unresolved"
+    ? value
+    : "unknown";
 }
 
 function parsePositiveInteger(value: string) {

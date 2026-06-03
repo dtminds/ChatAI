@@ -1,5 +1,8 @@
 import { buildInsightMessageInput } from "./insight-message-input-builder.js";
-import type { InsightPromptContext } from "./insight-prompt-builder.js";
+import type {
+  InsightPreviousSessionContext,
+  InsightPromptContext,
+} from "./insight-prompt-builder.js";
 import type { AiMessageInput, InsightMessageSourceRow } from "./insights.types.js";
 
 type WorkerLogger = {
@@ -36,6 +39,11 @@ export type InsightAnalysisMessageRow = Omit<
 
 export type InsightWorkerConversation = {
   conversationId: string;
+  uid: number;
+};
+
+export type InsightWorkerExistingSession = {
+  sessionId: string;
   uid: number;
 };
 
@@ -228,6 +236,7 @@ export type InsightSessionAnalyzer = {
     context: InsightPromptContext;
     job: ClaimedAnalyzeJob;
     messages: AiMessageInput[];
+    previousSessionContexts: InsightPreviousSessionContext[];
   }): Promise<InsightAnalysisOutput>;
 };
 
@@ -245,10 +254,20 @@ export type InsightWorkerRepositoryPort = {
     uid: number;
   }): Promise<InsightWorkerOpenSession | undefined>;
   findPlatformConversation(message: InsightWorkerMessage): Promise<InsightWorkerConversation | undefined>;
+  findSessionBySourceMessage(input: {
+    sourceMessageId: string;
+    uid: number;
+  }): Promise<InsightWorkerExistingSession | undefined>;
   getAnalysisPolicy(uid: number): Promise<InsightWorkerAnalysisPolicy>;
   getCursor(): Promise<InsightWorkerCursor>;
   getPromptContext(uid: number): Promise<InsightPromptContext>;
   getSessionizationConfig(uid: number): Promise<InsightWorkerSessionizationConfig>;
+  listPreviousSessionContexts(input: {
+    currentSessionId: string;
+    limit: number;
+    lookbackHours: number;
+    uid: number;
+  }): Promise<InsightPreviousSessionContext[]>;
   listClosableOpenSessions(input: {
     limit: number;
     now: number;
@@ -286,6 +305,8 @@ export type NonOverlappingTicker = {
 
 const INPUT_READINESS_RETRY_DELAY_MS = 5 * 60_000;
 const INPUT_READINESS_MAX_POSTPONES = 1;
+const PREVIOUS_SESSION_LOOKBACK_HOURS = 48;
+const PREVIOUS_SESSION_CONTEXT_LIMIT = 3;
 
 export class InsightsWorkerService {
   private readonly batchSize: number;
@@ -416,6 +437,7 @@ export class InsightsWorkerService {
       let cursorMsgtime = job.cursorMsgtime;
       let scannedMessages = 0;
       let sessionizedMessages = 0;
+      const sessionsToReanalyze = new Map<string, number>();
 
       while (true) {
         const messages = await this.repository.listIncrementalMessages({
@@ -426,6 +448,16 @@ export class InsightsWorkerService {
         });
 
         for (const message of messages) {
+          const existingSession = await this.repository.findSessionBySourceMessage({
+            sourceMessageId: message.id,
+            uid: job.uid,
+          });
+
+          if (existingSession) {
+            sessionsToReanalyze.set(existingSession.sessionId, existingSession.uid);
+            continue;
+          }
+
           if (await this.sessionizeMessage(message)) {
             sessionizedMessages += 1;
           }
@@ -442,10 +474,22 @@ export class InsightsWorkerService {
         cursorMsgtime = lastMessage.msgtime;
       }
 
+      for (const [sessionId, uid] of sessionsToReanalyze) {
+        await this.repository.createAnalyzeJob({
+          analysisScope: "all",
+          jobType: "reanalyze_session",
+          mode: "final",
+          runAfter: new Date(),
+          sessionId,
+          uid,
+        });
+      }
+
       await this.repository.markSyncMessagesJobSucceeded(job.jobId);
       this.logger?.info(
         {
           jobId: job.jobId,
+          reanalyzeSessions: sessionsToReanalyze.size,
           scannedMessages,
           sessionizedMessages,
           uid: job.uid,
@@ -659,12 +703,18 @@ export class InsightsWorkerService {
         sourceMessageTo: sourceMessageIds.at(-1) ?? null,
       });
       const context = await this.repository.getPromptContext(job.uid);
+      const previousSessionContexts = await this.repository.listPreviousSessionContexts({
+        currentSessionId: job.sessionId,
+        limit: PREVIOUS_SESSION_CONTEXT_LIMIT,
+        lookbackHours: PREVIOUS_SESSION_LOOKBACK_HOURS,
+        uid: job.uid,
+      });
 
       const configuredOutput = filterConfiguredAnalysisOutput(
-        await this.model.analyzeSession({ context, job, messages: modelMessages }),
+        await this.model.analyzeSession({ context, job, messages: modelMessages, previousSessionContexts }),
         context,
       );
-const output = normalizeEvidenceIds(configuredOutput.output, new Set(sourceMessageIds));
+      const output = normalizeEvidenceIds(configuredOutput.output, new Set(sourceMessageIds));
       const validationWarnings = [
         ...configuredOutput.validationWarnings,
         ...output.validationWarnings,

@@ -24,6 +24,7 @@ function createRepository(
     claimNextSyncMessagesJob: vi.fn(async () => undefined),
     createLogicalSession: vi.fn(async () => "501"),
     findOpenSession: vi.fn(async () => undefined),
+    findSessionBySourceMessage: vi.fn(async () => undefined),
     findPlatformConversation: vi.fn(async () => ({
       conversationId: "301",
       uid: 9001,
@@ -34,6 +35,7 @@ function createRepository(
       labelConfigs: [],
       qaRuleConfigs: [],
     })),
+    listPreviousSessionContexts: vi.fn(async () => []),
     getAnalysisPolicy: vi.fn(async () => ({
       lowConfidenceThreshold: 0.6,
     })),
@@ -341,6 +343,62 @@ describe("InsightsWorkerService", () => {
     expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith("rescan-job-1");
   });
 
+  it("reuses existing logical sessions during historical rescan instead of creating duplicate sessions", async () => {
+    const repository = createRepository({
+      claimNextSyncMessagesJob: vi.fn(async () => ({
+        cursorMsgtime: 1_780_000_000_000,
+        jobId: "rescan-job-1",
+        uid: 9001,
+      })),
+      findSessionBySourceMessage: vi.fn(async () => ({
+        sessionId: "501",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async ({ cursorMsgtime }) => {
+        if (cursorMsgtime === 1_780_000_000_000) {
+          return [
+            {
+              chatType: 1,
+              content: JSON.stringify({ content: "历史消息" }),
+              fromType: 2,
+              id: "8001",
+              msgtime: 1_780_000_010_000,
+              msgtype: "text",
+              platform: 5,
+              uid: 9001,
+              thirdExternalId: "external-1",
+              thirdGroupId: "",
+              thirdUserId: "user-1",
+            },
+          ];
+        }
+
+        return [];
+      }),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.findSessionBySourceMessage).toHaveBeenCalledWith({
+      sourceMessageId: "8001",
+      uid: 9001,
+    });
+    expect(repository.createLogicalSession).not.toHaveBeenCalled();
+    expect(repository.appendSessionMessage).not.toHaveBeenCalled();
+    expect(repository.createAnalyzeJob).toHaveBeenCalledTimes(1);
+    expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        analysisScope: "all",
+        jobType: "reanalyze_session",
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    );
+    expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith("rescan-job-1");
+  });
+
   it("runs one due analysis job, validates evidence ids and saves structured result", async () => {
     const promptContext = {
       entityDictionary: [],
@@ -577,6 +635,88 @@ describe("InsightsWorkerService", () => {
         validationWarnings: expect.arrayContaining([
           expect.stringContaining("confidence 0.62 is below threshold 0.75"),
         ]),
+      }),
+    );
+  });
+
+  it("passes up to three previous session summaries from the 48 hour lookback to the model", async () => {
+    const previousSessionContexts = [
+      {
+        endedAt: 1_780_100_000_000,
+        followUp: "建议关注补发物流",
+        problemSummary: "客户反馈上次订单少发",
+        processSummary: "客服登记并承诺补寄",
+        resolutionStatus: "partially_resolved" as const,
+        resultSummary: "已登记补寄，物流未确认",
+        sessionId: "200",
+        startedAt: 1_780_090_000_000,
+        unresolvedReason: "尚未给出补寄单号",
+      },
+    ];
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "live",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listPreviousSessionContexts: vi.fn(async () => previousSessionContexts),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "今天还能发货吗" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: [],
+          problemDetected: true,
+          problemSummary: "客户询问发货时间",
+          resolutionStatus: "unknown",
+        },
+        qaFindings: [],
+        risks: [],
+        sentiment: [],
+        summary: {
+          confidence: 0.8,
+          customerIntent: "发货咨询",
+          processSummary: "客服未明确回复",
+          resultSummary: "待确认",
+        },
+        tags: [],
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.listPreviousSessionContexts).toHaveBeenCalledWith({
+      currentSessionId: "501",
+      limit: 3,
+      lookbackHours: 48,
+      uid: 9001,
+    });
+    expect(model.analyzeSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previousSessionContexts,
       }),
     );
   });

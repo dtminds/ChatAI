@@ -518,7 +518,7 @@ function RelatedSessionsPanel({
       <div className="overflow-x-auto px-4 pb-4">
         <Table aria-label="相关会话">
           <TableHeader>
-            <TableRow className="bg-muted/45 hover:bg-muted/45">
+            <TableRow className="hover:bg-transparent">
               <TableHead className="h-11 min-w-[210px]">客户</TableHead>
               <TableHead className="h-11 min-w-[170px]">客服</TableHead>
               <TableHead className="h-11 min-w-[280px]">诉求/问题</TableHead>

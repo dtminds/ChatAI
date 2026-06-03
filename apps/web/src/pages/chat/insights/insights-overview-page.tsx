@@ -86,10 +86,10 @@ const trendOptions: Array<{ key: TrendMetric; label: string }> = [
 ];
 
 const resolutionColors: Record<string, string> = {
-  no_customer_problem: "#8b8f98",
+  no_customer_problem: "#c9cdd3",
   partially_resolved: "#f0a337",
   resolved: "#16a36a",
-  unknown: "#a4a7ae",
+  unknown: "#94a3b8",
   unresolved: "#df3f40",
 };
 
@@ -639,13 +639,13 @@ function SessionTableCard({
       <div className="overflow-x-auto px-4 pb-4 sm:px-6">
         <Table aria-label="逻辑会话明细">
           <TableHeader>
-            <TableRow className="bg-muted/45 hover:bg-muted/45">
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="h-11 min-w-[150px]">时间</TableHead>
+              <TableHead className="h-11 min-w-[120px]">状态</TableHead>
               <TableHead className="h-11 min-w-[210px]">客户</TableHead>
               <TableHead className="h-11 min-w-[170px]">客服</TableHead>
               <TableHead className="h-11 min-w-[260px]">诉求/问题</TableHead>
               <TableHead className="h-11 min-w-[120px]">消息</TableHead>
-              <TableHead className="h-11 min-w-[120px]">状态</TableHead>
-              <TableHead className="h-11 min-w-[150px]">开始时间</TableHead>
               <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -653,6 +653,12 @@ function SessionTableCard({
             {rows.length > 0 ? (
               rows.map((row) => (
                 <TableRow key={row.sessionId}>
+                  <TableCell className="py-4 text-sm text-muted-foreground">
+                    {formatInsightTime(row.startedAt)}
+                  </TableCell>
+                  <TableCell className="py-4">
+                    <ResolutionBadge status={row.resolutionStatus} />
+                  </TableCell>
                   <TableCell className="py-4">
                     <InsightPerson
                       avatarUrl={row.customerAvatarUrl}
@@ -666,25 +672,15 @@ function SessionTableCard({
                     />
                   </TableCell>
                   <TableCell className="max-w-[300px] py-4">
-                    <div className="truncate text-sm font-medium text-foreground">
+                    <div className="truncate text-xs font-medium text-foreground">
                       {row.summaryCustomerIntent || "暂无诉求"}
                     </div>
                     <div className="mt-1 truncate text-xs text-muted-foreground">
                       {row.problemSummary || "暂无客户问题摘要"}
                     </div>
-                    <TopicBadges row={row} />
                   </TableCell>
                   <TableCell className="py-4 text-sm">
-                    <div className="font-medium">{row.messageCount} 条</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      客户 {row.customerMessageCount} / 客服 {row.agentMessageCount}
-                    </div>
-                  </TableCell>
-                  <TableCell className="py-4">
-                    <ResolutionBadge status={row.resolutionStatus} />
-                  </TableCell>
-                  <TableCell className="py-4 text-sm text-muted-foreground">
-                    {formatInsightTime(row.startedAt)}
+                    {row.messageCount} 条
                   </TableCell>
                   <TableCell className="py-4 text-right">
                     <Button
@@ -744,28 +740,6 @@ function FilterSelect({
         ))}
       </SelectContent>
     </Select>
-  );
-}
-
-function TopicBadges({ row }: { row: InsightsOverviewResponse["sessions"][number] }) {
-  const topics = [
-    ...(row.tags ?? []).slice(0, 2).map((tag) => tag.tagName),
-    ...(row.entities ?? []).slice(0, 2).map((entity) => entity.entityName),
-    ...(row.intents ?? []).slice(0, 1).map((intent) => intent.intentLabel),
-  ].filter(Boolean);
-
-  if (topics.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mt-2 flex max-w-[300px] flex-wrap gap-1.5">
-      {topics.slice(0, 4).map((topic) => (
-        <Badge className="max-w-[9rem] truncate" key={topic} variant="secondary">
-          {topic}
-        </Badge>
-      ))}
-    </div>
   );
 }
 

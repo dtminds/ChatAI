@@ -1,3 +1,5 @@
+import { Male02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
@@ -22,15 +24,17 @@ export function InsightPerson({
     <div className={cn("flex min-w-0 items-center gap-2", className)}>
       <Avatar
         aria-label={displayName}
-        className={cn(size === "md" ? "size-10" : "size-7", "rounded-[8px]")}
+        className={cn(size === "md" ? "size-10" : "size-6", "rounded-[8px]")}
         role="img"
       >
         {avatarUrl ? <AvatarImage alt={displayName} src={avatarUrl} /> : null}
-        <AvatarFallback className="text-[11px]">{getFallbackText(displayName)}</AvatarFallback>
+        <AvatarFallback>
+          <HugeiconsIcon aria-hidden="true" color="currentColor" icon={Male02Icon} size={size === "md" ? 18 : 14} strokeWidth={1.8} />
+        </AvatarFallback>
       </Avatar>
       <span
         className={cn(
-          "min-w-0 truncate font-medium text-foreground",
+          "min-w-0 truncate text-foreground",
           size === "md" ? "text-base" : "text-sm",
         )}
       >
@@ -38,8 +42,4 @@ export function InsightPerson({
       </span>
     </div>
   );
-}
-
-function getFallbackText(name: string) {
-  return name.slice(0, 2);
 }

@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import {
   CheckmarkCircle02Icon,
-  InformationCircleIcon,
-  Progress01Icon,
+  DashedLineCircleIcon,
+  Leaf01Icon,
+  MessageSquareDashedIcon,
   Progress03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -62,7 +63,7 @@ export function ResolutionBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 text-[11px] font-semibold",
+        "inline-flex items-center gap-1 text-sm font-semibold",
         config.className,
       )}
     >
@@ -75,7 +76,7 @@ export function ResolutionBadge({
 const resolutionBadgeConfig = {
   no_customer_problem: {
     className: "text-slate-600",
-    icon: InformationCircleIcon,
+    icon: Leaf01Icon,
   },
   partially_resolved: {
     className: "text-amber-700",
@@ -86,11 +87,11 @@ const resolutionBadgeConfig = {
     icon: CheckmarkCircle02Icon,
   },
   unknown: {
-    className: "text-slate-600",
-    icon: InformationCircleIcon,
+    className: "text-slate-400",
+    icon: MessageSquareDashedIcon,
   },
   unresolved: {
     className: "text-red-700",
-    icon: Progress01Icon,
+    icon: DashedLineCircleIcon,
   },
 } as const;

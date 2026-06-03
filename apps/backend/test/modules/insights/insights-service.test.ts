@@ -142,7 +142,55 @@ const baseRows = [
     summaryFollowUp: null,
     unresolvedReason: null,
   },
-] satisfies Awaited<ReturnType<InsightsRepositoryPort["listCurrentSessions"]>>;
+];
+
+const overviewAggregate = {
+  actionItemsOpen: 1,
+  analysis: {
+    failed: 0,
+    partial: 1,
+    ready: 2,
+    stale: 1,
+  },
+  highRiskSessions: 1,
+  negativeSessions: 1,
+  problemSessions: 2,
+  readySessions: 2,
+  resolution: {
+    noCustomerProblem: 1,
+    partiallyResolved: 1,
+    resolved: 0,
+    unknown: 1,
+    unresolved: 1,
+  },
+  totalSessions: 4,
+  totals: {
+    agentMessages: 7,
+    consultingCustomers: 4,
+    customerMessages: 10,
+    logicalSessions: 4,
+    messages: 17,
+  },
+  trend: [
+    {
+      agentMessages: 4,
+      consultingCustomers: 3,
+      customerMessages: 5,
+      date: "2026-05-31",
+      logicalSessions: 3,
+      messages: 9,
+    },
+    {
+      agentMessages: 3,
+      consultingCustomers: 1,
+      customerMessages: 5,
+      date: "2026-06-01",
+      logicalSessions: 1,
+      messages: 8,
+    },
+  ],
+  unresolvedSessions: 2,
+} satisfies Awaited<ReturnType<InsightsRepositoryPort["getOverviewAggregate"]>>;
 
 function createRepository(
   overrides: Partial<InsightsRepositoryPort> = {},
@@ -317,7 +365,12 @@ function createRepository(
         startedAt: 1_780_243_200_000,
       },
     ]),
-    listCurrentSessions: vi.fn(async () => baseRows),
+    getOverviewAggregate: vi.fn(async () => overviewAggregate),
+    listAllCurrentSessions: vi.fn(async () => baseRows),
+    listCurrentSessions: vi.fn(async (_scope, filters) => ({
+      items: filters?.pageSize === 10_000 ? baseRows : [baseRows[0]],
+      total: baseRows.length,
+    })),
     listEntityHotspots: vi.fn(async () => [
       {
         entityId: "sku-1",
@@ -529,8 +582,15 @@ function createRepository(
 
 describe("InsightsService", () => {
   it("aggregates overview metrics from current insight snapshots", async () => {
-    const service = new InsightsService(createRepository());
-    const result = await service.getOverview(scope);
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+    const result = await service.getOverview(scope, {
+      from: "2026-06-01",
+      page: 2,
+      pageSize: 1,
+      resolutionStatus: "unresolved",
+      to: "2026-06-30",
+    });
 
     expect(result).toMatchObject({
       actionItemsOpen: 1,
@@ -556,6 +616,13 @@ describe("InsightsService", () => {
       negativeSessions: 1,
       problemSessions: 2,
       readySessions: 2,
+      resolution: {
+        noCustomerProblem: 1,
+        partiallyResolved: 1,
+        resolved: 0,
+        unknown: 1,
+        unresolved: 1,
+      },
       totalSessions: 4,
       totals: {
         agentMessages: 7,
@@ -584,19 +651,35 @@ describe("InsightsService", () => {
       ],
       unresolvedSessions: 2,
     });
-    expect(result.sessions).toEqual(
-      expect.arrayContaining([
+    expect(result.sessions).toMatchObject({
+      page: 2,
+      pageSize: 1,
+      total: 4,
+      totalPages: 4,
+      items: [
         expect.objectContaining({
           customerName: "张三",
           messageCount: 8,
           sessionId: "501",
         }),
-      ]),
-    );
+      ],
+    });
+    expect(repository.getOverviewAggregate).toHaveBeenCalledWith(scope, {
+      from: "2026-06-01",
+      to: "2026-06-30",
+    });
+    expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, {
+      from: "2026-06-01",
+      page: 2,
+      pageSize: 1,
+      resolutionStatus: "unresolved",
+      to: "2026-06-30",
+    });
   });
 
   it("builds service quality counts, unresolved ordering and reasons", async () => {
-    const service = new InsightsService(createRepository());
+    const repository = createRepository();
+    const service = new InsightsService(repository);
     const result = await service.getQuality(scope);
 
     expect(result.overview).toMatchObject({
@@ -627,10 +710,13 @@ describe("InsightsService", () => {
         reasonLabel: "要求客户等待但未说明下一步",
       },
     ]);
+    expect(repository.listAllCurrentSessions).toHaveBeenCalledWith(scope);
+    expect(repository.listCurrentSessions).not.toHaveBeenCalled();
   });
 
   it("builds business topic analytics from current snapshots", async () => {
-    const service = new InsightsService(createRepository());
+    const repository = createRepository();
+    const service = new InsightsService(repository);
     const result = await service.getBusiness(scope);
 
     expect(result.totals).toMatchObject({
@@ -697,6 +783,8 @@ describe("InsightsService", () => {
         unresolvedSessions: 1,
       }),
     ]);
+    expect(repository.listAllCurrentSessions).toHaveBeenCalledWith(scope, {});
+    expect(repository.listCurrentSessions).not.toHaveBeenCalled();
   });
 
   it("filters follow-up action items by status", async () => {

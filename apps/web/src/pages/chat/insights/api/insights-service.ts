@@ -1,6 +1,7 @@
 import type {
   ApiSuccessEnvelope,
   InsightActionStatus,
+  InsightOverviewQuery as ContractInsightOverviewQuery,
   InsightAnalysisPolicy,
   InsightAnalysisPolicyUpdateRequest,
   InsightConfigDeletedResponse,
@@ -33,7 +34,16 @@ export type InsightFollowUpQuery = {
 };
 
 export type InsightOverviewQuery = {
+  analysisStatus?: ContractInsightOverviewQuery["analysisStatus"];
+  entityName?: string;
   from?: string;
+  intentCode?: string;
+  keyword?: string;
+  page?: number;
+  pageSize?: number;
+  problemScope?: ContractInsightOverviewQuery["problemScope"];
+  resolutionStatus?: ContractInsightOverviewQuery["resolutionStatus"];
+  tagCode?: string;
   to?: string;
 };
 

@@ -40,7 +40,31 @@ const FollowUpsQuerySchema = Type.Object({
 });
 
 const OverviewQuerySchema = Type.Object({
+  analysisStatus: Type.Optional(Type.Union([
+    Type.Literal("ready"),
+    Type.Literal("partial"),
+    Type.Literal("failed"),
+    Type.Literal("stale"),
+  ])),
+  entityName: Type.Optional(Type.String()),
   from: Type.Optional(Type.String()),
+  intentCode: Type.Optional(Type.String()),
+  keyword: Type.Optional(Type.String()),
+  page: Type.Optional(Type.Number()),
+  pageSize: Type.Optional(Type.Number()),
+  problemScope: Type.Optional(Type.Union([
+    Type.Literal("all"),
+    Type.Literal("problem"),
+    Type.Literal("unresolved"),
+  ])),
+  resolutionStatus: Type.Optional(Type.Union([
+    Type.Literal("resolved"),
+    Type.Literal("unresolved"),
+    Type.Literal("partially_resolved"),
+    Type.Literal("no_customer_problem"),
+    Type.Literal("unknown"),
+  ])),
+  tagCode: Type.Optional(Type.String()),
   to: Type.Optional(Type.String()),
 });
 
@@ -506,9 +530,28 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
 
 function normalizeOverviewQuery(query: OverviewQuery): InsightsOverviewFilters {
   return {
+    analysisStatus: query.analysisStatus,
+    entityName: query.entityName,
     from: query.from,
+    intentCode: query.intentCode,
+    keyword: query.keyword,
+    page: normalizePositiveQueryNumber(query.page),
+    pageSize: normalizePositiveQueryNumber(query.pageSize),
+    problemScope: query.problemScope,
+    resolutionStatus: query.resolutionStatus,
+    tagCode: query.tagCode,
     to: query.to,
   };
+}
+
+function normalizePositiveQueryNumber(value: number | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  const normalized = Math.floor(value);
+
+  return normalized > 0 ? normalized : undefined;
 }
 
 function createInsightsService(app: FastifyInstance) {

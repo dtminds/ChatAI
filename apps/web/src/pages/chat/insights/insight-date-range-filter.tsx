@@ -24,11 +24,6 @@ const presetOptions: Array<{
   { label: "本月", range: () => getCurrentMonthDateRange() },
 ];
 
-const emptyCalendarRange: DateRange = {
-  from: undefined,
-  to: undefined,
-};
-
 export function InsightDateRangeFilter({
   from,
   onChange,
@@ -134,7 +129,9 @@ export function InsightDateRangeFilter({
               mode="range"
               numberOfMonths={2}
               onMonthChange={setVisibleMonth}
-              onSelect={(range) => setDraftRange(range ?? emptyCalendarRange)}
+              onSelect={(_range, triggerDate) => {
+                setDraftRange((current) => getNextDraftRange(current, triggerDate));
+              }}
               selected={draftRange}
             />
             <div className="mt-3 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
@@ -193,6 +190,19 @@ function normalizeCalendarRange(range: DateRange | undefined): InsightDateRange 
     from: formatDateInputValue(from),
     to: formatDateInputValue(to),
   };
+}
+
+function getNextDraftRange(current: DateRange, triggerDate: Date): DateRange {
+  if (!current.from || current.to) {
+    return {
+      from: triggerDate,
+      to: undefined,
+    };
+  }
+
+  return current.from <= triggerDate
+    ? { from: current.from, to: triggerDate }
+    : { from: triggerDate, to: current.from };
 }
 
 function formatRangeText(range: InsightDateRange | undefined) {

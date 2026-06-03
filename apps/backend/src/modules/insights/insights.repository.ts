@@ -32,9 +32,11 @@ import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 import type {
   InsightActionItemRow,
   InsightBusinessTopicFactRow,
+  InsightCurrentSessionPage,
   InsightCurrentSessionRow,
   InsightDetailRow,
   InsightEvidenceMessageRow,
+  InsightOverviewAggregateRow,
   InsightsFollowUpFilters,
   InsightsOverviewFilters,
   InsightsRepositoryPort,
@@ -101,6 +103,41 @@ type CurrentSessionCoreQueryRow = Omit<CurrentSessionQueryRow,
 > & {
   last_customer_message_at?: number | string | null;
   risk_severity?: string | null;
+};
+
+type CountQueryRow = {
+  count: number | string;
+};
+
+type OverviewAggregateTotalsQueryRow = {
+  action_items_open: number | string;
+  agent_messages: number | string;
+  consulting_customers: number | string;
+  customer_messages: number | string;
+  failed: number | string;
+  high_risk_sessions: number | string;
+  logical_sessions: number | string;
+  messages: number | string;
+  negative_sessions: number | string;
+  no_customer_problem_sessions: number | string;
+  partial: number | string;
+  partially_resolved_sessions: number | string;
+  problem_sessions: number | string;
+  ready: number | string;
+  resolved_sessions: number | string;
+  stale: number | string;
+  unknown_sessions: number | string;
+  unresolved_resolution_sessions: number | string;
+  unresolved_sessions: number | string;
+};
+
+type OverviewTrendQueryRow = {
+  agent_messages: number | string;
+  consulting_customers: number | string;
+  customer_messages: number | string;
+  date: string;
+  logical_sessions: number | string;
+  messages: number | string;
 };
 
 type CurrentSessionRiskAggregateRow = {
@@ -912,21 +949,41 @@ export class InsightsRepository implements InsightsRepositoryPort {
   async listCurrentSessions(
     scope: InsightsUidScope,
     filters: InsightsOverviewFilters = {},
+  ): Promise<InsightCurrentSessionPage> {
+    const page = filters.page ?? 1;
+    const pageSize = filters.pageSize ?? 20;
+    const offset = (page - 1) * pageSize;
+    const countQuery = applyCurrentSessionFilters(
+      buildCurrentSessionBaseQuery(this.db).select(sql<number>`count(distinct session.id)`.as("count")),
+      scope,
+      filters,
+    );
+    const totalRow = await countQuery.executeTakeFirst() as CountQueryRow | undefined;
+    const total = totalRow ? parseNumber(totalRow.count) : 0;
+    const sessionRows = await this.listCurrentSessionRows(scope, filters, {
+      limit: pageSize,
+      offset,
+    });
+
+    return {
+      items: sessionRows,
+      total,
+    };
+  }
+
+  async listAllCurrentSessions(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters = {},
   ): Promise<InsightCurrentSessionRow[]> {
-    let query = this.db
-      .selectFrom("xy_wap_embed_session_insight_current as current")
-      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
-        join.onRef("snapshot.id", "=", "current.current_snapshot_id"),
-      )
-      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "current.session_id"),
-      )
-      .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
-        join.onRef("summary.snapshot_id", "=", "snapshot.id"),
-      )
-      .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
-        join.onRef("problem.snapshot_id", "=", "snapshot.id"),
-      )
+    return await this.listCurrentSessionRows(scope, filters);
+  }
+
+  private async listCurrentSessionRows(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters,
+    pagination?: { limit: number; offset: number },
+  ) {
+    let query = buildCurrentSessionBaseQuery(this.db)
       .select([
         "current.current_snapshot_id as current_snapshot_id",
         "problem.problem_detected as problem_detected",
@@ -948,21 +1005,42 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "summary.follow_up as summary_follow_up",
         "summary.process_summary as summary_process",
         "summary.result_summary as summary_result",
+      ]);
+
+    query = applyCurrentSessionFilters(query, scope, filters);
+
+    let groupedQuery = query
+      .groupBy([
+        "current.current_snapshot_id",
+        "problem.problem_detected",
+        "problem.problem_summary",
+        "problem.resolution_status",
+        "problem.unresolved_reason",
+        "session.conversation_id",
+        "session.ended_at",
+        "session.agent_message_count",
+        "session.id",
+        "session.customer_message_count",
+        "session.last_message_at",
+        "session.message_count",
+        "session.started_at",
+        "snapshot.phase",
+        "snapshot.create_time",
+        "snapshot.status",
+        "summary.customer_intent",
+        "summary.follow_up",
+        "summary.process_summary",
+        "summary.result_summary",
       ])
-      .where("session.uid", "=", scope.uid);
+      .orderBy("session.started_at", "desc");
 
-    const from = parseDateBoundary(filters.from);
-    const to = parseDateBoundary(filters.to);
-
-    if (from != null) {
-      query = query.where("session.started_at", ">=", from);
+    if (pagination) {
+      groupedQuery = groupedQuery
+        .limit(pagination.limit)
+        .offset(pagination.offset);
     }
 
-    if (to != null) {
-      query = query.where("session.started_at", "<=", to);
-    }
-
-    const rows = (await query.execute() as CurrentSessionCoreQueryRow[]).map((row) => ({
+    const rows = (await groupedQuery.execute() as CurrentSessionCoreQueryRow[]).map((row) => ({
       ...row,
       last_customer_message_at: row.last_customer_message_at ?? null,
       risk_severity: row.risk_severity ?? null,
@@ -976,6 +1054,120 @@ export class InsightsRepository implements InsightsRepositoryPort {
     ]);
 
     return sessionRows;
+  }
+
+  async getOverviewAggregate(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters = {},
+  ): Promise<InsightOverviewAggregateRow> {
+    const totalsQuery = applyCurrentSessionFilters(
+      buildCurrentSessionBaseQuery(this.db)
+        .leftJoin("xy_wap_embed_session_risk as aggregate_risk", (join) =>
+          join.onRef("aggregate_risk.snapshot_id", "=", "snapshot.id"),
+        )
+        .leftJoin("xy_wap_embed_session_action_item as aggregate_action", (join) =>
+          join
+            .onRef("aggregate_action.snapshot_id", "=", "snapshot.id")
+            .on("aggregate_action.status", "=", "open"),
+        )
+        .select([
+          sql<number>`count(distinct session.id)`.as("logical_sessions"),
+          sql<number>`coalesce(sum(distinct session.message_count), 0)`.as("messages"),
+          sql<number>`coalesce(sum(distinct session.customer_message_count), 0)`.as("customer_messages"),
+          sql<number>`coalesce(sum(distinct session.agent_message_count), 0)`.as("agent_messages"),
+          sql<number>`count(distinct session.conversation_id)`.as("consulting_customers"),
+          sql<number>`count(distinct case when snapshot.status = 'ready' then session.id end)`.as("ready"),
+          sql<number>`count(distinct case when snapshot.status = 'partial' then session.id end)`.as("partial"),
+          sql<number>`count(distinct case when snapshot.status = 'failed' then session.id end)`.as("failed"),
+          sql<number>`count(distinct case when snapshot.status = 'stale' then session.id end)`.as("stale"),
+          sql<number>`count(distinct case when problem.resolution_status = 'resolved' then session.id end)`.as("resolved_sessions"),
+          sql<number>`count(distinct case when problem.resolution_status = 'partially_resolved' then session.id end)`.as("partially_resolved_sessions"),
+          sql<number>`count(distinct case when problem.resolution_status = 'unresolved' then session.id end)`.as("unresolved_resolution_sessions"),
+          sql<number>`count(distinct case when problem.resolution_status = 'no_customer_problem' then session.id end)`.as("no_customer_problem_sessions"),
+          sql<number>`count(distinct case when problem.resolution_status = 'unknown' then session.id end)`.as("unknown_sessions"),
+          sql<number>`count(distinct case when aggregate_risk.risk_level = 'high' then session.id end)`.as("high_risk_sessions"),
+          sql<number>`count(distinct case when aggregate_risk.id is not null then session.id end)`.as("negative_sessions"),
+          sql<number>`
+            count(distinct case
+              when problem.problem_detected = 1
+                and problem.resolution_status not in ('no_customer_problem', 'unknown')
+              then session.id
+            end)
+          `.as("problem_sessions"),
+          sql<number>`
+            count(distinct case
+              when problem.resolution_status in ('unresolved', 'partially_resolved')
+                and aggregate_action.id is not null
+              then aggregate_action.id
+            end)
+          `.as("action_items_open"),
+          sql<number>`
+            count(distinct case
+              when problem.resolution_status in ('unresolved', 'partially_resolved')
+              then session.id
+            end)
+          `.as("unresolved_sessions"),
+        ]),
+      scope,
+      filters,
+    );
+    const totals = await totalsQuery.executeTakeFirst() as OverviewAggregateTotalsQueryRow | undefined;
+    const trendQuery = applyCurrentSessionFilters(
+      buildCurrentSessionBaseQuery(this.db)
+        .select([
+          sql<string>`date_format(from_unixtime(session.started_at / 1000), '%Y-%m-%d')`.as("date"),
+          sql<number>`count(distinct session.id)`.as("logical_sessions"),
+          sql<number>`coalesce(sum(session.message_count), 0)`.as("messages"),
+          sql<number>`coalesce(sum(session.customer_message_count), 0)`.as("customer_messages"),
+          sql<number>`coalesce(sum(session.agent_message_count), 0)`.as("agent_messages"),
+          sql<number>`count(distinct session.conversation_id)`.as("consulting_customers"),
+        ]),
+      scope,
+      filters,
+    );
+    const trendRows = await trendQuery
+      .groupBy(sql`date_format(from_unixtime(session.started_at / 1000), '%Y-%m-%d')`)
+      .orderBy("date", "asc")
+      .execute() as OverviewTrendQueryRow[];
+    const totalSessions = parseNumber(totals?.logical_sessions ?? 0);
+
+    return {
+      actionItemsOpen: parseNumber(totals?.action_items_open ?? 0),
+      analysis: {
+        failed: parseNumber(totals?.failed ?? 0),
+        partial: parseNumber(totals?.partial ?? 0),
+        ready: parseNumber(totals?.ready ?? 0),
+        stale: parseNumber(totals?.stale ?? 0),
+      },
+      highRiskSessions: parseNumber(totals?.high_risk_sessions ?? 0),
+      negativeSessions: parseNumber(totals?.negative_sessions ?? 0),
+      problemSessions: parseNumber(totals?.problem_sessions ?? 0),
+      readySessions: parseNumber(totals?.ready ?? 0),
+      resolution: {
+        noCustomerProblem: parseNumber(totals?.no_customer_problem_sessions ?? 0),
+        partiallyResolved: parseNumber(totals?.partially_resolved_sessions ?? 0),
+        resolved: parseNumber(totals?.resolved_sessions ?? 0),
+        unknown: parseNumber(totals?.unknown_sessions ?? 0),
+        unresolved: parseNumber(totals?.unresolved_resolution_sessions ?? 0),
+      },
+      totalSessions,
+      totals: {
+        agentMessages: parseNumber(totals?.agent_messages ?? 0),
+        consultingCustomers: parseNumber(totals?.consulting_customers ?? 0),
+        customerMessages: parseNumber(totals?.customer_messages ?? 0),
+        logicalSessions: totalSessions,
+        messages: parseNumber(totals?.messages ?? 0),
+      },
+      trend: trendRows.map((row) => ({
+        agentMessages: parseNumber(row.agent_messages),
+        consultingCustomers: parseNumber(row.consulting_customers),
+        customerMessages: parseNumber(row.customer_messages),
+        date: row.date,
+        logicalSessions: parseNumber(row.logical_sessions),
+        messages: parseNumber(row.messages),
+      })),
+      unresolvedSessions: parseNumber(totals?.unresolved_sessions ?? 0),
+    };
   }
 
   async listBusinessTopicFacts(
@@ -3206,6 +3398,111 @@ function applyTopicDateFilters<Query>(
   }
 
   return next;
+}
+
+function buildCurrentSessionBaseQuery(db: Kysely<Database>) {
+  return db
+    .selectFrom("xy_wap_embed_session_insight_current as current")
+    .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
+      join.onRef("snapshot.id", "=", "current.current_snapshot_id"),
+    )
+    .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+      join.onRef("session.id", "=", "current.session_id"),
+    )
+    .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
+      join.onRef("summary.snapshot_id", "=", "snapshot.id"),
+    )
+    .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
+      join.onRef("problem.snapshot_id", "=", "snapshot.id"),
+    );
+}
+
+function applyCurrentSessionFilters<Query>(
+  query: Query,
+  scope: InsightsUidScope,
+  filters: InsightsOverviewFilters,
+): Query {
+  let next = query as Query & {
+    innerJoin(table: string, callback: (join: {
+      onRef(left: string, operator: string, right: string): {
+        onRef(left: string, operator: string, right: string): unknown;
+      };
+    }) => unknown): Query;
+    where(column: string, operator: string, value: unknown): Query;
+    where(expression: unknown): Query;
+  };
+  const from = parseDateBoundary(filters.from);
+  const to = parseDateBoundary(filters.to);
+  const keyword = filters.keyword?.trim();
+
+  next = next.where("session.uid", "=", scope.uid) as typeof next;
+
+  if (from != null) {
+    next = next.where("session.started_at", ">=", from) as typeof next;
+  }
+
+  if (to != null) {
+    next = next.where("session.started_at", "<=", to) as typeof next;
+  }
+
+  if (filters.analysisStatus) {
+    next = next.where("snapshot.status", "=", filters.analysisStatus) as typeof next;
+  }
+
+  if (filters.resolutionStatus) {
+    next = next.where("problem.resolution_status", "=", filters.resolutionStatus) as typeof next;
+  }
+
+  if (filters.problemScope === "problem") {
+    next = next.where(sql<boolean>`
+      problem.problem_detected = 1
+      and problem.resolution_status not in ('no_customer_problem', 'unknown')
+    `) as typeof next;
+  }
+
+  if (filters.problemScope === "unresolved") {
+    next = next.where(sql<boolean>`problem.resolution_status in ('unresolved', 'partially_resolved')`) as typeof next;
+  }
+
+  if (keyword) {
+    const pattern = `%${escapeLikePattern(keyword)}%`;
+    next = next.where(sql<boolean>`
+      (
+        problem.problem_summary like ${pattern} escape '\\'
+        or summary.customer_intent like ${pattern} escape '\\'
+      )
+    `) as typeof next;
+  }
+
+  if (filters.tagCode) {
+    next = next
+      .innerJoin("xy_wap_embed_session_tag as tag_filter", (join) =>
+        join.onRef("tag_filter.snapshot_id", "=", "snapshot.id"),
+      ) as typeof next;
+    next = next.where("tag_filter.tag_code", "=", filters.tagCode) as typeof next;
+  }
+
+  if (filters.entityName) {
+    next = next
+      .innerJoin("xy_wap_embed_session_entity as entity_filter", (join) =>
+        join.onRef("entity_filter.snapshot_id", "=", "snapshot.id"),
+      ) as typeof next;
+    next = next.where("entity_filter.entity_name", "=", filters.entityName) as typeof next;
+  }
+
+  if (filters.intentCode) {
+    next = next
+      .innerJoin("xy_wap_embed_session_intent as intent_filter", (join) =>
+        join.onRef("intent_filter.snapshot_id", "=", "snapshot.id"),
+      ) as typeof next;
+    next = next.where("intent_filter.intent_code", "=", filters.intentCode) as typeof next;
+  }
+
+  return next;
+}
+
+function escapeLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
 }
 
 function parseBusinessAssetTopic(row: AssetTopicMessageQueryRow) {

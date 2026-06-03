@@ -4,6 +4,7 @@ import type {
   InsightAnalysisStatus,
   InsightAnalysisPolicy,
   InsightAnalysisPolicyUpdateRequest,
+  InsightOverviewQuery,
   InsightConfigDeletedResponse,
   InsightConfigStatusUpdateRequest,
   InsightDetailResponse,
@@ -42,6 +43,7 @@ type InsightResolutionStatus =
     : InsightDetailResponse["problemResolution"]["resolutionStatus"];
 
 type InsightSeverity = InsightsQualityResponse["unresolvedSessions"][number]["severity"];
+type InsightOverviewSessionItem = InsightsOverviewResponse["sessions"]["items"][number];
 
 export type InsightCurrentSessionRow = {
   actionOpenCount: number;
@@ -55,12 +57,12 @@ export type InsightCurrentSessionRow = {
   customerAvatarUrl: string | null;
   customerMessageCount: number;
   customerName: string;
-  assets?: NonNullable<InsightsOverviewResponse["sessions"][number]["assets"]>;
+  assets?: NonNullable<InsightOverviewSessionItem["assets"]>;
   endedAt: number | null;
-  entities?: NonNullable<InsightsOverviewResponse["sessions"][number]["entities"]>;
+  entities?: NonNullable<InsightOverviewSessionItem["entities"]>;
   generatedAt: number;
   highRiskCount: number;
-  intents?: NonNullable<InsightsOverviewResponse["sessions"][number]["intents"]>;
+  intents?: NonNullable<InsightOverviewSessionItem["intents"]>;
   lastMessageAt: number | null;
   lastCustomerMessageAt: number | null;
   messageCount: number;
@@ -77,7 +79,7 @@ export type InsightCurrentSessionRow = {
   summaryFollowUp: string | null;
   summaryProcess: string;
   summaryResult: string;
-  tags?: NonNullable<InsightsOverviewResponse["sessions"][number]["tags"]>;
+  tags?: NonNullable<InsightOverviewSessionItem["tags"]>;
   unresolvedReason: string | null;
 };
 
@@ -108,9 +110,28 @@ export type InsightsFollowUpFilters = {
 };
 
 export type InsightsOverviewFilters = {
+  analysisStatus?: InsightOverviewQuery["analysisStatus"];
+  entityName?: string;
   from?: string;
+  intentCode?: string;
+  keyword?: string;
+  page?: number;
+  pageSize?: number;
+  problemScope?: InsightOverviewQuery["problemScope"];
+  resolutionStatus?: InsightOverviewQuery["resolutionStatus"];
+  tagCode?: string;
   to?: string;
 };
+
+export type InsightCurrentSessionPage = {
+  items: InsightCurrentSessionRow[];
+  total: number;
+};
+
+export type InsightOverviewAggregateRow = Omit<
+  InsightsOverviewResponse,
+  "entityHotspots" | "intentDistribution" | "sessions"
+>;
 
 export type InsightBusinessTopicFactRow = {
   code: string;
@@ -138,7 +159,15 @@ export type InsightsRepositoryPort = {
   listCurrentSessions(
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
+  ): Promise<InsightCurrentSessionPage>;
+  listAllCurrentSessions(
+    scope: InsightsUidScope,
+    filters?: InsightsOverviewFilters,
   ): Promise<InsightCurrentSessionRow[]>;
+  getOverviewAggregate(
+    scope: InsightsUidScope,
+    filters?: InsightsOverviewFilters,
+  ): Promise<InsightOverviewAggregateRow>;
   listBusinessTopicFacts?(
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
@@ -245,6 +274,8 @@ const analysisStatuses: InsightAnalysisStatus[] = [
 ];
 
 const defaultMessageContextSize = 30;
+const defaultOverviewPageSize = 20;
+const maxOverviewPageSize = 100;
 
 export class InsightsService {
   constructor(private readonly repository: InsightsRepositoryPort) {}
@@ -253,45 +284,42 @@ export class InsightsService {
     scope: InsightsUidScope,
     filters: InsightsOverviewFilters = {},
   ): Promise<InsightsOverviewResponse> {
-    const rows = await this.repository.listCurrentSessions(scope, filters);
+    const normalizedPage = normalizeOverviewPage(filters.page);
+    const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
+    const normalizedFilters = {
+      ...filters,
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+    };
+    const aggregateFilters = {
+      from: filters.from,
+      to: filters.to,
+    };
+    const [aggregate, sessions] = await Promise.all([
+      this.repository.getOverviewAggregate(scope, aggregateFilters),
+      this.repository.listCurrentSessions(scope, normalizedFilters),
+    ]);
     const [entityHotspots, intentDistribution] = await Promise.all([
       this.repository.listEntityHotspots?.(scope) ?? Promise.resolve([]),
-      this.repository.listIntentDistribution?.(scope) ?? Promise.resolve(buildIntentDistribution(rows)),
+      this.repository.listIntentDistribution?.(scope) ?? Promise.resolve(buildIntentDistribution(sessions.items)),
     ]);
-    const analysis = {
-      failed: 0,
-      partial: 0,
-      ready: 0,
-      stale: 0,
-    };
-
-    for (const row of rows) {
-      if (row.analysisStatus in analysis) {
-        analysis[row.analysisStatus as keyof typeof analysis] += 1;
-      }
-    }
 
     return {
-      actionItemsOpen: rows
-        .filter(requiresHumanIntervention)
-        .reduce((total, row) => total + row.actionOpenCount, 0),
-      analysis,
+      ...aggregate,
       entityHotspots,
-      highRiskSessions: rows.filter((row) => row.highRiskCount > 0).length,
       intentDistribution,
-      negativeSessions: rows.filter((row) => row.negativeCount > 0).length,
-      problemSessions: rows.filter(isCustomerProblemSession).length,
-      readySessions: analysis.ready,
-      sessions: buildOverviewSessions(rows),
-      totalSessions: rows.length,
-      totals: buildOverviewTotals(rows),
-      trend: buildOverviewTrend(rows),
-      unresolvedSessions: rows.filter((row) => unresolvedStatuses.has(row.resolutionStatus)).length,
+      sessions: {
+        items: buildOverviewSessions(sessions.items),
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+        total: sessions.total,
+        totalPages: Math.max(1, Math.ceil(sessions.total / normalizedPageSize)),
+      },
     };
   }
 
   async getQuality(scope: InsightsUidScope): Promise<InsightsQualityResponse> {
-    const rows = await this.repository.listCurrentSessions(scope);
+    const rows = await this.repository.listAllCurrentSessions(scope);
     const unresolvedSessions = rows
       .filter((row) => unresolvedStatuses.has(row.resolutionStatus))
       .sort(compareByRiskAndLastMessage)
@@ -332,7 +360,7 @@ export class InsightsService {
     scope: InsightsUidScope,
     filters: InsightsOverviewFilters = {},
   ): Promise<InsightsBusinessResponse> {
-    const rows = await this.repository.listCurrentSessions(scope, filters);
+    const rows = await this.repository.listAllCurrentSessions(scope, filters);
     const facts = await this.repository.listBusinessTopicFacts?.(scope, filters) ?? [];
     const sessionsById = new Map(rows.map((row) => [row.sessionId, row]));
     const topicCollections = buildBusinessTopicCollections(facts, sessionsById);
@@ -681,6 +709,18 @@ function assertInsightSettingsAdmin(role: AccountRole | string | undefined) {
   if (role !== "owner" && role !== "admin") {
     throw new ForbiddenError("FORBIDDEN", "无权限访问");
   }
+}
+
+function normalizeOverviewPage(value: number | undefined) {
+  return Number.isSafeInteger(value) && value != null && value > 0 ? value : 1;
+}
+
+function normalizeOverviewPageSize(value: number | undefined) {
+  if (!Number.isSafeInteger(value) || value == null || value <= 0) {
+    return defaultOverviewPageSize;
+  }
+
+  return Math.min(value, maxOverviewPageSize);
 }
 
 function raiseConfigNotFound(): never {

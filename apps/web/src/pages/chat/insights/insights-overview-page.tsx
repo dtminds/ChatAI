@@ -13,7 +13,7 @@ import {
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { InsightSettingsResponse, InsightsOverviewResponse } from "@chatai/contracts";
+import type { InsightOverviewQuery, InsightSettingsResponse, InsightsOverviewResponse } from "@chatai/contracts";
 import {
   Area,
   AreaChart,
@@ -64,6 +64,9 @@ import { formatInsightTime } from "./insights-utils";
 import { useInsightDetail } from "./use-insight-detail";
 
 type TrendMetric = keyof InsightsOverviewResponse["totals"];
+type OverviewSessionItem = InsightsOverviewResponse["sessions"]["items"][number];
+
+const overviewPageSize = 20;
 
 const metricCards: Array<{
   icon: typeof BubbleChatIcon;
@@ -102,6 +105,8 @@ export function InsightsOverviewPage() {
   const [from, setFrom] = useState(() => getDefaultDateRange().from);
   const [intentFilter, setIntentFilter] = useState("all");
   const [keyword, setKeyword] = useState("");
+  const debouncedKeyword = useDebouncedValue(keyword.trim(), 300);
+  const [page, setPage] = useState(1);
   const [problemFilter, setProblemFilter] = useState("all");
   const [resolutionFilter, setResolutionFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
@@ -109,21 +114,18 @@ export function InsightsOverviewPage() {
   const detail = useInsightDetail();
 
   useEffect(() => {
-    let isActive = true;
-
-    void getInsightOverview({
-      from: toBoundaryDate(from, "start"),
-      to: toBoundaryDate(to, "end"),
-    }).then((response) => {
-      if (isActive) {
-        setOverview(response);
-      }
-    });
-
-    return () => {
-      isActive = false;
-    };
-  }, [from, to]);
+    setPage(1);
+  }, [
+    analysisStatusFilter,
+    debouncedKeyword,
+    entityFilter,
+    from,
+    intentFilter,
+    problemFilter,
+    resolutionFilter,
+    tagFilter,
+    to,
+  ]);
 
   useEffect(() => {
     let isActive = true;
@@ -145,52 +147,48 @@ export function InsightsOverviewPage() {
     };
   }, []);
 
-  const sessions = useMemo(() => {
-    const normalizedKeyword = keyword.trim().toLowerCase();
+  useEffect(() => {
+    let isActive = true;
 
-    return (overview?.sessions ?? []).filter((session) =>
-      (!normalizedKeyword || [
-        session.customerName,
-        session.agentName,
-        session.problemSummary,
-        session.summaryCustomerIntent,
-        ...(session.tags ?? []).map((tag) => tag.tagName),
-        ...(session.entities ?? []).map((entity) => entity.entityName),
-        ...(session.intents ?? []).map((intent) => intent.intentLabel),
-      ]
-        .filter(Boolean)
-        .some((value) => value?.toLowerCase().includes(normalizedKeyword))) &&
-      (resolutionFilter === "all" || session.resolutionStatus === resolutionFilter) &&
-      (analysisStatusFilter === "all" || session.analysisStatus === analysisStatusFilter) &&
-      (tagFilter === "all" || (session.tags ?? []).some((tag) => tag.tagCode === tagFilter)) &&
-      (entityFilter === "all" ||
-        (session.entities ?? []).some((entity) =>
-          entity.entityId === entityFilter || entity.entityName === entityFilter
-        )) &&
-      (intentFilter === "all" || (session.intents ?? []).some((intent) => intent.intentCode === intentFilter)) &&
-      (problemFilter === "all" ||
-        (problemFilter === "problem" &&
-          session.resolutionStatus !== "no_customer_problem" &&
-          session.resolutionStatus !== "unknown") ||
-        (problemFilter === "unresolved" && (
-          session.resolutionStatus === "unresolved" ||
-          session.resolutionStatus === "partially_resolved"
-        )))
-    );
+    void getInsightOverview({
+      analysisStatus: normalizeAnalysisStatusFilter(analysisStatusFilter),
+      entityName: entityFilter === "all" ? undefined : entityFilter,
+      from: toBoundaryDate(from, "start"),
+      intentCode: intentFilter === "all" ? undefined : intentFilter,
+      keyword: debouncedKeyword || undefined,
+      page,
+      pageSize: overviewPageSize,
+      problemScope: normalizeProblemScopeFilter(problemFilter),
+      resolutionStatus: normalizeResolutionStatusFilter(resolutionFilter),
+      tagCode: tagFilter === "all" ? undefined : tagFilter,
+      to: toBoundaryDate(to, "end"),
+    }).then((response) => {
+      if (isActive) {
+        setOverview(response);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, [
     analysisStatusFilter,
+    debouncedKeyword,
     entityFilter,
+    from,
     intentFilter,
-    keyword,
-    overview?.sessions,
+    page,
     problemFilter,
     resolutionFilter,
     tagFilter,
+    to,
   ]);
 
+  const sessions = overview?.sessions.items ?? [];
+
   const filterOptions = useMemo(
-    () => buildSessionFilterOptions(overview?.sessions ?? [], settings),
-    [overview?.sessions, settings],
+    () => buildSessionFilterOptions(overview, settings),
+    [overview, settings],
   );
 
   return (
@@ -230,13 +228,14 @@ export function InsightsOverviewPage() {
           onKeywordChange={setKeyword}
           onOpenDetail={(sessionId) => void detail.openDetail(sessionId)}
           onProblemFilterChange={setProblemFilter}
+          onPageChange={setPage}
           onResolutionFilterChange={setResolutionFilter}
           onTagFilterChange={setTagFilter}
           problemFilter={problemFilter}
           resolutionFilter={resolutionFilter}
           rows={sessions}
+          sessionsPage={overview?.sessions}
           tagFilter={tagFilter}
-          total={overview?.sessions.length ?? 0}
         />
       </div>
 
@@ -523,14 +522,15 @@ function SessionTableCard({
   onIntentFilterChange,
   onKeywordChange,
   onOpenDetail,
+  onPageChange,
   onProblemFilterChange,
   onResolutionFilterChange,
   onTagFilterChange,
   problemFilter,
   resolutionFilter,
   rows,
+  sessionsPage,
   tagFilter,
-  total,
 }: {
   analysisStatusFilter: string;
   entityFilter: string;
@@ -542,15 +542,24 @@ function SessionTableCard({
   onIntentFilterChange: (value: string) => void;
   onKeywordChange: (value: string) => void;
   onOpenDetail: (sessionId: string) => void;
+  onPageChange: (page: number) => void;
   onProblemFilterChange: (value: string) => void;
   onResolutionFilterChange: (value: string) => void;
   onTagFilterChange: (value: string) => void;
   problemFilter: string;
   resolutionFilter: string;
-  rows: InsightsOverviewResponse["sessions"];
+  rows: OverviewSessionItem[];
+  sessionsPage: InsightsOverviewResponse["sessions"] | undefined;
   tagFilter: string;
-  total: number;
 }) {
+  const total = sessionsPage?.total ?? 0;
+  const page = sessionsPage?.page ?? 1;
+  const pageSize = sessionsPage?.pageSize ?? overviewPageSize;
+  const totalPages = sessionsPage?.totalPages ?? 1;
+  const startRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endRow = Math.min(total, page * pageSize);
+  const pageNumbers = buildPaginationNumbers(page, totalPages);
+
   return (
     <section className="rounded-xl border bg-card">
       <div className="grid gap-3 p-4 sm:px-6 sm:py-4">
@@ -559,7 +568,7 @@ function SessionTableCard({
             <HugeiconsIcon icon={Calendar03Icon} size={17} />
           </span>
           <h2 className="text-base font-medium">逻辑会话明细</h2>
-          <Badge className="ml-1" variant="secondary">{rows.length}/{total}</Badge>
+          <Badge className="ml-1" variant="secondary">{total} 条</Badge>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 sm:flex-none">
@@ -571,7 +580,8 @@ function SessionTableCard({
             <Input
               className="h-9 w-full pl-9 sm:w-[220px]"
               onChange={(event) => onKeywordChange(event.target.value)}
-              placeholder="搜索客户、客服、问题"
+              placeholder="搜索问题摘要和诉求"
+              aria-label="搜索问题摘要和诉求"
               value={keyword}
             />
           </div>
@@ -704,6 +714,46 @@ function SessionTableCard({
           </TableBody>
         </Table>
       </div>
+      {totalPages > 1 ? (
+        <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <span>
+            显示 {startRow}-{endRow} / 共 {total} 条
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              className="h-8 rounded-[8px]"
+              disabled={page <= 1}
+              onClick={() => onPageChange(page - 1)}
+              size="sm"
+              variant="outline"
+            >
+              上一页
+            </Button>
+            {pageNumbers.map((item, index) => item === "ellipsis" ? (
+              <span className="px-2" key={`${item}-${index}`}>...</span>
+            ) : (
+              <Button
+                className="h-8 min-w-8 rounded-[8px] px-2"
+                key={item}
+                onClick={() => onPageChange(item)}
+                size="sm"
+                variant={item === page ? "default" : "outline"}
+              >
+                {item}
+              </Button>
+            ))}
+            <Button
+              className="h-8 rounded-[8px]"
+              disabled={page >= totalPages}
+              onClick={() => onPageChange(page + 1)}
+              size="sm"
+              variant="outline"
+            >
+              下一页
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -713,6 +763,64 @@ type SessionFilterOptions = {
   intents: Array<{ label: string; value: string }>;
   tags: Array<{ label: string; value: string }>;
 };
+
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedValue(value);
+    }, delayMs);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [delayMs, value]);
+
+  return debouncedValue;
+}
+
+function buildPaginationNumbers(page: number, totalPages: number): Array<number | "ellipsis"> {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const pages = new Set([1, totalPages, page - 1, page, page + 1].filter((item) => item >= 1 && item <= totalPages));
+  const sorted = Array.from(pages).sort((left, right) => left - right);
+  const result: Array<number | "ellipsis"> = [];
+
+  for (const item of sorted) {
+    const previous = result.at(-1);
+
+    if (typeof previous === "number" && item - previous > 1) {
+      result.push("ellipsis");
+    }
+
+    result.push(item);
+  }
+
+  return result;
+}
+
+function normalizeAnalysisStatusFilter(value: string): InsightOverviewQuery["analysisStatus"] | undefined {
+  return value === "ready" || value === "partial" || value === "failed" || value === "stale"
+    ? value
+    : undefined;
+}
+
+function normalizeProblemScopeFilter(value: string): InsightOverviewQuery["problemScope"] | undefined {
+  return value === "problem" || value === "unresolved" ? value : undefined;
+}
+
+function normalizeResolutionStatusFilter(value: string): InsightOverviewQuery["resolutionStatus"] | undefined {
+  return value === "resolved" ||
+    value === "unresolved" ||
+    value === "partially_resolved" ||
+    value === "no_customer_problem" ||
+    value === "unknown"
+    ? value
+    : undefined;
+}
 
 function FilterSelect({
   label,
@@ -764,7 +872,7 @@ function PanelTitle({
 }
 
 function buildSessionFilterOptions(
-  sessions: InsightsOverviewResponse["sessions"],
+  overview: InsightsOverviewResponse | undefined,
   settings: InsightSettingsResponse | undefined,
 ): SessionFilterOptions {
   return {
@@ -777,12 +885,10 @@ function buildSessionFilterOptions(
         })) ?? [],
     ),
     intents: toFilterOptions(
-      sessions.flatMap((session) =>
-        (session.intents ?? []).map((intent) => ({
-          label: intent.intentLabel,
-          value: intent.intentCode,
-        })),
-      ),
+      overview?.intentDistribution.map((intent) => ({
+        label: intent.intentLabel,
+        value: intent.intentCode,
+      })) ?? [],
     ),
     tags: toFilterOptions(
       settings?.labelConfigs
@@ -850,24 +956,14 @@ function DistributionTooltip({
 }
 
 function buildResolutionData(overview: InsightsOverviewResponse | undefined) {
-  const counts = {
-    no_customer_problem: 0,
-    partially_resolved: 0,
-    resolved: 0,
-    unknown: 0,
-    unresolved: 0,
-  };
-
-  for (const session of overview?.sessions ?? []) {
-    counts[session.resolutionStatus] += 1;
-  }
+  const resolution = overview?.resolution;
 
   const data = [
-    { color: resolutionColors.resolved, name: "已解决", value: counts.resolved },
-    { color: resolutionColors.unresolved, name: "未解决", value: counts.unresolved },
-    { color: resolutionColors.partially_resolved, name: "部分解决", value: counts.partially_resolved },
-    { color: resolutionColors.no_customer_problem, name: "无需客服处理", value: counts.no_customer_problem },
-    { color: resolutionColors.unknown, name: "消息不足", value: counts.unknown },
+    { color: resolutionColors.resolved, name: "已解决", value: resolution?.resolved ?? 0 },
+    { color: resolutionColors.partially_resolved, name: "部分解决", value: resolution?.partiallyResolved ?? 0 },
+    { color: resolutionColors.unresolved, name: "未解决", value: resolution?.unresolved ?? 0 },
+    { color: resolutionColors.no_customer_problem, name: "无需客服处理", value: resolution?.noCustomerProblem ?? 0 },
+    { color: resolutionColors.unknown, name: "消息不足", value: resolution?.unknown ?? 0 },
   ].filter((item) => item.value > 0);
 
   return data.length > 0

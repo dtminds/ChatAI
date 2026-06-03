@@ -8,6 +8,10 @@ describe("InsightsRepository", () => {
     const rowsByTable = new Map<string, unknown[]>([
       [
         "xy_wap_embed_session_insight_current as current",
+        [{ count: 1 }],
+      ],
+      [
+        "xy_wap_embed_session_insight_current as current#2",
         [
           {
             agent_message_count: 1,
@@ -57,31 +61,90 @@ describe("InsightsRepository", () => {
       ["xy_wap_embed_logical_session_message as session_message", []],
     ]);
     const db = {
+      currentQueryCount: 0,
       selectFrom: vi.fn((table: string) => {
-        const builder = createSelectBuilder(rowsByTable.get(table) ?? [], table);
+        const key = table === "xy_wap_embed_session_insight_current as current" && db.currentQueryCount++ > 0
+          ? `${table}#2`
+          : table;
+        const builder = createSelectBuilder(rowsByTable.get(key) ?? [], table);
         builders.push(builder);
         return builder;
       }),
     };
     const repository = new InsightsRepository(db as never);
 
-    await expect(repository.listCurrentSessions({ uid: 9001 })).resolves.toMatchObject([
-      {
-        actionOpenCount: 1,
-        highRiskCount: 1,
-        lastCustomerMessageAt: 1_780_244_100_000,
-        negativeCount: 2,
-        problemEvidenceMessageIds: ["9001", "9002"],
-        riskSeverity: "high",
-        sessionId: "201",
-      },
-    ]);
+    await expect(repository.listCurrentSessions({ uid: 9001 })).resolves.toMatchObject({
+      items: [
+        {
+          actionOpenCount: 1,
+          highRiskCount: 1,
+          lastCustomerMessageAt: 1_780_244_100_000,
+          negativeCount: 2,
+          problemEvidenceMessageIds: ["9001", "9002"],
+          riskSeverity: "high",
+          sessionId: "201",
+        },
+      ],
+      total: 1,
+    });
 
-    const coreQuery = builders[0];
+    const coreQuery = builders[1];
     expect(coreQuery.joins).not.toContain("xy_wap_embed_session_risk as risk");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_session_action_item as action");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_insight_evidence as evidence");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_msg_audit_info as message");
+  });
+
+  it("paginates and filters current sessions in SQL before hydration", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const rowsByTable = new Map<string, unknown[]>([
+      ["xy_wap_embed_session_insight_current as current", [{ count: 12 }]],
+      ["xy_wap_embed_session_insight_current as current#2", []],
+    ]);
+    let currentQueryCount = 0;
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const key = table === "xy_wap_embed_session_insight_current as current" && currentQueryCount++ > 0
+          ? `${table}#2`
+          : table;
+        const builder = createSelectBuilder(rowsByTable.get(key) ?? [], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.listCurrentSessions(
+      { uid: 9001 },
+      {
+        analysisStatus: "ready",
+        entityName: "白色羽绒服",
+        from: "2026-06-01",
+        intentCode: "refund",
+        keyword: "物流",
+        page: 3,
+        pageSize: 5,
+        problemScope: "unresolved",
+        resolutionStatus: "unresolved",
+        tagCode: "logistics_issue",
+        to: "2026-06-30",
+      },
+    )).resolves.toMatchObject({ items: [], total: 12 });
+
+    const countQuery = builders[0];
+    const pageQuery = builders[1];
+    expect(pageQuery.limitCalls).toEqual([5]);
+    expect(pageQuery.offsetCalls).toEqual([10]);
+    expect(pageQuery.orderByCalls).toContainEqual(["session.started_at", "desc"]);
+    expect(countQuery.joins).toContain("xy_wap_embed_session_tag as tag_filter");
+    expect(countQuery.joins).toContain("xy_wap_embed_session_entity as entity_filter");
+    expect(countQuery.joins).toContain("xy_wap_embed_session_intent as intent_filter");
+    expect(countQuery.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+    expect(countQuery.whereCalls).toContainEqual(["snapshot.status", "=", "ready"]);
+    expect(countQuery.whereCalls).toContainEqual(["problem.resolution_status", "=", "unresolved"]);
+    expect(countQuery.whereCalls).toContainEqual(["tag_filter.tag_code", "=", "logistics_issue"]);
+    expect(countQuery.whereCalls).toContainEqual(["entity_filter.entity_name", "=", "白色羽绒服"]);
+    expect(countQuery.whereCalls).toContainEqual(["intent_filter.intent_code", "=", "refund"]);
   });
 
   it("loads action-item evidence with a bounded follow-up query", async () => {
@@ -389,6 +452,8 @@ function createSelectBuilder(rows: unknown[], table = "") {
   const builder = {
     joins: [] as string[],
     limitCalls: [] as number[],
+    offsetCalls: [] as number[],
+    orderByCalls: [] as unknown[][],
     table,
     whereCalls: [] as unknown[][],
     execute: async () => rows,
@@ -406,7 +471,14 @@ function createSelectBuilder(rows: unknown[], table = "") {
       builder.limitCalls.push(value);
       return builder;
     },
-    orderBy: () => builder,
+    offset: (value: number) => {
+      builder.offsetCalls.push(value);
+      return builder;
+    },
+    orderBy: (...args: unknown[]) => {
+      builder.orderByCalls.push(args);
+      return builder;
+    },
     select: () => builder,
     where: (...args: unknown[]) => {
       builder.whereCalls.push(args);

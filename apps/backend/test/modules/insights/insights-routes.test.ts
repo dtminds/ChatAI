@@ -8,7 +8,7 @@ describe("insights routes", () => {
     const overview = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/insights/overview",
+      url: "/api/server/insights/overview?page=2&pageSize=1&keyword=%E7%89%A9%E6%B5%81&resolutionStatus=unresolved&analysisStatus=ready&problemScope=unresolved&tagCode=logistics_issue&entityName=%E7%99%BD%E8%89%B2%E7%BE%BD%E7%BB%92%E6%9C%8D&intentCode=logistics_delay",
     });
     const quality = await app.inject({
       headers: { authorization },
@@ -53,6 +53,18 @@ describe("insights routes", () => {
     expect(overview.json()).toMatchObject({
       data: {
         actionItemsOpen: 1,
+        resolution: {
+          noCustomerProblem: 0,
+          partiallyResolved: 0,
+          resolved: 0,
+          unknown: 0,
+          unresolved: 1,
+        },
+        sessions: {
+          items: expect.any(Array),
+          page: 2,
+          pageSize: 1,
+        },
         totalSessions: 1,
         unresolvedSessions: 1,
       },
@@ -193,6 +205,7 @@ async function createInsightsApp(role: "admin" | "operator" | "owner" | "viewer"
 function createInsightsDbMock() {
   const state = {
     insertedJob: undefined as Record<string, unknown> | undefined,
+    insightCurrentSelectCount: 0,
     updatedActionStatus: undefined as { id: number | undefined; status: string | undefined } | undefined,
     insertInto(table: string) {
       if (table !== "xy_wap_embed_insight_job") {
@@ -213,11 +226,26 @@ function createInsightsDbMock() {
       const wheres: Array<[string, string, unknown]> = [];
       const joins: Array<{ conditions: Array<[string, string, unknown]>; table: string }> = [];
 
-      function createBuilder(result: unknown[]) {
+      function createBuilder(result: unknown[] | ((builder: {
+        groupByCalls: unknown[][];
+        joins: Array<{ conditions: Array<[string, string, unknown]>; table: string }>;
+        selectCalls: unknown[][];
+        wheres: Array<[string, string, unknown]>;
+      }) => unknown[])) {
         const builder = {
-          execute: async () => result,
-          executeTakeFirst: async () => result[0],
-          groupBy: () => builder,
+          groupByCalls: [] as unknown[][],
+          joins,
+          selectCalls: [] as unknown[][],
+          wheres,
+          execute: async () => typeof result === "function" ? result(builder) : result,
+          executeTakeFirst: async () => {
+            const rows = typeof result === "function" ? result(builder) : result;
+            return rows[0];
+          },
+          groupBy: (...args: unknown[]) => {
+            builder.groupByCalls.push(args);
+            return builder;
+          },
           innerJoin: (joinTable: string, callback?: (join: ReturnType<typeof createJoinBuilder>) => unknown) => {
             if (callback) {
               const joinBuilder = createJoinBuilder();
@@ -235,10 +263,14 @@ function createInsightsDbMock() {
             return builder;
           },
           limit: () => builder,
+          offset: () => builder,
           orderBy: () => builder,
-          select: () => builder,
-          where: (column: string, operator: string, value: unknown) => {
-            wheres.push([column, operator, value]);
+          select: (...args: unknown[]) => {
+            builder.selectCalls.push(args);
+            return builder;
+          },
+          where: (column: unknown, operator?: string, value?: unknown) => {
+            wheres.push([String(column), operator ?? "", value]);
             return builder;
           },
         };
@@ -375,84 +407,73 @@ function createInsightsDbMock() {
       }
 
       if (table === "xy_wap_embed_session_insight_current as current") {
-        return createBuilder([
-          {
-            action_id: 801,
-            action_priority: "high",
-            action_status: "open",
-            action_title: "确认快递状态",
-            action_type: "logistics_check",
-            agent_name: "客服一号",
-            agent_seat_id: 11,
-            conversation_id: 301,
-            current_snapshot_id: 7001,
-            customer_name: "张三",
-            ended_at: 1_780_245_000_000,
-            evidence_message_id: 9002,
-            evidence_role: "primary",
-            high_risk_id: 601,
-            last_customer_message_at: 1_780_244_100_000,
-            negative_risk_id: 601,
-            phase: "final",
-            problem_detected: 1,
-            problem_summary: "客户反馈物流异常",
-            qa_finding_id: 701,
-            qa_passed: 0,
-            qa_reason: "未确认物流进展",
-            qa_rule_code: "problem_resolution",
-            resolution_status: "unresolved",
-            risk_id: 601,
-            risk_level: "high",
-            risk_severity: "high",
-            risk_type: "bad_review",
-            session_id: 501,
-            started_at: 1_780_243_200_000,
-            status: "ready",
-            summary_customer_intent: "查物流",
-            summary_follow_up: "确认快递状态",
-            summary_process: "客服要求客户等待",
-            summary_result: "未确认物流进展",
-            unresolved_reason: "售后/物流/退款进度未确认",
-          },
-          {
-            action_id: 801,
-            action_priority: "high",
-            action_status: "open",
-            action_title: "确认快递状态",
-            action_type: "logistics_check",
-            agent_name: "客服一号",
-            agent_seat_id: 11,
-            conversation_id: 301,
-            current_snapshot_id: 7001,
-            customer_name: "张三",
-            ended_at: 1_780_245_000_000,
-            evidence_message_id: 9001,
-            evidence_role: "supporting",
-            high_risk_id: 601,
-            last_customer_message_at: 1_780_244_000_000,
-            negative_risk_id: 601,
-            phase: "final",
-            problem_detected: 1,
-            problem_summary: "客户反馈物流异常",
-            qa_finding_id: 701,
-            qa_passed: 0,
-            qa_reason: "未确认物流进展",
-            qa_rule_code: "problem_resolution",
-            resolution_status: "unresolved",
-            risk_id: 601,
-            risk_level: "high",
-            risk_severity: "high",
-            risk_type: "bad_review",
-            session_id: 501,
-            started_at: 1_780_243_200_000,
-            status: "ready",
-            summary_customer_intent: "查物流",
-            summary_follow_up: "确认快递状态",
-            summary_process: "客服要求客户等待",
-            summary_result: "未确认物流进展",
-            unresolved_reason: "售后/物流/退款进度未确认",
-          },
-        ]);
+        return createBuilder((builder) => {
+          state.insightCurrentSelectCount += 1;
+
+          if (state.insightCurrentSelectCount === 1) {
+            return [{
+              action_items_open: 1,
+              agent_messages: 3,
+              consulting_customers: 1,
+              customer_messages: 5,
+              failed: 0,
+              high_risk_sessions: 1,
+              logical_sessions: 1,
+              messages: 8,
+              negative_sessions: 1,
+              no_customer_problem_sessions: 0,
+              partial: 0,
+              partially_resolved_sessions: 0,
+              problem_sessions: 1,
+              ready: 1,
+              resolved_sessions: 0,
+              stale: 0,
+              unknown_sessions: 0,
+              unresolved_resolution_sessions: 1,
+              unresolved_sessions: 1,
+            }];
+          }
+
+          if (state.insightCurrentSelectCount === 2) {
+            return [{
+              agent_messages: 3,
+              consulting_customers: 1,
+              customer_messages: 5,
+              date: "2026-06-01",
+              logical_sessions: 1,
+              messages: 8,
+            }];
+          }
+
+          if (state.insightCurrentSelectCount === 3) {
+            return [{ count: 1 }];
+          }
+
+          return [
+            {
+              agent_message_count: 3,
+              conversation_id: 301,
+              current_snapshot_id: 7001,
+              customer_message_count: 5,
+              ended_at: 1_780_245_000_000,
+              generated_at: 1_780_245_100_000,
+              last_message_at: 1_780_244_950_000,
+              message_count: 8,
+              phase: "final",
+              problem_detected: 1,
+              problem_summary: "客户反馈物流异常",
+              resolution_status: "unresolved",
+              session_id: 501,
+              started_at: 1_780_243_200_000,
+              status: "ready",
+              summary_customer_intent: "查物流",
+              summary_follow_up: "确认快递状态",
+              summary_process: "客服要求客户等待",
+              summary_result: "未确认物流进展",
+              unresolved_reason: "售后/物流/退款进度未确认",
+            },
+          ];
+        });
       }
 
       if (table === "xy_wap_embed_session_action_item as action") {
@@ -467,8 +488,33 @@ function createInsightsDbMock() {
             last_customer_message_at: 1_780_244_100_000,
             priority: "high",
             reason: "物流进度未确认",
+            resolution_status: "unresolved",
             session_id: 501,
+            snapshot_id: 7001,
             title: "确认快递状态",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_session_action_item") {
+        return createBuilder([
+          {
+            action_open_count: 1,
+            snapshot_id: 7001,
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_session_risk") {
+        return createBuilder([
+          {
+            high_risk_count: 1,
+            negative_count: 1,
+            risk_id: 601,
+            risk_level: "high",
+            risk_severity: "high",
+            risk_type: "bad_review",
+            snapshot_id: 7001,
           },
         ]);
       }
@@ -509,6 +555,23 @@ function createInsightsDbMock() {
             dimension_record_id: 601,
             dimension_type: "risk",
             source_message_id: 9002,
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_insight_evidence as evidence") {
+        return createBuilder([
+          {
+            action_id: 801,
+            evidence_message_id: 9002,
+            last_customer_message_at: 1_780_244_100_000,
+            reason: "物流进度未确认",
+            snapshot_id: 7001,
+          },
+          {
+            evidence_message_id: 9001,
+            last_customer_message_at: 1_780_244_000_000,
+            snapshot_id: 7001,
           },
         ]);
       }
@@ -618,6 +681,17 @@ function createInsightsDbMock() {
             id: 1401,
             question: "物流停滞怎么处理",
             status: "candidate",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_session_qa_finding") {
+        return createBuilder([
+          {
+            qa_finding_id: 701,
+            qa_passed: 0,
+            qa_reason: "未确认物流进展",
+            qa_rule_code: "problem_resolution",
           },
         ]);
       }

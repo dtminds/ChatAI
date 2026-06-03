@@ -45,7 +45,19 @@ describe("insights service adapter", () => {
       { data: JSON.parse(config.data ?? "{}"), success: true },
     ]);
 
-    await getInsightOverview({ from: "2026-06-01", to: "2026-06-02" });
+    await getInsightOverview({
+      analysisStatus: "ready",
+      entityName: "白色羽绒服",
+      from: "2026-06-01",
+      intentCode: "logistics_delay",
+      keyword: "物流",
+      page: 2,
+      pageSize: 20,
+      problemScope: "unresolved",
+      resolutionStatus: "unresolved",
+      tagCode: "logistics_issue",
+      to: "2026-06-02",
+    });
     await getInsightBusiness({ from: "2026-06-01", to: "2026-06-02" });
     await getInsightQuality();
     await getInsightFollowUps({ priority: "high", status: "open", type: "logistics_check" });
@@ -57,7 +69,16 @@ describe("insights service adapter", () => {
 
     expect(mock.history.get[0]?.url).toBe("/server/insights/overview");
     expect(mock.history.get[0]?.params).toEqual({
+      analysisStatus: "ready",
+      entityName: "白色羽绒服",
       from: "2026-06-01",
+      intentCode: "logistics_delay",
+      keyword: "物流",
+      page: 2,
+      pageSize: 20,
+      problemScope: "unresolved",
+      resolutionStatus: "unresolved",
+      tagCode: "logistics_issue",
       to: "2026-06-02",
     });
     expect(mock.history.get[1]?.url).toBe("/server/insights/business");

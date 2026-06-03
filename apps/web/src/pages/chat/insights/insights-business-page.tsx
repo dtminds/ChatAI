@@ -44,7 +44,7 @@ import { formatInsightTime } from "./insights-utils";
 import { useInsightDetail } from "./use-insight-detail";
 
 type BusinessTopic = InsightsBusinessResponse["tagDistribution"][number];
-type BusinessSession = InsightsOverviewResponse["sessions"][number];
+type BusinessSession = InsightsOverviewResponse["sessions"]["items"][number];
 type BusinessDimension = BusinessTopic["dimension"];
 type BusinessTrendMetric = "assetMentions" | "entityMentions" | "intentMentions" | "tagMentions";
 
@@ -146,11 +146,11 @@ export function InsightsBusinessPage() {
     : topTopics[0];
   const relatedSessions = useMemo(
     () => activeTopic
-      ? (overview?.sessions ?? [])
+      ? (overview?.sessions.items ?? [])
         .filter((session) => topicMatchesSession(activeTopic, session))
         .filter((session) => sessionMatchesKeyword(session, sessionSearchKeyword))
       : [],
-    [activeTopic, overview?.sessions, sessionSearchKeyword],
+    [activeTopic, overview?.sessions.items, sessionSearchKeyword],
   );
 
   return (

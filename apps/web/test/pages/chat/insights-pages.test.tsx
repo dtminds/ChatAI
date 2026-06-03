@@ -94,81 +94,94 @@ function installInsightMocks() {
     negativeSessions: 4,
     problemSessions: 11,
     readySessions: 18,
-    sessions: [
-      {
-        agentAvatarUrl: "https://example.com/agent-1.png",
-        agentMessageCount: 3,
-        agentName: "客服一号",
-        analysisStatus: "ready",
-        conversationId: "301",
-        customerAvatarUrl: "https://example.com/customer-1.png",
-        customerMessageCount: 5,
-        customerName: "张三",
-        assets: [
-          { assetCode: "https://example.com/promo", assetName: "红包活动", assetType: "link" },
-        ],
-        entities: [
-          { entityId: "sku-1", entityName: "白色羽绒服", entityType: "product" },
-        ],
-        intents: [
-          { intentCode: "logistics_delay", intentLabel: "物流异常" },
-        ],
-        lastMessageAt: 1_780_244_950_000,
-        messageCount: 8,
-        problemSummary: "客户反馈物流异常",
-        resolutionStatus: "unresolved",
-        sessionId: "501",
-        startedAt: 1_780_243_200_000,
-        summaryCustomerIntent: "查物流",
-        tags: [
-          { tagCode: "logistics_issue", tagName: "物流异常" },
-        ],
-      },
-      {
-        agentAvatarUrl: "https://example.com/agent-2.png",
-        agentMessageCount: 2,
-        agentName: "客服二号",
-        analysisStatus: "partial",
-        conversationId: "302",
-        customerAvatarUrl: "https://example.com/customer-2.png",
-        customerMessageCount: 3,
-        customerName: "李四",
-        entities: [],
-        intents: [
-          { intentCode: "refund", intentLabel: "退款咨询" },
-        ],
-        lastMessageAt: 1_780_244_500_000,
-        messageCount: 5,
-        problemSummary: "客户咨询退款到账时间",
-        resolutionStatus: "resolved",
-        sessionId: "502",
-        startedAt: 1_780_244_000_000,
-        summaryCustomerIntent: "退款咨询",
-        tags: [
-          { tagCode: "refund", tagName: "退款咨询" },
-        ],
-      },
-      {
-        agentAvatarUrl: "https://example.com/agent-3.png",
-        agentMessageCount: 1,
-        agentName: "客服三号",
-        analysisStatus: "ready",
-        conversationId: "303",
-        customerAvatarUrl: "https://example.com/customer-3.png",
-        customerMessageCount: 1,
-        customerName: "赵六",
-        entities: [],
-        intents: [],
-        lastMessageAt: 1_780_243_500_000,
-        messageCount: 2,
-        problemSummary: "消息不足，无法判断客户问题",
-        resolutionStatus: "unknown",
-        sessionId: "503",
-        startedAt: 1_780_243_400_000,
-        summaryCustomerIntent: "消息不足",
-        tags: [],
-      },
-    ],
+    resolution: {
+      noCustomerProblem: 6,
+      partiallyResolved: 2,
+      resolved: 6,
+      unknown: 5,
+      unresolved: 5,
+    },
+    sessions: {
+      items: [
+        {
+          agentAvatarUrl: "https://example.com/agent-1.png",
+          agentMessageCount: 3,
+          agentName: "客服一号",
+          analysisStatus: "ready",
+          conversationId: "301",
+          customerAvatarUrl: "https://example.com/customer-1.png",
+          customerMessageCount: 5,
+          customerName: "张三",
+          assets: [
+            { assetCode: "https://example.com/promo", assetName: "红包活动", assetType: "link" },
+          ],
+          entities: [
+            { entityId: "sku-1", entityName: "白色羽绒服", entityType: "product" },
+          ],
+          intents: [
+            { intentCode: "logistics_delay", intentLabel: "物流异常" },
+          ],
+          lastMessageAt: 1_780_244_950_000,
+          messageCount: 8,
+          problemSummary: "客户反馈物流异常",
+          resolutionStatus: "unresolved",
+          sessionId: "501",
+          startedAt: 1_780_243_200_000,
+          summaryCustomerIntent: "查物流",
+          tags: [
+            { tagCode: "logistics_issue", tagName: "物流异常" },
+          ],
+        },
+        {
+          agentAvatarUrl: "https://example.com/agent-2.png",
+          agentMessageCount: 2,
+          agentName: "客服二号",
+          analysisStatus: "partial",
+          conversationId: "302",
+          customerAvatarUrl: "https://example.com/customer-2.png",
+          customerMessageCount: 3,
+          customerName: "李四",
+          entities: [],
+          intents: [
+            { intentCode: "refund", intentLabel: "退款咨询" },
+          ],
+          lastMessageAt: 1_780_244_500_000,
+          messageCount: 5,
+          problemSummary: "客户咨询退款到账时间",
+          resolutionStatus: "resolved",
+          sessionId: "502",
+          startedAt: 1_780_244_000_000,
+          summaryCustomerIntent: "退款咨询",
+          tags: [
+            { tagCode: "refund", tagName: "退款咨询" },
+          ],
+        },
+        {
+          agentAvatarUrl: "https://example.com/agent-3.png",
+          agentMessageCount: 1,
+          agentName: "客服三号",
+          analysisStatus: "ready",
+          conversationId: "303",
+          customerAvatarUrl: "https://example.com/customer-3.png",
+          customerMessageCount: 1,
+          customerName: "赵六",
+          entities: [],
+          intents: [],
+          lastMessageAt: 1_780_243_500_000,
+          messageCount: 2,
+          problemSummary: "消息不足，无法判断客户问题",
+          resolutionStatus: "unknown",
+          sessionId: "503",
+          startedAt: 1_780_243_400_000,
+          summaryCustomerIntent: "消息不足",
+          tags: [],
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+      total: 3,
+      totalPages: 1,
+    },
     totalSessions: 22,
     totals: {
       agentMessages: 38,
@@ -733,7 +746,16 @@ describe("conversation insights pages", () => {
     expect(screen.queryByLabelText("开始日期")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("结束日期")).not.toBeInTheDocument();
     expect(serviceMocks.getInsightOverview).toHaveBeenCalledWith({
+      analysisStatus: undefined,
+      entityName: undefined,
       from: "2026-05-05T00:00:00.000+08:00",
+      intentCode: undefined,
+      keyword: undefined,
+      page: 1,
+      pageSize: 20,
+      problemScope: undefined,
+      resolutionStatus: undefined,
+      tagCode: undefined,
       to: "2026-06-03T23:59:59.999+08:00",
     });
     expect(screen.getByRole("link", { name: /服务质检/ })).toHaveAttribute("href", "/chat/insights/quality");
@@ -769,9 +791,14 @@ describe("conversation insights pages", () => {
     expect(within(tagListbox).queryByRole("option", { name: "隐藏标签" })).not.toBeInTheDocument();
     await userEvent.click(within(tagListbox).getByRole("option", { name: "退款咨询" }));
 
-    expect(screen.getByText("客户咨询退款到账时间")).toBeInTheDocument();
-    expect(screen.queryByText("客户反馈物流异常")).not.toBeInTheDocument();
-    expect(screen.queryByText("消息不足，无法判断客户问题")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          page: 1,
+          tagCode: "refund",
+        }),
+      );
+    });
 
     await userEvent.click(screen.getByRole("combobox", { name: "实体" }));
     const entityListbox = await screen.findByRole("listbox");
@@ -785,15 +812,26 @@ describe("conversation insights pages", () => {
     await userEvent.click(screen.getByRole("combobox", { name: "问题范围" }));
     await userEvent.click(await screen.findByRole("option", { name: "有客户问题" }));
 
-    expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
-    expect(screen.getByText("客户咨询退款到账时间")).toBeInTheDocument();
-    expect(screen.queryByText("消息不足，无法判断客户问题")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          page: 1,
+          problemScope: "problem",
+        }),
+      );
+    });
 
     await userEvent.click(screen.getByRole("combobox", { name: "问题范围" }));
     await userEvent.click(await screen.findByRole("option", { name: "未解决/部分解决" }));
 
-    expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
-    expect(screen.queryByText("客户咨询退款到账时间")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          page: 1,
+          problemScope: "unresolved",
+        }),
+      );
+    });
 
     await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
 
@@ -851,11 +889,51 @@ describe("conversation insights pages", () => {
 
     await waitFor(() => {
       expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith({
+        analysisStatus: undefined,
+        entityName: undefined,
         from: "2026-05-28T00:00:00.000+08:00",
+        intentCode: undefined,
+        keyword: undefined,
+        page: 1,
+        pageSize: 20,
+        problemScope: undefined,
+        resolutionStatus: undefined,
+        tagCode: undefined,
         to: "2026-06-03T23:59:59.999+08:00",
       });
     });
     expect(screen.getByRole("button", { name: /日期范围.*近7天.*2026-05-28.*2026-06-03/ })).toBeInTheDocument();
+  });
+
+  it("starts a new custom date range when clicking the calendar after a complete range is selected", async () => {
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /日期范围.*近30天/ }));
+    await userEvent.click(screen.getByRole("button", { name: /2026年5月10日/ }));
+    expect(screen.getByRole("button", { name: "应用" })).toBeDisabled();
+    expect(screen.getByText("请选择完整范围")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /2026年5月12日/ }));
+    expect(screen.getByText("2026-05-10 至 2026-05-12")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith({
+        analysisStatus: undefined,
+        entityName: undefined,
+        from: "2026-05-10T00:00:00.000+08:00",
+        intentCode: undefined,
+        keyword: undefined,
+        page: 1,
+        pageSize: 20,
+        problemScope: undefined,
+        resolutionStatus: undefined,
+        tagCode: undefined,
+        to: "2026-05-12T23:59:59.999+08:00",
+      });
+    });
   });
 
   it("renders quality problem list and agent report", async () => {

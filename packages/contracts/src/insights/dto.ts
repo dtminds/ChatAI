@@ -121,6 +121,14 @@ export const InsightOverviewSessionItemSchema = Type.Object({
   }))),
 });
 
+export const InsightOverviewSessionsPageSchema = Type.Object({
+  items: Type.Array(InsightOverviewSessionItemSchema),
+  page: Type.Number(),
+  pageSize: Type.Number(),
+  total: Type.Number(),
+  totalPages: Type.Number(),
+});
+
 export const InsightsOverviewResponseSchema = Type.Object({
   actionItemsOpen: Type.Number(),
   analysis: Type.Object({
@@ -135,12 +143,33 @@ export const InsightsOverviewResponseSchema = Type.Object({
   negativeSessions: Type.Number(),
   problemSessions: Type.Number(),
   readySessions: Type.Number(),
-  sessions: Type.Array(InsightOverviewSessionItemSchema),
+  resolution: Type.Object({
+    noCustomerProblem: Type.Number(),
+    partiallyResolved: Type.Number(),
+    resolved: Type.Number(),
+    unknown: Type.Number(),
+    unresolved: Type.Number(),
+  }),
+  sessions: InsightOverviewSessionsPageSchema,
   totalSessions: Type.Number(),
   totals: InsightOverviewTotalsSchema,
   trend: Type.Array(InsightOverviewTrendPointSchema),
   unresolvedSessions: Type.Number(),
 });
+
+export type InsightOverviewQuery = {
+  analysisStatus?: Static<typeof InsightAnalysisStatusSchema>;
+  entityName?: string;
+  from?: string;
+  intentCode?: string;
+  keyword?: string;
+  page?: number;
+  pageSize?: number;
+  problemScope?: "all" | "problem" | "unresolved";
+  resolutionStatus?: Static<typeof InsightResolutionStatusSchema>;
+  tagCode?: string;
+  to?: string;
+};
 
 export const InsightBusinessTopicDimensionSchema = Type.Union([
   Type.Literal("tag"),

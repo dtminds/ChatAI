@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Analytics02Icon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
   ChartAreaIcon,
   DatabaseIcon,
   LabelImportantIcon,
@@ -8,7 +10,11 @@ import {
   Target02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { InsightsBusinessResponse, InsightsOverviewResponse } from "@chatai/contracts";
+import type {
+  InsightBusinessRelatedSessionsResponse,
+  InsightsBusinessResponse,
+  InsightsOverviewResponse,
+} from "@chatai/contracts";
 import {
   Area,
   AreaChart,
@@ -33,7 +39,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { getInsightBusiness, getInsightOverview } from "./api/insights-service";
+import { getInsightBusiness, getInsightBusinessRelatedSessions } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { ResolutionBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
@@ -91,12 +97,15 @@ const dimensionConfigs: Array<{
 ];
 
 const topicColors = ["#5b5ff0", "#14a6a6", "#e7a23b", "#e36f5c", "#7b61d9", "#2f8bc9", "#58a65c", "#c16d9b", "#b58a3b", "#6f8fbc"];
+const businessRelatedSessionsPageSize = 20;
 
 export function InsightsBusinessPage() {
   const [activeDimension, setActiveDimension] = useState<BusinessDimension>("intent");
   const [business, setBusiness] = useState<InsightsBusinessResponse>();
   const [from, setFrom] = useState(() => getDefaultDateRange().from);
-  const [overview, setOverview] = useState<InsightsOverviewResponse>();
+  const [isRelatedSessionsLoading, setIsRelatedSessionsLoading] = useState(false);
+  const [relatedSessionsPage, setRelatedSessionsPage] = useState<InsightBusinessRelatedSessionsResponse>();
+  const [relatedSessionsPageNumber, setRelatedSessionsPageNumber] = useState(1);
   const [sessionSearchKeyword, setSessionSearchKeyword] = useState("");
   const [selectedTopic, setSelectedTopic] = useState<BusinessTopic>();
   const [to, setTo] = useState(() => getDefaultDateRange().to);
@@ -109,13 +118,9 @@ export function InsightsBusinessPage() {
       to: toBoundaryDate(to, "end"),
     };
 
-    void Promise.all([
-      getInsightBusiness(query),
-      getInsightOverview(query),
-    ]).then(([businessResponse, overviewResponse]) => {
+    void getInsightBusiness(query).then((businessResponse) => {
       if (isActive) {
         setBusiness(businessResponse);
-        setOverview(overviewResponse);
       }
     });
 
@@ -144,14 +149,48 @@ export function InsightsBusinessPage() {
   const activeTopic = selectedTopic?.dimension === activeDimension
     ? selectedTopic
     : topTopics[0];
-  const relatedSessions = useMemo(
-    () => activeTopic
-      ? (overview?.sessions.items ?? [])
-        .filter((session) => topicMatchesSession(activeTopic, session))
-        .filter((session) => sessionMatchesKeyword(session, sessionSearchKeyword))
-      : [],
-    [activeTopic, overview?.sessions.items, sessionSearchKeyword],
-  );
+
+  useEffect(() => {
+    setRelatedSessionsPageNumber(1);
+  }, [activeTopic?.code, activeTopic?.dimension, activeTopic?.type, from, sessionSearchKeyword, to]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    if (!activeTopic) {
+      setRelatedSessionsPage(undefined);
+      setIsRelatedSessionsLoading(false);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    setIsRelatedSessionsLoading(true);
+    void getInsightBusinessRelatedSessions({
+      dimension: activeTopic.dimension,
+      from: toBoundaryDate(from, "start"),
+      keyword: sessionSearchKeyword,
+      page: relatedSessionsPageNumber,
+      pageSize: businessRelatedSessionsPageSize,
+      topicCode: activeTopic.code,
+      topicType: activeTopic.type,
+      to: toBoundaryDate(to, "end"),
+    }).then((response) => {
+      if (isActive) {
+        setRelatedSessionsPage(response);
+        setIsRelatedSessionsLoading(false);
+      }
+    }).catch(() => {
+      if (isActive) {
+        setRelatedSessionsPage(undefined);
+        setIsRelatedSessionsLoading(false);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeTopic, from, relatedSessionsPageNumber, sessionSearchKeyword, to]);
 
   return (
     <InsightsLayout title="业务洞察">
@@ -195,9 +234,12 @@ export function InsightsBusinessPage() {
 
         <RelatedSessionsPanel
           onOpenDetail={(sessionId) => void detail.openDetail(sessionId)}
+          onPageChange={setRelatedSessionsPageNumber}
           onSearchChange={setSessionSearchKeyword}
+          isLoading={isRelatedSessionsLoading}
+          page={relatedSessionsPage}
           searchKeyword={sessionSearchKeyword}
-          sessions={relatedSessions}
+          sessions={relatedSessionsPage?.items ?? []}
           topic={activeTopic}
         />
       </div>
@@ -478,18 +520,32 @@ function TopicRankSkeleton({ index }: { index: number }) {
 }
 
 function RelatedSessionsPanel({
+  isLoading,
   onOpenDetail,
+  onPageChange,
   onSearchChange,
+  page,
   searchKeyword,
   sessions,
   topic,
 }: {
+  isLoading: boolean;
   onOpenDetail: (sessionId: string) => void;
+  onPageChange: (page: number) => void;
   onSearchChange: (value: string) => void;
+  page: InsightBusinessRelatedSessionsResponse | undefined;
   searchKeyword: string;
   sessions: BusinessSession[];
   topic: BusinessTopic | undefined;
 }) {
+  const total = page?.total ?? 0;
+  const currentPage = page?.page ?? 1;
+  const pageSize = page?.pageSize ?? businessRelatedSessionsPageSize;
+  const totalPages = page?.totalPages ?? 1;
+  const startRow = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endRow = Math.min(total, currentPage * pageSize);
+  const pageNumbers = buildPaginationNumbers(currentPage, totalPages);
+
   return (
     <section className="min-w-0 rounded-xl border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-3 p-4">
@@ -528,7 +584,9 @@ function RelatedSessionsPanel({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sessions.length > 0 ? sessions.map((session) => (
+            {isLoading ? (
+              <TableLoadingRow colSpan={6} label="正在加载会话" />
+            ) : sessions.length > 0 ? sessions.map((session) => (
               <TableRow key={session.sessionId}>
                 <TableCell className="py-4">
                   <InsightPerson
@@ -577,7 +635,66 @@ function RelatedSessionsPanel({
           </TableBody>
         </Table>
       </div>
+      {totalPages > 1 ? (
+        <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            显示 {startRow}-{endRow} / 共 {total} 条
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              className="h-8 rounded-[8px]"
+              disabled={currentPage <= 1}
+              onClick={() => onPageChange(currentPage - 1)}
+              size="sm"
+              variant="outline"
+            >
+              <HugeiconsIcon icon={ArrowLeft01Icon} size={15} strokeWidth={2} />
+              上一页
+            </Button>
+            {pageNumbers.map((item, index) => item === "ellipsis" ? (
+              <span className="px-2" key={`${item}-${index}`}>...</span>
+            ) : (
+              <Button
+                className="h-8 min-w-8 rounded-[8px] px-2"
+                key={item}
+                onClick={() => onPageChange(item)}
+                size="sm"
+                variant={item === currentPage ? "default" : "outline"}
+              >
+                {item}
+              </Button>
+            ))}
+            <Button
+              className="h-8 rounded-[8px]"
+              disabled={currentPage >= totalPages}
+              onClick={() => onPageChange(currentPage + 1)}
+              size="sm"
+              variant="outline"
+            >
+              下一页
+              <HugeiconsIcon icon={ArrowRight01Icon} size={15} strokeWidth={2} />
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function TableLoadingRow({ colSpan, label }: { colSpan: number; label: string }) {
+  return (
+    <TableRow>
+      <TableCell className="py-12 text-center" colSpan={colSpan}>
+        <div
+          aria-label={label}
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground"
+          role="status"
+        >
+          <span className="size-3.5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
+          <span>{label}</span>
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -698,25 +815,6 @@ function topicMatchesKeyword(topic: BusinessTopic, normalizedKeyword: string) {
   ].some((value) => normalizeKeyword(value).includes(normalizedKeyword));
 }
 
-function sessionMatchesKeyword(session: BusinessSession, keyword: string) {
-  const normalizedKeyword = normalizeKeyword(keyword);
-
-  if (!normalizedKeyword) {
-    return true;
-  }
-
-  return [
-    session.agentName ?? "",
-    session.customerName,
-    session.problemSummary ?? "",
-    session.summaryCustomerIntent,
-    ...(session.tags ?? []).flatMap((tag) => [tag.tagCode, tag.tagName]),
-    ...(session.entities ?? []).flatMap((entity) => [entity.entityId, entity.entityName, entity.entityType]),
-    ...(session.intents ?? []).flatMap((intent) => [intent.intentCode, intent.intentLabel]),
-    ...(session.assets ?? []).flatMap((asset) => [asset.assetCode, asset.assetName, asset.assetType]),
-  ].some((value) => normalizeKeyword(value).includes(normalizedKeyword));
-}
-
 function normalizeKeyword(value: string) {
   return value.trim().toLowerCase();
 }
@@ -766,23 +864,35 @@ function isSameTopic(
   left: BusinessTopic | undefined,
   right: BusinessTopic | undefined,
 ) {
-  return Boolean(left && right && left.dimension === right.dimension && left.code === right.code);
+  return Boolean(
+    left &&
+    right &&
+    left.dimension === right.dimension &&
+    left.code === right.code &&
+    left.type === right.type,
+  );
 }
 
-function topicMatchesSession(topic: BusinessTopic, session: BusinessSession) {
-  if (topic.dimension === "tag") {
-    return (session.tags ?? []).some((tag) => tag.tagCode === topic.code);
+function buildPaginationNumbers(page: number, totalPages: number): Array<number | "ellipsis"> {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
   }
 
-  if (topic.dimension === "entity") {
-    return (session.entities ?? []).some((entity) => entity.entityId === topic.code);
+  const pages = new Set([1, totalPages, page - 1, page, page + 1].filter((item) => item >= 1 && item <= totalPages));
+  const sorted = Array.from(pages).sort((left, right) => left - right);
+  const result: Array<number | "ellipsis"> = [];
+
+  for (const item of sorted) {
+    const previous = result.at(-1);
+
+    if (typeof previous === "number" && item - previous > 1) {
+      result.push("ellipsis");
+    }
+
+    result.push(item);
   }
 
-  if (topic.dimension === "asset") {
-    return (session.assets ?? []).some((asset) => asset.assetCode === topic.code);
-  }
-
-  return (session.intents ?? []).some((intent) => intent.intentCode === topic.code);
+  return result;
 }
 
 function formatNumber(value: number | undefined) {

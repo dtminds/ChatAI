@@ -224,6 +224,8 @@ export const InsightsBusinessResponseSchema = Type.Object({
   trend: Type.Array(InsightBusinessTrendPointSchema),
 });
 
+export const InsightBusinessRelatedSessionsResponseSchema = InsightOverviewSessionsPageSchema;
+
 export const InsightsQualityOverviewSchema = Type.Object({
   analyzedSessions: Type.Number(),
   noCustomerProblem: Type.Number(),
@@ -575,6 +577,9 @@ export type InsightSessionizationSettingsUpdateRequest = Static<
   typeof InsightSessionizationSettingsUpdateRequestSchema
 >;
 export type InsightsFollowUpsResponse = Static<typeof InsightsFollowUpsResponseSchema>;
+export type InsightBusinessRelatedSessionsResponse = Static<
+  typeof InsightBusinessRelatedSessionsResponseSchema
+>;
 export type InsightsBusinessResponse = Static<typeof InsightsBusinessResponseSchema>;
 export type InsightsOverviewResponse = Static<typeof InsightsOverviewResponseSchema>;
 export type InsightsQualityResponse = Static<typeof InsightsQualityResponseSchema>;

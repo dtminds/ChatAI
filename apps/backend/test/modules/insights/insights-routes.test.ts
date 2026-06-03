@@ -20,6 +20,11 @@ describe("insights routes", () => {
       method: "GET",
       url: "/api/server/insights/business",
     });
+    const businessRelatedSessions = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/insights/business/related-sessions?dimension=intent&topicCode=logistics_delay&page=1&pageSize=20",
+    });
     const followUps = await app.inject({
       headers: { authorization },
       method: "GET",
@@ -91,6 +96,22 @@ describe("insights routes", () => {
         }),
       ],
     });
+    expect(businessRelatedSessions.statusCode).toBe(200);
+    expect(businessRelatedSessions.json()).toMatchObject({
+      data: {
+        items: [
+          expect.objectContaining({
+            problemSummary: "客户反馈物流异常",
+            sessionId: "501",
+          }),
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
+      },
+      success: true,
+    });
     expect(followUps.statusCode).toBe(200);
     expect(followUps.json().data.items).toHaveLength(1);
     expect(detail.statusCode).toBe(200);
@@ -145,10 +166,10 @@ describe("insights routes", () => {
     });
     expect(db.updatedActionStatus).toMatchObject({ id: 801, status: "done" });
     expect(db.insertedJob).toMatchObject({
-      idempotency_key: "rescan:9001:2026-06-01T00:00:00.000Z",
       job_type: "sync_messages",
       uid: 9001,
     });
+    expect(db.insertedJob?.idempotency_key).toMatch(/^rescan:9001:2026-06-01T00:00:00\.000Z:/);
 
     await app.close();
   });
@@ -409,8 +430,9 @@ function createInsightsDbMock() {
       if (table === "xy_wap_embed_session_insight_current as current") {
         return createBuilder((builder) => {
           state.insightCurrentSelectCount += 1;
+          const selectedAliases = collectSelectAliases(builder.selectCalls);
 
-          if (state.insightCurrentSelectCount === 1) {
+          if (selectedAliases.has("logical_sessions")) {
             return [{
               action_items_open: 1,
               agent_messages: 3,
@@ -434,7 +456,7 @@ function createInsightsDbMock() {
             }];
           }
 
-          if (state.insightCurrentSelectCount === 2) {
+          if (selectedAliases.has("date")) {
             return [{
               agent_messages: 3,
               consulting_customers: 1,
@@ -445,7 +467,7 @@ function createInsightsDbMock() {
             }];
           }
 
-          if (state.insightCurrentSelectCount === 3) {
+          if (selectedAliases.has("count") && selectedAliases.size === 1) {
             return [{ count: 1 }];
           }
 
@@ -786,4 +808,31 @@ function createJoinBuilder() {
       return this;
     },
   };
+}
+
+function collectSelectAliases(selectCalls: unknown[][]) {
+  return new Set(selectCalls
+    .flatMap((call) => call)
+    .flatMap((item) => Array.isArray(item) ? item : [item])
+    .map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+
+      if (item && typeof item === "object") {
+        const candidate = item as {
+          alias?: string;
+          expression?: { alias?: string };
+          node?: { alias?: { name?: string } };
+        };
+
+        return candidate.alias
+          ?? candidate.expression?.alias
+          ?? candidate.node?.alias?.name
+          ?? "";
+      }
+
+      return "";
+    })
+    .filter(Boolean));
 }

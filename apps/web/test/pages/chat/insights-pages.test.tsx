@@ -8,6 +8,7 @@ import { useAuthStore } from "@/store/auth-store";
 const serviceMocks = vi.hoisted(() => ({
   createInsightRescanJob: vi.fn(),
   getInsightBusiness: vi.fn(),
+  getInsightBusinessRelatedSessions: vi.fn(),
   getInsightDetail: vi.fn(),
   getInsightFollowUps: vi.fn(),
   getInsightMessageContext: vi.fn(),
@@ -324,6 +325,40 @@ function installInsightMocks() {
         unresolvedSessions: 3,
       },
     ],
+  });
+  serviceMocks.getInsightBusinessRelatedSessions.mockResolvedValue({
+    items: [
+      {
+        agentAvatarUrl: "https://example.com/agent-1.png",
+        agentMessageCount: 3,
+        agentName: "客服一号",
+        analysisStatus: "ready",
+        conversationId: "301",
+        customerAvatarUrl: "https://example.com/customer-1.png",
+        customerMessageCount: 5,
+        customerName: "张三",
+        entities: [
+          { entityId: "sku-1", entityName: "白色羽绒服", entityType: "product" },
+        ],
+        intents: [
+          { intentCode: "logistics_delay", intentLabel: "物流异常" },
+        ],
+        lastMessageAt: 1_780_244_950_000,
+        messageCount: 8,
+        problemSummary: "客户反馈物流异常",
+        resolutionStatus: "unresolved",
+        sessionId: "501",
+        startedAt: 1_780_243_200_000,
+        summaryCustomerIntent: "查物流",
+        tags: [
+          { tagCode: "logistics_issue", tagName: "物流异常" },
+        ],
+      },
+    ],
+    page: 1,
+    pageSize: 20,
+    total: 1,
+    totalPages: 1,
   });
   serviceMocks.getInsightQuality.mockResolvedValue({
     agentStats: [
@@ -1115,6 +1150,22 @@ describe("conversation insights pages", () => {
       from: "2026-05-05T00:00:00.000+08:00",
       to: "2026-06-03T23:59:59.999+08:00",
     });
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dimension: "intent",
+          from: "2026-05-05T00:00:00.000+08:00",
+          page: 1,
+          pageSize: 20,
+          topicCode: "logistics_delay",
+          to: "2026-06-03T23:59:59.999+08:00",
+        }),
+      );
+    });
+    expect(serviceMocks.getInsightOverview).not.toHaveBeenCalledWith({
+      from: "2026-05-05T00:00:00.000+08:00",
+      to: "2026-06-03T23:59:59.999+08:00",
+    });
     expect(screen.getByRole("heading", { name: "客户诉求 Top10" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "相关会话" })).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "客户诉求 Top10" })).toBeInTheDocument();
@@ -1150,6 +1201,25 @@ describe("conversation insights pages", () => {
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
     expect(screen.getByText("未确认物流进展")).toBeInTheDocument();
     expect(screen.queryByText("后续版本接入")).not.toBeInTheDocument();
+  });
+
+  it("shows table loading states while overview and business sessions are loading", async () => {
+    serviceMocks.getInsightOverview.mockImplementation(() => new Promise(() => undefined));
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    const overviewTable = screen.getByRole("table", { name: "逻辑会话明细" });
+    expect(within(overviewTable).getByRole("status", { name: "正在加载会话" })).toBeInTheDocument();
+
+    cleanup();
+    mockSession("admin");
+    installInsightMocks();
+    serviceMocks.getInsightBusinessRelatedSessions.mockImplementation(() => new Promise(() => undefined));
+    renderRoute("/chat/insights/business");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "经营洞察" })).toBeInTheDocument();
+    const relatedSessionsTable = screen.getByRole("table", { name: "相关会话" });
+    expect(within(relatedSessionsTable).getByRole("status", { name: "正在加载会话" })).toBeInTheDocument();
   });
 
   it("hides settings content for non-admin users", async () => {

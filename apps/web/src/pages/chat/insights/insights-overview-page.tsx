@@ -135,6 +135,7 @@ export function InsightsOverviewPage() {
   const [entityFilter, setEntityFilter] = useState("all");
   const [from, setFrom] = useState(() => getDefaultDateRange().from);
   const [intentFilter, setIntentFilter] = useState("all");
+  const [isSessionsLoading, setIsSessionsLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
   const debouncedKeyword = useDebouncedValue(keyword.trim(), 300);
   const [page, setPage] = useState(1);
@@ -181,6 +182,7 @@ export function InsightsOverviewPage() {
   useEffect(() => {
     let isActive = true;
 
+    setIsSessionsLoading(true);
     void getInsightOverview({
       analysisStatus: normalizeAnalysisStatusFilter(analysisStatusFilter),
       entityName: entityFilter === "all" ? undefined : entityFilter,
@@ -196,6 +198,12 @@ export function InsightsOverviewPage() {
     }).then((response) => {
       if (isActive) {
         setOverview(response);
+        setIsSessionsLoading(false);
+      }
+    }).catch(() => {
+      if (isActive) {
+        setOverview(undefined);
+        setIsSessionsLoading(false);
       }
     });
 
@@ -264,6 +272,7 @@ export function InsightsOverviewPage() {
           onTagFilterChange={setTagFilter}
           problemFilter={problemFilter}
           resolutionFilter={resolutionFilter}
+          isLoading={isSessionsLoading}
           rows={sessions}
           sessionsPage={overview?.sessions}
           tagFilter={tagFilter}
@@ -547,6 +556,7 @@ function SessionTableCard({
   entityFilter,
   filterOptions,
   intentFilter,
+  isLoading,
   keyword,
   onAnalysisStatusFilterChange,
   onEntityFilterChange,
@@ -567,6 +577,7 @@ function SessionTableCard({
   entityFilter: string;
   filterOptions: SessionFilterOptions;
   intentFilter: string;
+  isLoading: boolean;
   keyword: string;
   onAnalysisStatusFilterChange: (value: string) => void;
   onEntityFilterChange: (value: string) => void;
@@ -693,7 +704,9 @@ function SessionTableCard({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.length > 0 ? (
+            {isLoading ? (
+              <TableLoadingRow colSpan={7} label="正在加载会话" />
+            ) : rows.length > 0 ? (
               rows.map((row) => (
                 <TableRow key={row.sessionId}>
                   <TableCell className="py-4">
@@ -789,6 +802,23 @@ function SessionTableCard({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function TableLoadingRow({ colSpan, label }: { colSpan: number; label: string }) {
+  return (
+    <TableRow>
+      <TableCell className="py-10 text-center" colSpan={colSpan}>
+        <div
+          aria-label={label}
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground"
+          role="status"
+        >
+          <span className="size-3.5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
+          <span>{label}</span>
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }
 

@@ -4,6 +4,7 @@ import type {
   InsightAnalysisStatus,
   InsightAnalysisPolicy,
   InsightAnalysisPolicyUpdateRequest,
+  InsightBusinessRelatedSessionsResponse,
   InsightOverviewQuery,
   InsightConfigDeletedResponse,
   InsightConfigStatusUpdateRequest,
@@ -119,8 +120,15 @@ export type InsightsOverviewFilters = {
   pageSize?: number;
   problemScope?: InsightOverviewQuery["problemScope"];
   resolutionStatus?: InsightOverviewQuery["resolutionStatus"];
+  sessionIds?: string[];
   tagCode?: string;
   to?: string;
+};
+
+export type InsightsBusinessRelatedSessionFilters = InsightsOverviewFilters & {
+  dimension: InsightBusinessTopicFactRow["dimension"];
+  topicCode: string;
+  topicType?: string;
 };
 
 export type InsightCurrentSessionPage = {
@@ -385,6 +393,50 @@ export class InsightsService {
         unresolvedSessions: rows.filter((row) => unresolvedStatuses.has(row.resolutionStatus)).length,
       },
       trend: buildBusinessTrend(rows, facts),
+    };
+  }
+
+  async getBusinessRelatedSessions(
+    scope: InsightsUidScope,
+    filters: InsightsBusinessRelatedSessionFilters,
+  ): Promise<InsightBusinessRelatedSessionsResponse> {
+    const normalizedPage = normalizeOverviewPage(filters.page);
+    const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
+    const facts = await this.repository.listBusinessTopicFacts?.(scope, filters) ?? [];
+    const sessionIds = Array.from(
+      new Set(
+        facts
+          .filter((fact) => businessTopicFactMatchesFilter(fact, filters))
+          .sort((left, right) => right.startedAt - left.startedAt)
+          .map((fact) => fact.sessionId),
+      ),
+    );
+
+    if (sessionIds.length === 0) {
+      return {
+        items: [],
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+        total: 0,
+        totalPages: 1,
+      };
+    }
+
+    const sessions = await this.repository.listCurrentSessions(scope, {
+      from: filters.from,
+      keyword: filters.keyword,
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      sessionIds,
+      to: filters.to,
+    });
+
+    return {
+      items: buildOverviewSessions(sessions.items),
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      total: sessions.total,
+      totalPages: Math.max(1, Math.ceil(sessions.total / normalizedPageSize)),
     };
   }
 
@@ -685,7 +737,7 @@ export class InsightsService {
     const jobId = await this.repository.createRescanJob(
       scope,
       from,
-      `rescan:${scope.uid}:${normalizedFrom}`,
+      `rescan:${scope.uid}:${normalizedFrom}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
     );
 
     return {
@@ -935,6 +987,17 @@ function isNegativeTopicFact(
   }
 
   return session.negativeCount > 0;
+}
+
+function businessTopicFactMatchesFilter(
+  fact: InsightBusinessTopicFactRow,
+  filters: InsightsBusinessRelatedSessionFilters,
+) {
+  if (fact.dimension !== filters.dimension || fact.code !== filters.topicCode) {
+    return false;
+  }
+
+  return filters.topicType == null || fact.type === filters.topicType;
 }
 
 function sumTopicMentions(topics: InsightsBusinessResponse["tagDistribution"]) {

@@ -24,6 +24,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { InsightsRepository } from "./insights.repository.js";
 import {
   InsightsService,
+  type InsightsBusinessRelatedSessionFilters,
   type InsightsOverviewFilters,
   type InsightsUidScope,
 } from "./insights.service.js";
@@ -68,6 +69,20 @@ const OverviewQuerySchema = Type.Object({
   to: Type.Optional(Type.String()),
 });
 
+const BusinessRelatedSessionsQuerySchema = Type.Intersect([
+  Type.Pick(OverviewQuerySchema, ["from", "keyword", "page", "pageSize", "to"]),
+  Type.Object({
+    dimension: Type.Union([
+      Type.Literal("asset"),
+      Type.Literal("entity"),
+      Type.Literal("intent"),
+      Type.Literal("tag"),
+    ]),
+    topicCode: Type.String({ minLength: 1 }),
+    topicType: Type.Optional(Type.String()),
+  }),
+]);
+
 const SessionParamsSchema = Type.Object({
   sessionId: Type.String({ minLength: 1 }),
 });
@@ -86,6 +101,7 @@ const ConfigParamsSchema = Type.Object({
 
 type FollowUpsQuery = Static<typeof FollowUpsQuerySchema>;
 type OverviewQuery = Static<typeof OverviewQuerySchema>;
+type BusinessRelatedSessionsQuery = Static<typeof BusinessRelatedSessionsQuerySchema>;
 type SessionParams = Static<typeof SessionParamsSchema>;
 type ActionItemParams = Static<typeof ActionItemParamsSchema>;
 type ActionStatusBody = Static<typeof ActionStatusBodySchema>;
@@ -124,6 +140,24 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
         await createInsightsService(app).getBusiness(
           await getUidScope(app, request),
           normalizeOverviewQuery(request.query),
+        ),
+      );
+    },
+  );
+
+  app.get<{ Querystring: BusinessRelatedSessionsQuery }>(
+    "/api/server/insights/business/related-sessions",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: BusinessRelatedSessionsQuerySchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).getBusinessRelatedSessions(
+          await getUidScope(app, request),
+          normalizeBusinessRelatedSessionsQuery(request.query),
         ),
       );
     },
@@ -540,6 +574,21 @@ function normalizeOverviewQuery(query: OverviewQuery): InsightsOverviewFilters {
     problemScope: query.problemScope,
     resolutionStatus: query.resolutionStatus,
     tagCode: query.tagCode,
+    to: query.to,
+  };
+}
+
+function normalizeBusinessRelatedSessionsQuery(
+  query: BusinessRelatedSessionsQuery,
+): InsightsBusinessRelatedSessionFilters {
+  return {
+    dimension: query.dimension,
+    from: query.from,
+    keyword: query.keyword,
+    page: normalizePositiveQueryNumber(query.page),
+    pageSize: normalizePositiveQueryNumber(query.pageSize),
+    topicCode: query.topicCode,
+    topicType: query.topicType,
     to: query.to,
   };
 }

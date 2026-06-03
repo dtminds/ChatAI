@@ -3434,8 +3434,17 @@ function applyCurrentSessionFilters<Query>(
   const from = parseDateBoundary(filters.from);
   const to = parseDateBoundary(filters.to);
   const keyword = filters.keyword?.trim();
+  const sessionIds = uniquePositiveNumbers((filters.sessionIds ?? []).map(parsePositiveInteger));
 
   next = next.where("session.uid", "=", scope.uid) as typeof next;
+
+  if (filters.sessionIds && sessionIds.length === 0) {
+    next = next.where(sql<boolean>`1 = 0`) as typeof next;
+  }
+
+  if (sessionIds.length > 0) {
+    next = next.where("session.id", "in", sessionIds) as typeof next;
+  }
 
   if (from != null) {
     next = next.where("session.started_at", ">=", from) as typeof next;

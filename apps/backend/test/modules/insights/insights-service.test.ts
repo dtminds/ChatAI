@@ -787,6 +787,52 @@ describe("InsightsService", () => {
     expect(repository.listCurrentSessions).not.toHaveBeenCalled();
   });
 
+  it("paginates business related sessions by selected topic facts", async () => {
+    const repository = createRepository({
+      listCurrentSessions: vi.fn(async (_scope, filters) => ({
+        items: [baseRows[0]],
+        total: 1,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    const result = await service.getBusinessRelatedSessions(scope, {
+      dimension: "intent",
+      from: "2026-06-01",
+      keyword: "物流",
+      page: 2,
+      pageSize: 1,
+      topicCode: "logistics_delay",
+      to: "2026-06-30",
+    });
+
+    expect(result).toMatchObject({
+      items: [
+        expect.objectContaining({
+          problemSummary: "客户反馈物流异常",
+          sessionId: "501",
+        }),
+      ],
+      page: 2,
+      pageSize: 1,
+      total: 1,
+      totalPages: 1,
+    });
+    expect(repository.listBusinessTopicFacts).toHaveBeenCalledWith(scope, expect.objectContaining({
+      dimension: "intent",
+      topicCode: "logistics_delay",
+    }));
+    expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, {
+      from: "2026-06-01",
+      keyword: "物流",
+      page: 2,
+      pageSize: 1,
+      sessionIds: ["501"],
+      to: "2026-06-30",
+    });
+    expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
+  });
+
   it("filters follow-up action items by status", async () => {
     const service = new InsightsService(createRepository());
 
@@ -947,7 +993,7 @@ describe("InsightsService", () => {
     expect(repository.updateActionStatus).toHaveBeenCalledWith(scope, "801", "done");
   });
 
-  it("creates historical rescan jobs with a stable idempotency key", async () => {
+  it("creates a fresh historical rescan job on each manual trigger", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
@@ -958,7 +1004,7 @@ describe("InsightsService", () => {
     expect(repository.createRescanJob).toHaveBeenCalledWith(
       scope,
       new Date("2026-06-01T00:00:00.000Z"),
-      "rescan:9001:2026-06-01T00:00:00.000Z",
+      expect.stringMatching(/^rescan:9001:2026-06-01T00:00:00\.000Z:/),
     );
   });
 

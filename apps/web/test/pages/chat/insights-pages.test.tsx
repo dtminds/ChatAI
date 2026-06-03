@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/auth-store";
 
 const serviceMocks = vi.hoisted(() => ({
   createInsightRescanJob: vi.fn(),
+  getInsightBusiness: vi.fn(),
   getInsightDetail: vi.fn(),
   getInsightFollowUps: vi.fn(),
   getInsightMessageContext: vi.fn(),
@@ -31,6 +32,24 @@ const serviceMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/pages/chat/insights/api/insights-service", () => serviceMocks);
+
+vi.mock("recharts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("recharts")>();
+  const React = await import("react");
+
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children }: { children: React.ReactNode }) => {
+      const chart = React.Children.only(children);
+
+      if (!React.isValidElement<{ height?: number; width?: number }>(chart)) {
+        return chart;
+      }
+
+      return React.cloneElement(chart, { height: 180, width: 480 });
+    },
+  };
+});
 
 function renderRoute(initialEntry: string) {
   const router = createMemoryRouter(routerConfig, {
@@ -85,6 +104,15 @@ function installInsightMocks() {
         customerAvatarUrl: "https://example.com/customer-1.png",
         customerMessageCount: 5,
         customerName: "张三",
+        assets: [
+          { assetCode: "https://example.com/promo", assetName: "红包活动", assetType: "link" },
+        ],
+        entities: [
+          { entityId: "sku-1", entityName: "白色羽绒服", entityType: "product" },
+        ],
+        intents: [
+          { intentCode: "logistics_delay", intentLabel: "物流异常" },
+        ],
         lastMessageAt: 1_780_244_950_000,
         messageCount: 8,
         problemSummary: "客户反馈物流异常",
@@ -92,6 +120,9 @@ function installInsightMocks() {
         sessionId: "501",
         startedAt: 1_780_243_200_000,
         summaryCustomerIntent: "查物流",
+        tags: [
+          { tagCode: "logistics_issue", tagName: "物流异常" },
+        ],
       },
       {
         agentAvatarUrl: "https://example.com/agent-2.png",
@@ -102,6 +133,10 @@ function installInsightMocks() {
         customerAvatarUrl: "https://example.com/customer-2.png",
         customerMessageCount: 3,
         customerName: "李四",
+        entities: [],
+        intents: [
+          { intentCode: "refund", intentLabel: "退款咨询" },
+        ],
         lastMessageAt: 1_780_244_500_000,
         messageCount: 5,
         problemSummary: "客户咨询退款到账时间",
@@ -109,6 +144,9 @@ function installInsightMocks() {
         sessionId: "502",
         startedAt: 1_780_244_000_000,
         summaryCustomerIntent: "退款咨询",
+        tags: [
+          { tagCode: "refund", tagName: "退款咨询" },
+        ],
       },
     ],
     totalSessions: 22,
@@ -138,6 +176,119 @@ function installInsightMocks() {
       },
     ],
     unresolvedSessions: 5,
+  });
+  serviceMocks.getInsightBusiness.mockResolvedValue({
+    assetHotspots: [
+      {
+        actionItemsOpen: 0,
+        code: "https://example.com/promo",
+        dimension: "asset",
+        mentionCount: 6,
+        name: "红包活动",
+        negativeRate: 0,
+        negativeSessions: 0,
+        sessionCount: 5,
+        share: 0.25,
+        type: "link",
+        unresolvedRate: 0.2,
+        unresolvedSessions: 1,
+      },
+    ],
+    entityHotspots: [
+      {
+        actionItemsOpen: 1,
+        code: "sku-1",
+        dimension: "entity",
+        mentionCount: 12,
+        name: "白色羽绒服",
+        negativeRate: 0.22,
+        negativeSessions: 2,
+        sessionCount: 9,
+        share: 0.45,
+        type: "product",
+        unresolvedRate: 0.33,
+        unresolvedSessions: 3,
+      },
+    ],
+    intentDistribution: [
+      {
+        actionItemsOpen: 1,
+        code: "logistics_delay",
+        dimension: "intent",
+        mentionCount: 8,
+        name: "物流异常",
+        negativeRate: 0.25,
+        negativeSessions: 2,
+        sessionCount: 8,
+        share: 0.4,
+        unresolvedRate: 0.375,
+        unresolvedSessions: 3,
+      },
+    ],
+    qualityTopics: [
+      {
+        actionItemsOpen: 1,
+        code: "sku-1",
+        dimension: "entity",
+        mentionCount: 12,
+        name: "白色羽绒服",
+        negativeRate: 0.22,
+        negativeSessions: 2,
+        sessionCount: 9,
+        share: 0.45,
+        type: "product",
+        unresolvedRate: 0.33,
+        unresolvedSessions: 3,
+      },
+    ],
+    tagDistribution: [
+      {
+        actionItemsOpen: 1,
+        code: "logistics_issue",
+        dimension: "tag",
+        mentionCount: 10,
+        name: "物流异常",
+        negativeRate: 0.2,
+        negativeSessions: 2,
+        sessionCount: 8,
+        share: 0.4,
+        unresolvedRate: 0.375,
+        unresolvedSessions: 3,
+      },
+    ],
+    totals: {
+      actionItemsOpen: 3,
+      analyzedSessions: 18,
+      assetMentions: 6,
+      entityMentions: 12,
+      intentMentions: 8,
+      negativeSessions: 4,
+      tagMentions: 10,
+      topicSessions: 16,
+      unresolvedSessions: 5,
+    },
+    trend: [
+      {
+        assetMentions: 2,
+        date: "2026-06-01",
+        entityMentions: 5,
+        intentMentions: 3,
+        negativeSessions: 1,
+        tagMentions: 4,
+        topicSessions: 7,
+        unresolvedSessions: 2,
+      },
+      {
+        assetMentions: 4,
+        date: "2026-06-02",
+        entityMentions: 7,
+        intentMentions: 5,
+        negativeSessions: 3,
+        tagMentions: 6,
+        topicSessions: 9,
+        unresolvedSessions: 3,
+      },
+    ],
   });
   serviceMocks.getInsightQuality.mockResolvedValue({
     agentStats: [
@@ -506,15 +657,29 @@ function installInsightMocks() {
 describe("conversation insights pages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-03T10:00:00+08:00"));
     mockSession("admin");
     installInsightMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("renders overview navigation, metrics and detail evidence", async () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /日期范围.*近30天.*2026-05-05.*2026-06-03/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText("开始日期")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("结束日期")).not.toBeInTheDocument();
+    expect(serviceMocks.getInsightOverview).toHaveBeenCalledWith({
+      from: "2026-05-05T00:00:00.000+08:00",
+      to: "2026-06-03T23:59:59.999+08:00",
+    });
     expect(screen.getByRole("link", { name: /服务质检/ })).toHaveAttribute("href", "/chat/insights/quality");
+    expect(screen.queryByRole("link", { name: /分析明细/ })).not.toBeInTheDocument();
     expect(screen.getByText("逻辑会话数")).toBeInTheDocument();
     expect(screen.getAllByText("22").length).toBeGreaterThan(0);
     expect(screen.getByText("咨询用户数")).toBeInTheDocument();
@@ -526,6 +691,21 @@ describe("conversation insights pages", () => {
     expect(screen.queryByText("分析完成率和异常状态")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "张三" })).toBeInTheDocument();
     expect(screen.queryByText("会话 301")).not.toBeInTheDocument();
+    expect(document.querySelector("#insightTrendArea stop[offset='100%']")).toHaveAttribute("stop-opacity", "0");
+
+    await userEvent.click(screen.getByRole("combobox", { name: "标签" }));
+    await userEvent.click(await screen.findByRole("option", { name: "退款咨询" }));
+
+    expect(screen.getByText("客户咨询退款到账时间")).toBeInTheDocument();
+    expect(screen.queryByText("客户反馈物流异常")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("combobox", { name: "标签" }));
+    await userEvent.click(await screen.findByRole("option", { name: "全部标签" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "问题范围" }));
+    await userEvent.click(await screen.findByRole("option", { name: "未解决/部分解决" }));
+
+    expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
+    expect(screen.queryByText("客户咨询退款到账时间")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
 
@@ -558,6 +738,35 @@ describe("conversation insights pages", () => {
     expect(screen.queryByRole("link", { name: "跳转聊天" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "查看上下文" })).not.toBeInTheDocument();
     expect(serviceMocks.getInsightMessageContext).not.toHaveBeenCalled();
+  });
+
+  it("applies date range presets to insight overview queries", async () => {
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /日期范围.*近30天/ }));
+    expect(await screen.findByText("2026年5月")).toBeInTheDocument();
+    expect(screen.getByText("2026年6月")).toBeInTheDocument();
+    expect(screen.queryByText("2026年7月")).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "近7天" }));
+    expect(screen.getByText("2026年5月")).toBeInTheDocument();
+    expect(screen.getByText("2026年6月")).toBeInTheDocument();
+    expect(screen.queryByText("2026年7月")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "本月" }));
+    expect(screen.getByText("2026年5月")).toBeInTheDocument();
+    expect(screen.getByText("2026年6月")).toBeInTheDocument();
+    expect(screen.queryByText("2026年7月")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "近7天" }));
+    await userEvent.click(screen.getByRole("button", { name: "应用" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith({
+        from: "2026-05-28T00:00:00.000+08:00",
+        to: "2026-06-03T23:59:59.999+08:00",
+      });
+    });
+    expect(screen.getByRole("button", { name: /日期范围.*近7天.*2026-05-28.*2026-06-03/ })).toBeInTheDocument();
   });
 
   it("renders quality problem list and agent report", async () => {
@@ -670,7 +879,48 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights/business");
 
     expect(await screen.findByRole("heading", { level: 1, name: "经营洞察" })).toBeInTheDocument();
-    expect(screen.getByText("后续版本接入")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /日期范围.*近30天.*2026-05-05.*2026-06-03/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText("开始日期")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("结束日期")).not.toBeInTheDocument();
+    expect(serviceMocks.getInsightBusiness).toHaveBeenCalledWith({
+      from: "2026-05-05T00:00:00.000+08:00",
+      to: "2026-06-03T23:59:59.999+08:00",
+    });
+    expect(screen.getByRole("heading", { name: "客户诉求 Top10" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "相关会话" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "客户诉求 Top10" })).toBeInTheDocument();
+    expect(screen.queryByText("关注点会话")).not.toBeInTheDocument();
+    expect(screen.queryByText("未解决会话")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "关注点趋势" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "关注点列表" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /客户诉求/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /业务标签/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /实体对象/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /链接文件/ })).toBeInTheDocument();
+    expect(screen.getAllByText("物流异常").length).toBeGreaterThan(0);
+
+    const relatedSessionsTable = screen.getByRole("table", { name: "相关会话" });
+    expect(within(relatedSessionsTable).getByText("客户反馈物流异常")).toBeInTheDocument();
+    expect(within(relatedSessionsTable).getByRole("img", { name: "张三" })).toBeInTheDocument();
+    expect(within(relatedSessionsTable).getByRole("img", { name: "客服一号" })).toBeInTheDocument();
+    expect(within(relatedSessionsTable).queryByText("客户咨询退款到账时间")).not.toBeInTheDocument();
+
+    expect(screen.queryByRole("combobox", { name: "来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "排序" })).not.toBeInTheDocument();
+    expect(screen.queryByText("筛选")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /实体对象/ }));
+    expect(screen.getByRole("heading", { name: "实体对象 Top10" })).toBeInTheDocument();
+    expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
+
+    await userEvent.type(screen.getByRole("textbox", { name: "搜索相关会话" }), "物流异常");
+    expect(within(relatedSessionsTable).getByText("客户反馈物流异常")).toBeInTheDocument();
+
+    await userEvent.click(within(relatedSessionsTable).getByRole("button", { name: "查看详情" }));
+
+    expect(await screen.findByText("洞察详情")).toBeInTheDocument();
+    expect(screen.getByText("未确认物流进展")).toBeInTheDocument();
+    expect(screen.queryByText("后续版本接入")).not.toBeInTheDocument();
   });
 
   it("hides settings content for non-admin users", async () => {

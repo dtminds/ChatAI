@@ -6,7 +6,6 @@ import {
   ArrowLeft02Icon,
   ClipboardCheckIcon,
   DashboardSquare01Icon,
-  DatabaseSyncIcon,
   Setting07Icon,
   Task01Icon,
 } from "@hugeicons/core-free-icons";
@@ -32,13 +31,8 @@ const insightNavItems = [
   },
   {
     icon: Analytics02Icon,
-    label: "经营洞察",
+    label: "业务洞察",
     to: "/chat/insights/business",
-  },
-  {
-    icon: DatabaseSyncIcon,
-    label: "分析明细",
-    to: "/chat/insights/records",
   },
   {
     icon: Setting07Icon,

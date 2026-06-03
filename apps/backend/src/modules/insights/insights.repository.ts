@@ -31,6 +31,7 @@ import {
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 import type {
   InsightActionItemRow,
+  InsightBusinessTopicFactRow,
   InsightCurrentSessionRow,
   InsightDetailRow,
   InsightEvidenceMessageRow,
@@ -40,6 +41,10 @@ import type {
   InsightsUidScope,
 } from "./insights.service.js";
 import { buildInsightMessageInput } from "./insight-message-input-builder.js";
+import {
+  parseInsightMessageContent,
+  readInsightContentString,
+} from "./insight-message-input-builder.js";
 import { DEFAULT_INSIGHT_SETTINGS } from "./insights-seeds.js";
 
 type CurrentSessionQueryRow = {
@@ -160,6 +165,47 @@ type IntentDistributionQueryRow = {
   intent_code: string;
   intent_label: string;
 };
+
+type BusinessTopicFactQueryRow = {
+  code: string;
+  mention_count: number | string;
+  name: string;
+  sentiment: string | null;
+  session_id: number | string;
+  snapshot_id: number | string;
+  started_at: number | string;
+  type: string | null;
+};
+
+type AssetTopicMessageQueryRow = {
+  content: string | null;
+  message_type: string;
+  session_id: number | string;
+  snapshot_id: number | string;
+  source_message_id: number | string;
+  started_at: number | string;
+};
+
+type SessionTagTopicRow = {
+  snapshot_id: number | string;
+  tag_code: string;
+  tag_name: string;
+};
+
+type SessionEntityTopicRow = {
+  entity_id: string;
+  entity_name: string;
+  entity_type: string;
+  snapshot_id: number | string;
+};
+
+type SessionIntentTopicRow = {
+  intent_code: string;
+  intent_label: string;
+  snapshot_id: number | string;
+};
+
+type SessionAssetTopicRow = AssetTopicMessageQueryRow;
 
 type ContactProfile = {
   avatarUrl: string;
@@ -901,9 +947,227 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const rows = await query.execute() as CurrentSessionQueryRow[];
 
     const sessionRows = mapCurrentSessionRows(rows);
-    await this.hydrateCurrentSessionActors(scope, sessionRows);
+    await Promise.all([
+      this.hydrateCurrentSessionActors(scope, sessionRows),
+      this.hydrateCurrentSessionTopics(sessionRows),
+    ]);
 
     return sessionRows;
+  }
+
+  async listBusinessTopicFacts(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters = {},
+  ): Promise<InsightBusinessTopicFactRow[]> {
+    const [
+      tags,
+      entities,
+      intents,
+      assets,
+    ] = await Promise.all([
+      this.listBusinessTagFacts(scope, filters),
+      this.listBusinessEntityFacts(scope, filters),
+      this.listBusinessIntentFacts(scope, filters),
+      this.listBusinessAssetFacts(scope, filters),
+    ]);
+
+    return [
+      ...tags,
+      ...entities,
+      ...intents,
+      ...assets,
+    ];
+  }
+
+  private async listBusinessTagFacts(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters,
+  ): Promise<InsightBusinessTopicFactRow[]> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_session_tag as tag")
+      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
+        join.onRef("current.current_snapshot_id", "=", "tag.snapshot_id"),
+      )
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "current.session_id"),
+      )
+      .select([
+        "tag.tag_code as code",
+        "tag.tag_name as name",
+        "session.id as session_id",
+        "session.started_at as started_at",
+        "tag.snapshot_id as snapshot_id",
+        sql<number>`count(tag.id)`.as("mention_count"),
+      ])
+      .where("session.uid", "=", scope.uid)
+      .groupBy(["tag.tag_code", "tag.tag_name", "session.id", "session.started_at", "tag.snapshot_id"])
+      .orderBy(sql<number>`count(tag.id)`, "desc")
+      .limit(5_000);
+
+    query = applyTopicDateFilters(query, filters);
+
+    const rows = await query.execute() as Array<Omit<BusinessTopicFactQueryRow, "sentiment" | "type">>;
+
+    return rows.map((row) => ({
+      code: row.code,
+      dimension: "tag",
+      mentionCount: parseNumber(row.mention_count),
+      name: row.name,
+      sessionId: String(row.session_id),
+      snapshotId: String(row.snapshot_id),
+      startedAt: parseNumber(row.started_at),
+    }));
+  }
+
+  private async listBusinessEntityFacts(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters,
+  ): Promise<InsightBusinessTopicFactRow[]> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_session_entity as entity")
+      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
+        join.onRef("current.current_snapshot_id", "=", "entity.snapshot_id"),
+      )
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "current.session_id"),
+      )
+      .select([
+        "entity.entity_id as code",
+        "entity.entity_name as name",
+        "entity.entity_type as type",
+        "entity.sentiment as sentiment",
+        "session.id as session_id",
+        "session.started_at as started_at",
+        "entity.snapshot_id as snapshot_id",
+        sql<number>`count(entity.id)`.as("mention_count"),
+      ])
+      .where("session.uid", "=", scope.uid)
+      .groupBy([
+        "entity.entity_id",
+        "entity.entity_name",
+        "entity.entity_type",
+        "entity.sentiment",
+        "session.id",
+        "session.started_at",
+        "entity.snapshot_id",
+      ])
+      .orderBy(sql<number>`count(entity.id)`, "desc")
+      .limit(5_000);
+
+    query = applyTopicDateFilters(query, filters);
+
+    const rows = await query.execute() as BusinessTopicFactQueryRow[];
+
+    return rows.map((row) => ({
+      code: row.code,
+      dimension: "entity",
+      mentionCount: parseNumber(row.mention_count),
+      name: row.name,
+      sentiment: row.sentiment,
+      sessionId: String(row.session_id),
+      snapshotId: String(row.snapshot_id),
+      startedAt: parseNumber(row.started_at),
+      type: row.type,
+    }));
+  }
+
+  private async listBusinessIntentFacts(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters,
+  ): Promise<InsightBusinessTopicFactRow[]> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_session_intent as intent")
+      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
+        join.onRef("current.current_snapshot_id", "=", "intent.snapshot_id"),
+      )
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "current.session_id"),
+      )
+      .select([
+        "intent.intent_code as code",
+        "intent.intent_label as name",
+        "session.id as session_id",
+        "session.started_at as started_at",
+        "intent.snapshot_id as snapshot_id",
+        sql<number>`count(intent.id)`.as("mention_count"),
+      ])
+      .where("session.uid", "=", scope.uid)
+      .groupBy(["intent.intent_code", "intent.intent_label", "session.id", "session.started_at", "intent.snapshot_id"])
+      .orderBy(sql<number>`count(intent.id)`, "desc")
+      .limit(5_000);
+
+    query = applyTopicDateFilters(query, filters);
+
+    const rows = await query.execute() as Array<Omit<BusinessTopicFactQueryRow, "sentiment" | "type">>;
+
+    return rows.map((row) => ({
+      code: row.code,
+      dimension: "intent",
+      mentionCount: parseNumber(row.mention_count),
+      name: row.name,
+      sessionId: String(row.session_id),
+      snapshotId: String(row.snapshot_id),
+      startedAt: parseNumber(row.started_at),
+    }));
+  }
+
+  private async listBusinessAssetFacts(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters,
+  ): Promise<InsightBusinessTopicFactRow[]> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "session_message.session_id"),
+      )
+      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
+        join.onRef("current.session_id", "=", "session.id"),
+      )
+      .innerJoin("xy_wap_embed_msg_audit_info as message", (join) =>
+        join.onRef("message.id", "=", "session_message.source_message_id"),
+      )
+      .select([
+        "message.content as content",
+        "session_message.message_type as message_type",
+        "session.id as session_id",
+        "session.started_at as started_at",
+        "current.current_snapshot_id as snapshot_id",
+        "session_message.source_message_id as source_message_id",
+      ])
+      .where("session.uid", "=", scope.uid)
+      .where("session_message.message_type", "in", ["link", "miniapp", "file"])
+      .orderBy("session_message.source_message_id", "asc")
+      .limit(10_000);
+
+    query = applyTopicDateFilters(query, filters);
+
+    const rows = await query.execute() as AssetTopicMessageQueryRow[];
+    const factsByKey = new Map<string, InsightBusinessTopicFactRow>();
+
+    for (const row of rows) {
+      const asset = parseBusinessAssetTopic(row);
+
+      if (!asset) {
+        continue;
+      }
+
+      const key = `${row.session_id}:${asset.code}:${asset.type}`;
+      const current = factsByKey.get(key) ?? {
+        code: asset.code,
+        dimension: "asset" as const,
+        mentionCount: 0,
+        name: asset.name,
+        sessionId: String(row.session_id),
+        snapshotId: String(row.snapshot_id),
+        startedAt: parseNumber(row.started_at),
+        type: asset.type,
+      };
+
+      current.mentionCount += 1;
+      factsByKey.set(key, current);
+    }
+
+    return Array.from(factsByKey.values());
   }
 
   async listActionItems(
@@ -1932,6 +2196,83 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }
   }
 
+  private async hydrateCurrentSessionTopics(rows: InsightCurrentSessionRow[]) {
+    const snapshotIds = uniquePositiveNumbers(
+      rows.map((row) => Number(row.currentSnapshotId)),
+    );
+
+    if (snapshotIds.length === 0) {
+      return;
+    }
+
+    const [
+      tags,
+      entities,
+      intents,
+      assets,
+    ] = await Promise.all([
+      this.db
+        .selectFrom("xy_wap_embed_session_tag")
+        .select(["snapshot_id", "tag_code", "tag_name"])
+        .where("snapshot_id", "in", snapshotIds)
+        .execute() as Promise<SessionTagTopicRow[]>,
+      this.db
+        .selectFrom("xy_wap_embed_session_entity")
+        .select(["entity_id", "entity_name", "entity_type", "snapshot_id"])
+        .where("snapshot_id", "in", snapshotIds)
+        .execute() as Promise<SessionEntityTopicRow[]>,
+      this.db
+        .selectFrom("xy_wap_embed_session_intent")
+        .select(["intent_code", "intent_label", "snapshot_id"])
+        .where("snapshot_id", "in", snapshotIds)
+        .execute() as Promise<SessionIntentTopicRow[]>,
+      this.db
+        .selectFrom("xy_wap_embed_logical_session_message as session_message")
+        .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+          join.onRef("session.id", "=", "session_message.session_id"),
+        )
+        .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
+          join.onRef("current.session_id", "=", "session.id"),
+        )
+        .innerJoin("xy_wap_embed_msg_audit_info as message", (join) =>
+          join.onRef("message.id", "=", "session_message.source_message_id"),
+        )
+        .select([
+          "message.content as content",
+          "session_message.message_type as message_type",
+          "session.id as session_id",
+          "session.started_at as started_at",
+          "current.current_snapshot_id as snapshot_id",
+          "session_message.source_message_id as source_message_id",
+        ])
+        .where("current.current_snapshot_id", "in", snapshotIds)
+        .where("session_message.message_type", "in", ["link", "miniapp", "file"])
+        .execute() as Promise<SessionAssetTopicRow[]>,
+    ]);
+
+    const tagsBySnapshotId = groupBySnapshotId(tags, (row) => ({
+      tagCode: row.tag_code,
+      tagName: row.tag_name,
+    }));
+    const entitiesBySnapshotId = groupBySnapshotId(entities, (row) => ({
+      entityId: row.entity_id,
+      entityName: row.entity_name,
+      entityType: row.entity_type,
+    }));
+    const intentsBySnapshotId = groupBySnapshotId(intents, (row) => ({
+      intentCode: row.intent_code,
+      intentLabel: row.intent_label,
+    }));
+    const assetsBySnapshotId = groupAssetsBySnapshotId(assets);
+
+    for (const row of rows) {
+      row.tags = tagsBySnapshotId.get(row.currentSnapshotId) ?? [];
+      row.entities = entitiesBySnapshotId.get(row.currentSnapshotId) ?? [];
+      row.intents = intentsBySnapshotId.get(row.currentSnapshotId) ?? [];
+      row.assets = assetsBySnapshotId.get(row.currentSnapshotId) ?? [];
+    }
+  }
+
   private async hydrateActionItemCustomers(
     scope: InsightsUidScope,
     rows: InsightActionItemRow[],
@@ -2583,6 +2924,172 @@ function getAffectedRows(result: unknown) {
   }
 
   return affectedRows ?? 0;
+}
+
+function applyTopicDateFilters<Query>(
+  query: Query,
+  filters: InsightsOverviewFilters,
+): Query {
+  let next = query as Query & {
+    where(column: string, operator: string, value: unknown): Query;
+  };
+  const from = parseDateBoundary(filters.from);
+  const to = parseDateBoundary(filters.to);
+
+  if (from != null) {
+    next = next.where("session.started_at", ">=", from) as typeof next;
+  }
+
+  if (to != null) {
+    next = next.where("session.started_at", "<=", to) as typeof next;
+  }
+
+  return next;
+}
+
+function parseBusinessAssetTopic(row: AssetTopicMessageQueryRow) {
+  const parsed = parseInsightMessageContent(row.content);
+
+  if (row.message_type === "link") {
+    const rawUrl =
+      readInsightContentString(parsed, "url") ||
+      readInsightContentString(parsed, "href") ||
+      readInsightContentString(parsed, "linkUrl");
+    const normalizedUrl = normalizeUrlWithoutQuery(rawUrl);
+    const title =
+      readInsightContentString(parsed, "title") ||
+      readInsightContentString(parsed, "content") ||
+      readInsightContentString(parsed, "description") ||
+      normalizedUrl ||
+      "未知链接";
+
+    if (!normalizedUrl && !title) {
+      return undefined;
+    }
+
+    return {
+      code: normalizedUrl || `link:${title}`,
+      name: title,
+      type: "link",
+    };
+  }
+
+  if (row.message_type === "miniapp") {
+    const appId =
+      readInsightContentString(parsed, "appId") ||
+      readInsightContentString(parsed, "appid");
+    const rawPath =
+      readInsightContentString(parsed, "pagePath") ||
+      readInsightContentString(parsed, "pagepath") ||
+      readInsightContentString(parsed, "path");
+    const normalizedPath = normalizePathWithoutQuery(rawPath);
+    const title =
+      readInsightContentString(parsed, "title") ||
+      readInsightContentString(parsed, "appName") ||
+      normalizedPath ||
+      "未知小程序";
+    const code = [appId, normalizedPath].filter(Boolean).join(":");
+
+    return {
+      code: code || `miniapp:${title}`,
+      name: title,
+      type: "miniapp",
+    };
+  }
+
+  if (row.message_type === "file") {
+    const fileName = readInsightContentString(parsed, "fileName") || "未知文件";
+    const stableId =
+      readInsightContentString(parsed, "fileSerialNo") ||
+      readInsightContentString(parsed, "fileId") ||
+      normalizeUrlWithoutQuery(readInsightContentString(parsed, "fileUrl")) ||
+      normalizeUrlWithoutQuery(readInsightContentString(parsed, "url")) ||
+      fileName;
+
+    return {
+      code: stableId,
+      name: fileName,
+      type: "file",
+    };
+  }
+
+  return undefined;
+}
+
+function normalizeUrlWithoutQuery(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    parsed.search = "";
+    parsed.hash = "";
+
+    return parsed.toString();
+  } catch {
+    return stripQueryAndHash(trimmed);
+  }
+}
+
+function normalizePathWithoutQuery(value: string) {
+  return stripQueryAndHash(value.trim());
+}
+
+function stripQueryAndHash(value: string) {
+  return value.split("#")[0]?.split("?")[0]?.trim() ?? "";
+}
+
+function groupBySnapshotId<Row extends { snapshot_id: number | string }, Value>(
+  rows: Row[],
+  mapValue: (row: Row) => Value,
+) {
+  const values = new Map<string, Value[]>();
+
+  for (const row of rows) {
+    const snapshotId = String(row.snapshot_id);
+    values.set(snapshotId, [...(values.get(snapshotId) ?? []), mapValue(row)]);
+  }
+
+  return values;
+}
+
+function groupAssetsBySnapshotId(rows: SessionAssetTopicRow[]) {
+  const values = new Map<string, Array<{
+    assetCode: string;
+    assetName: string;
+    assetType: string;
+  }>>();
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    const asset = parseBusinessAssetTopic(row);
+
+    if (!asset) {
+      continue;
+    }
+
+    const snapshotId = String(row.snapshot_id);
+    const key = `${snapshotId}:${asset.code}:${asset.type}`;
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    values.set(snapshotId, [
+      ...(values.get(snapshotId) ?? []),
+      {
+        assetCode: asset.code,
+        assetName: asset.name,
+        assetType: asset.type,
+      },
+    ]);
+  }
+
+  return values;
 }
 
 function isDuplicateKeyError(error: unknown) {

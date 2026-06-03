@@ -2,11 +2,11 @@ import { Navigate, createBrowserRouter } from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
 import { LoginPage } from "@/pages/auth/login-page";
 import { ChatWorkbenchRoutePage } from "@/pages/chat/chat-workbench-page";
+import { InsightsBusinessPage } from "@/pages/chat/insights/insights-business-page";
 import { InsightsFollowUpsPage } from "@/pages/chat/insights/insights-follow-ups-page";
 import { InsightsOverviewPage } from "@/pages/chat/insights/insights-overview-page";
 import { InsightsQualityPage } from "@/pages/chat/insights/insights-quality-page";
 import { InsightsSettingsPage } from "@/pages/chat/insights/insights-settings-page";
-import { InsightsPlaceholder } from "@/pages/chat/insights/insights-layout";
 import { ChatSettingsPage } from "@/pages/chat/settings/chat-settings-page";
 
 export const routerConfig = [
@@ -52,11 +52,11 @@ export const routerConfig = [
       },
       {
         path: "chat/insights/business",
-        element: <InsightsPlaceholder title="经营洞察" />,
+        element: <InsightsBusinessPage />,
       },
       {
         path: "chat/insights/records",
-        element: <InsightsPlaceholder title="分析明细" />,
+        element: <Navigate replace to="/chat/insights" />,
       },
       {
         path: "chat/insights/settings",

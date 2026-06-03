@@ -161,7 +161,7 @@ function mapInsightSenderRole(
   return "unknown";
 }
 
-function readString(value: InsightParsedMessageContent, key: string) {
+export function readInsightContentString(value: InsightParsedMessageContent, key: string) {
   if (!value || !isRecord(value)) {
     return "";
   }
@@ -169,9 +169,9 @@ function readString(value: InsightParsedMessageContent, key: string) {
   return readRecordString(value, key).trim();
 }
 
-type InsightParsedMessageContent = Record<string, unknown> | string | undefined;
+export type InsightParsedMessageContent = Record<string, unknown> | string | undefined;
 
-function parseInsightMessageContent(value: string | null): InsightParsedMessageContent {
+export function parseInsightMessageContent(value: string | null): InsightParsedMessageContent {
   if (!value) {
     return undefined;
   }
@@ -188,6 +188,8 @@ function parseInsightMessageContent(value: string | null): InsightParsedMessageC
     return value;
   }
 }
+
+const readString = readInsightContentString;
 
 function readPlainContent(value: InsightParsedMessageContent) {
   return typeof value === "string" ? value.trim() : "";

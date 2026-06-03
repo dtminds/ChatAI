@@ -15,6 +15,11 @@ describe("insights routes", () => {
       method: "GET",
       url: "/api/server/insights/quality",
     });
+    const business = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/insights/business",
+    });
     const followUps = await app.inject({
       headers: { authorization },
       method: "GET",
@@ -58,6 +63,21 @@ describe("insights routes", () => {
       conversationId: "301",
       evidenceMessageIds: ["9001", "9002"],
       sessionId: "501",
+    });
+    expect(business.statusCode).toBe(200);
+    expect(business.json().data).toMatchObject({
+      entityHotspots: [
+        expect.objectContaining({
+          code: "sku-1",
+          name: "白色羽绒服",
+        }),
+      ],
+      tagDistribution: [
+        expect.objectContaining({
+          code: "logistics_issue",
+          name: "物流异常",
+        }),
+      ],
     });
     expect(followUps.statusCode).toBe(200);
     expect(followUps.json().data.items).toHaveLength(1);
@@ -509,8 +529,22 @@ function createInsightsDbMock() {
           {
             confidence: "0.9100",
             id: 1001,
+            snapshot_id: 7001,
             tag_code: "logistics_issue",
             tag_name: "物流异常",
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_session_tag as tag") {
+        return createBuilder([
+          {
+            code: "logistics_issue",
+            mention_count: 1,
+            name: "物流异常",
+            session_id: 501,
+            snapshot_id: 7001,
+            started_at: 1_780_243_200_000,
           },
         ]);
       }
@@ -523,6 +557,7 @@ function createInsightsDbMock() {
             entity_type: "product",
             id: 1201,
             sentiment: "negative",
+            snapshot_id: 7001,
           },
         ]);
       }
@@ -530,13 +565,20 @@ function createInsightsDbMock() {
       if (table === "xy_wap_embed_session_entity as entity") {
         return createBuilder([
           {
+            code: "sku-1",
             entity_id: "sku-1",
             entity_name: "白色羽绒服",
             entity_type: "product",
             mention_count: 2,
+            name: "白色羽绒服",
             negative_count: 1,
             risk_session_count: 1,
+            sentiment: "negative",
+            session_id: 501,
             session_count: 1,
+            snapshot_id: 7001,
+            started_at: 1_780_243_200_000,
+            type: "product",
           },
         ]);
       }
@@ -548,6 +590,7 @@ function createInsightsDbMock() {
             id: 1301,
             intent_code: "logistics_delay",
             intent_label: "物流异常",
+            snapshot_id: 7001,
           },
         ]);
       }
@@ -555,9 +598,15 @@ function createInsightsDbMock() {
       if (table === "xy_wap_embed_session_intent as intent") {
         return createBuilder([
           {
+            code: "logistics_delay",
             count: 1,
             intent_code: "logistics_delay",
             intent_label: "物流异常",
+            mention_count: 1,
+            name: "物流异常",
+            session_id: 501,
+            snapshot_id: 7001,
+            started_at: 1_780_243_200_000,
           },
         ]);
       }

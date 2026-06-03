@@ -9,6 +9,7 @@ import {
   InsightQaRuleConfigMutationRequestSchema,
   InsightSettingsResponseSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
+  InsightsBusinessResponseSchema,
   InsightsFollowUpsResponseSchema,
   InsightsOverviewResponseSchema,
   InsightsQualityResponseSchema,
@@ -81,6 +82,85 @@ describe("insights DTOs", () => {
           },
         ],
         unresolvedSessions: 4,
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts business topic analytics responses", () => {
+    expect(
+      Value.Check(InsightsBusinessResponseSchema, {
+        assetHotspots: [
+          {
+            actionItemsOpen: 0,
+            code: "https://example.com/promo",
+            dimension: "asset",
+            mentionCount: 6,
+            name: "红包活动",
+            negativeRate: 0,
+            negativeSessions: 0,
+            sessionCount: 5,
+            share: 0.25,
+            type: "link",
+            unresolvedRate: 0.2,
+            unresolvedSessions: 1,
+          },
+        ],
+        entityHotspots: [
+          {
+            actionItemsOpen: 1,
+            code: "sku-1",
+            dimension: "entity",
+            mentionCount: 12,
+            name: "白色羽绒服",
+            negativeRate: 0.25,
+            negativeSessions: 2,
+            sessionCount: 8,
+            share: 0.4,
+            type: "product",
+            unresolvedRate: 0.125,
+            unresolvedSessions: 1,
+          },
+        ],
+        intentDistribution: [
+          {
+            actionItemsOpen: 0,
+            code: "after_sale.refund",
+            dimension: "intent",
+            mentionCount: 10,
+            name: "退款",
+            negativeRate: 0.1,
+            negativeSessions: 1,
+            sessionCount: 10,
+            share: 0.5,
+            unresolvedRate: 0.2,
+            unresolvedSessions: 2,
+          },
+        ],
+        qualityTopics: [],
+        tagDistribution: [],
+        totals: {
+          actionItemsOpen: 3,
+          analyzedSessions: 30,
+          assetMentions: 6,
+          entityMentions: 12,
+          intentMentions: 10,
+          negativeSessions: 5,
+          tagMentions: 16,
+          topicSessions: 20,
+          unresolvedSessions: 4,
+        },
+        trend: [
+          {
+            assetMentions: 6,
+            date: "2026-06-01",
+            entityMentions: 5,
+            intentMentions: 4,
+            negativeSessions: 2,
+            tagMentions: 6,
+            topicSessions: 8,
+            unresolvedSessions: 1,
+          },
+        ],
       }),
     ).toBe(true);
   });

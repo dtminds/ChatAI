@@ -214,6 +214,56 @@ function createRepository(
         title: "沉淀退款到账 FAQ",
       },
     ]),
+    listBusinessTopicFacts: vi.fn(async () => [
+      {
+        code: "logistics_issue",
+        dimension: "tag",
+        mentionCount: 1,
+        name: "物流异常",
+        sessionId: "501",
+        snapshotId: "7001",
+        startedAt: 1_780_243_200_000,
+      },
+      {
+        code: "refund",
+        dimension: "tag",
+        mentionCount: 1,
+        name: "退款咨询",
+        sessionId: "502",
+        snapshotId: "7002",
+        startedAt: 1_780_243_000_000,
+      },
+      {
+        code: "sku-1",
+        dimension: "entity",
+        mentionCount: 2,
+        name: "白色羽绒服",
+        sentiment: "negative",
+        sessionId: "501",
+        snapshotId: "7001",
+        startedAt: 1_780_243_200_000,
+        type: "product",
+      },
+      {
+        code: "https://example.com/promo",
+        dimension: "asset",
+        mentionCount: 2,
+        name: "红包活动",
+        sessionId: "501",
+        snapshotId: "7001",
+        startedAt: 1_780_243_200_000,
+        type: "link",
+      },
+      {
+        code: "logistics_delay",
+        dimension: "intent",
+        mentionCount: 1,
+        name: "物流异常",
+        sessionId: "501",
+        snapshotId: "7001",
+        startedAt: 1_780_243_200_000,
+      },
+    ]),
     listCurrentSessions: vi.fn(async () => baseRows),
     listEntityHotspots: vi.fn(async () => [
       {
@@ -523,6 +573,76 @@ describe("InsightsService", () => {
         reasonCode: "要求客户等待但未说明下一步",
         reasonLabel: "要求客户等待但未说明下一步",
       },
+    ]);
+  });
+
+  it("builds business topic analytics from current snapshots", async () => {
+    const service = new InsightsService(createRepository());
+    const result = await service.getBusiness(scope);
+
+    expect(result.totals).toMatchObject({
+      actionItemsOpen: 1,
+      analyzedSessions: 2,
+      assetMentions: 2,
+      entityMentions: 2,
+      intentMentions: 1,
+      tagMentions: 2,
+      topicSessions: 2,
+      unresolvedSessions: 2,
+    });
+    expect(result.tagDistribution).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "logistics_issue",
+        dimension: "tag",
+        name: "物流异常",
+        sessionCount: 1,
+        unresolvedSessions: 1,
+      }),
+      expect.objectContaining({
+        code: "refund",
+        name: "退款咨询",
+      }),
+    ]));
+    expect(result.entityHotspots[0]).toMatchObject({
+      code: "sku-1",
+      mentionCount: 2,
+      name: "白色羽绒服",
+      negativeSessions: 1,
+      type: "product",
+    });
+    expect(result.assetHotspots[0]).toMatchObject({
+      code: "https://example.com/promo",
+      dimension: "asset",
+      mentionCount: 2,
+      name: "红包活动",
+      type: "link",
+    });
+    expect(result.intentDistribution[0]).toMatchObject({
+      code: "logistics_delay",
+      name: "物流异常",
+    });
+    expect(result.qualityTopics[0]).toEqual(
+      expect.objectContaining({
+        actionItemsOpen: 1,
+        name: "白色羽绒服",
+        unresolvedRate: 1,
+      }),
+    );
+    expect(result.trend).toEqual([
+      expect.objectContaining({
+        date: "2026-05-31",
+        tagMentions: 1,
+        topicSessions: 1,
+      }),
+      expect.objectContaining({
+        date: "2026-06-01",
+        entityMentions: 2,
+        intentMentions: 1,
+        tagMentions: 1,
+        negativeSessions: 1,
+        topicSessions: 1,
+        unresolvedSessions: 1,
+      }),
     ]);
   });
 

@@ -93,7 +93,21 @@ export const InsightOverviewSessionItemSchema = Type.Object({
   customerAvatarUrl: Type.Optional(Type.String()),
   customerMessageCount: Type.Number(),
   customerName: Type.String(),
+  assets: Type.Optional(Type.Array(Type.Object({
+    assetCode: Type.String(),
+    assetName: Type.String(),
+    assetType: Type.String(),
+  }))),
   endedAt: Type.Optional(Type.Number()),
+  entities: Type.Optional(Type.Array(Type.Object({
+    entityId: Type.String(),
+    entityName: Type.String(),
+    entityType: Type.String(),
+  }))),
+  intents: Type.Optional(Type.Array(Type.Object({
+    intentCode: Type.String(),
+    intentLabel: Type.String(),
+  }))),
   lastMessageAt: Type.Optional(Type.Number()),
   messageCount: Type.Number(),
   problemSummary: Type.Optional(Type.String()),
@@ -101,6 +115,10 @@ export const InsightOverviewSessionItemSchema = Type.Object({
   sessionId: Type.String(),
   startedAt: Type.Number(),
   summaryCustomerIntent: Type.String(),
+  tags: Type.Optional(Type.Array(Type.Object({
+    tagCode: Type.String(),
+    tagName: Type.String(),
+  }))),
 });
 
 export const InsightsOverviewResponseSchema = Type.Object({
@@ -122,6 +140,59 @@ export const InsightsOverviewResponseSchema = Type.Object({
   totals: InsightOverviewTotalsSchema,
   trend: Type.Array(InsightOverviewTrendPointSchema),
   unresolvedSessions: Type.Number(),
+});
+
+export const InsightBusinessTopicDimensionSchema = Type.Union([
+  Type.Literal("tag"),
+  Type.Literal("entity"),
+  Type.Literal("intent"),
+  Type.Literal("asset"),
+]);
+
+export const InsightBusinessTopicSchema = Type.Object({
+  actionItemsOpen: Type.Number(),
+  code: Type.String(),
+  dimension: InsightBusinessTopicDimensionSchema,
+  mentionCount: Type.Number(),
+  name: Type.String(),
+  negativeRate: Type.Number(),
+  negativeSessions: Type.Number(),
+  sessionCount: Type.Number(),
+  share: Type.Number(),
+  type: Type.Optional(Type.String()),
+  unresolvedRate: Type.Number(),
+  unresolvedSessions: Type.Number(),
+});
+
+export const InsightBusinessTrendPointSchema = Type.Object({
+  assetMentions: Type.Number(),
+  date: Type.String(),
+  entityMentions: Type.Number(),
+  intentMentions: Type.Number(),
+  negativeSessions: Type.Number(),
+  tagMentions: Type.Number(),
+  topicSessions: Type.Number(),
+  unresolvedSessions: Type.Number(),
+});
+
+export const InsightsBusinessResponseSchema = Type.Object({
+  assetHotspots: Type.Array(InsightBusinessTopicSchema),
+  entityHotspots: Type.Array(InsightBusinessTopicSchema),
+  intentDistribution: Type.Array(InsightBusinessTopicSchema),
+  qualityTopics: Type.Array(InsightBusinessTopicSchema),
+  tagDistribution: Type.Array(InsightBusinessTopicSchema),
+  totals: Type.Object({
+    actionItemsOpen: Type.Number(),
+    analyzedSessions: Type.Number(),
+    assetMentions: Type.Number(),
+    entityMentions: Type.Number(),
+    intentMentions: Type.Number(),
+    negativeSessions: Type.Number(),
+    tagMentions: Type.Number(),
+    topicSessions: Type.Number(),
+    unresolvedSessions: Type.Number(),
+  }),
+  trend: Type.Array(InsightBusinessTrendPointSchema),
 });
 
 export const InsightsQualityOverviewSchema = Type.Object({
@@ -474,6 +545,7 @@ export type InsightSessionizationSettingsUpdateRequest = Static<
   typeof InsightSessionizationSettingsUpdateRequestSchema
 >;
 export type InsightsFollowUpsResponse = Static<typeof InsightsFollowUpsResponseSchema>;
+export type InsightsBusinessResponse = Static<typeof InsightsBusinessResponseSchema>;
 export type InsightsOverviewResponse = Static<typeof InsightsOverviewResponseSchema>;
 export type InsightsQualityResponse = Static<typeof InsightsQualityResponseSchema>;
 export type InsightsRescanRequest = Static<typeof InsightsRescanRequestSchema>;

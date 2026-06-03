@@ -87,6 +87,24 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get<{ Querystring: OverviewQuery }>(
+    "/api/server/insights/business",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: OverviewQuerySchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).getBusiness(
+          await getUidScope(app, request),
+          normalizeOverviewQuery(request.query),
+        ),
+      );
+    },
+  );
+
   app.get(
     "/api/server/insights/quality",
     {

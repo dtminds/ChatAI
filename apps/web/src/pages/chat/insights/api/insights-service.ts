@@ -17,6 +17,7 @@ import type {
   InsightSettingsResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
+  InsightsBusinessResponse,
   InsightsFollowUpsResponse,
   InsightsOverviewResponse,
   InsightsQualityResponse,
@@ -39,6 +40,17 @@ export type InsightOverviewQuery = {
 export async function getInsightOverview(query: InsightOverviewQuery = {}) {
   const response = await http.get<ApiSuccessEnvelope<InsightsOverviewResponse>>(
     "/server/insights/overview",
+    {
+      params: compactQuery(query),
+    },
+  );
+
+  return response.data;
+}
+
+export async function getInsightBusiness(query: InsightOverviewQuery = {}) {
+  const response = await http.get<ApiSuccessEnvelope<InsightsBusinessResponse>>(
+    "/server/insights/business",
     {
       params: compactQuery(query),
     },

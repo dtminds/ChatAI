@@ -3,7 +3,6 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
   ArrowRight01Icon,
-  CircleIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -147,10 +146,11 @@ const DropdownMenuRadioItem = React.forwardRef<
     <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
         <HugeiconsIcon
-          className="fill-current"
           color="currentColor"
-          icon={CircleIcon}
-          size={8}
+          data-icon-name="tick-02"
+          data-testid="dropdown-menu-radio-indicator-icon"
+          icon={Tick02Icon}
+          size={16}
           strokeWidth={1.8}
         />
       </DropdownMenuPrimitive.ItemIndicator>

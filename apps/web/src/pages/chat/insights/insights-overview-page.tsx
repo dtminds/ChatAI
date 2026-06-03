@@ -38,6 +38,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -47,9 +54,11 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { getInsightOverview } from "./api/insights-service";
+import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { ResolutionBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
+import { getDefaultDateRange, toBoundaryDate, type InsightDateRange } from "./insights-date-range";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import { formatInsightTime } from "./insights-utils";
 import { useInsightDetail } from "./use-insight-detail";
@@ -87,8 +96,14 @@ const resolutionColors: Record<string, string> = {
 export function InsightsOverviewPage() {
   const [overview, setOverview] = useState<InsightsOverviewResponse>();
   const [activeMetric, setActiveMetric] = useState<TrendMetric>("logicalSessions");
+  const [analysisStatusFilter, setAnalysisStatusFilter] = useState("all");
+  const [entityFilter, setEntityFilter] = useState("all");
   const [from, setFrom] = useState(() => getDefaultDateRange().from);
+  const [intentFilter, setIntentFilter] = useState("all");
   const [keyword, setKeyword] = useState("");
+  const [problemFilter, setProblemFilter] = useState("all");
+  const [resolutionFilter, setResolutionFilter] = useState("all");
+  const [tagFilter, setTagFilter] = useState("all");
   const [to, setTo] = useState(() => getDefaultDateRange().to);
   const detail = useInsightDetail();
 
@@ -112,29 +127,55 @@ export function InsightsOverviewPage() {
   const sessions = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
 
-    if (!normalizedKeyword) {
-      return overview?.sessions ?? [];
-    }
-
     return (overview?.sessions ?? []).filter((session) =>
-      [
+      (!normalizedKeyword || [
         session.customerName,
         session.agentName,
         session.problemSummary,
         session.summaryCustomerIntent,
+        ...(session.tags ?? []).map((tag) => tag.tagName),
+        ...(session.entities ?? []).map((entity) => entity.entityName),
+        ...(session.intents ?? []).map((intent) => intent.intentLabel),
       ]
         .filter(Boolean)
-        .some((value) => value?.toLowerCase().includes(normalizedKeyword)),
+        .some((value) => value?.toLowerCase().includes(normalizedKeyword))) &&
+      (resolutionFilter === "all" || session.resolutionStatus === resolutionFilter) &&
+      (analysisStatusFilter === "all" || session.analysisStatus === analysisStatusFilter) &&
+      (tagFilter === "all" || (session.tags ?? []).some((tag) => tag.tagCode === tagFilter)) &&
+      (entityFilter === "all" || (session.entities ?? []).some((entity) => entity.entityId === entityFilter)) &&
+      (intentFilter === "all" || (session.intents ?? []).some((intent) => intent.intentCode === intentFilter)) &&
+      (problemFilter === "all" ||
+        (problemFilter === "problem" && session.resolutionStatus !== "no_customer_problem") ||
+        (problemFilter === "unresolved" && (
+          session.resolutionStatus === "unresolved" ||
+          session.resolutionStatus === "partially_resolved"
+        )))
     );
-  }, [keyword, overview?.sessions]);
+  }, [
+    analysisStatusFilter,
+    entityFilter,
+    intentFilter,
+    keyword,
+    overview?.sessions,
+    problemFilter,
+    resolutionFilter,
+    tagFilter,
+  ]);
+
+  const filterOptions = useMemo(
+    () => buildSessionFilterOptions(overview?.sessions ?? []),
+    [overview?.sessions],
+  );
 
   return (
     <InsightsLayout title="总览">
       <div className="space-y-5">
         <OverviewHeader
           from={from}
-          onFromChange={setFrom}
-          onToChange={setTo}
+          onDateRangeChange={(range) => {
+            setFrom(range.from);
+            setTo(range.to);
+          }}
           overview={overview}
           to={to}
         />
@@ -152,10 +193,23 @@ export function InsightsOverviewPage() {
           />
         </div>
         <SessionTableCard
+          analysisStatusFilter={analysisStatusFilter}
+          entityFilter={entityFilter}
+          filterOptions={filterOptions}
+          intentFilter={intentFilter}
           keyword={keyword}
+          onAnalysisStatusFilterChange={setAnalysisStatusFilter}
+          onEntityFilterChange={setEntityFilter}
+          onIntentFilterChange={setIntentFilter}
           onKeywordChange={setKeyword}
           onOpenDetail={(sessionId) => void detail.openDetail(sessionId)}
+          onProblemFilterChange={setProblemFilter}
+          onResolutionFilterChange={setResolutionFilter}
+          onTagFilterChange={setTagFilter}
+          problemFilter={problemFilter}
+          resolutionFilter={resolutionFilter}
           rows={sessions}
+          tagFilter={tagFilter}
           total={overview?.sessions.length ?? 0}
         />
       </div>
@@ -171,14 +225,12 @@ export function InsightsOverviewPage() {
 
 function OverviewHeader({
   from,
-  onFromChange,
-  onToChange,
+  onDateRangeChange,
   overview,
   to,
 }: {
   from: string;
-  onFromChange: (value: string) => void;
-  onToChange: (value: string) => void;
+  onDateRangeChange: (range: InsightDateRange) => void;
   overview: InsightsOverviewResponse | undefined;
   to: string;
 }) {
@@ -207,8 +259,7 @@ function OverviewHeader({
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <DateInput label="开始日期" onChange={onFromChange} value={from} />
-        <DateInput label="结束日期" onChange={onToChange} value={to} />
+        <InsightDateRangeFilter from={from} onChange={onDateRangeChange} to={to} />
       </div>
     </section>
   );
@@ -394,7 +445,7 @@ function TrendPanel({
                 <defs>
                   <linearGradient id="insightTrendArea" x1="0" x2="0" y1="0" y2="1">
                     <stop offset="0%" stopColor="#5b5ff0" stopOpacity={0.28} />
-                    <stop offset="100%" stopColor="#5b5ff0" stopOpacity={0.04} />
+                    <stop offset="100%" stopColor="#5b5ff0" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.45} vertical={false} />
@@ -436,21 +487,47 @@ function TrendPanel({
 }
 
 function SessionTableCard({
+  analysisStatusFilter,
+  entityFilter,
+  filterOptions,
+  intentFilter,
   keyword,
+  onAnalysisStatusFilterChange,
+  onEntityFilterChange,
+  onIntentFilterChange,
   onKeywordChange,
   onOpenDetail,
+  onProblemFilterChange,
+  onResolutionFilterChange,
+  onTagFilterChange,
+  problemFilter,
+  resolutionFilter,
   rows,
+  tagFilter,
   total,
 }: {
+  analysisStatusFilter: string;
+  entityFilter: string;
+  filterOptions: SessionFilterOptions;
+  intentFilter: string;
   keyword: string;
+  onAnalysisStatusFilterChange: (value: string) => void;
+  onEntityFilterChange: (value: string) => void;
+  onIntentFilterChange: (value: string) => void;
   onKeywordChange: (value: string) => void;
   onOpenDetail: (sessionId: string) => void;
+  onProblemFilterChange: (value: string) => void;
+  onResolutionFilterChange: (value: string) => void;
+  onTagFilterChange: (value: string) => void;
+  problemFilter: string;
+  resolutionFilter: string;
   rows: InsightsOverviewResponse["sessions"];
+  tagFilter: string;
   total: number;
 }) {
   return (
     <section className="rounded-xl border bg-card">
-      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:px-6 sm:py-4">
+      <div className="grid gap-3 p-4 sm:px-6 sm:py-4">
         <div className="flex flex-1 items-center gap-2.5">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-[8px] border bg-background text-muted-foreground">
             <HugeiconsIcon icon={Calendar03Icon} size={17} />
@@ -472,10 +549,65 @@ function SessionTableCard({
               value={keyword}
             />
           </div>
-          <Button className="h-9 gap-2 rounded-[8px]" variant="outline">
-            <HugeiconsIcon icon={FilterIcon} size={16} />
-            筛选
-          </Button>
+          <FilterSelect
+            label="问题范围"
+            onValueChange={onProblemFilterChange}
+            options={[
+              { label: "全部会话", value: "all" },
+              { label: "有客户问题", value: "problem" },
+              { label: "未解决/部分解决", value: "unresolved" },
+            ]}
+            value={problemFilter}
+            widthClassName="w-[152px]"
+          />
+          <FilterSelect
+            label="解决状态"
+            onValueChange={onResolutionFilterChange}
+            options={[
+              { label: "全部状态", value: "all" },
+              { label: "已解决", value: "resolved" },
+              { label: "未解决", value: "unresolved" },
+              { label: "部分解决", value: "partially_resolved" },
+              { label: "无客户问题", value: "no_customer_problem" },
+              { label: "待判断", value: "unknown" },
+            ]}
+            value={resolutionFilter}
+            widthClassName="w-[136px]"
+          />
+          <FilterSelect
+            label="分析状态"
+            onValueChange={onAnalysisStatusFilterChange}
+            options={[
+              { label: "全部分析", value: "all" },
+              { label: "已完成", value: "ready" },
+              { label: "部分完成", value: "partial" },
+              { label: "分析失败", value: "failed" },
+              { label: "已过期", value: "stale" },
+            ]}
+            value={analysisStatusFilter}
+            widthClassName="w-[128px]"
+          />
+          <FilterSelect
+            label="标签"
+            onValueChange={onTagFilterChange}
+            options={[{ label: "全部标签", value: "all" }, ...filterOptions.tags]}
+            value={tagFilter}
+            widthClassName="w-[136px]"
+          />
+          <FilterSelect
+            label="实体"
+            onValueChange={onEntityFilterChange}
+            options={[{ label: "全部实体", value: "all" }, ...filterOptions.entities]}
+            value={entityFilter}
+            widthClassName="w-[136px]"
+          />
+          <FilterSelect
+            label="意图"
+            onValueChange={onIntentFilterChange}
+            options={[{ label: "全部意图", value: "all" }, ...filterOptions.intents]}
+            value={intentFilter}
+            widthClassName="w-[136px]"
+          />
         </div>
       </div>
       <div className="overflow-x-auto px-4 pb-4 sm:px-6">
@@ -514,6 +646,7 @@ function SessionTableCard({
                     <div className="mt-1 truncate text-xs text-muted-foreground">
                       {row.problemSummary || "暂无客户问题摘要"}
                     </div>
+                    <TopicBadges row={row} />
                   </TableCell>
                   <TableCell className="py-4 text-sm">
                     <div className="font-medium">{row.messageCount} 条</div>
@@ -553,25 +686,60 @@ function SessionTableCard({
   );
 }
 
-function DateInput({
+type SessionFilterOptions = {
+  entities: Array<{ label: string; value: string }>;
+  intents: Array<{ label: string; value: string }>;
+  tags: Array<{ label: string; value: string }>;
+};
+
+function FilterSelect({
   label,
-  onChange,
+  onValueChange,
+  options,
   value,
+  widthClassName,
 }: {
   label: string;
-  onChange: (value: string) => void;
+  onValueChange: (value: string) => void;
+  options: Array<{ label: string; value: string }>;
   value: string;
+  widthClassName: string;
 }) {
   return (
-    <label className="grid gap-1 text-xs text-muted-foreground">
-      {label}
-      <Input
-        className="h-9 w-[9.5rem] rounded-[8px] text-sm"
-        onChange={(event) => onChange(event.target.value)}
-        type="date"
-        value={value}
-      />
-    </label>
+    <Select onValueChange={onValueChange} value={value}>
+      <SelectTrigger aria-label={label} className={cn("h-9 rounded-[8px]", widthClassName)}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function TopicBadges({ row }: { row: InsightsOverviewResponse["sessions"][number] }) {
+  const topics = [
+    ...(row.tags ?? []).slice(0, 2).map((tag) => tag.tagName),
+    ...(row.entities ?? []).slice(0, 2).map((entity) => entity.entityName),
+    ...(row.intents ?? []).slice(0, 1).map((intent) => intent.intentLabel),
+  ].filter(Boolean);
+
+  if (topics.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 flex max-w-[300px] flex-wrap gap-1.5">
+      {topics.slice(0, 4).map((topic) => (
+        <Badge className="max-w-[9rem] truncate" key={topic} variant="secondary">
+          {topic}
+        </Badge>
+      ))}
+    </div>
   );
 }
 
@@ -593,6 +761,43 @@ function PanelTitle({
       {trailing ? <div className="ml-auto">{trailing}</div> : null}
     </div>
   );
+}
+
+function buildSessionFilterOptions(
+  sessions: InsightsOverviewResponse["sessions"],
+): SessionFilterOptions {
+  return {
+    entities: toFilterOptions(
+      sessions.flatMap((session) =>
+        (session.entities ?? []).map((entity) => ({
+          label: entity.entityName,
+          value: entity.entityId,
+        })),
+      ),
+    ),
+    intents: toFilterOptions(
+      sessions.flatMap((session) =>
+        (session.intents ?? []).map((intent) => ({
+          label: intent.intentLabel,
+          value: intent.intentCode,
+        })),
+      ),
+    ),
+    tags: toFilterOptions(
+      sessions.flatMap((session) =>
+        (session.tags ?? []).map((tag) => ({
+          label: tag.tagName,
+          value: tag.tagCode,
+        })),
+      ),
+    ),
+  };
+}
+
+function toFilterOptions(options: Array<{ label: string; value: string }>) {
+  return Array.from(
+    new Map(options.map((option) => [option.value, option])).values(),
+  ).sort((left, right) => left.label.localeCompare(right.label, "zh-CN"));
 }
 
 function TrendTooltip({
@@ -700,34 +905,4 @@ function formatTrendDate(value: string) {
 
 function formatFullTrendDate(value: string) {
   return value.replaceAll("-", "/");
-}
-
-function formatDateInputValue(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function getDefaultDateRange() {
-  const to = new Date();
-  const from = new Date(to);
-
-  from.setDate(to.getDate() - 29);
-
-  return {
-    from: formatDateInputValue(from),
-    to: formatDateInputValue(to),
-  };
-}
-
-function toBoundaryDate(value: string, boundary: "end" | "start") {
-  if (!value) {
-    return undefined;
-  }
-
-  return boundary === "start"
-    ? `${value}T00:00:00.000+08:00`
-    : `${value}T23:59:59.999+08:00`;
 }

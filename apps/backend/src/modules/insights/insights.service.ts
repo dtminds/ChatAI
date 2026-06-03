@@ -17,6 +17,7 @@ import type {
   InsightSettingsResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
+  InsightsBusinessResponse,
   InsightsFollowUpsResponse,
   InsightsOverviewResponse,
   InsightsQualityResponse,
@@ -54,8 +55,11 @@ export type InsightCurrentSessionRow = {
   customerAvatarUrl: string | null;
   customerMessageCount: number;
   customerName: string;
+  assets?: NonNullable<InsightsOverviewResponse["sessions"][number]["assets"]>;
   endedAt: number | null;
+  entities?: NonNullable<InsightsOverviewResponse["sessions"][number]["entities"]>;
   highRiskCount: number;
+  intents?: NonNullable<InsightsOverviewResponse["sessions"][number]["intents"]>;
   lastMessageAt: number | null;
   lastCustomerMessageAt: number | null;
   messageCount: number;
@@ -72,6 +76,7 @@ export type InsightCurrentSessionRow = {
   summaryFollowUp: string | null;
   summaryProcess: string;
   summaryResult: string;
+  tags?: NonNullable<InsightsOverviewResponse["sessions"][number]["tags"]>;
   unresolvedReason: string | null;
 };
 
@@ -104,6 +109,18 @@ export type InsightsOverviewFilters = {
   to?: string;
 };
 
+export type InsightBusinessTopicFactRow = {
+  code: string;
+  dimension: InsightsBusinessResponse["tagDistribution"][number]["dimension"];
+  mentionCount: number;
+  name: string;
+  sentiment?: string | null;
+  sessionId: string;
+  snapshotId: string;
+  startedAt: number;
+  type?: string | null;
+};
+
 export type InsightsRepositoryPort = {
   createRescanJob(
     scope: InsightsUidScope,
@@ -119,6 +136,10 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
   ): Promise<InsightCurrentSessionRow[]>;
+  listBusinessTopicFacts?(
+    scope: InsightsUidScope,
+    filters?: InsightsOverviewFilters,
+  ): Promise<InsightBusinessTopicFactRow[]>;
   listEntityHotspots?(
     scope: InsightsUidScope,
   ): Promise<InsightsOverviewResponse["entityHotspots"]>;
@@ -299,6 +320,36 @@ export class InsightsService {
       },
       unresolvedReasons: buildUnresolvedReasons(unresolvedSessions),
       unresolvedSessions,
+    };
+  }
+
+  async getBusiness(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters = {},
+  ): Promise<InsightsBusinessResponse> {
+    const rows = await this.repository.listCurrentSessions(scope, filters);
+    const facts = await this.repository.listBusinessTopicFacts?.(scope, filters) ?? [];
+    const sessionsById = new Map(rows.map((row) => [row.sessionId, row]));
+    const topicCollections = buildBusinessTopicCollections(facts, sessionsById);
+
+    return {
+      assetHotspots: topicCollections.assetHotspots,
+      entityHotspots: topicCollections.entityHotspots,
+      intentDistribution: topicCollections.intentDistribution,
+      qualityTopics: topicCollections.qualityTopics,
+      tagDistribution: topicCollections.tagDistribution,
+      totals: {
+        actionItemsOpen: rows.reduce((total, row) => total + row.actionOpenCount, 0),
+        analyzedSessions: rows.filter((row) => analyzedStatuses.has(row.analysisStatus)).length,
+        assetMentions: sumTopicMentions(topicCollections.assetHotspots),
+        entityMentions: sumTopicMentions(topicCollections.entityHotspots),
+        intentMentions: sumTopicMentions(topicCollections.intentDistribution),
+        negativeSessions: rows.filter((row) => row.negativeCount > 0).length,
+        tagMentions: sumTopicMentions(topicCollections.tagDistribution),
+        topicSessions: new Set(facts.map((fact) => fact.sessionId)).size,
+        unresolvedSessions: rows.filter((row) => unresolvedStatuses.has(row.resolutionStatus)).length,
+      },
+      trend: buildBusinessTrend(rows, facts),
     };
   }
 
@@ -683,6 +734,8 @@ function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
       customerMessageCount: row.customerMessageCount,
       customerName: row.customerName,
       endedAt: row.endedAt ?? undefined,
+      entities: row.entities ?? [],
+      intents: row.intents ?? [],
       lastMessageAt: row.lastMessageAt ?? undefined,
       messageCount: row.messageCount,
       problemSummary: row.problemSummary || undefined,
@@ -690,7 +743,219 @@ function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
       sessionId: row.sessionId,
       startedAt: row.startedAt,
       summaryCustomerIntent: row.summaryCustomerIntent,
+      tags: row.tags ?? [],
     }));
+}
+
+type BusinessTopicAccumulator = {
+  actionItemSessions: Set<string>;
+  code: string;
+  dimension: InsightsBusinessResponse["tagDistribution"][number]["dimension"];
+  mentionCount: number;
+  name: string;
+  negativeSessions: Set<string>;
+  sessions: Set<string>;
+  type?: string;
+  unresolvedSessions: Set<string>;
+};
+
+function buildBusinessTopicCollections(
+  facts: InsightBusinessTopicFactRow[],
+  sessionsById: Map<string, InsightCurrentSessionRow>,
+) {
+  const accumulators = new Map<string, BusinessTopicAccumulator>();
+
+  for (const fact of facts) {
+    const session = sessionsById.get(fact.sessionId);
+
+    if (!session) {
+      continue;
+    }
+
+    const key = `${fact.dimension}:${fact.code}:${fact.type ?? ""}`;
+    const accumulator = accumulators.get(key) ?? {
+      actionItemSessions: new Set<string>(),
+      code: fact.code,
+      dimension: fact.dimension,
+      mentionCount: 0,
+      name: fact.name,
+      negativeSessions: new Set<string>(),
+      sessions: new Set<string>(),
+      type: fact.type ?? undefined,
+      unresolvedSessions: new Set<string>(),
+    };
+
+    accumulator.mentionCount += fact.mentionCount;
+    accumulator.sessions.add(session.sessionId);
+
+    if (unresolvedStatuses.has(session.resolutionStatus)) {
+      accumulator.unresolvedSessions.add(session.sessionId);
+    }
+
+    if (isNegativeTopicFact(fact, session)) {
+      accumulator.negativeSessions.add(session.sessionId);
+    }
+
+    if (session.actionOpenCount > 0) {
+      accumulator.actionItemSessions.add(session.sessionId);
+    }
+
+    accumulators.set(key, accumulator);
+  }
+
+  const totalTopicSessions = new Set(facts.map((fact) => fact.sessionId)).size;
+  const topics = Array.from(accumulators.values())
+    .map((topic) => mapBusinessTopic(topic, totalTopicSessions))
+    .sort(compareBusinessTopics);
+
+  return {
+    assetHotspots: topics.filter((topic) => topic.dimension === "asset").slice(0, 12),
+    entityHotspots: topics.filter((topic) => topic.dimension === "entity").slice(0, 12),
+    intentDistribution: topics.filter((topic) => topic.dimension === "intent").slice(0, 12),
+    qualityTopics: [...topics]
+      .sort((left, right) =>
+        right.unresolvedRate - left.unresolvedRate ||
+        right.unresolvedSessions - left.unresolvedSessions ||
+        right.sessionCount - left.sessionCount
+      )
+      .slice(0, 12),
+    tagDistribution: topics.filter((topic) => topic.dimension === "tag").slice(0, 12),
+  };
+}
+
+function mapBusinessTopic(
+  topic: BusinessTopicAccumulator,
+  totalTopicSessions: number,
+): InsightsBusinessResponse["tagDistribution"][number] {
+  const sessionCount = topic.sessions.size;
+  const unresolvedSessions = topic.unresolvedSessions.size;
+  const negativeSessions = topic.negativeSessions.size;
+
+  return {
+    actionItemsOpen: topic.actionItemSessions.size,
+    code: topic.code,
+    dimension: topic.dimension,
+    mentionCount: topic.mentionCount,
+    name: topic.name,
+    negativeRate: sessionCount > 0 ? negativeSessions / sessionCount : 0,
+    negativeSessions,
+    sessionCount,
+    share: totalTopicSessions > 0 ? sessionCount / totalTopicSessions : 0,
+    type: topic.type,
+    unresolvedRate: sessionCount > 0 ? unresolvedSessions / sessionCount : 0,
+    unresolvedSessions,
+  };
+}
+
+function compareBusinessTopics(
+  left: InsightsBusinessResponse["tagDistribution"][number],
+  right: InsightsBusinessResponse["tagDistribution"][number],
+) {
+  return right.sessionCount - left.sessionCount ||
+    right.mentionCount - left.mentionCount ||
+    left.name.localeCompare(right.name, "zh-CN");
+}
+
+function isNegativeTopicFact(
+  fact: InsightBusinessTopicFactRow,
+  session: InsightCurrentSessionRow,
+) {
+  if (fact.dimension === "entity" && fact.sentiment) {
+    return fact.sentiment === "negative";
+  }
+
+  return session.negativeCount > 0;
+}
+
+function sumTopicMentions(topics: InsightsBusinessResponse["tagDistribution"]) {
+  return topics.reduce((total, topic) => total + topic.mentionCount, 0);
+}
+
+function buildBusinessTrend(
+  rows: InsightCurrentSessionRow[],
+  facts: InsightBusinessTopicFactRow[],
+) {
+  const trend = new Map<
+    string,
+    InsightsBusinessResponse["trend"][number] & {
+      topicSessionIds: Set<string>;
+    }
+  >();
+
+  for (const row of rows) {
+    const date = formatDateKey(row.startedAt);
+    const point = getBusinessTrendPoint(trend, date);
+
+    if (unresolvedStatuses.has(row.resolutionStatus)) {
+      point.unresolvedSessions += 1;
+    }
+
+    if (row.negativeCount > 0) {
+      point.negativeSessions += 1;
+    }
+  }
+
+  for (const fact of facts) {
+    const date = formatDateKey(fact.startedAt);
+    const point = getBusinessTrendPoint(trend, date);
+
+    point.topicSessionIds.add(fact.sessionId);
+
+    if (fact.dimension === "tag") {
+      point.tagMentions += fact.mentionCount;
+    }
+
+    if (fact.dimension === "entity") {
+      point.entityMentions += fact.mentionCount;
+    }
+
+    if (fact.dimension === "intent") {
+      point.intentMentions += fact.mentionCount;
+    }
+
+    if (fact.dimension === "asset") {
+      point.assetMentions += fact.mentionCount;
+    }
+  }
+
+  return Array.from(trend.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, point]) => ({
+      date: point.date,
+      assetMentions: point.assetMentions,
+      entityMentions: point.entityMentions,
+      intentMentions: point.intentMentions,
+      negativeSessions: point.negativeSessions,
+      tagMentions: point.tagMentions,
+      topicSessions: point.topicSessionIds.size,
+      unresolvedSessions: point.unresolvedSessions,
+    }));
+}
+
+function getBusinessTrendPoint(
+  trend: Map<
+    string,
+    InsightsBusinessResponse["trend"][number] & {
+      topicSessionIds: Set<string>;
+    }
+  >,
+  date: string,
+) {
+  const point = trend.get(date) ?? {
+    assetMentions: 0,
+    date,
+    entityMentions: 0,
+    intentMentions: 0,
+    negativeSessions: 0,
+    tagMentions: 0,
+    topicSessions: 0,
+    topicSessionIds: new Set<string>(),
+    unresolvedSessions: 0,
+  };
+
+  trend.set(date, point);
+
+  return point;
 }
 
 function formatDateKey(value: number) {

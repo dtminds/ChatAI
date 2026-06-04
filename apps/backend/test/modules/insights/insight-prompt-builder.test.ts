@@ -1,7 +1,135 @@
 import { describe, expect, it } from "vitest";
-import { buildInsightPromptMessages } from "../../../src/modules/insights/insight-prompt-builder";
+import {
+  buildInsightClassificationPromptMessages,
+  buildInsightPromptMessages,
+  buildInsightQaPromptMessages,
+  buildInsightSummaryPromptMessages,
+} from "../../../src/modules/insights/insight-prompt-builder";
 
 describe("insight prompt builder", () => {
+  it("builds focused prompts for summary, QA and classification steps", () => {
+    const baseInput = {
+      context: {
+        entityDictionary: [
+          {
+            aliases: ["SKU-001"],
+            canonicalName: "玻尿酸补水面膜",
+            entityType: "product",
+            includeInAggregation: true,
+          },
+        ],
+        intentConfigs: [
+          {
+            aliases: ["查快递"],
+            includeInStatistics: true,
+            intentCode: "logistics_delay",
+            intentName: "物流异常",
+            negativeExamples: [],
+            positiveExamples: ["物流不更新"],
+            weight: 8,
+          },
+        ],
+        labelConfigs: [
+          {
+            includeInStatistics: true,
+            labelCode: "logistics",
+            labelName: "物流咨询",
+            negativeExamples: [],
+            positiveExamples: ["快递什么时候到"],
+          },
+        ],
+        qaRuleConfigs: [
+          {
+            judgmentCriteria: "客服需要给出下一步处理动作",
+            negativeExamples: [],
+            positiveExamples: [],
+            ruleCode: "after_sales_followup",
+            ruleName: "售后跟进",
+            severity: "high" as const,
+          },
+        ],
+      },
+      messages: [
+        {
+          aiText: "快递一直没更新",
+          contentStatus: "ready" as const,
+          conversationId: "301",
+          evidenceLabel: "[9001]",
+          includedForAi: true,
+          meaningfulForBoundary: true,
+          messageType: "text",
+          occurredAt: 1_780_244_000_000,
+          senderRole: "customer" as const,
+          sourceMessageId: "9001",
+        },
+      ],
+    };
+    const priorConclusions = {
+      actionItems: [],
+      problemResolution: {
+        confidence: 0.8,
+        evidence: [],
+        evidenceMessageIds: ["9001"],
+        problemDetected: true,
+        problemSummary: "客户反馈物流异常",
+        resolutionStatus: "unresolved" as const,
+      },
+      summary: {
+        confidence: 0.8,
+        customerIntent: "查物流",
+        processSummary: "客服尚未处理",
+        resultSummary: "未解决",
+      },
+    };
+
+    const summaryPrompt = buildInsightSummaryPromptMessages(baseInput);
+    const qaPrompt = buildInsightQaPromptMessages({ ...baseInput, priorConclusions });
+    const classificationPrompt = buildInsightClassificationPromptMessages({ ...baseInput, priorConclusions });
+    const summaryContract = JSON.parse(summaryPrompt[1]?.content ?? "{}").outputContract;
+    const summaryPayload = JSON.parse(summaryPrompt[1]?.content ?? "{}");
+    const qaPayload = JSON.parse(qaPrompt[1]?.content ?? "{}");
+    const classificationPayload = JSON.parse(classificationPrompt[1]?.content ?? "{}");
+
+    expect(Object.keys(summaryContract).sort()).toEqual([
+      "actionItems",
+      "faqCandidates",
+      "problemResolution",
+      "sentiment",
+      "summary",
+    ]);
+    expect(summaryPayload.tenantContext).toEqual({
+      intentConfigs: [
+        expect.objectContaining({
+          intentCode: "logistics_delay",
+          intentName: "物流异常",
+        }),
+      ],
+    });
+    expect(JSON.stringify(summaryPayload.tenantContext)).not.toContain("qaRuleConfigs");
+    expect(JSON.stringify(summaryPayload.tenantContext)).not.toContain("labelConfigs");
+    expect(JSON.stringify(summaryPayload.tenantContext)).not.toContain("entityDictionary");
+    expect(qaPayload.outputContract).toEqual({
+      qaFindings: [
+        {
+          confidence: "<number 0-1>",
+          evidenceMessageIds: ["<sourceMessageId>"],
+          passed: "<boolean>",
+          reason: "<string: 判定理由>",
+          ruleCode: "<来自 tenantContext.qaRuleConfigs.ruleCode>",
+          severity: "<high|medium|low>",
+        },
+      ],
+    });
+    expect(qaPayload.priorConclusions.problemResolution.problemSummary).toBe("客户反馈物流异常");
+    expect(classificationPayload.outputContract).toMatchObject({
+      entities: expect.any(Array),
+      intents: expect.any(Array),
+      tags: expect.any(Array),
+    });
+    expect(JSON.stringify(classificationPayload.outputContract)).not.toContain("qaFindings");
+    expect(JSON.stringify(classificationPayload.outputContract)).not.toContain("problemResolution");
+  });
+
   it("injects tenant labels, QA rules, entity dictionary and strict output rules", () => {
     const prompt = buildInsightPromptMessages({
       context: {

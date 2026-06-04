@@ -213,6 +213,10 @@ export type InsightAnalysisOutput = {
   }>;
 };
 
+export type InsightAnalyzerOutput = InsightAnalysisOutput & {
+  analysisWarnings?: string[];
+};
+
 export type InsightEvidenceReference = {
   evidenceRole: string;
   messageId: string;
@@ -237,7 +241,7 @@ export type InsightSessionAnalyzer = {
     job: ClaimedAnalyzeJob;
     messages: AiMessageInput[];
     previousSessionContexts: InsightPreviousSessionContext[];
-  }): Promise<InsightAnalysisOutput>;
+  }): Promise<InsightAnalyzerOutput>;
 };
 
 export type InsightWorkerRepositoryPort = {
@@ -711,12 +715,12 @@ export class InsightsWorkerService {
         uid: job.uid,
       });
 
-      const configuredOutput = filterConfiguredAnalysisOutput(
-        await this.model.analyzeSession({ context, job, messages: modelMessages, previousSessionContexts }),
-        context,
-      );
+      const analyzerOutput = await this.model.analyzeSession({ context, job, messages: modelMessages, previousSessionContexts });
+      const { analysisWarnings, output: cleanAnalyzerOutput } = splitAnalyzerOutput(analyzerOutput);
+      const configuredOutput = filterConfiguredAnalysisOutput(cleanAnalyzerOutput, context);
       const output = normalizeEvidenceIds(configuredOutput.output, new Set(sourceMessageIds));
       const validationWarnings = [
+        ...analysisWarnings,
         ...configuredOutput.validationWarnings,
         ...output.validationWarnings,
         ...pendingInputWarnings,
@@ -773,6 +777,15 @@ export class InsightsWorkerService {
 
     return [`confidence ${confidence} is below threshold ${policy.lowConfidenceThreshold}`];
   }
+}
+
+function splitAnalyzerOutput(output: InsightAnalyzerOutput) {
+  const { analysisWarnings = [], ...cleanOutput } = output;
+
+  return {
+    analysisWarnings,
+    output: cleanOutput,
+  };
 }
 
 export function createNonOverlappingTicker(run: () => Promise<void>): NonOverlappingTicker {

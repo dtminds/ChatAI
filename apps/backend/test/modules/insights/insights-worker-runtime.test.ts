@@ -26,6 +26,8 @@ describe("insights worker runtime config", () => {
         INSIGHTS_WORKER_MODEL_ENABLED: "true",
         INSIGHTS_WORKER_START_LOOKBACK_DAYS: "7",
         INSIGHTS_WORKER_UID_ALLOWLIST: "9001, 9002, bad, 0",
+        VOLCENGINE_ARK_LITE_MAX_TOKENS: "1024",
+        VOLCENGINE_ARK_LITE_MODEL: "ep-lite",
       }),
     ).toEqual({
       batchSize: 500,

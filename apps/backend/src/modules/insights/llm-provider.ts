@@ -1,10 +1,19 @@
 import { BadRequestError } from "../../shared/errors.js";
-import type { InsightAnalysisOutput, InsightSessionAnalyzer } from "./insights-worker.js";
-import { buildInsightPromptMessages } from "./insight-prompt-builder.js";
+import type { InsightAnalyzerOutput, InsightAnalysisOutput, InsightSessionAnalyzer } from "./insights-worker.js";
+import {
+  buildInsightClassificationPromptMessages,
+  buildInsightPromptMessages,
+  buildInsightQaPromptMessages,
+  buildInsightSummaryPromptMessages,
+  type InsightPromptMessage,
+} from "./insight-prompt-builder.js";
 
 export type OpenAiCompatibleProviderConfig = {
+  analysisMode?: "multi_step" | "single";
   apiKey: string;
   baseUrl: string;
+  liteMaxTokens: number;
+  liteModel: string;
   maxTokens: number;
   model: string;
   providerCode: "volcengine_ark";
@@ -20,6 +29,8 @@ export type OpenAiCompatibleProviderConfig = {
 type ProviderEnv = {
   VOLCENGINE_ARK_API_KEY?: string;
   VOLCENGINE_ARK_BASE_URL?: string;
+  VOLCENGINE_ARK_LITE_MAX_TOKENS?: string;
+  VOLCENGINE_ARK_LITE_MODEL?: string;
   VOLCENGINE_ARK_MAX_TOKENS?: string;
   VOLCENGINE_ARK_MODEL?: string;
 };
@@ -36,6 +47,8 @@ export function createVolcengineArkProviderConfig(
   const baseUrl = env.VOLCENGINE_ARK_BASE_URL?.trim();
   const model = env.VOLCENGINE_ARK_MODEL?.trim();
   const maxTokens = parsePositiveInteger(env.VOLCENGINE_ARK_MAX_TOKENS) ?? DEFAULT_MAX_TOKENS;
+  const liteModel = env.VOLCENGINE_ARK_LITE_MODEL?.trim() || model;
+  const liteMaxTokens = parsePositiveInteger(env.VOLCENGINE_ARK_LITE_MAX_TOKENS) ?? maxTokens;
   const missing = [
     ["VOLCENGINE_ARK_API_KEY", apiKey],
     ["VOLCENGINE_ARK_BASE_URL", baseUrl],
@@ -59,8 +72,11 @@ export function createVolcengineArkProviderConfig(
   }
 
   return {
+    analysisMode: "multi_step",
     apiKey: requireString(apiKey),
     baseUrl,
+    liteMaxTokens,
+    liteModel: requireString(liteModel),
     maxTokens,
     model: requireString(model),
     providerCode: "volcengine_ark",
@@ -117,14 +133,117 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
   private async doAnalyzeSession(
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
   ): Promise<InsightAnalysisOutput> {
-    const requestBody: Record<string, unknown> = {
-      max_tokens: this.config.maxTokens,
+    if (this.config.analysisMode !== "single") {
+      return await this.doAnalyzeSessionInSteps(input);
+    }
+
+    return await this.completeAnalysisStep({
+      maxTokens: this.config.maxTokens,
       messages: buildInsightPromptMessages({
         context: input.context,
         messages: input.messages,
         previousSessionContexts: input.previousSessionContexts,
       }),
       model: this.config.model,
+    });
+  }
+
+  private async doAnalyzeSessionInSteps(
+    input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
+  ): Promise<InsightAnalyzerOutput> {
+    const summary = await this.completeAnalysisStep({
+      maxTokens: this.config.maxTokens,
+      messages: buildInsightSummaryPromptMessages({
+        context: input.context,
+        messages: input.messages,
+        previousSessionContexts: input.previousSessionContexts,
+      }),
+      model: this.config.model,
+    });
+    const priorConclusions = {
+      actionItems: summary.actionItems,
+      problemResolution: summary.problemResolution,
+      summary: summary.summary,
+    };
+    const runQa = input.job?.mode !== "live";
+    const [qa, classification] = await Promise.all([
+      runQa
+        ? this.completeOptionalStep("qaFindings", {
+          maxTokens: this.config.maxTokens,
+          messages: buildInsightQaPromptMessages({
+            context: input.context,
+            messages: input.messages,
+            previousSessionContexts: input.previousSessionContexts,
+            priorConclusions,
+          }),
+          model: this.config.model,
+        })
+        : Promise.resolve(emptyAnalysisOutput()),
+      this.completeOptionalStep("classification", {
+        maxTokens: this.config.liteMaxTokens,
+        messages: buildInsightClassificationPromptMessages({
+          context: input.context,
+          messages: input.messages,
+          previousSessionContexts: input.previousSessionContexts,
+          priorConclusions,
+        }),
+        model: this.config.liteModel,
+      }),
+    ]);
+
+    return {
+      ...summary,
+      analysisWarnings: [
+        ...readAnalysisWarnings(qa),
+        ...readAnalysisWarnings(classification),
+      ],
+      entities: classification.entities,
+      intents: classification.intents,
+      qaFindings: qa.qaFindings,
+      risks: [],
+      tags: classification.tags,
+    };
+  }
+
+  private async completeOptionalStep(
+    stepName: string,
+    input: {
+      maxTokens: number;
+      messages: InsightPromptMessage[];
+      model: string;
+    },
+  ): Promise<InsightAnalyzerOutput> {
+    try {
+      return await retryLlmRequest(() => this.completeAnalysisStep(input), this.config.retry);
+    } catch (error) {
+      if (isResponseFormatUnsupportedError(error)) {
+        throw error;
+      }
+
+      return {
+        ...emptyAnalysisOutput(),
+        analysisWarnings: [`${stepName} analysis failed: ${formatAnalysisError(error)}`],
+      };
+    }
+  }
+
+  private async completeAnalysisStep(input: {
+    maxTokens: number;
+    messages: InsightPromptMessage[];
+    model: string;
+  }) {
+    return normalizeAnalysisOutput(await this.completeJson(input));
+  }
+
+  private async completeJson(input: {
+    maxTokens: number;
+    messages: InsightPromptMessage[];
+    model: string;
+  }) {
+    const requestBody: Record<string, unknown> = {
+      max_tokens: input.maxTokens,
+      messages: input.messages,
+      model: input.model,
       temperature: 0.2,
     };
 
@@ -158,7 +277,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       throw new Error("LLM response content is empty");
     }
 
-    return normalizeAnalysisOutput(parseModelJsonObject(content));
+    return parseModelJsonObject(content);
   }
 }
 
@@ -360,6 +479,18 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
       tagName: readString(item, "tagName") || "自定义标签",
     })),
   };
+}
+
+function emptyAnalysisOutput(): InsightAnalysisOutput {
+  return normalizeAnalysisOutput({});
+}
+
+function readAnalysisWarnings(output: InsightAnalyzerOutput) {
+  return output.analysisWarnings ?? [];
+}
+
+function formatAnalysisError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function parseModelJsonObject(content: string) {

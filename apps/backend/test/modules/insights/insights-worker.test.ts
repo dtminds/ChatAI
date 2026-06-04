@@ -670,6 +670,72 @@ describe("InsightsWorkerService", () => {
     );
   });
 
+  it("saves analyzer dimension warnings as partial validation warnings", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [],
+        analysisWarnings: ["qaFindings analysis failed: LLM request failed: 429 rate limited"],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.82,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户反馈物流异常",
+          resolutionStatus: "unknown",
+        },
+        qaFindings: [],
+        risks: [],
+        sentiment: [],
+        summary: {
+          confidence: 0.88,
+          customerIntent: "查物流",
+          processSummary: "客服处理中",
+          resultSummary: "待确认",
+        },
+        tags: [],
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        validationWarnings: expect.arrayContaining([
+          "qaFindings analysis failed: LLM request failed: 429 rate limited",
+        ]),
+      }),
+    );
+    expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
+  });
+
   it("passes up to three previous session summaries from the 48 hour lookback to the model", async () => {
     const previousSessionContexts = [
       {

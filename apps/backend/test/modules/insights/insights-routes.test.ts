@@ -8,7 +8,12 @@ describe("insights routes", () => {
     const overview = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/insights/overview?page=2&pageSize=1&keyword=%E7%89%A9%E6%B5%81&resolutionStatus=unresolved&analysisStatus=ready&problemScope=unresolved&tagCode=logistics_issue&entityName=%E7%99%BD%E8%89%B2%E7%BE%BD%E7%BB%92%E6%9C%8D&intentCode=logistics_delay",
+      url: "/api/server/insights/overview?from=2026-06-01&to=2026-06-30",
+    });
+    const overviewSessions = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/insights/overview/sessions?page=2&pageSize=1&keyword=%E7%89%A9%E6%B5%81&resolutionStatus=unresolved&analysisStatus=ready&problemScope=unresolved&tagCode=logistics_issue&entityName=%E7%99%BD%E8%89%B2%E7%BE%BD%E7%BB%92%E6%9C%8D&intentCode=logistics_delay",
     });
     const quality = await app.inject({
       headers: { authorization },
@@ -65,13 +70,25 @@ describe("insights routes", () => {
           unknown: 0,
           unresolved: 1,
         },
-        sessions: {
-          items: expect.any(Array),
-          page: 2,
-          pageSize: 1,
-        },
         totalSessions: 1,
         unresolvedSessions: 1,
+      },
+      success: true,
+    });
+    expect(overview.json().data.sessions).toBeUndefined();
+    expect(overviewSessions.statusCode).toBe(200);
+    expect(overviewSessions.json()).toMatchObject({
+      data: {
+        items: [
+          expect.objectContaining({
+            problemSummary: "客户反馈物流异常",
+            sessionId: "501",
+          }),
+        ],
+        page: 2,
+        pageSize: 1,
+        total: 1,
+        totalPages: 1,
       },
       success: true,
     });

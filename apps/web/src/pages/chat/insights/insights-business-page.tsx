@@ -12,8 +12,8 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   InsightBusinessRelatedSessionsResponse,
+  InsightOverviewSessionsResponse,
   InsightsBusinessResponse,
-  InsightsOverviewResponse,
 } from "@chatai/contracts";
 import {
   Area,
@@ -50,7 +50,7 @@ import { formatInsightTime } from "./insights-utils";
 import { useInsightDetail } from "./use-insight-detail";
 
 type BusinessTopic = InsightsBusinessResponse["tagDistribution"][number];
-type BusinessSession = InsightsOverviewResponse["sessions"]["items"][number];
+type BusinessSession = InsightOverviewSessionsResponse["items"][number];
 type BusinessDimension = BusinessTopic["dimension"];
 type BusinessTrendMetric = "assetMentions" | "entityMentions" | "intentMentions" | "tagMentions";
 

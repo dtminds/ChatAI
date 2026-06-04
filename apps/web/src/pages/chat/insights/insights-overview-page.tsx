@@ -16,7 +16,12 @@ import {
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { InsightOverviewQuery, InsightSettingsResponse, InsightsOverviewResponse } from "@chatai/contracts";
+import type {
+  InsightOverviewSessionsQuery,
+  InsightOverviewSessionsResponse,
+  InsightSettingsResponse,
+  InsightsOverviewResponse,
+} from "@chatai/contracts";
 import {
   Area,
   AreaChart,
@@ -61,7 +66,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { getInsightOverview, getInsightSettings } from "./api/insights-service";
+import { getInsightOverview, getInsightOverviewSessions, getInsightSettings } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { ResolutionBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
@@ -72,7 +77,7 @@ import { formatInsightTime } from "./insights-utils";
 import { useInsightDetail } from "./use-insight-detail";
 
 type TrendMetric = keyof InsightsOverviewResponse["totals"];
-type OverviewSessionItem = InsightsOverviewResponse["sessions"]["items"][number];
+type OverviewSessionItem = InsightOverviewSessionsResponse["items"][number];
 
 const overviewPageSize = 20;
 
@@ -129,6 +134,7 @@ const resolutionColors: Record<string, string> = {
 
 export function InsightsOverviewPage() {
   const [overview, setOverview] = useState<InsightsOverviewResponse>();
+  const [sessionsPage, setSessionsPage] = useState<InsightOverviewSessionsResponse>();
   const [settings, setSettings] = useState<InsightSettingsResponse>();
   const [activeMetric, setActiveMetric] = useState<TrendMetric>("logicalSessions");
   const [analysisStatusFilter, setAnalysisStatusFilter] = useState("all");
@@ -182,8 +188,29 @@ export function InsightsOverviewPage() {
   useEffect(() => {
     let isActive = true;
 
-    setIsSessionsLoading(true);
     void getInsightOverview({
+      from: toBoundaryDate(from, "start"),
+      to: toBoundaryDate(to, "end"),
+    }).then((response) => {
+      if (isActive) {
+        setOverview(response);
+      }
+    }).catch(() => {
+      if (isActive) {
+        setOverview(undefined);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [from, to]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    setIsSessionsLoading(true);
+    void getInsightOverviewSessions({
       analysisStatus: normalizeAnalysisStatusFilter(analysisStatusFilter),
       entityName: entityFilter === "all" ? undefined : entityFilter,
       from: toBoundaryDate(from, "start"),
@@ -197,12 +224,12 @@ export function InsightsOverviewPage() {
       to: toBoundaryDate(to, "end"),
     }).then((response) => {
       if (isActive) {
-        setOverview(response);
+        setSessionsPage(response);
         setIsSessionsLoading(false);
       }
     }).catch(() => {
       if (isActive) {
-        setOverview(undefined);
+        setSessionsPage(undefined);
         setIsSessionsLoading(false);
       }
     });
@@ -223,7 +250,7 @@ export function InsightsOverviewPage() {
     to,
   ]);
 
-  const sessions = overview?.sessions.items ?? [];
+  const sessions = sessionsPage?.items ?? [];
 
   const filterOptions = useMemo(
     () => buildSessionFilterOptions(overview, settings),
@@ -274,7 +301,7 @@ export function InsightsOverviewPage() {
           resolutionFilter={resolutionFilter}
           isLoading={isSessionsLoading}
           rows={sessions}
-          sessionsPage={overview?.sessions}
+          sessionsPage={sessionsPage}
           tagFilter={tagFilter}
         />
       </div>
@@ -591,7 +618,7 @@ function SessionTableCard({
   problemFilter: string;
   resolutionFilter: string;
   rows: OverviewSessionItem[];
-  sessionsPage: InsightsOverviewResponse["sessions"] | undefined;
+  sessionsPage: InsightOverviewSessionsResponse | undefined;
   tagFilter: string;
 }) {
   const total = sessionsPage?.total ?? 0;
@@ -866,17 +893,17 @@ function buildPaginationNumbers(page: number, totalPages: number): Array<number 
   return result;
 }
 
-function normalizeAnalysisStatusFilter(value: string): InsightOverviewQuery["analysisStatus"] | undefined {
+function normalizeAnalysisStatusFilter(value: string): InsightOverviewSessionsQuery["analysisStatus"] | undefined {
   return value === "ready" || value === "partial" || value === "failed" || value === "stale"
     ? value
     : undefined;
 }
 
-function normalizeProblemScopeFilter(value: string): InsightOverviewQuery["problemScope"] | undefined {
+function normalizeProblemScopeFilter(value: string): InsightOverviewSessionsQuery["problemScope"] | undefined {
   return value === "problem" || value === "unresolved" ? value : undefined;
 }
 
-function normalizeResolutionStatusFilter(value: string): InsightOverviewQuery["resolutionStatus"] | undefined {
+function normalizeResolutionStatusFilter(value: string): InsightOverviewSessionsQuery["resolutionStatus"] | undefined {
   return value === "resolved" ||
     value === "unresolved" ||
     value === "partially_resolved" ||

@@ -10,7 +10,11 @@ import {
   formatDateInputValue,
   getCurrentMonthDateRange,
   getDefaultDateRange,
+  getPreviousMonthDateRange,
+  getPreviousWeekDateRange,
   getRecentDateRange,
+  getWeekDateRange,
+  getYesterdayDateRange,
   parseDateInputValue,
   type InsightDateRange,
 } from "./insights-date-range";
@@ -19,9 +23,13 @@ const presetOptions: Array<{
   label: string;
   range: () => InsightDateRange;
 }> = [
+  { label: "昨天", range: () => getYesterdayDateRange() },
   { label: "近7天", range: () => getRecentDateRange(7) },
   { label: "近30天", range: () => getDefaultDateRange() },
+  { label: "本周", range: () => getWeekDateRange() },
+  { label: "上周", range: () => getPreviousWeekDateRange() },
   { label: "本月", range: () => getCurrentMonthDateRange() },
+  { label: "上月", range: () => getPreviousMonthDateRange() },
 ];
 
 export function InsightDateRangeFilter({
@@ -35,20 +43,30 @@ export function InsightDateRangeFilter({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [draftRange, setDraftRange] = useState<DateRange>(() => toCalendarRange({ from, to }));
+  const [draftPresetLabel, setDraftPresetLabel] = useState<string | undefined>(() =>
+    getPresetLabel({ from, to }),
+  );
+  const [selectedPresetLabel, setSelectedPresetLabel] = useState<string | undefined>(() =>
+    getPresetLabel({ from, to }),
+  );
   const [visibleMonth, setVisibleMonth] = useState(() => getVisibleMonth({ from, to }));
   const value = useMemo(() => ({ from, to }), [from, to]);
-  const label = getPresetLabel(value) ?? "自定义";
+  const label = getActivePresetLabel(value, selectedPresetLabel) ?? "自定义";
   const rangeText = formatRangeText(value);
 
   useEffect(() => {
     if (isOpen) {
       setDraftRange(toCalendarRange(value));
+      setDraftPresetLabel(getActivePresetLabel(value, selectedPresetLabel));
       setVisibleMonth(getVisibleMonth(value));
     }
-  }, [isOpen, value]);
+  }, [isOpen, selectedPresetLabel, value]);
 
-  function selectPreset(range: InsightDateRange) {
+  function selectPreset(option: (typeof presetOptions)[number]) {
+    const range = option.range();
+
     setDraftRange(toCalendarRange(range));
+    setDraftPresetLabel(option.label);
     setVisibleMonth(getVisibleMonth(range));
   }
 
@@ -60,6 +78,7 @@ export function InsightDateRangeFilter({
     }
 
     onChange(normalizedRange);
+    setSelectedPresetLabel(draftPresetLabel ?? getPresetLabel(normalizedRange));
     setIsOpen(false);
   }
 
@@ -67,6 +86,7 @@ export function InsightDateRangeFilter({
     const range = getDefaultDateRange();
 
     setDraftRange(toCalendarRange(range));
+    setDraftPresetLabel("近30天");
     setVisibleMonth(getVisibleMonth(range));
   }
 
@@ -113,7 +133,7 @@ export function InsightDateRangeFilter({
                 <Button
                   className={cn("h-8 justify-start rounded-[8px] px-2.5 text-xs", isActive && "bg-accent")}
                   key={option.label}
-                  onClick={() => selectPreset(option.range())}
+                  onClick={() => selectPreset(option)}
                   size="sm"
                   type="button"
                   variant="ghost"
@@ -131,8 +151,10 @@ export function InsightDateRangeFilter({
               onMonthChange={setVisibleMonth}
               onSelect={(_range, triggerDate) => {
                 setDraftRange((current) => getNextDraftRange(current, triggerDate));
+                setDraftPresetLabel(undefined);
               }}
               selected={draftRange}
+              showOutsideDays={false}
             />
             <div className="mt-3 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-xs text-muted-foreground">
@@ -215,6 +237,19 @@ function formatRangeText(range: InsightDateRange | undefined) {
 
 function getPresetLabel(range: InsightDateRange) {
   return presetOptions.find((option) => isSameDateRange(range, option.range()))?.label;
+}
+
+function getActivePresetLabel(
+  range: InsightDateRange,
+  label: string | undefined,
+) {
+  const option = presetOptions.find((preset) => preset.label === label);
+
+  if (option && isSameDateRange(range, option.range())) {
+    return option.label;
+  }
+
+  return getPresetLabel(range);
 }
 
 function isSameDateRange(

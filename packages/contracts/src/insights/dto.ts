@@ -129,6 +129,8 @@ export const InsightOverviewSessionsPageSchema = Type.Object({
   totalPages: Type.Number(),
 });
 
+export const InsightOverviewSessionsResponseSchema = InsightOverviewSessionsPageSchema;
+
 export const InsightsOverviewResponseSchema = Type.Object({
   actionItemsOpen: Type.Number(),
   analysis: Type.Object({
@@ -150,7 +152,6 @@ export const InsightsOverviewResponseSchema = Type.Object({
     unknown: Type.Number(),
     unresolved: Type.Number(),
   }),
-  sessions: InsightOverviewSessionsPageSchema,
   totalSessions: Type.Number(),
   totals: InsightOverviewTotalsSchema,
   trend: Type.Array(InsightOverviewTrendPointSchema),
@@ -158,6 +159,11 @@ export const InsightsOverviewResponseSchema = Type.Object({
 });
 
 export type InsightOverviewQuery = {
+  from?: string;
+  to?: string;
+};
+
+export type InsightOverviewSessionsQuery = {
   analysisStatus?: Static<typeof InsightAnalysisStatusSchema>;
   entityName?: string;
   from?: string;
@@ -582,6 +588,7 @@ export type InsightBusinessRelatedSessionsResponse = Static<
 >;
 export type InsightsBusinessResponse = Static<typeof InsightsBusinessResponseSchema>;
 export type InsightsOverviewResponse = Static<typeof InsightsOverviewResponseSchema>;
+export type InsightOverviewSessionsResponse = Static<typeof InsightOverviewSessionsResponseSchema>;
 export type InsightsQualityResponse = Static<typeof InsightsQualityResponseSchema>;
 export type InsightsRescanRequest = Static<typeof InsightsRescanRequestSchema>;
 export type InsightsRescanResponse = Static<typeof InsightsRescanResponseSchema>;

@@ -2,6 +2,8 @@ import type {
   ApiSuccessEnvelope,
   InsightActionStatus,
   InsightOverviewQuery as ContractInsightOverviewQuery,
+  InsightOverviewSessionsQuery as ContractInsightOverviewSessionsQuery,
+  InsightOverviewSessionsResponse,
   InsightAnalysisPolicy,
   InsightAnalysisPolicyUpdateRequest,
   InsightConfigDeletedResponse,
@@ -35,21 +37,26 @@ export type InsightFollowUpQuery = {
 };
 
 export type InsightOverviewQuery = {
-  analysisStatus?: ContractInsightOverviewQuery["analysisStatus"];
+  from?: ContractInsightOverviewQuery["from"];
+  to?: ContractInsightOverviewQuery["to"];
+};
+
+export type InsightOverviewSessionsQuery = {
+  analysisStatus?: ContractInsightOverviewSessionsQuery["analysisStatus"];
   entityName?: string;
   from?: string;
   intentCode?: string;
   keyword?: string;
   page?: number;
   pageSize?: number;
-  problemScope?: ContractInsightOverviewQuery["problemScope"];
-  resolutionStatus?: ContractInsightOverviewQuery["resolutionStatus"];
+  problemScope?: ContractInsightOverviewSessionsQuery["problemScope"];
+  resolutionStatus?: ContractInsightOverviewSessionsQuery["resolutionStatus"];
   tagCode?: string;
   to?: string;
 };
 
 export type InsightBusinessRelatedSessionsQuery = Pick<
-  InsightOverviewQuery,
+  InsightOverviewSessionsQuery,
   "from" | "keyword" | "page" | "pageSize" | "to"
 > & {
   dimension: InsightsBusinessResponse["tagDistribution"][number]["dimension"];
@@ -68,7 +75,18 @@ export async function getInsightOverview(query: InsightOverviewQuery = {}) {
   return response.data;
 }
 
-export async function getInsightBusiness(query: InsightOverviewQuery = {}) {
+export async function getInsightOverviewSessions(query: InsightOverviewSessionsQuery = {}) {
+  const response = await http.get<ApiSuccessEnvelope<InsightOverviewSessionsResponse>>(
+    "/server/insights/overview/sessions",
+    {
+      params: compactQuery(query),
+    },
+  );
+
+  return response.data;
+}
+
+export async function getInsightBusiness(query: InsightOverviewSessionsQuery = {}) {
   const response = await http.get<ApiSuccessEnvelope<InsightsBusinessResponse>>(
     "/server/insights/business",
     {

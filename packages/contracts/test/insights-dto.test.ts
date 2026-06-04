@@ -6,6 +6,7 @@ import {
   InsightEntityDictionaryMutationRequestSchema,
   InsightDetailResponseSchema,
   InsightLabelConfigMutationRequestSchema,
+  InsightOverviewSessionsResponseSchema,
   InsightQaRuleConfigMutationRequestSchema,
   InsightSettingsResponseSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
@@ -17,7 +18,7 @@ import {
 } from "../src/insights/dto";
 
 describe("insights DTOs", () => {
-  it("accepts overview responses with priority queue and analysis status", () => {
+  it("accepts overview responses with statistics only", () => {
     expect(
       Value.Check(InsightsOverviewResponseSchema, {
         actionItemsOpen: 7,
@@ -56,26 +57,6 @@ describe("insights DTOs", () => {
           unknown: 16,
           unresolved: 1,
         },
-        sessions: {
-          items: [
-            {
-              agentMessageCount: 3,
-              analysisStatus: "ready",
-              conversationId: "301",
-              customerMessageCount: 5,
-              customerName: "张三",
-              messageCount: 8,
-              resolutionStatus: "unresolved",
-              sessionId: "session-1",
-              startedAt: 1780243200000,
-              summaryCustomerIntent: "退款咨询",
-            },
-          ],
-          page: 1,
-          pageSize: 20,
-          total: 36,
-          totalPages: 2,
-        },
         totalSessions: 36,
         totals: {
           agentMessages: 120,
@@ -95,6 +76,31 @@ describe("insights DTOs", () => {
           },
         ],
         unresolvedSessions: 4,
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts overview session list responses separately", () => {
+    expect(
+      Value.Check(InsightOverviewSessionsResponseSchema, {
+        items: [
+          {
+            agentMessageCount: 3,
+            analysisStatus: "ready",
+            conversationId: "301",
+            customerMessageCount: 5,
+            customerName: "张三",
+            messageCount: 8,
+            resolutionStatus: "unresolved",
+            sessionId: "session-1",
+            startedAt: 1780243200000,
+            summaryCustomerIntent: "退款咨询",
+          },
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 36,
+        totalPages: 2,
       }),
     ).toBe(true);
   });

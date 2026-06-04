@@ -4,6 +4,8 @@ import type {
   InsightAnalysisStatus,
   InsightAnalysisPolicy,
   InsightAnalysisPolicyUpdateRequest,
+  InsightOverviewSessionsQuery,
+  InsightOverviewSessionsResponse,
   InsightBusinessRelatedSessionsResponse,
   InsightOverviewQuery,
   InsightConfigDeletedResponse,
@@ -44,7 +46,7 @@ type InsightResolutionStatus =
     : InsightDetailResponse["problemResolution"]["resolutionStatus"];
 
 type InsightSeverity = InsightsQualityResponse["unresolvedSessions"][number]["severity"];
-type InsightOverviewSessionItem = InsightsOverviewResponse["sessions"]["items"][number];
+type InsightOverviewSessionItem = InsightOverviewSessionsResponse["items"][number];
 
 export type InsightCurrentSessionRow = {
   actionOpenCount: number;
@@ -111,15 +113,30 @@ export type InsightsFollowUpFilters = {
 };
 
 export type InsightsOverviewFilters = {
-  analysisStatus?: InsightOverviewQuery["analysisStatus"];
+  analysisStatus?: InsightOverviewSessionsQuery["analysisStatus"];
   entityName?: string;
   from?: string;
   intentCode?: string;
   keyword?: string;
   page?: number;
   pageSize?: number;
-  problemScope?: InsightOverviewQuery["problemScope"];
-  resolutionStatus?: InsightOverviewQuery["resolutionStatus"];
+  problemScope?: InsightOverviewSessionsQuery["problemScope"];
+  resolutionStatus?: InsightOverviewSessionsQuery["resolutionStatus"];
+  sessionIds?: string[];
+  tagCode?: string;
+  to?: string;
+};
+
+export type InsightOverviewSessionFilters = {
+  analysisStatus?: InsightOverviewSessionsQuery["analysisStatus"];
+  entityName?: string;
+  from?: string;
+  intentCode?: string;
+  keyword?: string;
+  page?: number;
+  pageSize?: number;
+  problemScope?: InsightOverviewSessionsQuery["problemScope"];
+  resolutionStatus?: InsightOverviewSessionsQuery["resolutionStatus"];
   sessionIds?: string[];
   tagCode?: string;
   to?: string;
@@ -292,6 +309,27 @@ export class InsightsService {
     scope: InsightsUidScope,
     filters: InsightsOverviewFilters = {},
   ): Promise<InsightsOverviewResponse> {
+    const aggregateFilters = {
+      from: filters.from,
+      to: filters.to,
+    };
+    const [aggregate, entityHotspots, intentDistribution] = await Promise.all([
+      this.repository.getOverviewAggregate(scope, aggregateFilters),
+      this.repository.listEntityHotspots?.(scope) ?? Promise.resolve([]),
+      this.repository.listIntentDistribution?.(scope) ?? Promise.resolve([]),
+    ]);
+
+    return {
+      ...aggregate,
+      entityHotspots,
+      intentDistribution,
+    };
+  }
+
+  async getOverviewSessions(
+    scope: InsightsUidScope,
+    filters: InsightOverviewSessionFilters = {},
+  ): Promise<InsightOverviewSessionsResponse> {
     const normalizedPage = normalizeOverviewPage(filters.page);
     const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
     const normalizedFilters = {
@@ -299,30 +337,14 @@ export class InsightsService {
       page: normalizedPage,
       pageSize: normalizedPageSize,
     };
-    const aggregateFilters = {
-      from: filters.from,
-      to: filters.to,
-    };
-    const [aggregate, sessions] = await Promise.all([
-      this.repository.getOverviewAggregate(scope, aggregateFilters),
-      this.repository.listCurrentSessions(scope, normalizedFilters),
-    ]);
-    const [entityHotspots, intentDistribution] = await Promise.all([
-      this.repository.listEntityHotspots?.(scope) ?? Promise.resolve([]),
-      this.repository.listIntentDistribution?.(scope) ?? Promise.resolve(buildIntentDistribution(sessions.items)),
-    ]);
+    const sessions = await this.repository.listCurrentSessions(scope, normalizedFilters);
 
     return {
-      ...aggregate,
-      entityHotspots,
-      intentDistribution,
-      sessions: {
-        items: buildOverviewSessions(sessions.items),
-        page: normalizedPage,
-        pageSize: normalizedPageSize,
-        total: sessions.total,
-        totalPages: Math.max(1, Math.ceil(sessions.total / normalizedPageSize)),
-      },
+      items: buildOverviewSessions(sessions.items),
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      total: sessions.total,
+      totalPages: Math.max(1, Math.ceil(sessions.total / normalizedPageSize)),
     };
   }
 

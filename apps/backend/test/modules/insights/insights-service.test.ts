@@ -586,9 +586,6 @@ describe("InsightsService", () => {
     const service = new InsightsService(repository);
     const result = await service.getOverview(scope, {
       from: "2026-06-01",
-      page: 2,
-      pageSize: 1,
-      resolutionStatus: "unresolved",
       to: "2026-06-30",
     });
 
@@ -651,7 +648,26 @@ describe("InsightsService", () => {
       ],
       unresolvedSessions: 2,
     });
-    expect(result.sessions).toMatchObject({
+    expect(result).not.toHaveProperty("sessions");
+    expect(repository.getOverviewAggregate).toHaveBeenCalledWith(scope, {
+      from: "2026-06-01",
+      to: "2026-06-30",
+    });
+    expect(repository.listCurrentSessions).not.toHaveBeenCalled();
+  });
+
+  it("paginates overview sessions separately from overview metrics", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+    const result = await service.getOverviewSessions(scope, {
+      from: "2026-06-01",
+      page: 2,
+      pageSize: 1,
+      resolutionStatus: "unresolved",
+      to: "2026-06-30",
+    });
+
+    expect(result).toMatchObject({
       page: 2,
       pageSize: 1,
       total: 4,
@@ -664,10 +680,7 @@ describe("InsightsService", () => {
         }),
       ],
     });
-    expect(repository.getOverviewAggregate).toHaveBeenCalledWith(scope, {
-      from: "2026-06-01",
-      to: "2026-06-30",
-    });
+    expect(repository.getOverviewAggregate).not.toHaveBeenCalled();
     expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, {
       from: "2026-06-01",
       page: 2,

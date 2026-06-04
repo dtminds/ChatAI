@@ -41,6 +41,11 @@ const FollowUpsQuerySchema = Type.Object({
 });
 
 const OverviewQuerySchema = Type.Object({
+  from: Type.Optional(Type.String()),
+  to: Type.Optional(Type.String()),
+});
+
+const OverviewSessionsQuerySchema = Type.Object({
   analysisStatus: Type.Optional(Type.Union([
     Type.Literal("ready"),
     Type.Literal("partial"),
@@ -70,7 +75,7 @@ const OverviewQuerySchema = Type.Object({
 });
 
 const BusinessRelatedSessionsQuerySchema = Type.Intersect([
-  Type.Pick(OverviewQuerySchema, ["from", "keyword", "page", "pageSize", "to"]),
+  Type.Pick(OverviewSessionsQuerySchema, ["from", "keyword", "page", "pageSize", "to"]),
   Type.Object({
     dimension: Type.Union([
       Type.Literal("asset"),
@@ -101,6 +106,7 @@ const ConfigParamsSchema = Type.Object({
 
 type FollowUpsQuery = Static<typeof FollowUpsQuerySchema>;
 type OverviewQuery = Static<typeof OverviewQuerySchema>;
+type OverviewSessionsQuery = Static<typeof OverviewSessionsQuerySchema>;
 type BusinessRelatedSessionsQuery = Static<typeof BusinessRelatedSessionsQuerySchema>;
 type SessionParams = Static<typeof SessionParamsSchema>;
 type ActionItemParams = Static<typeof ActionItemParamsSchema>;
@@ -127,19 +133,37 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get<{ Querystring: OverviewQuery }>(
+  app.get<{ Querystring: OverviewSessionsQuery }>(
+    "/api/server/insights/overview/sessions",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: OverviewSessionsQuerySchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).getOverviewSessions(
+          await getUidScope(app, request),
+          normalizeOverviewSessionsQuery(request.query),
+        ),
+      );
+    },
+  );
+
+  app.get<{ Querystring: OverviewSessionsQuery }>(
     "/api/server/insights/business",
     {
       preHandler: app.authenticate,
       schema: {
-        querystring: OverviewQuerySchema,
+        querystring: OverviewSessionsQuerySchema,
       },
     },
     async (request) => {
       return apiSuccess(
         await createInsightsService(app).getBusiness(
           await getUidScope(app, request),
-          normalizeOverviewQuery(request.query),
+          normalizeOverviewSessionsQuery(request.query),
         ),
       );
     },
@@ -563,6 +587,13 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
 }
 
 function normalizeOverviewQuery(query: OverviewQuery): InsightsOverviewFilters {
+  return {
+    from: query.from,
+    to: query.to,
+  };
+}
+
+function normalizeOverviewSessionsQuery(query: OverviewSessionsQuery): InsightsOverviewFilters {
   return {
     analysisStatus: query.analysisStatus,
     entityName: query.entityName,

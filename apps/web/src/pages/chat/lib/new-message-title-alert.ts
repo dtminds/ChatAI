@@ -1,5 +1,6 @@
 export const WORKBENCH_DEFAULT_TITLE = "客服工作台";
 export const WORKBENCH_NEW_MESSAGE_TITLE = "【新消息】客服工作台";
+export const WORKBENCH_EMPTY_MESSAGE_TITLE = "【　　　】客服工作台";
 
 const TITLE_FLASH_INTERVAL_MS = 1000;
 
@@ -29,7 +30,7 @@ export function notifyPulledCustomerMessage() {
     isShowingNewMessageTitle = !isShowingNewMessageTitle;
     document.title = isShowingNewMessageTitle
       ? WORKBENCH_NEW_MESSAGE_TITLE
-      : WORKBENCH_DEFAULT_TITLE;
+      : WORKBENCH_EMPTY_MESSAGE_TITLE;
   }, TITLE_FLASH_INTERVAL_MS);
 }
 

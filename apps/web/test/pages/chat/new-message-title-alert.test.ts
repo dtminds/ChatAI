@@ -3,6 +3,7 @@ import {
   notifyPulledCustomerMessage,
   resetWorkbenchTitleAlert,
   WORKBENCH_DEFAULT_TITLE,
+  WORKBENCH_EMPTY_MESSAGE_TITLE,
   WORKBENCH_NEW_MESSAGE_TITLE,
 } from "@/pages/chat/lib/new-message-title-alert";
 
@@ -31,7 +32,7 @@ describe("new message title alert", () => {
     expect(document.title).toBe(WORKBENCH_NEW_MESSAGE_TITLE);
 
     vi.advanceTimersByTime(1000);
-    expect(document.title).toBe(WORKBENCH_DEFAULT_TITLE);
+    expect(document.title).toBe(WORKBENCH_EMPTY_MESSAGE_TITLE);
 
     vi.advanceTimersByTime(1000);
     expect(document.title).toBe(WORKBENCH_NEW_MESSAGE_TITLE);

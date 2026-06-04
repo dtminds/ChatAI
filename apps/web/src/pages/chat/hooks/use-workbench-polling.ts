@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent, useRef } from "react";
 import { useWorkbenchPollingLease } from "@/pages/chat/hooks/use-workbench-polling-lease";
 
 export const WORKBENCH_POLL_HIDDEN_INTERVAL_MS = 10000;
-export const WORKBENCH_POLL_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+export const WORKBENCH_POLL_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 export const WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS = 30 * 1000;
 
 export type PollingPauseReason = "idle" | "other-tab";

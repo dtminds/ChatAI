@@ -121,20 +121,22 @@ export function InsightsBusinessPage() {
   const detail = useInsightDetail();
 
   useEffect(() => {
-    let isActive = true;
+    const controller = new AbortController();
     const query = {
       from: toBoundaryDate(from, "start"),
       to: toBoundaryDate(to, "end"),
     };
 
-    void getInsightBusiness(query).then((businessResponse) => {
-      if (isActive) {
-        setBusiness(businessResponse);
-      }
-    });
+    void getInsightBusiness(query, { signal: controller.signal })
+      .then((businessResponse) => {
+        if (!controller.signal.aborted) {
+          setBusiness(businessResponse);
+        }
+      })
+      .catch(() => undefined);
 
     return () => {
-      isActive = false;
+      controller.abort();
     };
   }, [from, to]);
 
@@ -164,16 +166,13 @@ export function InsightsBusinessPage() {
   }, [activeTopic?.code, activeTopic?.dimension, activeTopic?.type, from, sessionSearchKeyword, to]);
 
   useEffect(() => {
-    let isActive = true;
-
     if (!activeTopic) {
       setRelatedSessionsPage(undefined);
       setIsRelatedSessionsLoading(false);
-      return () => {
-        isActive = false;
-      };
+      return;
     }
 
+    const controller = new AbortController();
     setIsRelatedSessionsLoading(true);
     void getInsightBusinessRelatedSessions({
       dimension: activeTopic.dimension,
@@ -184,20 +183,22 @@ export function InsightsBusinessPage() {
       topicCode: activeTopic.code,
       topicType: activeTopic.type,
       to: toBoundaryDate(to, "end"),
-    }).then((response) => {
-      if (isActive) {
-        setRelatedSessionsPage(response);
-        setIsRelatedSessionsLoading(false);
-      }
-    }).catch(() => {
-      if (isActive) {
-        setRelatedSessionsPage(undefined);
-        setIsRelatedSessionsLoading(false);
-      }
-    });
+    }, { signal: controller.signal })
+      .then((response) => {
+        if (!controller.signal.aborted) {
+          setRelatedSessionsPage(response);
+          setIsRelatedSessionsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setRelatedSessionsPage(undefined);
+          setIsRelatedSessionsLoading(false);
+        }
+      });
 
     return () => {
-      isActive = false;
+      controller.abort();
     };
   }, [activeTopic, from, relatedSessionsPageNumber, sessionSearchKeyword, to]);
 

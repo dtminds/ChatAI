@@ -8,6 +8,7 @@ import {
   createInsightRescanJob,
   deleteInsightLabelConfig,
   getInsightBusiness,
+  getInsightBusinessRelatedSessions,
   getInsightDetail,
   getInsightFollowUps,
   getInsightMessageContext,
@@ -200,21 +201,50 @@ describe("insights service adapter", () => {
     expect(mock.history.post[2]?.url).toBe("/server/insights/settings/entity-dictionary");
   });
 
-  it("passes abort signals to quality and follow-up requests", async () => {
+  it("passes abort signals to business, quality and follow-up requests", async () => {
+    const businessController = new AbortController();
+    const relatedSessionsController = new AbortController();
     const qualityController = new AbortController();
     const followUpsController = new AbortController();
 
+    mock.onGet("/server/insights/business").reply(200, { data: { totals: {} }, success: true });
+    mock.onGet("/server/insights/business/related-sessions").reply(200, { data: { items: [], total: 0 }, success: true });
     mock.onGet("/server/insights/quality").reply(200, { data: { overview: {} }, success: true });
     mock.onGet("/server/insights/follow-ups").reply(200, { data: { items: [], total: 0 }, success: true });
 
+    await getInsightBusiness(
+      { from: "2026-06-01", to: "2026-06-02" },
+      { signal: businessController.signal },
+    );
+    await getInsightBusinessRelatedSessions(
+      {
+        dimension: "intent",
+        page: 1,
+        pageSize: 20,
+        topicCode: "logistics_delay",
+      },
+      { signal: relatedSessionsController.signal },
+    );
     await getInsightQuality({ signal: qualityController.signal });
     await getInsightFollowUps(
       { status: "open" },
       { signal: followUpsController.signal },
     );
 
-    expect(mock.history.get[0]?.signal).toBe(qualityController.signal);
-    expect(mock.history.get[1]?.signal).toBe(followUpsController.signal);
-    expect(mock.history.get[1]?.params).toEqual({ status: "open" });
+    expect(mock.history.get[0]?.signal).toBe(businessController.signal);
+    expect(mock.history.get[0]?.params).toEqual({
+      from: "2026-06-01",
+      to: "2026-06-02",
+    });
+    expect(mock.history.get[1]?.signal).toBe(relatedSessionsController.signal);
+    expect(mock.history.get[1]?.params).toEqual({
+      dimension: "intent",
+      page: 1,
+      pageSize: 20,
+      topicCode: "logistics_delay",
+    });
+    expect(mock.history.get[2]?.signal).toBe(qualityController.signal);
+    expect(mock.history.get[3]?.signal).toBe(followUpsController.signal);
+    expect(mock.history.get[3]?.params).toEqual({ status: "open" });
   });
 });

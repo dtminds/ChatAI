@@ -577,6 +577,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         update_time: new Date(),
       })
       .where("id", "=", parsePositiveInteger(input.sessionId) ?? -1)
+      .where("uid", "=", input.uid)
       .executeTakeFirst();
   }
 
@@ -1194,6 +1195,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         update_time: new Date(),
       })
       .where("id", "=", sessionId)
+      .where("uid", "=", input.job.uid)
       .executeTakeFirst();
     await this.db
       .updateTable("xy_wap_embed_analysis_run")

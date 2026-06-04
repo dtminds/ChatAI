@@ -92,10 +92,14 @@ export async function getInsightOverviewSessions(query: InsightOverviewSessionsQ
   return response.data;
 }
 
-export async function getInsightBusiness(query: InsightOverviewSessionsQuery = {}) {
+export async function getInsightBusiness(
+  query: InsightOverviewSessionsQuery = {},
+  options: InsightRequestOptions = {},
+) {
   const response = await http.get<ApiSuccessEnvelope<InsightsBusinessResponse>>(
     "/server/insights/business",
     {
+      ...options,
       params: compactQuery(query),
     },
   );
@@ -105,10 +109,12 @@ export async function getInsightBusiness(query: InsightOverviewSessionsQuery = {
 
 export async function getInsightBusinessRelatedSessions(
   query: InsightBusinessRelatedSessionsQuery,
+  options: InsightRequestOptions = {},
 ) {
   const response = await http.get<ApiSuccessEnvelope<InsightBusinessRelatedSessionsResponse>>(
     "/server/insights/business/related-sessions",
     {
+      ...options,
       params: compactQuery(query),
     },
   );

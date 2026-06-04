@@ -614,6 +614,7 @@ describe("MysqlInsightWorkerRepository", () => {
 
   it("writes analysis snapshots as building before publishing them", async () => {
     const operations: Array<{ table: string; type: "insert" | "update"; values?: Record<string, unknown> }> = [];
+    const updateBuilders: UpdateBuilderStub[] = [];
     let nextInsertId = 7001;
     let logicalSessionSelectCount = 0;
     const db = {
@@ -635,6 +636,7 @@ describe("MysqlInsightWorkerRepository", () => {
       }),
       updateTable: vi.fn((table: string) => createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
         onSet: (values) => operations.push({ table, type: "update", values }),
+        onCreate: (builder) => updateBuilders.push(builder),
         table,
       })),
     };
@@ -709,10 +711,51 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(publishIndex).toBeGreaterThan(0);
     expect(currentIndex).toBeGreaterThan(publishIndex);
     expect(logicalSessionSelectCount).toBe(1);
+    const logicalSessionUpdate = updateBuilders.find((builder) =>
+      builder.table === "xy_wap_embed_logical_session"
+      && builder.whereCalls.some((call) => call[0] === "id" && call[2] === 501),
+    );
+    expect(logicalSessionUpdate?.whereCalls).toContainEqual(["uid", "=", 9001]);
+  });
+
+  it("scopes logical session count updates to the current uid", async () => {
+    let logicalSessionUpdate: UpdateBuilderStub | undefined;
+    const db = {
+      insertInto: vi.fn(() => createInsertBuilder(async () => ({ insertId: 1 }))),
+      updateTable: vi.fn((table: string) => createUpdateBuilder(
+        async () => ({ numAffectedRows: 1n }),
+        {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_logical_session") {
+              logicalSessionUpdate = builder;
+            }
+          },
+          table,
+        },
+      )),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.appendSessionMessage({
+      conversationId: "301",
+      includedForAi: true,
+      meaningfulForBoundary: true,
+      messageType: "text",
+      occurredAt: 1_780_244_000_000,
+      senderRole: "customer",
+      sessionId: "501",
+      sourceMessageId: "9001",
+      sourceMessageTime: 1_780_244_000_000,
+      uid: 9001,
+    });
+
+    expect(logicalSessionUpdate?.whereCalls).toContainEqual(["id", "=", 501]);
+    expect(logicalSessionUpdate?.whereCalls).toContainEqual(["uid", "=", 9001]);
   });
 });
 
 type SelectBuilderStub = ReturnType<typeof createSelectBuilder>;
+type UpdateBuilderStub = ReturnType<typeof createUpdateBuilder>;
 
 function createSelectBuilder(rows: unknown[], table = "") {
   const builder = {
@@ -780,18 +823,26 @@ function createInsertBuilder(
 function createUpdateBuilder(
   executeTakeFirst: () => Promise<unknown>,
   options: {
+    onCreate?: (builder: UpdateBuilderStub) => void;
     onSet?: (values: Record<string, unknown>) => void;
     table?: string;
   } = {},
 ) {
   const builder = {
     executeTakeFirst,
+    table: options.table ?? "",
+    whereCalls: [] as unknown[][],
     set: (values: Record<string, unknown>) => {
       options.onSet?.(values);
       return builder;
     },
-    where: () => builder,
+    where: (...args: unknown[]) => {
+      builder.whereCalls.push(args);
+      return builder;
+    },
   };
+
+  options.onCreate?.(builder);
 
   return builder;
 }

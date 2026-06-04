@@ -425,6 +425,7 @@ const ResolutionDistribution = memo(function ResolutionDistribution({
             <ResponsiveContainer height="100%" width="100%">
               <PieChart>
                 <Pie
+                  animationDuration={450}
                   cx="50%"
                   cy="50%"
                   data={data}
@@ -559,6 +560,7 @@ const TrendPanel = memo(function TrendPanel({
                 />
                 <Tooltip content={<TrendTooltip activeMetric={activeMetric} activeLabel={activeLabel} />} />
                 <Area
+                  animationDuration={450}
                   dataKey={activeMetric}
                   fill="url(#insightTrendArea)"
                   key={activeMetric}

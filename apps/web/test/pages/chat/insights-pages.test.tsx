@@ -1376,10 +1376,13 @@ describe("conversation insights pages", () => {
     expect(screen.getByRole("button", { name: /日期范围.*近7天.*2026-05-28.*2026-06-03/ })).toBeInTheDocument();
     expect(screen.queryByLabelText("开始日期")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("结束日期")).not.toBeInTheDocument();
-    expect(serviceMocks.getInsightBusiness).toHaveBeenCalledWith({
-      from: "2026-05-28T00:00:00.000+08:00",
-      to: "2026-06-03T23:59:59.999+08:00",
-    });
+    expect(serviceMocks.getInsightBusiness).toHaveBeenCalledWith(
+      {
+        from: "2026-05-28T00:00:00.000+08:00",
+        to: "2026-06-03T23:59:59.999+08:00",
+      },
+      expect.any(Object),
+    );
     await waitFor(() => {
       expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1390,6 +1393,7 @@ describe("conversation insights pages", () => {
           topicCode: "logistics_delay",
           to: "2026-06-03T23:59:59.999+08:00",
         }),
+        expect.any(Object),
       );
     });
     expect(serviceMocks.getInsightOverview).not.toHaveBeenCalledWith({
@@ -1432,6 +1436,93 @@ describe("conversation insights pages", () => {
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
     expect(screen.getByText("未确认物流进展")).toBeInTheDocument();
     expect(screen.queryByText("后续版本接入")).not.toBeInTheDocument();
+  });
+
+  it("aborts business insight requests when the page unmounts", async () => {
+    const businessGate = createDeferred<Awaited<ReturnType<typeof serviceMocks.getInsightBusiness>>>();
+    const relatedSessionsGate = createDeferred<Awaited<ReturnType<typeof serviceMocks.getInsightBusinessRelatedSessions>>>();
+    serviceMocks.getInsightBusiness.mockReturnValueOnce(businessGate.promise);
+    serviceMocks.getInsightBusinessRelatedSessions.mockReturnValueOnce(relatedSessionsGate.promise);
+
+    renderRoute("/chat/insights/business");
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusiness).toHaveBeenCalled();
+    });
+    const businessOptions = serviceMocks.getInsightBusiness.mock.calls[0]?.[1];
+    expect(serviceMocks.getInsightBusiness).toHaveBeenCalledWith(
+      {
+        from: "2026-05-28T00:00:00.000+08:00",
+        to: "2026-06-03T23:59:59.999+08:00",
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(businessOptions?.signal?.aborted).toBe(false);
+    businessGate.resolve({
+      assetHotspots: [],
+      entityHotspots: [],
+      intentDistribution: [
+        {
+          actionItemsOpen: 1,
+          code: "logistics_delay",
+          dimension: "intent",
+          mentionCount: 8,
+          name: "物流异常",
+          negativeRate: 0.25,
+          negativeSessions: 2,
+          sessionCount: 8,
+          share: 0.4,
+          unresolvedRate: 0.375,
+          unresolvedSessions: 3,
+        },
+      ],
+      intentTrend: [],
+      qualityTopics: [],
+      tagDistribution: [],
+      totals: {
+        actionItemsOpen: 1,
+        analyzedSessions: 8,
+        assetMentions: 0,
+        entityMentions: 0,
+        intentMentions: 8,
+        negativeSessions: 2,
+        tagMentions: 0,
+        topicSessions: 8,
+        unresolvedSessions: 3,
+      },
+      trend: [],
+    });
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenCalled();
+    });
+    const relatedSessionsOptions = serviceMocks.getInsightBusinessRelatedSessions.mock.calls[0]?.[1];
+    expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dimension: "intent",
+        page: 1,
+        pageSize: 20,
+        topicCode: "logistics_delay",
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(relatedSessionsOptions?.signal?.aborted).toBe(false);
+
+    cleanup();
+
+    expect(businessOptions?.signal?.aborted).toBe(true);
+    expect(relatedSessionsOptions?.signal?.aborted).toBe(true);
+    relatedSessionsGate.resolve({
+      dimension: "intent",
+      items: [],
+      page: 1,
+      pageSize: 20,
+      topicCode: "logistics_delay",
+      total: 0,
+      totalPages: 0,
+    });
+    await expect(businessGate.promise).resolves.toBeDefined();
+    await expect(relatedSessionsGate.promise).resolves.toBeDefined();
   });
 
   it("does not mount overview distribution with placeholder chart data before overview loads", async () => {

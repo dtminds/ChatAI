@@ -1397,6 +1397,12 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("部分完成")).toBeInTheDocument();
     expect(screen.getByText("20 / 20")).toBeInTheDocument();
     expect(screen.getByText("成功 18 / 失败 2")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "新建重刷任务" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "新建重刷任务" }));
+    expect(screen.getByRole("dialog", { name: "新建重刷任务" })).toBeInTheDocument();
+    expect(screen.getByText("重新识别标签、实体和意图，适合调整标签体系、实体词库或意图配置后使用。")).toBeInTheDocument();
+    expect(screen.getByText("只重新评估服务质检结果，适合新增或调整质检规则后使用。")).toBeInTheDocument();
+    expect(screen.getByText("重新生成该时间范围内的全部洞察结果，适合配置整体调整后使用，耗时最长。")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "创建任务" }));
 
     await waitFor(() => {

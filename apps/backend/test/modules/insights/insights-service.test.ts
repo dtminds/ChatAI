@@ -374,6 +374,7 @@ function createRepository(
       },
     ]),
     getOverviewAggregate: vi.fn(async () => overviewAggregate),
+    hasActiveRescanTask: vi.fn(async () => false),
     listAllCurrentSessions: vi.fn(async () => baseRows),
     listCurrentSessions: vi.fn(async (_scope, filters) => ({
       items: filters?.pageSize === 10_000 ? baseRows : [baseRows[0]],
@@ -1160,6 +1161,22 @@ describe("InsightsService", () => {
         to: "2026-06-01T00:00:00.000Z",
       }),
     ).rejects.toMatchObject({ code: "INVALID_RESCAN_RANGE" });
+  });
+
+  it("rejects creating a rescan task when another task is active", async () => {
+    const repository = createRepository({
+      hasActiveRescanTask: vi.fn(async () => true),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.createRescanJob(scope, {
+        analysisScope: "qaFindings",
+        from: "2026-06-01T00:00:00.000Z",
+        to: "2026-06-02T00:00:00.000Z",
+      }),
+    ).rejects.toMatchObject({ code: "RESCAN_TASK_ACTIVE" });
+    expect(repository.createRescanJob).not.toHaveBeenCalled();
   });
 
   it("lists historical rescan tasks with progress text", async () => {

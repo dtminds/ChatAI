@@ -238,6 +238,7 @@ export type InsightsRepositoryPort = {
     sessionId: string,
     messageIds: string[],
   ): Promise<WorkbenchMessageDto[]>;
+  hasActiveRescanTask(scope: InsightsUidScope): Promise<boolean>;
   listRescanTasks(
     scope: InsightsUidScope,
     filters: { limit: number },
@@ -852,6 +853,10 @@ export class InsightsService {
 
     if (to.getTime() < from.getTime()) {
       throw new BadRequestError("INVALID_RESCAN_RANGE", "重刷结束时间不能早于开始时间");
+    }
+
+    if (await this.repository.hasActiveRescanTask(scope)) {
+      throw new BadRequestError("RESCAN_TASK_ACTIVE", "已有重刷任务正在运行，请等待完成后再新建");
     }
 
     const normalizedFrom = from.toISOString();

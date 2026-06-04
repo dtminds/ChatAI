@@ -645,24 +645,37 @@ function createInsightsDbMock(options: {
       }
 
       if (table === "xy_wap_embed_insight_rescan_task") {
-        return createBuilder([
-          {
-            analysis_scope: state.insertedRescanTask?.analysis_scope ?? "classification",
+        return createBuilder((builder) => {
+          if (!state.insertedRescanTask) {
+            return [];
+          }
+
+          const row = {
+            analysis_scope: state.insertedRescanTask.analysis_scope ?? "classification",
             create_time: new Date("2026-06-01T00:00:00.000Z"),
             created_by: null,
             failed_sessions: 0,
             finished_at: null,
-            from_time: state.insertedRescanTask?.from_time ?? new Date("2026-06-01T00:00:00.000Z"),
+            from_time: state.insertedRescanTask.from_time ?? new Date("2026-06-01T00:00:00.000Z"),
             id: 9901,
             queued_sessions: 0,
             started_at: null,
             status: "pending",
             succeeded_sessions: 0,
-            to_time: state.insertedRescanTask?.to_time ?? new Date("2026-06-02T00:00:00.000Z"),
+            to_time: state.insertedRescanTask.to_time ?? new Date("2026-06-02T00:00:00.000Z"),
             total_sessions: 0,
             update_time: new Date("2026-06-01T00:00:00.000Z"),
-          },
-        ]);
+          };
+          const activeStatuses = builder.wheres.find(([column, operator]) =>
+            column === "status" && operator === "in"
+          )?.[2];
+
+          if (Array.isArray(activeStatuses) && !activeStatuses.includes(row.status)) {
+            return [];
+          }
+
+          return [row];
+        });
       }
 
       if (table === "xy_wap_embed_session_risk") {

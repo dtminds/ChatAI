@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -155,12 +156,35 @@ const insightPolicyOptionLimits = {
 
 const intentWeightOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
+const rescanScopeOptions: Array<{
+  description: string;
+  label: string;
+  value: InsightRescanAnalysisScope;
+}> = [
+  {
+    description: "重新识别标签、实体和意图，适合调整标签体系、实体词库或意图配置后使用。",
+    label: "标签 / 实体 / 意图",
+    value: "classification",
+  },
+  {
+    description: "只重新评估服务质检结果，适合新增或调整质检规则后使用。",
+    label: "服务质检",
+    value: "qaFindings",
+  },
+  {
+    description: "重新生成该时间范围内的全部洞察结果，适合配置整体调整后使用，耗时最长。",
+    label: "全量重刷",
+    value: "all",
+  },
+];
+
 export function InsightsSettingsPage() {
   const role = useAuthStore((state) => state.subUser?.role);
   const [dialogState, setDialogState] = useState<ConfigDialogState | null>(null);
   const [entityQuery, setEntityQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [pendingKey, setPendingKey] = useState<string>();
+  const [rescanDialogOpen, setRescanDialogOpen] = useState(false);
   const [rescanFrom, setRescanFrom] = useState(() => toDateTimeLocalValue(Date.now() - 24 * 60 * 60 * 1000));
   const [rescanScope, setRescanScope] = useState<InsightRescanAnalysisScope>("classification");
   const [rescanState, setRescanState] = useState<string>();
@@ -387,6 +411,7 @@ export function InsightsSettingsPage() {
       const tasks = await getInsightRescanTasks();
       setRescanTasks(tasks.items);
       setRescanState(`已创建任务 ${result.taskId}`);
+      setRescanDialogOpen(false);
       toast.success("历史重刷任务已创建");
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -545,11 +570,7 @@ export function InsightsSettingsPage() {
           <TabsContent value="rescan">
             <RescanPanel
               disabled={pendingKey === "rescan"}
-              from={rescanFrom}
-              onChange={setRescanFrom}
-              onCreate={() => void createRescan()}
-              onScopeChange={setRescanScope}
-              scope={rescanScope}
+              onCreateClick={() => setRescanDialogOpen(true)}
               state={rescanState}
               tasks={rescanTasks}
             />
@@ -566,6 +587,16 @@ export function InsightsSettingsPage() {
         }}
         onSubmit={(payload) => void handleDialogSubmit(payload)}
         state={dialogState}
+      />
+      <RescanCreateDialog
+        disabled={pendingKey === "rescan"}
+        from={rescanFrom}
+        onChange={setRescanFrom}
+        onCreate={() => void createRescan()}
+        onOpenChange={setRescanDialogOpen}
+        onScopeChange={setRescanScope}
+        open={rescanDialogOpen}
+        scope={rescanScope}
       />
     </InsightsLayout>
   );
@@ -1379,20 +1410,12 @@ function RowActions({
 
 function RescanPanel({
   disabled,
-  from,
-  onChange,
-  onCreate,
-  onScopeChange,
-  scope,
+  onCreateClick,
   state,
   tasks,
 }: {
   disabled?: boolean;
-  from: string;
-  onChange: (value: string) => void;
-  onCreate: () => void;
-  onScopeChange: (value: InsightRescanAnalysisScope) => void;
-  scope: InsightRescanAnalysisScope;
+  onCreateClick: () => void;
   state?: string;
   tasks: InsightRescanTask[];
 }) {
@@ -1401,39 +1424,11 @@ function RescanPanel({
       <p className="text-xs leading-5 text-muted-foreground">
         从指定时间重新生成洞察结果，适合规则、标签、实体词库或意图配置调整后的数据修正
       </p>
-      <div className="rounded-[8px] border bg-background px-5 py-1">
-        <section className="grid gap-4 py-4 md:grid-cols-[minmax(0,1fr)_22rem] md:items-center">
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">创建历史重刷任务</h3>
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              只处理该时间之后的消息，重刷内容越多任务耗时越长
-            </p>
-          </div>
-          <div className="flex flex-col items-stretch gap-2 md:items-end">
-            <div className="grid w-full gap-2 sm:grid-cols-[12rem_minmax(0,1fr)_auto] md:justify-end">
-              <Select onValueChange={(value) => onScopeChange(value as InsightRescanAnalysisScope)} value={scope}>
-                <SelectTrigger className="h-10">
-                  <SelectValue aria-label="重刷内容" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="classification">标签 / 实体 / 意图</SelectItem>
-                  <SelectItem value="qaFindings">服务质检</SelectItem>
-                  <SelectItem value="all">全量重刷</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                className="h-10"
-                onChange={(event) => onChange(event.target.value)}
-                type="datetime-local"
-                value={from}
-              />
-              <Button className="shrink-0" disabled={disabled} onClick={onCreate}>
-                创建任务
-              </Button>
-            </div>
-            {state ? <div className="text-right text-xs text-muted-foreground">{state}</div> : null}
-          </div>
-        </section>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        {state ? <div className="text-xs text-muted-foreground">{state}</div> : <div />}
+        <Button disabled={disabled} onClick={onCreateClick}>
+          新建重刷任务
+        </Button>
       </div>
       <div className="rounded-[8px] border bg-background">
         <Table>
@@ -1481,6 +1476,85 @@ function RescanPanel({
         </Table>
       </div>
     </section>
+  );
+}
+
+function RescanCreateDialog({
+  disabled,
+  from,
+  onChange,
+  onCreate,
+  onOpenChange,
+  onScopeChange,
+  open,
+  scope,
+}: {
+  disabled?: boolean;
+  from: string;
+  onChange: (value: string) => void;
+  onCreate: () => void;
+  onOpenChange: (open: boolean) => void;
+  onScopeChange: (value: InsightRescanAnalysisScope) => void;
+  open: boolean;
+  scope: InsightRescanAnalysisScope;
+}) {
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent className="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>新建重刷任务</DialogTitle>
+          <DialogDescription>只处理指定时间之后的消息，重刷内容越多任务耗时越长</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label>重刷内容</Label>
+            <RadioGroup
+              aria-label="重刷内容"
+              className="grid gap-3 md:grid-cols-3"
+              onValueChange={(value) => onScopeChange(value as InsightRescanAnalysisScope)}
+              value={scope}
+            >
+              {rescanScopeOptions.map((option) => (
+                <Label
+                  className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-border px-4 py-3 transition-colors hover:border-primary/40"
+                  key={option.value}
+                >
+                  <RadioGroupItem className="mt-0.5" value={option.value} />
+                  <span>
+                    <span className="block text-sm font-semibold text-foreground">
+                      {option.label}
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                      {option.description}
+                    </span>
+                  </span>
+                </Label>
+              ))}
+            </RadioGroup>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="insight-rescan-from">开始时间</Label>
+            <Input
+              className="h-10"
+              id="insight-rescan-from"
+              onChange={(event) => onChange(event.target.value)}
+              type="datetime-local"
+              value={from}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">取消</Button>
+          </DialogClose>
+          <Button disabled={disabled} onClick={onCreate}>
+            创建任务
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

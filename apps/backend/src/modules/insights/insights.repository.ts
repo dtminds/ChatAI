@@ -2723,6 +2723,18 @@ export class InsightsRepository implements InsightsRepositoryPort {
     };
   }
 
+  async hasActiveRescanTask(scope: InsightsUidScope): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_rescan_task")
+      .select(["id"])
+      .where("uid", "=", scope.uid)
+      .where("status", "in", ["pending", "running"])
+      .limit(1)
+      .executeTakeFirst();
+
+    return Boolean(row);
+  }
+
   private async getInsightJobByIdempotencyKey(
     idempotencyKey: string,
   ): Promise<{ jobId: string; taskId: string } | undefined> {

@@ -23,6 +23,12 @@ describe("new message title alert", () => {
     document.title = WORKBENCH_DEFAULT_TITLE;
   });
 
+  it("uses the branded workbench title in every alert state", () => {
+    expect(WORKBENCH_DEFAULT_TITLE).toBe("ChatAI 客服工作台");
+    expect(WORKBENCH_NEW_MESSAGE_TITLE).toBe("【新消息】ChatAI 客服工作台");
+    expect(WORKBENCH_EMPTY_MESSAGE_TITLE).toBe("【　　　】ChatAI 客服工作台");
+  });
+
   it("flashes between the new-message title and default title while the tab is inactive", () => {
     setDocumentVisibility("hidden");
     setDocumentFocus(false);

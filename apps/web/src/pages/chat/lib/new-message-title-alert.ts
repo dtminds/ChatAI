@@ -1,6 +1,6 @@
-export const WORKBENCH_DEFAULT_TITLE = "客服工作台";
-export const WORKBENCH_NEW_MESSAGE_TITLE = "【新消息】客服工作台";
-export const WORKBENCH_EMPTY_MESSAGE_TITLE = "【　　　】客服工作台";
+export const WORKBENCH_DEFAULT_TITLE = "ChatAI 客服工作台";
+export const WORKBENCH_NEW_MESSAGE_TITLE = "【新消息】ChatAI 客服工作台";
+export const WORKBENCH_EMPTY_MESSAGE_TITLE = "【　　　】ChatAI 客服工作台";
 
 const TITLE_FLASH_INTERVAL_MS = 1000;
 

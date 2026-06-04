@@ -290,6 +290,7 @@ export function createWorkbenchJavaClient(
           thirdExternalId: input.thirdExternalId,
           thirdUserId: input.thirdUserId,
           uid: input.uid,
+          withCacheSeat: true,
         },
         logger,
         "list-user-history-answers",

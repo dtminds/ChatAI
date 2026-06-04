@@ -91,6 +91,10 @@ describe("useWorkbenchPolling", () => {
     window.localStorage.clear();
   });
 
+  it("keeps hidden tabs polling for 30 minutes before idle pause", () => {
+    expect(WORKBENCH_POLL_IDLE_TIMEOUT_MS).toBe(30 * 60 * 1000);
+  });
+
   it("restores the normal poll cadence when the document becomes visible again", async () => {
     vi.useFakeTimers();
     setVisibilityState("hidden");

@@ -40,6 +40,7 @@ import {
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
 import { parseWorkbenchDate } from "@/pages/chat/lib/chat-time";
+import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
@@ -725,6 +726,30 @@ function upsertMessageList(
   }
 
   return [...merged, ...sortMessagesForAppend(appendedMessages)];
+}
+
+function hasNewCustomerMessage(
+  currentMessages: Message[],
+  nextMessages: Message[],
+) {
+  return nextMessages.some(
+    (nextMessage) =>
+      nextMessage.role === "customer" &&
+      !currentMessages.some((currentMessage) =>
+        isSameMessage(currentMessage, nextMessage),
+      ),
+  );
+}
+
+function hasConversationUnreadIncrease(
+  conversations: Conversation[],
+  nextConversation: Conversation,
+) {
+  const currentConversation = conversations.find(
+    (conversation) => conversation.id === nextConversation.id,
+  );
+
+  return nextConversation.unread > (currentConversation?.unread ?? 0);
 }
 
 function omitPendingSmartReplyKey(
@@ -3513,6 +3538,7 @@ export function createWorkbenchStore() {
         ) as Record<string, Message[]>;
 
         const polledConversationId = response.request.activeConversationId;
+        let shouldNotifyPulledCustomerMessage = false;
 
         set((currentState) => {
           const requestedActiveConversationId =
@@ -3567,6 +3593,10 @@ export function createWorkbenchStore() {
               currentList,
               change.conversation,
             );
+            shouldNotifyPulledCustomerMessage ||= hasConversationUnreadIncrease(
+              currentList,
+              change.conversation,
+            );
           }
 
           const clearedResourceState = removedConversationIds.length
@@ -3595,6 +3625,10 @@ export function createWorkbenchStore() {
           ) {
             const currentMessages =
               nextMessagesByConversationId[polledConversationId] ?? [];
+            shouldNotifyPulledCustomerMessage ||= hasNewCustomerMessage(
+              currentMessages,
+              response.activeConversationMessages,
+            );
             nextMessagesByConversationId[polledConversationId] = upsertMessageList(
               currentMessages,
               response.activeConversationMessages,
@@ -3717,6 +3751,10 @@ export function createWorkbenchStore() {
             sinceVersion: response.nextVersion,
           };
         });
+
+        if (shouldNotifyPulledCustomerMessage) {
+          notifyPulledCustomerMessage();
+        }
 
         if (polledConversationId) {
           scheduleSmartReplyPollForConversation(polledConversationId, {

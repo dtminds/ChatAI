@@ -172,6 +172,7 @@ describe("ChatWorkbenchPage session flows", () => {
       permissions: ["chat.access"],
       role: "viewer",
       subUserId: "sub-user-001",
+      uid: 1,
     });
     setWorkbenchService({
       ...baseService,
@@ -209,6 +210,7 @@ describe("ChatWorkbenchPage session flows", () => {
       permissions: ["chat.access"],
       role: "viewer",
       subUserId: "sub-user-001",
+      uid: 1,
     });
     setWorkbenchService(baseService);
 
@@ -234,6 +236,7 @@ describe("ChatWorkbenchPage session flows", () => {
       permissions: ["chat.access"],
       role: "viewer",
       subUserId: "sub-user-001",
+      uid: 1,
     });
     setWorkbenchService({ ...baseService, markConversationRead });
 
@@ -258,6 +261,7 @@ describe("ChatWorkbenchPage session flows", () => {
       permissions: ["chat.access"],
       role: "viewer",
       subUserId: "sub-user-001",
+      uid: 1,
     });
     setWorkbenchService({
       ...baseService,

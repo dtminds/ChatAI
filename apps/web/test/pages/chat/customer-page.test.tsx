@@ -908,6 +908,7 @@ function renderRoute(path: string, options: { strictMode?: boolean } = {}) {
     permissions: ["chat.access", "chat.send", "chat.takeover"],
     role: "operator",
     subUserId: "101",
+    uid: 1,
   });
   const router = createMemoryRouter(routerConfig, {
     initialEntries: [path],

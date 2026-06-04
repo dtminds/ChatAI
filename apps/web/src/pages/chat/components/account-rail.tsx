@@ -36,12 +36,16 @@ import { AccountSidebarItem } from "@/pages/chat/components/account-sidebar-item
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
 
 const railItems = [
-  { label: "工作台", icon: DashboardCircleIcon },
+  { label: "工作台", icon: DashboardCircleIcon, devOnly: true },
   { label: "聊天", icon: ChatIcon },
   { label: "客户", icon: UserSquareIcon },
   { label: "洞察", icon: AiIdeaIcon, to: "/chat/insights" },
-  { label: "任务", icon: Notification01Icon },
+  { label: "任务", icon: Notification01Icon, devOnly: true },
 ];
+
+const visibleRailItems = import.meta.env.DEV
+  ? railItems
+  : railItems.filter((item) => !item.devOnly);
 
 type AccountRailProps = {
   accounts: Account[];
@@ -188,7 +192,7 @@ export function AccountRail({
             aria-label="侧栏导航"
             className="flex flex-col items-center gap-2"
           >
-            {railItems.map((item) => {
+            {visibleRailItems.map((item) => {
               const isActive = item.label === activeNavItem;
               const itemContent = (
                 <HugeiconsIcon
@@ -333,7 +337,7 @@ export function AccountRail({
       </div>
 
       <div className="flex flex-col gap-1 px-1">
-        {railItems.map((item) => {
+        {visibleRailItems.map((item) => {
           const isActive = item.label === activeNavItem;
           const itemContent = (
             <>

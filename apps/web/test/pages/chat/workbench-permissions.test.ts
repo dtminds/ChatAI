@@ -14,6 +14,7 @@ const operator: AuthSubUser = {
   permissions: ["chat.access", "chat.send", "chat.takeover"],
   role: "operator",
   subUserId: "sub-user-001",
+  uid: 1,
 };
 
 const viewer: AuthSubUser = {
@@ -22,6 +23,7 @@ const viewer: AuthSubUser = {
   permissions: ["chat.access"],
   role: "viewer",
   subUserId: "sub-user-002",
+  uid: 2,
 };
 
 describe("resolveWorkbenchPermissions", () => {

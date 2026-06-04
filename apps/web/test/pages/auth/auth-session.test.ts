@@ -27,6 +27,7 @@ describe("auth session snapshot", () => {
           permissions: ["chat.send"],
           role: "operator",
           subUserId: "101",
+          uid: 1,
         },
       },
     });
@@ -56,6 +57,7 @@ describe("auth session snapshot", () => {
             permissions: ["chat.send"],
             role: "operator",
             subUserId: "202",
+            uid: 1,
           },
         },
       });
@@ -71,6 +73,7 @@ describe("auth session snapshot", () => {
           permissions: ["chat.send"],
           role: "operator",
           subUserId: "999",
+          uid: 1,
         },
       },
     });

@@ -55,8 +55,13 @@ const settingsSections = [
     label: "组件示例",
     path: "/chat/settings/ui-kit",
     icon: Layers01Icon,
+    devOnly: true,
   },
 ] as const;
+
+const visibleSettingsSections = import.meta.env.DEV
+  ? settingsSections
+  : settingsSections.filter((s) => !("devOnly" in s && s.devOnly));
 
 type SettingsSectionId = (typeof settingsSections)[number]["id"];
 
@@ -69,6 +74,11 @@ export function ChatSettingsPage() {
   const activeSectionId = sectionId ?? "accounts";
 
   if (!isSettingsSectionId(activeSectionId)) {
+    return <Navigate replace to="/chat/settings" />;
+  }
+
+  const sectionMeta = settingsSections.find((s) => s.id === activeSectionId);
+  if (sectionMeta && "devOnly" in sectionMeta && sectionMeta.devOnly && !import.meta.env.DEV) {
     return <Navigate replace to="/chat/settings" />;
   }
 
@@ -130,7 +140,7 @@ function SettingsSidebar({
       </Button>
 
       <nav aria-label="设置菜单" className="space-y-1">
-        {settingsSections.map((section) => {
+        {visibleSettingsSections.map((section) => {
           const isActive = section.id === activeSectionId;
 
           return (

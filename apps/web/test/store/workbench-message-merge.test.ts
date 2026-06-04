@@ -5,6 +5,7 @@ import {
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
+import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { seedMessages } from "@/pages/chat/mock-data";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
@@ -13,9 +14,14 @@ vi.mock("@/pages/chat/api/media-upload-service", () => ({
   resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
 }));
 
+vi.mock("@/pages/chat/lib/new-message-title-alert", () => ({
+  notifyPulledCustomerMessage: vi.fn(),
+}));
+
 describe("workbench message merge state", () => {
   beforeEach(() => {
     resetWorkbenchStoreTestState();
+    vi.mocked(notifyPulledCustomerMessage).mockClear();
     vi.mocked(resolveImageSegmentsForSend).mockImplementation(
       async (_conversationId, segments) => segments,
     );
@@ -438,4 +444,107 @@ describe("workbench message merge state", () => {
         role: "customer",
       });
   });
+
+  it("triggers the title alert only for newly appended customer messages from polling", async () => {
+    const baseService = createMockWorkbenchService();
+    let pollIndex = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        pollIndex += 1;
+
+        if (pollIndex === 1) {
+          return {
+            activeConversationMessages: [
+              createPolledMessage({
+                messageId: "remote-title-alert-customer-001",
+                senderType: "customer",
+                text: "后台客户新消息",
+              }),
+            ],
+            conversationChanges: [],
+            nextVersion: 9999,
+            seatChanges: [],
+          };
+        }
+
+        return {
+          activeConversationMessages: [
+            createPolledMessage({
+              messageId: "remote-title-alert-customer-001",
+              senderType: "customer",
+              text: "后台客户新消息",
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 10000,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(notifyPulledCustomerMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not trigger the title alert for polled system or agent messages", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createPolledMessage({
+              messageId: "remote-title-alert-system-001",
+              senderType: "system",
+              text: "系统提示",
+            }),
+            createPolledMessage({
+              messageId: "remote-title-alert-agent-001",
+              senderType: "agent",
+              text: "客服消息",
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(notifyPulledCustomerMessage).not.toHaveBeenCalled();
+  });
 });
+
+function createPolledMessage({
+  messageId,
+  senderType,
+  text,
+}: {
+  messageId: string;
+  senderType: WorkbenchMessageDto["senderType"];
+  text: string;
+}) {
+  return {
+    content: {
+      text,
+    },
+    contentType: senderType === "system" ? "system" : "text",
+    conversationId: "conv-001",
+    createdAt: Date.now(),
+    customerId: "cust-001",
+    messageId,
+    seatId: "drc",
+    senderType,
+    seq: 1000,
+    status: "sent",
+  } satisfies WorkbenchMessageDto;
+}

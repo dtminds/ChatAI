@@ -3,18 +3,19 @@
 -- Keep this file synchronized after schema changes.
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_sync_cursor (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   source VARCHAR(128) NOT NULL COMMENT '同步源名称',
   uid BIGINT UNSIGNED NULL COMMENT '租户ID，0表示全局水位；历史NULL全局水位只读兼容',
   cursor_msgtime BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '当前同步到的平台消息时间戳',
   cursor_audit_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '当前同步到的平台消息ID',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   UNIQUE KEY uk_insight_sync_source_uid (source, uid)
 ) COMMENT='会话洞察消息同步水位表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_sessionization_config (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   preset VARCHAR(32) NOT NULL COMMENT '切片预设类型',
   idle_timeout_minutes INT UNSIGNED NOT NULL COMMENT '空闲关闭时长，单位分钟',
@@ -25,11 +26,12 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_sessionization_config (
   rule_version VARCHAR(64) NOT NULL COMMENT '切片规则版本',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   UNIQUE KEY uk_sessionization_uid (uid)
 ) COMMENT='会话洞察逻辑会话切片配置表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   conversation_id BIGINT UNSIGNED NOT NULL COMMENT '平台会话ID，关联xy_wap_embed_conversation.id',
   started_at BIGINT UNSIGNED NOT NULL COMMENT '逻辑会话开始时间戳',
@@ -49,12 +51,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   agent_message_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '客服消息数',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_logical_session_uid_conversation_status (uid, conversation_id, status),
   KEY idx_logical_session_status_time (status, last_meaningful_message_at)
 ) COMMENT='会话洞察逻辑会话表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   session_id BIGINT UNSIGNED NOT NULL COMMENT '逻辑会话ID',
   conversation_id BIGINT UNSIGNED NOT NULL COMMENT '平台会话ID',
@@ -67,6 +70,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
   meaningful_for_boundary TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否参与切片边界判断，1是0否',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   UNIQUE KEY uk_session_source_message (session_id, source_message_id),
   KEY idx_session_message_order (session_id, source_message_time, source_message_id),
   KEY idx_session_message_conversation_time (uid, conversation_id, source_message_time),
@@ -74,7 +78,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
 ) COMMENT='逻辑会话消息归属表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   rescan_task_id BIGINT UNSIGNED NULL COMMENT '历史重刷任务ID',
   job_type VARCHAR(64) NOT NULL COMMENT '任务类型',
@@ -93,6 +97,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   error_message VARCHAR(1024) NULL COMMENT '错误信息',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   UNIQUE KEY uk_insight_job_idempotency (idempotency_key),
   KEY idx_insight_job_runnable (status, run_after, priority),
   KEY idx_insight_job_rescan_task (rescan_task_id),
@@ -100,7 +105,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
 ) COMMENT='会话洞察异步任务表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_rescan_task (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   created_by VARCHAR(128) NULL COMMENT '创建人展示名或ID',
   from_time DATETIME NOT NULL COMMENT '重刷起始时间',
@@ -116,12 +121,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_rescan_task (
   error_message VARCHAR(1024) NULL COMMENT '错误信息',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_insight_rescan_task_uid_time (uid, create_time),
   KEY idx_insight_rescan_task_status (status)
 ) COMMENT='会话洞察历史重刷任务表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_analysis_run (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   session_id BIGINT UNSIGNED NOT NULL COMMENT '逻辑会话ID',
   job_id BIGINT UNSIGNED NULL COMMENT '关联任务ID',
   mode VARCHAR(32) NOT NULL COMMENT '分析模式',
@@ -141,12 +147,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_analysis_run (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   finished_at DATETIME NULL COMMENT '完成时间',
+  PRIMARY KEY (id),
   KEY idx_analysis_run_session (session_id, create_time),
   KEY idx_analysis_run_job (job_id)
 ) COMMENT='会话洞察模型分析运行记录表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_insight_snapshot (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   session_id BIGINT UNSIGNED NOT NULL COMMENT '逻辑会话ID',
   phase VARCHAR(32) NOT NULL COMMENT '分析阶段',
   status VARCHAR(32) NOT NULL COMMENT '快照状态',
@@ -157,53 +164,63 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_insight_snapshot (
   rule_version VARCHAR(64) NOT NULL COMMENT '规则版本',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_snapshot_session (session_id, create_time)
 ) COMMENT='逻辑会话洞察快照表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_insight_current (
-  session_id BIGINT UNSIGNED PRIMARY KEY COMMENT '逻辑会话ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  session_id BIGINT UNSIGNED NOT NULL COMMENT '逻辑会话ID',
   current_snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '当前生效快照ID',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_session_insight_current_session_id (session_id)
 ) COMMENT='逻辑会话当前洞察快照指针表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_summary (
-  snapshot_id BIGINT UNSIGNED PRIMARY KEY COMMENT '洞察快照ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   customer_intent VARCHAR(2048) NOT NULL COMMENT '客户诉求摘要',
   process_summary VARCHAR(2048) NOT NULL COMMENT '处理过程摘要',
   result_summary VARCHAR(2048) NOT NULL COMMENT '当前结果摘要',
   follow_up VARCHAR(2048) NULL COMMENT '跟进建议',
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_session_summary_snapshot_id (snapshot_id)
 ) COMMENT='逻辑会话摘要结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_sentiment (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   polarity VARCHAR(32) NOT NULL COMMENT '情绪极性',
   reason VARCHAR(1024) NOT NULL COMMENT '情绪判断理由',
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_sentiment_snapshot (snapshot_id),
   KEY idx_sentiment_polarity (polarity)
 ) COMMENT='逻辑会话情绪分析结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_tag (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   tag_code VARCHAR(128) NOT NULL COMMENT '标签编码',
   tag_name VARCHAR(128) NOT NULL COMMENT '标签名称',
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_tag_snapshot (snapshot_id),
   KEY idx_tag_code (tag_code)
 ) COMMENT='逻辑会话标签结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_problem_resolution (
-  snapshot_id BIGINT UNSIGNED PRIMARY KEY COMMENT '洞察快照ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   problem_detected TINYINT UNSIGNED NOT NULL COMMENT '是否识别到客户问题，1是0否',
   problem_summary VARCHAR(2048) NOT NULL COMMENT '客户问题摘要',
   resolution_status VARCHAR(32) NOT NULL COMMENT '问题解决状态',
@@ -212,11 +229,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_problem_resolution (
   customer_final_state VARCHAR(2048) NULL COMMENT '客户最终状态',
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_session_problem_resolution_snapshot_id (snapshot_id)
 ) COMMENT='客户问题解决判定结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_qa_finding (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   rule_code VARCHAR(128) NOT NULL COMMENT '质检规则编码',
   severity VARCHAR(32) NOT NULL COMMENT '严重程度',
@@ -225,12 +244,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_qa_finding (
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_qa_snapshot (snapshot_id),
   KEY idx_qa_rule (rule_code, severity)
 ) COMMENT='逻辑会话质检命中结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_risk (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   risk_level VARCHAR(32) NOT NULL COMMENT '风险等级',
   risk_type VARCHAR(64) NOT NULL COMMENT '风险类型',
@@ -238,12 +258,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_risk (
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_risk_snapshot (snapshot_id),
   KEY idx_risk_type_level (risk_type, risk_level)
 ) COMMENT='逻辑会话风险结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_entity (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   entity_id VARCHAR(128) NOT NULL COMMENT '实体稳定ID',
   entity_type VARCHAR(64) NOT NULL COMMENT '实体类型',
@@ -252,24 +273,26 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_entity (
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_session_entity_snapshot (snapshot_id),
   KEY idx_session_entity_identity (entity_type, entity_id)
 ) COMMENT='逻辑会话实体结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_intent (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   intent_code VARCHAR(128) NOT NULL COMMENT '意图编码',
   intent_label VARCHAR(128) NOT NULL COMMENT '意图名称',
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_session_intent_snapshot (snapshot_id),
   KEY idx_session_intent_code (intent_code)
 ) COMMENT='逻辑会话意图结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   action_type VARCHAR(64) NOT NULL COMMENT '行动项类型',
   title VARCHAR(255) NOT NULL COMMENT '行动项标题',
@@ -278,12 +301,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   status VARCHAR(32) NOT NULL COMMENT '处理状态',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_action_snapshot (snapshot_id),
   KEY idx_action_status_priority (status, priority)
 ) COMMENT='逻辑会话待处理行动项表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_faq_candidate (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   question VARCHAR(1024) NOT NULL COMMENT '候选问题',
   answer_hint VARCHAR(2048) NOT NULL COMMENT '答案建议',
@@ -291,12 +315,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_faq_candidate (
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_faq_snapshot (snapshot_id),
   KEY idx_faq_status (status)
 ) COMMENT='FAQ机会候选结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_evidence (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   dimension_type VARCHAR(64) NOT NULL COMMENT '结论维度类型',
@@ -308,6 +333,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_evidence (
   reason VARCHAR(512) NULL COMMENT '证据说明',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_evidence_dimension (snapshot_id, dimension_type, dimension_record_id),
   KEY idx_evidence_session_message (session_id, source_message_id),
   KEY idx_evidence_conversation_message (conversation_id, source_message_id),
@@ -315,7 +341,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_evidence (
 ) COMMENT='会话洞察证据消息关联表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_analysis_policy (
-  uid BIGINT UNSIGNED PRIMARY KEY COMMENT '租户ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   live_analysis_enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用实时分析',
   live_min_new_meaningful_messages INT UNSIGNED NOT NULL COMMENT '触发实时分析的最少新增有效消息数',
   live_min_interval_minutes INT UNSIGNED NOT NULL COMMENT '实时分析最小间隔分钟数',
@@ -324,11 +351,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_analysis_policy (
   low_confidence_threshold DECIMAL(5,4) NOT NULL COMMENT '低置信度阈值',
   enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_insight_analysis_policy_uid (uid)
 ) COMMENT='会话洞察分析策略配置表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_label_config (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   label_code VARCHAR(128) NOT NULL COMMENT '标签编码',
   label_name VARCHAR(128) NOT NULL COMMENT '标签名称',
@@ -339,11 +368,12 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_label_config (
   include_in_statistics TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否纳入统计，1是0否',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   UNIQUE KEY uk_label_uid_code (uid, label_code)
 ) COMMENT='会话洞察标签配置表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_intent_config (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   intent_code VARCHAR(128) NOT NULL COMMENT '意图编码',
   intent_name VARCHAR(128) NOT NULL COMMENT '意图名称',
@@ -356,12 +386,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_intent_config (
   sort_order INT UNSIGNED NOT NULL DEFAULT 5 COMMENT '权重，1-10',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   UNIQUE KEY uk_intent_uid_code (uid, intent_code),
   KEY idx_intent_uid_sort (uid, sort_order)
 ) COMMENT='会话洞察意图配置表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_qa_rule_config (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   rule_code VARCHAR(128) NOT NULL COMMENT '规则编码',
   rule_name VARCHAR(128) NOT NULL COMMENT '规则名称',
@@ -374,11 +405,12 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_qa_rule_config (
   enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   UNIQUE KEY uk_qa_rule_uid_code (uid, rule_code)
 ) COMMENT='会话洞察质检规则配置表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_entity_dictionary (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   entity_type VARCHAR(64) NOT NULL COMMENT '实体类型',
   canonical_name VARCHAR(255) NOT NULL COMMENT '实体标准名称',
@@ -388,22 +420,24 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_entity_dictionary (
   include_in_aggregation TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否纳入聚合，1是0否',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_entity_dictionary_uid_type (uid, entity_type)
 ) COMMENT='会话洞察实体词库配置表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_model_provider (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   provider_code VARCHAR(64) NOT NULL COMMENT '服务商编码',
   display_name VARCHAR(128) NOT NULL COMMENT '服务商展示名称',
   base_url VARCHAR(512) NOT NULL COMMENT '模型API基础地址',
   enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   UNIQUE KEY uk_model_provider_code (provider_code)
 ) COMMENT='大模型服务商配置表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_model_profile (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NULL COMMENT '租户ID，为空表示全局配置',
   task_type VARCHAR(64) NOT NULL COMMENT '任务类型',
   provider_id BIGINT UNSIGNED NOT NULL COMMENT '模型服务商ID',
@@ -416,5 +450,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_model_profile (
   enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
   KEY idx_model_profile_task_uid (task_type, uid)
 ) COMMENT='会话洞察模型调用配置表';

@@ -599,6 +599,36 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       : undefined;
   }
 
+  async listSessionsBySourceMessages(input: {
+    sourceMessageIds: string[];
+    uid: number;
+  }) {
+    const sourceMessageIds = input.sourceMessageIds
+      .map((id) => parsePositiveInteger(id))
+      .filter((id): id is number => id != null);
+
+    if (sourceMessageIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_logical_session_message")
+      .select(["session_id", "source_message_id", "uid"])
+      .where("uid", "=", input.uid)
+      .where("source_message_id", "in", sourceMessageIds)
+      .execute() as Array<{
+        session_id: number | string;
+        source_message_id: number | string;
+        uid: number | string;
+      }>;
+
+    return rows.map((row) => ({
+      sessionId: String(row.session_id),
+      sourceMessageId: String(row.source_message_id),
+      uid: parseNumber(row.uid),
+    }));
+  }
+
   async closeSession(input: CloseSessionInput): Promise<void> {
     await this.db
       .updateTable("xy_wap_embed_logical_session")
@@ -1001,6 +1031,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
 
   async saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string> {
     const sessionId = parsePositiveInteger(input.job.sessionId) ?? -1;
+    const conversationIdBySessionId = new Map<string, number>();
     const insertedSnapshot = await this.db
       .insertInto("xy_wap_embed_session_insight_snapshot")
       .values({
@@ -1047,6 +1078,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       output.problemResolution.evidence.length > 0
         ? output.problemResolution.evidence
         : output.problemResolution.evidenceMessageIds,
+      conversationIdBySessionId,
     );
 
     for (const item of output.sentiment) {
@@ -1056,7 +1088,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         reason: item.reason,
         snapshot_id: snapshotId,
       });
-      await this.insertEvidenceRows(input, snapshotId, "sentiment", id, item.evidenceMessageIds);
+      await this.insertEvidenceRows(input, snapshotId, "sentiment", id, item.evidenceMessageIds, conversationIdBySessionId);
     }
 
     for (const item of output.tags) {
@@ -1066,7 +1098,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         tag_code: item.tagCode,
         tag_name: item.tagName,
       });
-      await this.insertEvidenceRows(input, snapshotId, "tag", id, item.evidenceMessageIds);
+      await this.insertEvidenceRows(input, snapshotId, "tag", id, item.evidenceMessageIds, conversationIdBySessionId);
     }
 
     for (const item of output.qaFindings) {
@@ -1078,7 +1110,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         severity: item.severity,
         snapshot_id: snapshotId,
       });
-      await this.insertEvidenceRows(input, snapshotId, "qa_finding", id, item.evidenceMessageIds);
+      await this.insertEvidenceRows(input, snapshotId, "qa_finding", id, item.evidenceMessageIds, conversationIdBySessionId);
     }
 
     for (const item of output.risks) {
@@ -1089,7 +1121,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         risk_type: item.riskType,
         snapshot_id: snapshotId,
       });
-      await this.insertEvidenceRows(input, snapshotId, "risk", id, item.evidenceMessageIds);
+      await this.insertEvidenceRows(input, snapshotId, "risk", id, item.evidenceMessageIds, conversationIdBySessionId);
     }
 
     for (const item of output.entities) {
@@ -1101,7 +1133,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         sentiment: item.sentiment ?? null,
         snapshot_id: snapshotId,
       });
-      await this.insertEvidenceRows(input, snapshotId, "entity", id, item.evidenceMessageIds);
+      await this.insertEvidenceRows(input, snapshotId, "entity", id, item.evidenceMessageIds, conversationIdBySessionId);
     }
 
     for (const item of output.intents) {
@@ -1111,7 +1143,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         intent_label: item.intentLabel,
         snapshot_id: snapshotId,
       });
-      await this.insertEvidenceRows(input, snapshotId, "intent", id, item.evidenceMessageIds);
+      await this.insertEvidenceRows(input, snapshotId, "intent", id, item.evidenceMessageIds, conversationIdBySessionId);
     }
 
     for (const item of output.actionItems) {
@@ -1123,7 +1155,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         status: "open",
         title: item.title,
       });
-      await this.insertEvidenceRows(input, snapshotId, "action_item", id, item.evidenceMessageIds);
+      await this.insertEvidenceRows(input, snapshotId, "action_item", id, item.evidenceMessageIds, conversationIdBySessionId);
     }
 
     for (const item of output.faqCandidates) {
@@ -1133,7 +1165,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         snapshot_id: snapshotId,
         status: item.status,
       });
-      await this.insertEvidenceRows(input, snapshotId, "faq_candidate", id, item.evidenceMessageIds);
+      await this.insertEvidenceRows(input, snapshotId, "faq_candidate", id, item.evidenceMessageIds, conversationIdBySessionId);
     }
 
     await this.db
@@ -1257,6 +1289,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     dimensionType: string,
     dimensionRecordId: number | null,
     evidenceMessageIds: Array<string | { evidenceRole: string; messageId: string; reason?: string }>,
+    conversationIdBySessionId: Map<string, number>,
   ) {
     const rows = evidenceMessageIds.map((evidence) => {
       const messageId = typeof evidence === "string" ? evidence : evidence.messageId;
@@ -1278,12 +1311,18 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       return;
     }
 
-    const session = await this.db
-      .selectFrom("xy_wap_embed_logical_session")
-      .select(["conversation_id"])
-      .where("id", "=", parsePositiveInteger(input.job.sessionId) ?? -1)
-      .executeTakeFirst() as { conversation_id: number | string } | undefined;
-    const conversationId = parseNumber(session?.conversation_id);
+    const sessionKey = input.job.sessionId;
+    let conversationId = conversationIdBySessionId.get(sessionKey);
+
+    if (conversationId == null) {
+      const session = await this.db
+        .selectFrom("xy_wap_embed_logical_session")
+        .select(["conversation_id"])
+        .where("id", "=", parsePositiveInteger(input.job.sessionId) ?? -1)
+        .executeTakeFirst() as { conversation_id: number | string } | undefined;
+      conversationId = parseNumber(session?.conversation_id);
+      conversationIdBySessionId.set(sessionKey, conversationId);
+    }
 
     await this.db
       .insertInto("xy_wap_embed_insight_evidence")

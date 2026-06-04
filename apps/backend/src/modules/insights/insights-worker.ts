@@ -44,6 +44,7 @@ export type InsightWorkerConversation = {
 
 export type InsightWorkerExistingSession = {
   sessionId: string;
+  sourceMessageId?: string;
   uid: number;
 };
 
@@ -262,6 +263,10 @@ export type InsightWorkerRepositoryPort = {
     sourceMessageId: string;
     uid: number;
   }): Promise<InsightWorkerExistingSession | undefined>;
+  listSessionsBySourceMessages(input: {
+    sourceMessageIds: string[];
+    uid: number;
+  }): Promise<InsightWorkerExistingSession[]>;
   getAnalysisPolicy(uid: number): Promise<InsightWorkerAnalysisPolicy>;
   getCursor(): Promise<InsightWorkerCursor>;
   getPromptContext(uid: number): Promise<InsightPromptContext>;
@@ -452,18 +457,25 @@ export class InsightsWorkerService {
           uid: job.uid,
         });
 
+        const existingSessions = await this.repository.listSessionsBySourceMessages({
+          sourceMessageIds: messages.map((message) => message.id),
+          uid: job.uid,
+        });
+        const existingSessionsBySourceMessageId = new Map(
+          existingSessions
+            .filter((session) => session.sourceMessageId)
+            .map((session) => [session.sourceMessageId, session]),
+        );
+
         for (const message of messages) {
-          const existingSession = await this.repository.findSessionBySourceMessage({
-            sourceMessageId: message.id,
-            uid: job.uid,
-          });
+          const existingSession = existingSessionsBySourceMessageId.get(message.id);
 
           if (existingSession) {
             sessionsToReanalyze.set(existingSession.sessionId, existingSession.uid);
             continue;
           }
 
-          if (await this.sessionizeMessage(message)) {
+          if (await this.sessionizeMessage(message, { skipLiveAnalysis: true })) {
             sessionizedMessages += 1;
           }
         }
@@ -544,7 +556,10 @@ export class InsightsWorkerService {
     }
   }
 
-  private async sessionizeMessage(message: InsightWorkerMessage) {
+  private async sessionizeMessage(
+    message: InsightWorkerMessage,
+    options: { skipLiveAnalysis?: boolean } = {},
+  ) {
     const conversation = await this.repository.findPlatformConversation(message);
 
     if (!conversation) {
@@ -579,7 +594,8 @@ export class InsightsWorkerService {
     });
 
     if (
-      input.includedForAi
+      !options.skipLiveAnalysis
+      && input.includedForAi
       && await this.repository.shouldCreateLiveAnalyzeJob({
         occurredAt: input.occurredAt,
         sessionId,

@@ -51,7 +51,19 @@ export function InsightsQualityPage() {
   const detail = useInsightDetail();
 
   useEffect(() => {
-    void getInsightQuality().then(setQuality);
+    const controller = new AbortController();
+
+    void getInsightQuality({ signal: controller.signal })
+      .then((data) => {
+        if (!controller.signal.aborted) {
+          setQuality(data);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      controller.abort();
+    };
   }, []);
 
   const overview = quality?.overview;

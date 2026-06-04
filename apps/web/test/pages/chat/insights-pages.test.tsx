@@ -79,6 +79,17 @@ function mockSession(role: "admin" | "operator" = "admin") {
   });
 }
 
+function createDeferred<T = void>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((innerResolve, innerReject) => {
+    resolve = innerResolve;
+    reject = innerReject;
+  });
+
+  return { promise, reject, resolve };
+}
+
 function installInsightMocks() {
   serviceMocks.getInsightOverview.mockResolvedValue({
     actionItemsOpen: 3,
@@ -1200,6 +1211,38 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("85.71%")).toBeInTheDocument();
   });
 
+  it("aborts quality loading when the page unmounts", async () => {
+    const qualityGate = createDeferred<Awaited<ReturnType<typeof serviceMocks.getInsightQuality>>>();
+    serviceMocks.getInsightQuality.mockReturnValueOnce(qualityGate.promise);
+
+    renderRoute("/chat/insights/quality");
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightQuality).toHaveBeenCalled();
+    });
+    const requestOptions = serviceMocks.getInsightQuality.mock.calls[0]?.[0];
+    expect(requestOptions?.signal?.aborted).toBe(false);
+
+    cleanup();
+
+    expect(requestOptions?.signal?.aborted).toBe(true);
+    qualityGate.resolve({
+      agentStats: [],
+      overview: {
+        analyzedSessions: 0,
+        noCustomerProblem: 0,
+        partial: 0,
+        problemSessions: 0,
+        resolved: 0,
+        totalSessions: 0,
+        unresolved: 0,
+      },
+      unresolvedReasons: [],
+      unresolvedSessions: [],
+    });
+    await expect(qualityGate.promise).resolves.toBeDefined();
+  });
+
   it("updates follow-up status manually", async () => {
     renderRoute("/chat/insights/follow-ups");
 
@@ -1210,6 +1253,29 @@ describe("conversation insights pages", () => {
     await waitFor(() => {
       expect(serviceMocks.updateInsightActionStatus).toHaveBeenCalledWith("801", "done");
     });
+  });
+
+  it("aborts follow-up loading when the page unmounts", async () => {
+    const followUpsGate = createDeferred<Awaited<ReturnType<typeof serviceMocks.getInsightFollowUps>>>();
+    serviceMocks.getInsightFollowUps.mockReturnValueOnce(followUpsGate.promise);
+
+    renderRoute("/chat/insights/follow-ups");
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightFollowUps).toHaveBeenCalled();
+    });
+    const requestOptions = serviceMocks.getInsightFollowUps.mock.calls[0]?.[1];
+    expect(serviceMocks.getInsightFollowUps).toHaveBeenCalledWith(
+      { status: "open" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(requestOptions?.signal?.aborted).toBe(false);
+
+    cleanup();
+
+    expect(requestOptions?.signal?.aborted).toBe(true);
+    followUpsGate.resolve({ items: [], total: 0 });
+    await expect(followUpsGate.promise).resolves.toBeDefined();
   });
 
   it("renders admin settings and P1 placeholders", async () => {

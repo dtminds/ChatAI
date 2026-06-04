@@ -26,6 +26,7 @@ function createRepository(
     createLogicalSession: vi.fn(async () => "501"),
     findOpenSession: vi.fn(async () => undefined),
     findSessionBySourceMessage: vi.fn(async () => undefined),
+    listSessionsBySourceMessages: vi.fn(async () => []),
     findPlatformConversation: vi.fn(async () => ({
       conversationId: "301",
       uid: 9001,
@@ -347,6 +348,7 @@ describe("InsightsWorkerService", () => {
       uid: 9001,
     });
     expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
     expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith("rescan-job-1");
   });
 
@@ -357,10 +359,14 @@ describe("InsightsWorkerService", () => {
         jobId: "rescan-job-1",
         uid: 9001,
       })),
-      findSessionBySourceMessage: vi.fn(async () => ({
-        sessionId: "501",
-        uid: 9001,
-      })),
+      findSessionBySourceMessage: vi.fn(async () => undefined),
+      listSessionsBySourceMessages: vi.fn(async () => [
+        {
+          sessionId: "501",
+          sourceMessageId: "8001",
+          uid: 9001,
+        },
+      ]),
       listIncrementalMessages: vi.fn(async ({ cursorMsgtime }) => {
         if (cursorMsgtime === 1_780_000_000_000) {
           return [
@@ -387,10 +393,11 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
-    expect(repository.findSessionBySourceMessage).toHaveBeenCalledWith({
-      sourceMessageId: "8001",
+    expect(repository.listSessionsBySourceMessages).toHaveBeenCalledWith({
+      sourceMessageIds: ["8001"],
       uid: 9001,
     });
+    expect(repository.findSessionBySourceMessage).not.toHaveBeenCalled();
     expect(repository.createLogicalSession).not.toHaveBeenCalled();
     expect(repository.appendSessionMessage).not.toHaveBeenCalled();
     expect(repository.createAnalyzeJob).toHaveBeenCalledTimes(1);

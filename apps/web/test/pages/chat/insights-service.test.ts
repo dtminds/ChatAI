@@ -199,4 +199,22 @@ describe("insights service adapter", () => {
     expect(mock.history.post[1]?.url).toBe("/server/insights/settings/qa-rule-configs");
     expect(mock.history.post[2]?.url).toBe("/server/insights/settings/entity-dictionary");
   });
+
+  it("passes abort signals to quality and follow-up requests", async () => {
+    const qualityController = new AbortController();
+    const followUpsController = new AbortController();
+
+    mock.onGet("/server/insights/quality").reply(200, { data: { overview: {} }, success: true });
+    mock.onGet("/server/insights/follow-ups").reply(200, { data: { items: [], total: 0 }, success: true });
+
+    await getInsightQuality({ signal: qualityController.signal });
+    await getInsightFollowUps(
+      { status: "open" },
+      { signal: followUpsController.signal },
+    );
+
+    expect(mock.history.get[0]?.signal).toBe(qualityController.signal);
+    expect(mock.history.get[1]?.signal).toBe(followUpsController.signal);
+    expect(mock.history.get[1]?.params).toEqual({ status: "open" });
+  });
 });

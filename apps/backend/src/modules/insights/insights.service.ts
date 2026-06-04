@@ -860,50 +860,6 @@ function raiseConfigNotFound(): never {
   throw new NotFoundError("INSIGHT_CONFIG_NOT_FOUND", "配置不存在");
 }
 
-function buildIntentDistribution(rows: InsightCurrentSessionRow[]) {
-  const counts = new Map<string, number>();
-
-  for (const row of rows) {
-    if (!row.summaryCustomerIntent) {
-      continue;
-    }
-
-    counts.set(row.summaryCustomerIntent, (counts.get(row.summaryCustomerIntent) ?? 0) + 1);
-  }
-
-  return Array.from(counts.entries()).map(([intentLabel, count]) => ({
-    count,
-    intentCode: intentLabel,
-    intentLabel,
-  }));
-}
-
-function buildOverviewTotals(rows: InsightCurrentSessionRow[]) {
-  return {
-    agentMessages: rows.reduce((total, row) => total + row.agentMessageCount, 0),
-    consultingCustomers: new Set(rows.map((row) => row.conversationId)).size,
-    customerMessages: rows.reduce((total, row) => total + row.customerMessageCount, 0),
-    logicalSessions: rows.length,
-    messages: rows.reduce((total, row) => total + row.messageCount, 0),
-  };
-}
-
-function buildOverviewTrend(rows: InsightCurrentSessionRow[]) {
-  const rowsByDate = new Map<string, InsightCurrentSessionRow[]>();
-
-  for (const row of rows) {
-    const date = formatDateKey(row.startedAt);
-    rowsByDate.set(date, [...(rowsByDate.get(date) ?? []), row]);
-  }
-
-  return Array.from(rowsByDate.entries())
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([date, dateRows]) => ({
-      ...buildOverviewTotals(dateRows),
-      date,
-    }));
-}
-
 function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
   return [...rows]
     .sort((left, right) => right.startedAt - left.startedAt)

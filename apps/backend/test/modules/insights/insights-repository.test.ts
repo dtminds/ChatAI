@@ -615,17 +615,24 @@ describe("MysqlInsightWorkerRepository", () => {
   it("writes analysis snapshots as building before publishing them", async () => {
     const operations: Array<{ table: string; type: "insert" | "update"; values?: Record<string, unknown> }> = [];
     let nextInsertId = 7001;
+    let logicalSessionSelectCount = 0;
     const db = {
       insertInto: vi.fn((table: string) => createInsertBuilder(async () => ({ insertId: nextInsertId++ }), {
         onValues: (values) => operations.push({ table, type: "insert", values }),
         table,
       })),
-      selectFrom: vi.fn((table: string) => createSelectBuilder(
-        table === "xy_wap_embed_logical_session"
-          ? [{ conversation_id: 301 }]
-          : [],
-        table,
-      )),
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_logical_session") {
+          logicalSessionSelectCount += 1;
+        }
+
+        return createSelectBuilder(
+          table === "xy_wap_embed_logical_session"
+            ? [{ conversation_id: 301 }]
+            : [],
+          table,
+        );
+      }),
       updateTable: vi.fn((table: string) => createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
         onSet: (values) => operations.push({ table, type: "update", values }),
         table,
@@ -658,14 +665,28 @@ describe("MysqlInsightWorkerRepository", () => {
         },
         qaFindings: [],
         risks: [],
-        sentiment: [],
+        sentiment: [
+          {
+            confidence: 0.7,
+            evidenceMessageIds: ["9001"],
+            polarity: "negative",
+            reason: "客户表达不满",
+          },
+        ],
         summary: {
           confidence: 0.9,
           customerIntent: "查物流",
           processSummary: "已登记",
           resultSummary: "未解决",
         },
-        tags: [],
+        tags: [
+          {
+            confidence: 0.8,
+            evidenceMessageIds: ["9001"],
+            tagCode: "logistics",
+            tagName: "物流咨询",
+          },
+        ],
       },
       runId: "6001",
       sourceMessageHighWatermark: "9001",
@@ -687,6 +708,7 @@ describe("MysqlInsightWorkerRepository", () => {
     );
     expect(publishIndex).toBeGreaterThan(0);
     expect(currentIndex).toBeGreaterThan(publishIndex);
+    expect(logicalSessionSelectCount).toBe(1);
   });
 });
 

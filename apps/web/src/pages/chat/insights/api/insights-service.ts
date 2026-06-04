@@ -66,6 +66,10 @@ export type InsightBusinessRelatedSessionsQuery = Pick<
   topicType?: string;
 };
 
+type InsightRequestOptions = {
+  signal?: AbortSignal;
+};
+
 export async function getInsightOverview(query: InsightOverviewQuery = {}) {
   const response = await http.get<ApiSuccessEnvelope<InsightsOverviewResponse>>(
     "/server/insights/overview",
@@ -112,18 +116,23 @@ export async function getInsightBusinessRelatedSessions(
   return response.data;
 }
 
-export async function getInsightQuality() {
+export async function getInsightQuality(options: InsightRequestOptions = {}) {
   const response = await http.get<ApiSuccessEnvelope<InsightsQualityResponse>>(
     "/server/insights/quality",
+    options,
   );
 
   return response.data;
 }
 
-export async function getInsightFollowUps(query: InsightFollowUpQuery = {}) {
+export async function getInsightFollowUps(
+  query: InsightFollowUpQuery = {},
+  options: InsightRequestOptions = {},
+) {
   const response = await http.get<ApiSuccessEnvelope<InsightsFollowUpsResponse>>(
     "/server/insights/follow-ups",
     {
+      ...options,
       params: compactQuery(query),
     },
   );

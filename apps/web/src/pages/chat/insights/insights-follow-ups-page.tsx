@@ -21,7 +21,22 @@ export function InsightsFollowUpsPage() {
   const detail = useInsightDetail();
 
   useEffect(() => {
-    void getInsightFollowUps({ status: "open" }).then(setFollowUps);
+    const controller = new AbortController();
+
+    void getInsightFollowUps(
+      { status: "open" },
+      { signal: controller.signal },
+    )
+      .then((data) => {
+        if (!controller.signal.aborted) {
+          setFollowUps(data);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      controller.abort();
+    };
   }, []);
 
   async function updateStatus(actionItemId: string, status: "dismissed" | "done") {

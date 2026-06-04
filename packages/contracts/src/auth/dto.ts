@@ -28,6 +28,7 @@ export const AuthSubUserSchema = Type.Object({
   permissions: Type.Array(AccountPermissionSchema),
   role: AccountRoleSchema,
   subUserId: Type.String(),
+  uid: Type.Number(),
 });
 
 export const AuthLoginRequestSchema = Type.Object({

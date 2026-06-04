@@ -108,6 +108,7 @@ export function resetChatWorkbenchTestState() {
     permissions: ["chat.access", "chat.send", "chat.takeover"],
     role: "operator",
     subUserId: "sub-user-001",
+    uid: 1,
   });
   useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   Object.defineProperty(document, "visibilityState", {

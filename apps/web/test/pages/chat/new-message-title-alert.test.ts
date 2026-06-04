@@ -61,6 +61,29 @@ describe("new message title alert", () => {
     vi.advanceTimersByTime(2000);
     expect(document.title).toBe(WORKBENCH_DEFAULT_TITLE);
   });
+
+  it("does not overwrite an external title when no alert is active", () => {
+    document.title = "其他页面";
+
+    resetWorkbenchTitleAlert();
+
+    expect(document.title).toBe("其他页面");
+  });
+
+  it("unbinds reset listeners after the alert is cleared", () => {
+    setDocumentVisibility("hidden");
+    setDocumentFocus(false);
+
+    notifyPulledCustomerMessage();
+    expect(document.title).toBe(WORKBENCH_NEW_MESSAGE_TITLE);
+
+    resetWorkbenchTitleAlert();
+    document.title = "其他页面";
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(document.title).toBe("其他页面");
+  });
 });
 
 function setDocumentVisibility(value: DocumentVisibilityState) {

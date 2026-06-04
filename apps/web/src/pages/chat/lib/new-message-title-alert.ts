@@ -6,7 +6,7 @@ const TITLE_FLASH_INTERVAL_MS = 1000;
 
 let flashTimer: number | undefined;
 let isShowingNewMessageTitle = false;
-let didBindResetListeners = false;
+let isAlerting = false;
 
 export function notifyPulledCustomerMessage() {
   if (typeof document === "undefined" || typeof window === "undefined") {
@@ -18,13 +18,14 @@ export function notifyPulledCustomerMessage() {
     return;
   }
 
+  if (isAlerting) {
+    return;
+  }
+
+  isAlerting = true;
   bindResetListeners();
   document.title = WORKBENCH_NEW_MESSAGE_TITLE;
   isShowingNewMessageTitle = true;
-
-  if (flashTimer) {
-    return;
-  }
 
   flashTimer = window.setInterval(() => {
     isShowingNewMessageTitle = !isShowingNewMessageTitle;
@@ -39,23 +40,29 @@ export function resetWorkbenchTitleAlert() {
     return;
   }
 
+  if (!isAlerting) {
+    return;
+  }
+
   if (flashTimer) {
     window.clearInterval(flashTimer);
     flashTimer = undefined;
   }
 
+  unbindResetListeners();
+  isAlerting = false;
   isShowingNewMessageTitle = false;
   document.title = WORKBENCH_DEFAULT_TITLE;
 }
 
 function bindResetListeners() {
-  if (didBindResetListeners) {
-    return;
-  }
-
   window.addEventListener("focus", resetWhenCurrentTabActive);
   document.addEventListener("visibilitychange", resetWhenCurrentTabActive);
-  didBindResetListeners = true;
+}
+
+function unbindResetListeners() {
+  window.removeEventListener("focus", resetWhenCurrentTabActive);
+  document.removeEventListener("visibilitychange", resetWhenCurrentTabActive);
 }
 
 function resetWhenCurrentTabActive() {

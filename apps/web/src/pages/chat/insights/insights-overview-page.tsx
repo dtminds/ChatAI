@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   AiIdeaIcon,
@@ -88,14 +88,14 @@ const metricCards: Array<{
   label: string;
   subLabel: string;
 }> = [
-  { icon: BubbleChatIcon, key: "logicalSessions", label: "逻辑会话数", subLabel: "切片后的服务会话" },
+  { icon: BubbleChatIcon, key: "logicalSessions", label: "咨询会话数", subLabel: "按咨询过程归并" },
   { icon: UserGroupIcon, key: "consultingCustomers", label: "咨询用户数", subLabel: "按客户去重" },
   { icon: Message01Icon, key: "messages", label: "消息数", subLabel: "客户与客服合计" },
   { icon: ChartAreaIcon, key: "customerMessages", label: "客户消息数", subLabel: "客户主动表达量" },
 ];
 
 const trendOptions: Array<{ key: TrendMetric; label: string }> = [
-  { key: "logicalSessions", label: "逻辑会话" },
+  { key: "logicalSessions", label: "咨询会话" },
   { key: "consultingCustomers", label: "咨询用户" },
   { key: "messages", label: "消息" },
   { key: "customerMessages", label: "客户消息" },
@@ -325,13 +325,13 @@ function OverviewHeader({
     <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="space-y-2">
         <InsightsPageHeader
-          description={`当前范围内有 ${overview?.totals.logicalSessions ?? "-"} 个逻辑会话，${overview?.totals.consultingCustomers ?? "-"} 位咨询用户，最近一天新增 ${lastPoint?.logicalSessions ?? "-"} 个会话`}
+          description={`当前范围内有 ${overview?.totals.logicalSessions ?? "-"} 个咨询会话，${overview?.totals.consultingCustomers ?? "-"} 位咨询用户，最近一天新增 ${lastPoint?.logicalSessions ?? "-"} 个会话`}
           title="会话数据总览"
         />
         <p className="sr-only">
           当前范围内有{" "}
           <span className="font-medium text-foreground">
-            {overview?.totals.logicalSessions ?? "-"} 个逻辑会话
+            {overview?.totals.logicalSessions ?? "-"} 个咨询会话
           </span>
           ，{" "}
           <span className="font-medium text-foreground">
@@ -403,14 +403,14 @@ function MetricStrip({
   );
 }
 
-function ResolutionDistribution({
+const ResolutionDistribution = memo(function ResolutionDistribution({
   overview,
 }: {
   overview: InsightsOverviewResponse | undefined;
 }) {
   const data = useMemo(() => overview ? buildResolutionData(overview) : [], [overview]);
   const total = data.reduce((sum, item) => sum + item.value, 0);
-  const isReady = Boolean(overview);
+  const hasData = data.length > 0;
 
   return (
     <section className="flex min-h-[260px] flex-col rounded-xl border bg-card p-4">
@@ -421,32 +421,40 @@ function ResolutionDistribution({
       />
       <div className="flex flex-1 flex-col items-center justify-center gap-4 sm:flex-row">
         <div className="relative size-[220px] shrink-0">
-          <ResponsiveContainer height="100%" width="100%">
-            <PieChart>
-              <Pie
-                cx="50%"
-                cy="50%"
-                data={data}
-                dataKey="value"
-                innerRadius="48%"
-                outerRadius="72%"
-                paddingAngle={3}
-                strokeWidth={0}
-              >
-                {data.map((item) => (
-                  <Cell fill={item.color} key={item.name} />
-                ))}
-              </Pie>
-              <Tooltip
-                content={<DistributionTooltip />}
-                wrapperStyle={{ zIndex: 20 }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-semibold">{isReady ? formatNumber(total) : "-"}</span>
-            <span className="text-xs text-muted-foreground">逻辑会话</span>
-          </div>
+          {hasData ? (
+            <ResponsiveContainer height="100%" width="100%">
+              <PieChart>
+                <Pie
+                  cx="50%"
+                  cy="50%"
+                  data={data}
+                  dataKey="value"
+                  innerRadius="48%"
+                  outerRadius="72%"
+                  paddingAngle={3}
+                  strokeWidth={0}
+                >
+                  {data.map((item) => (
+                    <Cell fill={item.color} key={item.name} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  content={<DistributionTooltip />}
+                  wrapperStyle={{ zIndex: 20 }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-full items-center justify-center rounded-[10px] bg-muted/35 text-sm text-muted-foreground">
+              暂无分布数据
+            </div>
+          )}
+          {hasData ? (
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-2xl font-semibold">{formatNumber(total)}</span>
+              <span className="text-xs text-muted-foreground">咨询会话</span>
+            </div>
+          ) : null}
         </div>
         <div className="grid w-full gap-3 sm:max-w-[180px]">
           {data.map((item) => (
@@ -471,9 +479,9 @@ function ResolutionDistribution({
       </div>
     </section>
   );
-}
+});
 
-function TrendPanel({
+const TrendPanel = memo(function TrendPanel({
   activeMetric,
   onMetricChange,
   overview,
@@ -569,7 +577,7 @@ function TrendPanel({
       </div>
     </section>
   );
-}
+});
 
 function SessionTableCard({
   analysisStatusFilter,
@@ -643,7 +651,7 @@ function SessionTableCard({
     <section className="rounded-xl border bg-card">
       <div className="grid gap-3 p-4 sm:px-6 sm:py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <h2 className="text-base font-medium">逻辑会话明细</h2>
+          <h2 className="text-base font-medium">咨询会话明细</h2>
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
             <div className="relative flex-1 sm:flex-none">
               <HugeiconsIcon
@@ -711,7 +719,7 @@ function SessionTableCard({
         ) : null}
       </div>
       <div className="overflow-x-auto px-4 pb-4 sm:px-6">
-        <Table aria-label="逻辑会话明细">
+        <Table aria-label="咨询会话明细">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="h-11 min-w-[180px]">客户</TableHead>
@@ -774,7 +782,7 @@ function SessionTableCard({
             ) : (
               <TableRow>
                 <TableCell className="py-10 text-sm text-muted-foreground" colSpan={7}>
-                  当前时间范围内暂无逻辑会话
+                  当前时间范围内暂无咨询会话
                 </TableCell>
               </TableRow>
             )}

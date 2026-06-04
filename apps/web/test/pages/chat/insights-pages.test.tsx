@@ -900,12 +900,12 @@ describe("conversation insights pages", () => {
     });
     expect(screen.getByRole("link", { name: /服务质检/ })).toHaveAttribute("href", "/chat/insights/quality");
     expect(screen.queryByRole("link", { name: /分析明细/ })).not.toBeInTheDocument();
-    expect(screen.getByText("逻辑会话数")).toBeInTheDocument();
+    expect(screen.getByText("咨询会话数")).toBeInTheDocument();
     expect(screen.getAllByText("22").length).toBeGreaterThan(0);
     expect(screen.getByText("咨询用户数")).toBeInTheDocument();
     expect(screen.getByText("消息数")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^消息数/ })).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "逻辑会话明细" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "咨询会话明细" })).toBeInTheDocument();
     expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
     expect(screen.getAllByText("消息不足").length).toBeGreaterThan(0);
     expect(screen.queryByText("待复核")).not.toBeInTheDocument();
@@ -1368,6 +1368,20 @@ describe("conversation insights pages", () => {
     expect(screen.queryByText("后续版本接入")).not.toBeInTheDocument();
   });
 
+  it("does not mount overview distribution with placeholder chart data before overview loads", async () => {
+    serviceMocks.getInsightOverview.mockImplementation(() => new Promise(() => undefined));
+
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    const distributionPanel = screen.getByRole("heading", { name: "问题解决分布" }).closest("section");
+
+    expect(distributionPanel).not.toBeNull();
+    expect(within(distributionPanel as HTMLElement).queryByText("暂无数据")).not.toBeInTheDocument();
+    expect(within(distributionPanel as HTMLElement).getByText("暂无分布数据")).toBeInTheDocument();
+    expect(within(distributionPanel as HTMLElement).queryByText("咨询会话")).not.toBeInTheDocument();
+  });
+
   it("validates required insight configuration dialog fields before submit", async () => {
     renderRoute("/chat/insights/settings");
 
@@ -1410,7 +1424,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
-    const overviewTable = screen.getByRole("table", { name: "逻辑会话明细" });
+    const overviewTable = screen.getByRole("table", { name: "咨询会话明细" });
     expect(within(overviewTable).getByRole("status", { name: "正在加载会话" })).toBeInTheDocument();
 
     cleanup();

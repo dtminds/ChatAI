@@ -53,7 +53,7 @@ export function InsightDetailPanel({
       <SheetContent className="w-full overflow-hidden sm:max-w-[min(1180px,calc(100vw-48px))]">
           <SheetTitle className="sr-only">洞察详情</SheetTitle>
           <SheetDescription className="sr-only">
-            查看本轮逻辑会话的分析结果和对话证据
+            查看本轮咨询会话的分析结果和对话证据
           </SheetDescription>
 
           {detail ? (

@@ -730,7 +730,7 @@ function SessionizationTimeline({
     },
     {
       description: `空闲 ${settings.idleTimeoutMinutes} 分钟后，本轮服务被判定结束`,
-      title: "逻辑会话结束",
+      title: "咨询会话结束",
     },
     {
       description: `再等待 ${settings.analysisDelayMinutes} 分钟，启动 AI 洞察分析`,
@@ -1354,7 +1354,7 @@ function RescanPanel({
   return (
     <section className="space-y-4">
       <p className="text-xs leading-5 text-muted-foreground">
-        从指定时间重新生成逻辑会话和洞察结果，适合规则调整后的数据修正
+        从指定时间重新生成咨询会话和洞察结果，适合规则调整后的数据修正
       </p>
       <div className="rounded-[8px] border bg-background px-5 py-1">
         <section className="grid gap-4 py-4 md:grid-cols-[minmax(0,1fr)_22rem] md:items-center">

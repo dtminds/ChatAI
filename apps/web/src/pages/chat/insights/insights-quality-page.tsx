@@ -71,18 +71,18 @@ export function InsightsQualityPage() {
     <InsightsLayout title="服务质检">
       <div className="space-y-5">
         <InsightsPageHeader
-          description="按逻辑会话判断客户问题是否解决，辅助主管复核服务质量"
+          description="按咨询会话判断客户问题是否解决，辅助主管复核服务质量"
           title="服务质检"
         />
         <section className="rounded-[8px] border bg-background p-5">
           <div className="mb-4">
             <h2 className="text-base font-semibold">客户问题是否解决</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              只判断当前逻辑会话内是否解决，作为主管辅助复核
+              只判断当前咨询会话内是否解决，作为主管辅助复核
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-7">
-            <Stat label="逻辑会话总数" value={overview?.totalSessions} />
+            <Stat label="咨询会话总数" value={overview?.totalSessions} />
             <Stat label="已分析会话数" value={overview?.analyzedSessions} />
             <Stat label="有客户问题" value={overview?.problemSessions} />
             <Stat label="已解决" value={overview?.resolved} />

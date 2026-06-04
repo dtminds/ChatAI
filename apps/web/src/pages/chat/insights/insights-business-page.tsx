@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   Analytics02Icon,
   ArrowLeft01Icon,
@@ -140,7 +140,7 @@ export function InsightsBusinessPage() {
 
   const topicsByDimension = useMemo(() => buildTopicsByDimension(business), [business]);
   const activeTopics = topicsByDimension[activeDimension];
-  const topTopics = activeTopics.slice(0, 10);
+  const topTopics = useMemo(() => activeTopics.slice(0, 10), [activeTopics]);
 
   useEffect(() => {
     const keywordMatchedTopic = findTopicByKeyword(topTopics, sessionSearchKeyword);
@@ -150,8 +150,8 @@ export function InsightsBusinessPage() {
       return;
     }
 
-    if (!selectedTopic || selectedTopic.dimension !== activeDimension || !topTopics.some((topic) => isSameTopic(topic, selectedTopic))) {
-      setSelectedTopic(topTopics[0]);
+    if (selectedTopic && (selectedTopic.dimension !== activeDimension || !topTopics.some((topic) => isSameTopic(topic, selectedTopic)))) {
+      setSelectedTopic(undefined);
     }
   }, [activeDimension, selectedTopic, sessionSearchKeyword, topTopics]);
 
@@ -316,7 +316,7 @@ function DimensionMetricStrip({
   );
 }
 
-function BusinessTrendPanel({
+const BusinessTrendPanel = memo(function BusinessTrendPanel({
   activeDimension,
   business,
   topTopics,
@@ -341,7 +341,7 @@ function BusinessTrendPanel({
       </div>
     </section>
   );
-}
+});
 
 function DimensionTrendChart({
   business,
@@ -470,7 +470,7 @@ function IntentDistributionTrendChart({
   );
 }
 
-function TopicDistributionPanel({
+const TopicDistributionPanel = memo(function TopicDistributionPanel({
   activeDimension,
   onSelectTopic,
   selectedTopic,
@@ -552,7 +552,7 @@ function TopicDistributionPanel({
       </div>
     </aside>
   );
-}
+});
 
 function TopicRankButton({
   index,

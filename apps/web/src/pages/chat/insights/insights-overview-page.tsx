@@ -74,6 +74,7 @@ import { InsightPerson } from "./insight-person";
 import { getRecentDateRange, toBoundaryDate, type InsightDateRange } from "./insights-date-range";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import { formatInsightTime } from "./insights-utils";
+import { insightChartColors, insightResolutionColors } from "./insights-chart-palette";
 import { useInsightDetail } from "./use-insight-detail";
 
 type TrendMetric = keyof InsightsOverviewResponse["totals"];
@@ -123,14 +124,6 @@ const analysisStatusFilterOptions = [
   { label: "分析失败", value: "failed" },
   { label: "已过期", value: "stale" },
 ];
-
-const resolutionColors: Record<string, string> = {
-  no_customer_problem: "#c9cdd3",
-  partially_resolved: "#f0a337",
-  resolved: "#16a36a",
-  unknown: "#94a3b8",
-  unresolved: "#df3f40",
-};
 
 export function InsightsOverviewPage() {
   const [overview, setOverview] = useState<InsightsOverviewResponse>();
@@ -536,8 +529,8 @@ function TrendPanel({
               <AreaChart data={trend} margin={{ bottom: 0, left: -16, right: 14, top: 10 }}>
                 <defs>
                   <linearGradient id="insightTrendArea" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#5b5ff0" stopOpacity={0.28} />
-                    <stop offset="100%" stopColor="#5b5ff0" stopOpacity={0} />
+                    <stop offset="0%" stopColor={insightChartColors.primary} stopOpacity={0.28} />
+                    <stop offset="100%" stopColor={insightChartColors.primary} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.45} vertical={false} />
@@ -545,14 +538,14 @@ function TrendPanel({
                   axisLine={false}
                   dataKey="date"
                   dy={10}
-                  tick={{ fill: "#a1a1aa", fontSize: 12 }}
+                  tick={{ fill: insightChartColors.axis, fontSize: 12 }}
                   tickFormatter={formatTrendDate}
                   tickLine={false}
                 />
                 <YAxis
                   allowDecimals={false}
                   axisLine={false}
-                  tick={{ fill: "#a1a1aa", fontSize: 12 }}
+                  tick={{ fill: insightChartColors.axis, fontSize: 12 }}
                   tickLine={false}
                   width={46}
                 />
@@ -561,7 +554,7 @@ function TrendPanel({
                   dataKey={activeMetric}
                   fill="url(#insightTrendArea)"
                   key={activeMetric}
-                  stroke="#5b5ff0"
+                  stroke={insightChartColors.primary}
                   strokeWidth={2.4}
                   type="monotone"
                 />
@@ -1227,7 +1220,7 @@ function TrendTooltip({
     <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-lg">
       <div className="font-medium text-foreground">{formatFullTrendDate(String(label))}</div>
       <div className="mt-2 flex items-center gap-2">
-        <span className="size-2 rounded-full bg-[#5b5ff0]" />
+        <span className="size-2 rounded-full" style={{ backgroundColor: insightChartColors.primary }} />
         <span className="text-muted-foreground">{activeLabel}</span>
         <span className="font-semibold tabular-nums">{formatNumber(Number(value))}</span>
       </div>
@@ -1259,16 +1252,16 @@ function buildResolutionData(overview: InsightsOverviewResponse | undefined) {
   const resolution = overview?.resolution;
 
   const data = [
-    { color: resolutionColors.resolved, name: "已解决", value: resolution?.resolved ?? 0 },
-    { color: resolutionColors.partially_resolved, name: "部分解决", value: resolution?.partiallyResolved ?? 0 },
-    { color: resolutionColors.unresolved, name: "未解决", value: resolution?.unresolved ?? 0 },
-    { color: resolutionColors.no_customer_problem, name: "无需客服处理", value: resolution?.noCustomerProblem ?? 0 },
-    { color: resolutionColors.unknown, name: "消息不足", value: resolution?.unknown ?? 0 },
+    { color: insightResolutionColors.resolved, name: "已解决", value: resolution?.resolved ?? 0 },
+    { color: insightResolutionColors.partiallyResolved, name: "部分解决", value: resolution?.partiallyResolved ?? 0 },
+    { color: insightResolutionColors.unresolved, name: "未解决", value: resolution?.unresolved ?? 0 },
+    { color: insightResolutionColors.noCustomerProblem, name: "无需客服处理", value: resolution?.noCustomerProblem ?? 0 },
+    { color: insightResolutionColors.unknown, name: "消息不足", value: resolution?.unknown ?? 0 },
   ].filter((item) => item.value > 0);
 
   return data.length > 0
     ? data
-    : [{ color: resolutionColors.unknown, name: "暂无数据", value: 1 }];
+    : [{ color: insightResolutionColors.unknown, name: "暂无数据", value: 1 }];
 }
 
 function getTrendDelta(

@@ -75,6 +75,7 @@ function mockSession(role: "admin" | "operator" = "admin") {
     permissions: ["chat.access", "chat.send", "chat.takeover"],
     role,
     subUserId: "101",
+    uid: 1,
   });
 }
 

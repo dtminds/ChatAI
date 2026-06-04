@@ -1,7 +1,9 @@
 import MockAdapter from "axios-mock-adapter";
 import { toast } from "sonner";
 import { render } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
+import type { ReactElement } from "react";
 import { requestInstance } from "@/lib/request";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import { resetWorkbenchService } from "@/pages/chat/api/workbench-service";
@@ -63,8 +65,12 @@ vi.mock("@/pages/chat/api/media-upload-service", () => mediaUploadMocks);
 
 export const workbenchToastWarningMock = vi.mocked(toast.warning);
 
+export function renderWithChatWorkbenchRouter(ui: ReactElement) {
+  return render(<MemoryRouter initialEntries={["/chat"]}>{ui}</MemoryRouter>);
+}
+
 export function renderChatWorkbenchPage() {
-  return render(<ChatWorkbenchPage />);
+  return renderWithChatWorkbenchRouter(<ChatWorkbenchPage />);
 }
 
 export function installChatWorkbenchTestEnvironment() {

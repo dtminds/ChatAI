@@ -47,6 +47,7 @@ import { InsightPerson } from "./insight-person";
 import { getRecentDateRange, toBoundaryDate } from "./insights-date-range";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import { formatInsightTime } from "./insights-utils";
+import { insightChartColors, insightDimensionColors } from "./insights-chart-palette";
 import { useInsightDetail } from "./use-insight-detail";
 
 type BusinessTopic = InsightsBusinessResponse["tagDistribution"][number];
@@ -72,7 +73,7 @@ const dimensionConfigs: Array<{
   title: string;
 }> = [
   {
-    color: "#5b5ff0",
+    color: insightDimensionColors.intent,
     description: "客户来咨询的主要意图",
     icon: Target02Icon,
     key: "intent",
@@ -80,7 +81,7 @@ const dimensionConfigs: Array<{
     title: "客户意图",
   },
   {
-    color: "#16a36a",
+    color: insightDimensionColors.tag,
     description: "命中已配置的业务标签",
     icon: LabelImportantIcon,
     key: "tag",
@@ -88,7 +89,7 @@ const dimensionConfigs: Array<{
     title: "业务标签",
   },
   {
-    color: "#f0a337",
+    color: insightDimensionColors.entity,
     description: "商品、订单、活动等实体对象",
     icon: DatabaseIcon,
     key: "entity",
@@ -96,7 +97,7 @@ const dimensionConfigs: Array<{
     title: "实体对象",
   },
   {
-    color: "#0891b2",
+    color: insightDimensionColors.asset,
     description: "H5、小程序卡片、文件",
     icon: ChartAreaIcon,
     key: "asset",
@@ -105,8 +106,6 @@ const dimensionConfigs: Array<{
   },
 ];
 
-const topicColors = ["#5b5ff0", "#14a6a6", "#e7a23b", "#e36f5c", "#7b61d9", "#2f8bc9", "#58a65c", "#c16d9b", "#b58a3b", "#6f8fbc"];
-const otherIntentSeriesColor = "#94a3b8";
 const businessRelatedSessionsPageSize = 20;
 
 export function InsightsBusinessPage() {
@@ -379,14 +378,14 @@ function DimensionTrendChart({
           axisLine={false}
           dataKey="date"
           dy={10}
-          tick={{ fill: "#a1a1aa", fontSize: 12 }}
+          tick={{ fill: insightChartColors.axis, fontSize: 12 }}
           tickFormatter={formatTrendDate}
           tickLine={false}
         />
         <YAxis
           allowDecimals={false}
           axisLine={false}
-          tick={{ fill: "#a1a1aa", fontSize: 12 }}
+          tick={{ fill: insightChartColors.axis, fontSize: 12 }}
           tickLine={false}
           width={44}
         />
@@ -428,14 +427,14 @@ function IntentDistributionTrendChart({
               axisLine={false}
               dataKey="date"
               dy={10}
-              tick={{ fill: "#a1a1aa", fontSize: 12 }}
+              tick={{ fill: insightChartColors.axis, fontSize: 12 }}
               tickFormatter={formatTrendDate}
               tickLine={false}
             />
             <YAxis
               axisLine={false}
               domain={[0, 1]}
-              tick={{ fill: "#a1a1aa", fontSize: 12 }}
+              tick={{ fill: insightChartColors.axis, fontSize: 12 }}
               tickFormatter={formatPercentTick}
               tickLine={false}
               ticks={[0, 0.25, 0.5, 0.75, 1]}
@@ -507,7 +506,7 @@ function TopicDistributionPanel({
                 >
                   {topics.map((topic, index) => (
                     <Cell
-                      fill={topicColors[index % topicColors.length]}
+                      fill={getTopicColor(index)}
                       key={`${topic.dimension}:${topic.code}`}
                       stroke="hsl(var(--background))"
                       strokeWidth={2}
@@ -577,7 +576,7 @@ function TopicRankButton({
     >
       <span
         className="flex size-6 shrink-0 items-center justify-center rounded-[7px] text-xs font-semibold text-white"
-        style={{ backgroundColor: topicColors[index % topicColors.length] }}
+        style={{ backgroundColor: getTopicColor(index) }}
       >
         {index + 1}
       </span>
@@ -922,6 +921,10 @@ function buildTopicSlots(topics: BusinessTopic[]) {
   ];
 }
 
+function getTopicColor(index: number) {
+  return insightChartColors.topic[index % insightChartColors.topic.length];
+}
+
 function buildIntentDistributionTrendChart(
   business: InsightsBusinessResponse | undefined,
   topTopics: BusinessTopic[],
@@ -936,11 +939,11 @@ function buildIntentDistributionTrendChart(
   const hasOther = (business?.intentTrend ?? []).some((point) => !topIntentCodes.has(point.intentCode));
   const series = [
     ...topIntents.map((topic, index) => ({
-      color: topicColors[index % topicColors.length],
+      color: getTopicColor(index),
       key: seriesKeyByIntentCode.get(topic.code) ?? `intent_${index}`,
       name: topic.name,
     })),
-    ...(hasOther ? [{ color: otherIntentSeriesColor, key: "other", name: "其他" }] : []),
+    ...(hasOther ? [{ color: insightChartColors.axis, key: "other", name: "其他" }] : []),
   ];
 
   if (!business?.intentTrend?.length || series.length === 0) {

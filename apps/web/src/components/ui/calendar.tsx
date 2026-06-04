@@ -115,12 +115,12 @@ function Calendar({
           defaultClassNames.day,
         ),
         range_start: cn(
-          "[background:linear-gradient(to_right,transparent_50%,hsl(var(--accent))_50%)]",
+          "[background:linear-gradient(to_right,transparent_50%,var(--accent)_50%)]",
           defaultClassNames.range_start,
         ),
         range_middle: cn("rounded-none", defaultClassNames.range_middle),
         range_end: cn(
-          "[background:linear-gradient(to_right,hsl(var(--accent))_50%,transparent_50%)]",
+          "[background:linear-gradient(to_right,var(--accent)_50%,transparent_50%)]",
           defaultClassNames.range_end,
         ),
         today: cn(

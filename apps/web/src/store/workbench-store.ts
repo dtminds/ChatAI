@@ -3625,7 +3625,7 @@ export function createWorkbenchStore() {
           ) {
             const currentMessages =
               nextMessagesByConversationId[polledConversationId] ?? [];
-            shouldNotifyPulledCustomerMessage = hasNewCustomerMessage(
+            shouldNotifyPulledCustomerMessage ||= hasNewCustomerMessage(
               currentMessages,
               response.activeConversationMessages,
             );

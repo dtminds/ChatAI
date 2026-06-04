@@ -529,6 +529,40 @@ describe("workbench message merge state", () => {
     expect(notifyPulledCustomerMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the title alert when an unread increase is followed by non-customer active messages", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return {
+          activeConversationMessages: [
+            createPolledMessage({
+              messageId: "remote-title-alert-agent-001",
+              senderType: "agent",
+              text: "客服消息",
+            }),
+          ],
+          conversationChanges: [
+            createPolledConversation({
+              conversationId: "conv-002",
+              lastMessage: "非当前会话客户新消息",
+              lastMessageTime: Date.now(),
+              unreadCount: 1,
+            }),
+          ],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(notifyPulledCustomerMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("does not trigger the title alert for polled system or agent messages", async () => {
     const baseService = createMockWorkbenchService();
 

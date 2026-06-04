@@ -948,6 +948,9 @@ function filterConfiguredAnalysisOutput(
   context: InsightPromptContext,
 ) {
   const validationWarnings: string[] = [];
+  const intentConfigsByCode = new Map(
+    context.intentConfigs.map((item) => [item.intentCode, item]),
+  );
   const labelCodes = new Set(context.labelConfigs.map((item) => item.labelCode));
   const qaRuleCodes = new Set(context.qaRuleConfigs.map((item) => item.ruleCode));
   const configuredEntities = context.entityDictionary.map((item) => ({
@@ -978,6 +981,19 @@ function filterConfiguredAnalysisOutput(
     validationWarnings.push(`tag ${item.tagCode} is not configured`);
     return false;
   });
+  const intents = output.intents.flatMap((item) => {
+    const config = intentConfigsByCode.get(item.intentCode);
+
+    if (config) {
+      return [{
+        ...item,
+        intentLabel: config.intentName,
+      }];
+    }
+
+    validationWarnings.push(`intent ${item.intentCode} is not configured`);
+    return [];
+  });
   const qaFindings = output.qaFindings.filter((item) => {
     if (qaRuleCodes.has(item.ruleCode)) {
       return true;
@@ -995,6 +1011,7 @@ function filterConfiguredAnalysisOutput(
     output: {
       ...output,
       entities,
+      intents,
       qaFindings,
       risks: [],
       tags,

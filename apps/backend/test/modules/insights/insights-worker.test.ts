@@ -33,6 +33,7 @@ function createRepository(
     getCursor: vi.fn(async () => ({ cursorAuditId: 0, cursorMsgtime: 0 })),
     getPromptContext: vi.fn(async () => ({
       entityDictionary: [],
+      intentConfigs: [],
       labelConfigs: [],
       qaRuleConfigs: [],
     })),
@@ -408,6 +409,18 @@ describe("InsightsWorkerService", () => {
   it("runs one due analysis job, validates evidence ids and saves structured result", async () => {
     const promptContext = {
       entityDictionary: [],
+      intentConfigs: [
+        {
+          aliases: ["查快递"],
+          description: "物流相关诉求",
+          includeInStatistics: true,
+          intentCode: "logistics_delay",
+          intentName: "物流异常",
+          negativeExamples: [],
+          positiveExamples: ["物流不更新"],
+          weight: 8,
+        },
+      ],
       labelConfigs: [
         {
           description: "物流相关咨询",
@@ -480,7 +493,13 @@ describe("InsightsWorkerService", () => {
             confidence: 0.84,
             evidenceMessageIds: ["9001", "9999"],
             intentCode: "logistics_delay",
-            intentLabel: "物流异常",
+            intentLabel: "模型自由名称",
+          },
+          {
+            confidence: 0.7,
+            evidenceMessageIds: ["9001"],
+            intentCode: "free_text_intent",
+            intentLabel: "自由意图",
           },
         ],
         problemResolution: {
@@ -555,6 +574,7 @@ describe("InsightsWorkerService", () => {
         validationWarnings: expect.arrayContaining([
           expect.stringContaining("9999"),
           expect.stringContaining("entity ai-service is not configured"),
+          expect.stringContaining("intent free_text_intent is not configured"),
           expect.stringContaining("qa rule undefined_rule is not configured"),
           expect.stringContaining("risk custom_risk is not accepted"),
         ]),
@@ -564,6 +584,7 @@ describe("InsightsWorkerService", () => {
             expect.objectContaining({
               evidenceMessageIds: ["9001"],
               intentCode: "logistics_delay",
+              intentLabel: "物流异常",
             }),
           ],
           problemResolution: expect.objectContaining({
@@ -573,6 +594,10 @@ describe("InsightsWorkerService", () => {
           risks: [],
         }),
       }),
+    );
+    const savedInput = vi.mocked(repository.saveAnalysisResult).mock.calls[0]?.[0];
+    expect(savedInput?.validationWarnings).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("intent logistics_delay is not configured")]),
     );
     expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
   });

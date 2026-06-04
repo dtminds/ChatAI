@@ -3,6 +3,7 @@ import {
   InsightAnalysisPolicyUpdateRequestSchema,
   InsightConfigStatusUpdateRequestSchema,
   InsightEntityDictionaryMutationRequestSchema,
+  InsightIntentConfigMutationRequestSchema,
   InsightLabelConfigMutationRequestSchema,
   InsightActionStatusSchema,
   InsightMessageContextRequestSchema,
@@ -13,6 +14,7 @@ import {
   type InsightAnalysisPolicyUpdateRequest,
   type InsightConfigStatusUpdateRequest,
   type InsightEntityDictionaryMutationRequest,
+  type InsightIntentConfigMutationRequest,
   type InsightLabelConfigMutationRequest,
   type InsightActionStatus,
   type InsightQaRuleConfigMutationRequest,
@@ -322,6 +324,86 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
           await getUidScope(app, request),
           request.user?.roles?.[0] as AccountRole | undefined,
           request.body,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Body: InsightIntentConfigMutationRequest }>(
+    "/api/server/insights/settings/intent-configs",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightIntentConfigMutationRequestSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).createIntentConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.put<{ Body: InsightIntentConfigMutationRequest; Params: ConfigParams }>(
+    "/api/server/insights/settings/intent-configs/:configId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightIntentConfigMutationRequestSchema,
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateIntentConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.patch<{ Body: InsightConfigStatusUpdateRequest; Params: ConfigParams }>(
+    "/api/server/insights/settings/intent-configs/:configId/status",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightConfigStatusUpdateRequestSchema,
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateIntentConfigStatus(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.delete<{ Params: ConfigParams }>(
+    "/api/server/insights/settings/intent-configs/:configId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).deleteIntentConfig(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.params.configId,
         ),
       );
     },

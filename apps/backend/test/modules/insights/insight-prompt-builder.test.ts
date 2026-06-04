@@ -14,6 +14,18 @@ describe("insight prompt builder", () => {
             includeInAggregation: true,
           },
         ],
+        intentConfigs: [
+          {
+            aliases: ["查快递"],
+            description: "客户关注发货或快递进度",
+            includeInStatistics: true,
+            intentCode: "logistics_delay",
+            intentName: "物流异常",
+            negativeExamples: ["询问售后退款"],
+            positiveExamples: ["快递什么时候到"],
+            weight: 8,
+          },
+        ],
         labelConfigs: [
           {
             description: "客户关注发货或快递进度",
@@ -55,12 +67,14 @@ describe("insight prompt builder", () => {
 
     expect(prompt[0]).toMatchObject({ role: "system" });
     expect(serialized).toContain("物流咨询");
+    expect(serialized).toContain("物流异常");
+    expect(serialized).toContain("tenantContext.intentConfigs");
     expect(serialized).toContain("售后跟进");
     expect(serialized).toContain("玻尿酸补水面膜");
     expect(serialized).toContain("resolutionStatus");
     expect(serialized).toContain("2-6 个汉字");
-    expect(serialized).toContain("正例：产品咨询、价格咨询、物流异常、退款申请、售后维修、发货催促、优惠咨询");
-    expect(serialized).toContain("负例：客户询问了白色羽绒服多少钱");
+    expect(serialized).toContain("summary.customerIntent 必须优先使用命中的 tenantContext.intentConfigs.intentName");
+    expect(serialized).toContain("未配置的意图不得输出到 intents");
     expect(serialized).toContain("customer_problem");
     expect(serialized).toContain("这条消息作为证据的原因");
     expect(serialized).toContain("risks 必须输出空数组");
@@ -76,6 +90,17 @@ describe("insight prompt builder", () => {
             canonicalName: "玻尿酸补水面膜",
             entityType: "product",
             includeInAggregation: true,
+          },
+        ],
+        intentConfigs: [
+          {
+            aliases: ["查快递"],
+            includeInStatistics: true,
+            intentCode: "logistics_delay",
+            intentName: "物流异常",
+            negativeExamples: [],
+            positiveExamples: [],
+            weight: 8,
           },
         ],
         labelConfigs: [
@@ -115,6 +140,7 @@ describe("insight prompt builder", () => {
     const userPayload = JSON.parse(prompt[1]?.content ?? "{}") as {
       outputContract: {
         entities: Array<{ confidence: unknown }>;
+        intents: Array<{ intentCode: unknown; intentLabel: unknown }>;
         problemResolution: { confidence: unknown; resolutionStatus: unknown };
         summary: { confidence: unknown };
       };
@@ -126,6 +152,8 @@ describe("insight prompt builder", () => {
       "<resolved|partially_resolved|unresolved|no_customer_problem|unknown>",
     );
     expect(userPayload.outputContract.entities[0]?.confidence).toBe("<number 0-1>");
+    expect(userPayload.outputContract.intents[0]?.intentCode).toBe("<来自 tenantContext.intentConfigs.intentCode>");
+    expect(userPayload.outputContract.intents[0]?.intentLabel).toBe("<来自 tenantContext.intentConfigs.intentName>");
     expect(JSON.stringify(userPayload.outputContract)).not.toContain(":0.8");
   });
 
@@ -133,6 +161,7 @@ describe("insight prompt builder", () => {
     const prompt = buildInsightPromptMessages({
       context: {
         entityDictionary: [],
+        intentConfigs: [],
         labelConfigs: [],
         qaRuleConfigs: [],
       },
@@ -155,6 +184,7 @@ describe("insight prompt builder", () => {
     const userPayload = JSON.parse(prompt[1]?.content ?? "{}") as {
       outputContract: {
         entities: unknown[];
+        intents: unknown[];
         qaFindings: unknown[];
         tags: unknown[];
       };
@@ -162,10 +192,13 @@ describe("insight prompt builder", () => {
 
     expect(serialized).toContain("配置为空时输出空数组");
     expect(serialized).toContain("tenantContext.entityDictionary");
+    expect(serialized).toContain("tenantContext.intentConfigs");
     expect(serialized).toContain("tenantContext.labelConfigs");
     expect(serialized).toContain("tenantContext.qaRuleConfigs");
     expect(serialized).toContain("实体只能从 tenantContext.entityDictionary 中选择");
+    expect(serialized).toContain("意图只能从 tenantContext.intentConfigs 中选择");
     expect(userPayload.outputContract.entities).toEqual([]);
+    expect(userPayload.outputContract.intents).toEqual([]);
     expect(userPayload.outputContract.tags).toEqual([]);
     expect(userPayload.outputContract.qaFindings).toEqual([]);
     expect(serialized).not.toContain("entityId");

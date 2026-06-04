@@ -524,6 +524,20 @@ function createRepository(
           includeInAggregation: true,
         },
       ],
+      intentConfigs: [
+        {
+          aliases: ["物流", "查快递"],
+          description: "客户咨询发货、快递或物流异常",
+          enabled: true,
+          id: "31",
+          includeInStatistics: true,
+          intentCode: "logistics_delay",
+          intentName: "物流异常",
+          negativeExamples: ["咨询退款到账"],
+          positiveExamples: ["快递一直没更新"],
+          weight: 8,
+        },
+      ],
       labelConfigs: [
         {
           enabled: true,
@@ -552,6 +566,17 @@ function createRepository(
     })),
     upsertAnalysisPolicy: vi.fn(async (_scope, payload) => payload),
     upsertSessionizationSettings: vi.fn(async (_scope, payload) => payload),
+    createIntentConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "90" })),
+    updateIntentConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
+    updateIntentConfigStatus: vi.fn(async (_scope, id, enabled) => ({
+      enabled,
+      id,
+      includeInStatistics: true,
+      intentCode: "logistics_delay",
+      intentName: "物流异常",
+      weight: 8,
+    })),
+    deleteIntentConfig: vi.fn(async () => true),
     createLabelConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "91" })),
     updateLabelConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
     updateLabelConfigStatus: vi.fn(async (_scope, id, enabled) => ({
@@ -781,6 +806,14 @@ describe("InsightsService", () => {
       code: "logistics_delay",
       name: "物流异常",
     });
+    expect(result.intentTrend).toEqual([
+      {
+        date: "2026-06-01",
+        intentCode: "logistics_delay",
+        intentName: "物流异常",
+        sessionCount: 1,
+      },
+    ]);
     expect(result.qualityTopics[0]).toEqual(
       expect.objectContaining({
         actionItemsOpen: 1,
@@ -984,6 +1017,12 @@ describe("InsightsService", () => {
 
     await expect(service.getSettings(scope, "operator")).rejects.toBeInstanceOf(ForbiddenError);
     await expect(service.getSettings(scope, "admin")).resolves.toMatchObject({
+      intentConfigs: [
+        expect.objectContaining({
+          intentCode: "logistics_delay",
+          intentName: "物流异常",
+        }),
+      ],
       sessionization: {
         idleTimeoutMinutes: 120,
       },
@@ -1010,6 +1049,26 @@ describe("InsightsService", () => {
       lateArrivalWindowMinutes: 20,
       preset: "custom",
     });
+
+    await expect(
+      service.createIntentConfig(scope, "admin", {
+        aliases: ["物流", "查快递"],
+        description: "客户咨询发货、快递或物流异常",
+        enabled: true,
+        includeInStatistics: true,
+        intentCode: "logistics_delay",
+        intentName: "物流异常",
+        negativeExamples: ["咨询退款到账"],
+        positiveExamples: ["快递一直没更新"],
+        weight: 8,
+      }),
+    ).resolves.toMatchObject({ id: "90", intentCode: "logistics_delay" });
+    expect(repository.createIntentConfig).toHaveBeenCalled();
+
+    await expect(
+      service.updateIntentConfigStatus(scope, "admin", "90", { enabled: false }),
+    ).resolves.toMatchObject({ enabled: false, id: "90" });
+    expect(repository.updateIntentConfigStatus).toHaveBeenCalledWith(scope, "90", false);
 
     await expect(
       service.createLabelConfig(scope, "admin", {

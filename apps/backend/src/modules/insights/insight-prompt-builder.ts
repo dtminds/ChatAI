@@ -9,6 +9,17 @@ export type InsightPromptLabelConfig = {
   positiveExamples: string[];
 };
 
+export type InsightPromptIntentConfig = {
+  aliases: string[];
+  description?: string;
+  includeInStatistics: boolean;
+  intentCode: string;
+  intentName: string;
+  negativeExamples: string[];
+  positiveExamples: string[];
+  weight: number;
+};
+
 export type InsightPromptQaRuleConfig = {
   applicableScene?: string;
   description?: string;
@@ -30,6 +41,7 @@ export type InsightPromptEntityDictionaryItem = {
 
 export type InsightPromptContext = {
   entityDictionary: InsightPromptEntityDictionaryItem[];
+  intentConfigs: InsightPromptIntentConfig[];
   labelConfigs: InsightPromptLabelConfig[];
   qaRuleConfigs: InsightPromptQaRuleConfig[];
 };
@@ -74,6 +86,7 @@ export function buildInsightPromptMessages(input: {
 
 const emptyPromptContext: InsightPromptContext = {
   entityDictionary: [],
+  intentConfigs: [],
   labelConfigs: [],
   qaRuleConfigs: [],
 };
@@ -95,14 +108,13 @@ function buildSystemPrompt() {
     "问题是否解决只判断当前逻辑会话内是否解决，不要推断会话外后续处理。",
     "前序逻辑会话摘要只能作为背景，帮助理解客户连续诉求和客服处理习惯；不得改变当前逻辑会话的问题是否解决判定边界。",
     "problemResolution、qaFindings 和所有 evidenceMessageIds 必须只基于当前 messages，不得把前序逻辑会话内容作为当前证据。",
-    "summary.customerIntent 必须是 2-6 个汉字的短意图标签，优先使用 XX问题/XX咨询/XX需求/XX异常/XX申请 等格式，不要写完整句子，不要复述 problemSummary。",
-    "customerIntent 正例：产品咨询、价格咨询、物流异常、退款申请、售后维修、发货催促、优惠咨询。",
-    "customerIntent 负例：客户询问了白色羽绒服多少钱（太长）、咨询（太模糊）、关于退款（介词结构）。",
+    "summary.customerIntent 必须优先使用命中的 tenantContext.intentConfigs.intentName；未命中配置意图时输出消息不足或简短业务诉求，不要写完整句子，不要复述 problemSummary。",
     "problemResolution.problemSummary 才用于描述客户提出的具体问题，可写成一句完整摘要。",
     "置信度 confidence 取 0 到 1 之间的小数；证据不足时降低 confidence，不要强行下结论。",
     "</analysis_rules>",
     "<config_rules>",
-    "标签只能从 tenantContext.labelConfigs 中选择；实体只能从 tenantContext.entityDictionary 中选择；质检只能评估 tenantContext.qaRuleConfigs 中启用的规则；配置为空时输出空数组。",
+    "标签只能从 tenantContext.labelConfigs 中选择；意图只能从 tenantContext.intentConfigs 中选择；实体只能从 tenantContext.entityDictionary 中选择；质检只能评估 tenantContext.qaRuleConfigs 中启用的规则；配置为空时输出空数组。",
+    "未配置的意图不得输出到 intents；tenantContext.intentConfigs 为空时 intents 必须输出空数组。",
     "消息里出现但词库未配置的实体不得输出。",
     "风险关注已并入质检规则和待办触发，risks 必须输出空数组。",
     "</config_rules>",
@@ -167,14 +179,14 @@ function buildOutputContract(context: InsightPromptContext) {
         status: "<candidate>",
       },
     ],
-    intents: [
+    intents: context.intentConfigs.length > 0 ? [
       {
         confidence: "<number 0-1>",
         evidenceMessageIds: ["<sourceMessageId>"],
-        intentCode: "<string: 英文或拼音稳定编码>",
-        intentLabel: "<string: 中文意图名称>",
+        intentCode: "<来自 tenantContext.intentConfigs.intentCode>",
+        intentLabel: "<来自 tenantContext.intentConfigs.intentName>",
       },
-    ],
+    ] : [],
     problemResolution: {
       confidence: "<number 0-1>",
       evidence: [
@@ -250,6 +262,19 @@ function normalizeContext(context: InsightPromptContext) {
       entityType: item.entityType,
       includeInAggregation: item.includeInAggregation,
     })),
+    intentConfigs: context.intentConfigs
+      .slice()
+      .sort((left, right) => left.weight - right.weight)
+      .slice(0, 80)
+      .map((item) => ({
+        aliases: item.aliases.slice(0, 8),
+        description: item.description,
+        includeInStatistics: item.includeInStatistics,
+        intentCode: item.intentCode,
+        intentName: item.intentName,
+        negativeExamples: item.negativeExamples.slice(0, 5),
+        positiveExamples: item.positiveExamples.slice(0, 5),
+      })),
     labelConfigs: context.labelConfigs.slice(0, 50).map((item) => ({
       description: item.description,
       includeInStatistics: item.includeInStatistics,

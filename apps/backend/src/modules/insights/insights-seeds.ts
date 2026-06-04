@@ -19,6 +19,32 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
       includeInAggregation: true,
     },
   ],
+  intentConfigs: [
+    {
+      aliases: ["查快递", "催发货", "物流不更新"],
+      description: "客户咨询发货、快递进度或反馈物流异常",
+      enabled: true,
+      id: "1",
+      includeInStatistics: true,
+      intentCode: "logistics_delay",
+      intentName: "物流异常",
+      negativeExamples: ["客户咨询退款到账时间"],
+      positiveExamples: ["快递一直没更新", "什么时候发货"],
+      weight: 8,
+    },
+    {
+      aliases: ["退钱", "退货退款", "退款到账"],
+      description: "客户咨询退款、退货退款或退款到账问题",
+      enabled: true,
+      id: "2",
+      includeInStatistics: true,
+      intentCode: "after_sale.refund",
+      intentName: "退款咨询",
+      negativeExamples: ["客户只咨询发货时间"],
+      positiveExamples: ["退款什么时候到账", "我要申请退款"],
+      weight: 6,
+    },
+  ],
   labelConfigs: [
     {
       enabled: true,

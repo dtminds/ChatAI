@@ -1170,7 +1170,7 @@ function PanelTitle({
 }
 
 function buildSessionFilterOptions(
-  overview: InsightsOverviewResponse | undefined,
+  _overview: InsightsOverviewResponse | undefined,
   settings: InsightSettingsResponse | undefined,
 ): SessionFilterOptions {
   return {
@@ -1183,10 +1183,12 @@ function buildSessionFilterOptions(
         })) ?? [],
     ),
     intents: toFilterOptions(
-      overview?.intentDistribution.map((intent) => ({
-        label: intent.intentLabel,
-        value: intent.intentCode,
-      })) ?? [],
+      settings?.intentConfigs
+        .filter((intent) => intent.enabled && intent.includeInStatistics)
+        .map((intent) => ({
+          label: intent.intentName,
+          value: intent.intentCode,
+        })) ?? [],
     ),
     tags: toFilterOptions(
       settings?.labelConfigs

@@ -16,10 +16,13 @@ const serviceMocks = vi.hoisted(() => ({
   getInsightOverviewSessions: vi.fn(),
   getInsightQuality: vi.fn(),
   getInsightSettings: vi.fn(),
+  createInsightIntentConfig: vi.fn(),
   createInsightLabelConfig: vi.fn(),
   updateInsightAnalysisPolicy: vi.fn(),
   updateInsightEntityDictionaryItem: vi.fn(),
   updateInsightEntityDictionaryItemStatus: vi.fn(),
+  updateInsightIntentConfig: vi.fn(),
+  updateInsightIntentConfigStatus: vi.fn(),
   updateInsightLabelConfig: vi.fn(),
   updateInsightLabelConfigStatus: vi.fn(),
   updateInsightQaRuleConfig: vi.fn(),
@@ -28,6 +31,7 @@ const serviceMocks = vi.hoisted(() => ({
   createInsightEntityDictionaryItem: vi.fn(),
   createInsightQaRuleConfig: vi.fn(),
   deleteInsightEntityDictionaryItem: vi.fn(),
+  deleteInsightIntentConfig: vi.fn(),
   deleteInsightLabelConfig: vi.fn(),
   deleteInsightQaRuleConfig: vi.fn(),
   updateInsightActionStatus: vi.fn(),
@@ -260,6 +264,26 @@ function installInsightMocks() {
         share: 0.4,
         unresolvedRate: 0.375,
         unresolvedSessions: 3,
+      },
+    ],
+    intentTrend: [
+      {
+        date: "2026-06-01",
+        intentCode: "logistics_delay",
+        intentName: "物流异常",
+        sessionCount: 3,
+      },
+      {
+        date: "2026-06-01",
+        intentCode: "price_consult",
+        intentName: "价格咨询",
+        sessionCount: 2,
+      },
+      {
+        date: "2026-06-02",
+        intentCode: "logistics_delay",
+        intentName: "物流异常",
+        sessionCount: 5,
       },
     ],
     qualityTopics: [
@@ -699,6 +723,41 @@ function installInsightMocks() {
         includeInAggregation: true,
       },
     ],
+    intentConfigs: [
+      {
+        aliases: ["查快递"],
+        description: "客户咨询物流或发货进度",
+        enabled: true,
+        id: "31",
+        includeInStatistics: true,
+        intentCode: "logistics",
+        intentName: "查物流",
+        negativeExamples: [],
+        positiveExamples: ["快递什么时候到"],
+        weight: 8,
+      },
+      {
+        aliases: ["AI客服"],
+        description: "客户咨询AI客服系统相关信息",
+        enabled: true,
+        id: "32",
+        includeInStatistics: true,
+        intentCode: "ai_customer_service_info",
+        intentName: "咨询AI客服系统相关信息",
+        negativeExamples: [],
+        positiveExamples: ["AI客服支持什么功能"],
+        weight: 6,
+      },
+      {
+        aliases: [],
+        enabled: false,
+        id: "33",
+        includeInStatistics: true,
+        intentCode: "hidden_intent",
+        intentName: "隐藏意图",
+        weight: 3,
+      },
+    ],
     labelConfigs: [
       {
         enabled: true,
@@ -760,6 +819,18 @@ function installInsightMocks() {
     includeInStatistics: true,
     labelCode: "high_intent",
     labelName: "高意向",
+  });
+  serviceMocks.createInsightIntentConfig.mockResolvedValue({
+    aliases: ["报价"],
+    description: "客户咨询价格",
+    enabled: true,
+    id: "34",
+    includeInStatistics: true,
+    intentCode: "price_consult",
+    intentName: "价格咨询",
+    negativeExamples: [],
+    positiveExamples: ["多少钱"],
+    weight: 3,
   });
 }
 
@@ -1178,6 +1249,33 @@ describe("conversation insights pages", () => {
     expect(screen.queryByText("未完结会话分析频率")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
 
+    await userEvent.click(screen.getByRole("tab", { name: "意图配置" }));
+    expect(screen.getByText("客户咨询物流或发货进度")).toBeInTheDocument();
+    expect(screen.getByRole("table").parentElement).not.toHaveClass("rounded-[8px]", "border");
+    await userEvent.click(screen.getByRole("button", { name: "新增意图" }));
+    expect(await screen.findByRole("dialog", { name: "新增意图" })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("意图名称"), "价格咨询");
+    await userEvent.type(screen.getByLabelText("意图编码"), "price_consult");
+    await userEvent.click(screen.getByRole("combobox", { name: "权重" }));
+    await userEvent.click(await screen.findByRole("option", { name: "3" }));
+    await userEvent.type(screen.getByLabelText("别名"), "报价");
+    await userEvent.type(screen.getByLabelText("判定标准"), "客户咨询商品价格或优惠");
+    await userEvent.type(screen.getByLabelText("正例"), "多少钱");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.createInsightIntentConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          aliases: ["报价"],
+          description: "客户咨询商品价格或优惠",
+          intentCode: "price_consult",
+          intentName: "价格咨询",
+          positiveExamples: ["多少钱"],
+          weight: 3,
+        }),
+      );
+    });
+
     await userEvent.click(screen.getByRole("tab", { name: "质检规则" }));
     expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
     expect(screen.getByRole("table").parentElement).not.toHaveClass("rounded-[8px]", "border");
@@ -1189,11 +1287,13 @@ describe("conversation insights pages", () => {
     expect(await screen.findByRole("dialog", { name: "新增标签" })).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("标签名称"), "高意向");
     await userEvent.type(screen.getByLabelText("标签编码"), "high_intent");
+    await userEvent.type(screen.getByLabelText("判定标准"), "客户表达明确购买意向");
     await userEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
       expect(serviceMocks.createInsightLabelConfig).toHaveBeenCalledWith(
         expect.objectContaining({
+          description: "客户表达明确购买意向",
           labelCode: "high_intent",
           labelName: "高意向",
         }),
@@ -1229,14 +1329,15 @@ describe("conversation insights pages", () => {
       from: "2026-05-28T00:00:00.000+08:00",
       to: "2026-06-03T23:59:59.999+08:00",
     });
-    expect(screen.getByRole("heading", { name: "客户诉求 Top10" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "客户意图 Top10" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "客户意图分布趋势" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "相关会话" })).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "客户诉求 Top10" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "客户意图 Top10" })).toBeInTheDocument();
     expect(screen.queryByText("关注点会话")).not.toBeInTheDocument();
     expect(screen.queryByText("未解决会话")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "关注点趋势" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "关注点列表" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /客户诉求/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /客户意图/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /业务标签/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /实体对象/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /链接文件/ })).toBeInTheDocument();
@@ -1264,6 +1365,43 @@ describe("conversation insights pages", () => {
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
     expect(screen.getByText("未确认物流进展")).toBeInTheDocument();
     expect(screen.queryByText("后续版本接入")).not.toBeInTheDocument();
+  });
+
+  it("validates required insight configuration dialog fields before submit", async () => {
+    renderRoute("/chat/insights/settings");
+
+    expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "意图配置" }));
+    await userEvent.click(screen.getByRole("button", { name: "新增意图" }));
+    expect(await screen.findByRole("dialog", { name: "新增意图" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findAllByText("请填写必填项")).toHaveLength(3);
+    expect(serviceMocks.createInsightIntentConfig).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    await userEvent.click(screen.getByRole("tab", { name: "标签体系" }));
+    await userEvent.click(screen.getByRole("button", { name: "新增标签" }));
+    expect(await screen.findByRole("dialog", { name: "新增标签" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findAllByText("请填写必填项")).toHaveLength(3);
+    expect(serviceMocks.createInsightLabelConfig).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    await userEvent.click(screen.getByRole("tab", { name: "质检规则" }));
+    await userEvent.click(screen.getByRole("button", { name: "新增规则" }));
+    expect(await screen.findByRole("dialog", { name: "新增规则" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findAllByText("请填写必填项")).toHaveLength(3);
+    expect(serviceMocks.createInsightQaRuleConfig).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    await userEvent.click(screen.getByRole("tab", { name: "实体词库" }));
+    await userEvent.click(screen.getByRole("button", { name: "新增实体" }));
+    expect(await screen.findByRole("dialog", { name: "新增实体" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findAllByText("请填写必填项")).toHaveLength(2);
+    expect(serviceMocks.createInsightEntityDictionaryItem).not.toHaveBeenCalled();
   });
 
   it("shows table loading states while overview and business sessions are loading", async () => {

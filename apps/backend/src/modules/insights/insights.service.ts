@@ -13,6 +13,8 @@ import type {
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
+  InsightIntentConfig,
+  InsightIntentConfigMutationRequest,
   InsightLabelConfig,
   InsightLabelConfigMutationRequest,
   InsightMessageContextResponse,
@@ -238,6 +240,21 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     payload: InsightSessionizationSettingsUpdateRequest,
   ): Promise<InsightSessionizationSettings>;
+  createIntentConfig(
+    scope: InsightsUidScope,
+    payload: InsightIntentConfigMutationRequest,
+  ): Promise<InsightIntentConfig>;
+  updateIntentConfig(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightIntentConfigMutationRequest,
+  ): Promise<InsightIntentConfig | undefined>;
+  updateIntentConfigStatus(
+    scope: InsightsUidScope,
+    id: string,
+    enabled: boolean,
+  ): Promise<InsightIntentConfig | undefined>;
+  deleteIntentConfig(scope: InsightsUidScope, id: string): Promise<boolean>;
   createLabelConfig(
     scope: InsightsUidScope,
     payload: InsightLabelConfigMutationRequest,
@@ -400,6 +417,7 @@ export class InsightsService {
       assetHotspots: topicCollections.assetHotspots,
       entityHotspots: topicCollections.entityHotspots,
       intentDistribution: topicCollections.intentDistribution,
+      intentTrend: buildBusinessIntentTrend(facts),
       qualityTopics: topicCollections.qualityTopics,
       tagDistribution: topicCollections.tagDistribution,
       totals: {
@@ -603,6 +621,46 @@ export class InsightsService {
   ): Promise<InsightAnalysisPolicy> {
     assertInsightSettingsAdmin(role);
     return this.repository.upsertAnalysisPolicy(scope, payload);
+  }
+
+  async createIntentConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    payload: InsightIntentConfigMutationRequest,
+  ): Promise<InsightIntentConfig> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.createIntentConfig(scope, payload);
+  }
+
+  async updateIntentConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+    payload: InsightIntentConfigMutationRequest,
+  ): Promise<InsightIntentConfig> {
+    assertInsightSettingsAdmin(role);
+    return await this.repository.updateIntentConfig(scope, id, payload)
+      ?? raiseConfigNotFound();
+  }
+
+  async updateIntentConfigStatus(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+    payload: InsightConfigStatusUpdateRequest,
+  ): Promise<InsightIntentConfig> {
+    assertInsightSettingsAdmin(role);
+    return await this.repository.updateIntentConfigStatus(scope, id, payload.enabled)
+      ?? raiseConfigNotFound();
+  }
+
+  async deleteIntentConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    id: string,
+  ): Promise<InsightConfigDeletedResponse> {
+    assertInsightSettingsAdmin(role);
+    return { deleted: await this.deleteConfigOrThrow(() => this.repository.deleteIntentConfig(scope, id)) };
   }
 
   async createLabelConfig(
@@ -1113,6 +1171,49 @@ function getBusinessTrendPoint(
   trend.set(date, point);
 
   return point;
+}
+
+function buildBusinessIntentTrend(facts: InsightBusinessTopicFactRow[]) {
+  const trend = new Map<
+    string,
+    {
+      date: string;
+      intentCode: string;
+      intentName: string;
+      sessionIds: Set<string>;
+    }
+  >();
+
+  for (const fact of facts) {
+    if (fact.dimension !== "intent") {
+      continue;
+    }
+
+    const date = formatDateKey(fact.startedAt);
+    const key = `${date}:${fact.code}`;
+    const point = trend.get(key) ?? {
+      date,
+      intentCode: fact.code,
+      intentName: fact.name,
+      sessionIds: new Set<string>(),
+    };
+
+    point.sessionIds.add(fact.sessionId);
+    trend.set(key, point);
+  }
+
+  return Array.from(trend.values())
+    .sort((left, right) =>
+      left.date.localeCompare(right.date) ||
+      left.intentName.localeCompare(right.intentName, "zh-CN") ||
+      left.intentCode.localeCompare(right.intentCode),
+    )
+    .map((point) => ({
+      date: point.date,
+      intentCode: point.intentCode,
+      intentName: point.intentName,
+      sessionCount: point.sessionIds.size,
+    }));
 }
 
 function formatDateKey(value: number) {

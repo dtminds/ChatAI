@@ -11,6 +11,8 @@ import type {
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
+  InsightIntentConfig,
+  InsightIntentConfigMutationRequest,
   InsightLabelConfig,
   InsightLabelConfigMutationRequest,
   InsightMessageContextRequest,
@@ -188,6 +190,47 @@ export async function updateInsightAnalysisPolicy(
     ApiSuccessEnvelope<InsightAnalysisPolicy>,
     InsightAnalysisPolicyUpdateRequest
   >("/server/insights/settings/analysis-policy", payload);
+
+  return response.data;
+}
+
+export async function createInsightIntentConfig(payload: InsightIntentConfigMutationRequest) {
+  const response = await http.post<
+    ApiSuccessEnvelope<InsightIntentConfig>,
+    InsightIntentConfigMutationRequest
+  >("/server/insights/settings/intent-configs", payload);
+
+  return response.data;
+}
+
+export async function updateInsightIntentConfig(
+  configId: string,
+  payload: InsightIntentConfigMutationRequest,
+) {
+  const response = await http.put<
+    ApiSuccessEnvelope<InsightIntentConfig>,
+    InsightIntentConfigMutationRequest
+  >(`/server/insights/settings/intent-configs/${configId}`, payload);
+
+  return response.data;
+}
+
+export async function updateInsightIntentConfigStatus(
+  configId: string,
+  payload: InsightConfigStatusUpdateRequest,
+) {
+  const response = await http.patch<
+    ApiSuccessEnvelope<InsightIntentConfig>,
+    InsightConfigStatusUpdateRequest
+  >(`/server/insights/settings/intent-configs/${configId}/status`, payload);
+
+  return response.data;
+}
+
+export async function deleteInsightIntentConfig(configId: string) {
+  const response = await http.delete<ApiSuccessEnvelope<InsightConfigDeletedResponse>>(
+    `/server/insights/settings/intent-configs/${configId}`,
+  );
 
   return response.data;
 }

@@ -5,6 +5,7 @@ import {
   InsightAnalysisPolicyUpdateRequestSchema,
   InsightEntityDictionaryMutationRequestSchema,
   InsightDetailResponseSchema,
+  InsightIntentConfigMutationRequestSchema,
   InsightLabelConfigMutationRequestSchema,
   InsightOverviewSessionsResponseSchema,
   InsightQaRuleConfigMutationRequestSchema,
@@ -153,6 +154,14 @@ describe("insights DTOs", () => {
             share: 0.5,
             unresolvedRate: 0.2,
             unresolvedSessions: 2,
+          },
+        ],
+        intentTrend: [
+          {
+            date: "2026-06-01",
+            intentCode: "after_sale.refund",
+            intentName: "退款",
+            sessionCount: 4,
           },
         ],
         qualityTopics: [],
@@ -365,6 +374,20 @@ describe("insights DTOs", () => {
             includeInAggregation: true,
           },
         ],
+        intentConfigs: [
+          {
+            aliases: ["退款", "退钱"],
+            description: "客户咨询退款、退货退款或退款到账问题",
+            enabled: true,
+            id: "1",
+            includeInStatistics: true,
+            intentCode: "after_sale.refund",
+            intentName: "退款咨询",
+            negativeExamples: ["只咨询发货时间"],
+            positiveExamples: ["退款什么时候到账"],
+            weight: 8,
+          },
+        ],
         labelConfigs: [
           {
             enabled: true,
@@ -431,6 +454,20 @@ describe("insights DTOs", () => {
         labelName: "价格敏感",
         negativeExamples: ["只问库存"],
         positiveExamples: ["太贵了"],
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(InsightIntentConfigMutationRequestSchema, {
+        aliases: ["退款", "退钱"],
+        description: "客户咨询退款、退货退款或退款到账问题",
+        enabled: true,
+        includeInStatistics: true,
+        intentCode: "after_sale.refund",
+        intentName: "退款咨询",
+        negativeExamples: ["只咨询发货时间"],
+        positiveExamples: ["退款什么时候到账"],
+        weight: 8,
       }),
     ).toBe(true);
 

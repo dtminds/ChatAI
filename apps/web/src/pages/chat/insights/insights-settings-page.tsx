@@ -14,6 +14,8 @@ import type {
   InsightAnalysisPolicy,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
+  InsightIntentConfig,
+  InsightIntentConfigMutationRequest,
   InsightLabelConfig,
   InsightLabelConfigMutationRequest,
   InsightQaRuleConfig,
@@ -56,19 +58,24 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { isRequestError } from "@/lib/request";
+import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import {
   createInsightEntityDictionaryItem,
+  createInsightIntentConfig,
   createInsightLabelConfig,
   createInsightQaRuleConfig,
   createInsightRescanJob,
   deleteInsightEntityDictionaryItem,
+  deleteInsightIntentConfig,
   deleteInsightLabelConfig,
   deleteInsightQaRuleConfig,
   getInsightSettings,
   updateInsightAnalysisPolicy,
   updateInsightEntityDictionaryItem,
   updateInsightEntityDictionaryItemStatus,
+  updateInsightIntentConfig,
+  updateInsightIntentConfigStatus,
   updateInsightLabelConfig,
   updateInsightLabelConfigStatus,
   updateInsightQaRuleConfig,
@@ -77,11 +84,14 @@ import {
 } from "./api/insights-service";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 
-type MutableCollection = "entity" | "label" | "qa";
+type MutableCollection = "entity" | "intent" | "label" | "qa";
+type ConfigDialogErrors = Partial<Record<string, string>>;
 
 type ConfigDialogState =
   | { collection: "label"; mode: "create" }
   | { collection: "label"; item: InsightLabelConfig; mode: "edit" }
+  | { collection: "intent"; mode: "create" }
+  | { collection: "intent"; item: InsightIntentConfig; mode: "edit" }
   | { collection: "qa"; mode: "create" }
   | { collection: "qa"; item: InsightQaRuleConfig; mode: "edit" }
   | { collection: "entity"; mode: "create" }
@@ -97,6 +107,7 @@ const defaultSettings: InsightSettingsResponse = {
     ruleFallbackEnabled: true,
   },
   entityDictionary: [],
+  intentConfigs: [],
   labelConfigs: [],
   qaRuleConfigs: [],
   sessionization: {
@@ -138,6 +149,8 @@ const insightPolicyOptionLimits = {
   analysisDelayMinutes: [5, 10, 20, 30],
   hardMaxDurationHours: [2, 4, 6, 8, 12, 24],
 } as const;
+
+const intentWeightOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 export function InsightsSettingsPage() {
   const role = useAuthStore((state) => state.subUser?.role);
@@ -232,6 +245,9 @@ export function InsightsSettingsPage() {
       if (collection === "label") {
         const next = await updateInsightLabelConfigStatus(id, { enabled });
         updateSettingsList("label", next);
+      } else if (collection === "intent") {
+        const next = await updateInsightIntentConfigStatus(id, { enabled });
+        updateSettingsList("intent", next);
       } else if (collection === "qa") {
         const next = await updateInsightQaRuleConfigStatus(id, { enabled });
         updateSettingsList("qa", next);
@@ -254,6 +270,8 @@ export function InsightsSettingsPage() {
     try {
       if (collection === "label") {
         await deleteInsightLabelConfig(id);
+      } else if (collection === "intent") {
+        await deleteInsightIntentConfig(id);
       } else if (collection === "qa") {
         await deleteInsightQaRuleConfig(id);
       } else {
@@ -287,6 +305,15 @@ export function InsightsSettingsPage() {
           );
 
         updateSettingsList("label", next);
+      } else if (dialogState.collection === "intent") {
+        const next = dialogState.mode === "create"
+          ? await createInsightIntentConfig(payload as InsightIntentConfigMutationRequest)
+          : await updateInsightIntentConfig(
+            dialogState.item.id,
+            payload as InsightIntentConfigMutationRequest,
+          );
+
+        updateSettingsList("intent", next);
       } else if (dialogState.collection === "qa") {
         const next = dialogState.mode === "create"
           ? await createInsightQaRuleConfig(payload as InsightQaRuleConfigMutationRequest)
@@ -343,6 +370,13 @@ export function InsightsSettingsPage() {
         };
       }
 
+      if (collection === "intent") {
+        return {
+          ...next,
+          intentConfigs: upsertById(next.intentConfigs, item as InsightIntentConfig),
+        };
+      }
+
       if (collection === "qa") {
         return {
           ...next,
@@ -366,6 +400,10 @@ export function InsightsSettingsPage() {
 
       if (collection === "label") {
         return { ...next, labelConfigs: next.labelConfigs.filter((item) => item.id !== id) };
+      }
+
+      if (collection === "intent") {
+        return { ...next, intentConfigs: next.intentConfigs.filter((item) => item.id !== id) };
       }
 
       if (collection === "qa") {
@@ -405,6 +443,7 @@ export function InsightsSettingsPage() {
           <div className="flex items-center justify-between gap-4 border-b border-divider">
             <TabsList className="h-auto min-w-0 flex-1 justify-start gap-8 overflow-x-auto rounded-none bg-transparent p-0 text-muted-foreground">
               <SettingsTabTrigger value="policy">洞察策略</SettingsTabTrigger>
+              <SettingsTabTrigger value="intents">意图配置</SettingsTabTrigger>
               <SettingsTabTrigger value="labels">标签体系</SettingsTabTrigger>
               <SettingsTabTrigger value="qa">质检规则</SettingsTabTrigger>
               <SettingsTabTrigger value="entities">实体词库</SettingsTabTrigger>
@@ -418,6 +457,17 @@ export function InsightsSettingsPage() {
               disabled={isLoading || pendingKey === "insight-policy"}
               onSubmit={(payload) => void handleInsightPolicySubmit(payload)}
               sessionization={currentSettings.sessionization}
+            />
+          </TabsContent>
+
+          <TabsContent value="intents">
+            <IntentConfigTable
+              items={currentSettings.intentConfigs}
+              onCreate={() => setDialogState({ collection: "intent", mode: "create" })}
+              onDelete={(item) => void handleDelete("intent", item.id)}
+              onEdit={(item) => setDialogState({ collection: "intent", item, mode: "edit" })}
+              onToggle={(item) => void handleStatusToggle("intent", item.id, !item.enabled)}
+              pendingKey={pendingKey}
             />
           </TabsContent>
 
@@ -503,6 +553,7 @@ function SettingsSummary({ settings }: { settings: InsightSettingsResponse }) {
   const stats = [
     { icon: BubbleChatIcon, label: "切分规则", value: `${settings.sessionization.idleTimeoutMinutes} 分钟结束` },
     { icon: ChartAreaIcon, label: "提前分析", value: settings.analysisPolicy.liveAnalysisEnabled ? "开启" : "关闭" },
+    { icon: Search01Icon, label: "启用意图", value: `${settings.intentConfigs.filter((item) => item.enabled).length} 个` },
     { icon: Setting07Icon, label: "启用标签", value: `${settings.labelConfigs.filter((item) => item.enabled).length} 个` },
     { icon: ClipboardCheckIcon, label: "质检规则", value: `${settings.qaRuleConfigs.filter((item) => item.enabled).length} 条` },
     { icon: UserGroupIcon, label: "实体词库", value: `${settings.entityDictionary.length} 个` },
@@ -1028,6 +1079,69 @@ function LabelConfigTable({
   );
 }
 
+function IntentConfigTable({
+  items,
+  onCreate,
+  onDelete,
+  onEdit,
+  onToggle,
+  pendingKey,
+}: {
+  items: InsightIntentConfig[];
+  onCreate: () => void;
+  onDelete: (item: InsightIntentConfig) => void;
+  onEdit: (item: InsightIntentConfig) => void;
+  onToggle: (item: InsightIntentConfig) => void;
+  pendingKey?: string;
+}) {
+  return (
+    <ConfigTableShell
+      actionText="新增意图"
+      description="维护模型可识别、可筛选、可统计的客户业务诉求"
+      onCreate={onCreate}
+    >
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>意图</TableHead>
+            <TableHead>编码</TableHead>
+            <TableHead>权重</TableHead>
+            <TableHead>统计</TableHead>
+            <TableHead>状态</TableHead>
+            <TableHead className="text-right">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {items.map((item) => (
+            <TableRow key={item.id}>
+              <TableCell>
+                <PrimaryText main={item.intentName} sub={item.description} />
+              </TableCell>
+              <TableCell className="font-mono text-xs text-muted-foreground">{item.intentCode}</TableCell>
+              <TableCell>{item.weight}</TableCell>
+              <TableCell>{item.includeInStatistics ? "纳入" : "不纳入"}</TableCell>
+              <TableCell>
+                <Switch
+                  checked={item.enabled}
+                  disabled={pendingKey === `status:intent:${item.id}`}
+                  onCheckedChange={() => onToggle(item)}
+                />
+              </TableCell>
+              <TableCell className="text-right">
+                <RowActions
+                  disabled={pendingKey === `delete:intent:${item.id}`}
+                  onDelete={() => onDelete(item)}
+                  onEdit={() => onEdit(item)}
+                />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </ConfigTableShell>
+  );
+}
+
 function QaRuleConfigTable({
   items,
   onCreate,
@@ -1282,14 +1396,17 @@ function ConfigMutationDialog({
   state: ConfigDialogState | null;
 }) {
   const [form, setForm] = useState<Record<string, unknown>>({});
+  const [errors, setErrors] = useState<ConfigDialogErrors>({});
   const open = state != null;
 
   useEffect(() => {
     if (!state) {
+      setErrors({});
       setForm({});
       return;
     }
 
+    setErrors({});
     setForm(buildInitialDialogForm(state));
   }, [state]);
 
@@ -1297,50 +1414,161 @@ function ConfigMutationDialog({
     return null;
   }
 
+  const collection = state.collection;
   const title = `${state.mode === "create" ? "新增" : "编辑"}${collectionText(state.collection)}`;
+  const wideConfigDialog = collection === "intent" || collection === "label" || collection === "qa";
 
   function setValue(key: string, value: unknown) {
+    setErrors((current) => {
+      if (!current[key]) {
+        return current;
+      }
+
+      const { [key]: _removed, ...rest } = current;
+      return rest;
+    });
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function handleSubmit() {
+    const nextErrors = validateDialogForm(collection, form);
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
+
+    onSubmit(normalizeDialogPayload(collection, form));
   }
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className={wideConfigDialog ? "max-w-4xl" : "max-w-2xl"}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>配置保存后将影响后续会话分析</DialogDescription>
         </DialogHeader>
 
-        <div className="grid max-h-[68vh] gap-4 overflow-y-auto pr-1 md:grid-cols-2">
+        <div className="grid max-h-[68vh] gap-4 overflow-y-auto p-1 md:grid-cols-2">
           {state.collection === "label" ? (
-            <>
-              <TextField form={form} label="标签名称" name="labelName" onChange={setValue} />
-              <TextField form={form} label="标签编码" name="labelCode" onChange={setValue} />
-              <TextareaField className="md:col-span-2" form={form} label="说明" name="description" onChange={setValue} />
-              <TextareaField form={form} label="正例" name="positiveExamplesText" onChange={setValue} placeholder="每行一个例子" />
-              <TextareaField form={form} label="反例" name="negativeExamplesText" onChange={setValue} placeholder="每行一个例子" />
-              <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
-              <SwitchEditorField checked={Boolean(form.includeInStatistics)} label="纳入统计" onChange={(value) => setValue("includeInStatistics", value)} />
-            </>
+            <div className="grid gap-5 md:col-span-2 md:grid-cols-2">
+              <div className="grid content-start gap-4">
+                <TextField error={errors.labelName} form={form} label="标签名称" name="labelName" onChange={setValue} required />
+                <TextField error={errors.labelCode} form={form} label="标签编码" name="labelCode" onChange={setValue} required />
+                <TextareaField
+                  error={errors.description}
+                  form={form}
+                  label="判定标准"
+                  name="description"
+                  onChange={setValue}
+                  required
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
+                  <SwitchEditorField checked={Boolean(form.includeInStatistics)} label="纳入统计" onChange={(value) => setValue("includeInStatistics", value)} />
+                </div>
+              </div>
+              <div className="grid content-start gap-4">
+                <TextareaField
+                  form={form}
+                  label="正例"
+                  name="positiveExamplesText"
+                  onChange={setValue}
+                  placeholder="每行一个例子"
+                  textareaClassName="min-h-40"
+                />
+                <TextareaField
+                  form={form}
+                  label="反例"
+                  name="negativeExamplesText"
+                  onChange={setValue}
+                  placeholder="每行一个例子"
+                  textareaClassName="min-h-40"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {state.collection === "intent" ? (
+            <div className="grid gap-5 md:col-span-2 md:grid-cols-2">
+              <div className="grid content-start gap-4">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_8rem]">
+                  <TextField error={errors.intentName} form={form} label="意图名称" name="intentName" onChange={setValue} required />
+                  <WeightField form={form} onChange={setValue} />
+                </div>
+                <TextField error={errors.intentCode} form={form} label="意图编码" name="intentCode" onChange={setValue} required />
+                <TextareaField form={form} label="别名" name="aliasesText" onChange={setValue} placeholder="每行一个别名" />
+                <TextareaField
+                  error={errors.description}
+                  form={form}
+                  label="判定标准"
+                  name="description"
+                  onChange={setValue}
+                  required
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
+                  <SwitchEditorField checked={Boolean(form.includeInStatistics)} label="纳入统计" onChange={(value) => setValue("includeInStatistics", value)} />
+                </div>
+              </div>
+              <div className="grid content-start gap-4">
+                <TextareaField
+                  form={form}
+                  label="正例"
+                  name="positiveExamplesText"
+                  onChange={setValue}
+                  placeholder="每行一个例子"
+                  textareaClassName="min-h-40"
+                />
+                <TextareaField
+                  form={form}
+                  label="反例"
+                  name="negativeExamplesText"
+                  onChange={setValue}
+                  placeholder="每行一个例子"
+                  textareaClassName="min-h-40"
+                />
+              </div>
+            </div>
           ) : null}
 
           {state.collection === "qa" ? (
-            <>
-              <TextField form={form} label="规则名称" name="ruleName" onChange={setValue} />
-              <TextField form={form} label="规则编码" name="ruleCode" onChange={setValue} />
-              <SeverityField form={form} onChange={setValue} />
-              <TextField form={form} label="适用场景" name="applicableScene" onChange={setValue} />
-              <TextareaField className="md:col-span-2" form={form} label="判定标准" name="judgmentCriteria" onChange={setValue} />
-              <TextareaField form={form} label="正例" name="positiveExamplesText" onChange={setValue} placeholder="每行一个例子" />
-              <TextareaField form={form} label="反例" name="negativeExamplesText" onChange={setValue} placeholder="每行一个例子" />
-              <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
-            </>
+            <div className="grid gap-5 md:col-span-2 md:grid-cols-2">
+              <div className="grid content-start gap-4">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_8rem]">
+                  <TextField error={errors.ruleName} form={form} label="规则名称" name="ruleName" onChange={setValue} required />
+                  <SeverityField form={form} onChange={setValue} />
+                </div>
+                <TextField error={errors.ruleCode} form={form} label="规则编码" name="ruleCode" onChange={setValue} required />
+                <TextField form={form} label="适用场景" name="applicableScene" onChange={setValue} />
+                <TextareaField error={errors.judgmentCriteria} form={form} label="判定标准" name="judgmentCriteria" onChange={setValue} required />
+                <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
+              </div>
+              <div className="grid content-start gap-4">
+                <TextareaField
+                  form={form}
+                  label="正例"
+                  name="positiveExamplesText"
+                  onChange={setValue}
+                  placeholder="每行一个例子"
+                  textareaClassName="min-h-40"
+                />
+                <TextareaField
+                  form={form}
+                  label="反例"
+                  name="negativeExamplesText"
+                  onChange={setValue}
+                  placeholder="每行一个例子"
+                  textareaClassName="min-h-40"
+                />
+              </div>
+            </div>
           ) : null}
 
           {state.collection === "entity" ? (
             <>
-              <TextField form={form} label="实体名称" name="canonicalName" onChange={setValue} />
-              <TextField form={form} label="实体类型" name="entityType" onChange={setValue} />
+              <TextField error={errors.canonicalName} form={form} label="实体名称" name="canonicalName" onChange={setValue} required />
+              <TextField error={errors.entityType} form={form} label="实体类型" name="entityType" onChange={setValue} required />
               <TextareaField className="md:col-span-2" form={form} label="别名" name="aliasesText" onChange={setValue} placeholder="每行一个别名" />
               <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
               <SwitchEditorField checked={Boolean(form.includeInAggregation)} label="纳入聚合" onChange={(value) => setValue("includeInAggregation", value)} />
@@ -1352,7 +1580,7 @@ function ConfigMutationDialog({
           <DialogClose asChild>
             <Button variant="outline">取消</Button>
           </DialogClose>
-          <Button disabled={disabled} onClick={() => onSubmit(normalizeDialogPayload(state.collection, form))}>
+          <Button disabled={disabled} onClick={handleSubmit}>
             保存
           </Button>
         </DialogFooter>
@@ -1363,39 +1591,65 @@ function ConfigMutationDialog({
 
 function Field({
   children,
+  error,
   htmlFor,
   label,
+  labelHint,
+  required,
 }: {
   children: ReactNode;
+  error?: string;
   htmlFor?: string;
   label: string;
+  labelHint?: string;
+  required?: boolean;
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={htmlFor}>{label}</Label>
+      <div className="flex items-center gap-2">
+        <div className="flex items-center">
+          <Label htmlFor={htmlFor}>{label}</Label>
+          {required ? (
+            <span aria-hidden="true" className="ml-0.5 text-sm font-medium leading-none text-destructive">
+              *
+            </span>
+          ) : null}
+        </div>
+        {labelHint ? <span className="text-xs text-muted-foreground">{labelHint}</span> : null}
+      </div>
       {children}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
 }
 
 function TextField({
+  error,
   form,
   label,
+  labelHint,
   name,
   onChange,
+  required,
 }: {
+  error?: string;
   form: Record<string, unknown>;
   label: string;
+  labelHint?: string;
   name: string;
   onChange: (name: string, value: string) => void;
+  required?: boolean;
 }) {
   const id = `insight-field-${name}`;
 
   return (
-    <Field htmlFor={id} label={label}>
+    <Field error={error} htmlFor={id} label={label} labelHint={labelHint} required={required}>
       <Input
+        aria-invalid={error ? true : undefined}
+        className={cn(error ? "border-destructive focus-visible:ring-destructive/20" : undefined)}
         id={id}
         onChange={(event) => onChange(name, event.target.value)}
+        required={required}
         value={String(form[name] ?? "")}
       />
     </Field>
@@ -1404,29 +1658,39 @@ function TextField({
 
 function TextareaField({
   className,
+  error,
   form,
   label,
+  labelHint,
   name,
   onChange,
   placeholder,
+  required,
+  textareaClassName,
 }: {
   className?: string;
+  error?: string;
   form: Record<string, unknown>;
   label: string;
+  labelHint?: string;
   name: string;
   onChange: (name: string, value: string) => void;
   placeholder?: string;
+  required?: boolean;
+  textareaClassName?: string;
 }) {
   const id = `insight-field-${name}`;
 
   return (
     <div className={className}>
-      <Field htmlFor={id} label={label}>
+      <Field error={error} htmlFor={id} label={label} labelHint={labelHint} required={required}>
         <Textarea
-          className="min-h-24"
+          aria-invalid={error ? true : undefined}
+          className={cn(textareaClassName ?? "min-h-24", error ? "border-destructive focus-visible:ring-destructive/20" : undefined)}
           id={id}
           onChange={(event) => onChange(name, event.target.value)}
           placeholder={placeholder}
+          required={required}
           value={String(form[name] ?? "")}
         />
       </Field>
@@ -1454,6 +1718,36 @@ function SeverityField({
           <SelectItem value="high">高</SelectItem>
           <SelectItem value="medium">中</SelectItem>
           <SelectItem value="low">低</SelectItem>
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}
+
+function WeightField({
+  form,
+  onChange,
+}: {
+  form: Record<string, unknown>;
+  onChange: (name: string, value: number) => void;
+}) {
+  const value = normalizeWeight(form.weight);
+
+  return (
+    <Field label="权重">
+      <Select
+        onValueChange={(next) => onChange("weight", Number(next))}
+        value={String(value)}
+      >
+        <SelectTrigger aria-label="权重" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {intentWeightOptions.map((option) => (
+            <SelectItem key={option} value={String(option)}>
+              {option}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </Field>
@@ -1515,6 +1809,21 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
     };
   }
 
+  if (state.collection === "intent") {
+    const item = state.mode === "edit" ? state.item : undefined;
+    return {
+      aliasesText: (item?.aliases ?? []).join("\n"),
+      description: item?.description ?? "",
+      enabled: item?.enabled ?? true,
+      includeInStatistics: item?.includeInStatistics ?? true,
+      intentCode: item?.intentCode ?? "",
+      intentName: item?.intentName ?? "",
+      negativeExamplesText: (item?.negativeExamples ?? []).join("\n"),
+      positiveExamplesText: (item?.positiveExamples ?? []).join("\n"),
+      weight: item?.weight ?? 5,
+    };
+  }
+
   if (state.collection === "qa") {
     const item = state.mode === "edit" ? state.item : undefined;
     return {
@@ -1535,9 +1844,27 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
     aliasesText: (item?.aliases ?? []).join("\n"),
     canonicalName: item?.canonicalName ?? "",
     enabled: item?.enabled ?? true,
-    entityType: item?.entityType ?? "product",
+    entityType: item?.entityType ?? "",
     includeInAggregation: item?.includeInAggregation ?? true,
   };
+}
+
+function validateDialogForm(collection: MutableCollection, form: Record<string, unknown>): ConfigDialogErrors {
+  const errors: ConfigDialogErrors = {};
+  const requiredFieldNames: Record<MutableCollection, string[]> = {
+    entity: ["canonicalName", "entityType"],
+    intent: ["intentName", "intentCode", "description"],
+    label: ["labelName", "labelCode", "description"],
+    qa: ["ruleName", "ruleCode", "judgmentCriteria"],
+  };
+
+  for (const name of requiredFieldNames[collection]) {
+    if (String(form[name] ?? "").trim().length === 0) {
+      errors[name] = "请填写必填项";
+    }
+  }
+
+  return errors;
 }
 
 function normalizeDialogPayload(collection: MutableCollection, form: Record<string, unknown>) {
@@ -1550,6 +1877,20 @@ function normalizeDialogPayload(collection: MutableCollection, form: Record<stri
       labelName: String(form.labelName ?? "").trim(),
       negativeExamples: splitLines(form.negativeExamplesText),
       positiveExamples: splitLines(form.positiveExamplesText),
+    };
+  }
+
+  if (collection === "intent") {
+    return {
+      aliases: splitLines(form.aliasesText),
+      description: trimOptional(form.description),
+      enabled: Boolean(form.enabled),
+      includeInStatistics: Boolean(form.includeInStatistics),
+      intentCode: String(form.intentCode ?? "").trim(),
+      intentName: String(form.intentName ?? "").trim(),
+      negativeExamples: splitLines(form.negativeExamplesText),
+      positiveExamples: splitLines(form.positiveExamplesText),
+      weight: normalizeWeight(form.weight),
     };
   }
 
@@ -1598,9 +1939,19 @@ function normalizeSeverityFormValue(value: unknown): "high" | "low" | "medium" {
   return value === "high" || value === "medium" || value === "low" ? value : "medium";
 }
 
+function normalizeWeight(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 5;
+  }
+
+  return Math.min(10, Math.max(1, Math.floor(parsed)));
+}
+
 function collectionText(value: MutableCollection) {
   const text: Record<MutableCollection, string> = {
     entity: "实体",
+    intent: "意图",
     label: "标签",
     qa: "规则",
   };

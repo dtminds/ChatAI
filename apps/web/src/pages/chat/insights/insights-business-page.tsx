@@ -53,6 +53,15 @@ type BusinessTopic = InsightsBusinessResponse["tagDistribution"][number];
 type BusinessSession = InsightOverviewSessionsResponse["items"][number];
 type BusinessDimension = BusinessTopic["dimension"];
 type BusinessTrendMetric = "assetMentions" | "entityMentions" | "intentMentions" | "tagMentions";
+type IntentTrendSeries = {
+  color: string;
+  key: string;
+  name: string;
+};
+type IntentTrendPoint = {
+  __counts: Record<string, number>;
+  date: string;
+} & Record<string, number | string | Record<string, number>>;
 
 const dimensionConfigs: Array<{
   color: string;
@@ -64,11 +73,11 @@ const dimensionConfigs: Array<{
 }> = [
   {
     color: "#5b5ff0",
-    description: "客户来咨询的主要原因",
+    description: "客户来咨询的主要意图",
     icon: Target02Icon,
     key: "intent",
     metricKey: "intentMentions",
-    title: "客户诉求",
+    title: "客户意图",
   },
   {
     color: "#16a36a",
@@ -97,6 +106,7 @@ const dimensionConfigs: Array<{
 ];
 
 const topicColors = ["#5b5ff0", "#14a6a6", "#e7a23b", "#e36f5c", "#7b61d9", "#2f8bc9", "#58a65c", "#c16d9b", "#b58a3b", "#6f8fbc"];
+const otherIntentSeriesColor = "#94a3b8";
 const businessRelatedSessionsPageSize = 20;
 
 export function InsightsBusinessPage() {
@@ -197,7 +207,7 @@ export function InsightsBusinessPage() {
       <div className="space-y-5">
         <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <InsightsPageHeader
-            description="从客户诉求、业务标签、实体对象和链接文件四个维度查看经营主题，并追溯到对应会话"
+            description="从客户意图、业务标签、实体对象和链接文件四个维度查看经营主题，并追溯到对应会话"
             title="经营洞察"
           />
           <div className="flex flex-wrap items-center gap-2">
@@ -222,6 +232,7 @@ export function InsightsBusinessPage() {
           <BusinessTrendPanel
             activeDimension={activeDimension}
             business={business}
+            topTopics={topTopics}
           />
 
           <TopicDistributionPanel
@@ -309,20 +320,24 @@ function DimensionMetricStrip({
 function BusinessTrendPanel({
   activeDimension,
   business,
+  topTopics,
 }: {
   activeDimension: BusinessDimension;
   business: InsightsBusinessResponse | undefined;
+  topTopics: BusinessTopic[];
 }) {
   const dimension = getDimensionConfig(activeDimension);
+  const title = activeDimension === "intent" ? "客户意图分布趋势" : `${dimension.title}趋势`;
 
   return (
     <section className="flex min-h-[320px] flex-col rounded-xl border bg-card p-4">
-      <PanelTitle icon={ChartAreaIcon} title={`${dimension.title}趋势`} />
+      <PanelTitle icon={ChartAreaIcon} title={title} />
       <div className="mt-4 min-h-[240px] flex-1">
         <DimensionTrendChart
           business={business}
           dimension={dimension}
           key={dimension.key}
+          topTopics={topTopics}
         />
       </div>
     </section>
@@ -332,10 +347,16 @@ function BusinessTrendPanel({
 function DimensionTrendChart({
   business,
   dimension,
+  topTopics,
 }: {
   business: InsightsBusinessResponse | undefined;
   dimension: (typeof dimensionConfigs)[number];
+  topTopics: BusinessTopic[];
 }) {
+  if (dimension.key === "intent") {
+    return <IntentDistributionTrendChart business={business} topTopics={topTopics} />;
+  }
+
   const trend = business?.trend ?? [];
 
   if (trend.length === 0) {
@@ -381,6 +402,72 @@ function DimensionTrendChart({
         />
       </AreaChart>
     </ResponsiveContainer>
+  );
+}
+
+function IntentDistributionTrendChart({
+  business,
+  topTopics,
+}: {
+  business: InsightsBusinessResponse | undefined;
+  topTopics: BusinessTopic[];
+}) {
+  const chart = buildIntentDistributionTrendChart(business, topTopics);
+
+  if (chart.points.length === 0 || chart.series.length === 0) {
+    return <EmptyChart text="暂无意图趋势数据" />;
+  }
+
+  return (
+    <div className="flex h-full min-h-[240px] flex-col gap-3">
+      <div className="min-h-[190px] flex-1">
+        <ResponsiveContainer height="100%" width="100%">
+          <AreaChart data={chart.points} margin={{ bottom: 0, left: -14, right: 14, top: 10 }}>
+            <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.45} vertical={false} />
+            <XAxis
+              axisLine={false}
+              dataKey="date"
+              dy={10}
+              tick={{ fill: "#a1a1aa", fontSize: 12 }}
+              tickFormatter={formatTrendDate}
+              tickLine={false}
+            />
+            <YAxis
+              axisLine={false}
+              domain={[0, 1]}
+              tick={{ fill: "#a1a1aa", fontSize: 12 }}
+              tickFormatter={formatPercentTick}
+              tickLine={false}
+              ticks={[0, 0.25, 0.5, 0.75, 1]}
+              width={44}
+            />
+            <Tooltip content={<IntentDistributionTrendTooltip series={chart.series} />} />
+            {chart.series.map((series) => (
+              <Area
+                animationDuration={450}
+                dataKey={series.key}
+                fill={series.color}
+                fillOpacity={0.78}
+                key={series.key}
+                name={series.name}
+                stackId="intent"
+                stroke={series.color}
+                strokeWidth={1.4}
+                type="monotone"
+              />
+            ))}
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-2 px-1 text-xs text-muted-foreground">
+        {chart.series.map((series) => (
+          <span className="inline-flex min-w-0 items-center gap-1.5" key={series.key}>
+            <span className="size-2 rounded-full" style={{ backgroundColor: series.color }} />
+            <span className="max-w-[120px] truncate">{series.name}</span>
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -577,7 +664,7 @@ function RelatedSessionsPanel({
             <TableRow className="hover:bg-transparent">
               <TableHead className="h-11 min-w-[210px]">客户</TableHead>
               <TableHead className="h-11 min-w-[170px]">客服</TableHead>
-              <TableHead className="h-11 min-w-[280px]">诉求/问题</TableHead>
+              <TableHead className="h-11 min-w-[280px]">意图/问题</TableHead>
               <TableHead className="h-11 min-w-[120px]">状态</TableHead>
               <TableHead className="h-11 min-w-[150px]">开始时间</TableHead>
               <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
@@ -602,7 +689,7 @@ function RelatedSessionsPanel({
                 </TableCell>
                 <TableCell className="max-w-[320px] py-4">
                   <div className="truncate text-sm font-medium text-foreground">
-                    {session.summaryCustomerIntent || "暂无诉求"}
+                    {session.summaryCustomerIntent || "暂无意图"}
                   </div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">
                     {session.problemSummary || "暂无客户问题摘要"}
@@ -741,6 +828,45 @@ function BusinessTrendTooltip({
   );
 }
 
+function IntentDistributionTrendTooltip({
+  active,
+  label,
+  payload,
+  series,
+}: TooltipProps<number, string> & { series: IntentTrendSeries[] }) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const data = payload[0]?.payload as IntentTrendPoint | undefined;
+  const counts = data?.__counts ?? {};
+
+  return (
+    <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-lg">
+      <div className="font-medium text-foreground">{formatFullTrendDate(String(label))}</div>
+      <div className="mt-2 grid gap-1.5">
+        {series.map((item) => {
+          const percent = Number(data?.[item.key] ?? 0);
+          const count = counts[item.key] ?? 0;
+
+          if (percent <= 0 && count <= 0) {
+            return null;
+          }
+
+          return (
+            <div className="flex items-center gap-2" key={item.key}>
+              <span className="size-2 rounded-full" style={{ backgroundColor: item.color }} />
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">{item.name}</span>
+              <span className="font-semibold tabular-nums">{formatPercent(percent)}</span>
+              <span className="text-muted-foreground tabular-nums">{formatNumber(count)} 个</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function TopicPieTooltip({
   active,
   payload,
@@ -796,6 +922,65 @@ function buildTopicSlots(topics: BusinessTopic[]) {
   ];
 }
 
+function buildIntentDistributionTrendChart(
+  business: InsightsBusinessResponse | undefined,
+  topTopics: BusinessTopic[],
+): { points: IntentTrendPoint[]; series: IntentTrendSeries[] } {
+  const topIntents = topTopics
+    .filter((topic) => topic.dimension === "intent")
+    .slice(0, 5);
+  const topIntentCodes = new Set(topIntents.map((topic) => topic.code));
+  const seriesKeyByIntentCode = new Map(
+    topIntents.map((topic, index) => [topic.code, `intent_${index}`]),
+  );
+  const hasOther = (business?.intentTrend ?? []).some((point) => !topIntentCodes.has(point.intentCode));
+  const series = [
+    ...topIntents.map((topic, index) => ({
+      color: topicColors[index % topicColors.length],
+      key: seriesKeyByIntentCode.get(topic.code) ?? `intent_${index}`,
+      name: topic.name,
+    })),
+    ...(hasOther ? [{ color: otherIntentSeriesColor, key: "other", name: "其他" }] : []),
+  ];
+
+  if (!business?.intentTrend?.length || series.length === 0) {
+    return { points: [], series };
+  }
+
+  const pointsByDate = new Map<string, { counts: Record<string, number>; date: string }>(
+    (business.trend ?? []).map((point) => [point.date, { counts: {}, date: point.date }]),
+  );
+
+  for (const point of business.intentTrend) {
+    const key = topIntentCodes.has(point.intentCode)
+      ? seriesKeyByIntentCode.get(point.intentCode) ?? "other"
+      : "other";
+    const datePoint = pointsByDate.get(point.date) ?? { counts: {}, date: point.date };
+    datePoint.counts[key] = (datePoint.counts[key] ?? 0) + point.sessionCount;
+    pointsByDate.set(point.date, datePoint);
+  }
+
+  const points = Array.from(pointsByDate.values())
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .map((point) => {
+      const total = series.reduce((sum, item) => sum + (point.counts[item.key] ?? 0), 0);
+      const normalized: IntentTrendPoint = {
+        __counts: {},
+        date: point.date,
+      };
+
+      for (const item of series) {
+        const count = point.counts[item.key] ?? 0;
+        normalized.__counts[item.key] = count;
+        normalized[item.key] = total > 0 ? count / total : 0;
+      }
+
+      return normalized;
+    });
+
+  return { points, series };
+}
+
 function findTopicByKeyword(topics: BusinessTopic[], keyword: string) {
   const normalizedKeyword = normalizeKeyword(keyword);
 
@@ -822,7 +1007,7 @@ function normalizeKeyword(value: string) {
 function dimensionText(topic: BusinessTopic) {
   const text: Record<BusinessTopic["dimension"], string> = {
     entity: topic.type ? entityTypeText(topic.type) : "实体对象",
-    intent: "客户诉求",
+    intent: "客户意图",
     asset: topic.type ? assetTypeText(topic.type) : "链接文件",
     tag: "业务标签",
   };
@@ -897,6 +1082,14 @@ function buildPaginationNumbers(page: number, totalPages: number): Array<number 
 
 function formatNumber(value: number | undefined) {
   return value == null ? "-" : value.toLocaleString("zh-CN");
+}
+
+function formatPercent(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatPercentTick(value: number) {
+  return formatPercent(value);
 }
 
 function formatTrendDate(value: string) {

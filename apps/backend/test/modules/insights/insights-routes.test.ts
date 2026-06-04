@@ -219,9 +219,48 @@ describe("insights routes", () => {
       success: true,
     });
   });
+
+  it("returns empty business config lists when the config tables are empty", async () => {
+    const admin = await createInsightsApp("admin", {
+      entityDictionaryRows: [],
+      intentConfigRows: [],
+      labelConfigRows: [],
+      qaRuleConfigRows: [],
+    });
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "GET",
+      url: "/api/server/insights/settings",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [],
+        qaRuleConfigs: [],
+        sessionization: {
+          idleTimeoutMinutes: 120,
+        },
+      },
+      success: true,
+    });
+  });
 });
 
-async function createInsightsApp(role: "admin" | "operator" | "owner" | "viewer") {
+async function createInsightsApp(
+  role: "admin" | "operator" | "owner" | "viewer",
+  options: {
+    entityDictionaryRows?: unknown[];
+    intentConfigRows?: unknown[];
+    labelConfigRows?: unknown[];
+    qaRuleConfigRows?: unknown[];
+  } = {},
+) {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
     roles: [role],
@@ -229,7 +268,7 @@ async function createInsightsApp(role: "admin" | "operator" | "owner" | "viewer"
     sessionVersion: 1,
     subUserId: "1",
   });
-  const db = createInsightsDbMock();
+  const db = createInsightsDbMock(options);
 
   app.db = db as never;
 
@@ -240,7 +279,12 @@ async function createInsightsApp(role: "admin" | "operator" | "owner" | "viewer"
   };
 }
 
-function createInsightsDbMock() {
+function createInsightsDbMock(options: {
+  entityDictionaryRows?: unknown[];
+  intentConfigRows?: unknown[];
+  labelConfigRows?: unknown[];
+  qaRuleConfigRows?: unknown[];
+} = {}) {
   const state = {
     insertedJob: undefined as Record<string, unknown> | undefined,
     insightCurrentSelectCount: 0,
@@ -366,7 +410,7 @@ function createInsightsDbMock() {
       }
 
       if (table === "xy_wap_embed_insight_label_config") {
-        return createBuilder([
+        return createBuilder(options.labelConfigRows ?? [
           {
             description: null,
             enabled: 1,
@@ -380,8 +424,25 @@ function createInsightsDbMock() {
         ]);
       }
 
+      if (table === "xy_wap_embed_insight_intent_config") {
+        return createBuilder(options.intentConfigRows ?? [
+          {
+            aliases_json: JSON.stringify(["查快递"]),
+            description: "客户咨询发货、快递或物流异常",
+            enabled: 1,
+            id: 1,
+            include_in_statistics: 1,
+            intent_code: "logistics_delay",
+            intent_name: "物流异常",
+            negative_examples_json: JSON.stringify(["咨询退款到账"]),
+            positive_examples_json: JSON.stringify(["快递一直没更新"]),
+            sort_order: 10,
+          },
+        ]);
+      }
+
       if (table === "xy_wap_embed_insight_qa_rule_config") {
-        return createBuilder([
+        return createBuilder(options.qaRuleConfigRows ?? [
           {
             applicable_scene: null,
             description: null,
@@ -398,7 +459,7 @@ function createInsightsDbMock() {
       }
 
       if (table === "xy_wap_embed_insight_entity_dictionary") {
-        return createBuilder([
+        return createBuilder(options.entityDictionaryRows ?? [
           {
             aliases_json: JSON.stringify(["白鸭绒外套"]),
             attributes_json: null,

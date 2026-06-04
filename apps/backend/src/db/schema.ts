@@ -1043,6 +1043,22 @@ export interface XyWapEmbedInsightLabelConfig {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedInsightIntentConfig {
+  aliases_json: string | null;
+  create_time: Generated<Date>;
+  description: string | null;
+  enabled: Generated<number>;
+  id: Generated<number>;
+  include_in_statistics: Generated<number>;
+  intent_code: string;
+  intent_name: string;
+  negative_examples_json: string | null;
+  positive_examples_json: string | null;
+  sort_order: Generated<number>;
+  uid: number;
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedInsightQaRuleConfig {
   applicable_scene: string | null;
   create_time: Generated<Date>;
@@ -1110,6 +1126,7 @@ export interface DB {
   xy_wap_embed_insight_entity_dictionary: XyWapEmbedInsightEntityDictionary;
   xy_wap_embed_insight_evidence: XyWapEmbedInsightEvidence;
   xy_wap_embed_insight_job: XyWapEmbedInsightJob;
+  xy_wap_embed_insight_intent_config: XyWapEmbedInsightIntentConfig;
   xy_wap_embed_insight_label_config: XyWapEmbedInsightLabelConfig;
   xy_wap_embed_insight_qa_rule_config: XyWapEmbedInsightQaRuleConfig;
   xy_wap_embed_insight_sync_cursor: XyWapEmbedInsightSyncCursor;

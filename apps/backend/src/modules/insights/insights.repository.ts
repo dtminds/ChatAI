@@ -6,6 +6,8 @@ import type {
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
+  InsightIntentConfig,
+  InsightIntentConfigMutationRequest,
   InsightLabelConfig,
   InsightLabelConfigMutationRequest,
   InsightMessageContextResponse,
@@ -339,12 +341,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const [
       sessionization,
       analysisPolicy,
+      intentConfigs,
       labelConfigs,
       qaRuleConfigs,
       entityDictionary,
     ] = await Promise.all([
       this.getSessionizationSettings(scope),
       this.getAnalysisPolicy(scope),
+      this.listIntentConfigs(scope),
       this.listLabelConfigs(scope),
       this.listQaRuleConfigs(scope),
       this.listEntityDictionary(scope),
@@ -353,6 +357,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     return {
       analysisPolicy,
       entityDictionary,
+      intentConfigs,
       labelConfigs,
       qaRuleConfigs,
       sessionization,
@@ -418,6 +423,100 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .execute();
 
     return this.getAnalysisPolicy(scope);
+  }
+
+  async createIntentConfig(
+    scope: InsightsUidScope,
+    payload: InsightIntentConfigMutationRequest,
+  ): Promise<InsightIntentConfig> {
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_insight_intent_config")
+      .values({
+        aliases_json: encodeJson(payload.aliases),
+        description: payload.description ?? null,
+        enabled: payload.enabled ? 1 : 0,
+        include_in_statistics: payload.includeInStatistics ? 1 : 0,
+        intent_code: payload.intentCode,
+        intent_name: payload.intentName,
+        negative_examples_json: encodeJson(payload.negativeExamples),
+        positive_examples_json: encodeJson(payload.positiveExamples),
+        sort_order: payload.weight,
+        uid: scope.uid,
+      })
+      .executeTakeFirstOrThrow() as InsertResult;
+
+    return await this.getIntentConfigById(scope, String(parseInsertedMySqlId(inserted) ?? ""))
+      ?? await this.getIntentConfigByCode(scope, payload.intentCode)
+      ?? mapIntentPayload("0", payload);
+  }
+
+  async updateIntentConfig(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightIntentConfigMutationRequest,
+  ): Promise<InsightIntentConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getIntentConfigById(scope, id)) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_intent_config")
+      .set({
+        aliases_json: encodeJson(payload.aliases),
+        description: payload.description ?? null,
+        enabled: payload.enabled ? 1 : 0,
+        include_in_statistics: payload.includeInStatistics ? 1 : 0,
+        intent_code: payload.intentCode,
+        intent_name: payload.intentName,
+        negative_examples_json: encodeJson(payload.negativeExamples),
+        positive_examples_json: encodeJson(payload.positiveExamples),
+        sort_order: payload.weight,
+        update_time: new Date(),
+      })
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return this.getIntentConfigById(scope, id);
+  }
+
+  async updateIntentConfigStatus(
+    scope: InsightsUidScope,
+    id: string,
+    enabled: boolean,
+  ): Promise<InsightIntentConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getIntentConfigById(scope, id)) {
+      return undefined;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_intent_config")
+      .set({ enabled: enabled ? 1 : 0, update_time: new Date() })
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return this.getIntentConfigById(scope, id);
+  }
+
+  async deleteIntentConfig(scope: InsightsUidScope, id: string): Promise<boolean> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null || !await this.getIntentConfigById(scope, id)) {
+      return false;
+    }
+
+    await this.db
+      .deleteFrom("xy_wap_embed_insight_intent_config")
+      .where("id", "=", numericId)
+      .where("uid", "=", scope.uid)
+      .execute();
+
+    return true;
   }
 
   async createLabelConfig(
@@ -749,6 +848,85 @@ export class InsightsRepository implements InsightsRepositoryPort {
     };
   }
 
+  private async listIntentConfigs(scope: InsightsUidScope): Promise<InsightIntentConfig[]> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_insight_intent_config")
+      .select([
+        "aliases_json",
+        "description",
+        "enabled",
+        "id",
+        "include_in_statistics",
+        "intent_code",
+        "intent_name",
+        "negative_examples_json",
+        "positive_examples_json",
+        "sort_order",
+      ])
+      .where("uid", "=", scope.uid)
+      .orderBy("sort_order", "asc")
+      .orderBy("id", "asc")
+      .execute();
+
+    return rows.map(mapIntentRow);
+  }
+
+  private async getIntentConfigById(
+    scope: InsightsUidScope,
+    id: string,
+  ): Promise<InsightIntentConfig | undefined> {
+    const numericId = parsePositiveInteger(id);
+
+    if (numericId == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_intent_config")
+      .select([
+        "aliases_json",
+        "description",
+        "enabled",
+        "id",
+        "include_in_statistics",
+        "intent_code",
+        "intent_name",
+        "negative_examples_json",
+        "positive_examples_json",
+        "sort_order",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("id", "=", numericId)
+      .executeTakeFirst();
+
+    return row ? mapIntentRow(row) : undefined;
+  }
+
+  private async getIntentConfigByCode(
+    scope: InsightsUidScope,
+    intentCode: string,
+  ): Promise<InsightIntentConfig | undefined> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_intent_config")
+      .select([
+        "aliases_json",
+        "description",
+        "enabled",
+        "id",
+        "include_in_statistics",
+        "intent_code",
+        "intent_name",
+        "negative_examples_json",
+        "positive_examples_json",
+        "sort_order",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("intent_code", "=", intentCode)
+      .executeTakeFirst();
+
+    return row ? mapIntentRow(row) : undefined;
+  }
+
   private async listLabelConfigs(scope: InsightsUidScope): Promise<InsightLabelConfig[]> {
     const rows = await this.db
       .selectFrom("xy_wap_embed_insight_label_config")
@@ -766,7 +944,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .orderBy("id", "asc")
       .execute();
 
-    return rows.length > 0 ? rows.map(mapLabelRow) : DEFAULT_INSIGHT_SETTINGS.labelConfigs;
+    return rows.map(mapLabelRow);
   }
 
   private async getLabelConfigById(
@@ -840,7 +1018,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .orderBy("id", "asc")
       .execute();
 
-    return rows.length > 0 ? rows.map(mapQaRuleRow) : DEFAULT_INSIGHT_SETTINGS.qaRuleConfigs;
+    return rows.map(mapQaRuleRow);
   }
 
   private async getQaRuleConfigById(
@@ -917,7 +1095,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .orderBy("id", "asc")
       .execute();
 
-    return rows.length > 0 ? rows.map(mapEntityRow) : DEFAULT_INSIGHT_SETTINGS.entityDictionary;
+    return rows.map(mapEntityRow);
   }
 
   private async getEntityDictionaryItemById(
@@ -1301,16 +1479,23 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .innerJoin("xy_wap_embed_logical_session as session", (join) =>
         join.onRef("session.id", "=", "current.session_id"),
       )
+      .innerJoin("xy_wap_embed_insight_intent_config as intent_config", (join) =>
+        join
+          .onRef("intent_config.uid", "=", "session.uid")
+          .onRef("intent_config.intent_code", "=", "intent.intent_code")
+          .on("intent_config.enabled", "=", 1)
+          .on("intent_config.include_in_statistics", "=", 1),
+      )
       .select([
         "intent.intent_code as code",
-        "intent.intent_label as name",
+        "intent_config.intent_name as name",
         "session.id as session_id",
         "session.started_at as started_at",
         "intent.snapshot_id as snapshot_id",
         sql<number>`count(intent.id)`.as("mention_count"),
       ])
       .where("session.uid", "=", scope.uid)
-      .groupBy(["intent.intent_code", "intent.intent_label", "session.id", "session.started_at", "intent.snapshot_id"])
+      .groupBy(["intent.intent_code", "intent_config.intent_name", "session.id", "session.started_at", "intent.snapshot_id"])
       .orderBy(sql<number>`count(intent.id)`, "desc")
       .limit(500);
 
@@ -1552,13 +1737,21 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .innerJoin("xy_wap_embed_logical_session as session", (join) =>
         join.onRef("session.id", "=", "snapshot.session_id"),
       )
+      .innerJoin("xy_wap_embed_insight_intent_config as intent_config", (join) =>
+        join
+          .onRef("intent_config.uid", "=", "session.uid")
+          .onRef("intent_config.intent_code", "=", "intent.intent_code")
+          .on("intent_config.enabled", "=", 1)
+          .on("intent_config.include_in_statistics", "=", 1),
+      )
       .select([
         sql<number>`count(*)`.as("count"),
         "intent.intent_code as intent_code",
-        "intent.intent_label as intent_label",
+        "intent_config.intent_name as intent_label",
       ])
       .where("session.uid", "=", scope.uid)
-      .groupBy(["intent.intent_code", "intent.intent_label"])
+      .groupBy(["intent.intent_code", "intent_config.intent_name", "intent_config.sort_order"])
+      .orderBy("intent_config.sort_order", "asc")
       .orderBy(sql<number>`count(*)`, "desc")
       .limit(10)
       .execute() as IntentDistributionQueryRow[];
@@ -3159,6 +3352,21 @@ function mapLabelPayload(id: string, payload: InsightLabelConfigMutationRequest)
   };
 }
 
+function mapIntentPayload(id: string, payload: InsightIntentConfigMutationRequest): InsightIntentConfig {
+  return {
+    aliases: payload.aliases,
+    description: payload.description,
+    enabled: payload.enabled,
+    id,
+    includeInStatistics: payload.includeInStatistics,
+    intentCode: payload.intentCode,
+    intentName: payload.intentName,
+    negativeExamples: payload.negativeExamples,
+    positiveExamples: payload.positiveExamples,
+    weight: payload.weight,
+  };
+}
+
 function mapQaRulePayload(id: string, payload: InsightQaRuleConfigMutationRequest): InsightQaRuleConfig {
   return {
     applicableScene: payload.applicableScene,
@@ -3208,6 +3416,32 @@ function mapLabelRow(row: {
     labelName: row.label_name,
     negativeExamples: parseJsonArray(row.negative_examples_json),
     positiveExamples: parseJsonArray(row.positive_examples_json),
+  };
+}
+
+function mapIntentRow(row: {
+  aliases_json: string | null;
+  description: string | null;
+  enabled: number;
+  id: number | string;
+  include_in_statistics: number;
+  intent_code: string;
+  intent_name: string;
+  negative_examples_json: string | null;
+  positive_examples_json: string | null;
+  sort_order: number | string;
+}): InsightIntentConfig {
+  return {
+    aliases: parseJsonArray(row.aliases_json),
+    description: optionalString(row.description),
+    enabled: row.enabled === 1,
+    id: String(row.id),
+    includeInStatistics: row.include_in_statistics === 1,
+    intentCode: row.intent_code,
+    intentName: row.intent_name,
+    negativeExamples: parseJsonArray(row.negative_examples_json),
+    positiveExamples: parseJsonArray(row.positive_examples_json),
+    weight: parseNumber(row.sort_order),
   };
 }
 

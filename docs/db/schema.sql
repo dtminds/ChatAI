@@ -319,6 +319,24 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_label_config (
   UNIQUE KEY uk_label_uid_code (uid, label_code)
 ) COMMENT='会话洞察标签配置表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_intent_config (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  intent_code VARCHAR(128) NOT NULL COMMENT '意图编码',
+  intent_name VARCHAR(128) NOT NULL COMMENT '意图名称',
+  description VARCHAR(512) NULL COMMENT '意图说明',
+  aliases_json JSON NULL COMMENT '别名JSON',
+  positive_examples_json JSON NULL COMMENT '正例JSON',
+  negative_examples_json JSON NULL COMMENT '反例JSON',
+  enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用',
+  include_in_statistics TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否纳入统计，1是0否',
+  sort_order INT UNSIGNED NOT NULL DEFAULT 5 COMMENT '权重，1-10',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY uk_intent_uid_code (uid, intent_code),
+  KEY idx_intent_uid_sort (uid, sort_order)
+) COMMENT='会话洞察意图配置表';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_qa_rule_config (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',

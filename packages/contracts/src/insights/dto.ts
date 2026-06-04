@@ -210,10 +210,18 @@ export const InsightBusinessTrendPointSchema = Type.Object({
   unresolvedSessions: Type.Number(),
 });
 
+export const InsightBusinessIntentTrendPointSchema = Type.Object({
+  date: Type.String(),
+  intentCode: Type.String(),
+  intentName: Type.String(),
+  sessionCount: Type.Number(),
+});
+
 export const InsightsBusinessResponseSchema = Type.Object({
   assetHotspots: Type.Array(InsightBusinessTopicSchema),
   entityHotspots: Type.Array(InsightBusinessTopicSchema),
   intentDistribution: Type.Array(InsightBusinessTopicSchema),
+  intentTrend: Type.Array(InsightBusinessIntentTrendPointSchema),
   qualityTopics: Type.Array(InsightBusinessTopicSchema),
   tagDistribution: Type.Array(InsightBusinessTopicSchema),
   totals: Type.Object({
@@ -472,6 +480,31 @@ export const InsightLabelConfigMutationRequestSchema = Type.Object({
   positiveExamples: Type.Optional(Type.Array(Type.String())),
 });
 
+export const InsightIntentConfigSchema = Type.Object({
+  aliases: Type.Optional(Type.Array(Type.String())),
+  description: Type.Optional(Type.String()),
+  enabled: Type.Boolean(),
+  id: Type.String(),
+  includeInStatistics: Type.Boolean(),
+  intentCode: Type.String(),
+  intentName: Type.String(),
+  negativeExamples: Type.Optional(Type.Array(Type.String())),
+  positiveExamples: Type.Optional(Type.Array(Type.String())),
+  weight: Type.Number(),
+});
+
+export const InsightIntentConfigMutationRequestSchema = Type.Object({
+  aliases: Type.Optional(Type.Array(Type.String())),
+  description: Type.Optional(Type.String()),
+  enabled: Type.Boolean(),
+  includeInStatistics: Type.Boolean(),
+  intentCode: Type.String({ minLength: 1 }),
+  intentName: Type.String({ minLength: 1 }),
+  negativeExamples: Type.Optional(Type.Array(Type.String())),
+  positiveExamples: Type.Optional(Type.Array(Type.String())),
+  weight: Type.Number(),
+});
+
 export const InsightQaRuleConfigSchema = Type.Object({
   applicableScene: Type.Optional(Type.String()),
   description: Type.Optional(Type.String()),
@@ -519,6 +552,7 @@ export const InsightEntityDictionaryMutationRequestSchema = Type.Object({
 export const InsightSettingsResponseSchema = Type.Object({
   analysisPolicy: InsightAnalysisPolicySchema,
   entityDictionary: Type.Array(InsightEntityDictionaryItemSchema),
+  intentConfigs: Type.Array(InsightIntentConfigSchema),
   labelConfigs: Type.Array(InsightLabelConfigSchema),
   qaRuleConfigs: Type.Array(InsightQaRuleConfigSchema),
   sessionization: InsightSessionizationSettingsSchema,
@@ -572,6 +606,10 @@ export type InsightEntityDictionaryMutationRequest = Static<
 export type InsightLabelConfig = Static<typeof InsightLabelConfigSchema>;
 export type InsightLabelConfigMutationRequest = Static<
   typeof InsightLabelConfigMutationRequestSchema
+>;
+export type InsightIntentConfig = Static<typeof InsightIntentConfigSchema>;
+export type InsightIntentConfigMutationRequest = Static<
+  typeof InsightIntentConfigMutationRequestSchema
 >;
 export type InsightQaRuleConfig = Static<typeof InsightQaRuleConfigSchema>;
 export type InsightQaRuleConfigMutationRequest = Static<

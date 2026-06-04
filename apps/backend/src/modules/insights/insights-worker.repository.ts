@@ -144,7 +144,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }
 
   async getPromptContext(uid: number): Promise<InsightPromptContext> {
-    const [labelRows, qaRuleRows, entityRows] = await Promise.all([
+    const [labelRows, intentRows, qaRuleRows, entityRows] = await Promise.all([
       this.db
         .selectFrom("xy_wap_embed_insight_label_config")
         .select([
@@ -165,6 +165,32 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           label_name: string;
           negative_examples_json: string | null;
           positive_examples_json: string | null;
+        }>>,
+      this.db
+        .selectFrom("xy_wap_embed_insight_intent_config")
+        .select([
+          "aliases_json",
+          "description",
+          "include_in_statistics",
+          "intent_code",
+          "intent_name",
+          "negative_examples_json",
+          "positive_examples_json",
+          "sort_order",
+        ])
+        .where("uid", "=", uid)
+        .where("enabled", "=", 1)
+        .orderBy("sort_order", "asc")
+        .orderBy("id", "asc")
+        .execute() as Promise<Array<{
+          aliases_json: string | null;
+          description: string | null;
+          include_in_statistics: number | string;
+          intent_code: string;
+          intent_name: string;
+          negative_examples_json: string | null;
+          positive_examples_json: string | null;
+          sort_order: number | string;
         }>>,
       this.db
         .selectFrom("xy_wap_embed_insight_qa_rule_config")
@@ -227,6 +253,16 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         labelName: row.label_name,
         negativeExamples: parseJsonArray(row.negative_examples_json),
         positiveExamples: parseJsonArray(row.positive_examples_json),
+      })),
+      intentConfigs: intentRows.map((row) => ({
+        aliases: parseJsonArray(row.aliases_json),
+        description: optionalString(row.description),
+        includeInStatistics: parseNumber(row.include_in_statistics) === 1,
+        intentCode: row.intent_code,
+        intentName: row.intent_name,
+        negativeExamples: parseJsonArray(row.negative_examples_json),
+        positiveExamples: parseJsonArray(row.positive_examples_json),
+        weight: parseNumber(row.sort_order),
       })),
       qaRuleConfigs: qaRuleRows.map((row) => ({
         applicableScene: optionalString(row.applicable_scene),

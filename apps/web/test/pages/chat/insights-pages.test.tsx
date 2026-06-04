@@ -806,17 +806,17 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /日期范围.*近30天.*2026-05-05.*2026-06-03/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /日期范围.*近7天.*2026-05-28.*2026-06-03/ })).toBeInTheDocument();
     expect(screen.queryByLabelText("开始日期")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("结束日期")).not.toBeInTheDocument();
     expect(serviceMocks.getInsightOverview).toHaveBeenCalledWith({
-      from: "2026-05-05T00:00:00.000+08:00",
+      from: "2026-05-28T00:00:00.000+08:00",
       to: "2026-06-03T23:59:59.999+08:00",
     });
     expect(serviceMocks.getInsightOverviewSessions).toHaveBeenCalledWith({
       analysisStatus: undefined,
       entityName: undefined,
-      from: "2026-05-05T00:00:00.000+08:00",
+      from: "2026-05-28T00:00:00.000+08:00",
       intentCode: undefined,
       keyword: undefined,
       page: 1,
@@ -947,7 +947,7 @@ describe("conversation insights pages", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /日期范围.*近30天/ }));
+    await userEvent.click(screen.getByRole("button", { name: /日期范围.*近7天/ }));
     expect(await screen.findByText("2026年5月")).toBeInTheDocument();
     expect(screen.getByText("2026年6月")).toBeInTheDocument();
     expect(screen.queryByText("2026年7月")).not.toBeInTheDocument();
@@ -979,7 +979,21 @@ describe("conversation insights pages", () => {
     );
     expect(screen.getByRole("button", { name: /日期范围.*近7天.*2026-05-28.*2026-06-03/ })).toBeInTheDocument();
 
-    await applyDateRangePreset("昨天", "2026-06-02", "2026-06-02");
+    await userEvent.click(screen.getByRole("button", { name: /日期范围.*近7天/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "昨天" }));
+    const yesterdayButton = screen.getByRole("button", { name: /2026年6月2日/ });
+    expect(yesterdayButton).toHaveAttribute("data-range-single", "true");
+    expect(yesterdayButton).toHaveClass("rounded-[10px]");
+    expect(yesterdayButton).not.toHaveClass("rounded-r-none");
+    expect(yesterdayButton).not.toHaveClass("rounded-l-none");
+    await userEvent.click(screen.getByRole("button", { name: "应用" }));
+    await waitFor(() => {
+      expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith({
+        from: "2026-06-02T00:00:00.000+08:00",
+        to: "2026-06-02T23:59:59.999+08:00",
+      });
+    });
+    expect(screen.getByRole("button", { name: /日期范围.*昨天.*2026-06-02.*2026-06-02/ })).toBeInTheDocument();
     await applyDateRangePreset("本周", "2026-06-01", "2026-06-03");
     await applyDateRangePreset("上周", "2026-05-25", "2026-05-31");
     await applyDateRangePreset("本月", "2026-06-01", "2026-06-03");
@@ -1048,12 +1062,19 @@ describe("conversation insights pages", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /日期范围.*近30天/ }));
+    await userEvent.click(screen.getByRole("button", { name: /日期范围.*近7天/ }));
     await userEvent.click(screen.getByRole("button", { name: /2026年5月10日/ }));
     expect(screen.getByRole("button", { name: "应用" })).toBeDisabled();
     expect(screen.getByText("请选择完整范围")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /2026年6月9日/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /2026年6月10日/ })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("button", { name: /2026年5月12日/ }));
+    expect(screen.getByRole("button", { name: /2026年5月10日/ })).toHaveClass("rounded-l-[10px]");
+    expect(screen.getByRole("button", { name: /2026年5月10日/ })).toHaveClass("rounded-r-none");
+    expect(screen.getByRole("button", { name: /2026年5月11日/ })).toHaveClass("rounded-none");
+    expect(screen.getByRole("button", { name: /2026年5月12日/ })).toHaveClass("rounded-l-none");
+    expect(screen.getByRole("button", { name: /2026年5月12日/ })).toHaveClass("rounded-r-[10px]");
     expect(screen.getByText("2026-05-10 至 2026-05-12")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "应用" }));
 
@@ -1185,18 +1206,18 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights/business");
 
     expect(await screen.findByRole("heading", { level: 1, name: "经营洞察" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /日期范围.*近30天.*2026-05-05.*2026-06-03/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /日期范围.*近7天.*2026-05-28.*2026-06-03/ })).toBeInTheDocument();
     expect(screen.queryByLabelText("开始日期")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("结束日期")).not.toBeInTheDocument();
     expect(serviceMocks.getInsightBusiness).toHaveBeenCalledWith({
-      from: "2026-05-05T00:00:00.000+08:00",
+      from: "2026-05-28T00:00:00.000+08:00",
       to: "2026-06-03T23:59:59.999+08:00",
     });
     await waitFor(() => {
       expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenCalledWith(
         expect.objectContaining({
           dimension: "intent",
-          from: "2026-05-05T00:00:00.000+08:00",
+          from: "2026-05-28T00:00:00.000+08:00",
           page: 1,
           pageSize: 20,
           topicCode: "logistics_delay",
@@ -1205,7 +1226,7 @@ describe("conversation insights pages", () => {
       );
     });
     expect(serviceMocks.getInsightOverview).not.toHaveBeenCalledWith({
-      from: "2026-05-05T00:00:00.000+08:00",
+      from: "2026-05-28T00:00:00.000+08:00",
       to: "2026-06-03T23:59:59.999+08:00",
     });
     expect(screen.getByRole("heading", { name: "客户诉求 Top10" })).toBeInTheDocument();

@@ -19,6 +19,8 @@ import {
   type InsightDateRange,
 } from "./insights-date-range";
 
+const maxDateRangeDays = 31;
+
 const presetOptions: Array<{
   label: string;
   range: () => InsightDateRange;
@@ -145,6 +147,7 @@ export function InsightDateRangeFilter({
           </div>
           <div className="min-w-0 p-3">
             <Calendar
+              disabled={getDisabledDateMatcher(draftRange)}
               month={visibleMonth}
               mode="range"
               numberOfMonths={2}
@@ -225,6 +228,21 @@ function getNextDraftRange(current: DateRange, triggerDate: Date): DateRange {
   return current.from <= triggerDate
     ? { from: current.from, to: triggerDate }
     : { from: triggerDate, to: current.from };
+}
+
+function getDisabledDateMatcher(range: DateRange) {
+  if (!range.from || range.to) {
+    return undefined;
+  }
+
+  const maxSelectableDate = new Date(range.from);
+
+  maxSelectableDate.setDate(range.from.getDate() + maxDateRangeDays - 1);
+
+  return [
+    { before: range.from },
+    { after: maxSelectableDate },
+  ];
 }
 
 function formatRangeText(range: InsightDateRange | undefined) {

@@ -71,7 +71,7 @@ import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { ResolutionBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
-import { getDefaultDateRange, toBoundaryDate, type InsightDateRange } from "./insights-date-range";
+import { getRecentDateRange, toBoundaryDate, type InsightDateRange } from "./insights-date-range";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import { formatInsightTime } from "./insights-utils";
 import { useInsightDetail } from "./use-insight-detail";
@@ -139,7 +139,7 @@ export function InsightsOverviewPage() {
   const [activeMetric, setActiveMetric] = useState<TrendMetric>("logicalSessions");
   const [analysisStatusFilter, setAnalysisStatusFilter] = useState("all");
   const [entityFilter, setEntityFilter] = useState("all");
-  const [from, setFrom] = useState(() => getDefaultDateRange().from);
+  const [from, setFrom] = useState(() => getRecentDateRange(7).from);
   const [intentFilter, setIntentFilter] = useState("all");
   const [isSessionsLoading, setIsSessionsLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
@@ -148,7 +148,7 @@ export function InsightsOverviewPage() {
   const [problemFilter, setProblemFilter] = useState("all");
   const [resolutionFilter, setResolutionFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
-  const [to, setTo] = useState(() => getDefaultDateRange().to);
+  const [to, setTo] = useState(() => getRecentDateRange(7).to);
   const detail = useInsightDetail();
 
   useEffect(() => {

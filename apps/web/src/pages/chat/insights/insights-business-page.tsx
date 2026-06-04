@@ -44,7 +44,7 @@ import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { ResolutionBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
-import { getDefaultDateRange, toBoundaryDate } from "./insights-date-range";
+import { getRecentDateRange, toBoundaryDate } from "./insights-date-range";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import { formatInsightTime } from "./insights-utils";
 import { useInsightDetail } from "./use-insight-detail";
@@ -102,13 +102,13 @@ const businessRelatedSessionsPageSize = 20;
 export function InsightsBusinessPage() {
   const [activeDimension, setActiveDimension] = useState<BusinessDimension>("intent");
   const [business, setBusiness] = useState<InsightsBusinessResponse>();
-  const [from, setFrom] = useState(() => getDefaultDateRange().from);
+  const [from, setFrom] = useState(() => getRecentDateRange(7).from);
   const [isRelatedSessionsLoading, setIsRelatedSessionsLoading] = useState(false);
   const [relatedSessionsPage, setRelatedSessionsPage] = useState<InsightBusinessRelatedSessionsResponse>();
   const [relatedSessionsPageNumber, setRelatedSessionsPageNumber] = useState(1);
   const [sessionSearchKeyword, setSessionSearchKeyword] = useState("");
   const [selectedTopic, setSelectedTopic] = useState<BusinessTopic>();
-  const [to, setTo] = useState(() => getDefaultDateRange().to);
+  const [to, setTo] = useState(() => getRecentDateRange(7).to);
   const detail = useInsightDetail();
 
   useEffect(() => {

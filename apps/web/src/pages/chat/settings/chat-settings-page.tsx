@@ -12,7 +12,6 @@ import { Link, Navigate, NavLink, useParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useIsDevEnv } from "@/lib/is-dev-env";
 import { AccountsSettingsPage } from "@/pages/chat/settings/pages/accounts-settings-page";
 import { AppearanceSettingsPage } from "@/pages/chat/settings/pages/appearance-settings-page";
 import { RolePermissionSettingsPage } from "@/pages/chat/settings/pages/role-permission-settings-page";
@@ -60,6 +59,10 @@ const settingsSections = [
   },
 ] as const;
 
+const visibleSettingsSections = import.meta.env.DEV
+  ? settingsSections
+  : settingsSections.filter((s) => !("devOnly" in s && s.devOnly));
+
 type SettingsSectionId = (typeof settingsSections)[number]["id"];
 
 function isSettingsSectionId(id: string): id is SettingsSectionId {
@@ -69,14 +72,13 @@ function isSettingsSectionId(id: string): id is SettingsSectionId {
 export function ChatSettingsPage() {
   const { sectionId } = useParams();
   const activeSectionId = sectionId ?? "accounts";
-  const isDevEnv = useIsDevEnv();
 
   if (!isSettingsSectionId(activeSectionId)) {
     return <Navigate replace to="/chat/settings" />;
   }
 
   const sectionMeta = settingsSections.find((s) => s.id === activeSectionId);
-  if (sectionMeta && "devOnly" in sectionMeta && sectionMeta.devOnly && !isDevEnv) {
+  if (sectionMeta && "devOnly" in sectionMeta && sectionMeta.devOnly && !import.meta.env.DEV) {
     return <Navigate replace to="/chat/settings" />;
   }
 
@@ -119,11 +121,6 @@ function SettingsSidebar({
 }: {
   activeSectionId: SettingsSectionId;
 }) {
-  const isDevEnv = useIsDevEnv();
-  const visibleSections = settingsSections.filter(
-    (s) => !("devOnly" in s && s.devOnly) || isDevEnv,
-  );
-
   return (
     <aside className="flex h-full min-h-0 flex-col bg-sidebar px-4 py-5 text-sidebar-foreground">
       <Button
@@ -143,7 +140,7 @@ function SettingsSidebar({
       </Button>
 
       <nav aria-label="设置菜单" className="space-y-1">
-        {visibleSections.map((section) => {
+        {visibleSettingsSections.map((section) => {
           const isActive = section.id === activeSectionId;
 
           return (

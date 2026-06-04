@@ -30,7 +30,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { useIsDevEnv } from "@/lib/is-dev-env";
 import { AccountSidebarItem } from "@/pages/chat/components/account-sidebar-item";
 import type { Account, EmployeeProfile } from "@/pages/chat/chat-types";
 
@@ -40,6 +39,10 @@ const railItems = [
   { label: "客户", icon: UserSquareIcon },
   { label: "任务", icon: Notification01Icon, devOnly: true },
 ];
+
+const visibleRailItems = import.meta.env.DEV
+  ? railItems
+  : railItems.filter((item) => !item.devOnly);
 
 type AccountRailProps = {
   accounts: Account[];
@@ -97,10 +100,6 @@ export function AccountRail({
   const signedInAvatarFallback = getFirstGrapheme(signedInName);
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
   const toggleIcon = isCollapsed ? PanelLeftIcon : LayoutAlignLeftIcon;
-  const isDevEnv = useIsDevEnv();
-  const visibleRailItems = railItems.filter(
-    (item) => !("devOnly" in item && item.devOnly) || isDevEnv,
-  );
   const accountMenuContent = (
     <DropdownMenuContent
       align="start"

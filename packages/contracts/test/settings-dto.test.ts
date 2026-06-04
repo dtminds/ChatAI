@@ -175,6 +175,7 @@ describe("settings sub-account DTOs", () => {
           permissions: ["chat.access", "chat.send", "chat.takeover"],
           role: "operator",
           subUserId: "101",
+          uid: 9001,
         },
       }),
     ).toBe(true);
@@ -187,6 +188,7 @@ describe("settings sub-account DTOs", () => {
           permissions: ["chat.access"],
           role: "viewer",
           subUserId: "102",
+          uid: 9001,
         },
       }),
     ).toBe(true);
@@ -214,6 +216,7 @@ describe("settings sub-account DTOs", () => {
           permissions: ["chat.access", "chat.send", "chat.takeover"],
           role: "operator",
           subUserId: "101",
+          uid: 9001,
         },
       }),
     ).toBe(true);

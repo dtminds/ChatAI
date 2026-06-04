@@ -433,6 +433,7 @@ describe("backend app", () => {
           ],
           role: "owner",
           subUserId: "101",
+          uid: 9001,
         },
       },
       success: true,

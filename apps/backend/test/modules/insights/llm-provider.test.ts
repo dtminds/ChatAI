@@ -457,6 +457,100 @@ describe("LLM provider config", () => {
     ]);
   });
 
+  it("runs only classification for classification scoped reanalysis", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        requestBodies.push(requestBody);
+
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    entities: [
+                      {
+                        confidence: 0.8,
+                        entityId: "mask",
+                        entityName: "补水面膜",
+                        entityType: "product",
+                        evidenceMessageIds: ["9001"],
+                      },
+                    ],
+                    intents: [],
+                    tags: [
+                      {
+                        confidence: 0.86,
+                        evidenceMessageIds: ["9001"],
+                        tagCode: "logistics",
+                        tagName: "物流咨询",
+                      },
+                    ],
+                  }),
+                },
+              },
+            ],
+          }),
+          { headers: { "Content-Type": "application/json" }, status: 200 },
+        );
+      }),
+    );
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      liteMaxTokens: 1024,
+      liteModel: "ep-lite",
+      maxTokens: 4096,
+      model: "ep-main",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      responseFormat: "json_object",
+    });
+
+    const result = await analyzer.analyzeSession({
+      context: {
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [],
+        qaRuleConfigs: [],
+      },
+      job: {
+        analysisScope: "classification",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "manual_reanalyze",
+        sessionId: "501",
+        uid: 9001,
+      },
+      messages: [
+        {
+          aiText: "快递一直没更新",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "9001",
+        },
+      ],
+      previousSessionContexts: [],
+    });
+
+    expect(requestBodies).toHaveLength(1);
+    expect(requestBodies[0]?.model).toBe("ep-lite");
+    expect(JSON.stringify(requestBodies[0]?.messages)).toContain("tags, entities, intents");
+    expect(result).toMatchObject({
+      entities: [expect.objectContaining({ entityName: "补水面膜" })],
+      intents: [],
+      qaFindings: [],
+      tags: [expect.objectContaining({ tagCode: "logistics" })],
+    });
+    expect(result.summary.customerIntent).toBe("");
+  });
+
   it("retries retryable optional classification failures before degrading the dimension", async () => {
     vi.useFakeTimers();
     const requestBodies: Array<Record<string, unknown>> = [];

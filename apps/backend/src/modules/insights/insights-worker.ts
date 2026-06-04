@@ -1,3 +1,4 @@
+import type { InsightRescanAnalysisScope } from "@chatai/contracts";
 import { buildInsightMessageInput } from "./insight-message-input-builder.js";
 import type {
   InsightPreviousSessionContext,
@@ -108,32 +109,36 @@ export type CloseSessionInput = {
 };
 
 export type CreateAnalyzeJobInput = {
-  analysisScope: "all";
+  analysisScope: InsightRescanAnalysisScope;
   jobType: "analyze_session" | "reanalyze_session";
   mode: "final" | "live";
+  rescanTaskId?: string;
   runAfter: Date;
   sessionId: string;
   uid: number;
 };
 
 export type ClaimedAnalyzeJob = {
-  analysisScope: "all";
+  analysisScope: InsightRescanAnalysisScope;
   attemptCount: number;
   jobId: string;
   maxAttempts: number;
   mode: "final" | "live" | "manual_reanalyze";
+  rescanTaskId?: string;
   sessionId: string;
   uid: number;
 };
 
 export type ClaimedSyncMessagesJob = {
+  analysisScope: InsightRescanAnalysisScope;
   cursorMsgtime: number;
   jobId: string;
+  rescanTaskId?: string;
   uid: number;
 };
 
 export type InsightAnalysisRunInput = {
-  analysisScope: "all";
+  analysisScope: InsightRescanAnalysisScope;
   jobId: string;
   mode: ClaimedAnalyzeJob["mode"];
   sessionId: string;
@@ -242,6 +247,7 @@ export type InsightSessionAnalyzer = {
     job: ClaimedAnalyzeJob;
     messages: AiMessageInput[];
     previousSessionContexts: InsightPreviousSessionContext[];
+    previousOutput?: InsightAnalysisOutput;
   }): Promise<InsightAnalyzerOutput>;
 };
 
@@ -293,6 +299,10 @@ export type InsightWorkerRepositoryPort = {
     uidAllowlist?: Set<number>;
   }): Promise<OpenSessionForLiveAnalysis[]>;
   listSessionMessagesForAnalysis(sessionId: string): Promise<InsightAnalysisMessageRow[]>;
+  getCurrentAnalysisOutput(input: {
+    sessionId: string;
+    uid: number;
+  }): Promise<InsightAnalysisOutput | undefined>;
   markAnalysisJobFailed(jobId: string, error: unknown): Promise<void>;
   markAnalysisJobSucceeded(jobId: string): Promise<void>;
   markAnalysisRunFailed(runId: string, error: unknown): Promise<void>;
@@ -305,6 +315,17 @@ export type InsightWorkerRepositoryPort = {
   saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string>;
   shouldCreateLiveAnalyzeJob(input: ShouldCreateLiveAnalyzeJobInput): Promise<boolean>;
   startAnalysisRun(input: InsightAnalysisRunInput): Promise<string>;
+  updateRescanTaskAfterAnalysis(input: {
+    failedSessions: number;
+    rescanTaskId: string;
+    succeededSessions: number;
+  }): Promise<void>;
+  updateRescanTaskAfterScan(input: {
+    queuedSessions: number;
+    rescanTaskId: string;
+    totalSessions: number;
+  }): Promise<void>;
+  updateRescanTaskRunning(rescanTaskId: string): Promise<void>;
   updateCursor(cursor: InsightWorkerCursor): Promise<void>;
 };
 
@@ -443,6 +464,10 @@ export class InsightsWorkerService {
     );
 
     try {
+      if (job.rescanTaskId) {
+        await this.repository.updateRescanTaskRunning(job.rescanTaskId);
+      }
+
       let cursorAuditId = 0;
       let cursorMsgtime = job.cursorMsgtime;
       let scannedMessages = 0;
@@ -493,12 +518,21 @@ export class InsightsWorkerService {
 
       for (const [sessionId, uid] of sessionsToReanalyze) {
         await this.repository.createAnalyzeJob({
-          analysisScope: "all",
+          analysisScope: job.analysisScope,
           jobType: "reanalyze_session",
           mode: "final",
+          rescanTaskId: job.rescanTaskId,
           runAfter: new Date(),
           sessionId,
           uid,
+        });
+      }
+
+      if (job.rescanTaskId) {
+        await this.repository.updateRescanTaskAfterScan({
+          queuedSessions: sessionsToReanalyze.size,
+          rescanTaskId: job.rescanTaskId,
+          totalSessions: sessionsToReanalyze.size,
         });
       }
 
@@ -730,27 +764,47 @@ export class InsightsWorkerService {
         lookbackHours: PREVIOUS_SESSION_LOOKBACK_HOURS,
         uid: job.uid,
       });
+      const previousOutput = job.analysisScope === "all"
+        ? undefined
+        : await this.repository.getCurrentAnalysisOutput({
+          sessionId: job.sessionId,
+          uid: job.uid,
+        });
 
-      const analyzerOutput = await this.model.analyzeSession({ context, job, messages: modelMessages, previousSessionContexts });
+      const analyzerOutput = await this.model.analyzeSession({
+        context,
+        job,
+        messages: modelMessages,
+        previousOutput,
+        previousSessionContexts,
+      });
       const { analysisWarnings, output: cleanAnalyzerOutput } = splitAnalyzerOutput(analyzerOutput);
       const configuredOutput = filterConfiguredAnalysisOutput(cleanAnalyzerOutput, context);
       const output = normalizeEvidenceIds(configuredOutput.output, new Set(sourceMessageIds));
+      const mergedOutput = mergeScopedAnalysisOutput(job.analysisScope, previousOutput, output.output);
       const validationWarnings = [
         ...analysisWarnings,
         ...configuredOutput.validationWarnings,
         ...output.validationWarnings,
         ...pendingInputWarnings,
-        ...await this.getConfidenceWarnings(job.uid, output.output),
+        ...await this.getConfidenceWarnings(job.uid, mergedOutput),
       ];
 
       const snapshotId = await this.repository.saveAnalysisResult({
         job,
-        output: output.output,
+        output: mergedOutput,
         runId,
         sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
         validationWarnings,
       });
       await this.repository.markAnalysisJobSucceeded(job.jobId);
+      if (job.rescanTaskId) {
+        await this.repository.updateRescanTaskAfterAnalysis({
+          failedSessions: 0,
+          rescanTaskId: job.rescanTaskId,
+          succeededSessions: 1,
+        });
+      }
       this.logger?.info(
         {
           durationMs: Date.now() - startedAt,
@@ -769,6 +823,13 @@ export class InsightsWorkerService {
       }
 
       await this.repository.markAnalysisJobFailed(job.jobId, error);
+      if (job.rescanTaskId) {
+        await this.repository.updateRescanTaskAfterAnalysis({
+          failedSessions: 1,
+          rescanTaskId: job.rescanTaskId,
+          succeededSessions: 0,
+        });
+      }
       this.logger?.error(
         {
           durationMs: Date.now() - startedAt,
@@ -801,6 +862,30 @@ function splitAnalyzerOutput(output: InsightAnalyzerOutput) {
   return {
     analysisWarnings,
     output: cleanOutput,
+  };
+}
+
+function mergeScopedAnalysisOutput(
+  scope: ClaimedAnalyzeJob["analysisScope"],
+  previousOutput: InsightAnalysisOutput | undefined,
+  nextOutput: InsightAnalysisOutput,
+): InsightAnalysisOutput {
+  if (scope === "all" || !previousOutput) {
+    return nextOutput;
+  }
+
+  if (scope === "qaFindings") {
+    return {
+      ...previousOutput,
+      qaFindings: nextOutput.qaFindings,
+    };
+  }
+
+  return {
+    ...previousOutput,
+    entities: nextOutput.entities,
+    intents: nextOutput.intents,
+    tags: nextOutput.tags,
   };
 }
 

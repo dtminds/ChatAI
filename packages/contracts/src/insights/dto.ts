@@ -16,6 +16,20 @@ export const InsightActionStatusSchema = Type.Union([
   Type.Literal("expired"),
 ]);
 
+export const InsightRescanAnalysisScopeSchema = Type.Union([
+  Type.Literal("all"),
+  Type.Literal("qaFindings"),
+  Type.Literal("classification"),
+]);
+
+export const InsightRescanTaskStatusSchema = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("running"),
+  Type.Literal("succeeded"),
+  Type.Literal("partial"),
+  Type.Literal("failed"),
+]);
+
 export const InsightSeveritySchema = Type.Union([
   Type.Literal("low"),
   Type.Literal("medium"),
@@ -558,13 +572,42 @@ export const InsightSettingsResponseSchema = Type.Object({
   sessionization: InsightSessionizationSettingsSchema,
 });
 
-export const InsightsRescanRequestSchema = Type.Object({
-  from: Type.String({ minLength: 1 }),
-});
+export const InsightsRescanRequestSchema = Type.Object(
+  {
+    analysisScope: InsightRescanAnalysisScopeSchema,
+    from: Type.String({ minLength: 1 }),
+    to: Type.Optional(Type.String({ minLength: 1 })),
+  },
+  { additionalProperties: false },
+);
 
 export const InsightsRescanResponseSchema = Type.Object({
   jobId: Type.String(),
   status: Type.Literal("accepted"),
+  taskId: Type.String(),
+});
+
+export const InsightRescanTaskSchema = Type.Object({
+  analysisScope: InsightRescanAnalysisScopeSchema,
+  createTime: Type.Number(),
+  createdBy: Type.Optional(Type.String()),
+  failedSessions: Type.Number(),
+  finishedAt: Type.Optional(Type.Number()),
+  from: Type.String(),
+  progressText: Type.String(),
+  queuedSessions: Type.Number(),
+  startedAt: Type.Optional(Type.Number()),
+  status: InsightRescanTaskStatusSchema,
+  succeededSessions: Type.Number(),
+  taskId: Type.String(),
+  to: Type.Optional(Type.String()),
+  totalSessions: Type.Number(),
+  updateTime: Type.Number(),
+});
+
+export const InsightRescanTaskListResponseSchema = Type.Object({
+  items: Type.Array(InsightRescanTaskSchema),
+  total: Type.Number(),
 });
 
 export const InsightConfigStatusUpdateRequestSchema = Type.Object({
@@ -577,6 +620,8 @@ export const InsightConfigDeletedResponseSchema = Type.Object({
 
 export type InsightActionStatus = Static<typeof InsightActionStatusSchema>;
 export type InsightAnalysisStatus = Static<typeof InsightAnalysisStatusSchema>;
+export type InsightRescanAnalysisScope = Static<typeof InsightRescanAnalysisScopeSchema>;
+export type InsightRescanTaskStatus = Static<typeof InsightRescanTaskStatusSchema>;
 export type InsightDetailResponse = Omit<
   Static<typeof InsightDetailResponseSchema>,
   "evidenceMessageRecords"
@@ -630,3 +675,5 @@ export type InsightOverviewSessionsResponse = Static<typeof InsightOverviewSessi
 export type InsightsQualityResponse = Static<typeof InsightsQualityResponseSchema>;
 export type InsightsRescanRequest = Static<typeof InsightsRescanRequestSchema>;
 export type InsightsRescanResponse = Static<typeof InsightsRescanResponseSchema>;
+export type InsightRescanTask = Static<typeof InsightRescanTaskSchema>;
+export type InsightRescanTaskListResponse = Static<typeof InsightRescanTaskListResponseSchema>;

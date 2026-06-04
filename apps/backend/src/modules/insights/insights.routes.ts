@@ -662,6 +662,21 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
         await createInsightsService(app).createRescanJob(
           await getUidScope(app, request),
           request.body,
+          request.user?.subUserId,
+        ),
+      );
+    },
+  );
+
+  app.get(
+    "/api/server/insights/jobs/rescan",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).listRescanTasks(
+          await getUidScope(app, request),
         ),
       );
     },

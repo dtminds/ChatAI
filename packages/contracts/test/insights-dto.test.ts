@@ -9,6 +9,7 @@ import {
   InsightLabelConfigMutationRequestSchema,
   InsightOverviewSessionsResponseSchema,
   InsightQaRuleConfigMutationRequestSchema,
+  InsightRescanTaskListResponseSchema,
   InsightSettingsResponseSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
   InsightsBusinessResponseSchema,
@@ -418,7 +419,48 @@ describe("insights DTOs", () => {
 
     expect(
       Value.Check(InsightsRescanRequestSchema, {
+        analysisScope: "qaFindings",
         from: "2026-06-01T00:00:00.000Z",
+        to: "2026-06-02T00:00:00.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(InsightsRescanRequestSchema, {
+        analysisScope: "classification",
+        from: "2026-06-01T00:00:00.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(InsightsRescanRequestSchema, {
+        analysisScope: "sentiment",
+        from: "2026-06-01T00:00:00.000Z",
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts rescan task list responses", () => {
+    expect(
+      Value.Check(InsightRescanTaskListResponseSchema, {
+        items: [
+          {
+            analysisScope: "classification",
+            createTime: 1_780_243_200_000,
+            createdBy: "客服主管",
+            failedSessions: 2,
+            finishedAt: 1_780_246_800_000,
+            from: "2026-06-01T00:00:00.000Z",
+            progressText: "20 / 20",
+            queuedSessions: 20,
+            startedAt: 1_780_243_300_000,
+            status: "partial",
+            succeededSessions: 18,
+            taskId: "901",
+            to: "2026-06-02T00:00:00.000Z",
+            totalSessions: 20,
+            updateTime: 1_780_246_800_000,
+          },
+        ],
+        total: 1,
       }),
     ).toBe(true);
   });

@@ -204,7 +204,7 @@ function createRepository(
   overrides: Partial<InsightsRepositoryPort> = {},
 ): InsightsRepositoryPort {
   return {
-    createRescanJob: vi.fn(async () => "8801"),
+    createRescanJob: vi.fn(async () => ({ jobId: "8801", taskId: "9901" })),
     findDetail: vi.fn(async () => ({
       actionItems: [
         {
@@ -378,6 +378,27 @@ function createRepository(
     listCurrentSessions: vi.fn(async (_scope, filters) => ({
       items: filters?.pageSize === 10_000 ? baseRows : [baseRows[0]],
       total: baseRows.length,
+    })),
+    listRescanTasks: vi.fn(async () => ({
+      items: [
+        {
+          analysisScope: "classification",
+          createTime: 1_780_243_200_000,
+          createdBy: "客服主管",
+          failedSessions: 2,
+          finishedAt: 1_780_246_800_000,
+          from: "2026-06-01T00:00:00.000Z",
+          queuedSessions: 20,
+          startedAt: 1_780_243_300_000,
+          status: "partial",
+          succeededSessions: 18,
+          taskId: "9901",
+          to: "2026-06-02T00:00:00.000Z",
+          totalSessions: 20,
+          updateTime: 1_780_246_800_000,
+        },
+      ],
+      total: 1,
     })),
     listEntityHotspots: vi.fn(async () => [
       {
@@ -1098,19 +1119,65 @@ describe("InsightsService", () => {
     expect(repository.updateActionStatus).toHaveBeenCalledWith(scope, "801", "done");
   });
 
-  it("creates a fresh historical rescan job on each manual trigger", async () => {
+  it("creates a scoped historical rescan task on each manual trigger", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
-    await expect(service.createRescanJob(scope, { from: "2026-06-01T00:00:00.000Z" })).resolves.toEqual({
+    await expect(
+      service.createRescanJob(
+        scope,
+        {
+          analysisScope: "qaFindings",
+          from: "2026-06-01T00:00:00.000Z",
+          to: "2026-06-02T00:00:00.000Z",
+        },
+        "客服主管",
+      ),
+    ).resolves.toEqual({
       jobId: "8801",
       status: "accepted",
+      taskId: "9901",
     });
     expect(repository.createRescanJob).toHaveBeenCalledWith(
       scope,
-      new Date("2026-06-01T00:00:00.000Z"),
-      expect.stringMatching(/^rescan:9001:2026-06-01T00:00:00\.000Z:/),
+      {
+        analysisScope: "qaFindings",
+        createdBy: "客服主管",
+        from: new Date("2026-06-01T00:00:00.000Z"),
+        to: new Date("2026-06-02T00:00:00.000Z"),
+      },
+      expect.stringMatching(/^rescan:9001:qaFindings:2026-06-01T00:00:00\.000Z:2026-06-02T00:00:00\.000Z:/),
     );
+  });
+
+  it("rejects rescan tasks with an end time before the start time", async () => {
+    const service = new InsightsService(createRepository());
+
+    await expect(
+      service.createRescanJob(scope, {
+        analysisScope: "all",
+        from: "2026-06-02T00:00:00.000Z",
+        to: "2026-06-01T00:00:00.000Z",
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_RESCAN_RANGE" });
+  });
+
+  it("lists historical rescan tasks with progress text", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(service.listRescanTasks(scope)).resolves.toEqual({
+      items: [
+        expect.objectContaining({
+          analysisScope: "classification",
+          progressText: "20 / 20",
+          status: "partial",
+          taskId: "9901",
+        }),
+      ],
+      total: 1,
+    });
+    expect(repository.listRescanTasks).toHaveBeenCalledWith(scope, { limit: 20 });
   });
 
   it("throws not found when a detail session is outside uid scope", async () => {

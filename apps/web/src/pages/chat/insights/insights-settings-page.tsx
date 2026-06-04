@@ -20,6 +20,8 @@ import type {
   InsightLabelConfigMutationRequest,
   InsightQaRuleConfig,
   InsightQaRuleConfigMutationRequest,
+  InsightRescanAnalysisScope,
+  InsightRescanTask,
   InsightSettingsResponse,
   InsightSessionizationSettings,
 } from "@chatai/contracts";
@@ -70,6 +72,7 @@ import {
   deleteInsightIntentConfig,
   deleteInsightLabelConfig,
   deleteInsightQaRuleConfig,
+  getInsightRescanTasks,
   getInsightSettings,
   updateInsightAnalysisPolicy,
   updateInsightEntityDictionaryItem,
@@ -159,7 +162,9 @@ export function InsightsSettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [pendingKey, setPendingKey] = useState<string>();
   const [rescanFrom, setRescanFrom] = useState(() => toDateTimeLocalValue(Date.now() - 24 * 60 * 60 * 1000));
+  const [rescanScope, setRescanScope] = useState<InsightRescanAnalysisScope>("classification");
   const [rescanState, setRescanState] = useState<string>();
+  const [rescanTasks, setRescanTasks] = useState<InsightRescanTask[]>([]);
   const [settings, setSettings] = useState<InsightSettingsResponse>();
   const [settingsTab, setSettingsTab] = useState("policy");
   const canAccessSettings = role === "owner" || role === "admin";
@@ -187,6 +192,34 @@ export function InsightsSettingsPage() {
       } finally {
         if (!ignore) {
           setIsLoading(false);
+        }
+      }
+    }
+
+    void load();
+
+    return () => {
+      ignore = true;
+    };
+  }, [canAccessSettings]);
+
+  useEffect(() => {
+    if (!canAccessSettings) {
+      return;
+    }
+
+    let ignore = false;
+
+    async function load() {
+      try {
+        const result = await getInsightRescanTasks();
+
+        if (!ignore) {
+          setRescanTasks(result.items);
+        }
+      } catch (error) {
+        if (!ignore) {
+          toast.error(getErrorMessage(error));
         }
       }
     }
@@ -348,9 +381,12 @@ export function InsightsSettingsPage() {
 
     try {
       const result = await createInsightRescanJob({
+        analysisScope: rescanScope,
         from: new Date(rescanFrom).toISOString(),
       });
-      setRescanState(`已创建任务 ${result.jobId}`);
+      const tasks = await getInsightRescanTasks();
+      setRescanTasks(tasks.items);
+      setRescanState(`已创建任务 ${result.taskId}`);
       toast.success("历史重刷任务已创建");
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -512,7 +548,10 @@ export function InsightsSettingsPage() {
               from={rescanFrom}
               onChange={setRescanFrom}
               onCreate={() => void createRescan()}
+              onScopeChange={setRescanScope}
+              scope={rescanScope}
               state={rescanState}
+              tasks={rescanTasks}
             />
           </TabsContent>
         </Tabs>
@@ -1343,31 +1382,47 @@ function RescanPanel({
   from,
   onChange,
   onCreate,
+  onScopeChange,
+  scope,
   state,
+  tasks,
 }: {
   disabled?: boolean;
   from: string;
   onChange: (value: string) => void;
   onCreate: () => void;
+  onScopeChange: (value: InsightRescanAnalysisScope) => void;
+  scope: InsightRescanAnalysisScope;
   state?: string;
+  tasks: InsightRescanTask[];
 }) {
   return (
     <section className="space-y-4">
       <p className="text-xs leading-5 text-muted-foreground">
-        从指定时间重新生成咨询会话和洞察结果，适合规则调整后的数据修正
+        从指定时间重新生成洞察结果，适合规则、标签、实体词库或意图配置调整后的数据修正
       </p>
       <div className="rounded-[8px] border bg-background px-5 py-1">
         <section className="grid gap-4 py-4 md:grid-cols-[minmax(0,1fr)_22rem] md:items-center">
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">重刷开始时间</h3>
+            <h3 className="text-sm font-semibold text-foreground">创建历史重刷任务</h3>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              只处理该时间之后的消息，时间范围越大任务耗时越长
+              只处理该时间之后的消息，重刷内容越多任务耗时越长
             </p>
           </div>
           <div className="flex flex-col items-stretch gap-2 md:items-end">
-            <div className="flex w-full items-center gap-2 md:justify-end">
+            <div className="grid w-full gap-2 sm:grid-cols-[12rem_minmax(0,1fr)_auto] md:justify-end">
+              <Select onValueChange={(value) => onScopeChange(value as InsightRescanAnalysisScope)} value={scope}>
+                <SelectTrigger className="h-10">
+                  <SelectValue aria-label="重刷内容" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="classification">标签 / 实体 / 意图</SelectItem>
+                  <SelectItem value="qaFindings">服务质检</SelectItem>
+                  <SelectItem value="all">全量重刷</SelectItem>
+                </SelectContent>
+              </Select>
               <Input
-                className="h-10 md:w-56"
+                className="h-10"
                 onChange={(event) => onChange(event.target.value)}
                 type="datetime-local"
                 value={from}
@@ -1379,6 +1434,51 @@ function RescanPanel({
             {state ? <div className="text-right text-xs text-muted-foreground">{state}</div> : null}
           </div>
         </section>
+      </div>
+      <div className="rounded-[8px] border bg-background">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>状态</TableHead>
+              <TableHead>进度</TableHead>
+              <TableHead>重刷内容</TableHead>
+              <TableHead>时间范围</TableHead>
+              <TableHead>结果</TableHead>
+              <TableHead>完成时间</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {tasks.length === 0 ? (
+              <TableRow>
+                <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={6}>
+                  暂无历史重刷任务
+                </TableCell>
+              </TableRow>
+            ) : tasks.map((task) => (
+              <TableRow key={task.taskId}>
+                <TableCell>
+                  <Badge
+                    className={task.status === "failed" ? "border-destructive/40 text-destructive" : undefined}
+                    variant="outline"
+                  >
+                    {rescanStatusText(task.status)}
+                  </Badge>
+                </TableCell>
+                <TableCell>{task.progressText}</TableCell>
+                <TableCell>{rescanScopeText(task.analysisScope)}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {formatRescanTaskRange(task)}
+                </TableCell>
+                <TableCell>
+                  成功 {task.succeededSessions} / 失败 {task.failedSessions}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {task.finishedAt ? formatDateTime(task.finishedAt) : "-"}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </div>
     </section>
   );
@@ -1971,6 +2071,44 @@ function entityTypeText(value: string) {
   };
 
   return text[value] ?? value;
+}
+
+function rescanScopeText(value: InsightRescanAnalysisScope) {
+  if (value === "qaFindings") {
+    return "服务质检";
+  }
+
+  if (value === "classification") {
+    return "标签 / 实体 / 意图";
+  }
+
+  return "全量重刷";
+}
+
+function rescanStatusText(value: InsightRescanTask["status"]) {
+  const text: Record<InsightRescanTask["status"], string> = {
+    failed: "失败",
+    partial: "部分完成",
+    pending: "排队中",
+    running: "运行中",
+    succeeded: "已完成",
+  };
+
+  return text[value];
+}
+
+function formatRescanTaskRange(task: InsightRescanTask) {
+  return `${formatDateTime(new Date(task.from).getTime())} 至 ${task.to ? formatDateTime(new Date(task.to).getTime()) : "当前"}`;
+}
+
+function formatDateTime(value: number) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function toDateTimeLocalValue(timestamp: number) {

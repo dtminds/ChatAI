@@ -837,10 +837,30 @@ export interface XyWapEmbedInsightJob {
   locked_by: string | null;
   max_attempts: Generated<number>;
   priority: Generated<number>;
+  rescan_task_id: number | null;
   run_after: Generated<Date>;
   status: string;
   target_id: string;
   target_type: string;
+  uid: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightRescanTask {
+  analysis_scope: string;
+  create_time: Generated<Date>;
+  created_by: string | null;
+  error_message: string | null;
+  failed_sessions: Generated<number>;
+  finished_at: Date | null;
+  from_time: Date;
+  id: Generated<number>;
+  queued_sessions: Generated<number>;
+  started_at: Date | null;
+  status: string;
+  succeeded_sessions: Generated<number>;
+  to_time: Date | null;
+  total_sessions: Generated<number>;
   uid: number;
   update_time: Generated<Date>;
 }
@@ -1126,6 +1146,7 @@ export interface DB {
   xy_wap_embed_insight_entity_dictionary: XyWapEmbedInsightEntityDictionary;
   xy_wap_embed_insight_evidence: XyWapEmbedInsightEvidence;
   xy_wap_embed_insight_job: XyWapEmbedInsightJob;
+  xy_wap_embed_insight_rescan_task: XyWapEmbedInsightRescanTask;
   xy_wap_embed_insight_intent_config: XyWapEmbedInsightIntentConfig;
   xy_wap_embed_insight_label_config: XyWapEmbedInsightLabelConfig;
   xy_wap_embed_insight_qa_rule_config: XyWapEmbedInsightQaRuleConfig;

@@ -15,6 +15,7 @@ const serviceMocks = vi.hoisted(() => ({
   getInsightOverview: vi.fn(),
   getInsightOverviewSessions: vi.fn(),
   getInsightQuality: vi.fn(),
+  getInsightRescanTasks: vi.fn(),
   getInsightSettings: vi.fn(),
   createInsightIntentConfig: vi.fn(),
   createInsightLabelConfig: vi.fn(),
@@ -824,6 +825,28 @@ function installInsightMocks() {
   serviceMocks.createInsightRescanJob.mockResolvedValue({
     jobId: "8801",
     status: "accepted",
+    taskId: "9901",
+  });
+  serviceMocks.getInsightRescanTasks.mockResolvedValue({
+    items: [
+      {
+        analysisScope: "classification",
+        createTime: 1_780_243_200_000,
+        failedSessions: 2,
+        finishedAt: 1_780_246_800_000,
+        from: "2026-06-01T00:00:00.000Z",
+        progressText: "20 / 20",
+        queuedSessions: 20,
+        startedAt: 1_780_243_300_000,
+        status: "partial",
+        succeededSessions: 18,
+        taskId: "9901",
+        to: "2026-06-02T00:00:00.000Z",
+        totalSessions: 20,
+        updateTime: 1_780_246_800_000,
+      },
+    ],
+    total: 1,
   });
   serviceMocks.createInsightLabelConfig.mockResolvedValue({
     enabled: true,
@@ -1366,6 +1389,25 @@ describe("conversation insights pages", () => {
         }),
       );
     });
+
+    await userEvent.click(screen.getByRole("tab", { name: "历史重刷" }));
+    await waitFor(() => {
+      expect(screen.getAllByText("标签 / 实体 / 意图").length).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.getByText("部分完成")).toBeInTheDocument();
+    expect(screen.getByText("20 / 20")).toBeInTheDocument();
+    expect(screen.getByText("成功 18 / 失败 2")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "创建任务" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.createInsightRescanJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          analysisScope: "classification",
+          from: expect.any(String),
+        }),
+      );
+    });
+    expect(serviceMocks.getInsightRescanTasks).toHaveBeenCalledTimes(2);
 
     cleanup();
     mockSession("admin");

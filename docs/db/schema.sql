@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  rescan_task_id BIGINT UNSIGNED NULL COMMENT '历史重刷任务ID',
   job_type VARCHAR(64) NOT NULL COMMENT '任务类型',
   analysis_scope VARCHAR(64) NOT NULL COMMENT '分析范围',
   target_type VARCHAR(64) NOT NULL COMMENT '任务目标类型',
@@ -94,8 +95,30 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   UNIQUE KEY uk_insight_job_idempotency (idempotency_key),
   KEY idx_insight_job_runnable (status, run_after, priority),
+  KEY idx_insight_job_rescan_task (rescan_task_id),
   KEY idx_insight_job_target (uid, target_type, target_id)
 ) COMMENT='会话洞察异步任务表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_rescan_task (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  created_by VARCHAR(128) NULL COMMENT '创建人展示名或ID',
+  from_time DATETIME NOT NULL COMMENT '重刷起始时间',
+  to_time DATETIME NULL COMMENT '重刷结束时间',
+  analysis_scope VARCHAR(64) NOT NULL COMMENT '重刷范围',
+  status VARCHAR(32) NOT NULL COMMENT '任务状态',
+  total_sessions INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '需重刷会话数',
+  queued_sessions INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已入队会话数',
+  succeeded_sessions INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '成功会话数',
+  failed_sessions INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '失败会话数',
+  started_at DATETIME NULL COMMENT '开始时间',
+  finished_at DATETIME NULL COMMENT '完成时间',
+  error_message VARCHAR(1024) NULL COMMENT '错误信息',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  KEY idx_insight_rescan_task_uid_time (uid, create_time),
+  KEY idx_insight_rescan_task_status (status)
+) COMMENT='会话洞察历史重刷任务表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_analysis_run (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',

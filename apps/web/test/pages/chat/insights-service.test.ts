@@ -15,6 +15,7 @@ import {
   getInsightOverview,
   getInsightOverviewSessions,
   getInsightQuality,
+  getInsightRescanTasks,
   getInsightSettings,
   updateInsightAnalysisPolicy,
   updateInsightActionStatus,
@@ -45,8 +46,12 @@ describe("insights service adapter", () => {
     mock.onGet("/server/insights/settings").reply(200, { data: { sessionization: {} }, success: true });
     mock.onPost("/server/insights/jobs/rescan").reply((config) => [
       200,
-      { data: JSON.parse(config.data ?? "{}"), success: true },
+      { data: { ...JSON.parse(config.data ?? "{}"), jobId: "8801", status: "accepted", taskId: "9901" }, success: true },
     ]);
+    mock.onGet("/server/insights/jobs/rescan").reply(200, {
+      data: { items: [], total: 0 },
+      success: true,
+    });
 
     await getInsightOverview({
       from: "2026-06-01",
@@ -72,7 +77,12 @@ describe("insights service adapter", () => {
     await getInsightMessageContext({ conversationId: "301", messageId: "9002" });
     await updateInsightActionStatus("801", "done");
     await getInsightSettings();
-    await createInsightRescanJob({ from: "2026-06-01T00:00:00.000Z" });
+    await createInsightRescanJob({
+      analysisScope: "classification",
+      from: "2026-06-01T00:00:00.000Z",
+      to: "2026-06-02T00:00:00.000Z",
+    });
+    await getInsightRescanTasks();
 
     expect(mock.history.get[0]?.url).toBe("/server/insights/overview");
     expect(mock.history.get[0]?.params).toEqual({
@@ -116,8 +126,11 @@ describe("insights service adapter", () => {
     expect(mock.history.get[7]?.url).toBe("/server/insights/settings");
     expect(mock.history.post[0]?.url).toBe("/server/insights/jobs/rescan");
     expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
+      analysisScope: "classification",
       from: "2026-06-01T00:00:00.000Z",
+      to: "2026-06-02T00:00:00.000Z",
     });
+    expect(mock.history.get[8]?.url).toBe("/server/insights/jobs/rescan");
   });
 
   it("uses public /server insights endpoints for settings CRUD", async () => {

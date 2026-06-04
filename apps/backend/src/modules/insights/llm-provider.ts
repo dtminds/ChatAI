@@ -151,6 +151,34 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
   private async doAnalyzeSessionInSteps(
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
   ): Promise<InsightAnalyzerOutput> {
+    if (input.job.analysisScope === "qaFindings") {
+      const priorConclusions = buildPriorConclusions(input.previousOutput);
+      return await this.completeOptionalStep("qaFindings", {
+        maxTokens: this.config.maxTokens,
+        messages: buildInsightQaPromptMessages({
+          context: input.context,
+          messages: input.messages,
+          previousSessionContexts: input.previousSessionContexts,
+          priorConclusions,
+        }),
+        model: this.config.model,
+      });
+    }
+
+    if (input.job.analysisScope === "classification") {
+      const priorConclusions = buildPriorConclusions(input.previousOutput);
+      return await this.completeOptionalStep("classification", {
+        maxTokens: this.config.liteMaxTokens,
+        messages: buildInsightClassificationPromptMessages({
+          context: input.context,
+          messages: input.messages,
+          previousSessionContexts: input.previousSessionContexts,
+          priorConclusions,
+        }),
+        model: this.config.liteModel,
+      });
+    }
+
     const summary = await this.completeAnalysisStep({
       maxTokens: this.config.maxTokens,
       messages: buildInsightSummaryPromptMessages({
@@ -478,6 +506,17 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
       tagCode: readString(item, "tagCode") || "custom",
       tagName: readString(item, "tagName") || "自定义标签",
     })),
+  };
+}
+
+function buildPriorConclusions(output: InsightAnalysisOutput | undefined) {
+  const fallback = emptyAnalysisOutput();
+  const base = output ?? fallback;
+
+  return {
+    actionItems: base.actionItems,
+    problemResolution: base.problemResolution,
+    summary: base.summary,
   };
 }
 

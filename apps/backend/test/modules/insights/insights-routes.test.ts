@@ -55,7 +55,16 @@ describe("insights routes", () => {
         "x-workbench-client": "chat-ai-ui",
       },
       method: "POST",
-      payload: { from: "2026-06-01T00:00:00.000Z" },
+      payload: {
+        analysisScope: "classification",
+        from: "2026-06-01T00:00:00.000Z",
+        to: "2026-06-02T00:00:00.000Z",
+      },
+      url: "/api/server/insights/jobs/rescan",
+    });
+    const rescanTasks = await app.inject({
+      headers: { authorization },
+      method: "GET",
       url: "/api/server/insights/jobs/rescan",
     });
 
@@ -177,16 +186,39 @@ describe("insights routes", () => {
     expect(rescan.statusCode).toBe(200);
     expect(rescan.json()).toMatchObject({
       data: {
+        jobId: "8802",
         status: "accepted",
+        taskId: "9901",
+      },
+      success: true,
+    });
+    expect(rescanTasks.statusCode).toBe(200);
+    expect(rescanTasks.json()).toMatchObject({
+      data: {
+        items: [
+          expect.objectContaining({
+            analysisScope: "classification",
+            progressText: "0 / 0",
+            status: "pending",
+            taskId: "9901",
+          }),
+        ],
+        total: 1,
       },
       success: true,
     });
     expect(db.updatedActionStatus).toMatchObject({ id: 801, status: "done" });
-    expect(db.insertedJob).toMatchObject({
-      job_type: "sync_messages",
+    expect(db.insertedRescanTask).toMatchObject({
+      analysis_scope: "classification",
       uid: 9001,
     });
-    expect(db.insertedJob?.idempotency_key).toMatch(/^rescan:9001:2026-06-01T00:00:00\.000Z:/);
+    expect(db.insertedJob).toMatchObject({
+      analysis_scope: "classification",
+      job_type: "sync_messages",
+      rescan_task_id: 9901,
+      uid: 9001,
+    });
+    expect(db.insertedJob?.idempotency_key).toMatch(/^rescan:9001:classification:2026-06-01T00:00:00\.000Z:2026-06-02T00:00:00\.000Z:/);
 
     await app.close();
   });
@@ -287,17 +319,24 @@ function createInsightsDbMock(options: {
 } = {}) {
   const state = {
     insertedJob: undefined as Record<string, unknown> | undefined,
+    insertedRescanTask: undefined as Record<string, unknown> | undefined,
     insightCurrentSelectCount: 0,
     updatedActionStatus: undefined as { id: number | undefined; status: string | undefined } | undefined,
     insertInto(table: string) {
-      if (table !== "xy_wap_embed_insight_job") {
+      if (table !== "xy_wap_embed_insight_job" && table !== "xy_wap_embed_insight_rescan_task") {
         throw new Error(`Unexpected insert table: ${table}`);
       }
 
       const builder = {
-        executeTakeFirstOrThrow: async () => ({ insertId: 8801 }),
+        executeTakeFirstOrThrow: async () => ({
+          insertId: table === "xy_wap_embed_insight_rescan_task" ? 9901 : 8802,
+        }),
         values: (values: Record<string, unknown>) => {
-          state.insertedJob = values;
+          if (table === "xy_wap_embed_insight_rescan_task") {
+            state.insertedRescanTask = values;
+          } else {
+            state.insertedJob = values;
+          }
           return builder;
         },
       };
@@ -601,6 +640,27 @@ function createInsightsDbMock(options: {
           {
             action_open_count: 1,
             snapshot_id: 7001,
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_insight_rescan_task") {
+        return createBuilder([
+          {
+            analysis_scope: state.insertedRescanTask?.analysis_scope ?? "classification",
+            create_time: new Date("2026-06-01T00:00:00.000Z"),
+            created_by: null,
+            failed_sessions: 0,
+            finished_at: null,
+            from_time: state.insertedRescanTask?.from_time ?? new Date("2026-06-01T00:00:00.000Z"),
+            id: 9901,
+            queued_sessions: 0,
+            started_at: null,
+            status: "pending",
+            succeeded_sessions: 0,
+            to_time: state.insertedRescanTask?.to_time ?? new Date("2026-06-02T00:00:00.000Z"),
+            total_sessions: 0,
+            update_time: new Date("2026-06-01T00:00:00.000Z"),
           },
         ]);
       }

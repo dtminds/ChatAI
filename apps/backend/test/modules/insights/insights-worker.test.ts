@@ -74,6 +74,7 @@ function createRepository(
     ]),
     listOpenSessionsForLiveAnalysis: vi.fn(async () => []),
     listSessionMessagesForAnalysis: vi.fn(async () => []),
+    getCurrentAnalysisOutput: vi.fn(async () => undefined),
     markAnalysisJobFailed: vi.fn(async () => undefined),
     postponeAnalysisJobForInputReadiness: vi.fn(async () => undefined),
     markAnalysisJobSucceeded: vi.fn(async () => undefined),
@@ -83,6 +84,9 @@ function createRepository(
     saveAnalysisResult: vi.fn(async () => "7001"),
     shouldCreateLiveAnalyzeJob: vi.fn(async () => true),
     startAnalysisRun: vi.fn(async () => "run-1"),
+    updateRescanTaskAfterAnalysis: vi.fn(async () => undefined),
+    updateRescanTaskAfterScan: vi.fn(async () => undefined),
+    updateRescanTaskRunning: vi.fn(async () => undefined),
     updateCursor: vi.fn(async () => undefined),
     ...overrides,
   };
@@ -314,8 +318,10 @@ describe("InsightsWorkerService", () => {
     };
     const repository = createRepository({
       claimNextSyncMessagesJob: vi.fn(async () => ({
+        analysisScope: "classification",
         cursorMsgtime: 1_780_000_000_000,
         jobId: "rescan-job-1",
+        rescanTaskId: "9901",
         uid: 9001,
       })),
       listIncrementalMessages: vi.fn(async ({ cursorMsgtime }) => {
@@ -355,8 +361,10 @@ describe("InsightsWorkerService", () => {
   it("reuses existing logical sessions during historical rescan instead of creating duplicate sessions", async () => {
     const repository = createRepository({
       claimNextSyncMessagesJob: vi.fn(async () => ({
+        analysisScope: "classification",
         cursorMsgtime: 1_780_000_000_000,
         jobId: "rescan-job-1",
+        rescanTaskId: "9901",
         uid: 9001,
       })),
       findSessionBySourceMessage: vi.fn(async () => undefined),
@@ -403,13 +411,20 @@ describe("InsightsWorkerService", () => {
     expect(repository.createAnalyzeJob).toHaveBeenCalledTimes(1);
     expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
       expect.objectContaining({
-        analysisScope: "all",
+        analysisScope: "classification",
+        rescanTaskId: "9901",
         jobType: "reanalyze_session",
         mode: "final",
         sessionId: "501",
         uid: 9001,
       }),
     );
+    expect(repository.updateRescanTaskRunning).toHaveBeenCalledWith("9901");
+    expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
+      queuedSessions: 1,
+      rescanTaskId: "9901",
+      totalSessions: 1,
+    });
     expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith("rescan-job-1");
   });
 
@@ -673,6 +688,186 @@ describe("InsightsWorkerService", () => {
         validationWarnings: expect.arrayContaining([
           expect.stringContaining("confidence 0.62 is below threshold 0.75"),
         ]),
+      }),
+    );
+  });
+
+  it("merges scoped classification output with the current full analysis before saving", async () => {
+    const previousOutput = {
+      actionItems: [
+        {
+          actionType: "logistics_check",
+          evidenceMessageIds: ["9002"],
+          priority: "high" as const,
+          title: "确认快递状态",
+        },
+      ],
+      entities: [],
+      faqCandidates: [
+        {
+          answerHint: "先查物流轨迹",
+          evidenceMessageIds: ["9001"],
+          question: "物流停滞怎么办",
+          status: "candidate",
+        },
+      ],
+      intents: [],
+      problemResolution: {
+        confidence: 0.82,
+        evidence: [],
+        evidenceMessageIds: ["9001"],
+        problemDetected: true,
+        problemSummary: "客户反馈物流异常",
+        resolutionStatus: "unresolved" as const,
+      },
+      qaFindings: [
+        {
+          confidence: 0.8,
+          evidenceMessageIds: ["9002"],
+          passed: true,
+          reason: "客服有回应",
+          ruleCode: "reply_quality",
+          severity: "high" as const,
+        },
+      ],
+      risks: [],
+      sentiment: [
+        {
+          confidence: 0.75,
+          evidenceMessageIds: ["9001"],
+          polarity: "negative" as const,
+          reason: "客户表达不满",
+        },
+      ],
+      summary: {
+        confidence: 0.9,
+        customerIntent: "查物流",
+        processSummary: "客服承诺处理",
+        resultSummary: "尚未解决",
+      },
+      tags: [
+        {
+          confidence: 0.6,
+          evidenceMessageIds: ["9001"],
+          tagCode: "old",
+          tagName: "旧标签",
+        },
+      ],
+    };
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "classification",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "manual_reanalyze",
+        rescanTaskId: "9901",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      getCurrentAnalysisOutput: vi.fn(async () => previousOutput),
+      getPromptContext: vi.fn(async () => ({
+        entityDictionary: [
+          {
+            aliases: ["羽绒服"],
+            canonicalName: "白色羽绒服",
+            entityId: "sku-1",
+            entityType: "product",
+            includeInAggregation: true,
+          },
+        ],
+        intentConfigs: [],
+        labelConfigs: [
+          {
+            includeInStatistics: true,
+            labelCode: "logistics",
+            labelName: "物流咨询",
+            negativeExamples: [],
+            positiveExamples: ["物流不更新"],
+          },
+        ],
+        qaRuleConfigs: [],
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [],
+        entities: [
+          {
+            confidence: 0.8,
+            entityId: "sku-1",
+            entityName: "白色羽绒服",
+            entityType: "product",
+            evidenceMessageIds: ["9001"],
+          },
+        ],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0,
+          evidence: [],
+          evidenceMessageIds: [],
+          problemDetected: false,
+          problemSummary: "",
+          resolutionStatus: "unknown" as const,
+        },
+        qaFindings: [],
+        risks: [],
+        sentiment: [],
+        summary: {
+          confidence: 0,
+          customerIntent: "",
+          processSummary: "",
+          resultSummary: "",
+        },
+        tags: [
+          {
+            confidence: 0.9,
+            evidenceMessageIds: ["9001"],
+            tagCode: "logistics",
+            tagName: "物流咨询",
+          },
+        ],
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.getCurrentAnalysisOutput).toHaveBeenCalledWith({
+      sessionId: "501",
+      uid: 9001,
+    });
+    expect(model.analyzeSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previousOutput,
+      }),
+    );
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output: expect.objectContaining({
+          actionItems: previousOutput.actionItems,
+          entities: [expect.objectContaining({ entityId: "sku-1" })],
+          faqCandidates: previousOutput.faqCandidates,
+          problemResolution: previousOutput.problemResolution,
+          qaFindings: previousOutput.qaFindings,
+          sentiment: previousOutput.sentiment,
+          summary: previousOutput.summary,
+          tags: [expect.objectContaining({ tagCode: "logistics" })],
+        }),
       }),
     );
   });

@@ -20,6 +20,8 @@ import type {
   InsightMessageContextResponse,
   InsightQaRuleConfig,
   InsightQaRuleConfigMutationRequest,
+  InsightRescanAnalysisScope,
+  InsightRescanTaskListResponse,
   InsightSettingsResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
@@ -103,6 +105,7 @@ export type InsightDetailRow = {
   faqCandidates: InsightDetailResponse["faqCandidates"];
   intents: InsightDetailResponse["intents"];
   problemEvidenceMessageIds: string[];
+  qaFindingDetails?: Array<InsightDetailResponse["qaFindings"][number] & { severity: InsightSeverity }>;
   qaFindings: InsightDetailResponse["qaFindings"];
   risks: InsightDetailResponse["risks"];
   sentiment: InsightDetailResponse["sentiment"];
@@ -151,6 +154,23 @@ export type InsightsBusinessRelatedSessionFilters = InsightsOverviewFilters & {
   topicType?: string;
 };
 
+export type InsightRescanTaskRow = {
+  analysisScope: InsightRescanAnalysisScope;
+  createTime: number;
+  createdBy?: string;
+  failedSessions: number;
+  finishedAt?: number;
+  from: string;
+  queuedSessions: number;
+  startedAt?: number;
+  status: InsightRescanTaskListResponse["items"][number]["status"];
+  succeededSessions: number;
+  taskId: string;
+  to?: string;
+  totalSessions: number;
+  updateTime: number;
+};
+
 export type InsightCurrentSessionPage = {
   items: InsightCurrentSessionRow[];
   total: number;
@@ -176,9 +196,14 @@ export type InsightBusinessTopicFactRow = {
 export type InsightsRepositoryPort = {
   createRescanJob(
     scope: InsightsUidScope,
-    from: Date,
+    input: {
+      analysisScope: InsightRescanAnalysisScope;
+      createdBy?: string;
+      from: Date;
+      to: Date;
+    },
     idempotencyKey: string,
-  ): Promise<string>;
+  ): Promise<{ jobId: string; taskId: string }>;
   findDetail(scope: InsightsUidScope, sessionId: string): Promise<InsightDetailRow | undefined>;
   listActionItems(
     scope: InsightsUidScope,
@@ -213,6 +238,10 @@ export type InsightsRepositoryPort = {
     sessionId: string,
     messageIds: string[],
   ): Promise<WorkbenchMessageDto[]>;
+  listRescanTasks(
+    scope: InsightsUidScope,
+    filters: { limit: number },
+  ): Promise<{ items: InsightRescanTaskRow[]; total: number }>;
   listSessionMessageRecords(
     scope: InsightsUidScope,
     sessionId: string,
@@ -807,6 +836,7 @@ export class InsightsService {
   async createRescanJob(
     scope: InsightsUidScope,
     payload: InsightsRescanRequest,
+    createdBy?: string,
   ): Promise<InsightsRescanResponse> {
     const from = new Date(payload.from);
 
@@ -814,16 +844,47 @@ export class InsightsService {
       throw new BadRequestError("INVALID_RESCAN_FROM", "重刷开始时间无效");
     }
 
+    const to = payload.to ? new Date(payload.to) : new Date();
+
+    if (Number.isNaN(to.getTime())) {
+      throw new BadRequestError("INVALID_RESCAN_TO", "重刷结束时间无效");
+    }
+
+    if (to.getTime() < from.getTime()) {
+      throw new BadRequestError("INVALID_RESCAN_RANGE", "重刷结束时间不能早于开始时间");
+    }
+
     const normalizedFrom = from.toISOString();
-    const jobId = await this.repository.createRescanJob(
+    const normalizedTo = to.toISOString();
+    const result = await this.repository.createRescanJob(
       scope,
-      from,
-      `rescan:${scope.uid}:${normalizedFrom}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
+      {
+        analysisScope: payload.analysisScope,
+        createdBy,
+        from,
+        to,
+      },
+      `rescan:${scope.uid}:${payload.analysisScope}:${normalizedFrom}:${normalizedTo}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
     );
 
     return {
-      jobId,
+      jobId: result.jobId,
       status: "accepted",
+      taskId: result.taskId,
+    };
+  }
+
+  async listRescanTasks(
+    scope: InsightsUidScope,
+  ): Promise<InsightRescanTaskListResponse> {
+    const tasks = await this.repository.listRescanTasks(scope, { limit: 20 });
+
+    return {
+      items: tasks.items.map((task) => ({
+        ...task,
+        progressText: `${task.succeededSessions + task.failedSessions} / ${task.totalSessions}`,
+      })),
+      total: tasks.total,
     };
   }
 

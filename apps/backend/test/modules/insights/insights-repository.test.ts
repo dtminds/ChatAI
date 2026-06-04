@@ -380,7 +380,7 @@ describe("InsightsRepository", () => {
     expect(updateExecute).not.toHaveBeenCalled();
   });
 
-  it("returns an existing rescan job when the idempotency key already exists", async () => {
+  it("returns an existing rescan job and task when the idempotency key already exists", async () => {
     const duplicateKeyError = Object.assign(new Error("Duplicate entry"), {
       code: "ER_DUP_ENTRY",
       errno: 1062,
@@ -391,17 +391,21 @@ describe("InsightsRepository", () => {
           throw duplicateKeyError;
         }),
       ),
-      selectFrom: vi.fn(() => createSelectBuilder([{ id: 8801 }])),
+      selectFrom: vi.fn(() => createSelectBuilder([{ id: 8801, rescan_task_id: 9901 }])),
     };
     const repository = new InsightsRepository(db as never);
 
     await expect(
       repository.createRescanJob(
         { uid: 9001 },
-        new Date("2026-06-01T00:00:00.000Z"),
+        {
+          analysisScope: "classification",
+          from: new Date("2026-06-01T00:00:00.000Z"),
+          to: new Date("2026-06-02T00:00:00.000Z"),
+        },
         "rescan:9001:2026-06-01T00:00:00.000Z",
       ),
-    ).resolves.toBe("8801");
+    ).resolves.toEqual({ jobId: "8801", taskId: "9901" });
   });
 });
 

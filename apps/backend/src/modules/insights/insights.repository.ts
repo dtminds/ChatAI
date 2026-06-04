@@ -13,6 +13,8 @@ import type {
   InsightMessageContextResponse,
   InsightQaRuleConfig,
   InsightQaRuleConfigMutationRequest,
+  InsightRescanAnalysisScope,
+  InsightRescanTaskStatus,
   WorkbenchMessageDto,
   InsightSettingsResponse,
   InsightSessionizationSettings,
@@ -168,6 +170,7 @@ type QaFindingQueryRow = {
   qa_passed: number | string | null;
   qa_reason: string | null;
   qa_rule_code: string | null;
+  qa_severity: string | null;
 };
 
 type RiskQueryRow = {
@@ -1853,6 +1856,23 @@ export class InsightsRepository implements InsightsRepositoryPort {
       this.listFaqCandidates(snapshotId, dimensionEvidence),
     ]);
 
+    const qaFindingDetails = uniqueBy(
+      qaFindingRows
+        .filter((row) => row.qa_finding_id != null)
+        .map((row) => ({
+          evidenceMessageIds: evidenceForDimension(
+            dimensionEvidence,
+            "qa_finding",
+            row.qa_finding_id,
+          ),
+          passed: row.qa_passed === 1,
+          reason: row.qa_reason ?? "",
+          ruleCode: row.qa_rule_code ?? "",
+          severity: normalizeRiskSeverity(row.qa_severity) ?? "low",
+        })),
+      (row) => row.ruleCode,
+    );
+
     return {
       actionItems,
       current,
@@ -1867,21 +1887,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
       faqCandidates,
       intents,
       problemEvidenceMessageIds: current.problemEvidenceMessageIds,
-      qaFindings: uniqueBy(
-        qaFindingRows
-          .filter((row) => row.qa_finding_id != null)
-          .map((row) => ({
-            evidenceMessageIds: evidenceForDimension(
-              dimensionEvidence,
-              "qa_finding",
-              row.qa_finding_id,
-            ),
-            passed: row.qa_passed === 1,
-            reason: row.qa_reason ?? "",
-            ruleCode: row.qa_rule_code ?? "",
-          })),
-        (row) => row.ruleCode,
-      ),
+      qaFindingDetails,
+      qaFindings: qaFindingDetails.map(({ severity: _severity, ...item }) => item),
       risks: uniqueBy(
         riskRows
           .filter((row) => row.risk_id != null)
@@ -1930,6 +1937,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "passed as qa_passed",
         "reason as qa_reason",
         "rule_code as qa_rule_code",
+        "severity as qa_severity",
       ])
       .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
       .execute() as QaFindingQueryRow[];
@@ -2601,46 +2609,135 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
   async createRescanJob(
     scope: InsightsUidScope,
-    from: Date,
+    input: {
+      analysisScope: InsightRescanAnalysisScope;
+      createdBy?: string;
+      from: Date;
+      to: Date;
+    },
     idempotencyKey: string,
-  ): Promise<string> {
+  ): Promise<{ jobId: string; taskId: string }> {
     try {
+      const insertedTask = await this.db
+        .insertInto("xy_wap_embed_insight_rescan_task")
+        .values({
+          analysis_scope: input.analysisScope,
+          created_by: input.createdBy ?? null,
+          from_time: input.from,
+          status: "pending",
+          to_time: input.to,
+          uid: scope.uid,
+        })
+        .executeTakeFirstOrThrow() as InsertResult;
+      const taskId = parseInsertedMySqlId(insertedTask) ?? -1;
       const inserted = await this.db
         .insertInto("xy_wap_embed_insight_job")
         .values({
-          analysis_scope: "all",
+          analysis_scope: input.analysisScope,
           idempotency_key: idempotencyKey,
           job_type: "sync_messages",
           priority: 10,
+          rescan_task_id: taskId,
           run_after: new Date(),
           status: "pending",
-          target_id: from.toISOString(),
+          target_id: input.from.toISOString(),
           target_type: "uid",
           uid: scope.uid,
         })
         .executeTakeFirstOrThrow() as InsertResult;
 
-      return String(parseInsertedMySqlId(inserted) ?? idempotencyKey);
+      return {
+        jobId: String(parseInsertedMySqlId(inserted) ?? idempotencyKey),
+        taskId: String(taskId),
+      };
     } catch (error) {
       if (!isDuplicateKeyError(error)) {
         throw error;
       }
 
-      return await this.getInsightJobIdByIdempotencyKey(idempotencyKey)
-        ?? idempotencyKey;
+      return await this.getInsightJobByIdempotencyKey(idempotencyKey)
+        ?? { jobId: idempotencyKey, taskId: idempotencyKey };
     }
   }
 
-  private async getInsightJobIdByIdempotencyKey(
+  async listRescanTasks(
+    scope: InsightsUidScope,
+    filters: { limit: number },
+  ) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_insight_rescan_task")
+      .select([
+        "analysis_scope",
+        "create_time",
+        "created_by",
+        "failed_sessions",
+        "finished_at",
+        "from_time",
+        "id",
+        "queued_sessions",
+        "started_at",
+        "status",
+        "succeeded_sessions",
+        "to_time",
+        "total_sessions",
+        "update_time",
+      ])
+      .where("uid", "=", scope.uid)
+      .orderBy("create_time", "desc")
+      .limit(filters.limit)
+      .execute() as Array<{
+        analysis_scope: string;
+        create_time: Date | string;
+        created_by: string | null;
+        failed_sessions: number | string;
+        finished_at: Date | string | null;
+        from_time: Date | string;
+        id: number | string;
+        queued_sessions: number | string;
+        started_at: Date | string | null;
+        status: string;
+        succeeded_sessions: number | string;
+        to_time: Date | string | null;
+        total_sessions: number | string;
+        update_time: Date | string;
+      }>;
+
+    return {
+      items: rows.map((row) => ({
+        analysisScope: normalizeRescanAnalysisScope(row.analysis_scope),
+        createTime: toTimestamp(row.create_time),
+        createdBy: row.created_by ?? undefined,
+        failedSessions: parseNumber(row.failed_sessions),
+        finishedAt: toOptionalTimestamp(row.finished_at),
+        from: new Date(row.from_time).toISOString(),
+        queuedSessions: parseNumber(row.queued_sessions),
+        startedAt: toOptionalTimestamp(row.started_at),
+        status: normalizeRescanTaskStatus(row.status),
+        succeededSessions: parseNumber(row.succeeded_sessions),
+        taskId: String(row.id),
+        to: row.to_time == null ? undefined : new Date(row.to_time).toISOString(),
+        totalSessions: parseNumber(row.total_sessions),
+        updateTime: toTimestamp(row.update_time),
+      })),
+      total: rows.length,
+    };
+  }
+
+  private async getInsightJobByIdempotencyKey(
     idempotencyKey: string,
-  ): Promise<string | undefined> {
+  ): Promise<{ jobId: string; taskId: string } | undefined> {
     const row = await this.db
       .selectFrom("xy_wap_embed_insight_job")
-      .select(["id"])
+      .select(["id", "rescan_task_id"])
       .where("idempotency_key", "=", idempotencyKey)
-      .executeTakeFirst() as { id: number | string } | undefined;
+      .executeTakeFirst() as { id: number | string; rescan_task_id: number | string | null } | undefined;
 
-    return row ? String(row.id) : undefined;
+    return row
+      ? {
+          jobId: String(row.id),
+          taskId: row.rescan_task_id == null ? String(row.id) : String(row.rescan_task_id),
+        }
+      : undefined;
   }
 
   private async hydrateCurrentSessionActors(
@@ -3235,6 +3332,36 @@ function normalizeActionStatus(value: string): InsightActionStatus {
   }
 
   return "open";
+}
+
+function normalizeRescanAnalysisScope(value: string): InsightRescanAnalysisScope {
+  if (value === "all" || value === "qaFindings" || value === "classification") {
+    return value;
+  }
+
+  return "all";
+}
+
+function normalizeRescanTaskStatus(value: string): InsightRescanTaskStatus {
+  if (
+    value === "pending" ||
+    value === "running" ||
+    value === "succeeded" ||
+    value === "partial" ||
+    value === "failed"
+  ) {
+    return value;
+  }
+
+  return "pending";
+}
+
+function toTimestamp(value: Date | string) {
+  return new Date(value).getTime();
+}
+
+function toOptionalTimestamp(value: Date | string | null) {
+  return value == null ? undefined : toTimestamp(value);
 }
 
 function parseDateBoundary(value?: string) {

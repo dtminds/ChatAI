@@ -19,6 +19,7 @@ import type {
   InsightMessageContextResponse,
   InsightQaRuleConfig,
   InsightQaRuleConfigMutationRequest,
+  InsightRescanTaskListResponse,
   InsightSettingsResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
@@ -380,6 +381,14 @@ export async function createInsightRescanJob(payload: InsightsRescanRequest) {
     ApiSuccessEnvelope<InsightsRescanResponse>,
     InsightsRescanRequest
   >("/server/insights/jobs/rescan", payload);
+
+  return response.data;
+}
+
+export async function getInsightRescanTasks() {
+  const response = await http.get<ApiSuccessEnvelope<InsightRescanTaskListResponse>>(
+    "/server/insights/jobs/rescan",
+  );
 
   return response.data;
 }

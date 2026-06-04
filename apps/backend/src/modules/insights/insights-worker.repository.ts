@@ -1,3 +1,4 @@
+import type { InsightRescanAnalysisScope } from "@chatai/contracts";
 import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import type {
@@ -10,6 +11,7 @@ import type {
   ClosableOpenSession,
   CreateAnalyzeJobInput,
   CreateLogicalSessionInput,
+  InsightAnalysisOutput,
   InsightWorkerAnalysisPolicy,
   SaveAnalysisResultInput,
   ShouldCreateLiveAnalyzeJobInput,
@@ -19,6 +21,7 @@ import type {
   InsightWorkerRepositoryPort,
   InsightWorkerSessionizationConfig,
 } from "./insights-worker.js";
+import { InsightsRepository } from "./insights.repository.js";
 import { getInitialInsightWorkerCursor } from "./insights-worker-runtime.js";
 
 type InsertResult = {
@@ -72,6 +75,7 @@ type AnalyzeJobRow = {
   idempotency_key: string;
   job_type: string;
   max_attempts: number | string;
+  rescan_task_id: number | string | null;
   target_id: string;
   uid: number | string;
 };
@@ -659,6 +663,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         idempotency_key: idempotencyKey,
         job_type: input.jobType,
         priority: input.mode === "final" ? 20 : 10,
+        rescan_task_id: input.rescanTaskId == null
+          ? null
+          : parsePositiveInteger(input.rescanTaskId) ?? null,
         run_after: input.runAfter,
         status: "pending",
         target_id: input.sessionId,
@@ -693,7 +700,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }): Promise<ClaimedSyncMessagesJob | undefined> {
     let query = this.db
       .selectFrom("xy_wap_embed_insight_job")
-      .select(["id", "target_id", "uid"])
+      .select(["analysis_scope", "id", "rescan_task_id", "target_id", "uid"])
       .where("status", "=", "pending")
       .where("target_type", "=", "uid")
       .where("job_type", "=", "sync_messages")
@@ -706,7 +713,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }
 
     const row = await query.executeTakeFirst() as {
+      analysis_scope: string;
       id: number | string;
+      rescan_task_id: number | string | null;
       target_id: string;
       uid: number | string;
     } | undefined;
@@ -739,8 +748,10 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }
 
     return {
+      analysisScope: normalizeAnalysisScope(row.analysis_scope),
       cursorMsgtime,
       jobId: String(row.id),
+      rescanTaskId: row.rescan_task_id == null ? undefined : String(row.rescan_task_id),
       uid: parseNumber(row.uid),
     };
   }
@@ -756,6 +767,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         "idempotency_key",
         "job_type",
         "max_attempts",
+        "rescan_task_id",
         "target_id",
         "uid",
       ])
@@ -809,14 +821,172 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }
 
     return {
-      analysisScope: "all" as const,
+      analysisScope: normalizeAnalysisScope(row.analysis_scope),
       attemptCount: parseNumber(row.attempt_count) + 1,
       jobId: String(row.id),
       maxAttempts: parseNumber(row.max_attempts),
       mode: parseJobMode(row),
+      rescanTaskId: row.rescan_task_id == null ? undefined : String(row.rescan_task_id),
       sessionId: row.target_id,
       uid: parseNumber(row.uid),
     };
+  }
+
+  async getCurrentAnalysisOutput(input: {
+    sessionId: string;
+    uid: number;
+  }): Promise<InsightAnalysisOutput | undefined> {
+    const detail = await new InsightsRepository(this.db).findDetail(
+      { uid: input.uid },
+      input.sessionId,
+    );
+
+    if (!detail) {
+      return undefined;
+    }
+
+    return {
+      actionItems: detail.actionItems.map((item) => ({
+        actionType: item.actionType,
+        evidenceMessageIds: item.evidenceMessageIds,
+        priority: item.priority,
+        title: item.title,
+      })),
+      entities: detail.entities.map((item) => ({
+        confidence: 1,
+        entityId: item.entityId,
+        entityName: item.entityName,
+        entityType: item.entityType,
+        evidenceMessageIds: item.evidenceMessageIds,
+        sentiment: item.sentiment,
+      })),
+      faqCandidates: detail.faqCandidates,
+      intents: detail.intents,
+      problemResolution: {
+        confidence: detail.current.problemResolutionConfidence ?? 1,
+        evidence: detail.evidenceItems
+          .filter((item) => item.dimensionType === "problem_resolution")
+          .map((item) => ({
+            evidenceRole: item.evidenceRole,
+            messageId: item.messageId,
+            reason: item.reason,
+          })),
+        evidenceMessageIds: detail.problemEvidenceMessageIds,
+        problemDetected: detail.current.problemDetected,
+        problemSummary: detail.current.problemSummary,
+        resolutionStatus: detail.current.resolutionStatus,
+        unresolvedReason: detail.current.unresolvedReason ?? undefined,
+      },
+      qaFindings: (detail.qaFindingDetails ?? []).map((item) => ({
+        confidence: 1,
+        evidenceMessageIds: item.evidenceMessageIds,
+        passed: item.passed,
+        reason: item.reason,
+        ruleCode: item.ruleCode,
+        severity: item.severity,
+      })),
+      risks: detail.risks.map((item) => ({
+        confidence: 1,
+        evidenceMessageIds: item.evidenceMessageIds,
+        reason: item.reason,
+        riskLevel: item.riskLevel,
+        riskType: item.riskType,
+      })),
+      sentiment: detail.sentiment,
+      summary: {
+        confidence: 1,
+        customerIntent: detail.current.summaryCustomerIntent,
+        followUp: detail.current.summaryFollowUp ?? undefined,
+        processSummary: detail.current.summaryProcess ?? "",
+        resultSummary: detail.current.summaryResult ?? "",
+      },
+      tags: detail.tags,
+    };
+  }
+
+  async updateRescanTaskRunning(rescanTaskId: string): Promise<void> {
+    await this.db
+      .updateTable("xy_wap_embed_insight_rescan_task")
+      .set({
+        started_at: new Date(),
+        status: "running",
+        update_time: new Date(),
+      })
+      .where("id", "=", parsePositiveInteger(rescanTaskId) ?? -1)
+      .where("status", "=", "pending")
+      .executeTakeFirst();
+  }
+
+  async updateRescanTaskAfterScan(input: {
+    queuedSessions: number;
+    rescanTaskId: string;
+    totalSessions: number;
+  }): Promise<void> {
+    const status = input.totalSessions === 0 ? "succeeded" : "running";
+    await this.db
+      .updateTable("xy_wap_embed_insight_rescan_task")
+      .set({
+        finished_at: input.totalSessions === 0 ? new Date() : null,
+        queued_sessions: input.queuedSessions,
+        status,
+        total_sessions: input.totalSessions,
+        update_time: new Date(),
+      })
+      .where("id", "=", parsePositiveInteger(input.rescanTaskId) ?? -1)
+      .executeTakeFirst();
+  }
+
+  async updateRescanTaskAfterAnalysis(input: {
+    failedSessions: number;
+    rescanTaskId: string;
+    succeededSessions: number;
+  }): Promise<void> {
+    const taskId = parsePositiveInteger(input.rescanTaskId) ?? -1;
+    await this.db
+      .updateTable("xy_wap_embed_insight_rescan_task")
+      .set({
+        failed_sessions: sql<number>`failed_sessions + ${input.failedSessions}`,
+        succeeded_sessions: sql<number>`succeeded_sessions + ${input.succeededSessions}`,
+        update_time: new Date(),
+      })
+      .where("id", "=", taskId)
+      .executeTakeFirst();
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_rescan_task")
+      .select(["failed_sessions", "succeeded_sessions", "total_sessions"])
+      .where("id", "=", taskId)
+      .executeTakeFirst() as {
+        failed_sessions: number | string;
+        succeeded_sessions: number | string;
+        total_sessions: number | string;
+      } | undefined;
+
+    if (!row) {
+      return;
+    }
+
+    const failedSessions = parseNumber(row.failed_sessions);
+    const succeededSessions = parseNumber(row.succeeded_sessions);
+    const totalSessions = parseNumber(row.total_sessions);
+
+    if (totalSessions <= 0 || failedSessions + succeededSessions < totalSessions) {
+      return;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_insight_rescan_task")
+      .set({
+        finished_at: new Date(),
+        status: failedSessions === 0
+          ? "succeeded"
+          : succeededSessions === 0
+            ? "failed"
+            : "partial",
+        update_time: new Date(),
+      })
+      .where("id", "=", taskId)
+      .executeTakeFirst();
   }
 
   private async markExpiredAnalysisRunsFailed(jobId: string) {
@@ -1461,6 +1631,14 @@ function getAffectedRows(result: unknown) {
   }
 
   return affectedRows ?? 0;
+}
+
+function normalizeAnalysisScope(value: string): InsightRescanAnalysisScope {
+  if (value === "all" || value === "qaFindings" || value === "classification") {
+    return value;
+  }
+
+  return "all";
 }
 
 function parseJobMode(row: AnalyzeJobRow) {

@@ -29,6 +29,7 @@ type SubUserCredentialRow = {
   password_hash: string;
   role: string;
   type: number;
+  uid: number;
 };
 
 type SessionRow = {
@@ -142,7 +143,7 @@ export async function getCurrentSession(
 
   const subUser = await app.db
     .selectFrom("xy_wap_embed_sub_user")
-    .select(["id", "name", "role", "type"])
+    .select(["id", "name", "role", "type", "uid"])
     .where("id", "=", subUserId)
     .where("status", "=", 1)
     .executeTakeFirst();
@@ -209,7 +210,7 @@ async function findActiveSubUserCredential(
 
   return db
     .selectFrom("xy_wap_embed_sub_user")
-    .select(["id", "name", "password_hash", "role", "type"])
+    .select(["id", "name", "password_hash", "role", "type", "uid"])
     .where("account", "=", normalizedAccount)
     .where("status", "=", 1)
     .executeTakeFirst();
@@ -218,7 +219,7 @@ async function findActiveSubUserCredential(
 async function findActiveSubUser(db: Kysely<Database>, subUserId: number) {
   return db
     .selectFrom("xy_wap_embed_sub_user")
-    .select(["id", "name", "role", "type"])
+    .select(["id", "name", "role", "type", "uid"])
     .where("id", "=", subUserId)
     .where("status", "=", 1)
     .executeTakeFirst();
@@ -322,6 +323,7 @@ function mapAuthSubUser(row: {
   name: string;
   role?: string | null;
   type?: number | null;
+  uid: number;
 }): AuthSubUser {
   const role = deriveAccountRole(row);
 
@@ -331,6 +333,7 @@ function mapAuthSubUser(row: {
     permissions: getRolePermissions(role),
     role,
     subUserId: String(row.id),
+    uid: row.uid,
   };
 }
 

@@ -23,6 +23,13 @@ const baseRows = [
     customerAvatarUrl: "https://example.com/customer-1.png",
     customerMessageCount: 5,
     customerName: "张三",
+    assets: [
+      {
+        assetCode: "link:9002",
+        assetName: "物流详情页",
+        assetType: "link",
+      },
+    ],
     endedAt: 1_780_245_000_000,
     highRiskCount: 1,
     lastMessageAt: 1_780_244_950_000,
@@ -32,6 +39,7 @@ const baseRows = [
     phase: "final",
     problemDetected: true,
     problemEvidenceMessageIds: ["9001", "9002"],
+    problemResolutionConfidence: 0.84,
     problemSummary: "客户反馈物流异常",
     resolutionStatus: "unresolved",
     riskSeverity: "high",
@@ -250,7 +258,7 @@ function createRepository(
       ],
       problemEvidenceMessageIds: ["9001", "9002"],
       qaFindings: [{ ruleCode: "problem_resolution", passed: false }],
-      risks: [{ riskLevel: "high", riskType: "bad_review" }],
+      risks: [{ reason: "客户表达差评风险", riskLevel: "high", riskType: "bad_review" }],
       sentiment: [
         {
           confidence: 0.82,
@@ -889,6 +897,7 @@ describe("InsightsService", () => {
       }),
     ]);
     expect(result.problemResolution).toMatchObject({
+      confidence: 0.84,
       evidenceMessageIds: ["9001", "9002"],
       problemDetected: true,
       resolutionStatus: "unresolved",
@@ -923,6 +932,30 @@ describe("InsightsService", () => {
         question: "物流停滞怎么处理",
       }),
     ]);
+    expect(result.risks).toEqual([
+      expect.objectContaining({
+        reason: "客户表达差评风险",
+        riskLevel: "high",
+        riskType: "bad_review",
+      }),
+    ]);
+  });
+
+  it("keeps hydrated overview assets in session responses", async () => {
+    const service = new InsightsService(createRepository());
+
+    const result = await service.getOverviewSessions(scope);
+
+    expect(result.items[0]).toMatchObject({
+      assets: [
+        {
+          assetCode: "link:9002",
+          assetName: "物流详情页",
+          assetType: "link",
+        },
+      ],
+      sessionId: "501",
+    });
   });
 
   it("loads a fixed evidence message context window", async () => {

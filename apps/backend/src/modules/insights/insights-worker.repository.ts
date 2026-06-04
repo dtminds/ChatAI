@@ -109,6 +109,7 @@ const DEFAULT_LIVE_MIN_INTERVAL_MINUTES = 15;
 const DEFAULT_LIVE_MIN_NEW_MEANINGFUL_MESSAGES = 20;
 const DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.6;
 const cursorSource = "xy_wap_embed_msg_audit_info";
+const globalCursorUid = 0;
 
 export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort {
   constructor(
@@ -121,7 +122,13 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .selectFrom("xy_wap_embed_insight_sync_cursor")
       .select(["cursor_audit_id", "cursor_msgtime"])
       .where("source", "=", cursorSource)
-      .where("uid", "is", null)
+      .where((eb) =>
+        eb.or([
+          eb("uid", "=", globalCursorUid),
+          eb("uid", "is", null),
+        ]),
+      )
+      .orderBy("uid", "desc")
       .executeTakeFirst() as CursorRow | undefined;
 
     if (row) {
@@ -598,33 +605,18 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }
 
   async updateCursor(cursor: InsightWorkerCursor): Promise<void> {
-    const existing = await this.db
-      .selectFrom("xy_wap_embed_insight_sync_cursor")
-      .select(["id"])
-      .where("source", "=", cursorSource)
-      .where("uid", "is", null)
-      .executeTakeFirst() as { id: number | string } | undefined;
-
-    if (existing) {
-      await this.db
-        .updateTable("xy_wap_embed_insight_sync_cursor")
-        .set({
-          cursor_audit_id: cursor.cursorAuditId,
-          cursor_msgtime: cursor.cursorMsgtime,
-          update_time: new Date(),
-        })
-        .where("id", "=", parseNumber(existing.id))
-        .executeTakeFirst();
-      return;
-    }
-
     await this.db
       .insertInto("xy_wap_embed_insight_sync_cursor")
       .values({
         cursor_audit_id: cursor.cursorAuditId,
         cursor_msgtime: cursor.cursorMsgtime,
         source: cursorSource,
-        uid: null,
+        uid: globalCursorUid,
+      })
+      .onDuplicateKeyUpdate({
+        cursor_audit_id: cursor.cursorAuditId,
+        cursor_msgtime: cursor.cursorMsgtime,
+        update_time: new Date(),
       })
       .executeTakeFirst();
   }
@@ -656,6 +648,12 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       return undefined;
     }
 
+    const cursorMsgtime = new Date(row.target_id).getTime();
+
+    if (!Number.isFinite(cursorMsgtime)) {
+      throw new Error(`Invalid sync_messages target_id: ${row.target_id}`);
+    }
+
     const result = await this.db
       .updateTable("xy_wap_embed_insight_job")
       .set({
@@ -674,7 +672,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }
 
     return {
-      cursorMsgtime: new Date(row.target_id).getTime(),
+      cursorMsgtime,
       jobId: String(row.id),
       uid: parseNumber(row.uid),
     };
@@ -979,11 +977,12 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           input.sourceMessageHighWatermark == null
             ? null
             : parsePositiveInteger(input.sourceMessageHighWatermark) ?? null,
-        status: input.validationWarnings.length > 0 ? "partial" : "ready",
+        status: "building",
       })
       .executeTakeFirstOrThrow() as InsertResult;
     const snapshotId = parseInsertedMySqlId(insertedSnapshot) ?? -1;
     const output = input.output;
+    const snapshotStatus = input.validationWarnings.length > 0 ? "partial" : "ready";
 
     await this.db.insertInto("xy_wap_embed_session_summary").values({
       confidence: output.summary.confidence,
@@ -1100,6 +1099,16 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       });
       await this.insertEvidenceRows(input, snapshotId, "faq_candidate", id, item.evidenceMessageIds);
     }
+
+    await this.db
+      .updateTable("xy_wap_embed_session_insight_snapshot")
+      .set({
+        status: snapshotStatus,
+        update_time: new Date(),
+      })
+      .where("id", "=", snapshotId)
+      .where("status", "=", "building")
+      .executeTakeFirst();
 
     await this.db
       .insertInto("xy_wap_embed_session_insight_current")

@@ -73,6 +73,7 @@ export type InsightCurrentSessionRow = {
   phase: InsightDetailResponse["session"]["phase"];
   problemDetected: boolean;
   problemEvidenceMessageIds: string[];
+  problemResolutionConfidence?: number;
   problemSummary: string;
   resolutionStatus: InsightResolutionStatus;
   riskSeverity: InsightSeverity | null;
@@ -517,7 +518,7 @@ export class InsightsService {
       faqCandidates: detail.faqCandidates,
       intents: detail.intents,
       problemResolution: {
-        confidence: 0,
+        confidence: detail.current.problemResolutionConfidence ?? 0,
         evidenceMessageIds: detail.problemEvidenceMessageIds,
         problemDetected: detail.current.problemDetected,
         problemSummary: detail.current.problemSummary,
@@ -858,6 +859,7 @@ function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
       customerMessageCount: row.customerMessageCount,
       customerName: row.customerName,
       endedAt: row.endedAt ?? undefined,
+      assets: row.assets ?? [],
       entities: row.entities ?? [],
       intents: row.intents ?? [],
       lastMessageAt: row.lastMessageAt ?? undefined,

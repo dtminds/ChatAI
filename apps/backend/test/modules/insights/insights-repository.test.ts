@@ -317,7 +317,7 @@ describe("InsightsRepository", () => {
         ],
       ],
       ["xy_wap_embed_session_qa_finding", [{ qa_finding_id: 701, qa_passed: 0, qa_reason: "未说明时效", qa_rule_code: "reply_quality" }]],
-      ["xy_wap_embed_session_risk", [{ risk_id: 601, risk_level: "high", risk_type: "complaint" }]],
+      ["xy_wap_embed_session_risk", [{ risk_id: 601, risk_level: "high", risk_reason: "客户可能投诉", risk_type: "complaint" }]],
       [
         "xy_wap_embed_session_action_item as action",
         [
@@ -354,7 +354,7 @@ describe("InsightsRepository", () => {
     await expect(repository.findDetail({ uid: 9001 }, "201")).resolves.toMatchObject({
       actionItems: [{ actionItemId: "801", evidenceMessageIds: ["9001"] }],
       qaFindings: [{ evidenceMessageIds: ["9001"], passed: false, reason: "未说明时效", ruleCode: "reply_quality" }],
-      risks: [{ evidenceMessageIds: ["9002"], riskLevel: "high", riskType: "complaint" }],
+      risks: [{ evidenceMessageIds: ["9002"], reason: "客户可能投诉", riskLevel: "high", riskType: "complaint" }],
     });
 
     const coreQuery = builders[0];
@@ -589,6 +589,105 @@ describe("MysqlInsightWorkerRepository", () => {
 
     await expect(repository.claimNextSyncMessagesJob({})).resolves.toBeUndefined();
   });
+
+  it("rejects malformed historical rescan cursors before claiming the job", async () => {
+    const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
+    const db = {
+      selectFrom: vi.fn(() =>
+        createSelectBuilder([
+          {
+            id: 702,
+            target_id: "not-a-date",
+            uid: 9001,
+          },
+        ]),
+      ),
+      updateTable: vi.fn(() => createUpdateBuilder(updateExecute)),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.claimNextSyncMessagesJob({})).rejects.toThrow(
+      "Invalid sync_messages target_id",
+    );
+    expect(updateExecute).not.toHaveBeenCalled();
+  });
+
+  it("writes analysis snapshots as building before publishing them", async () => {
+    const operations: Array<{ table: string; type: "insert" | "update"; values?: Record<string, unknown> }> = [];
+    let nextInsertId = 7001;
+    const db = {
+      insertInto: vi.fn((table: string) => createInsertBuilder(async () => ({ insertId: nextInsertId++ }), {
+        onValues: (values) => operations.push({ table, type: "insert", values }),
+        table,
+      })),
+      selectFrom: vi.fn((table: string) => createSelectBuilder(
+        table === "xy_wap_embed_logical_session"
+          ? [{ conversation_id: 301 }]
+          : [],
+        table,
+      )),
+      updateTable: vi.fn((table: string) => createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+        onSet: (values) => operations.push({ table, type: "update", values }),
+        table,
+      })),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.saveAnalysisResult({
+      job: {
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      output: {
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "物流异常",
+          resolutionStatus: "unresolved",
+        },
+        qaFindings: [],
+        risks: [],
+        sentiment: [],
+        summary: {
+          confidence: 0.9,
+          customerIntent: "查物流",
+          processSummary: "已登记",
+          resultSummary: "未解决",
+        },
+        tags: [],
+      },
+      runId: "6001",
+      sourceMessageHighWatermark: "9001",
+      validationWarnings: [],
+    });
+
+    expect(operations[0]).toMatchObject({
+      table: "xy_wap_embed_session_insight_snapshot",
+      type: "insert",
+      values: expect.objectContaining({ status: "building" }),
+    });
+    const currentIndex = operations.findIndex((operation) =>
+      operation.table === "xy_wap_embed_session_insight_current",
+    );
+    const publishIndex = operations.findIndex((operation) =>
+      operation.table === "xy_wap_embed_session_insight_snapshot"
+      && operation.type === "update"
+      && operation.values?.status === "ready",
+    );
+    expect(publishIndex).toBeGreaterThan(0);
+    expect(currentIndex).toBeGreaterThan(publishIndex);
+  });
 });
 
 type SelectBuilderStub = ReturnType<typeof createSelectBuilder>;
@@ -635,19 +734,40 @@ function createSelectBuilder(rows: unknown[], table = "") {
   return builder;
 }
 
-function createInsertBuilder(executeTakeFirstOrThrow: () => Promise<unknown>) {
+function createInsertBuilder(
+  executeTakeFirstOrThrow: () => Promise<unknown>,
+  options: {
+    onValues?: (values: Record<string, unknown>) => void;
+    table?: string;
+  } = {},
+) {
   const builder = {
+    executeTakeFirst: executeTakeFirstOrThrow,
     executeTakeFirstOrThrow,
-    values: () => builder,
+    ignore: () => builder,
+    onDuplicateKeyUpdate: () => builder,
+    values: (values: Record<string, unknown>) => {
+      options.onValues?.(values);
+      return builder;
+    },
   };
 
   return builder;
 }
 
-function createUpdateBuilder(executeTakeFirst: () => Promise<unknown>) {
+function createUpdateBuilder(
+  executeTakeFirst: () => Promise<unknown>,
+  options: {
+    onSet?: (values: Record<string, unknown>) => void;
+    table?: string;
+  } = {},
+) {
   const builder = {
     executeTakeFirst,
-    set: () => builder,
+    set: (values: Record<string, unknown>) => {
+      options.onSet?.(values);
+      return builder;
+    },
     where: () => builder,
   };
 

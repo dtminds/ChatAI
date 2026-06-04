@@ -301,6 +301,7 @@ export type InsightWorkerRepositoryPort = {
 
 export type NonOverlappingTicker = {
   tick(): Promise<boolean>;
+  waitForIdle(): Promise<void>;
 };
 
 const INPUT_READINESS_RETRY_DELAY_MS = 5 * 60_000;
@@ -513,11 +514,6 @@ export class InsightsWorkerService {
     });
 
     for (const session of sessions) {
-      await this.repository.closeSession({
-        closeReason: session.closeReason,
-        endedAt: session.endedAt,
-        sessionId: session.sessionId,
-      });
       await this.repository.createAnalyzeJob({
         analysisScope: "all",
         jobType: "analyze_session",
@@ -525,6 +521,11 @@ export class InsightsWorkerService {
         runAfter: new Date(session.endedAt + session.analysisDelayMinutes * 60_000),
         sessionId: session.sessionId,
         uid: session.uid,
+      });
+      await this.repository.closeSession({
+        closeReason: session.closeReason,
+        endedAt: session.endedAt,
+        sessionId: session.sessionId,
       });
     }
 
@@ -776,6 +777,7 @@ export class InsightsWorkerService {
 
 export function createNonOverlappingTicker(run: () => Promise<void>): NonOverlappingTicker {
   let running = false;
+  let currentRun: Promise<boolean> | undefined;
 
   return {
     async tick() {
@@ -784,14 +786,21 @@ export function createNonOverlappingTicker(run: () => Promise<void>): NonOverlap
       }
 
       running = true;
+      currentRun = (async () => {
+        try {
+          await run();
 
-      try {
-        await run();
+          return true;
+        } finally {
+          running = false;
+          currentRun = undefined;
+        }
+      })();
 
-        return true;
-      } finally {
-        running = false;
-      }
+      return currentRun;
+    },
+    async waitForIdle() {
+      await currentRun;
     },
   };
 }
@@ -1016,6 +1025,7 @@ export function startInsightsWorker(options: {
   return {
     async stop() {
       clearInterval(timer);
+      await ticker.waitForIdle();
     },
     ticker,
   };

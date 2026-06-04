@@ -70,6 +70,7 @@ type CurrentSessionQueryRow = {
   negative_risk_id?: number | string | null;
   phase: string;
   problem_detected: number | string | null;
+  problem_confidence?: number | string | null;
   problem_summary: string | null;
   resolution_status: string | null;
   risk_severity: string | null;
@@ -170,6 +171,7 @@ type QaFindingQueryRow = {
 type RiskQueryRow = {
   risk_id: number | string | null;
   risk_level: string | null;
+  risk_reason: string | null;
   risk_type: string | null;
 };
 
@@ -986,6 +988,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     let query = buildCurrentSessionBaseQuery(this.db)
       .select([
         "current.current_snapshot_id as current_snapshot_id",
+        "problem.confidence as problem_confidence",
         "problem.problem_detected as problem_detected",
         "problem.problem_summary as problem_summary",
         "problem.resolution_status as resolution_status",
@@ -1695,7 +1698,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
               "risk",
               row.risk_id,
             ),
-            reason: "",
+            reason: row.risk_reason ?? "",
             riskLevel: normalizeRiskSeverity(row.risk_level) ?? "low",
             riskType: row.risk_type ?? "custom",
           })),
@@ -1745,6 +1748,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .select([
         "id as risk_id",
         "risk_level as risk_level",
+        "reason as risk_reason",
         "risk_type as risk_type",
       ])
       .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
@@ -2835,6 +2839,7 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         phase: row.phase === "final" ? "final" : "live",
         problemDetected: row.problem_detected === 1,
         problemEvidenceMessageIds: [],
+        problemResolutionConfidence: parseNullableNumber(row.problem_confidence ?? null) ?? undefined,
         problemSummary: row.problem_summary ?? "",
         resolutionStatus: normalizeResolutionStatus(row.resolution_status),
         riskSeverity: normalizeRiskSeverity(row.risk_severity),

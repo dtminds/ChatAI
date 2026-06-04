@@ -374,6 +374,96 @@ describe("LLM provider config", () => {
     vi.useRealTimers();
   });
 
+  it("retries timed out LLM requests", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        calls += 1;
+
+        if (calls === 1) {
+          return await new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("The operation was aborted.", "AbortError"));
+            });
+          });
+        }
+
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    actionItems: [],
+                    entities: [],
+                    faqCandidates: [],
+                    intents: [],
+                    problemResolution: {
+                      confidence: 0.8,
+                      evidence: [],
+                      evidenceMessageIds: [],
+                      problemDetected: false,
+                      problemSummary: "",
+                      resolutionStatus: "no_customer_problem",
+                    },
+                    qaFindings: [],
+                    risks: [],
+                    sentiment: [],
+                    summary: {
+                      confidence: 0.8,
+                      customerIntent: "寒暄",
+                      processSummary: "客服已回复",
+                      resultSummary: "无需处理",
+                    },
+                    tags: [],
+                  }),
+                },
+              },
+            ],
+          }),
+        );
+      }),
+    );
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
+      model: "ep-test",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      requestTimeoutMs: 2_000,
+      retry: {
+        baseDelayMs: 100,
+        maxAttempts: 2,
+      },
+    });
+
+    const resultPromise = analyzer.analyzeSession({
+      messages: [
+        {
+          aiText: "你好",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "1",
+        },
+      ],
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(resultPromise).resolves.toMatchObject({
+      problemResolution: {
+        resolutionStatus: "no_customer_problem",
+      },
+    });
+    expect(calls).toBe(2);
+    vi.useRealTimers();
+  });
+
   it("parses JSON object even when the model wraps it in a markdown fence", async () => {
     vi.stubGlobal(
       "fetch",

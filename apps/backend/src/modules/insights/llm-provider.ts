@@ -171,6 +171,12 @@ class LlmRequestError extends Error {
   }
 }
 
+class LlmTimeoutError extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`LLM request timed out after ${timeoutMs}ms`);
+  }
+}
+
 function isResponseFormatUnsupportedError(error: unknown) {
   if (!(error instanceof LlmRequestError) || error.status !== 400) {
     return false;
@@ -213,7 +219,7 @@ function isRetryableLlmError(error: unknown) {
     return [429, 500, 502, 503, 504].includes(error.status);
   }
 
-  return error instanceof TypeError;
+  return error instanceof TypeError || error instanceof LlmTimeoutError;
 }
 
 function sleep(ms: number) {
@@ -231,7 +237,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
     });
   } catch (error) {
     if (isAbortError(error)) {
-      throw new Error(`LLM request timed out after ${timeoutMs}ms`);
+      throw new LlmTimeoutError(timeoutMs);
     }
 
     throw error;

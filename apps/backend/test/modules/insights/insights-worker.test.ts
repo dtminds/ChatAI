@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createNonOverlappingTicker,
   InsightsWorkerService,
+  startInsightsWorker,
   type InsightWorkerRepositoryPort,
 } from "../../../src/modules/insights/insights-worker";
 
@@ -178,6 +179,11 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
+    expect(repository.createAnalyzeJob).toHaveBeenCalled();
+    expect(repository.closeSession).toHaveBeenCalled();
+    expect(vi.mocked(repository.createAnalyzeJob).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(repository.closeSession).mock.invocationCallOrder[0],
+    );
     expect(repository.closeSession).toHaveBeenCalledWith({
       closeReason: "idle_timeout",
       endedAt: 1_780_244_000_000,
@@ -885,5 +891,35 @@ describe("insights worker ticker", () => {
     const third = ticker.tick();
     resolveCurrent?.();
     await expect(third).resolves.toBe(true);
+  });
+
+  it("waits for an in-flight tick before stopping", async () => {
+    vi.useFakeTimers();
+    let resolveRun: (() => void) | undefined;
+    let stopped = false;
+    const worker = startInsightsWorker({
+      intervalMs: 1_000,
+      logger: {
+        error: vi.fn(),
+        info: vi.fn(),
+      },
+      runOnce: async () => {
+        await new Promise<void>((resolve) => {
+          resolveRun = resolve;
+        });
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    const stopPromise = worker.stop().then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+
+    expect(stopped).toBe(false);
+    resolveRun?.();
+    await stopPromise;
+    expect(stopped).toBe(true);
+    vi.useRealTimers();
   });
 });

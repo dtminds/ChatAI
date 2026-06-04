@@ -741,6 +741,17 @@ function hasNewCustomerMessage(
   );
 }
 
+function hasConversationUnreadIncrease(
+  conversations: Conversation[],
+  nextConversation: Conversation,
+) {
+  const currentConversation = conversations.find(
+    (conversation) => conversation.id === nextConversation.id,
+  );
+
+  return nextConversation.unread > (currentConversation?.unread ?? 0);
+}
+
 function omitPendingSmartReplyKey(
   pending: Record<string, true>,
   lookupKey: string,
@@ -3579,6 +3590,10 @@ export function createWorkbenchStore() {
             }
 
             nextConversationLists[change.accountId] = mergeConversationList(
+              currentList,
+              change.conversation,
+            );
+            shouldNotifyPulledCustomerMessage ||= hasConversationUnreadIncrease(
               currentList,
               change.conversation,
             );

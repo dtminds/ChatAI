@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorkbenchMessageDto } from "@chatai/contracts";
+import type {
+  WorkbenchConversationChangeDto,
+  WorkbenchMessageDto,
+} from "@chatai/contracts";
 import {
   createMockWorkbenchService,
   setWorkbenchService,
@@ -491,6 +494,41 @@ describe("workbench message merge state", () => {
     expect(notifyPulledCustomerMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("triggers the title alert when polling reports a conversation unread increase", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [
+            createPolledConversation({
+              conversationId: "conv-002",
+              lastMessage: "非当前会话客户新消息",
+              lastMessageTime: Date.now(),
+              unreadCount: 1,
+            }),
+          ],
+          nextVersion: 9999,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")
+        ?.unread,
+    ).toBe(0);
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(notifyPulledCustomerMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("does not trigger the title alert for polled system or agent messages", async () => {
     const baseService = createMockWorkbenchService();
 
@@ -547,4 +585,34 @@ function createPolledMessage({
     seq: 1000,
     status: "sent",
   } satisfies WorkbenchMessageDto;
+}
+
+function createPolledConversation({
+  conversationId,
+  lastMessage,
+  lastMessageTime,
+  unreadCount,
+}: {
+  conversationId: string;
+  lastMessage: string;
+  lastMessageTime: number;
+  unreadCount: number;
+}) {
+  return {
+    conversationId,
+    custodyMode: "semi",
+    seatId: "drc",
+    thirdUserId: "seat-third-user-id",
+    thirdExternalUserId: `external-${conversationId}`,
+    createdAt: 1_778_400_000_000,
+    customerId: `customer-${conversationId}`,
+    customerName: `客户 ${conversationId}`,
+    customerAvatar: "",
+    lastMessage,
+    lastMessageTime,
+    unreadCount,
+    mode: "single",
+    priority: "medium",
+    type: "upsert" as const,
+  } satisfies WorkbenchConversationChangeDto;
 }

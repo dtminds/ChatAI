@@ -242,6 +242,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_sentiment (
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_tag (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   tag_code VARCHAR(128) NOT NULL COMMENT '标签编码',
   tag_name VARCHAR(128) NOT NULL COMMENT '标签名称',
@@ -250,6 +251,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_tag (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_tag_snapshot (snapshot_id),
+  KEY idx_tag_uid_code_snapshot (uid, tag_code, snapshot_id),
   KEY idx_tag_code (tag_code)
 ) COMMENT='逻辑会话标签结果表';
 
@@ -286,6 +288,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_qa_finding (
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_risk (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   risk_level VARCHAR(32) NOT NULL COMMENT '风险等级',
   risk_type VARCHAR(64) NOT NULL COMMENT '风险类型',
@@ -295,11 +298,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_risk (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_risk_snapshot (snapshot_id),
+  KEY idx_risk_uid_type_level_snapshot (uid, risk_type, risk_level, snapshot_id),
   KEY idx_risk_type_level (risk_type, risk_level)
 ) COMMENT='逻辑会话风险结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_entity (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   entity_id VARCHAR(128) NOT NULL COMMENT '实体稳定ID',
   entity_type VARCHAR(64) NOT NULL COMMENT '实体类型',
@@ -310,11 +315,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_entity (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_session_entity_snapshot (snapshot_id),
+  KEY idx_session_entity_uid_identity (uid, entity_type, entity_id, snapshot_id),
   KEY idx_session_entity_identity (entity_type, entity_id)
 ) COMMENT='逻辑会话实体结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_intent (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   intent_code VARCHAR(128) NOT NULL COMMENT '意图编码',
   intent_label VARCHAR(128) NOT NULL COMMENT '意图名称',
@@ -323,11 +330,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_intent (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_session_intent_snapshot (snapshot_id),
+  KEY idx_session_intent_uid_code_snapshot (uid, intent_code, snapshot_id),
   KEY idx_session_intent_code (intent_code)
 ) COMMENT='逻辑会话意图结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   action_type VARCHAR(64) NOT NULL COMMENT '行动项类型',
   title VARCHAR(255) NOT NULL COMMENT '行动项标题',
@@ -338,11 +347,13 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_action_snapshot (snapshot_id),
+  KEY idx_action_uid_status_id (uid, status, id),
   KEY idx_action_status_priority (status, priority)
 ) COMMENT='逻辑会话待处理行动项表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_faq_candidate (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
   question VARCHAR(1024) NOT NULL COMMENT '候选问题',
   answer_hint VARCHAR(2048) NOT NULL COMMENT '答案建议',
@@ -352,6 +363,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_faq_candidate (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_faq_snapshot (snapshot_id),
+  KEY idx_faq_uid_status_snapshot (uid, status, snapshot_id),
   KEY idx_faq_status (status)
 ) COMMENT='FAQ机会候选结果表';
 

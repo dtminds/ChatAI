@@ -1593,7 +1593,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "tag.snapshot_id as snapshot_id",
         sql<number>`count(tag.id)`.as("mention_count"),
       ])
-      .where("session.uid", "=", scope.uid)
+      .where("tag.uid", "=", scope.uid)
       .groupBy(["tag.tag_code", "tag.tag_name", "session.id", "session.started_at", "tag.snapshot_id"])
       .orderBy(sql<number>`count(tag.id)`, "desc")
       .limit(500);
@@ -1635,7 +1635,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "entity.snapshot_id as snapshot_id",
         sql<number>`count(entity.id)`.as("mention_count"),
       ])
-      .where("session.uid", "=", scope.uid)
+      .where("entity.uid", "=", scope.uid)
       .groupBy([
         "entity.entity_id",
         "entity.entity_name",
@@ -1679,7 +1679,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       )
       .innerJoin("xy_wap_embed_insight_intent_config as intent_config", (join) =>
         join
-          .onRef("intent_config.uid", "=", "session.uid")
+          .on("intent_config.uid", "=", scope.uid)
           .onRef("intent_config.intent_code", "=", "intent.intent_code")
           .on("intent_config.enabled", "=", 1)
           .on("intent_config.include_in_statistics", "=", 1),
@@ -1692,7 +1692,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "intent.snapshot_id as snapshot_id",
         sql<number>`count(intent.id)`.as("mention_count"),
       ])
-      .where("session.uid", "=", scope.uid)
+      .where("intent.uid", "=", scope.uid)
       .groupBy(["intent.intent_code", "intent_config.intent_name", "session.id", "session.started_at", "intent.snapshot_id"])
       .orderBy(sql<number>`count(intent.id)`, "desc")
       .limit(500);
@@ -1861,7 +1861,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "snapshot.id as snapshot_id",
         sql<number>`count(*) over()`.as("total_count"),
       ])
-      .where("session.uid", "=", scope.uid)
+      .where("action.uid", "=", scope.uid)
       .where("problem.resolution_status", "in", ["unresolved", "partially_resolved"]);
 
     if (filters.status) {
@@ -1896,7 +1896,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         sql<number>`count(case when entity.sentiment = 'negative' then 1 end)`.as("negative_count"),
         sql<number>`count(distinct session.id)`.as("session_count"),
       ])
-      .where("session.uid", "=", scope.uid)
+      .where("entity.uid", "=", scope.uid)
       .groupBy(["entity.entity_id", "entity.entity_name", "entity.entity_type"])
       .orderBy(sql<number>`count(entity.id)`, "desc")
       .limit(10)
@@ -1935,6 +1935,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .innerJoin("xy_wap_embed_session_risk as risk", (join) =>
         join
           .onRef("risk.snapshot_id", "=", "snapshot.id")
+          .on("risk.uid", "=", scope.uid)
           .on("risk.risk_level", "=", "high"),
       )
       .select([
@@ -1942,7 +1943,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "entity.entity_type as entity_type",
         sql<number>`count(distinct session.id)`.as("risk_session_count"),
       ])
-      .where("session.uid", "=", scope.uid)
+      .where("entity.uid", "=", scope.uid)
       .where((eb) =>
         eb.or(
           entityScopes.map((entityScope) =>
@@ -1972,7 +1973,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       )
       .innerJoin("xy_wap_embed_insight_intent_config as intent_config", (join) =>
         join
-          .onRef("intent_config.uid", "=", "session.uid")
+          .on("intent_config.uid", "=", scope.uid)
           .onRef("intent_config.intent_code", "=", "intent.intent_code")
           .on("intent_config.enabled", "=", 1)
           .on("intent_config.include_in_statistics", "=", 1),
@@ -1982,7 +1983,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "intent.intent_code as intent_code",
         "intent_config.intent_name as intent_label",
       ])
-      .where("session.uid", "=", scope.uid)
+      .where("intent.uid", "=", scope.uid)
       .groupBy(["intent.intent_code", "intent_config.intent_name", "intent_config.sort_order"])
       .orderBy("intent_config.sort_order", "asc")
       .orderBy(sql<number>`count(*)`, "desc")

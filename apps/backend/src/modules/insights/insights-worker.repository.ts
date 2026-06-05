@@ -1378,6 +1378,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         snapshot_id: snapshotId,
         tag_code: item.tagCode,
         tag_name: item.tagName,
+        uid: input.job.uid,
       });
       await this.collectEvidenceRows(input, snapshotId, "tag", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
@@ -1401,6 +1402,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         risk_level: item.riskLevel,
         risk_type: item.riskType,
         snapshot_id: snapshotId,
+        uid: input.job.uid,
       });
       await this.collectEvidenceRows(input, snapshotId, "risk", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
@@ -1413,6 +1415,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         entity_type: item.entityType,
         sentiment: item.sentiment ?? null,
         snapshot_id: snapshotId,
+        uid: input.job.uid,
       });
       await this.collectEvidenceRows(input, snapshotId, "entity", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
@@ -1423,6 +1426,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         intent_code: item.intentCode,
         intent_label: item.intentLabel,
         snapshot_id: snapshotId,
+        uid: input.job.uid,
       });
       await this.collectEvidenceRows(input, snapshotId, "intent", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
@@ -1435,6 +1439,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         snapshot_id: snapshotId,
         status: "open",
         title: item.title,
+        uid: input.job.uid,
       });
       await this.collectEvidenceRows(input, snapshotId, "action_item", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
@@ -1445,6 +1450,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         question: item.question,
         snapshot_id: snapshotId,
         status: item.status,
+        uid: input.job.uid,
       });
       await this.collectEvidenceRows(input, snapshotId, "faq_candidate", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }

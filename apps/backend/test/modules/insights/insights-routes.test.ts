@@ -663,6 +663,7 @@ function createInsightsDbMock(options: {
             snapshot_id: 7001,
             title: "确认快递状态",
             total_count: 1,
+            uid: 9001,
           },
         ]);
       }
@@ -720,6 +721,7 @@ function createInsightsDbMock(options: {
             risk_severity: "high",
             risk_type: "bad_review",
             snapshot_id: 7001,
+            uid: 9001,
           },
         ]);
       }
@@ -800,6 +802,7 @@ function createInsightsDbMock(options: {
             snapshot_id: 7001,
             tag_code: "logistics_issue",
             tag_name: "物流异常",
+            uid: 9001,
           },
         ]);
       }
@@ -813,6 +816,7 @@ function createInsightsDbMock(options: {
             session_id: 501,
             snapshot_id: 7001,
             started_at: 1_780_243_200_000,
+            uid: 9001,
           },
         ]);
       }
@@ -826,6 +830,7 @@ function createInsightsDbMock(options: {
             id: 1201,
             sentiment: "negative",
             snapshot_id: 7001,
+            uid: 9001,
           },
         ]);
       }
@@ -847,6 +852,7 @@ function createInsightsDbMock(options: {
             snapshot_id: 7001,
             started_at: 1_780_243_200_000,
             type: "product",
+            uid: 9001,
           },
         ]);
       }
@@ -859,6 +865,7 @@ function createInsightsDbMock(options: {
             intent_code: "logistics_delay",
             intent_label: "物流异常",
             snapshot_id: 7001,
+            uid: 9001,
           },
         ]);
       }
@@ -875,6 +882,7 @@ function createInsightsDbMock(options: {
             session_id: 501,
             snapshot_id: 7001,
             started_at: 1_780_243_200_000,
+            uid: 9001,
           },
         ]);
       }
@@ -886,6 +894,7 @@ function createInsightsDbMock(options: {
             id: 1401,
             question: "物流停滞怎么处理",
             status: "candidate",
+            uid: 9001,
           },
         ]);
       }

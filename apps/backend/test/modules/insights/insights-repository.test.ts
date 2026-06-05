@@ -334,6 +334,8 @@ describe("InsightsRepository", () => {
     ]);
 
     const mainQuery = builders[0];
+    expect(mainQuery.whereCalls).toContainEqual(["action.uid", "=", 9001]);
+    expect(mainQuery.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
     expect(mainQuery.joins).not.toContain("xy_wap_embed_insight_evidence as evidence");
     expect(mainQuery.joins).not.toContain("xy_wap_embed_msg_audit_info as message");
     expect(builders.map((builder) => builder.table)).not.toContain("xy_wap_embed_insight_evidence as evidence");
@@ -404,6 +406,8 @@ describe("InsightsRepository", () => {
     expect(builders[0]?.limitCalls).toEqual([1]);
     expect(builders[0]?.offsetCalls).toEqual([1]);
     expect(builders[0]?.orderByCalls).toEqual([["action.id", "desc"]]);
+    expect(builders[0]?.whereCalls).toContainEqual(["action.uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
     expect(builders[0]?.whereCalls).toContainEqual(["action.status", "=", "open"]);
     expect(builders.map((builder) => builder.table)).not.toContain("xy_wap_embed_insight_evidence as evidence");
   });
@@ -454,6 +458,15 @@ describe("InsightsRepository", () => {
       },
     ]);
     const assetQuery = builders.find((builder) => builder.table === "xy_wap_embed_logical_session_message as session_message");
+    const tagQuery = builders.find((builder) => builder.table === "xy_wap_embed_session_tag as tag");
+    const entityQuery = builders.find((builder) => builder.table === "xy_wap_embed_session_entity as entity");
+    const intentQuery = builders.find((builder) => builder.table === "xy_wap_embed_session_intent as intent");
+    expect(tagQuery?.whereCalls).toContainEqual(["tag.uid", "=", 9001]);
+    expect(tagQuery?.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
+    expect(entityQuery?.whereCalls).toContainEqual(["entity.uid", "=", 9001]);
+    expect(entityQuery?.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
+    expect(intentQuery?.whereCalls).toContainEqual(["intent.uid", "=", 9001]);
+    expect(intentQuery?.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
     expect(assetQuery?.whereCalls).toContainEqual(["session_message.session_id", "in", [201, 202]]);
     expect(assetQuery?.whereCalls).toContainEqual(["current.current_snapshot_id", "in", [501, 502]]);
   });
@@ -507,7 +520,10 @@ describe("InsightsRepository", () => {
     ]);
 
     const riskQuery = builders[1];
-    expect(riskQuery?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual(["entity.uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
+    expect(riskQuery?.whereCalls).toContainEqual(["entity.uid", "=", 9001]);
+    expect(riskQuery?.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
     expect(riskQuery?.whereCalls).toContainEqual(["entity.entity_id", "=", "sku-1"]);
     expect(riskQuery?.whereCalls).toContainEqual(["entity.entity_type", "=", "product"]);
     expect(riskQuery?.whereRawCalls.join("\n")).not.toContain("concat(");
@@ -1057,8 +1073,22 @@ describe("MysqlInsightWorkerRepository", () => {
       output: {
         actionItems: [],
         entities: [],
-        faqCandidates: [],
-        intents: [],
+        faqCandidates: [
+          {
+            answerHint: "先同步物流节点",
+            evidenceMessageIds: ["9202"],
+            question: "物流延迟如何处理",
+            status: "candidate",
+          },
+        ],
+        intents: [
+          {
+            confidence: 0.72,
+            evidenceMessageIds: ["9202"],
+            intentCode: "logistics_delay",
+            intentLabel: "物流异常",
+          },
+        ],
         problemResolution: {
           confidence: 0.8,
           evidence: [],
@@ -1068,7 +1098,15 @@ describe("MysqlInsightWorkerRepository", () => {
           resolutionStatus: "unresolved",
         },
         qaFindings: [],
-        risks: [],
+        risks: [
+          {
+            confidence: 0.81,
+            evidenceMessageIds: ["9202"],
+            reason: "客户表达不满",
+            riskLevel: "high",
+            riskType: "complaint",
+          },
+        ],
         sentiment: [
           {
             confidence: 0.7,
@@ -1166,8 +1204,22 @@ describe("MysqlInsightWorkerRepository", () => {
             evidenceMessageIds: ["9202"],
           },
         ],
-        faqCandidates: [],
-        intents: [],
+        faqCandidates: [
+          {
+            answerHint: "先同步物流节点",
+            evidenceMessageIds: ["9202"],
+            question: "物流延迟如何处理",
+            status: "candidate",
+          },
+        ],
+        intents: [
+          {
+            confidence: 0.72,
+            evidenceMessageIds: ["9202"],
+            intentCode: "logistics_delay",
+            intentLabel: "物流异常",
+          },
+        ],
         problemResolution: {
           confidence: 0.9,
           evidence: [],
@@ -1177,7 +1229,15 @@ describe("MysqlInsightWorkerRepository", () => {
           resolutionStatus: "unresolved",
         },
         qaFindings: [],
-        risks: [],
+        risks: [
+          {
+            confidence: 0.81,
+            evidenceMessageIds: ["9202"],
+            reason: "客户表达不满",
+            riskLevel: "high",
+            riskType: "complaint",
+          },
+        ],
         sentiment: [],
         summary: {
           confidence: 0.9,
@@ -1185,7 +1245,14 @@ describe("MysqlInsightWorkerRepository", () => {
           processSummary: "客户咨询物流",
           resultSummary: "待跟进",
         },
-        tags: [],
+        tags: [
+          {
+            confidence: 0.77,
+            evidenceMessageIds: ["9202"],
+            tagCode: "logistics",
+            tagName: "物流咨询",
+          },
+        ],
       },
       runId: "8001",
       sourceMessageHighWatermark: "9202",
@@ -1193,6 +1260,17 @@ describe("MysqlInsightWorkerRepository", () => {
     });
 
     const evidenceInserts = insertValues.filter((entry) => entry.table === "xy_wap_embed_insight_evidence");
+    for (const table of [
+      "xy_wap_embed_session_action_item",
+      "xy_wap_embed_session_entity",
+      "xy_wap_embed_session_faq_candidate",
+      "xy_wap_embed_session_intent",
+      "xy_wap_embed_session_risk",
+      "xy_wap_embed_session_tag",
+    ]) {
+      const insert = insertValues.find((entry) => entry.table === table);
+      expect(insert?.values).toEqual(expect.objectContaining({ uid: 9001 }));
+    }
     expect(evidenceInserts).toHaveLength(1);
     expect(evidenceInserts[0]?.values).toEqual(expect.arrayContaining([
       expect.objectContaining({ dimension_type: "problem_resolution", source_message_id: 9200 }),

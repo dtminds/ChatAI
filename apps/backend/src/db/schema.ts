@@ -964,6 +964,7 @@ export interface XyWapEmbedSessionTag {
   tag_code: string;
   tag_name: string;
   update_time: Generated<Date>;
+  uid: number;
 }
 
 export interface XyWapEmbedSessionProblemResolution {
@@ -1001,6 +1002,7 @@ export interface XyWapEmbedSessionRisk {
   risk_type: string;
   snapshot_id: number;
   update_time: Generated<Date>;
+  uid: number;
 }
 
 export interface XyWapEmbedSessionEntity {
@@ -1013,6 +1015,7 @@ export interface XyWapEmbedSessionEntity {
   sentiment: string | null;
   snapshot_id: number;
   update_time: Generated<Date>;
+  uid: number;
 }
 
 export interface XyWapEmbedSessionIntent {
@@ -1023,6 +1026,7 @@ export interface XyWapEmbedSessionIntent {
   intent_label: string;
   snapshot_id: number;
   update_time: Generated<Date>;
+  uid: number;
 }
 
 export interface XyWapEmbedSessionActionItem {
@@ -1035,6 +1039,7 @@ export interface XyWapEmbedSessionActionItem {
   status: string;
   title: string;
   update_time: Generated<Date>;
+  uid: number;
 }
 
 export interface XyWapEmbedSessionFaqCandidate {
@@ -1046,6 +1051,7 @@ export interface XyWapEmbedSessionFaqCandidate {
   snapshot_id: number;
   status: string;
   update_time: Generated<Date>;
+  uid: number;
 }
 
 export interface XyWapEmbedInsightEvidence {

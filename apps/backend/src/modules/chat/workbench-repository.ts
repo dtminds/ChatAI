@@ -151,13 +151,6 @@ type ConversationPageRow = Omit<
 };
 
 type ConversationHydrationSources = {
-  bindsByThirdExternalId: Map<
-    string,
-    {
-      bizStatus: number | null;
-      remark: string | null;
-    }
-  >;
   contactsByThirdExternalId: Map<
     string,
     {
@@ -2629,7 +2622,7 @@ export class WorkbenchRepository {
         .map((row) => row.third_group_id),
     );
 
-    const [lastMessages, contacts, binds, groups] = await Promise.all([
+    const [lastMessages, contacts, groups] = await Promise.all([
       lastMessageIds.length
         ? this.db
             .selectFrom("xy_wap_embed_msg_audit_info")
@@ -2648,16 +2641,6 @@ export class WorkbenchRepository {
             .where("third_external_userid", "in", contactThirdExternalIds)
             .execute()
         : [],
-      contactThirdExternalIds.length
-        ? this.db
-            .selectFrom("xy_wap_embed_customer_bind_relation")
-            .select(["third_external_userid", "remark", "biz_status"])
-            .where("uid", "=", uid)
-            .where("platform", "=", platform)
-            .where("third_userid", "=", seatThirdUserId)
-            .where("third_external_userid", "in", contactThirdExternalIds)
-            .execute()
-        : [],
       groupIds.length
         ? this.db
             .selectFrom("xy_wap_embed_group_seat")
@@ -2671,15 +2654,6 @@ export class WorkbenchRepository {
     ]);
 
     return {
-      bindsByThirdExternalId: new Map(
-        binds.map((bind) => [
-          bind.third_external_userid,
-          {
-            bizStatus: bind.biz_status,
-            remark: bind.remark,
-          },
-        ]),
-      ),
       contactsByThirdExternalId: new Map(
         contacts.map((contact) => [
           contact.third_external_userid,
@@ -2730,7 +2704,6 @@ export class WorkbenchRepository {
         ? hydrationSources.lastMessagesById.get(String(row.last_audit_info_id))
         : undefined;
     const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
-    const bind = hydrationSources.bindsByThirdExternalId.get(row.third_external_userid);
     const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
 
     return mapConversationRow({
@@ -2738,12 +2711,9 @@ export class WorkbenchRepository {
       biz_status:
         row.chat_type === CHAT_TYPE_GROUP
           ? (group?.bizStatus ?? BIZ_STATUS_HIDDEN)
-          : (bind?.bizStatus ?? BIZ_STATUS_HIDDEN),
+          : BIZ_STATUS_ACTIVE,
       customer_avatar: contact?.avatar ?? null,
-      customer_name: firstNonEmptyString(
-        bind?.remark,
-        contact?.name,
-      ) ?? null,
+      customer_name: firstNonEmptyString(contact?.name) ?? null,
       contact_original_name: firstNonEmptyString(contact?.name, contact?.realName) ?? null,
       group_avatar: group?.avatar ?? null,
       group_name: firstNonEmptyString(group?.name) ?? null,

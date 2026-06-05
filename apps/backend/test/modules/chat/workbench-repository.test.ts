@@ -2045,13 +2045,6 @@ describe("WorkbenchRepository", () => {
             });
           }
 
-          if (table === "xy_wap_embed_customer_bind_relation") {
-            return createQueryBuilder({
-              remark: "客户备注",
-              third_external_userid: "external-001",
-            });
-          }
-
           throw new Error(`unexpected table ${table}`);
         },
       } as never,
@@ -2067,18 +2060,16 @@ describe("WorkbenchRepository", () => {
       "xy_wap_embed_conversation as conversation",
       "xy_wap_embed_msg_audit_info",
       "xy_wap_embed_contact",
-      "xy_wap_embed_customer_bind_relation",
     ]);
     expect(page.items[0]).toMatchObject({
-      contactOriginalName: "客户名",
       conversationId: "88",
       customerAvatar: "https://example.com/avatar.png",
-      customerName: "客户备注",
+      customerName: "客户名",
       lastMessage: "hello",
     });
   });
 
-  it("hydrates inactive single contact conversations and exposes contact biz status", async () => {
+  it("keeps single chat conversations sendable regardless of contact biz status", async () => {
     const observedContactQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
     const repository = new WorkbenchRepository(
       {
@@ -2138,18 +2129,20 @@ describe("WorkbenchRepository", () => {
       1,
     ]);
     expect(page.items[0]).toMatchObject({
-      bizStatus: 0,
+      bizStatus: 1,
       conversationId: "88",
       customerAvatar: "https://example.com/inactive-contact.png",
       customerName: "失效客户",
     });
   });
 
-  it("uses customer bind remarks regardless of bind biz status for historical conversation display", async () => {
-    const observedBindQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+  it("uses contact name for single chat display without customer bind relation", async () => {
+    const observedTables: string[] = [];
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
+          observedTables.push(table);
+
           if (table === "xy_wap_embed_user_seat") {
             return createQueryBuilder({
               id: 12,
@@ -2178,17 +2171,6 @@ describe("WorkbenchRepository", () => {
             });
           }
 
-          if (table === "xy_wap_embed_customer_bind_relation") {
-            const query = createQueryBuilder({
-              biz_status: 2,
-              remark: "历史备注",
-              third_external_userid: "external-001",
-            });
-            observedBindQueries.push(query);
-
-            return query;
-          }
-
           if (
             table === "xy_wap_embed_msg_audit_info" ||
             table === "xy_wap_embed_group_seat"
@@ -2206,21 +2188,21 @@ describe("WorkbenchRepository", () => {
       mode: "single",
     });
 
-    expect(observedBindQueries[0]?.wheres).not.toContainEqual([
-      "biz_status",
-      "=",
-      1,
-    ]);
+    expect(observedTables).not.toContain("xy_wap_embed_customer_bind_relation");
     expect(page.items[0]).toMatchObject({
+      bizStatus: 1,
       conversationId: "88",
-      customerName: "历史备注",
+      customerName: "客户名",
     });
   });
 
-  it("uses customer bind biz status for private conversation availability", async () => {
+  it("always marks private conversations as active without customer bind relation", async () => {
+    const observedTables: string[] = [];
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
+          observedTables.push(table);
+
           if (table === "xy_wap_embed_user_seat") {
             return createQueryBuilder({
               id: 12,
@@ -2249,14 +2231,6 @@ describe("WorkbenchRepository", () => {
             });
           }
 
-          if (table === "xy_wap_embed_customer_bind_relation") {
-            return createQueryBuilder({
-              biz_status: 2,
-              remark: "历史备注",
-              third_external_userid: "external-001",
-            });
-          }
-
           if (
             table === "xy_wap_embed_msg_audit_info" ||
             table === "xy_wap_embed_group_seat"
@@ -2274,8 +2248,9 @@ describe("WorkbenchRepository", () => {
       mode: "single",
     });
 
+    expect(observedTables).not.toContain("xy_wap_embed_customer_bind_relation");
     expect(page.items[0]).toMatchObject({
-      bizStatus: 2,
+      bizStatus: 1,
       conversationId: "88",
     });
   });
@@ -2483,7 +2458,7 @@ describe("WorkbenchRepository", () => {
 
     expect(page.items).toEqual([
       expect.objectContaining({
-        bizStatus: 0,
+        bizStatus: 1,
         conversationId: "88",
         customerName: "未知客户",
       }),

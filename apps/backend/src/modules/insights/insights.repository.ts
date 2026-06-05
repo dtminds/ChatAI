@@ -1182,8 +1182,11 @@ export class InsightsRepository implements InsightsRepositoryPort {
     });
   }
 
-  async getQualityAggregate(scope: InsightsUidScope): Promise<InsightQualityAggregateRow> {
-    const row = await buildCurrentSessionBaseQuery(this.db)
+  async getQualityAggregate(
+    scope: InsightsUidScope,
+    filters: { from?: string; to?: string } = {},
+  ): Promise<InsightQualityAggregateRow> {
+    let query = buildCurrentSessionBaseQuery(this.db)
       .select([
         sql<number>`count(distinct session.id)`.as("total_sessions"),
         sql<number>`count(distinct case when snapshot.status in ('ready', 'partial') then session.id end)`.as("analyzed_sessions"),
@@ -1199,22 +1202,39 @@ export class InsightsRepository implements InsightsRepositoryPort {
         sql<number>`count(distinct case when problem.resolution_status = 'partially_resolved' then session.id end)`.as("partial"),
         sql<number>`count(distinct case when problem.resolution_status = 'no_customer_problem' then session.id end)`.as("no_customer_problem"),
       ])
-      .where("session.uid", "=", scope.uid)
-      .executeTakeFirst() as QualityAggregateQueryRow | undefined;
+      .where("session.uid", "=", scope.uid);
+
+    const fromTs = parseDateBoundary(filters.from);
+    const toTs = parseDateBoundary(filters.to);
+
+    if (fromTs != null) {
+      query = query.where("session.started_at", ">=", fromTs) as typeof query;
+    }
+    if (toTs != null) {
+      query = query.where("session.started_at", "<=", toTs) as typeof query;
+    }
+
+    const row = await query.executeTakeFirst() as QualityAggregateQueryRow | undefined;
 
     return {
       analyzedSessions: parseNumber(row?.analyzed_sessions ?? 0),
+      inspectionRate: 0,
       noCustomerProblem: parseNumber(row?.no_customer_problem ?? 0),
       partial: parseNumber(row?.partial ?? 0),
+      passRate: 0,
       problemSessions: parseNumber(row?.problem_sessions ?? 0),
       resolved: parseNumber(row?.resolved ?? 0),
+      ruleDistribution: [],
       totalSessions: parseNumber(row?.total_sessions ?? 0),
       unresolved: parseNumber(row?.unresolved ?? 0),
     };
   }
 
-  async listQualityAgentStats(scope: InsightsUidScope): Promise<InsightQualityAgentStatRow[]> {
-    const rows = await buildCurrentSessionBaseQuery(this.db)
+  async listQualityAgentStats(
+    scope: InsightsUidScope,
+    filters: { from?: string; to?: string } = {},
+  ): Promise<InsightQualityAgentStatRow[]> {
+    let query = buildCurrentSessionBaseQuery(this.db)
       .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
         join
           .onRef("conversation.id", "=", "session.conversation_id")
@@ -1241,7 +1261,19 @@ export class InsightsRepository implements InsightsRepositoryPort {
         sql<number>`count(distinct case when problem.resolution_status = 'unresolved' then session.id end)`.as("unresolved"),
         sql<number>`count(distinct case when problem.resolution_status = 'partially_resolved' then session.id end)`.as("partial"),
       ])
-      .where("session.uid", "=", scope.uid)
+      .where("session.uid", "=", scope.uid);
+
+    const fromTs = parseDateBoundary(filters.from);
+    const toTs = parseDateBoundary(filters.to);
+
+    if (fromTs != null) {
+      query = query.where("session.started_at", ">=", fromTs) as typeof query;
+    }
+    if (toTs != null) {
+      query = query.where("session.started_at", "<=", toTs) as typeof query;
+    }
+
+    const rows = await query
       .groupBy(["seat.id", "seat.third_user_name", "seat.third_avatar"])
       .execute() as unknown as QualityAgentStatQueryRow[];
 
@@ -1261,6 +1293,85 @@ export class InsightsRepository implements InsightsRepositoryPort {
         unresolvedRate: problemSessions > 0 ? unresolved / problemSessions : 0,
       };
     });
+  }
+
+  async getQaFindingAggregate(
+    scope: InsightsUidScope,
+    filters: { from?: string; to?: string } = {},
+  ): Promise<{
+    inspectionRate: number;
+    passRate: number;
+    ruleDistribution: Array<{ count: number; ruleCode: string; ruleName: string }>;
+  }> {
+    const fromTs = parseDateBoundary(filters.from);
+    const toTs = parseDateBoundary(filters.to);
+
+    function applyDateFilters<T extends { where(col: string, op: string, val: unknown): T }>(query: T): T {
+      let next = query;
+      if (fromTs != null) {
+        next = next.where("session.started_at", ">=", fromTs) as T;
+      }
+      if (toTs != null) {
+        next = next.where("session.started_at", "<=", toTs) as T;
+      }
+      return next;
+    }
+
+    const base = applyDateFilters(
+      buildCurrentSessionLeanBaseQuery(this.db)
+        .where("session.uid", "=", scope.uid)
+        .where("snapshot.status", "in", ["ready", "partial"]),
+    );
+
+    const [aggRow, ruleRows] = await Promise.all([
+      base
+        .leftJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
+          join.onRef("qa.snapshot_id", "=", "snapshot.id"),
+        )
+        .select([
+          sql<number>`count(distinct session.id)`.as("total_analyzed"),
+          sql<number>`count(distinct case when qa.id is not null then session.id end)`.as("total_qa"),
+          sql<number>`count(distinct case when qa.id is not null then session.id end) - count(distinct case when qa.passed = 0 then session.id end)`.as("passed"),
+        ])
+        .executeTakeFirst() as Promise<{ total_analyzed: number; total_qa: number; passed: number } | undefined>,
+
+      applyDateFilters(
+        buildCurrentSessionLeanBaseQuery(this.db)
+          .innerJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
+            join.onRef("qa.snapshot_id", "=", "snapshot.id"),
+          )
+          .leftJoin("xy_wap_embed_insight_qa_rule_config as rule", (join) =>
+            join
+              .onRef("rule.rule_code", "=", "qa.rule_code")
+              .on("rule.uid", "=", scope.uid),
+          )
+          .where("session.uid", "=", scope.uid)
+          .where("snapshot.status", "in", ["ready", "partial"])
+          .where("qa.passed", "=", 0),
+      )
+        .select([
+          "qa.rule_code as rule_code",
+          sql<string>`coalesce(rule.rule_name, qa.rule_code)`.as("rule_name"),
+          sql<number>`count(*)`.as("count"),
+        ])
+        .groupBy(["qa.rule_code", "rule.rule_name"])
+        .orderBy(sql`count(*)`, "desc")
+        .execute() as Promise<Array<{ rule_code: string; rule_name: string; count: number }>>,
+    ]);
+
+    const totalAnalyzed = parseNumber(aggRow?.total_analyzed ?? 0);
+    const totalQa = parseNumber(aggRow?.total_qa ?? 0);
+    const passed = parseNumber(aggRow?.passed ?? 0);
+
+    return {
+      inspectionRate: totalAnalyzed > 0 ? totalQa / totalAnalyzed : 0,
+      passRate: totalQa > 0 ? passed / totalQa : 0,
+      ruleDistribution: ruleRows.map((row) => ({
+        count: parseNumber(row.count),
+        ruleCode: row.rule_code,
+        ruleName: row.rule_name,
+      })),
+    };
   }
 
   async listBusinessSessionAggregates(

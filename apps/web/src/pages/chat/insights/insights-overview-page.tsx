@@ -10,7 +10,6 @@ import {
   CubeIcon,
   FilterIcon,
   Message01Icon,
-  MoreHorizontalIcon,
   Search01Icon,
   TagIcon,
   UserGroupIcon,
@@ -268,11 +267,13 @@ export function InsightsOverviewPage() {
           overview={overview}
         />
         <div className="grid gap-5 xl:grid-cols-[520px_minmax(0,1fr)]">
-          <ResolutionDistribution overview={overview} />
+          <ResolutionDistribution from={from} overview={overview} to={to} />
           <TrendPanel
             activeMetric={activeMetric}
+            from={from}
             onMetricChange={setActiveMetric}
             overview={overview}
+            to={to}
           />
         </div>
         <SessionTableCard
@@ -404,9 +405,13 @@ function MetricStrip({
 }
 
 const ResolutionDistribution = memo(function ResolutionDistribution({
+  from,
   overview,
+  to,
 }: {
+  from: string;
   overview: InsightsOverviewResponse | undefined;
+  to: string;
 }) {
   const data = useMemo(() => overview ? buildResolutionData(overview) : [], [overview]);
   const total = data.reduce((sum, item) => sum + item.value, 0);
@@ -417,11 +422,11 @@ const ResolutionDistribution = memo(function ResolutionDistribution({
       <PanelTitle
         icon={ChartBubbleIcon}
         title="问题解决分布"
-        trailing={<Button className="size-8" size="icon" variant="ghost"><HugeiconsIcon icon={MoreHorizontalIcon} size={18} /></Button>}
+        trailing={<DateRangeSummary from={from} to={to} />}
       />
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 sm:flex-row">
-        <div className="relative size-[220px] shrink-0">
-          {hasData ? (
+      {hasData ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 sm:flex-row">
+          <div className="relative size-[220px] shrink-0">
             <ResponsiveContainer height="100%" width="100%">
               <PieChart>
                 <Pie
@@ -445,58 +450,56 @@ const ResolutionDistribution = memo(function ResolutionDistribution({
                 />
               </PieChart>
             </ResponsiveContainer>
-          ) : (
-            <div className="flex h-full items-center justify-center rounded-[10px] bg-muted/35 text-sm text-muted-foreground">
-              暂无分布数据
-            </div>
-          )}
-          {hasData ? (
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-2xl font-semibold">{formatNumber(total)}</span>
               <span className="text-xs text-muted-foreground">咨询会话</span>
             </div>
-          ) : null}
+          </div>
+          <div className="grid w-full gap-3 sm:max-w-[180px]">
+            {data.map((item) => (
+              <div className="flex items-center gap-2.5" key={item.name}>
+                <span
+                  className="h-5 w-1 rounded-full"
+                  style={{ backgroundColor: item.color }}
+                />
+                <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                  {item.name}
+                </span>
+                <span className="text-sm font-semibold tabular-nums">
+                  {formatNumber(item.value)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="grid w-full gap-3 sm:max-w-[180px]">
-          {data.map((item) => (
-            <div className="flex items-center gap-2.5" key={item.name}>
-              <span
-                className="h-5 w-1 rounded-full"
-                style={{ backgroundColor: item.color }}
-              />
-              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                {item.name}
-              </span>
-              <span className="text-sm font-semibold tabular-nums">
-                {formatNumber(item.value)}
-              </span>
-            </div>
-          ))}
+      ) : (
+        <div className="flex flex-1 items-center justify-center rounded-[10px] bg-muted/35 text-sm text-muted-foreground">
+          暂无数据
         </div>
-      </div>
-      <div className="mt-auto flex items-center gap-2 text-xs text-muted-foreground">
-        <HugeiconsIcon icon={FilterIcon} size={14} />
-        <span>最近 30 天</span>
-      </div>
+      )}
     </section>
   );
 });
 
 const TrendPanel = memo(function TrendPanel({
   activeMetric,
+  from,
   onMetricChange,
   overview,
+  to,
 }: {
   activeMetric: TrendMetric;
+  from: string;
   onMetricChange: (metric: TrendMetric) => void;
   overview: InsightsOverviewResponse | undefined;
+  to: string;
 }) {
   const trend = overview?.trend ?? [];
   const activeLabel = trendOptions.find((option) => option.key === activeMetric)?.label ?? "";
 
   return (
     <section className="flex min-h-[240px] flex-col gap-3 rounded-xl border bg-card p-4">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-[8px] border bg-background text-muted-foreground">
             <HugeiconsIcon icon={ChartAreaIcon} size={17} />
@@ -530,6 +533,7 @@ const TrendPanel = memo(function TrendPanel({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        <DateRangeSummary from={from} to={to} />
       </div>
       <div className="flex flex-1 items-stretch">
         <div className="min-h-[180px] min-w-0 flex-1">
@@ -572,7 +576,7 @@ const TrendPanel = memo(function TrendPanel({
             </ResponsiveContainer>
           ) : (
             <div className="flex h-full items-center justify-center rounded-[10px] bg-muted/35 text-sm text-muted-foreground">
-              暂无趋势数据
+              暂无数据
             </div>
           )}
         </div>
@@ -580,6 +584,14 @@ const TrendPanel = memo(function TrendPanel({
     </section>
   );
 });
+
+function DateRangeSummary({ from, to }: { from: string; to: string }) {
+  return (
+    <div className="shrink-0 text-xs text-muted-foreground">
+      {formatDateRangeSummary(from, to)}
+    </div>
+  );
+}
 
 function SessionTableCard({
   analysisStatusFilter,
@@ -783,8 +795,8 @@ function SessionTableCard({
               ))
             ) : (
               <TableRow>
-                <TableCell className="py-10 text-sm text-muted-foreground" colSpan={7}>
-                  当前时间范围内暂无咨询会话
+                <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={7}>
+                  暂无数据
                 </TableCell>
               </TableRow>
             )}
@@ -1269,9 +1281,7 @@ function buildResolutionData(overview: InsightsOverviewResponse | undefined) {
     { color: insightResolutionColors.unknown, name: "消息不足", value: resolution?.unknown ?? 0 },
   ].filter((item) => item.value > 0);
 
-  return data.length > 0
-    ? data
-    : [{ color: insightResolutionColors.unknown, name: "暂无数据", value: 1 }];
+  return data;
 }
 
 function getTrendDelta(
@@ -1297,6 +1307,10 @@ function getTrendDelta(
 
 function formatNumber(value: number | undefined) {
   return value == null ? "-" : value.toLocaleString("zh-CN");
+}
+
+function formatDateRangeSummary(from: string, to: string) {
+  return from === to ? from : `${from} 至 ${to}`;
 }
 
 function formatTrendDate(value: string) {

@@ -41,8 +41,10 @@ export type InsightFollowUpQuery = {
 };
 
 export type InsightQualityQuery = {
+  from?: string;
   page?: number;
   pageSize?: number;
+  to?: string;
 };
 
 export type InsightOverviewQuery = {

@@ -412,10 +412,16 @@ function installInsightMocks() {
     ],
     overview: {
       analyzedSessions: 20,
+      inspectionRate: 0.91,
       noCustomerProblem: 6,
       partial: 3,
+      passRate: 0.43,
       problemSessions: 14,
       resolved: 6,
+      ruleDistribution: [
+        { count: 8, ruleCode: "problem_resolution", ruleName: "客户问题是否解决" },
+        { count: 3, ruleCode: "clear_next_step", ruleName: "是否明确下一步" },
+      ],
       totalSessions: 22,
       unresolved: 5,
     },
@@ -859,7 +865,6 @@ function installInsightMocks() {
 async function applyDateRangePreset(label: string, expectedFrom: string, expectedTo: string) {
   await userEvent.click(screen.getByRole("button", { name: /日期范围/ }));
   await userEvent.click(await screen.findByRole("button", { name: label }));
-  await userEvent.click(screen.getByRole("button", { name: "应用" }));
 
   await waitFor(() => {
     expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith(
@@ -926,6 +931,14 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("咨询用户数")).toBeInTheDocument();
     expect(screen.getByText("消息数")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^消息数/ })).toBeInTheDocument();
+    const distributionPanel = screen.getByRole("heading", { name: "问题解决分布" }).closest("section");
+    const trendPanel = screen.getByRole("button", { name: "咨询会话" }).closest("section");
+
+    expect(distributionPanel).not.toBeNull();
+    expect(trendPanel).not.toBeNull();
+    expect(within(distributionPanel as HTMLElement).getByText("2026-05-28 至 2026-06-03")).toBeInTheDocument();
+    expect(within(trendPanel as HTMLElement).getByText("2026-05-28 至 2026-06-03")).toBeInTheDocument();
+    expect(screen.queryByText("最近 30 天")).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "咨询会话明细" })).toBeInTheDocument();
     expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
     expect(screen.getAllByText("消息不足").length).toBeGreaterThan(0);
@@ -1046,15 +1059,6 @@ describe("conversation insights pages", () => {
     expect(screen.queryByText("2026年7月")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "昨天" })).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: "近7天" }));
-    expect(screen.getByText("2026年5月")).toBeInTheDocument();
-    expect(screen.getByText("2026年6月")).toBeInTheDocument();
-    expect(screen.queryByText("2026年7月")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "本月" }));
-    expect(screen.getByText("2026年5月")).toBeInTheDocument();
-    expect(screen.getByText("2026年6月")).toBeInTheDocument();
-    expect(screen.queryByText("2026年7月")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "近7天" }));
-    await userEvent.click(screen.getByRole("button", { name: "应用" }));
 
     await waitFor(() => {
       expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith({
@@ -1074,12 +1078,6 @@ describe("conversation insights pages", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /日期范围.*近7天/ }));
     await userEvent.click(await screen.findByRole("button", { name: "昨天" }));
-    const yesterdayButton = screen.getByRole("button", { name: /2026年6月2日/ });
-    expect(yesterdayButton).toHaveAttribute("data-range-single", "true");
-    expect(yesterdayButton).toHaveClass("rounded-[10px]");
-    expect(yesterdayButton).not.toHaveClass("rounded-r-none");
-    expect(yesterdayButton).not.toHaveClass("rounded-l-none");
-    await userEvent.click(screen.getByRole("button", { name: "应用" }));
     await waitFor(() => {
       expect(serviceMocks.getInsightOverview).toHaveBeenLastCalledWith({
         from: "2026-06-02T00:00:00.000+08:00",
@@ -1192,13 +1190,13 @@ describe("conversation insights pages", () => {
 
     expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
     expect(serviceMocks.getInsightQuality).toHaveBeenCalledWith(
-      { page: 1, pageSize: 10 },
+      expect.objectContaining({ page: 1, pageSize: 10 }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
+    expect(screen.getByText("质检概览")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "问题列表" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "客服报表" })).toBeInTheDocument();
-    expect(screen.getByText("无需客服处理")).toBeInTheDocument();
+    expect(screen.getByText("总会话数")).toBeInTheDocument();
     expect(screen.queryByText("无明确问题")).not.toBeInTheDocument();
     expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
     expect(screen.getAllByText("售后/物流/退款进度未确认").length).toBeGreaterThan(0);
@@ -1244,10 +1242,13 @@ describe("conversation insights pages", () => {
       agentStats: [],
       overview: {
         analyzedSessions: 0,
+        inspectionRate: 0,
         noCustomerProblem: 0,
         partial: 0,
+        passRate: 0,
         problemSessions: 0,
         resolved: 0,
+        ruleDistribution: [],
         totalSessions: 0,
         unresolved: 0,
       },
@@ -1268,7 +1269,7 @@ describe("conversation insights pages", () => {
     expect(screen.getByRole("table", { name: "待处理列表" })).toBeInTheDocument();
     expect(screen.getAllByRole("columnheader").map((item) => item.textContent)).toEqual([
       "客户",
-      "action",
+      "概要",
       "优先级",
       "状态",
       "时间",
@@ -1589,8 +1590,49 @@ describe("conversation insights pages", () => {
     const distributionPanel = screen.getByRole("heading", { name: "问题解决分布" }).closest("section");
 
     expect(distributionPanel).not.toBeNull();
-    expect(within(distributionPanel as HTMLElement).queryByText("暂无数据")).not.toBeInTheDocument();
-    expect(within(distributionPanel as HTMLElement).getByText("暂无分布数据")).toBeInTheDocument();
+    expect(within(distributionPanel as HTMLElement).getByText("暂无数据")).toBeInTheDocument();
+    expect(within(distributionPanel as HTMLElement).queryByText("暂无分布数据")).not.toBeInTheDocument();
+    expect(within(distributionPanel as HTMLElement).queryByText("咨询会话")).not.toBeInTheDocument();
+  });
+
+  it("shows an empty overview distribution when returned resolution counts are all zero", async () => {
+    serviceMocks.getInsightOverview.mockResolvedValue({
+      ...serviceMocks.getInsightOverview.getMockImplementation()?.(),
+      actionItemsOpen: 0,
+      analysis: { failed: 0, partial: 0, ready: 0, stale: 0 },
+      entityHotspots: [],
+      highRiskSessions: 0,
+      intentDistribution: [],
+      negativeSessions: 0,
+      problemSessions: 0,
+      readySessions: 0,
+      resolution: {
+        noCustomerProblem: 0,
+        partiallyResolved: 0,
+        resolved: 0,
+        unknown: 0,
+        unresolved: 0,
+      },
+      totalSessions: 0,
+      totals: {
+        agentMessages: 0,
+        consultingCustomers: 0,
+        customerMessages: 0,
+        logicalSessions: 0,
+        messages: 0,
+      },
+      trend: [],
+      unresolvedSessions: 0,
+    });
+
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    const distributionPanel = screen.getByRole("heading", { name: "问题解决分布" }).closest("section");
+
+    expect(distributionPanel).not.toBeNull();
+    expect(within(distributionPanel as HTMLElement).getByText("暂无数据")).toBeInTheDocument();
+    expect(within(distributionPanel as HTMLElement).queryByText("暂无分布数据")).not.toBeInTheDocument();
     expect(within(distributionPanel as HTMLElement).queryByText("咨询会话")).not.toBeInTheDocument();
   });
 
@@ -1666,6 +1708,26 @@ describe("conversation insights pages", () => {
 
     expect(await screen.findByRole("heading", { name: "待处理" })).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "正在加载会话" })).toBeInTheDocument();
+  });
+
+  it("shows a centered empty state for overview sessions", async () => {
+    serviceMocks.getInsightOverviewSessions.mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      totalPages: 0,
+    });
+
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    const overviewTable = screen.getByRole("table", { name: "咨询会话明细" });
+    const emptyCell = within(overviewTable).getByText("暂无数据");
+
+    expect(emptyCell).toBeInTheDocument();
+    expect(emptyCell).toHaveClass("text-center");
+    expect(within(overviewTable).queryByText("当前时间范围内暂无咨询会话")).not.toBeInTheDocument();
   });
 
   it("hides settings content for non-admin users", async () => {

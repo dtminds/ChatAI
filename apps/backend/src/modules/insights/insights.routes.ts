@@ -49,8 +49,10 @@ const OverviewQuerySchema = Type.Object({
 });
 
 const QualityQuerySchema = Type.Object({
+  from: Type.Optional(Type.String()),
   page: Type.Optional(Type.Number()),
   pageSize: Type.Optional(Type.Number()),
+  to: Type.Optional(Type.String()),
 });
 
 const OverviewSessionsQuerySchema = Type.Object({
@@ -721,8 +723,10 @@ function normalizeOverviewSessionsQuery(query: OverviewSessionsQuery): InsightsO
 
 function normalizeQualityQuery(query: QualityQuery) {
   return {
+    from: query.from,
     page: normalizePositiveQueryNumber(query.page),
     pageSize: normalizePositiveQueryNumber(query.pageSize),
+    to: query.to,
   };
 }
 

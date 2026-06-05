@@ -67,9 +67,9 @@ export function InsightDateRangeFilter({
   function selectPreset(option: (typeof presetOptions)[number]) {
     const range = option.range();
 
-    setDraftRange(toCalendarRange(range));
-    setDraftPresetLabel(option.label);
-    setVisibleMonth(getVisibleMonth(range));
+    onChange(range);
+    setSelectedPresetLabel(option.label);
+    setIsOpen(false);
   }
 
   function applyDraftRange() {

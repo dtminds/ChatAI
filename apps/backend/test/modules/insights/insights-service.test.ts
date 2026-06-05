@@ -188,13 +188,24 @@ const overviewAggregate = {
 
 const qualityAggregate = {
   analyzedSessions: 3,
+  inspectionRate: 0,
   noCustomerProblem: 1,
   partial: 1,
+  passRate: 0,
   problemSessions: 2,
   resolved: 0,
+  ruleDistribution: [],
   totalSessions: 4,
   unresolved: 1,
 } satisfies Awaited<NonNullable<InsightsRepositoryPort["getQualityAggregate"]>>;
+
+const qaFindingAggregate = {
+  inspectionRate: 0.75,
+  passRate: 0.5,
+  ruleDistribution: [
+    { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
+  ],
+} satisfies Awaited<NonNullable<InsightsRepositoryPort["getQaFindingAggregate"]>>;
 
 const qualityAgentStats = [
   {
@@ -822,14 +833,47 @@ describe("InsightsService", () => {
         reasonLabel: "要求客户等待但未说明下一步",
       },
     ]);
-    expect(repository.getQualityAggregate).toHaveBeenCalledWith(scope);
-    expect(repository.listQualityAgentStats).toHaveBeenCalledWith(scope);
+    expect(repository.getQualityAggregate).toHaveBeenCalledWith(scope, {
+      from: undefined,
+      to: undefined,
+    });
+    expect(repository.listQualityAgentStats).toHaveBeenCalledWith(scope, {
+      from: undefined,
+      to: undefined,
+    });
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
     expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, expect.objectContaining({
+      from: undefined,
       page: 1,
       pageSize: 20,
       problemScope: "unresolved",
+      to: undefined,
     }));
+  });
+
+  it("merges QA finding aggregate into the quality overview", async () => {
+    const repository = createRepository({
+      getQaFindingAggregate: vi.fn(async () => qaFindingAggregate),
+    });
+    const service = new InsightsService(repository);
+    const result = await service.getQuality(scope, {
+      from: "2026-06-01",
+      to: "2026-06-30",
+    });
+
+    expect(result.overview).toMatchObject({
+      analyzedSessions: 3,
+      inspectionRate: 0.75,
+      passRate: 0.5,
+      ruleDistribution: [
+        { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
+      ],
+      totalSessions: 4,
+    });
+    expect(repository.getQaFindingAggregate).toHaveBeenCalledWith(scope, {
+      from: "2026-06-01",
+      to: "2026-06-30",
+    });
   });
 
   it("paginates quality unresolved sessions", async () => {
@@ -842,8 +886,10 @@ describe("InsightsService", () => {
     const service = new InsightsService(repository);
 
     const result = await service.getQuality(scope, {
+      from: "2026-06-01",
       page: 2,
       pageSize: 1,
+      to: "2026-06-30",
     });
 
     expect(result.unresolvedSessions).toEqual([
@@ -858,9 +904,15 @@ describe("InsightsService", () => {
       totalPages: 2,
     });
     expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, {
+      from: "2026-06-01",
       page: 2,
       pageSize: 1,
       problemScope: "unresolved",
+      to: "2026-06-30",
+    });
+    expect(repository.listQualityAgentStats).toHaveBeenCalledWith(scope, {
+      from: "2026-06-01",
+      to: "2026-06-30",
     });
   });
 

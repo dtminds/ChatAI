@@ -18,7 +18,7 @@ describe("insights routes", () => {
     const quality = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/insights/quality?page=1&pageSize=1",
+      url: "/api/server/insights/quality?from=2026-06-01&to=2026-06-30&page=1&pageSize=1",
     });
     const business = await app.inject({
       headers: { authorization },
@@ -102,6 +102,12 @@ describe("insights routes", () => {
       success: true,
     });
     expect(quality.statusCode).toBe(200);
+    expect(
+      db.selectBuilders.some((builder) =>
+        builder.wheres.some((call) => call[0] === "session.started_at" && call[1] === ">=")
+          && builder.wheres.some((call) => call[0] === "session.started_at" && call[1] === "<="),
+      ),
+    ).toBe(true);
     expect(quality.json().data.unresolvedSessions[0]).toMatchObject({
       conversationId: "301",
       evidenceMessageIds: ["9001", "9002"],
@@ -340,6 +346,7 @@ function createInsightsDbMock(options: {
     insertedJob: undefined as Record<string, unknown> | undefined,
     insertedRescanTask: undefined as Record<string, unknown> | undefined,
     insightCurrentSelectCount: 0,
+    selectBuilders: [] as Array<{ wheres: Array<[string, string, unknown]> }>,
     updatedActionStatus: undefined as { id: number | undefined; status: string | undefined } | undefined,
     insertInto(table: string) {
       if (table !== "xy_wap_embed_insight_job" && table !== "xy_wap_embed_insight_rescan_task") {
@@ -414,6 +421,8 @@ function createInsightsDbMock(options: {
             return builder;
           },
         };
+
+        state.selectBuilders.push(builder);
 
         return builder;
       }

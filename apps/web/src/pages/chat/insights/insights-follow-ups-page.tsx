@@ -104,7 +104,7 @@ export function InsightsFollowUpsPage() {
               <TableHeader>
                 <TableRow className="bg-muted/35 hover:bg-muted/35">
                   <TableHead className="h-12 min-w-[180px] px-5">客户</TableHead>
-                  <TableHead className="h-12 min-w-[300px] px-5">action</TableHead>
+                  <TableHead className="h-12 min-w-[300px] px-5">概要</TableHead>
                   <TableHead className="h-12 min-w-[90px] px-5">优先级</TableHead>
                   <TableHead className="h-12 min-w-[90px] px-5">状态</TableHead>
                   <TableHead className="h-12 min-w-[150px] px-5">时间</TableHead>
@@ -170,8 +170,8 @@ export function InsightsFollowUpsPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={6}>
-                      暂无待处理事项
+                    <TableCell className="px-5 py-8 text-center text-sm text-muted-foreground" colSpan={6}>
+                      暂无数据
                     </TableCell>
                   </TableRow>
                 )}

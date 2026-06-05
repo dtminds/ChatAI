@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { InsightsQualityResponse } from "@chatai/contracts";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,9 +20,14 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getInsightQuality } from "./api/insights-service";
+import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
+import {
+  getDefaultDateRange,
+  type InsightDateRange,
+} from "./insights-date-range";
 import {
   formatInsightTime,
   formatResolutionStatus,
@@ -51,6 +57,7 @@ export function InsightsQualityPage() {
   const [problemPage, setProblemPage] = useState(1);
   const [resolutionFilter, setResolutionFilter] =
     useState<ResolutionFilter>("unresolved");
+  const [dateRange, setDateRange] = useState<InsightDateRange>(() => getDefaultDateRange());
   const detail = useInsightDetail();
 
   useEffect(() => {
@@ -60,8 +67,10 @@ export function InsightsQualityPage() {
 
     void getInsightQuality(
       {
+        from: dateRange.from,
         page: problemPage,
         pageSize: qualityProblemPageSize,
+        to: dateRange.to,
       },
       { signal: controller.signal },
     )
@@ -80,7 +89,7 @@ export function InsightsQualityPage() {
     return () => {
       controller.abort();
     };
-  }, [problemPage]);
+  }, [dateRange.from, dateRange.to, problemPage]);
 
   const overview = quality?.overview;
   const problemItems = useMemo(() => {
@@ -98,25 +107,77 @@ export function InsightsQualityPage() {
   return (
     <InsightsLayout title="服务质检">
       <div className="space-y-5">
-        <InsightsPageHeader
-          description="按咨询会话判断客户问题是否解决，辅助主管复核服务质量"
-          title="服务质检"
-        />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <InsightsPageHeader
+            description="按咨询会话判断客户问题是否解决，辅助主管复核服务质量"
+            title="服务质检"
+          />
+          <InsightDateRangeFilter
+            from={dateRange.from}
+            onChange={(range) => {
+              setDateRange(range);
+              setProblemPage(1);
+            }}
+            to={dateRange.to}
+          />
+        </div>
         <section className="rounded-[8px] border bg-background p-5">
           <div className="mb-4">
-            <h2 className="text-base font-semibold">客户问题是否解决</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              只判断当前咨询会话内是否解决，作为主管辅助复核
-            </p>
+            <h2 className="text-base font-semibold">质检概览</h2>
           </div>
-          <div className="grid gap-3 md:grid-cols-7">
-            <Stat label="咨询会话总数" value={overview?.totalSessions} />
-            <Stat label="已分析会话数" value={overview?.analyzedSessions} />
-            <Stat label="有客户问题" value={overview?.problemSessions} />
-            <Stat label="已解决" value={overview?.resolved} />
-            <Stat label="未解决" value={overview?.unresolved} tone="danger" />
-            <Stat label="部分解决" value={overview?.partial} tone="warning" />
-            <Stat label="无需客服处理" value={overview?.noCustomerProblem} />
+          <div className="grid gap-3 md:grid-cols-3">
+            <Stat label="总会话数" value={overview?.totalSessions} />
+            <Stat label="质检率" value={overview?.inspectionRate} format="percent" />
+            <Stat label="通过率" value={overview?.passRate} format="percent" />
+          </div>
+          <div className="mt-5 border-t pt-4">
+            <h3 className="mb-4 text-sm font-medium text-muted-foreground">质检不通过项分布</h3>
+            {(overview?.ruleDistribution?.length ?? 0) > 0 ? (
+              <div className="flex flex-col items-center gap-4 sm:flex-row">
+                <div className="relative size-[200px] shrink-0">
+                  <ResponsiveContainer height="100%" width="100%">
+                    <PieChart>
+                      <Pie
+                        animationDuration={450}
+                        cx="50%"
+                        cy="50%"
+                        data={buildRuleDistributionData(overview!.ruleDistribution)}
+                        dataKey="value"
+                        innerRadius="48%"
+                        outerRadius="72%"
+                        paddingAngle={3}
+                        strokeWidth={0}
+                      >
+                        {buildRuleDistributionData(overview!.ruleDistribution).map((item) => (
+                          <Cell fill={item.color} key={item.name} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        content={<RuleDistributionTooltip />}
+                        wrapperStyle={{ zIndex: 20 }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-2xl font-semibold">
+                      {overview!.ruleDistribution.reduce((sum, r) => sum + r.count, 0)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">命中次数</span>
+                  </div>
+                </div>
+                <div className="grid w-full gap-2 sm:max-w-[200px]">
+                  {buildRuleDistributionData(overview!.ruleDistribution).map((item) => (
+                    <div className="flex items-center gap-2" key={item.name}>
+                      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span className="min-w-0 flex-1 truncate text-sm">{item.name}</span>
+                      <span className="shrink-0 text-sm tabular-nums text-muted-foreground">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-sm text-muted-foreground">暂无数据</div>
+            )}
           </div>
         </section>
 
@@ -206,7 +267,6 @@ function ProblemList({
     <div className="rounded-[8px] border bg-background">
       <div className="flex items-center justify-between border-b px-5 py-4">
         <h2 className="text-base font-semibold">问题列表</h2>
-        <Badge variant="outline">{total} 条</Badge>
       </div>
       <div className="divide-y">
         {isLoading ? (
@@ -254,8 +314,8 @@ function ProblemList({
             </article>
           ))
         ) : (
-          <div className="px-5 py-8 text-sm text-muted-foreground">
-            暂无匹配的问题
+          <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+            暂无数据
           </div>
         )}
       </div>
@@ -362,10 +422,10 @@ function AgentReportTable({
           ) : (
             <TableRow>
               <TableCell
-                className="px-5 py-8 text-sm text-muted-foreground"
+                className="px-5 py-8 text-center text-sm text-muted-foreground"
                 colSpan={6}
               >
-                暂无客服统计数据
+                暂无数据
               </TableCell>
             </TableRow>
           )}
@@ -376,14 +436,20 @@ function AgentReportTable({
 }
 
 function Stat({
+  format,
   label,
   tone = "default",
   value,
 }: {
+  format?: "percent";
   label: string;
   tone?: "danger" | "default" | "warning";
   value?: number;
 }) {
+  const display = format === "percent" && value != null
+    ? `${(value * 100).toFixed(1)}%`
+    : value ?? "-";
+
   return (
     <div className="rounded-[8px] bg-muted/35 px-3 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
@@ -396,7 +462,7 @@ function Stat({
               : "mt-1 text-xl font-semibold"
         }
       >
-        {value ?? "-"}
+        {display}
       </div>
     </div>
   );
@@ -430,4 +496,44 @@ function buildPaginationNumbers(page: number, totalPages: number): Array<number 
   }
 
   return result;
+}
+
+const ruleDistributionColors = [
+  "#df3f40",
+  "#f0a337",
+  "#5b5ff0",
+  "#14a6a6",
+  "#7b61d9",
+  "#2f8bc9",
+  "#58a65c",
+  "#c16d9b",
+];
+
+function buildRuleDistributionData(
+  ruleDistribution: InsightsQualityResponse["overview"]["ruleDistribution"],
+) {
+  return ruleDistribution.map((rule, index) => ({
+    color: ruleDistributionColors[index % ruleDistributionColors.length],
+    name: rule.ruleName,
+    ruleCode: rule.ruleCode,
+    value: rule.count,
+  }));
+}
+
+function RuleDistributionTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number; payload: { color: string } }> }) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const item = payload[0];
+
+  return (
+    <div className="rounded-[8px] border bg-background px-3 py-2 text-sm shadow-sm">
+      <div className="flex items-center gap-2">
+        <span className="size-2.5 rounded-full" style={{ backgroundColor: item.payload.color }} />
+        <span>{item.name}</span>
+        <span className="font-medium tabular-nums">{item.value}</span>
+      </div>
+    </div>
+  );
 }

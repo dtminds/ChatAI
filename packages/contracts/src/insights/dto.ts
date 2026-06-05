@@ -251,12 +251,21 @@ export const InsightsBusinessResponseSchema = Type.Object({
 
 export const InsightBusinessRelatedSessionsResponseSchema = InsightOverviewSessionsPageSchema;
 
+export const InsightsQualityRuleDistributionSchema = Type.Object({
+  count: Type.Number(),
+  ruleCode: Type.String(),
+  ruleName: Type.String(),
+});
+
 export const InsightsQualityOverviewSchema = Type.Object({
   analyzedSessions: Type.Number(),
+  inspectionRate: Type.Number(),
   noCustomerProblem: Type.Number(),
   partial: Type.Number(),
+  passRate: Type.Number(),
   problemSessions: Type.Number(),
   resolved: Type.Number(),
+  ruleDistribution: Type.Array(InsightsQualityRuleDistributionSchema),
   totalSessions: Type.Number(),
   unresolved: Type.Number(),
 });

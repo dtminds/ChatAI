@@ -208,10 +208,15 @@ describe("insights DTOs", () => {
         ],
         overview: {
           analyzedSessions: 9,
+          inspectionRate: 0.8,
           noCustomerProblem: 2,
           partial: 1,
+          passRate: 0.75,
           problemSessions: 7,
           resolved: 5,
+          ruleDistribution: [
+            { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
+          ],
           totalSessions: 10,
           unresolved: 1,
         },

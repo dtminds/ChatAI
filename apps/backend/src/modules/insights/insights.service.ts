@@ -122,8 +122,10 @@ export type InsightsFollowUpFilters = {
 };
 
 export type InsightsQualityFilters = {
+  from?: string;
   page?: number;
   pageSize?: number;
+  to?: string;
 };
 
 export type InsightsOverviewFilters = {
@@ -249,10 +251,20 @@ export type InsightsRepositoryPort = {
   ): Promise<InsightCurrentSessionRow[]>;
   getQualityAggregate?(
     scope: InsightsUidScope,
+    filters?: { from?: string; to?: string },
   ): Promise<InsightQualityAggregateRow>;
   listQualityAgentStats?(
     scope: InsightsUidScope,
+    filters?: { from?: string; to?: string },
   ): Promise<InsightQualityAgentStatRow[]>;
+  getQaFindingAggregate?(
+    scope: InsightsUidScope,
+    filters?: { from?: string; to?: string },
+  ): Promise<{
+    inspectionRate: number;
+    passRate: number;
+    ruleDistribution: Array<{ count: number; ruleCode: string; ruleName: string }>;
+  }>;
   listBusinessSessionAggregates?(
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
@@ -444,13 +456,16 @@ export class InsightsService {
   ): Promise<InsightsQualityResponse> {
     const normalizedPage = normalizeOverviewPage(filters.page);
     const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
-    const [overview, agentStats, unresolvedPage] = await Promise.all([
-      this.repository.getQualityAggregate?.(scope),
-      this.repository.listQualityAgentStats?.(scope),
+    const [overview, qaAggregate, agentStats, unresolvedPage] = await Promise.all([
+      this.repository.getQualityAggregate?.(scope, { from: filters.from, to: filters.to }),
+      this.repository.getQaFindingAggregate?.(scope, { from: filters.from, to: filters.to }),
+      this.repository.listQualityAgentStats?.(scope, { from: filters.from, to: filters.to }),
       this.repository.listCurrentSessions(scope, {
+        from: filters.from,
         page: normalizedPage,
         pageSize: normalizedPageSize,
         problemScope: "unresolved",
+        to: filters.to,
       }),
     ]);
     const unresolvedRows = unresolvedPage.items.filter((row) => unresolvedStatuses.has(row.resolutionStatus));
@@ -471,9 +486,16 @@ export class InsightsService {
         unresolvedReason: row.unresolvedReason ?? "未给出判定理由",
       }));
 
+    const baseOverview = overview ?? buildQualityOverview(unresolvedRows);
+
     return {
       agentStats: agentStats ?? buildAgentStats(unresolvedRows),
-      overview: overview ?? buildQualityOverview(unresolvedRows),
+      overview: {
+        ...baseOverview,
+        inspectionRate: qaAggregate?.inspectionRate ?? baseOverview.inspectionRate,
+        passRate: qaAggregate?.passRate ?? baseOverview.passRate,
+        ruleDistribution: qaAggregate?.ruleDistribution ?? baseOverview.ruleDistribution,
+      },
       unresolvedReasons: buildUnresolvedReasons(unresolvedSessions),
       unresolvedSessionsPage: {
         page: normalizedPage,
@@ -1040,12 +1062,15 @@ function isCustomerProblemSession(row: InsightCurrentSessionRow) {
 function buildQualityOverview(rows: InsightCurrentSessionRow[]): InsightQualityAggregateRow {
   return {
     analyzedSessions: rows.filter((row) => analyzedStatuses.has(row.analysisStatus)).length,
+    inspectionRate: 0,
     noCustomerProblem: rows.filter(
       (row) => row.resolutionStatus === "no_customer_problem",
     ).length,
     partial: rows.filter((row) => row.resolutionStatus === "partially_resolved").length,
+    passRate: 0,
     problemSessions: rows.filter(isCustomerProblemSession).length,
     resolved: rows.filter((row) => row.resolutionStatus === "resolved").length,
+    ruleDistribution: [],
     totalSessions: rows.length,
     unresolved: rows.filter((row) => row.resolutionStatus === "unresolved").length,
   };

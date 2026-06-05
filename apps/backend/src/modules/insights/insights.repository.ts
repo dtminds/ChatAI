@@ -3977,6 +3977,7 @@ function applyCurrentSessionFilters<Query>(
       .innerJoin("xy_wap_embed_session_tag as tag_filter", (join) =>
         join.onRef("tag_filter.snapshot_id", "=", "snapshot.id"),
       ) as typeof next;
+    next = next.where("tag_filter.uid", "=", scope.uid) as typeof next;
     next = next.where("tag_filter.tag_code", "=", filters.tagCode) as typeof next;
   }
 
@@ -3985,6 +3986,7 @@ function applyCurrentSessionFilters<Query>(
       .innerJoin("xy_wap_embed_session_entity as entity_filter", (join) =>
         join.onRef("entity_filter.snapshot_id", "=", "snapshot.id"),
       ) as typeof next;
+    next = next.where("entity_filter.uid", "=", scope.uid) as typeof next;
     next = next.where("entity_filter.entity_name", "=", filters.entityName) as typeof next;
   }
 
@@ -3993,6 +3995,7 @@ function applyCurrentSessionFilters<Query>(
       .innerJoin("xy_wap_embed_session_intent as intent_filter", (join) =>
         join.onRef("intent_filter.snapshot_id", "=", "snapshot.id"),
       ) as typeof next;
+    next = next.where("intent_filter.uid", "=", scope.uid) as typeof next;
     next = next.where("intent_filter.intent_code", "=", filters.intentCode) as typeof next;
   }
 

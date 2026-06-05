@@ -106,6 +106,7 @@ DROP TABLE IF EXISTS xy_wap_embed_session_risk;
   - `xy_wap_embed_insight_job.idx_insight_job_runnable`, covered by scoped job claim queries using `idx_insight_job_claim`.
   - `xy_wap_embed_insight_evidence.idx_evidence_session_message`, `idx_evidence_conversation_message`, and `idx_evidence_source_message`, because current evidence reads use snapshot/dimension or uid/session/snapshot lookups.
   - `xy_wap_embed_logical_session.idx_logical_session_status_time`, replaced by `idx_logical_session_status_next_close` for close scans.
+  - `xy_wap_embed_session_tag.idx_tag_code`, `xy_wap_embed_session_entity.idx_session_entity_identity`, and `xy_wap_embed_session_intent.idx_session_intent_code`, replaced by uid-prefixed result-table indexes after filter joins were made uid-scoped.
 
 Manual migration for existing databases:
 
@@ -120,4 +121,13 @@ ALTER TABLE xy_wap_embed_insight_evidence
 
 ALTER TABLE xy_wap_embed_logical_session
   DROP KEY idx_logical_session_status_time;
+
+ALTER TABLE xy_wap_embed_session_tag
+  DROP KEY idx_tag_code;
+
+ALTER TABLE xy_wap_embed_session_entity
+  DROP KEY idx_session_entity_identity;
+
+ALTER TABLE xy_wap_embed_session_intent
+  DROP KEY idx_session_intent_code;
 ```

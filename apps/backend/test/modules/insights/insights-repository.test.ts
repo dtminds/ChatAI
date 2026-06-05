@@ -235,8 +235,11 @@ describe("InsightsRepository", () => {
     expect(countQuery.whereCalls).toContainEqual(["session.uid", "=", 9001]);
     expect(countQuery.whereCalls).toContainEqual(["snapshot.status", "=", "ready"]);
     expect(countQuery.whereCalls).toContainEqual(["problem.resolution_status", "=", "unresolved"]);
+    expect(countQuery.whereCalls).toContainEqual(["tag_filter.uid", "=", 9001]);
     expect(countQuery.whereCalls).toContainEqual(["tag_filter.tag_code", "=", "logistics_issue"]);
+    expect(countQuery.whereCalls).toContainEqual(["entity_filter.uid", "=", 9001]);
     expect(countQuery.whereCalls).toContainEqual(["entity_filter.entity_name", "=", "白色羽绒服"]);
+    expect(countQuery.whereCalls).toContainEqual(["intent_filter.uid", "=", 9001]);
     expect(countQuery.whereCalls).toContainEqual(["intent_filter.intent_code", "=", "refund"]);
   });
 

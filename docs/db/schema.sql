@@ -249,8 +249,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_tag (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_tag_snapshot (snapshot_id),
-  KEY idx_tag_uid_code_snapshot (uid, tag_code, snapshot_id),
-  KEY idx_tag_code (tag_code)
+  KEY idx_tag_uid_code_snapshot (uid, tag_code, snapshot_id)
 ) COMMENT='逻辑会话标签结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_problem_resolution (
@@ -297,8 +296,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_entity (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_session_entity_snapshot (snapshot_id),
-  KEY idx_session_entity_uid_identity (uid, entity_type, entity_id, snapshot_id),
-  KEY idx_session_entity_identity (entity_type, entity_id)
+  KEY idx_session_entity_uid_identity (uid, entity_type, entity_id, snapshot_id)
 ) COMMENT='逻辑会话实体结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_intent (
@@ -312,8 +310,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_intent (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_session_intent_snapshot (snapshot_id),
-  KEY idx_session_intent_uid_code_snapshot (uid, intent_code, snapshot_id),
-  KEY idx_session_intent_code (intent_code)
+  KEY idx_session_intent_uid_code_snapshot (uid, intent_code, snapshot_id)
 ) COMMENT='逻辑会话意图结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (

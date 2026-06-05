@@ -19,6 +19,7 @@ import {
   getInsightSettings,
   updateInsightAnalysisPolicy,
   updateInsightActionStatus,
+  updateInsightFeatureConfig,
   updateInsightLabelConfig,
   updateInsightLabelConfigStatus,
   updateInsightSessionizationSettings,
@@ -141,6 +142,10 @@ describe("insights service adapter", () => {
       200,
       { data: JSON.parse(config.data ?? "{}"), success: true },
     ]);
+    mock.onPut("/server/insights/settings/feature-config").reply((config) => [
+      200,
+      { data: JSON.parse(config.data ?? "{}"), success: true },
+    ]);
     mock.onPost("/server/insights/settings/label-configs").reply((config) => [
       200,
       { data: { ...JSON.parse(config.data ?? "{}"), id: "11" }, success: true },
@@ -175,6 +180,14 @@ describe("insights service adapter", () => {
       lowConfidenceThreshold: 0.6,
       ruleFallbackEnabled: true,
     });
+    await updateInsightFeatureConfig({
+      entityEnabled: true,
+      insightEnabled: true,
+      intentEnabled: true,
+      labelEnabled: true,
+      qaEnabled: true,
+      todoEnabled: false,
+    });
     await createInsightLabelConfig({
       enabled: true,
       includeInStatistics: true,
@@ -205,8 +218,9 @@ describe("insights service adapter", () => {
 
     expect(mock.history.put[0]?.url).toBe("/server/insights/settings/sessionization");
     expect(mock.history.put[1]?.url).toBe("/server/insights/settings/analysis-policy");
+    expect(mock.history.put[2]?.url).toBe("/server/insights/settings/feature-config");
     expect(mock.history.post[0]?.url).toBe("/server/insights/settings/label-configs");
-    expect(mock.history.put[2]?.url).toBe("/server/insights/settings/label-configs/11");
+    expect(mock.history.put[3]?.url).toBe("/server/insights/settings/label-configs/11");
     expect(mock.history.patch[0]?.url).toBe("/server/insights/settings/label-configs/11/status");
     expect(mock.history.delete[0]?.url).toBe("/server/insights/settings/label-configs/11");
     expect(mock.history.post[1]?.url).toBe("/server/insights/settings/qa-rule-configs");

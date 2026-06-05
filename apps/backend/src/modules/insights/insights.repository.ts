@@ -6,6 +6,8 @@ import type {
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
+  InsightFeatureConfig,
+  InsightFeatureConfigUpdateRequest,
   InsightIntentConfig,
   InsightIntentConfigMutationRequest,
   InsightLabelConfig,
@@ -56,6 +58,7 @@ import {
   parseInsightMessageContent,
   readInsightContentString,
 } from "./insight-message-input-builder.js";
+import { parseFeatureConfigRow } from "./insights-feature-config-mapper.js";
 import { DEFAULT_INSIGHT_SETTINGS } from "./insights-seeds.js";
 
 type CurrentSessionQueryRow = {
@@ -255,6 +258,16 @@ type IntentDistributionQueryRow = {
   intent_label: string;
 };
 
+type FeatureConfigRow = {
+  entity_enabled: number | string;
+  insight_enabled: number | string;
+  intent_enabled: number | string;
+  label_enabled: number | string;
+  last_enable_time: number | string | null;
+  qa_enabled: number | string;
+  todo_enabled: number | string;
+};
+
 type BusinessTopicFactQueryRow = {
   code: string;
   mention_count: number | string;
@@ -354,6 +367,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const [
       sessionization,
       analysisPolicy,
+      featureConfig,
       intentConfigs,
       labelConfigs,
       qaRuleConfigs,
@@ -361,6 +375,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     ] = await Promise.all([
       this.getSessionizationSettings(scope),
       this.getAnalysisPolicy(scope),
+      this.getFeatureConfig(scope),
       this.listIntentConfigs(scope),
       this.listLabelConfigs(scope),
       this.listQaRuleConfigs(scope),
@@ -370,6 +385,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     return {
       analysisPolicy,
       entityDictionary,
+      featureConfig,
       intentConfigs,
       labelConfigs,
       qaRuleConfigs,
@@ -436,6 +452,64 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .execute();
 
     return this.getAnalysisPolicy(scope);
+  }
+
+  async upsertFeatureConfig(
+    scope: InsightsUidScope,
+    payload: InsightFeatureConfigUpdateRequest,
+  ): Promise<InsightFeatureConfig> {
+    const current = await this.getFeatureConfig(scope);
+    const shouldQueueCleanup = current.insightEnabled && !payload.insightEnabled;
+    const lastEnableTime = payload.insightEnabled && !current.insightEnabled
+      ? Date.now()
+      : current.lastEnableTime ?? null;
+
+    await this.db
+      .insertInto("xy_wap_embed_insight_feature_config")
+      .values({
+        entity_enabled: payload.entityEnabled ? 1 : 0,
+        insight_enabled: payload.insightEnabled ? 1 : 0,
+        intent_enabled: payload.intentEnabled ? 1 : 0,
+        label_enabled: payload.labelEnabled ? 1 : 0,
+        last_enable_time: lastEnableTime,
+        qa_enabled: payload.qaEnabled ? 1 : 0,
+        todo_enabled: payload.todoEnabled ? 1 : 0,
+        uid: scope.uid,
+      })
+      .onDuplicateKeyUpdate({
+        entity_enabled: payload.entityEnabled ? 1 : 0,
+        insight_enabled: payload.insightEnabled ? 1 : 0,
+        intent_enabled: payload.intentEnabled ? 1 : 0,
+        label_enabled: payload.labelEnabled ? 1 : 0,
+        last_enable_time: lastEnableTime,
+        qa_enabled: payload.qaEnabled ? 1 : 0,
+        todo_enabled: payload.todoEnabled ? 1 : 0,
+        update_time: new Date(),
+      })
+      .execute();
+
+    if (shouldQueueCleanup) {
+      const cleanupEnableEpoch = current.lastEnableTime ?? 0;
+
+      await this.db
+        .insertInto("xy_wap_embed_insight_job")
+        .values({
+          analysis_scope: "all",
+          idempotency_key: `cleanup_disabled_insights:${scope.uid}:${cleanupEnableEpoch}`,
+          job_type: "cleanup_disabled_insights",
+          priority: 30,
+          rescan_task_id: null,
+          run_after: new Date(),
+          status: "pending",
+          target_id: String(cleanupEnableEpoch),
+          target_type: "uid",
+          uid: scope.uid,
+        })
+        .ignore()
+        .executeTakeFirst();
+    }
+
+    return this.getFeatureConfig(scope);
   }
 
   async createIntentConfig(
@@ -859,6 +933,28 @@ export class InsightsRepository implements InsightsRepositoryPort {
       lowConfidenceThreshold: Number(row.low_confidence_threshold),
       ruleFallbackEnabled: row.rule_fallback_enabled === 1,
     };
+  }
+
+  private async getFeatureConfig(scope: InsightsUidScope): Promise<InsightFeatureConfig> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_feature_config")
+      .select([
+        "entity_enabled",
+        "insight_enabled",
+        "intent_enabled",
+        "label_enabled",
+        "last_enable_time",
+        "qa_enabled",
+        "todo_enabled",
+      ])
+      .where("uid", "=", scope.uid)
+      .executeTakeFirst() as FeatureConfigRow | undefined;
+
+    if (!row) {
+      return DEFAULT_INSIGHT_SETTINGS.featureConfig;
+    }
+
+    return parseFeatureConfigRow(row);
   }
 
   private async listIntentConfigs(scope: InsightsUidScope): Promise<InsightIntentConfig[]> {

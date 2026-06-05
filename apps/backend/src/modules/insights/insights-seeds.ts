@@ -9,6 +9,15 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
     lowConfidenceThreshold: 0.6,
     ruleFallbackEnabled: true,
   },
+  featureConfig: {
+    entityEnabled: true,
+    insightAvailable: true,
+    insightEnabled: false,
+    intentEnabled: true,
+    labelEnabled: true,
+    qaEnabled: true,
+    todoEnabled: true,
+  },
   entityDictionary: [
     {
       aliases: ["白鸭绒外套", "直播间羽绒服"],

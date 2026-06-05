@@ -1,12 +1,18 @@
 import {
   Add01Icon,
+  AiContentGenerator01Icon,
+  AiGenerativeIcon,
   BubbleChatIcon,
   ChartAreaIcon,
   ClipboardCheckIcon,
   Delete02Icon,
   Edit02Icon,
+  AiIdeaIcon,
+  AiSecurity02Icon,
+  AppleIntelligenceIcon,
   Search01Icon,
   Setting07Icon,
+  UserAiIcon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -14,6 +20,7 @@ import type {
   InsightAnalysisPolicy,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
+  InsightFeatureConfig,
   InsightIntentConfig,
   InsightIntentConfigMutationRequest,
   InsightLabelConfig,
@@ -78,6 +85,7 @@ import {
   updateInsightAnalysisPolicy,
   updateInsightEntityDictionaryItem,
   updateInsightEntityDictionaryItemStatus,
+  updateInsightFeatureConfig,
   updateInsightIntentConfig,
   updateInsightIntentConfigStatus,
   updateInsightLabelConfig,
@@ -109,6 +117,15 @@ const defaultSettings: InsightSettingsResponse = {
     liveMinNewMeaningfulMessages: 20,
     lowConfidenceThreshold: 0.6,
     ruleFallbackEnabled: true,
+  },
+  featureConfig: {
+    entityEnabled: true,
+    insightAvailable: true,
+    insightEnabled: false,
+    intentEnabled: true,
+    labelEnabled: true,
+    qaEnabled: true,
+    todoEnabled: true,
   },
   entityDictionary: [],
   intentConfigs: [],
@@ -288,6 +305,31 @@ export function InsightsSettingsPage() {
         sessionization,
       }));
       toast.success("洞察策略已保存");
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setPendingKey(undefined);
+    }
+  }
+
+  async function handleFeatureConfigChange(next: InsightFeatureConfig) {
+    setPendingKey("feature-config");
+
+    try {
+      const featureConfig = await updateInsightFeatureConfig({
+        entityEnabled: next.entityEnabled,
+        insightEnabled: next.insightEnabled,
+        intentEnabled: next.intentEnabled,
+        labelEnabled: next.labelEnabled,
+        qaEnabled: next.qaEnabled,
+        todoEnabled: next.todoEnabled,
+      });
+
+      setSettings((current) => ({
+        ...(current ?? defaultSettings),
+        featureConfig,
+      }));
+      toast.success(featureConfig.insightEnabled ? "会话洞察已开启" : "会话洞察已暂停");
     } catch (error) {
       toast.error(getErrorMessage(error));
     } finally {
@@ -484,7 +526,7 @@ export function InsightsSettingsPage() {
         <div className="rounded-[8px] border bg-background p-8 text-center">
           <h2 className="text-lg font-semibold">仅管理员可查看洞察配置</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            数据页仍按登录态和租户隔离开放，配置页需要管理员角色
+            数据页仍按登录账号权限开放，配置页需要管理员角色
           </p>
         </div>
       </InsightsLayout>
@@ -495,7 +537,14 @@ export function InsightsSettingsPage() {
     <InsightsLayout title="洞察配置">
       <div className="space-y-5">
         <InsightsPageHeader
-          description="调整洞察策略、标签、质检规则和实体词库，影响后续会话分析"
+          actions={(
+            <InsightRunStatusControl
+              disabled={isLoading || pendingKey === "feature-config"}
+              featureConfig={currentSettings.featureConfig}
+              onChange={(next) => void handleFeatureConfigChange(next)}
+            />
+          )}
+          description="个性化调整洞察策略、标签、质检规则和实体词库"
           title="洞察配置"
         />
         <SettingsSummary settings={currentSettings} />
@@ -616,6 +665,182 @@ function SettingsTabTrigger({
     >
       {children}
     </TabsTrigger>
+  );
+}
+
+function InsightRunStatusControl({
+  disabled,
+  featureConfig,
+  onChange,
+}: {
+  disabled: boolean;
+  featureConfig: InsightFeatureConfig;
+  onChange: (next: InsightFeatureConfig) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const running = featureConfig.insightEnabled;
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <Badge variant={running ? "default" : "secondary"}>{running ? "运行中" : "未运行"}</Badge>
+        <Button
+          aria-label="配置洞察运行"
+          className="size-9 p-0"
+          disabled={disabled}
+          onClick={() => setOpen(true)}
+          variant="outline"
+        >
+          <HugeiconsIcon icon={Setting07Icon} size={18} />
+        </Button>
+      </div>
+      <InsightRunConfigDialog
+        disabled={disabled}
+        featureConfig={featureConfig}
+        onOpenChange={setOpen}
+        onSubmit={(next) => {
+          onChange(next);
+          setOpen(false);
+        }}
+        open={open}
+      />
+    </>
+  );
+}
+
+function InsightRunConfigDialog({
+  disabled,
+  featureConfig,
+  onOpenChange,
+  onSubmit,
+  open,
+}: {
+  disabled: boolean;
+  featureConfig: InsightFeatureConfig;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (next: InsightFeatureConfig) => void;
+  open: boolean;
+}) {
+  const [form, setForm] = useState(featureConfig);
+  const insightAvailable = featureConfig.insightAvailable !== false;
+
+  useEffect(() => {
+    if (open) {
+      setForm(featureConfig);
+    }
+  }, [featureConfig, open]);
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent className="sm:max-w-[720px]">
+        <DialogHeader>
+          <DialogTitle>洞察运行配置</DialogTitle>
+          <DialogDescription>
+            控制是否自动分析你的会话，以及后续要生成哪些洞察结果
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="overflow-hidden rounded-[8px] border bg-background">
+            <RunSettingRow
+              checked={form.insightEnabled}
+              description={insightAvailable ? "开启后，系统会自动同步新会话，完成切片并生成洞察" : "当前账号暂未开通会话洞察"}
+              disabled={disabled || !insightAvailable}
+              icon={AiIdeaIcon}
+              label="启用会话洞察"
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, insightEnabled: checked }))}
+            />
+          </div>
+
+          <div>
+            <div className="mb-2 text-sm font-medium text-foreground">能力开关</div>
+            <div className="overflow-hidden rounded-[8px] border bg-background">
+              <RunSettingRow
+                checked={form.todoEnabled}
+                description="识别到需要人工跟进的事项后，自动生成待办"
+                disabled={disabled}
+                icon={AiContentGenerator01Icon}
+                label="智能创建待办"
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, todoEnabled: checked }))}
+              />
+              <RunSettingRow
+                checked={form.intentEnabled}
+                description="根据已配置的意图体系，为后续会话抽取客户意图"
+                disabled={disabled}
+                icon={UserAiIcon}
+                label="智能意图识别"
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, intentEnabled: checked }))}
+              />
+              <RunSettingRow
+                checked={form.qaEnabled}
+                description="依据已配置的质检规则，逐条审计服务过程是否合规，并输出判定理由"
+                disabled={disabled}
+                icon={AiSecurity02Icon}
+                label="智能质检"
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, qaEnabled: checked }))}
+              />
+              <RunSettingRow
+                checked={form.entityEnabled}
+                description="从会话中识别商品、活动、服务等业务主体"
+                disabled={disabled}
+                icon={AppleIntelligenceIcon}
+                label="智能实体识别"
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, entityEnabled: checked }))}
+              />
+              <RunSettingRow
+                checked={form.labelEnabled}
+                description="根据标签体系提炼会话特征，用于统计和筛选"
+                disabled={disabled}
+                icon={AiGenerativeIcon}
+                label="智能标签"
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, labelEnabled: checked }))}
+              />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button disabled={disabled} variant="outline">取消</Button>
+          </DialogClose>
+          <Button disabled={disabled} onClick={() => onSubmit(form)}>保存</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RunSettingRow({
+  checked,
+  description,
+  disabled,
+  icon,
+  label,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  description: string;
+  disabled: boolean;
+  icon: typeof Setting07Icon;
+  label: string;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center gap-4 border-b px-5 py-4 last:border-b-0">
+      <span className="flex size-10 shrink-0 items-center justify-center text-muted-foreground">
+        <HugeiconsIcon color="currentColor" icon={icon} size={22} strokeWidth={1.8} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold leading-6 text-foreground">{label}</div>
+        <div className="mt-0.5 text-sm leading-6 text-muted-foreground">{description}</div>
+      </div>
+      <Switch
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+      />
+    </div>
   );
 }
 
@@ -1238,7 +1463,7 @@ function QaRuleConfigTable({
   return (
     <ConfigTableShell
       actionText="新增规则"
-      description="定义问题是否解决、服务是否达标的判定标准"
+      description="定义服务过程是否合规、服务是否达标的判定标准"
       onCreate={onCreate}
     >
       <Table>
@@ -1608,6 +1833,13 @@ function ConfigMutationDialog({
 
   const collection = state.collection;
   const title = `${state.mode === "create" ? "新增" : "编辑"}${collectionText(state.collection)}`;
+  const description = state.collection === "qa"
+    ? "填写判定标准和正反例，AI 将依据此规则逐条审计服务过程是否合规"
+    : state.collection === "label"
+      ? "定义可提取、可统计的业务标签，帮助你按特征筛选和聚合会话"
+      : state.collection === "intent"
+        ? "定义客户意图分类，帮助你识别会话的主要诉求类型"
+        : "统一业务实体名称，提升热点和主体聚合的准确性";
   const wideConfigDialog = collection === "intent" || collection === "label" || collection === "qa";
 
   function setValue(key: string, value: unknown) {
@@ -1638,7 +1870,7 @@ function ConfigMutationDialog({
       <DialogContent className={wideConfigDialog ? "max-w-4xl" : "max-w-2xl"}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>配置保存后将影响后续会话分析</DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <div className="grid max-h-[68vh] gap-4 overflow-y-auto p-1 md:grid-cols-2">
@@ -2145,7 +2377,7 @@ function collectionText(value: MutableCollection) {
     entity: "实体",
     intent: "意图",
     label: "标签",
-    qa: "规则",
+    qa: "质检规则",
   };
 
   return text[value];

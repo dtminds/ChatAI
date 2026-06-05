@@ -229,6 +229,7 @@ function buildSummarySystemPrompt() {
     "problemResolution.evidence 必须说明关键证据消息、证据角色和引用原因，用于前端高亮对话消息。",
     "</evidence_rules>",
     "<analysis_rules>",
+    "problemResolution 判断客户是否在对话中得到明确结果或确认，依据是对话内容本身。",
     "问题是否解决只判断当前逻辑会话内是否解决，不要推断会话外后续处理。",
     "前序逻辑会话摘要只能作为背景，帮助理解客户连续诉求和客服处理习惯；不得改变当前逻辑会话的问题是否解决判定边界。",
     "problemResolution 和所有 evidenceMessageIds 必须只基于当前 messages，不得把前序逻辑会话内容作为当前证据。",
@@ -254,8 +255,8 @@ function buildQaSystemPrompt() {
     "</evidence_rules>",
     "<analysis_rules>",
     "priorConclusions 只能帮助理解客户问题和会话结论，不得作为当前证据。",
+    "每条规则依据其 judgmentCriteria 独立判定，与 priorConclusions 中的 problemResolution 结论无关。",
     "质检只能评估 tenantContext.qaRuleConfigs 中启用的规则；配置为空时 qaFindings 必须输出空数组。",
-    "每条规则独立判断，不能因为整体问题已解决就跳过违规检查。",
     "</analysis_rules>",
   ].join("\n");
 }

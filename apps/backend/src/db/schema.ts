@@ -1071,6 +1071,20 @@ export interface XyWapEmbedInsightAnalysisPolicy {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedInsightFeatureConfig {
+  create_time: Generated<Date>;
+  entity_enabled: Generated<number>;
+  id: Generated<number>;
+  insight_enabled: Generated<number>;
+  intent_enabled: Generated<number>;
+  label_enabled: Generated<number>;
+  last_enable_time: number | null;
+  qa_enabled: Generated<number>;
+  todo_enabled: Generated<number>;
+  uid: number;
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedInsightLabelConfig {
   create_time: Generated<Date>;
   description: string | null;
@@ -1141,6 +1155,7 @@ export interface DB {
   xy_wap_embed_insight_analysis_policy: XyWapEmbedInsightAnalysisPolicy;
   xy_wap_embed_insight_entity_dictionary: XyWapEmbedInsightEntityDictionary;
   xy_wap_embed_insight_evidence: XyWapEmbedInsightEvidence;
+  xy_wap_embed_insight_feature_config: XyWapEmbedInsightFeatureConfig;
   xy_wap_embed_insight_job: XyWapEmbedInsightJob;
   xy_wap_embed_insight_job_archive: XyWapEmbedInsightJobArchive;
   xy_wap_embed_insight_rescan_task: XyWapEmbedInsightRescanTask;

@@ -490,6 +490,26 @@ export const InsightAnalysisPolicySchema = Type.Object({
 export const InsightAnalysisPolicyUpdateRequestSchema =
   InsightAnalysisPolicySchema;
 
+export const InsightFeatureConfigSchema = Type.Object({
+  entityEnabled: Type.Boolean(),
+  insightAvailable: Type.Optional(Type.Boolean()),
+  insightEnabled: Type.Boolean(),
+  intentEnabled: Type.Boolean(),
+  labelEnabled: Type.Boolean(),
+  lastEnableTime: Type.Optional(Type.Number()),
+  qaEnabled: Type.Boolean(),
+  todoEnabled: Type.Boolean(),
+});
+
+export const InsightFeatureConfigUpdateRequestSchema = Type.Object({
+  entityEnabled: Type.Boolean(),
+  insightEnabled: Type.Boolean(),
+  intentEnabled: Type.Boolean(),
+  labelEnabled: Type.Boolean(),
+  qaEnabled: Type.Boolean(),
+  todoEnabled: Type.Boolean(),
+});
+
 export const InsightLabelConfigSchema = Type.Object({
   description: Type.Optional(Type.String()),
   enabled: Type.Boolean(),
@@ -583,6 +603,7 @@ export const InsightEntityDictionaryMutationRequestSchema = Type.Object({
 export const InsightSettingsResponseSchema = Type.Object({
   analysisPolicy: InsightAnalysisPolicySchema,
   entityDictionary: Type.Array(InsightEntityDictionaryItemSchema),
+  featureConfig: InsightFeatureConfigSchema,
   intentConfigs: Type.Array(InsightIntentConfigSchema),
   labelConfigs: Type.Array(InsightLabelConfigSchema),
   qaRuleConfigs: Type.Array(InsightQaRuleConfigSchema),
@@ -658,6 +679,10 @@ export type InsightMessageContextResponse = Omit<
 export type InsightAnalysisPolicy = Static<typeof InsightAnalysisPolicySchema>;
 export type InsightAnalysisPolicyUpdateRequest = Static<
   typeof InsightAnalysisPolicyUpdateRequestSchema
+>;
+export type InsightFeatureConfig = Static<typeof InsightFeatureConfigSchema>;
+export type InsightFeatureConfigUpdateRequest = Static<
+  typeof InsightFeatureConfigUpdateRequestSchema
 >;
 export type InsightConfigDeletedResponse = Static<typeof InsightConfigDeletedResponseSchema>;
 export type InsightConfigStatusUpdateRequest = Static<typeof InsightConfigStatusUpdateRequestSchema>;

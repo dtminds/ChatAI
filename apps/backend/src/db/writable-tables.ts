@@ -13,6 +13,7 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_insight_analysis_policy",
   "xy_wap_embed_insight_entity_dictionary",
   "xy_wap_embed_insight_evidence",
+  "xy_wap_embed_insight_feature_config",
   "xy_wap_embed_insight_job",
   "xy_wap_embed_insight_job_archive",
   "xy_wap_embed_insight_intent_config",

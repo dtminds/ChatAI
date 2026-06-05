@@ -6,6 +6,7 @@ import type {
   InsightPromptContext,
 } from "./insight-prompt-builder.js";
 import type {
+  CleanupDisabledInsightsJob,
   AppendSessionMessageInput,
   CloseSessionInput,
   ClosableOpenSession,
@@ -13,6 +14,7 @@ import type {
   CreateLogicalSessionInput,
   InsightAnalysisOutput,
   InsightWorkerAnalysisPolicy,
+  InsightWorkerFeatureConfig,
   SaveAnalysisResultInput,
   ShouldCreateLiveAnalyzeJobInput,
   ClaimedSyncMessagesJob,
@@ -21,6 +23,7 @@ import type {
   InsightWorkerRepositoryPort,
   InsightWorkerSessionizationConfig,
 } from "./insights-worker.js";
+import { parseWorkerFeatureConfigRow } from "./insights-feature-config-mapper.js";
 import { InsightsRepository } from "./insights.repository.js";
 import { getInitialInsightWorkerCursor } from "./insights-worker-runtime.js";
 
@@ -38,6 +41,25 @@ type DeleteResult = {
 type CursorRow = {
   cursor_audit_id: number | string;
   cursor_msgtime: number | string;
+};
+
+type WorkerFeatureConfigRow = {
+  entity_enabled: number | string;
+  insight_enabled: number | string;
+  intent_enabled: number | string;
+  label_enabled: number | string;
+  last_enable_time: number | string | null;
+  qa_enabled: number | string;
+  todo_enabled: number | string;
+  uid: number | string;
+};
+
+type UidJobRow = {
+  analysis_scope: string;
+  id: number | string;
+  rescan_task_id: number | string | null;
+  target_id: string;
+  uid: number | string;
 };
 
 type MessageRow = {
@@ -139,35 +161,109 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     private readonly options: { startLookbackDays?: number } = {},
   ) {}
 
-  async getCursor(): Promise<InsightWorkerCursor> {
-    const row = await this.db
+  async getCursor(uid = globalCursorUid): Promise<InsightWorkerCursor> {
+    let query = this.db
       .selectFrom("xy_wap_embed_insight_sync_cursor")
       .select(["cursor_audit_id", "cursor_msgtime"])
-      .where("source", "=", cursorSource)
-      .where((eb) =>
-        eb.or([
-          eb("uid", "=", globalCursorUid),
-          eb("uid", "is", null),
-        ]),
-      )
-      .orderBy("uid", "desc")
-      .executeTakeFirst() as CursorRow | undefined;
+      .where("source", "=", cursorSource);
+
+    if (uid === globalCursorUid) {
+      query = query
+        .where((eb) =>
+          eb.or([
+            eb("uid", "=", globalCursorUid),
+            eb("uid", "is", null),
+          ]),
+        )
+        .orderBy("uid", "desc");
+    } else {
+      query = query.where("uid", "=", uid);
+    }
+
+    const row = await query.executeTakeFirst() as CursorRow | undefined;
 
     if (row) {
       return {
         cursorAuditId: parseNumber(row.cursor_audit_id),
         cursorMsgtime: parseNumber(row.cursor_msgtime),
+        uid,
       };
     }
 
-    return getInitialInsightWorkerCursor({
-      startLookbackDays: this.options.startLookbackDays ?? 3,
-    });
+    return {
+      ...getInitialInsightWorkerCursor({
+        startLookbackDays: this.options.startLookbackDays ?? 3,
+      }),
+      uid,
+    };
+  }
+
+  async getActiveFeatureConfigs(input: { limit?: number }): Promise<InsightWorkerFeatureConfig[]> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_insight_feature_config as config")
+      .leftJoin("xy_wap_embed_insight_sync_cursor as cursor", (join) =>
+        join
+          .onRef("cursor.uid", "=", "config.uid")
+          .on("cursor.source", "=", cursorSource)
+      )
+      .select([
+        "config.entity_enabled as entity_enabled",
+        "config.insight_enabled as insight_enabled",
+        "config.intent_enabled as intent_enabled",
+        "config.label_enabled as label_enabled",
+        "config.last_enable_time as last_enable_time",
+        "config.qa_enabled as qa_enabled",
+        "config.todo_enabled as todo_enabled",
+        "config.uid as uid",
+      ])
+      .where("config.insight_enabled", "=", 1)
+      .orderBy(sql`coalesce(cursor.update_time, config.last_enable_time, config.create_time)`, "asc")
+      .orderBy("config.uid", "asc");
+
+    if (input.limit != null) {
+      query = query.limit(input.limit);
+    }
+
+    const rows = await query.execute() as WorkerFeatureConfigRow[];
+
+    return rows.map(parseWorkerFeatureConfigRow);
+  }
+
+  async getFeatureConfig(uid: number): Promise<InsightWorkerFeatureConfig> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_insight_feature_config")
+      .select([
+        "entity_enabled",
+        "insight_enabled",
+        "intent_enabled",
+        "label_enabled",
+        "last_enable_time",
+        "qa_enabled",
+        "todo_enabled",
+        "uid",
+      ])
+      .where("uid", "=", uid)
+      .executeTakeFirst() as WorkerFeatureConfigRow | undefined;
+
+    if (!row) {
+      return {
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: true,
+        uid,
+      };
+    }
+
+    return parseWorkerFeatureConfigRow(row);
   }
 
   async getPromptContext(uid: number): Promise<InsightPromptContext> {
+    const featureConfig = await this.getFeatureConfig(uid);
     const [labelRows, intentRows, qaRuleRows, entityRows] = await Promise.all([
-      this.db
+      featureConfig.labelEnabled ? this.db
         .selectFrom("xy_wap_embed_insight_label_config")
         .select([
           "description",
@@ -187,8 +283,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           label_name: string;
           negative_examples_json: string | null;
           positive_examples_json: string | null;
-        }>>,
-      this.db
+        }>>
+        : Promise.resolve([]),
+      featureConfig.intentEnabled ? this.db
         .selectFrom("xy_wap_embed_insight_intent_config")
         .select([
           "aliases_json",
@@ -213,8 +310,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           negative_examples_json: string | null;
           positive_examples_json: string | null;
           sort_order: number | string;
-        }>>,
-      this.db
+        }>>
+        : Promise.resolve([]),
+      featureConfig.qaEnabled ? this.db
         .selectFrom("xy_wap_embed_insight_qa_rule_config")
         .select([
           "applicable_scene",
@@ -238,8 +336,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           rule_code: string;
           rule_name: string;
           severity: string;
-        }>>,
-      this.db
+        }>>
+        : Promise.resolve([]),
+      featureConfig.entityEnabled ? this.db
         .selectFrom("xy_wap_embed_insight_entity_dictionary")
         .select([
           "aliases_json",
@@ -257,7 +356,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           canonical_name: string;
           entity_type: string;
           include_in_aggregation: number | string;
-        }>>,
+        }>>
+        : Promise.resolve([]),
     ]);
 
     return {
@@ -423,14 +523,25 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }
 
   async findOpenSession(input: { conversationId: string; uid: number }) {
+    return this.findSessionByStatus(input, ["open"]);
+  }
+
+  async findReusableSession(input: { conversationId: string; uid: number }) {
+    return this.findSessionByStatus(input, ["open", "canceled"]);
+  }
+
+  private async findSessionByStatus(
+    input: { conversationId: string; uid: number },
+    statuses: string[],
+  ) {
     const row = await this.db
       .selectFrom("xy_wap_embed_logical_session")
-      .select(["id", "last_meaningful_message_at", "started_at"])
+      .select(["id", "last_meaningful_message_at", "started_at", "status"])
       .where("uid", "=", input.uid)
       .where("conversation_id", "=", parsePositiveInteger(input.conversationId) ?? -1)
-      .where("status", "=", "open")
+      .where("status", "in", statuses)
       .orderBy("started_at", "desc")
-      .executeTakeFirst() as OpenSessionRow | undefined;
+      .executeTakeFirst() as OpenSessionRow & { status: string } | undefined;
 
     return row
       ? {
@@ -440,14 +551,15 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
               : parseNumber(row.last_meaningful_message_at),
           sessionId: String(row.id),
           startedAt: parseNumber(row.started_at),
+          status: row.status === "canceled" ? "canceled" as const : "open" as const,
         }
       : undefined;
   }
 
   async listClosableOpenSessions(input: {
+    activeUids?: Set<number>;
     limit: number;
     now: number;
-    uidAllowlist?: Set<number>;
   }): Promise<ClosableOpenSession[]> {
     let query = this.db
       .selectFrom("xy_wap_embed_logical_session")
@@ -465,8 +577,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .orderBy("next_close_at", "asc")
       .limit(input.limit);
 
-    if (input.uidAllowlist && input.uidAllowlist.size > 0) {
-      query = query.where("uid", "in", Array.from(input.uidAllowlist));
+    if (input.activeUids && input.activeUids.size > 0) {
+      query = query.where("uid", "in", Array.from(input.activeUids));
     }
 
     const rows = await query.execute() as Array<{
@@ -500,8 +612,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }
 
   async listOpenSessionsForLiveAnalysis(input: {
+    activeUids?: Set<number>;
     limit: number;
-    uidAllowlist?: Set<number>;
   }) {
     let query = this.db
       .selectFrom("xy_wap_embed_logical_session")
@@ -510,8 +622,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .orderBy("last_message_at", "asc")
       .limit(input.limit);
 
-    if (input.uidAllowlist && input.uidAllowlist.size > 0) {
-      query = query.where("uid", "in", Array.from(input.uidAllowlist));
+    if (input.activeUids && input.activeUids.size > 0) {
+      query = query.where("uid", "in", Array.from(input.activeUids));
     }
 
     const rows = await query.execute() as Array<{
@@ -605,6 +717,23 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .executeTakeFirst();
   }
 
+  async reopenSession(input: { sessionId: string; uid: number }): Promise<boolean> {
+    const result = await this.db
+      .updateTable("xy_wap_embed_logical_session")
+      .set({
+        close_reason: null,
+        ended_at: null,
+        status: "open",
+        update_time: new Date(),
+      })
+      .where("id", "=", parsePositiveInteger(input.sessionId) ?? -1)
+      .where("uid", "=", input.uid)
+      .where("status", "=", "canceled")
+      .executeTakeFirst();
+
+    return getAffectedRows(result) > 0;
+  }
+
   async findSessionBySourceMessage(input: {
     sourceMessageId: string;
     uid: number;
@@ -668,6 +797,28 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .executeTakeFirst();
   }
 
+  async closeDisabledOpenSessions(input: {
+    endedAt: number;
+    limit: number;
+    uid: number;
+  }): Promise<number> {
+    const result = await this.db
+      .updateTable("xy_wap_embed_logical_session")
+      .set({
+        close_reason: "insight_disabled",
+        ended_at: input.endedAt,
+        next_close_at: null,
+        status: "canceled",
+        update_time: new Date(),
+      })
+      .where("uid", "=", input.uid)
+      .where("status", "=", "open")
+      .limit(input.limit)
+      .execute();
+
+    return getAffectedRows(result);
+  }
+
   async createAnalyzeJob(input: CreateAnalyzeJobInput): Promise<string> {
     const idempotencyKey = [
       input.jobType,
@@ -705,7 +856,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         cursor_audit_id: cursor.cursorAuditId,
         cursor_msgtime: cursor.cursorMsgtime,
         source: cursorSource,
-        uid: globalCursorUid,
+        uid: cursor.uid ?? globalCursorUid,
       })
       .onDuplicateKeyUpdate({
         cursor_audit_id: cursor.cursorAuditId,
@@ -715,33 +866,11 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .executeTakeFirst();
   }
 
-  async claimNextSyncMessagesJob(input: {
-    uidAllowlist?: Set<number>;
-  }): Promise<ClaimedSyncMessagesJob | undefined> {
+  async claimNextSyncMessagesJob(): Promise<ClaimedSyncMessagesJob | undefined> {
     return this.db.transaction().execute(async (trx) => {
-      let query = trx
-        .selectFrom("xy_wap_embed_insight_job")
-        .select(["analysis_scope", "id", "rescan_task_id", "target_id", "uid"])
-        .where("status", "=", "pending")
-        .where("target_type", "=", "uid")
-        .where("job_type", "=", "sync_messages")
-        .where("run_after", "<=", new Date())
-        .orderBy("priority", "desc")
-        .orderBy("id", "asc")
-        .forUpdate()
-        .skipLocked();
+      let query = this.buildUidJobClaimQuery(trx, "sync_messages");
 
-      if (input.uidAllowlist && input.uidAllowlist.size > 0) {
-        query = query.where("uid", "in", Array.from(input.uidAllowlist));
-      }
-
-      const row = await query.executeTakeFirst() as {
-        analysis_scope: string;
-        id: number | string;
-        rescan_task_id: number | string | null;
-        target_id: string;
-        uid: number | string;
-      } | undefined;
+      const row = await query.executeTakeFirst() as UidJobRow | undefined;
 
       if (!row) {
         return undefined;
@@ -753,20 +882,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         throw new Error(`Invalid sync_messages target_id: ${row.target_id}`);
       }
 
-      const result = await trx
-        .updateTable("xy_wap_embed_insight_job")
-        .set({
-          attempt_count: sql<number>`attempt_count + 1`,
-          lease_until: new Date(Date.now() + 60_000),
-          locked_by: "node-worker",
-          status: "running",
-          update_time: new Date(),
-        })
-        .where("id", "=", parseNumber(row.id))
-        .where("status", "=", "pending")
-        .executeTakeFirst();
+      const claimed = await this.markUidJobRunning(trx, row.id);
 
-      if (getAffectedRows(result) === 0) {
+      if (!claimed) {
         return undefined;
       }
 
@@ -780,10 +898,88 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     });
   }
 
+  async claimNextCleanupDisabledInsightsJob(): Promise<CleanupDisabledInsightsJob | undefined> {
+    const row = await this.claimNextUidJob({
+      jobType: "cleanup_disabled_insights",
+    });
+
+    const enableEpoch = row ? parseNumber(row.targetId) : 0;
+
+    return row
+      ? {
+          enableEpoch,
+          jobId: row.jobId,
+          uid: row.uid,
+        }
+      : undefined;
+  }
+
+  private async claimNextUidJob(input: {
+    jobType: "cleanup_disabled_insights" | "sync_messages";
+  }) {
+    return this.db.transaction().execute(async (trx) => {
+      const row = await this.buildUidJobClaimQuery(trx, input.jobType)
+        .executeTakeFirst() as UidJobRow | undefined;
+
+      if (!row) {
+        return undefined;
+      }
+
+      if (!await this.markUidJobRunning(trx, row.id)) {
+        return undefined;
+      }
+
+      return {
+        analysisScope: normalizeAnalysisScope(row.analysis_scope),
+        jobId: String(row.id),
+        rescanTaskId: row.rescan_task_id == null ? undefined : String(row.rescan_task_id),
+        targetId: row.target_id,
+        uid: parseNumber(row.uid),
+      };
+    });
+  }
+
+  private buildUidJobClaimQuery(
+    trx: Pick<Kysely<Database>, "selectFrom">,
+    jobType: "cleanup_disabled_insights" | "sync_messages",
+  ) {
+    return trx
+      .selectFrom("xy_wap_embed_insight_job")
+      .select(["analysis_scope", "id", "rescan_task_id", "target_id", "uid"])
+      .where("status", "=", "pending")
+      .where("target_type", "=", "uid")
+      .where("job_type", "=", jobType)
+      .where("run_after", "<=", new Date())
+      .orderBy("priority", "desc")
+      .orderBy("id", "asc")
+      .forUpdate()
+      .skipLocked();
+  }
+
+  private async markUidJobRunning(
+    trx: Pick<Kysely<Database>, "updateTable">,
+    jobId: number | string,
+  ) {
+    const result = await trx
+      .updateTable("xy_wap_embed_insight_job")
+      .set({
+        attempt_count: sql<number>`attempt_count + 1`,
+        lease_until: new Date(Date.now() + 60_000),
+        locked_by: "node-worker",
+        status: "running",
+        update_time: new Date(),
+      })
+      .where("id", "=", parseNumber(jobId))
+      .where("status", "=", "pending")
+      .executeTakeFirst();
+
+    return getAffectedRows(result) > 0;
+  }
+
   async claimNextAnalyzeJob() {
     const now = new Date();
     const row = await this.db.transaction().execute(async (trx) => {
-      const selectedRow = await trx
+      let query = trx
         .selectFrom("xy_wap_embed_insight_job")
         .select([
           "analysis_scope",
@@ -807,7 +1003,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         )
         .where("target_type", "=", "logical_session")
         .where("job_type", "in", ["analyze_session", "reanalyze_session"])
-        .where("run_after", "<=", now)
+        .where("run_after", "<=", now);
+
+      const selectedRow = await query
         .orderBy("priority", "desc")
         .orderBy("id", "asc")
         .forUpdate()
@@ -1496,6 +1694,15 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
   }
 
+  async markCleanupDisabledInsightsJobSucceeded(jobId: string): Promise<void> {
+    await this.db.updateTable("xy_wap_embed_insight_job").set({
+      lease_until: null,
+      locked_by: null,
+      status: "succeeded",
+      update_time: new Date(),
+    }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
+  }
+
   async markAnalysisJobFailed(jobId: string, error: unknown): Promise<void> {
     await this.db.updateTable("xy_wap_embed_insight_job").set({
       error_code: "ANALYSIS_FAILED",
@@ -1510,6 +1717,17 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   async markSyncMessagesJobFailed(jobId: string, error: unknown): Promise<void> {
     await this.db.updateTable("xy_wap_embed_insight_job").set({
       error_code: "SYNC_MESSAGES_FAILED",
+      error_message: formatError(error),
+      lease_until: null,
+      locked_by: null,
+      status: "failed",
+      update_time: new Date(),
+    }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
+  }
+
+  async markCleanupDisabledInsightsJobFailed(jobId: string, error: unknown): Promise<void> {
+    await this.db.updateTable("xy_wap_embed_insight_job").set({
+      error_code: "CLEANUP_DISABLED_INSIGHTS_FAILED",
       error_message: formatError(error),
       lease_until: null,
       locked_by: null,
@@ -1715,6 +1933,10 @@ function getInsertedRows(result: InsertResult | undefined) {
 }
 
 function getAffectedRows(result: unknown) {
+  if (Array.isArray(result)) {
+    return result.reduce((sum, item) => sum + getAffectedRows(item), 0);
+  }
+
   if (!result || typeof result !== "object") {
     return 0;
   }

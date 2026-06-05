@@ -127,16 +127,21 @@ export function InsightsPlaceholder({ title }: { title: string }) {
 }
 
 export function InsightsPageHeader({
+  actions,
   description,
   title,
 }: {
+  actions?: ReactNode;
   description: string;
   title: string;
 }) {
   return (
-    <header>
-      <h1 className="text-[22px] font-semibold leading-tight text-foreground">{title}</h1>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+    <header className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h1 className="text-[22px] font-semibold leading-tight text-foreground">{title}</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+      </div>
+      {actions ? <div className="shrink-0">{actions}</div> : null}
     </header>
   );
 }

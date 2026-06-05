@@ -35,6 +35,61 @@ describe("InsightsRepository", () => {
     expect(builders[0]?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
   });
 
+  it("omits disabled feature dimensions from the worker prompt context", async () => {
+    const selectedTables: string[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        selectedTables.push(table);
+
+        if (table === "xy_wap_embed_insight_feature_config") {
+          return createSelectBuilder([
+            {
+              entity_enabled: 0,
+              insight_enabled: 1,
+              intent_enabled: 0,
+              label_enabled: 1,
+              last_enable_time: 1_780_300_000_000,
+              qa_enabled: 0,
+              todo_enabled: 1,
+              uid: 9001,
+            },
+          ], table);
+        }
+
+        if (table === "xy_wap_embed_insight_label_config") {
+          return createSelectBuilder([
+            {
+              description: null,
+              include_in_statistics: 1,
+              label_code: "vip",
+              label_name: "高价值客户",
+              negative_examples_json: null,
+              positive_examples_json: null,
+            },
+          ], table);
+        }
+
+        return createSelectBuilder([], table);
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.getPromptContext(9001)).resolves.toMatchObject({
+      entityDictionary: [],
+      intentConfigs: [],
+      labelConfigs: [
+        expect.objectContaining({
+          labelCode: "vip",
+        }),
+      ],
+      qaRuleConfigs: [],
+    });
+
+    expect(selectedTables).not.toContain("xy_wap_embed_insight_intent_config");
+    expect(selectedTables).not.toContain("xy_wap_embed_insight_qa_rule_config");
+    expect(selectedTables).not.toContain("xy_wap_embed_insight_entity_dictionary");
+  });
+
   it("loads quality agent stats through grouped SQL", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
@@ -851,10 +906,44 @@ describe("MysqlInsightWorkerRepository", () => {
     db.transaction.mockReturnValue(createTransactionBuilder(db));
     const repository = new MysqlInsightWorkerRepository(db as never);
 
-    await expect(repository.claimNextSyncMessagesJob({})).resolves.toBeUndefined();
+    await expect(repository.claimNextSyncMessagesJob()).resolves.toBeUndefined();
     expect(db.transaction).toHaveBeenCalled();
     expect(builders[0]?.forUpdateCalls).toBe(1);
     expect(builders[0]?.skipLockedCalls).toBe(1);
+  });
+
+  it("claims cleanup-disabled-insights jobs for disabled tenant session cleanup", async () => {
+    const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      transaction: vi.fn(),
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            id: 703,
+            target_id: "1780243000000",
+            uid: 9001,
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+      updateTable: vi.fn(() => createUpdateBuilder(updateExecute)),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.claimNextCleanupDisabledInsightsJob()).resolves.toEqual({
+      enableEpoch: 1_780_243_000_000,
+      jobId: "703",
+      uid: 9001,
+    });
+
+    expect(builders[0]?.whereCalls).toContainEqual(["target_type", "=", "uid"]);
+    expect(builders[0]?.whereCalls).toContainEqual(["job_type", "=", "cleanup_disabled_insights"]);
+    expect(builders[0]?.forUpdateCalls).toBe(1);
+    expect(builders[0]?.skipLockedCalls).toBe(1);
+    expect(updateExecute).toHaveBeenCalled();
   });
 
   it("rejects malformed historical rescan cursors before claiming the job", async () => {
@@ -877,7 +966,7 @@ describe("MysqlInsightWorkerRepository", () => {
     db.transaction.mockReturnValue(createTransactionBuilder(db));
     const repository = new MysqlInsightWorkerRepository(db as never);
 
-    await expect(repository.claimNextSyncMessagesJob({})).rejects.toThrow(
+    await expect(repository.claimNextSyncMessagesJob()).rejects.toThrow(
       "Invalid sync_messages target_id",
     );
     expect(updateExecute).not.toHaveBeenCalled();
@@ -1009,6 +1098,152 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.whereCalls).toContainEqual(["next_close_at", "<=", 1_780_252_000_000]);
     expect(builders[0]?.orderByCalls).toContainEqual(["next_close_at", "asc"]);
     expect(builders[0]?.whereRawCalls.join("\n")).not.toContain("hard_max_duration_hours * 3600000");
+  });
+
+  it("finds reusable open or canceled sessions for stable sessionization", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            id: 501,
+            last_meaningful_message_at: 1_780_244_000_000,
+            started_at: 1_780_243_000_000,
+            status: "canceled",
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.findReusableSession({
+      conversationId: "301",
+      uid: 9001,
+    })).resolves.toEqual({
+      lastMeaningfulMessageAt: 1_780_244_000_000,
+      sessionId: "501",
+      startedAt: 1_780_243_000_000,
+      status: "canceled",
+    });
+
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual(["conversation_id", "=", 301]);
+    expect(builders[0]?.whereCalls).toContainEqual(["status", "in", ["open", "canceled"]]);
+  });
+
+  it("filters closable open sessions by active uid before applying the batch limit", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.listClosableOpenSessions({
+      activeUids: new Set([9001, 9002]),
+      limit: 100,
+      now: 1_780_252_000_000,
+    });
+
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "in", [9001, 9002]]);
+    expect(builders[0]?.limitCalls).toEqual([100]);
+  });
+
+  it("filters live-analysis open sessions by active uid before applying the batch limit", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.listOpenSessionsForLiveAnalysis({
+      activeUids: new Set([9001, 9002]),
+      limit: 100,
+    });
+
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "in", [9001, 9002]]);
+    expect(builders[0]?.limitCalls).toEqual([100]);
+  });
+
+  it("loads enabled feature configs in scan batches ordered by oldest cursor update", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            entity_enabled: 1,
+            insight_enabled: 1,
+            intent_enabled: 1,
+            label_enabled: 1,
+            last_enable_time: 1_780_243_000_000,
+            qa_enabled: 1,
+            todo_enabled: 1,
+            uid: 9001,
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.getActiveFeatureConfigs({
+      limit: 100,
+    })).resolves.toEqual([
+      expect.objectContaining({
+        insightEnabled: true,
+        uid: 9001,
+      }),
+    ]);
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_insight_feature_config as config");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_insight_sync_cursor as cursor");
+    expect(builders[0]?.whereCalls).toContainEqual(["config.insight_enabled", "=", 1]);
+    expect(builders[0]?.orderByCalls.length).toBeGreaterThan(0);
+    expect(builders[0]?.limitCalls).toEqual([100]);
+  });
+
+  it("closes disabled open sessions in cleanup batches", async () => {
+    let logicalSessionUpdate: UpdateBuilderStub | undefined;
+    const db = {
+      updateTable: vi.fn((table: string) => createUpdateBuilder(
+        async () => ({ numAffectedRows: 25n }),
+        {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_logical_session") {
+              logicalSessionUpdate = builder;
+            }
+          },
+          table,
+        },
+      )),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.closeDisabledOpenSessions({
+      endedAt: 1_780_252_000_000,
+      limit: 500,
+      uid: 9001,
+    })).resolves.toBe(25);
+
+    expect(logicalSessionUpdate?.setCalls[0]).toMatchObject({
+      close_reason: "insight_disabled",
+      ended_at: 1_780_252_000_000,
+      next_close_at: null,
+      status: "canceled",
+    });
+    expect(logicalSessionUpdate?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(logicalSessionUpdate?.whereCalls).toContainEqual(["status", "=", "open"]);
+    expect(logicalSessionUpdate?.limitCalls).toEqual([500]);
   });
 
   it("stores next close time when creating and appending logical-session messages", async () => {
@@ -1195,7 +1430,23 @@ describe("MysqlInsightWorkerRepository", () => {
           table,
         },
       )),
-      selectFrom: vi.fn(() => createSelectBuilder([{ conversation_id: 301 }])),
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          table === "xy_wap_embed_insight_feature_config"
+            ? [{
+                entity_enabled: 0,
+                insight_enabled: 1,
+                intent_enabled: 0,
+                label_enabled: 0,
+                last_enable_time: 1_780_300_000_000,
+                qa_enabled: 0,
+                todo_enabled: 0,
+                uid: 9001,
+              }]
+            : [{ conversation_id: 301 }],
+          table,
+        )
+      ),
       updateTable: vi.fn((table: string) => createUpdateBuilder(
         async () => ({ numAffectedRows: 1n }),
         { table },
@@ -1467,6 +1718,7 @@ function createDeleteBuilder(
   table = "",
 ) {
   const builder = {
+    execute: async () => [await executeTakeFirst()],
     executeTakeFirst,
     limitCalls: [] as number[],
     table,
@@ -1493,11 +1745,19 @@ function createUpdateBuilder(
   } = {},
 ) {
   const builder = {
+    execute: async () => [await executeTakeFirst()],
     executeTakeFirst,
+    limitCalls: [] as number[],
+    setCalls: [] as Record<string, unknown>[],
     table: options.table ?? "",
     whereRawCalls: [] as string[],
     whereCalls: [] as unknown[][],
+    limit: (value: number) => {
+      builder.limitCalls.push(value);
+      return builder;
+    },
     set: (values: Record<string, unknown>) => {
+      builder.setCalls.push(values);
       options.onSet?.(values);
       return builder;
     },

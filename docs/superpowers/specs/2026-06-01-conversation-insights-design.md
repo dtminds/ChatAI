@@ -64,7 +64,7 @@ P0:
 - 大模型优先接入火山方舟。
 - 第一版火山方舟先走 OpenAI-compatible chat completions，不接 Responses API。
 - 模型 API Key 先放 `.env`，不在页面配置。
-- worker 独立进程部署，通过 uid allowlist 灰度；首次启动默认从 3 天前开始扫描。
+- worker 独立进程部署；`INSIGHTS_WORKER_UID_ALLOWLIST` 仅用于控制账号是否可开启全局会话洞察开关。只要账号已开启会话洞察，worker 按配置表处理，不再受该环境变量限制。
 - 支持从指定时间开始重刷历史数据。
 - 语音转写读取 `xy_wap_embed_msg_audit_info.content.transVoiceText`。
 - 数据页第一版不做额外角色权限，仍遵守登录态、租户和会话数据隔离；配置页仅管理员可见。
@@ -1236,7 +1236,7 @@ GET /api/server/insights/intents
 
 上线分阶段：
 
-1. 通过 uid allowlist 灰度租户开启消息同步和切片，不调用模型。
+1. 通过 uid allowlist 灰度全局开关开通权限，已开启账号进入消息同步和切片，不调用模型。
 2. 从指定时间开始重刷少量历史逻辑会话，校验摘要和标签质量。
 3. 开启 live analysis，但限制模型并发和每日调用量。
 4. 开启 final analysis。

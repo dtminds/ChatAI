@@ -14,6 +14,22 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_sync_cursor (
   UNIQUE KEY uk_insight_sync_source_uid (source, uid)
 ) COMMENT='会话洞察消息同步水位表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_feature_config (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  insight_enabled TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '是否启用会话洞察总开关，1启用0停用',
+  todo_enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否自动创建待办，1启用0停用',
+  intent_enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否抽取意图，1启用0停用',
+  qa_enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否进行质检，1启用0停用',
+  entity_enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否抽取实体，1启用0停用',
+  label_enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否抽取标签，1启用0停用',
+  last_enable_time BIGINT UNSIGNED NULL COMMENT '最近一次启用会话洞察的时间戳',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_insight_feature_config_uid (uid)
+) COMMENT='会话洞察租户能力开关配置表';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_sessionization_config (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
@@ -39,8 +55,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   last_message_at BIGINT UNSIGNED NULL COMMENT '最后一条消息时间戳',
   last_meaningful_message_at BIGINT UNSIGNED NULL COMMENT '最后一条有效边界消息时间戳',
   next_close_at BIGINT UNSIGNED NULL COMMENT '下一次可关闭检查时间戳',
-  status VARCHAR(32) NOT NULL COMMENT '逻辑会话状态，open：进行中，closed_pending_analysis：待最终分析，analyzed：已分析',
-  close_reason VARCHAR(64) NULL COMMENT '逻辑会话关闭原因，idle_timeout：空闲超时，hard_max_duration：达到最长持续时长',
+  status VARCHAR(32) NOT NULL COMMENT '逻辑会话状态，open：进行中，canceled：洞察关闭暂停，closed_pending_analysis：待最终分析，analyzed：已分析',
+  close_reason VARCHAR(64) NULL COMMENT '逻辑会话关闭原因，idle_timeout：空闲超时，hard_max_duration：达到最长持续时长，insight_disabled：洞察关闭',
   rule_version VARCHAR(64) NOT NULL COMMENT '切片规则版本',
   idle_timeout_minutes INT UNSIGNED NOT NULL COMMENT '创建时使用的空闲关闭时长',
   hard_max_duration_hours INT UNSIGNED NOT NULL COMMENT '创建时使用的最长持续时长',
@@ -73,7 +89,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_session_source_message (session_id, source_message_id),
+  UNIQUE KEY uk_session_message_source_uid (uid, source_message_id),
   KEY idx_session_message_order (session_id, source_message_time, source_message_id),
   KEY idx_session_message_asset (session_id, message_type, source_message_id),
   KEY idx_session_message_conversation_time (uid, conversation_id, source_message_time),
@@ -84,7 +100,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   rescan_task_id BIGINT UNSIGNED NULL COMMENT '历史重刷任务ID',
-  job_type VARCHAR(64) NOT NULL COMMENT '任务类型，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话',
+  job_type VARCHAR(64) NOT NULL COMMENT '任务类型，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话，cleanup_disabled_insights：清理已关闭洞察会话',
   analysis_scope VARCHAR(64) NOT NULL COMMENT '分析范围，all：全部，qaFindings：质检，classification：分类',
   target_type VARCHAR(64) NOT NULL COMMENT '任务目标类型，uid：租户，logical_session：逻辑会话',
   target_id VARCHAR(128) NOT NULL COMMENT '任务目标ID',
@@ -111,7 +127,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job_archive (
   id BIGINT UNSIGNED NOT NULL COMMENT '原任务主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   rescan_task_id BIGINT UNSIGNED NULL COMMENT '历史重刷任务ID',
-  job_type VARCHAR(64) NOT NULL COMMENT '任务类型，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话',
+  job_type VARCHAR(64) NOT NULL COMMENT '任务类型，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话，cleanup_disabled_insights：清理已关闭洞察会话',
   analysis_scope VARCHAR(64) NOT NULL COMMENT '分析范围，all：全部，qaFindings：质检，classification：分类',
   target_type VARCHAR(64) NOT NULL COMMENT '任务目标类型，uid：租户，logical_session：逻辑会话',
   target_id VARCHAR(128) NOT NULL COMMENT '任务目标ID',

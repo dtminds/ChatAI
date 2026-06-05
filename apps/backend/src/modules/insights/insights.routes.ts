@@ -3,6 +3,7 @@ import {
   InsightAnalysisPolicyUpdateRequestSchema,
   InsightConfigStatusUpdateRequestSchema,
   InsightEntityDictionaryMutationRequestSchema,
+  InsightFeatureConfigUpdateRequestSchema,
   InsightIntentConfigMutationRequestSchema,
   InsightLabelConfigMutationRequestSchema,
   InsightActionStatusSchema,
@@ -14,6 +15,7 @@ import {
   type InsightAnalysisPolicyUpdateRequest,
   type InsightConfigStatusUpdateRequest,
   type InsightEntityDictionaryMutationRequest,
+  type InsightFeatureConfigUpdateRequest,
   type InsightIntentConfigMutationRequest,
   type InsightLabelConfigMutationRequest,
   type InsightActionStatus,
@@ -336,6 +338,25 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     async (request) => {
       return apiSuccess(
         await createInsightsService(app).updateAnalysisPolicy(
+          await getUidScope(app, request),
+          request.user?.roles?.[0] as AccountRole | undefined,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.put<{ Body: InsightFeatureConfigUpdateRequest }>(
+    "/api/server/insights/settings/feature-config",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightFeatureConfigUpdateRequestSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).updateFeatureConfig(
           await getUidScope(app, request),
           request.user?.roles?.[0] as AccountRole | undefined,
           request.body,

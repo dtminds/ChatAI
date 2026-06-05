@@ -1,7 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("insights routes", () => {
+  let previousInsightUidAllowlist: string | undefined;
+
+  beforeEach(() => {
+    previousInsightUidAllowlist = process.env.INSIGHTS_WORKER_UID_ALLOWLIST;
+    delete process.env.INSIGHTS_WORKER_UID_ALLOWLIST;
+  });
+
+  afterEach(() => {
+    if (previousInsightUidAllowlist === undefined) {
+      delete process.env.INSIGHTS_WORKER_UID_ALLOWLIST;
+    } else {
+      process.env.INSIGHTS_WORKER_UID_ALLOWLIST = previousInsightUidAllowlist;
+    }
+  });
+
   it("serves authenticated P0 insight data and commands", async () => {
     const { app, authorization, db } = await createInsightsApp("operator");
 
@@ -269,12 +284,182 @@ describe("insights routes", () => {
     expect(allowed.statusCode).toBe(200);
     expect(allowed.json()).toMatchObject({
       data: {
+        featureConfig: {
+          insightEnabled: false,
+          intentEnabled: true,
+          qaEnabled: true,
+        },
         sessionization: {
           idleTimeoutMinutes: 120,
         },
       },
       success: true,
     });
+  });
+
+  it("allows admins to update tenant insight feature switches", async () => {
+    const admin = await createInsightsApp("admin");
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "PUT",
+      payload: {
+        entityEnabled: false,
+        insightEnabled: true,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: false,
+      },
+      url: "/api/server/insights/settings/feature-config",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        entityEnabled: false,
+        insightEnabled: true,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: false,
+      },
+      success: true,
+    });
+    expect(admin.db.upsertedFeatureConfig).toMatchObject({
+      entity_enabled: 0,
+      insight_enabled: 1,
+      intent_enabled: 1,
+      label_enabled: 1,
+      qa_enabled: 1,
+      todo_enabled: 0,
+      uid: 9001,
+    });
+    expect(admin.db.upsertedFeatureConfig?.last_enable_time).toBeGreaterThan(0);
+  });
+
+  it("marks insight unavailable in settings when the uid is not allowed", async () => {
+    process.env.INSIGHTS_WORKER_UID_ALLOWLIST = "9002";
+    const admin = await createInsightsApp("admin");
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "GET",
+      url: "/api/server/insights/settings",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        featureConfig: {
+          insightAvailable: false,
+        },
+      },
+      success: true,
+    });
+  });
+
+  it("marks insight available in settings when the uid is allowed", async () => {
+    process.env.INSIGHTS_WORKER_UID_ALLOWLIST = "9001";
+    const admin = await createInsightsApp("admin");
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "GET",
+      url: "/api/server/insights/settings",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        featureConfig: {
+          insightAvailable: true,
+        },
+      },
+      success: true,
+    });
+  });
+
+  it("blocks enabling tenant insights when the uid is not allowed", async () => {
+    process.env.INSIGHTS_WORKER_UID_ALLOWLIST = "9002";
+    const admin = await createInsightsApp("admin");
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "PUT",
+      payload: {
+        entityEnabled: true,
+        insightEnabled: true,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: true,
+      },
+      url: "/api/server/insights/settings/feature-config",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "INSIGHT_NOT_AVAILABLE",
+      },
+      success: false,
+    });
+    expect(admin.db.upsertedFeatureConfig).toBeUndefined();
+  });
+
+  it("queues cleanup when admins disable tenant insights", async () => {
+    const admin = await createInsightsApp("admin", {
+      initialFeatureConfig: {
+        entity_enabled: 1,
+        insight_enabled: 1,
+        intent_enabled: 1,
+        label_enabled: 1,
+        last_enable_time: 1_780_243_000_000,
+        qa_enabled: 1,
+        todo_enabled: 1,
+      },
+    });
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "PUT",
+      payload: {
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: true,
+      },
+      url: "/api/server/insights/settings/feature-config",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(admin.db.upsertedFeatureConfig).toMatchObject({
+      insight_enabled: 0,
+      last_enable_time: 1_780_243_000_000,
+      uid: 9001,
+    });
+    expect(admin.db.insertedJob).toMatchObject({
+      analysis_scope: "all",
+      job_type: "cleanup_disabled_insights",
+      status: "pending",
+      target_id: "1780243000000",
+      target_type: "uid",
+      uid: 9001,
+    });
+    expect(admin.db.insertedJob?.idempotency_key).toBe("cleanup_disabled_insights:9001:1780243000000");
   });
 
   it("returns empty business config lists when the config tables are empty", async () => {
@@ -313,6 +498,7 @@ async function createInsightsApp(
   role: "admin" | "operator" | "owner" | "viewer",
   options: {
     entityDictionaryRows?: unknown[];
+    initialFeatureConfig?: Record<string, unknown>;
     intentConfigRows?: unknown[];
     labelConfigRows?: unknown[];
     qaRuleConfigRows?: unknown[];
@@ -338,6 +524,7 @@ async function createInsightsApp(
 
 function createInsightsDbMock(options: {
   entityDictionaryRows?: unknown[];
+  initialFeatureConfig?: Record<string, unknown>;
   intentConfigRows?: unknown[];
   labelConfigRows?: unknown[];
   qaRuleConfigRows?: unknown[];
@@ -347,19 +534,36 @@ function createInsightsDbMock(options: {
     insertedRescanTask: undefined as Record<string, unknown> | undefined,
     insightCurrentSelectCount: 0,
     selectBuilders: [] as Array<{ wheres: Array<[string, string, unknown]> }>,
+    upsertedFeatureConfig: undefined as Record<string, unknown> | undefined,
     updatedActionStatus: undefined as { id: number | undefined; status: string | undefined } | undefined,
     insertInto(table: string) {
-      if (table !== "xy_wap_embed_insight_job" && table !== "xy_wap_embed_insight_rescan_task") {
+      if (
+        table !== "xy_wap_embed_insight_job"
+        && table !== "xy_wap_embed_insight_rescan_task"
+        && table !== "xy_wap_embed_insight_feature_config"
+      ) {
         throw new Error(`Unexpected insert table: ${table}`);
       }
 
       const builder = {
+        execute: async () => ({}),
+        executeTakeFirst: async () => ({}),
         executeTakeFirstOrThrow: async () => ({
           insertId: table === "xy_wap_embed_insight_rescan_task" ? 9901 : 8802,
         }),
+        ignore: () => builder,
+        onDuplicateKeyUpdate: (values: Record<string, unknown>) => {
+          state.upsertedFeatureConfig = {
+            ...state.upsertedFeatureConfig,
+            ...values,
+          };
+          return builder;
+        },
         values: (values: Record<string, unknown>) => {
           if (table === "xy_wap_embed_insight_rescan_task") {
             state.insertedRescanTask = values;
+          } else if (table === "xy_wap_embed_insight_feature_config") {
+            state.upsertedFeatureConfig = values;
           } else {
             state.insertedJob = values;
           }
@@ -472,6 +676,34 @@ function createInsightsDbMock(options: {
             live_min_new_meaningful_messages: 20,
             low_confidence_threshold: "0.6000",
             rule_fallback_enabled: 1,
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_insight_feature_config") {
+        return createBuilder(() => [
+          {
+            entity_enabled: state.upsertedFeatureConfig?.entity_enabled
+              ?? options.initialFeatureConfig?.entity_enabled
+              ?? 1,
+            insight_enabled: state.upsertedFeatureConfig?.insight_enabled
+              ?? options.initialFeatureConfig?.insight_enabled
+              ?? 0,
+            intent_enabled: state.upsertedFeatureConfig?.intent_enabled
+              ?? options.initialFeatureConfig?.intent_enabled
+              ?? 1,
+            label_enabled: state.upsertedFeatureConfig?.label_enabled
+              ?? options.initialFeatureConfig?.label_enabled
+              ?? 1,
+            last_enable_time: state.upsertedFeatureConfig?.last_enable_time
+              ?? options.initialFeatureConfig?.last_enable_time
+              ?? null,
+            qa_enabled: state.upsertedFeatureConfig?.qa_enabled
+              ?? options.initialFeatureConfig?.qa_enabled
+              ?? 1,
+            todo_enabled: state.upsertedFeatureConfig?.todo_enabled
+              ?? options.initialFeatureConfig?.todo_enabled
+              ?? 1,
           },
         ]);
       }

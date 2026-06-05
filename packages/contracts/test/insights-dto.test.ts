@@ -503,6 +503,14 @@ describe("insights DTOs", () => {
             includeInAggregation: true,
           },
         ],
+        featureConfig: {
+          entityEnabled: true,
+          insightEnabled: false,
+          intentEnabled: true,
+          labelEnabled: true,
+          qaEnabled: true,
+          todoEnabled: false,
+        },
         intentConfigs: [
           {
             aliases: ["退款", "退钱"],

@@ -13,6 +13,8 @@ import type {
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
+  InsightFeatureConfig,
+  InsightFeatureConfigUpdateRequest,
   InsightIntentConfig,
   InsightIntentConfigMutationRequest,
   InsightLabelConfig,
@@ -314,6 +316,10 @@ export type InsightsRepositoryPort = {
     status: Extract<InsightActionStatus, "done" | "dismissed">,
   ): Promise<boolean>;
   getSettings(scope: InsightsUidScope): Promise<InsightSettingsResponse>;
+  upsertFeatureConfig(
+    scope: InsightsUidScope,
+    payload: InsightFeatureConfigUpdateRequest,
+  ): Promise<InsightFeatureConfig>;
   upsertAnalysisPolicy(
     scope: InsightsUidScope,
     payload: InsightAnalysisPolicyUpdateRequest,
@@ -724,7 +730,15 @@ export class InsightsService {
   ): Promise<InsightSettingsResponse> {
     assertInsightSettingsAdmin(role);
 
-    return this.repository.getSettings(scope);
+    const settings = await this.repository.getSettings(scope);
+
+    return {
+      ...settings,
+      featureConfig: {
+        ...settings.featureConfig,
+        insightAvailable: isInsightAvailable(scope),
+      },
+    };
   }
 
   async updateSessionizationSettings(
@@ -743,6 +757,16 @@ export class InsightsService {
   ): Promise<InsightAnalysisPolicy> {
     assertInsightSettingsAdmin(role);
     return this.repository.upsertAnalysisPolicy(scope, payload);
+  }
+
+  async updateFeatureConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    payload: InsightFeatureConfigUpdateRequest,
+  ): Promise<InsightFeatureConfig> {
+    assertInsightSettingsAdmin(role);
+    assertInsightEnableAllowed(scope, payload);
+    return this.repository.upsertFeatureConfig(scope, payload);
   }
 
   async createIntentConfig(
@@ -1000,6 +1024,34 @@ function assertInsightSettingsAdmin(role: AccountRole | string | undefined) {
   if (role !== "owner" && role !== "admin") {
     throw new ForbiddenError("FORBIDDEN", "无权限访问");
   }
+}
+
+function assertInsightEnableAllowed(
+  scope: InsightsUidScope,
+  payload: InsightFeatureConfigUpdateRequest,
+) {
+  if (!payload.insightEnabled) {
+    return;
+  }
+
+  if (!isInsightAvailable(scope)) {
+    throw new ForbiddenError("INSIGHT_NOT_AVAILABLE", "当前账号暂未开通会话洞察");
+  }
+}
+
+export function isInsightAvailable(scope: InsightsUidScope) {
+  const insightAllowedUids = parseInsightAllowedUids(process.env.INSIGHTS_WORKER_UID_ALLOWLIST);
+
+  return !insightAllowedUids || insightAllowedUids.has(scope.uid);
+}
+
+function parseInsightAllowedUids(value: string | undefined) {
+  const values = (value ?? "")
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isSafeInteger(item) && item > 0);
+
+  return values.length > 0 ? new Set(values) : undefined;
 }
 
 function normalizeOverviewPage(value: number | undefined) {

@@ -13,11 +13,10 @@ describe("insights worker runtime config", () => {
       intervalMs: 3_000,
       modelEnabled: false,
       startLookbackDays: 3,
-      uidAllowlist: undefined,
     });
   });
 
-  it("parses worker switches, allowlist and numeric limits from env", () => {
+  it("parses worker switches and numeric limits from env", () => {
     expect(
       parseInsightsWorkerRuntimeConfig({
         INSIGHTS_WORKER_BATCH_SIZE: "500",
@@ -25,7 +24,6 @@ describe("insights worker runtime config", () => {
         INSIGHTS_WORKER_INTERVAL_MS: "10000",
         INSIGHTS_WORKER_MODEL_ENABLED: "true",
         INSIGHTS_WORKER_START_LOOKBACK_DAYS: "7",
-        INSIGHTS_WORKER_UID_ALLOWLIST: "9001, 9002, bad, 0",
         VOLCENGINE_ARK_LITE_MAX_TOKENS: "1024",
         VOLCENGINE_ARK_LITE_MODEL: "ep-lite",
       }),
@@ -35,7 +33,6 @@ describe("insights worker runtime config", () => {
       intervalMs: 10_000,
       modelEnabled: true,
       startLookbackDays: 7,
-      uidAllowlist: new Set([9001, 9002]),
     });
   });
 

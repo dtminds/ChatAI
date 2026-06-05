@@ -22,6 +22,7 @@ const serviceMocks = vi.hoisted(() => ({
   updateInsightAnalysisPolicy: vi.fn(),
   updateInsightEntityDictionaryItem: vi.fn(),
   updateInsightEntityDictionaryItemStatus: vi.fn(),
+  updateInsightFeatureConfig: vi.fn(),
   updateInsightIntentConfig: vi.fn(),
   updateInsightIntentConfigStatus: vi.fn(),
   updateInsightLabelConfig: vi.fn(),
@@ -37,6 +38,144 @@ const serviceMocks = vi.hoisted(() => ({
   deleteInsightQaRuleConfig: vi.fn(),
   updateInsightActionStatus: vi.fn(),
 }));
+
+const mockInsightSettings = {
+  analysisPolicy: {
+    finalAnalysisEnabled: true,
+    liveAnalysisEnabled: true,
+    liveMinIntervalMinutes: 15,
+    liveMinNewMeaningfulMessages: 20,
+    lowConfidenceThreshold: 0.6,
+    ruleFallbackEnabled: true,
+  },
+  entityDictionary: [
+    {
+      aliases: ["白鸭绒外套"],
+      canonicalName: "白色羽绒服",
+      enabled: true,
+      entityType: "product",
+      id: "41",
+      includeInAggregation: true,
+    },
+    {
+      aliases: ["雨伞"],
+      canonicalName: "黑色雨伞",
+      enabled: true,
+      entityType: "product",
+      id: "42",
+      includeInAggregation: true,
+    },
+    {
+      aliases: [],
+      canonicalName: "隐藏实体",
+      enabled: false,
+      entityType: "product",
+      id: "43",
+      includeInAggregation: true,
+    },
+  ],
+  featureConfig: {
+    entityEnabled: true,
+    insightAvailable: true,
+    insightEnabled: false,
+    intentEnabled: true,
+    labelEnabled: true,
+    qaEnabled: true,
+    todoEnabled: true,
+  },
+  intentConfigs: [
+    {
+      aliases: ["查快递"],
+      description: "客户咨询物流或发货进度",
+      enabled: true,
+      id: "31",
+      includeInStatistics: true,
+      intentCode: "logistics",
+      intentName: "查物流",
+      negativeExamples: [],
+      positiveExamples: ["快递什么时候到"],
+      weight: 8,
+    },
+    {
+      aliases: ["AI客服"],
+      description: "客户咨询AI客服系统相关信息",
+      enabled: true,
+      id: "32",
+      includeInStatistics: true,
+      intentCode: "ai_customer_service_info",
+      intentName: "咨询AI客服系统相关信息",
+      negativeExamples: [],
+      positiveExamples: ["AI客服支持什么功能"],
+      weight: 6,
+    },
+    {
+      aliases: [],
+      enabled: false,
+      id: "33",
+      includeInStatistics: true,
+      intentCode: "hidden_intent",
+      intentName: "隐藏意图",
+      weight: 3,
+    },
+  ],
+  labelConfigs: [
+    {
+      enabled: true,
+      id: "11",
+      includeInStatistics: true,
+      labelCode: "refund",
+      labelName: "退款咨询",
+    },
+    {
+      enabled: true,
+      id: "12",
+      includeInStatistics: true,
+      labelCode: "price_sensitive",
+      labelName: "价格敏感",
+    },
+    {
+      enabled: true,
+      id: "13",
+      includeInStatistics: true,
+      labelCode: "high_intent",
+      labelName: "高意向",
+    },
+    {
+      enabled: false,
+      id: "14",
+      includeInStatistics: true,
+      labelCode: "hidden_label",
+      labelName: "隐藏标签",
+    },
+  ],
+  qaRuleConfigs: [
+    {
+      enabled: true,
+      id: "21",
+      ruleCode: "problem_resolution",
+      ruleName: "客户问题是否解决",
+      severity: "high",
+    },
+  ],
+  sessionization: {
+    analysisDelayMinutes: 10,
+    hardMaxDurationHours: 8,
+    idleTimeoutMinutes: 120,
+    lateArrivalWindowMinutes: 30,
+    preset: "custom",
+  },
+};
+
+async function openSettingsDialog(tabName: string, buttonName: string, dialogName: string) {
+  renderRoute("/chat/insights/settings");
+
+  expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("tab", { name: tabName }));
+  await userEvent.click(screen.getByRole("button", { name: buttonName }));
+
+  return screen.findByRole("dialog", { name: dialogName });
+}
 
 vi.mock("@/pages/chat/insights/api/insights-service", () => serviceMocks);
 
@@ -694,123 +833,7 @@ function installInsightMocks() {
     ],
     targetMessageId: "9002",
   });
-  serviceMocks.getInsightSettings.mockResolvedValue({
-    analysisPolicy: {
-      finalAnalysisEnabled: true,
-      liveAnalysisEnabled: true,
-      liveMinIntervalMinutes: 15,
-      liveMinNewMeaningfulMessages: 20,
-      lowConfidenceThreshold: 0.6,
-      ruleFallbackEnabled: true,
-    },
-    entityDictionary: [
-      {
-        aliases: ["白鸭绒外套"],
-        canonicalName: "白色羽绒服",
-        enabled: true,
-        entityType: "product",
-        id: "41",
-        includeInAggregation: true,
-      },
-      {
-        aliases: ["雨伞"],
-        canonicalName: "黑色雨伞",
-        enabled: true,
-        entityType: "product",
-        id: "42",
-        includeInAggregation: true,
-      },
-      {
-        aliases: [],
-        canonicalName: "隐藏实体",
-        enabled: false,
-        entityType: "product",
-        id: "43",
-        includeInAggregation: true,
-      },
-    ],
-    intentConfigs: [
-      {
-        aliases: ["查快递"],
-        description: "客户咨询物流或发货进度",
-        enabled: true,
-        id: "31",
-        includeInStatistics: true,
-        intentCode: "logistics",
-        intentName: "查物流",
-        negativeExamples: [],
-        positiveExamples: ["快递什么时候到"],
-        weight: 8,
-      },
-      {
-        aliases: ["AI客服"],
-        description: "客户咨询AI客服系统相关信息",
-        enabled: true,
-        id: "32",
-        includeInStatistics: true,
-        intentCode: "ai_customer_service_info",
-        intentName: "咨询AI客服系统相关信息",
-        negativeExamples: [],
-        positiveExamples: ["AI客服支持什么功能"],
-        weight: 6,
-      },
-      {
-        aliases: [],
-        enabled: false,
-        id: "33",
-        includeInStatistics: true,
-        intentCode: "hidden_intent",
-        intentName: "隐藏意图",
-        weight: 3,
-      },
-    ],
-    labelConfigs: [
-      {
-        enabled: true,
-        id: "11",
-        includeInStatistics: true,
-        labelCode: "refund",
-        labelName: "退款咨询",
-      },
-      {
-        enabled: true,
-        id: "12",
-        includeInStatistics: true,
-        labelCode: "price_sensitive",
-        labelName: "价格敏感",
-      },
-      {
-        enabled: true,
-        id: "13",
-        includeInStatistics: true,
-        labelCode: "high_intent",
-        labelName: "高意向",
-      },
-      {
-        enabled: false,
-        id: "14",
-        includeInStatistics: true,
-        labelCode: "hidden_label",
-        labelName: "隐藏标签",
-      },
-    ],
-    qaRuleConfigs: [
-      {
-        enabled: true,
-        id: "21",
-        ruleCode: "problem_resolution",
-        ruleName: "客户问题是否解决",
-        severity: "high",
-      },
-    ],
-    sessionization: {
-      analysisDelayMinutes: 10,
-      hardMaxDurationHours: 8,
-      idleTimeoutMinutes: 120,
-      lateArrivalWindowMinutes: 30,
-      preset: "custom",
-    },
-  });
+  serviceMocks.getInsightSettings.mockResolvedValue(mockInsightSettings);
   serviceMocks.updateInsightActionStatus.mockResolvedValue({
     actionItemId: "801",
     status: "done",
@@ -897,6 +920,9 @@ describe("conversation insights pages", () => {
   });
 
   afterEach(() => {
+    cleanup();
+    document.body.removeAttribute("data-scroll-locked");
+    document.body.style.removeProperty("pointer-events");
     vi.useRealTimers();
   });
 
@@ -1636,41 +1662,113 @@ describe("conversation insights pages", () => {
     expect(within(distributionPanel as HTMLElement).queryByText("咨询会话")).not.toBeInTheDocument();
   });
 
-  it("validates required insight configuration dialog fields before submit", async () => {
-    renderRoute("/chat/insights/settings");
-
-    expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("tab", { name: "意图配置" }));
-    await userEvent.click(screen.getByRole("button", { name: "新增意图" }));
-    expect(await screen.findByRole("dialog", { name: "新增意图" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+  it("validates required intent configuration dialog fields before submit", async () => {
+    const intentDialog = await openSettingsDialog("意图配置", "新增意图", "新增意图");
+    expect(intentDialog).toBeInTheDocument();
+    await userEvent.click(within(intentDialog).getByRole("button", { name: "保存" }));
     expect(await screen.findAllByText("请填写必填项")).toHaveLength(3);
     expect(serviceMocks.createInsightIntentConfig).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+  });
 
-    await userEvent.click(screen.getByRole("tab", { name: "标签体系" }));
-    await userEvent.click(screen.getByRole("button", { name: "新增标签" }));
-    expect(await screen.findByRole("dialog", { name: "新增标签" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+  it("validates required label configuration dialog fields before submit", async () => {
+    const labelDialog = await openSettingsDialog("标签体系", "新增标签", "新增标签");
+    expect(labelDialog).toBeInTheDocument();
+    await userEvent.click(within(labelDialog).getByRole("button", { name: "保存" }));
     expect(await screen.findAllByText("请填写必填项")).toHaveLength(3);
     expect(serviceMocks.createInsightLabelConfig).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+  });
 
-    await userEvent.click(screen.getByRole("tab", { name: "质检规则" }));
-    await userEvent.click(screen.getByRole("button", { name: "新增规则" }));
-    expect(await screen.findByRole("dialog", { name: "新增规则" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+  it("validates required qa rule dialog fields before submit", async () => {
+    const qaDialog = await openSettingsDialog("质检规则", "新增规则", "新增质检规则");
+    expect(qaDialog).toBeInTheDocument();
+    await userEvent.click(within(qaDialog).getByRole("button", { name: "保存" }));
     expect(await screen.findAllByText("请填写必填项")).toHaveLength(3);
     expect(serviceMocks.createInsightQaRuleConfig).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+  });
 
-    await userEvent.click(screen.getByRole("tab", { name: "实体词库" }));
-    await userEvent.click(screen.getByRole("button", { name: "新增实体" }));
-    expect(await screen.findByRole("dialog", { name: "新增实体" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+  it("validates required entity dictionary dialog fields before submit", async () => {
+    const entityDialog = await openSettingsDialog("实体词库", "新增实体", "新增实体");
+    expect(entityDialog).toBeInTheDocument();
+    await userEvent.click(within(entityDialog).getByRole("button", { name: "保存" }));
     expect(await screen.findAllByText("请填写必填项")).toHaveLength(2);
     expect(serviceMocks.createInsightEntityDictionaryItem).not.toHaveBeenCalled();
+  });
+
+  it("lets admins enable insights and update feature switches from settings", async () => {
+    serviceMocks.updateInsightFeatureConfig.mockResolvedValue({
+      entityEnabled: true,
+      insightAvailable: true,
+      insightEnabled: true,
+      intentEnabled: true,
+      labelEnabled: true,
+      lastEnableTime: 1_780_300_000_000,
+      qaEnabled: true,
+      todoEnabled: true,
+    });
+
+    renderRoute("/chat/insights/settings");
+
+    expect(await screen.findByText("未运行")).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "智能意图识别" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "配置洞察运行" }));
+    expect(await screen.findByRole("dialog", { name: "洞察运行配置" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("switch", { name: "启用会话洞察" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.updateInsightFeatureConfig).toHaveBeenCalledWith({
+        entityEnabled: true,
+        insightEnabled: true,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: true,
+      });
+    });
+    expect(await screen.findByText("运行中")).toBeInTheDocument();
+
+    serviceMocks.updateInsightFeatureConfig.mockResolvedValueOnce({
+      entityEnabled: true,
+      insightAvailable: true,
+      insightEnabled: true,
+      intentEnabled: false,
+      labelEnabled: true,
+      lastEnableTime: 1_780_300_000_000,
+      qaEnabled: true,
+      todoEnabled: true,
+    });
+    await userEvent.click(screen.getByRole("button", { name: "配置洞察运行" }));
+    await userEvent.click(screen.getByRole("switch", { name: "智能意图识别" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.updateInsightFeatureConfig).toHaveBeenLastCalledWith({
+        entityEnabled: true,
+        insightEnabled: true,
+        intentEnabled: false,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: true,
+      });
+    });
+  });
+
+  it("disables the global insight switch when insights are not available", async () => {
+    serviceMocks.getInsightSettings.mockResolvedValue({
+      ...mockInsightSettings,
+      featureConfig: {
+        ...mockInsightSettings.featureConfig,
+        insightAvailable: false,
+      },
+    });
+
+    renderRoute("/chat/insights/settings");
+
+    expect(await screen.findByText("未运行")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "配置洞察运行" }));
+    expect(await screen.findByRole("dialog", { name: "洞察运行配置" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "启用会话洞察" })).toBeDisabled();
+    expect(screen.getByText("当前账号暂未开通会话洞察")).toBeInTheDocument();
   });
 
   it("shows loading states while paginated insight sessions are loading", async () => {

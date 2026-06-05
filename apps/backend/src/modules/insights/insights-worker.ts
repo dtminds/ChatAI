@@ -15,6 +15,18 @@ type WorkerLogger = {
 export type InsightWorkerCursor = {
   cursorAuditId: number;
   cursorMsgtime: number;
+  uid?: number;
+};
+
+export type InsightWorkerFeatureConfig = {
+  entityEnabled: boolean;
+  insightEnabled: boolean;
+  intentEnabled: boolean;
+  labelEnabled: boolean;
+  lastEnableTime?: number;
+  qaEnabled: boolean;
+  todoEnabled: boolean;
+  uid: number;
 };
 
 export type InsightWorkerMessage = {
@@ -67,6 +79,13 @@ export type InsightWorkerOpenSession = {
   lastMeaningfulMessageAt: number | null;
   sessionId: string;
   startedAt: number;
+  status?: "canceled" | "open";
+};
+
+export type CleanupDisabledInsightsJob = {
+  enableEpoch: number;
+  jobId: string;
+  uid: number;
 };
 
 export type ClosableOpenSession = {
@@ -103,7 +122,7 @@ export type AppendSessionMessageInput = {
 };
 
 export type CloseSessionInput = {
-  closeReason: "hard_max_duration" | "idle_timeout";
+  closeReason: "hard_max_duration" | "idle_timeout" | "insight_disabled";
   endedAt: number;
   sessionId: string;
 };
@@ -249,14 +268,22 @@ export type InsightWorkerRepositoryPort = {
     before: Date;
     limit: number;
   }): Promise<{ archivedJobs: number; deletedJobs: number }>;
+  claimNextCleanupDisabledInsightsJob(): Promise<CleanupDisabledInsightsJob | undefined>;
   claimNextAnalyzeJob(): Promise<ClaimedAnalyzeJob | undefined>;
-  claimNextSyncMessagesJob(input: {
-    uidAllowlist?: Set<number>;
-  }): Promise<ClaimedSyncMessagesJob | undefined>;
+  claimNextSyncMessagesJob(): Promise<ClaimedSyncMessagesJob | undefined>;
+  closeDisabledOpenSessions(input: {
+    endedAt: number;
+    limit: number;
+    uid: number;
+  }): Promise<number>;
   closeSession(input: CloseSessionInput): Promise<void>;
   createAnalyzeJob(input: CreateAnalyzeJobInput): Promise<string>;
   createLogicalSession(input: CreateLogicalSessionInput): Promise<string>;
   findOpenSession(input: {
+    conversationId: string;
+    uid: number;
+  }): Promise<InsightWorkerOpenSession | undefined>;
+  findReusableSession(input: {
     conversationId: string;
     uid: number;
   }): Promise<InsightWorkerOpenSession | undefined>;
@@ -270,7 +297,8 @@ export type InsightWorkerRepositoryPort = {
     uid: number;
   }): Promise<InsightWorkerExistingSession[]>;
   getAnalysisPolicy(uid: number): Promise<InsightWorkerAnalysisPolicy>;
-  getCursor(): Promise<InsightWorkerCursor>;
+  getFeatureConfig(uid: number): Promise<InsightWorkerFeatureConfig>;
+  getCursor(uid?: number): Promise<InsightWorkerCursor>;
   getPromptContext(uid: number): Promise<InsightPromptContext>;
   getSessionizationConfig(uid: number): Promise<InsightWorkerSessionizationConfig>;
   listPreviousSessionContexts(input: {
@@ -280,9 +308,9 @@ export type InsightWorkerRepositoryPort = {
     uid: number;
   }): Promise<InsightPreviousSessionContext[]>;
   listClosableOpenSessions(input: {
+    activeUids?: Set<number>;
     limit: number;
     now: number;
-    uidAllowlist?: Set<number>;
   }): Promise<ClosableOpenSession[]>;
   listIncrementalMessages(input: {
     cursorAuditId: number;
@@ -291,23 +319,30 @@ export type InsightWorkerRepositoryPort = {
     uid?: number;
   }): Promise<InsightWorkerMessage[]>;
   listOpenSessionsForLiveAnalysis(input: {
+    activeUids?: Set<number>;
     limit: number;
-    uidAllowlist?: Set<number>;
   }): Promise<OpenSessionForLiveAnalysis[]>;
   listSessionMessagesForAnalysis(sessionId: string): Promise<InsightAnalysisMessageRow[]>;
   getCurrentAnalysisOutput(input: {
     sessionId: string;
     uid: number;
   }): Promise<InsightAnalysisOutput | undefined>;
+  getActiveFeatureConfigs(input: { limit?: number }): Promise<InsightWorkerFeatureConfig[]>;
   markAnalysisJobFailed(jobId: string, error: unknown): Promise<void>;
   markAnalysisJobSucceeded(jobId: string): Promise<void>;
   markAnalysisRunFailed(runId: string, error: unknown): Promise<void>;
   markSyncMessagesJobFailed(jobId: string, error: unknown): Promise<void>;
   markSyncMessagesJobSucceeded(jobId: string): Promise<void>;
+  markCleanupDisabledInsightsJobFailed(jobId: string, error: unknown): Promise<void>;
+  markCleanupDisabledInsightsJobSucceeded(jobId: string): Promise<void>;
   postponeAnalysisJobForInputReadiness(
     jobId: string,
     input: { delayMs: number; reason: string },
   ): Promise<void>;
+  reopenSession(input: {
+    sessionId: string;
+    uid: number;
+  }): Promise<boolean>;
   saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string>;
   shouldCreateLiveAnalyzeJob(input: ShouldCreateLiveAnalyzeJobInput): Promise<boolean>;
   startAnalysisRun(input: InsightAnalysisRunInput): Promise<string>;
@@ -322,7 +357,7 @@ export type InsightWorkerRepositoryPort = {
     totalSessions: number;
   }): Promise<void>;
   updateRescanTaskRunning(rescanTaskId: string): Promise<void>;
-  updateCursor(cursor: InsightWorkerCursor): Promise<void>;
+  updateCursor(cursor: InsightWorkerCursor & { uid?: number }): Promise<void>;
 };
 
 export type NonOverlappingTicker = {
@@ -340,7 +375,6 @@ const TERMINAL_JOB_ARCHIVE_LIMIT = 5_000;
 export class InsightsWorkerService {
   private readonly batchSize: number;
   private readonly model?: InsightSessionAnalyzer;
-  private readonly uidAllowlist?: Set<number>;
 
   constructor(
     private readonly repository: InsightWorkerRepositoryPort,
@@ -348,69 +382,115 @@ export class InsightsWorkerService {
       batchSize?: number;
       logger?: WorkerLogger;
       model?: InsightSessionAnalyzer;
-      uidAllowlist?: Set<number>;
+      now?: () => number;
+      startLookbackDays?: number;
     } = {},
   ) {
     this.batchSize = options.batchSize ?? 200;
     this.logger = options.logger;
     this.model = options.model;
-    this.uidAllowlist = options.uidAllowlist;
+    this.now = options.now ?? Date.now;
+    this.startLookbackDays = options.startLookbackDays ?? 3;
   }
 
   private readonly logger?: WorkerLogger;
+  private readonly now: () => number;
+  private readonly startLookbackDays: number;
 
   async runOnce() {
     await this.runSyncMessagesJob();
+    await this.runCleanupDisabledInsightsJob();
 
-    const cursor = await this.repository.getCursor();
-    const messages = await this.repository.listIncrementalMessages({
-      cursorAuditId: cursor.cursorAuditId,
-      cursorMsgtime: cursor.cursorMsgtime,
+    const featureConfigs = await this.repository.getActiveFeatureConfigs({
       limit: this.batchSize,
     });
     let sessionizedMessages = 0;
-    let skippedByAllowlist = 0;
+    let scannedMessages = 0;
 
-    for (const message of messages) {
-      if (this.uidAllowlist && !this.uidAllowlist.has(message.uid)) {
-        skippedByAllowlist += 1;
-        continue;
-      }
-
-      if (await this.sessionizeMessage(message)) {
-        sessionizedMessages += 1;
-      }
-    }
-
-    const lastMessage = messages.at(-1);
-
-    if (lastMessage) {
-      await this.repository.updateCursor({
-        cursorAuditId: Number(lastMessage.id),
-        cursorMsgtime: lastMessage.msgtime,
+    for (const featureConfig of featureConfigs) {
+      const cursor = await this.repository.getCursor(featureConfig.uid);
+      const start = this.resolveIncrementalStart({
+        cursor,
+        lastEnableTime: featureConfig.lastEnableTime,
       });
+      const messages = await this.repository.listIncrementalMessages({
+        cursorAuditId: start.cursorAuditId,
+        cursorMsgtime: start.cursorMsgtime,
+        limit: this.batchSize,
+        uid: featureConfig.uid,
+      });
+
+      for (const message of messages) {
+        const existingSession = await this.repository.findSessionBySourceMessage({
+          sourceMessageId: message.id,
+          uid: featureConfig.uid,
+        });
+
+        if (existingSession) {
+          continue;
+        }
+
+        if (await this.sessionizeMessage(message)) {
+          sessionizedMessages += 1;
+        }
+      }
+
+      const lastMessage = messages.at(-1);
+
+      if (lastMessage) {
+        await this.repository.updateCursor({
+          cursorAuditId: Number(lastMessage.id),
+          cursorMsgtime: lastMessage.msgtime,
+          uid: featureConfig.uid,
+        });
+      }
+
+      scannedMessages += messages.length;
     }
 
-    if (messages.length > 0) {
+    if (scannedMessages > 0) {
       this.logger?.info(
         {
-          cursorAuditId: lastMessage ? Number(lastMessage.id) : cursor.cursorAuditId,
-          cursorMsgtime: lastMessage?.msgtime ?? cursor.cursorMsgtime,
-          scannedMessages: messages.length,
+          activeUids: featureConfigs.length,
+          scannedMessages,
           sessionizedMessages,
-          skippedByAllowlist,
         },
         "会话洞察 worker 已扫描增量消息",
       );
     }
 
+    const activeUids = new Set(featureConfigs.map((config) => config.uid));
+
     if (this.model) {
       await this.runAnalyzeJob();
     }
 
-    await this.scheduleLiveAnalysisForOpenSessions();
-    await this.closeTimedOutOpenSessions();
+    if (activeUids.size > 0) {
+      await this.scheduleLiveAnalysisForOpenSessions(activeUids);
+      await this.closeTimedOutOpenSessions(activeUids);
+    }
     await this.archiveTerminalJobs();
+  }
+
+  private resolveIncrementalStart(input: {
+    cursor: InsightWorkerCursor;
+    lastEnableTime?: number;
+  }): InsightWorkerCursor {
+    const lookbackMs = this.startLookbackDays * 24 * 60 * 60_000;
+    const currentLookbackStart = this.now() - lookbackMs;
+    const enableLookbackStart = input.lastEnableTime == null
+      ? currentLookbackStart
+      : input.lastEnableTime - lookbackMs;
+    const cursorMsgtime = Math.max(
+      input.cursor.cursorMsgtime,
+      enableLookbackStart,
+      currentLookbackStart,
+    );
+
+    return {
+      cursorAuditId: cursorMsgtime === input.cursor.cursorMsgtime ? input.cursor.cursorAuditId : 0,
+      cursorMsgtime,
+    };
   }
 
   private async archiveTerminalJobs() {
@@ -430,10 +510,10 @@ export class InsightsWorkerService {
     }
   }
 
-  private async scheduleLiveAnalysisForOpenSessions() {
+  private async scheduleLiveAnalysisForOpenSessions(activeUids: Set<number>) {
     const sessions = await this.repository.listOpenSessionsForLiveAnalysis({
+      activeUids,
       limit: this.batchSize,
-      uidAllowlist: this.uidAllowlist,
     });
     let scheduledJobs = 0;
 
@@ -466,9 +546,7 @@ export class InsightsWorkerService {
   }
 
   private async runSyncMessagesJob() {
-    const job = await this.repository.claimNextSyncMessagesJob({
-      uidAllowlist: this.uidAllowlist,
-    });
+    const job = await this.repository.claimNextSyncMessagesJob();
 
     if (!job) {
       return;
@@ -572,11 +650,51 @@ export class InsightsWorkerService {
     }
   }
 
-  private async closeTimedOutOpenSessions() {
+  private async runCleanupDisabledInsightsJob() {
+    const job = await this.repository.claimNextCleanupDisabledInsightsJob();
+
+    if (!job) {
+      return;
+    }
+
+    try {
+      const featureConfig = await this.repository.getFeatureConfig(job.uid);
+
+      if (
+        featureConfig.insightEnabled
+        || featureConfig.lastEnableTime !== job.enableEpoch
+      ) {
+        await this.repository.markCleanupDisabledInsightsJobSucceeded(job.jobId);
+        return;
+      }
+
+      while (true) {
+        const closedSessions = await this.repository.closeDisabledOpenSessions({
+          endedAt: Date.now(),
+          limit: this.batchSize,
+          uid: job.uid,
+        });
+
+        if (closedSessions < this.batchSize) {
+          break;
+        }
+      }
+
+      await this.repository.markCleanupDisabledInsightsJobSucceeded(job.jobId);
+    } catch (error) {
+      await this.repository.markCleanupDisabledInsightsJobFailed(job.jobId, error);
+      this.logger?.error(
+        { err: error, jobId: job.jobId, uid: job.uid },
+        "会话洞察 worker 清理已关闭洞察会话失败",
+      );
+    }
+  }
+
+  private async closeTimedOutOpenSessions(activeUids: Set<number>) {
     const sessions = await this.repository.listClosableOpenSessions({
+      activeUids,
       limit: this.batchSize,
       now: Date.now(),
-      uidAllowlist: this.uidAllowlist,
     });
 
     for (const session of sessions) {
@@ -618,7 +736,7 @@ export class InsightsWorkerService {
 
     const input = buildInsightMessageInput(toMessageSourceRow(message, conversation.conversationId));
     const config = await this.repository.getSessionizationConfig(conversation.uid);
-    const openSession = await this.repository.findOpenSession({
+    const openSession = await this.repository.findReusableSession({
       conversationId: conversation.conversationId,
       uid: conversation.uid,
     });
@@ -687,22 +805,31 @@ export class InsightsWorkerService {
     const closeReason = getCloseReason(openSession, config, occurredAt);
 
     if (!closeReason) {
+      if (openSession.status === "canceled") {
+        await this.repository.reopenSession({
+          sessionId: openSession.sessionId,
+          uid: conversation.uid,
+        });
+      }
+
       return openSession.sessionId;
     }
 
-    await this.repository.closeSession({
-      closeReason,
-      endedAt: occurredAt,
-      sessionId: openSession.sessionId,
-    });
-    await this.repository.createAnalyzeJob({
-      analysisScope: "all",
-      jobType: "analyze_session",
-      mode: "final",
-      runAfter: new Date(occurredAt + config.analysisDelayMinutes * 60_000),
-      sessionId: openSession.sessionId,
-      uid: conversation.uid,
-    });
+    if (openSession.status !== "canceled") {
+      await this.repository.closeSession({
+        closeReason,
+        endedAt: occurredAt,
+        sessionId: openSession.sessionId,
+      });
+      await this.repository.createAnalyzeJob({
+        analysisScope: "all",
+        jobType: "analyze_session",
+        mode: "final",
+        runAfter: new Date(occurredAt + config.analysisDelayMinutes * 60_000),
+        sessionId: openSession.sessionId,
+        uid: conversation.uid,
+      });
+    }
 
     return await this.repository.createLogicalSession({
       config,

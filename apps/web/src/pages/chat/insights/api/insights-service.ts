@@ -11,6 +11,8 @@ import type {
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
+  InsightFeatureConfig,
+  InsightFeatureConfigUpdateRequest,
   InsightIntentConfig,
   InsightIntentConfigMutationRequest,
   InsightLabelConfig,
@@ -220,6 +222,17 @@ export async function updateInsightAnalysisPolicy(
     ApiSuccessEnvelope<InsightAnalysisPolicy>,
     InsightAnalysisPolicyUpdateRequest
   >("/server/insights/settings/analysis-policy", payload);
+
+  return response.data;
+}
+
+export async function updateInsightFeatureConfig(
+  payload: InsightFeatureConfigUpdateRequest,
+) {
+  const response = await http.put<
+    ApiSuccessEnvelope<InsightFeatureConfig>,
+    InsightFeatureConfigUpdateRequest
+  >("/server/insights/settings/feature-config", payload);
 
   return response.data;
 }

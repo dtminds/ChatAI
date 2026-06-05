@@ -20,7 +20,6 @@ export type InsightsWorkerRuntimeConfig = {
   intervalMs: number;
   modelEnabled: boolean;
   startLookbackDays: number;
-  uidAllowlist?: Set<number>;
 };
 
 type WorkerRuntimeEnv = {
@@ -29,7 +28,6 @@ type WorkerRuntimeEnv = {
   INSIGHTS_WORKER_INTERVAL_MS?: string;
   INSIGHTS_WORKER_MODEL_ENABLED?: string;
   INSIGHTS_WORKER_START_LOOKBACK_DAYS?: string;
-  INSIGHTS_WORKER_UID_ALLOWLIST?: string;
   VOLCENGINE_ARK_API_KEY?: string;
   VOLCENGINE_ARK_BASE_URL?: string;
   VOLCENGINE_ARK_LITE_MAX_TOKENS?: string;
@@ -65,7 +63,6 @@ export function parseInsightsWorkerRuntimeConfig(
       "INSIGHTS_WORKER_START_LOOKBACK_DAYS",
       3,
     ),
-    uidAllowlist: parseUidAllowlist(env.INSIGHTS_WORKER_UID_ALLOWLIST),
   };
 }
 
@@ -101,7 +98,7 @@ export function createInsightsWorkerRuntime(input: {
     batchSize: config.batchSize,
     logger: input.logger,
     model,
-    uidAllowlist: config.uidAllowlist,
+    startLookbackDays: config.startLookbackDays,
   });
 
   return startInsightsWorker({
@@ -156,13 +153,4 @@ function parseMinimumInteger(
   }
 
   return parsed;
-}
-
-function parseUidAllowlist(value: string | undefined) {
-  const values = (value ?? "")
-    .split(",")
-    .map((item) => Number(item.trim()))
-    .filter((item) => Number.isSafeInteger(item) && item > 0);
-
-  return values.length > 0 ? new Set(values) : undefined;
 }

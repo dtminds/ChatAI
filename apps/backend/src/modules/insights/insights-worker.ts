@@ -190,13 +190,6 @@ export type InsightAnalysisOutput = {
     ruleCode: string;
     severity: "high" | "low" | "medium";
   }>;
-  risks: Array<{
-    confidence: number;
-    evidenceMessageIds: string[];
-    reason: string;
-    riskLevel: "high" | "low" | "medium";
-    riskType: string;
-  }>;
   sentiment: Array<{
     confidence: number;
     evidenceMessageIds: string[];
@@ -1063,10 +1056,6 @@ function normalizeEvidenceIds(output: InsightAnalysisOutput, validIds: Set<strin
         ...item,
         evidenceMessageIds: clean("qa_finding", item.evidenceMessageIds),
       })),
-      risks: output.risks.map((item) => ({
-        ...item,
-        evidenceMessageIds: clean("risk", item.evidenceMessageIds),
-      })),
       sentiment: output.sentiment.map((item) => ({
         ...item,
         evidenceMessageIds: clean("sentiment", item.evidenceMessageIds),
@@ -1140,17 +1129,12 @@ function filterConfiguredAnalysisOutput(
     return false;
   });
 
-  for (const risk of output.risks) {
-    validationWarnings.push(`risk ${risk.riskType} is not accepted`);
-  }
-
   return {
     output: {
       ...output,
       entities,
       intents,
       qaFindings,
-      risks: [],
       tags,
     },
     validationWarnings,

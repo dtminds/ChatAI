@@ -72,17 +72,14 @@ type CurrentSessionQueryRow = {
   evidence_message_id?: number | string | null;
   evidence_role?: string | null;
   generated_at: number | string | Date;
-  high_risk_id?: number | string | null;
   last_message_at: number | string | null;
   last_customer_message_at: number | string | null;
   message_count: number | string;
-  negative_risk_id?: number | string | null;
   phase: string;
   problem_detected: number | string | null;
   problem_confidence?: number | string | null;
   problem_summary: string | null;
   resolution_status: string | null;
-  risk_severity: string | null;
   session_id: number | string;
   started_at: number | string;
   status: string;
@@ -110,10 +107,9 @@ type ActionItemQueryRow = {
 };
 
 type CurrentSessionCoreQueryRow = Omit<CurrentSessionQueryRow,
-  "last_customer_message_at" | "risk_severity"
+  "last_customer_message_at"
 > & {
   last_customer_message_at?: number | string | null;
-  risk_severity?: string | null;
 };
 
 type CountQueryRow = {
@@ -126,10 +122,8 @@ type OverviewAggregateTotalsQueryRow = {
   consulting_customers: number | string;
   customer_messages: number | string;
   failed: number | string;
-  high_risk_sessions: number | string;
   logical_sessions: number | string;
   messages: number | string;
-  negative_sessions: number | string;
   no_customer_problem_sessions: number | string;
   partial: number | string;
   partially_resolved_sessions: number | string;
@@ -176,17 +170,9 @@ type BusinessSessionAggregateQueryRow = {
   action_items_open: number | string;
   analyzed_sessions: number | string;
   date: string;
-  negative_sessions: number | string;
   session_id: number | string;
   started_at: number | string;
   unresolved_sessions: number | string;
-};
-
-type CurrentSessionRiskAggregateRow = {
-  high_risk_count: number | string;
-  negative_count: number | string;
-  risk_severity: string | null;
-  snapshot_id: number | string;
 };
 
 type CurrentSessionActionAggregateRow = {
@@ -208,13 +194,6 @@ type QaFindingQueryRow = {
   qa_reason: string | null;
   qa_rule_code: string | null;
   qa_severity: string | null;
-};
-
-type RiskQueryRow = {
-  risk_id: number | string | null;
-  risk_level: string | null;
-  risk_reason: string | null;
-  risk_type: string | null;
 };
 
 type DimensionEvidenceRow = {
@@ -267,14 +246,7 @@ type EntityHotspotQueryRow = {
   entity_type: string;
   mention_count: number | string;
   negative_count: number | string;
-  risk_session_count?: number | string;
   session_count: number | string;
-};
-
-type EntityHotspotRiskQueryRow = {
-  entity_id: string;
-  entity_type: string;
-  risk_session_count: number | string;
 };
 
 type IntentDistributionQueryRow = {
@@ -1297,9 +1269,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
   ): Promise<InsightBusinessSessionAggregateRow[]> {
     const rows = await applyCurrentSessionFilters(
       buildCurrentSessionBaseQuery(this.db)
-        .leftJoin("xy_wap_embed_session_risk as aggregate_risk", (join) =>
-          join.onRef("aggregate_risk.snapshot_id", "=", "snapshot.id"),
-        )
         .leftJoin("xy_wap_embed_session_action_item as aggregate_action", (join) =>
           join
             .onRef("aggregate_action.snapshot_id", "=", "snapshot.id")
@@ -1317,7 +1286,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
               else 0
             end
           `.as("unresolved_sessions"),
-          sql<number>`case when count(aggregate_risk.id) > 0 then 1 else 0 end`.as("negative_sessions"),
           sql<number>`
             case
               when problem.resolution_status in ('unresolved', 'partially_resolved')
@@ -1341,7 +1309,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       actionItemsOpen: parseNumber(row.action_items_open),
       analyzedSessions: parseNumber(row.analyzed_sessions),
       date: row.date,
-      negativeSessions: parseNumber(row.negative_sessions),
       sessionId: String(row.session_id),
       startedAt: parseNumber(row.started_at),
       unresolvedSessions: parseNumber(row.unresolved_sessions),
@@ -1414,7 +1381,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const rows = (await groupedQuery.execute() as CurrentSessionCoreQueryRow[]).map((row) => ({
       ...row,
       last_customer_message_at: row.last_customer_message_at ?? null,
-      risk_severity: row.risk_severity ?? null,
     }));
 
     const sessionRows = mapCurrentSessionRows(rows);
@@ -1433,9 +1399,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
   ): Promise<InsightOverviewAggregateRow> {
     const totalsQuery = applyCurrentSessionFilters(
       buildCurrentSessionBaseQuery(this.db)
-        .leftJoin("xy_wap_embed_session_risk as aggregate_risk", (join) =>
-          join.onRef("aggregate_risk.snapshot_id", "=", "snapshot.id"),
-        )
         .leftJoin("xy_wap_embed_session_action_item as aggregate_action", (join) =>
           join
             .onRef("aggregate_action.snapshot_id", "=", "snapshot.id")
@@ -1456,8 +1419,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
           sql<number>`count(distinct case when problem.resolution_status = 'unresolved' then session.id end)`.as("unresolved_resolution_sessions"),
           sql<number>`count(distinct case when problem.resolution_status = 'no_customer_problem' then session.id end)`.as("no_customer_problem_sessions"),
           sql<number>`count(distinct case when problem.resolution_status = 'unknown' then session.id end)`.as("unknown_sessions"),
-          sql<number>`count(distinct case when aggregate_risk.risk_level = 'high' then session.id end)`.as("high_risk_sessions"),
-          sql<number>`count(distinct case when aggregate_risk.id is not null then session.id end)`.as("negative_sessions"),
           sql<number>`
             count(distinct case
               when problem.problem_detected = 1
@@ -1518,8 +1479,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         ready: parseNumber(totals?.ready ?? 0),
         stale: parseNumber(totals?.stale ?? 0),
       },
-      highRiskSessions: parseNumber(totals?.high_risk_sessions ?? 0),
-      negativeSessions: parseNumber(totals?.negative_sessions ?? 0),
       problemSessions: parseNumber(totals?.problem_sessions ?? 0),
       readySessions: parseNumber(totals?.ready ?? 0),
       resolution: {
@@ -1901,7 +1860,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .orderBy(sql<number>`count(entity.id)`, "desc")
       .limit(10)
       .execute() as EntityHotspotQueryRow[];
-    const riskCountsByEntityKey = await this.listEntityHotspotRiskCounts(scope, rows);
 
     return rows.map((row) => ({
       entityId: row.entity_id,
@@ -1909,57 +1867,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
       entityType: row.entity_type,
       mentionCount: parseNumber(row.mention_count),
       negativeCount: parseNumber(row.negative_count),
-      riskSessionCount: riskCountsByEntityKey.get(entityHotspotKey(row)) ?? 0,
       sessionCount: parseNumber(row.session_count),
     }));
-  }
-
-  private async listEntityHotspotRiskCounts(
-    scope: InsightsUidScope,
-    hotspots: EntityHotspotQueryRow[],
-  ) {
-    const entityScopes = uniqueEntityHotspotScopes(hotspots);
-
-    if (entityScopes.length === 0) {
-      return new Map<string, number>();
-    }
-
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_session_entity as entity")
-      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
-        join.onRef("snapshot.id", "=", "entity.snapshot_id"),
-      )
-      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "snapshot.session_id"),
-      )
-      .innerJoin("xy_wap_embed_session_risk as risk", (join) =>
-        join
-          .onRef("risk.snapshot_id", "=", "snapshot.id")
-          .on("risk.uid", "=", scope.uid)
-          .on("risk.risk_level", "=", "high"),
-      )
-      .select([
-        "entity.entity_id as entity_id",
-        "entity.entity_type as entity_type",
-        sql<number>`count(distinct session.id)`.as("risk_session_count"),
-      ])
-      .where("entity.uid", "=", scope.uid)
-      .where((eb) =>
-        eb.or(
-          entityScopes.map((entityScope) =>
-            eb.and([
-              eb("entity.entity_id", "=", entityScope.entityId),
-              eb("entity.entity_type", "=", entityScope.entityType),
-            ]),
-          ),
-        )
-      )
-      .groupBy(["entity.entity_id", "entity.entity_type"])
-      .execute() as EntityHotspotRiskQueryRow[];
-
-    return new Map(
-      rows.map((row) => [entityHotspotKey(row), parseNumber(row.risk_session_count)]),
-    );
   }
 
   async listIntentDistribution(scope: InsightsUidScope) {
@@ -2049,7 +1958,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       rows.map((row) => ({
         ...row,
         last_customer_message_at: null,
-        risk_severity: null,
       })),
     );
 
@@ -2064,11 +1972,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const dimensionEvidence = await this.listDimensionEvidence(scope, current.sessionId, snapshotId);
     const [
       qaFindingRows,
-      riskRows,
       actionItems,
     ] = await Promise.all([
       this.listQaFindings(snapshotId),
-      this.listRisks(snapshotId),
       this.listSessionActionItems(snapshotId, current.conversationId, current.sessionId, current.resolutionStatus),
     ]);
     await this.hydrateActionItemCustomers(scope, actionItems);
@@ -2099,7 +2005,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
           passed: row.qa_passed === 1,
           reason: row.qa_reason ?? "",
           ruleCode: row.qa_rule_code ?? "",
-          severity: normalizeRiskSeverity(row.qa_severity) ?? "low",
+          severity: normalizeSeverity(row.qa_severity) ?? "low",
         })),
       (row) => row.ruleCode,
     );
@@ -2120,21 +2026,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       problemEvidenceMessageIds: current.problemEvidenceMessageIds,
       qaFindingDetails,
       qaFindings: qaFindingDetails.map(({ severity: _severity, ...item }) => item),
-      risks: uniqueBy(
-        riskRows
-          .filter((row) => row.risk_id != null)
-          .map((row) => ({
-            evidenceMessageIds: evidenceForDimension(
-              dimensionEvidence,
-              "risk",
-              row.risk_id,
-            ),
-            reason: row.risk_reason ?? "",
-            riskLevel: normalizeRiskSeverity(row.risk_level) ?? "low",
-            riskType: row.risk_type ?? "custom",
-          })),
-        (row) => `${row.riskType}:${row.riskLevel}`,
-      ),
       sentiment,
       tags,
     };
@@ -2172,19 +2063,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ])
       .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
       .execute() as QaFindingQueryRow[];
-  }
-
-  private async listRisks(snapshotId: string) {
-    return await this.db
-      .selectFrom("xy_wap_embed_session_risk")
-      .select([
-        "id as risk_id",
-        "risk_level as risk_level",
-        "reason as risk_reason",
-        "risk_type as risk_type",
-      ])
-      .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
-      .execute() as RiskQueryRow[];
   }
 
   private async listSessionActionItems(
@@ -3042,28 +2920,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }
 
     const [
-      risks,
       actions,
       problemEvidence,
     ] = await Promise.all([
-      this.db
-        .selectFrom("xy_wap_embed_session_risk")
-        .select([
-          "snapshot_id",
-          sql<number>`count(*)`.as("negative_count"),
-          sql<number>`count(case when risk_level = 'high' then 1 end)`.as("high_risk_count"),
-          sql<string | null>`
-            case
-              when count(case when risk_level = 'high' then 1 end) > 0 then 'high'
-              when count(case when risk_level = 'medium' then 1 end) > 0 then 'medium'
-              when count(case when risk_level = 'low' then 1 end) > 0 then 'low'
-              else null
-            end
-          `.as("risk_severity"),
-        ])
-        .where("snapshot_id", "in", snapshotIds)
-        .groupBy(["snapshot_id"])
-        .execute() as Promise<CurrentSessionRiskAggregateRow[]>,
       this.db
         .selectFrom("xy_wap_embed_session_action_item")
         .select([
@@ -3077,18 +2936,13 @@ export class InsightsRepository implements InsightsRepositoryPort {
       this.listProblemEvidenceMessages(snapshotIds),
     ]);
 
-    const risksBySnapshotId = new Map(risks.map((row) => [String(row.snapshot_id), row]));
     const actionsBySnapshotId = new Map(actions.map((row) => [String(row.snapshot_id), row]));
     const problemEvidenceBySnapshotId = groupProblemEvidenceMessages(problemEvidence);
 
     for (const row of rows) {
-      const risk = risksBySnapshotId.get(row.currentSnapshotId);
       const action = actionsBySnapshotId.get(row.currentSnapshotId);
       const evidence = problemEvidenceBySnapshotId.get(row.currentSnapshotId) ?? [];
 
-      row.highRiskCount = risk ? parseNumber(risk.high_risk_count) : 0;
-      row.negativeCount = risk ? parseNumber(risk.negative_count) : 0;
-      row.riskSeverity = normalizeRiskSeverity(risk?.risk_severity ?? null);
       row.actionOpenCount = action ? parseNumber(action.action_open_count) : 0;
       row.problemEvidenceMessageIds = sortNumericStrings(
         evidence.map((item) => String(item.evidence_message_id)),
@@ -3351,18 +3205,15 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         customerName: readOptionalDetailField<string>(row, "customer_name") ?? "未知客户",
         endedAt: parseNullableNumber(row.ended_at),
         generatedAt: parseNumber(row.generated_at),
-        highRiskCount: 0,
         lastMessageAt: parseNullableNumber(row.last_message_at),
         lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at),
         messageCount: parseNumber(row.message_count),
-        negativeCount: 0,
         phase: row.phase === "final" ? "final" : "live",
         problemDetected: row.problem_detected === 1,
         problemEvidenceMessageIds: [],
         problemResolutionConfidence: parseNullableNumber(row.problem_confidence ?? null) ?? undefined,
         problemSummary: row.problem_summary ?? "",
         resolutionStatus: normalizeResolutionStatus(row.resolution_status),
-        riskSeverity: normalizeRiskSeverity(row.risk_severity),
         sessionId,
         startedAt: parseNumber(row.started_at),
         summaryCustomerIntent: row.summary_customer_intent ?? "",
@@ -3549,7 +3400,7 @@ function normalizeResolutionStatus(value: string | null) {
   return "unknown";
 }
 
-function normalizeRiskSeverity(value: string | null): InsightDetailResponse["risks"][number]["riskLevel"] | null {
+function normalizeSeverity(value: string | null): "high" | "low" | "medium" | null {
   if (value === "low" || value === "medium" || value === "high") {
     return value;
   }

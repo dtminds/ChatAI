@@ -82,7 +82,6 @@ describe("InsightsRepository", () => {
             action_items_open: 1,
             analyzed_sessions: 1,
             date: "2026-06-01",
-            negative_sessions: 1,
             session_id: 501,
             started_at: 1_780_243_200_000,
             unresolved_sessions: 1,
@@ -98,7 +97,6 @@ describe("InsightsRepository", () => {
       expect.objectContaining({
         actionItemsOpen: 1,
         date: "2026-06-01",
-        negativeSessions: 1,
         sessionId: "501",
         unresolvedSessions: 1,
       }),
@@ -143,12 +141,6 @@ describe("InsightsRepository", () => {
         ],
       ],
       [
-        "xy_wap_embed_session_risk",
-        [
-          { high_risk_count: 1, negative_count: 2, risk_severity: "high", snapshot_id: 501 },
-        ],
-      ],
-      [
         "xy_wap_embed_session_action_item",
         [{ action_open_count: 1, snapshot_id: 501 }],
       ],
@@ -182,11 +174,8 @@ describe("InsightsRepository", () => {
       items: [
         {
           actionOpenCount: 1,
-          highRiskCount: 1,
           lastCustomerMessageAt: 1_780_244_100_000,
-          negativeCount: 2,
           problemEvidenceMessageIds: ["9001", "9002"],
-          riskSeverity: "high",
           sessionId: "201",
         },
       ],
@@ -194,7 +183,6 @@ describe("InsightsRepository", () => {
     });
 
     const coreQuery = builders[1];
-    expect(coreQuery.joins).not.toContain("xy_wap_embed_session_risk as risk");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_session_action_item as action");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_insight_evidence as evidence");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_msg_audit_info as message");
@@ -515,21 +503,15 @@ describe("InsightsRepository", () => {
       {
         entityId: "sku-1",
         entityType: "product",
-        riskSessionCount: 1,
       },
     ]);
 
-    const riskQuery = builders[1];
     expect(builders[0]?.whereCalls).toContainEqual(["entity.uid", "=", 9001]);
     expect(builders[0]?.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
-    expect(riskQuery?.whereCalls).toContainEqual(["entity.uid", "=", 9001]);
-    expect(riskQuery?.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
-    expect(riskQuery?.whereCalls).toContainEqual(["entity.entity_id", "=", "sku-1"]);
-    expect(riskQuery?.whereCalls).toContainEqual(["entity.entity_type", "=", "product"]);
-    expect(riskQuery?.whereRawCalls.join("\n")).not.toContain("concat(");
+    expect(builders).toHaveLength(1);
   });
 
-  it("loads detail qa findings, risks, and actions through focused snapshot queries", async () => {
+  it("loads detail qa findings and actions through focused snapshot queries", async () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([
       [
@@ -569,17 +551,9 @@ describe("InsightsRepository", () => {
             reason: "未说明时效",
             source_message_id: 9001,
           },
-          {
-            dimension_record_id: 601,
-            dimension_type: "risk",
-            evidence_role: "primary",
-            reason: "客户可能投诉",
-            source_message_id: 9002,
-          },
         ],
       ],
       ["xy_wap_embed_session_qa_finding", [{ qa_finding_id: 701, qa_passed: 0, qa_reason: "未说明时效", qa_rule_code: "reply_quality" }]],
-      ["xy_wap_embed_session_risk", [{ risk_id: 601, risk_level: "high", risk_reason: "客户可能投诉", risk_type: "complaint" }]],
       [
         "xy_wap_embed_session_action_item as action",
         [
@@ -616,12 +590,10 @@ describe("InsightsRepository", () => {
     await expect(repository.findDetail({ uid: 9001 }, "201")).resolves.toMatchObject({
       actionItems: [{ actionItemId: "801", evidenceMessageIds: ["9001"] }],
       qaFindings: [{ evidenceMessageIds: ["9001"], passed: false, reason: "未说明时效", ruleCode: "reply_quality" }],
-      risks: [{ evidenceMessageIds: ["9002"], reason: "客户可能投诉", riskLevel: "high", riskType: "complaint" }],
     });
 
     const coreQuery = builders[0];
     expect(coreQuery.joins).not.toContain("xy_wap_embed_session_qa_finding as qa");
-    expect(coreQuery.joins).not.toContain("xy_wap_embed_session_risk as risk");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_session_action_item as action");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_contact as contact");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_user_seat as seat");
@@ -908,6 +880,66 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(updateExecute).not.toHaveBeenCalled();
   });
 
+  it("checks pending live analysis jobs with exact indexed columns", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const rows = table === "xy_wap_embed_logical_session_message"
+          ? [{ count: 20 }]
+          : [];
+        const builder = createSelectBuilder(rows, table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.shouldCreateLiveAnalyzeJob({
+      occurredAt: 1_780_244_000_000,
+      sessionId: "501",
+      uid: 9001,
+    })).resolves.toBe(true);
+
+    const jobQuery = builders.find((builder) => builder.table === "xy_wap_embed_insight_job");
+    expect(jobQuery?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(jobQuery?.whereCalls).toContainEqual(["target_type", "=", "logical_session"]);
+    expect(jobQuery?.whereCalls).toContainEqual(["target_id", "=", "501"]);
+    expect(jobQuery?.whereCalls).toContainEqual(["job_type", "=", "analyze_session"]);
+    expect(jobQuery?.whereCalls).toContainEqual(["status", "in", ["pending", "running"]]);
+    expect(jobQuery?.whereCalls.some((call) => call[0] === "idempotency_key" && call[1] === "like")).toBe(false);
+  });
+
+  it("updates rescan task progress and completion state without a follow-up select", async () => {
+    const updates: UpdateBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn(() => createSelectBuilder([])),
+      updateTable: vi.fn((table: string) => {
+        const builder = createUpdateBuilder(
+          async () => ({ numAffectedRows: 1n }),
+          { table },
+        );
+        updates.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.updateRescanTaskAfterAnalysis({
+      failedSessions: 0,
+      rescanTaskId: "9901",
+      succeededSessions: 1,
+    });
+
+    expect(db.selectFrom).not.toHaveBeenCalledWith("xy_wap_embed_insight_rescan_task");
+    expect(updates.map((builder) => builder.table)).toEqual([
+      "xy_wap_embed_insight_rescan_task",
+      "xy_wap_embed_insight_rescan_task",
+    ]);
+    expect(updates[0]?.whereCalls).toContainEqual(["id", "=", 9901]);
+    expect(updates[1]?.whereCalls).toContainEqual(["id", "=", 9901]);
+    expect(updates[1]?.whereRawCalls).toHaveLength(3);
+  });
+
   it("archives terminal insight jobs before pruning them from the hot queue", async () => {
     const insertBuilders: InsertBuilderStub[] = [];
     const deleteBuilders: DeleteBuilderStub[] = [];
@@ -1098,15 +1130,6 @@ describe("MysqlInsightWorkerRepository", () => {
           resolutionStatus: "unresolved",
         },
         qaFindings: [],
-        risks: [
-          {
-            confidence: 0.81,
-            evidenceMessageIds: ["9202"],
-            reason: "客户表达不满",
-            riskLevel: "high",
-            riskType: "complaint",
-          },
-        ],
         sentiment: [
           {
             confidence: 0.7,
@@ -1229,15 +1252,6 @@ describe("MysqlInsightWorkerRepository", () => {
           resolutionStatus: "unresolved",
         },
         qaFindings: [],
-        risks: [
-          {
-            confidence: 0.81,
-            evidenceMessageIds: ["9202"],
-            reason: "客户表达不满",
-            riskLevel: "high",
-            riskType: "complaint",
-          },
-        ],
         sentiment: [],
         summary: {
           confidence: 0.9,
@@ -1265,7 +1279,6 @@ describe("MysqlInsightWorkerRepository", () => {
       "xy_wap_embed_session_entity",
       "xy_wap_embed_session_faq_candidate",
       "xy_wap_embed_session_intent",
-      "xy_wap_embed_session_risk",
       "xy_wap_embed_session_tag",
     ]) {
       const insert = insertValues.find((entry) => entry.table === table);
@@ -1479,12 +1492,16 @@ function createUpdateBuilder(
   const builder = {
     executeTakeFirst,
     table: options.table ?? "",
+    whereRawCalls: [] as string[],
     whereCalls: [] as unknown[][],
     set: (values: Record<string, unknown>) => {
       options.onSet?.(values);
       return builder;
     },
     where: (...args: unknown[]) => {
+      if (args.length === 1) {
+        builder.whereRawCalls.push(String(args[0]));
+      }
       builder.whereCalls.push(args);
       return builder;
     },

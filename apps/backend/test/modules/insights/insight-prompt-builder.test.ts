@@ -205,7 +205,7 @@ describe("insight prompt builder", () => {
     expect(serialized).toContain("未配置的意图不得输出到 intents");
     expect(serialized).toContain("customer_problem");
     expect(serialized).toContain("这条消息作为证据的原因");
-    expect(serialized).toContain("risks 必须输出空数组");
+    expect(serialized).not.toContain("risks");
     expect(serialized).toContain("9001");
   });
 

@@ -102,11 +102,9 @@ function installInsightMocks() {
         entityType: "product",
         mentionCount: 12,
         negativeCount: 2,
-        riskSessionCount: 3,
         sessionCount: 9,
       },
     ],
-    highRiskSessions: 2,
     intentDistribution: [
       { count: 8, intentCode: "logistics", intentLabel: "查物流" },
       { count: 2, intentCode: "ai_customer_service_info", intentLabel: "咨询AI客服系统相关信息" },
@@ -606,14 +604,6 @@ function installInsightMocks() {
         passed: false,
         reason: "未确认物流进展",
         ruleCode: "problem_resolution",
-      },
-    ],
-    risks: [
-      {
-        evidenceMessageIds: ["9002"],
-        reason: "客户可能给出差评",
-        riskLevel: "high",
-        riskType: "bad_review",
       },
     ],
     sentiment: [

@@ -228,7 +228,6 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       entities: classification.entities,
       intents: classification.intents,
       qaFindings: qa.qaFindings,
-      risks: [],
       tags: classification.tags,
     };
   }
@@ -478,13 +477,6 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
       reason: readString(item, "reason"),
       ruleCode: readString(item, "ruleCode") || "custom",
       severity: readSeverity(readString(item, "severity")),
-    })),
-    risks: readArray(record.risks).map((item) => ({
-      confidence: readNumber(item, "confidence"),
-      evidenceMessageIds: readStringArray(item, "evidenceMessageIds"),
-      reason: readString(item, "reason"),
-      riskLevel: readSeverity(readString(item, "riskLevel")),
-      riskType: readString(item, "riskType") || "custom",
     })),
     sentiment: readArray(record.sentiment).map((item) => ({
       confidence: readNumber(item, "confidence"),

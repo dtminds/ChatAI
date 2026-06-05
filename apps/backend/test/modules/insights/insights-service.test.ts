@@ -31,18 +31,15 @@ const baseRows = [
       },
     ],
     endedAt: 1_780_245_000_000,
-    highRiskCount: 1,
     lastMessageAt: 1_780_244_950_000,
     lastCustomerMessageAt: 1_780_244_900_000,
     messageCount: 8,
-    negativeCount: 1,
     phase: "final",
     problemDetected: true,
     problemEvidenceMessageIds: ["9001", "9002"],
     problemResolutionConfidence: 0.84,
     problemSummary: "客户反馈物流异常",
     resolutionStatus: "unresolved",
-    riskSeverity: "high",
     sessionId: "501",
     startedAt: 1_780_243_200_000,
     summaryCustomerIntent: "查物流",
@@ -65,17 +62,14 @@ const baseRows = [
     customerMessageCount: 3,
     customerName: "李四",
     endedAt: null,
-    highRiskCount: 0,
     lastMessageAt: 1_780_243_950_000,
     lastCustomerMessageAt: 1_780_243_900_000,
     messageCount: 5,
-    negativeCount: 0,
     phase: "live",
     problemDetected: true,
     problemEvidenceMessageIds: ["9004"],
     problemSummary: "客户咨询退款到账时间",
     resolutionStatus: "partially_resolved",
-    riskSeverity: "medium",
     sessionId: "502",
     startedAt: 1_780_243_000_000,
     summaryCustomerIntent: "退款咨询",
@@ -98,17 +92,14 @@ const baseRows = [
     customerMessageCount: 1,
     customerName: "王五",
     endedAt: null,
-    highRiskCount: 0,
     lastMessageAt: null,
     lastCustomerMessageAt: null,
     messageCount: 2,
-    negativeCount: 0,
     phase: "live",
     problemDetected: false,
     problemEvidenceMessageIds: [],
     problemSummary: "",
     resolutionStatus: "no_customer_problem",
-    riskSeverity: null,
     sessionId: "503",
     startedAt: 1_780_242_000_000,
     summaryCustomerIntent: "活动寒暄",
@@ -131,17 +122,14 @@ const baseRows = [
     customerMessageCount: 1,
     customerName: "赵六",
     endedAt: null,
-    highRiskCount: 0,
     lastMessageAt: 1_780_241_400_000,
     lastCustomerMessageAt: 1_780_241_400_000,
     messageCount: 2,
-    negativeCount: 0,
     phase: "live",
     problemDetected: true,
     problemEvidenceMessageIds: ["9006"],
     problemSummary: "消息不足，无法判断客户问题",
     resolutionStatus: "unknown",
-    riskSeverity: null,
     sessionId: "504",
     startedAt: 1_780_241_000_000,
     summaryCustomerIntent: "消息不足",
@@ -160,8 +148,6 @@ const overviewAggregate = {
     ready: 2,
     stale: 1,
   },
-  highRiskSessions: 1,
-  negativeSessions: 1,
   problemSessions: 2,
   readySessions: 2,
   resolution: {
@@ -246,7 +232,6 @@ const businessSessionAggregates = baseRows.map((row) => ({
     timeZone: "Asia/Shanghai",
     year: "numeric",
   }).format(new Date(row.startedAt)),
-  negativeSessions: row.negativeCount > 0 ? 1 : 0,
   sessionId: row.sessionId,
   startedAt: row.startedAt,
   unresolvedSessions: ["partially_resolved", "unresolved"].includes(row.resolutionStatus) ? 1 : 0,
@@ -307,7 +292,6 @@ function createRepository(
       ],
       problemEvidenceMessageIds: ["9001", "9002"],
       qaFindings: [{ ruleCode: "problem_resolution", passed: false }],
-      risks: [{ reason: "客户表达差评风险", riskLevel: "high", riskType: "bad_review" }],
       sentiment: [
         {
           confidence: 0.82,
@@ -453,7 +437,6 @@ function createRepository(
         entityType: "product",
         mentionCount: 2,
         negativeCount: 1,
-        riskSessionCount: 1,
         sessionCount: 1,
       },
     ]),
@@ -681,6 +664,25 @@ function createRepository(
 }
 
 describe("InsightsService", () => {
+  it("defaults overview reads to a recent bounded date range", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-05T12:00:00.000Z"));
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    try {
+      await service.getOverview(scope);
+
+      expect(repository.getOverviewAggregate).toHaveBeenCalledWith(scope, {
+        from: "2026-05-07T00:00:00.000+08:00",
+        to: "2026-06-05T23:59:59.999+08:00",
+      });
+      expect(repository.listBusinessSessionAggregates).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("aggregates overview metrics from current insight snapshots", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
@@ -697,7 +699,6 @@ describe("InsightsService", () => {
         ready: 2,
         stale: 1,
       },
-      highRiskSessions: 1,
       entityHotspots: [
         expect.objectContaining({
           entityName: "白色羽绒服",
@@ -710,7 +711,6 @@ describe("InsightsService", () => {
           intentCode: "logistics_delay",
         }),
       ],
-      negativeSessions: 1,
       problemSessions: 2,
       readySessions: 2,
       resolution: {
@@ -808,7 +808,6 @@ describe("InsightsService", () => {
     expect(result.unresolvedSessions[0]).toMatchObject({
       evidenceMessageIds: ["9001", "9002"],
       resolutionStatus: "unresolved",
-      severity: "high",
       unresolvedReason: "售后/物流/退款进度未确认",
     });
     expect(result.unresolvedReasons).toEqual([
@@ -942,9 +941,34 @@ describe("InsightsService", () => {
         unresolvedSessions: 1,
       }),
     ]);
-    expect(repository.listBusinessSessionAggregates).toHaveBeenCalledWith(scope, {});
+    expect(repository.listBusinessSessionAggregates).toHaveBeenCalledWith(scope, expect.objectContaining({
+      from: expect.any(String),
+      to: expect.any(String),
+    }));
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
     expect(repository.listCurrentSessions).not.toHaveBeenCalled();
+  });
+
+  it("defaults business reads to a recent bounded date range", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-05T12:00:00.000Z"));
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    try {
+      await service.getBusiness(scope);
+
+      expect(repository.listBusinessSessionAggregates).toHaveBeenCalledWith(scope, {
+        from: "2026-05-07T00:00:00.000+08:00",
+        to: "2026-06-05T23:59:59.999+08:00",
+      });
+      expect(repository.listBusinessTopicFacts).toHaveBeenCalledWith(scope, {
+        from: "2026-05-07T00:00:00.000+08:00",
+        to: "2026-06-05T23:59:59.999+08:00",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("paginates business related sessions by selected topic facts", async () => {
@@ -1124,13 +1148,6 @@ describe("InsightsService", () => {
       expect.objectContaining({
         evidenceMessageIds: ["9002"],
         question: "物流停滞怎么处理",
-      }),
-    ]);
-    expect(result.risks).toEqual([
-      expect.objectContaining({
-        reason: "客户表达差评风险",
-        riskLevel: "high",
-        riskType: "bad_review",
       }),
     ]);
   });

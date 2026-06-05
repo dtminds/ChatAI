@@ -993,13 +993,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         ruleCode: item.ruleCode,
         severity: item.severity,
       })),
-      risks: detail.risks.map((item) => ({
-        confidence: 1,
-        evidenceMessageIds: item.evidenceMessageIds,
-        reason: item.reason,
-        riskLevel: item.riskLevel,
-        riskType: item.riskType,
-      })),
       sentiment: detail.sentiment,
       summary: {
         confidence: 1,
@@ -1060,40 +1053,23 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .where("id", "=", taskId)
       .executeTakeFirst();
 
-    const row = await this.db
-      .selectFrom("xy_wap_embed_insight_rescan_task")
-      .select(["failed_sessions", "succeeded_sessions", "total_sessions"])
-      .where("id", "=", taskId)
-      .executeTakeFirst() as {
-        failed_sessions: number | string;
-        succeeded_sessions: number | string;
-        total_sessions: number | string;
-      } | undefined;
-
-    if (!row) {
-      return;
-    }
-
-    const failedSessions = parseNumber(row.failed_sessions);
-    const succeededSessions = parseNumber(row.succeeded_sessions);
-    const totalSessions = parseNumber(row.total_sessions);
-
-    if (totalSessions <= 0 || failedSessions + succeededSessions < totalSessions) {
-      return;
-    }
-
     await this.db
       .updateTable("xy_wap_embed_insight_rescan_task")
       .set({
         finished_at: new Date(),
-        status: failedSessions === 0
-          ? "succeeded"
-          : succeededSessions === 0
-            ? "failed"
-            : "partial",
+        status: sql<string>`
+          case
+            when failed_sessions = 0 then 'succeeded'
+            when succeeded_sessions = 0 then 'failed'
+            else 'partial'
+          end
+        `,
         update_time: new Date(),
       })
       .where("id", "=", taskId)
+      .where(sql<boolean>`status = 'running'`)
+      .where(sql<boolean>`total_sessions > 0`)
+      .where(sql<boolean>`succeeded_sessions + failed_sessions >= total_sessions`)
       .executeTakeFirst();
   }
 
@@ -1260,11 +1236,11 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     const pendingLiveJob = await this.db
       .selectFrom("xy_wap_embed_insight_job")
       .select(["id"])
+      .where("uid", "=", input.uid)
       .where("target_type", "=", "logical_session")
       .where("target_id", "=", input.sessionId)
       .where("job_type", "=", "analyze_session")
       .where("status", "in", ["pending", "running"])
-      .where("idempotency_key", "like", `analyze_session:${input.uid}:${input.sessionId}:live:%`)
       .executeTakeFirst();
 
     if (pendingLiveJob) {
@@ -1393,18 +1369,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         snapshot_id: snapshotId,
       });
       await this.collectEvidenceRows(input, snapshotId, "qa_finding", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
-    }
-
-    for (const item of output.risks) {
-      const id = await this.insertAndGetId("xy_wap_embed_session_risk", {
-        confidence: item.confidence,
-        reason: item.reason,
-        risk_level: item.riskLevel,
-        risk_type: item.riskType,
-        snapshot_id: snapshotId,
-        uid: input.job.uid,
-      });
-      await this.collectEvidenceRows(input, snapshotId, "risk", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
 
     for (const item of output.entities) {

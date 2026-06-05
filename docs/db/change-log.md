@@ -4,7 +4,7 @@ Manual database changes for the backend should be recorded here.
 
 ## 2026-06-01
 
-- Added `xy_wap_embed_*` insight application tables for logical sessions, insight jobs, analysis runs, snapshots, quality/problem resolution, risks, action items, evidence, seed-backed settings, and model provider/profile configuration.
+- Added `xy_wap_embed_*` insight application tables for logical sessions, insight jobs, analysis runs, snapshots, quality/problem resolution, action items, evidence, seed-backed settings, and model provider/profile configuration.
 - These tables are owned by the Node backend and are included in the backend writable table whitelist.
 
 ## 2026-06-04
@@ -21,7 +21,7 @@ Manual database changes for the backend should be recorded here.
 - Added `xy_wap_embed_insight_rescan_task.idx_insight_rescan_task_uid_status` for active rescan checks.
 - Added `xy_wap_embed_insight_evidence.idx_evidence_uid_session_snapshot` for detail evidence lookups scoped by uid, session, and snapshot.
 - Added `xy_wap_embed_logical_session_message.idx_session_message_asset` for current-session asset hydration by session and message type.
-- Added `uid` and tenant-first indexes to list/aggregate insight result tables (`xy_wap_embed_session_action_item`, `xy_wap_embed_session_tag`, `xy_wap_embed_session_entity`, `xy_wap_embed_session_intent`, `xy_wap_embed_session_risk`, `xy_wap_embed_session_faq_candidate`) so list and business insight queries can filter by tenant directly from result tables.
+- Added `uid` and tenant-first indexes to list/aggregate insight result tables (`xy_wap_embed_session_action_item`, `xy_wap_embed_session_tag`, `xy_wap_embed_session_entity`, `xy_wap_embed_session_intent`, `xy_wap_embed_session_faq_candidate`) so list and business insight queries can filter by tenant directly from result tables.
 
 Manual migration for existing databases:
 
@@ -33,8 +33,6 @@ ALTER TABLE xy_wap_embed_session_tag
 ALTER TABLE xy_wap_embed_session_entity
   ADD COLUMN uid BIGINT UNSIGNED NULL COMMENT '租户UID' AFTER id;
 ALTER TABLE xy_wap_embed_session_intent
-  ADD COLUMN uid BIGINT UNSIGNED NULL COMMENT '租户UID' AFTER id;
-ALTER TABLE xy_wap_embed_session_risk
   ADD COLUMN uid BIGINT UNSIGNED NULL COMMENT '租户UID' AFTER id;
 ALTER TABLE xy_wap_embed_session_faq_candidate
   ADD COLUMN uid BIGINT UNSIGNED NULL COMMENT '租户UID' AFTER id;
@@ -71,14 +69,6 @@ INNER JOIN xy_wap_embed_logical_session AS session
 SET intent.uid = session.uid
 WHERE intent.uid IS NULL;
 
-UPDATE xy_wap_embed_session_risk AS risk
-INNER JOIN xy_wap_embed_session_insight_snapshot AS snapshot
-  ON snapshot.id = risk.snapshot_id
-INNER JOIN xy_wap_embed_logical_session AS session
-  ON session.id = snapshot.session_id
-SET risk.uid = session.uid
-WHERE risk.uid IS NULL;
-
 UPDATE xy_wap_embed_session_faq_candidate AS faq
 INNER JOIN xy_wap_embed_session_insight_snapshot AS snapshot
   ON snapshot.id = faq.snapshot_id
@@ -99,10 +89,35 @@ ALTER TABLE xy_wap_embed_session_entity
 ALTER TABLE xy_wap_embed_session_intent
   MODIFY COLUMN uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   ADD KEY idx_session_intent_uid_code_snapshot (uid, intent_code, snapshot_id);
-ALTER TABLE xy_wap_embed_session_risk
-  MODIFY COLUMN uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
-  ADD KEY idx_risk_uid_type_level_snapshot (uid, risk_type, risk_level, snapshot_id);
 ALTER TABLE xy_wap_embed_session_faq_candidate
   MODIFY COLUMN uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   ADD KEY idx_faq_uid_status_snapshot (uid, status, snapshot_id);
+```
+
+- Removed the standalone `xy_wap_embed_session_risk` dimension. Risk attention is represented through QA findings, problem resolution, entity sentiment, and action items instead of a separate LLM output/table/API field.
+
+Manual migration for existing databases:
+
+```sql
+DROP TABLE IF EXISTS xy_wap_embed_session_risk;
+```
+
+- Removed redundant secondary indexes after query-path review:
+  - `xy_wap_embed_insight_job.idx_insight_job_runnable`, covered by scoped job claim queries using `idx_insight_job_claim`.
+  - `xy_wap_embed_insight_evidence.idx_evidence_session_message`, `idx_evidence_conversation_message`, and `idx_evidence_source_message`, because current evidence reads use snapshot/dimension or uid/session/snapshot lookups.
+  - `xy_wap_embed_logical_session.idx_logical_session_status_time`, replaced by `idx_logical_session_status_next_close` for close scans.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_insight_job
+  DROP KEY idx_insight_job_runnable;
+
+ALTER TABLE xy_wap_embed_insight_evidence
+  DROP KEY idx_evidence_session_message,
+  DROP KEY idx_evidence_conversation_message,
+  DROP KEY idx_evidence_source_message;
+
+ALTER TABLE xy_wap_embed_logical_session
+  DROP KEY idx_logical_session_status_time;
 ```

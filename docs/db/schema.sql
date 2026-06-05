@@ -54,7 +54,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_logical_session_uid_conversation_status (uid, conversation_id, status),
-  KEY idx_logical_session_status_time (status, last_meaningful_message_at),
   KEY idx_logical_session_status_next_close (status, next_close_at),
   KEY idx_logical_session_uid_started (uid, started_at)
 ) COMMENT='会话洞察逻辑会话表';
@@ -103,7 +102,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_insight_job_idempotency (idempotency_key),
-  KEY idx_insight_job_runnable (status ASC, run_after ASC, priority DESC, id ASC),
   KEY idx_insight_job_claim (target_type, job_type, status, run_after ASC, priority DESC, id ASC),
   KEY idx_insight_job_rescan_task (rescan_task_id),
   KEY idx_insight_job_target (uid, target_type, target_id)
@@ -286,22 +284,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_qa_finding (
   KEY idx_qa_rule (rule_code, severity)
 ) COMMENT='逻辑会话质检命中结果表';
 
-CREATE TABLE IF NOT EXISTS xy_wap_embed_session_risk (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
-  snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
-  risk_level VARCHAR(32) NOT NULL COMMENT '风险等级',
-  risk_type VARCHAR(64) NOT NULL COMMENT '风险类型',
-  reason VARCHAR(1024) NOT NULL COMMENT '风险理由',
-  confidence DECIMAL(5,4) NULL COMMENT '置信度',
-  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (id),
-  KEY idx_risk_snapshot (snapshot_id),
-  KEY idx_risk_uid_type_level_snapshot (uid, risk_type, risk_level, snapshot_id),
-  KEY idx_risk_type_level (risk_type, risk_level)
-) COMMENT='逻辑会话风险结果表';
-
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_entity (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
@@ -382,10 +364,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_evidence (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_evidence_dimension (snapshot_id, dimension_type, dimension_record_id),
-  KEY idx_evidence_uid_session_snapshot (uid, session_id, snapshot_id),
-  KEY idx_evidence_session_message (session_id, source_message_id),
-  KEY idx_evidence_conversation_message (conversation_id, source_message_id),
-  KEY idx_evidence_source_message (source_message_id)
+  KEY idx_evidence_uid_session_snapshot (uid, session_id, snapshot_id)
 ) COMMENT='会话洞察证据消息关联表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_analysis_policy (
@@ -471,33 +450,3 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_entity_dictionary (
   PRIMARY KEY (id),
   KEY idx_entity_dictionary_uid_type (uid, entity_type)
 ) COMMENT='会话洞察实体词库配置表';
-
-CREATE TABLE IF NOT EXISTS xy_wap_embed_model_provider (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  provider_code VARCHAR(64) NOT NULL COMMENT '服务商编码',
-  display_name VARCHAR(128) NOT NULL COMMENT '服务商展示名称',
-  base_url VARCHAR(512) NOT NULL COMMENT '模型API基础地址',
-  enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用',
-  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_model_provider_code (provider_code)
-) COMMENT='大模型服务商配置表';
-
-CREATE TABLE IF NOT EXISTS xy_wap_embed_model_profile (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  uid BIGINT UNSIGNED NULL COMMENT '租户ID，为空表示全局配置',
-  task_type VARCHAR(64) NOT NULL COMMENT '任务类型',
-  provider_id BIGINT UNSIGNED NOT NULL COMMENT '模型服务商ID',
-  model_name VARCHAR(128) NOT NULL COMMENT '模型名称',
-  temperature DECIMAL(4,3) NOT NULL COMMENT '采样温度',
-  max_output_tokens INT UNSIGNED NOT NULL COMMENT '最大输出token数',
-  timeout_ms INT UNSIGNED NOT NULL COMMENT '调用超时时间，单位毫秒',
-  retry_count INT UNSIGNED NOT NULL COMMENT '重试次数',
-  prompt_version VARCHAR(64) NOT NULL COMMENT '提示词版本',
-  enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用',
-  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (id),
-  KEY idx_model_profile_task_uid (task_type, uid)
-) COMMENT='会话洞察模型调用配置表';

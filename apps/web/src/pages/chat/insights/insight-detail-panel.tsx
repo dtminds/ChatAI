@@ -11,7 +11,6 @@ import {
   Layers01Icon,
   SmileIcon,
   Tag01Icon,
-  Target01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -508,13 +507,6 @@ function buildInsightResultItems(
         `${item.passed ? "通过" : "未通过"}：${item.ruleCode}`,
       ),
       label: "质检",
-    },
-    {
-      icon: Target01Icon,
-      items: detail.risks.map((item) =>
-        item.reason ? `${item.riskType}：${item.reason}` : item.riskType,
-      ),
-      label: "风险",
     },
     {
       icon: Analytics02Icon,

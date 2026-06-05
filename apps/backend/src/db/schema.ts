@@ -993,18 +993,6 @@ export interface XyWapEmbedSessionQaFinding {
   update_time: Generated<Date>;
 }
 
-export interface XyWapEmbedSessionRisk {
-  confidence: number | null;
-  create_time: Generated<Date>;
-  id: Generated<number>;
-  reason: string;
-  risk_level: string;
-  risk_type: string;
-  snapshot_id: number;
-  update_time: Generated<Date>;
-  uid: number;
-}
-
 export interface XyWapEmbedSessionEntity {
   confidence: number | null;
   create_time: Generated<Date>;
@@ -1142,32 +1130,6 @@ export interface XyWapEmbedInsightEntityDictionary {
   update_time: Generated<Date>;
 }
 
-export interface XyWapEmbedModelProvider {
-  base_url: string;
-  create_time: Generated<Date>;
-  display_name: string;
-  enabled: Generated<number>;
-  id: Generated<number>;
-  provider_code: string;
-  update_time: Generated<Date>;
-}
-
-export interface XyWapEmbedModelProfile {
-  create_time: Generated<Date>;
-  enabled: Generated<number>;
-  id: Generated<number>;
-  max_output_tokens: number;
-  model_name: string;
-  prompt_version: string;
-  provider_id: number;
-  retry_count: number;
-  task_type: string;
-  temperature: string;
-  uid: number | null;
-  timeout_ms: number;
-  update_time: Generated<Date>;
-}
-
 export interface DB {
   xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
   xy_wap_embed_broadcast_event: XyWapEmbedBroadcastEvent;
@@ -1188,8 +1150,6 @@ export interface DB {
   xy_wap_embed_insight_sync_cursor: XyWapEmbedInsightSyncCursor;
   xy_wap_embed_logical_session: XyWapEmbedLogicalSession;
   xy_wap_embed_logical_session_message: XyWapEmbedLogicalSessionMessage;
-  xy_wap_embed_model_profile: XyWapEmbedModelProfile;
-  xy_wap_embed_model_provider: XyWapEmbedModelProvider;
   xy_wap_embed_msg_audit_info: XyWapEmbedMsgAuditInfo;
   xy_wap_embed_msg_audit_info_extend: XyWapEmbedMsgAuditInfoExtend;
   xy_wap_embed_session_action_item: XyWapEmbedSessionActionItem;
@@ -1197,7 +1157,6 @@ export interface DB {
   xy_wap_embed_session_insight_snapshot: XyWapEmbedSessionInsightSnapshot;
   xy_wap_embed_session_problem_resolution: XyWapEmbedSessionProblemResolution;
   xy_wap_embed_session_qa_finding: XyWapEmbedSessionQaFinding;
-  xy_wap_embed_session_risk: XyWapEmbedSessionRisk;
   xy_wap_embed_session_summary: XyWapEmbedSessionSummary;
   xy_wap_embed_session_sentiment: XyWapEmbedSessionSentiment;
   xy_wap_embed_session_tag: XyWapEmbedSessionTag;

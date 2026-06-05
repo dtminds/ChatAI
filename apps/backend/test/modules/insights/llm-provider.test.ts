@@ -118,7 +118,6 @@ describe("LLM provider config", () => {
                       resolutionStatus: "resolved",
                     },
                     qaFindings: [],
-                    risks: [],
                     sentiment: [],
                     summary: {
                       confidence: 0.8,
@@ -710,7 +709,6 @@ describe("LLM provider config", () => {
                     resolutionStatus: "no_customer_problem",
                   },
                   qaFindings: [],
-                  risks: [],
                   sentiment: [],
                   summary: {
                     confidence: 0.8,
@@ -811,7 +809,6 @@ describe("LLM provider config", () => {
                     resolutionStatus: "no_customer_problem",
                   },
                   qaFindings: [],
-                  risks: [],
                   sentiment: [],
                   summary: {
                     confidence: 0.8,
@@ -947,7 +944,6 @@ describe("LLM provider config", () => {
                       resolutionStatus: "no_customer_problem",
                     },
                     qaFindings: [],
-                    risks: [],
                     sentiment: [],
                     summary: {
                       confidence: 0.8,
@@ -1039,7 +1035,6 @@ describe("LLM provider config", () => {
                         resolutionStatus: "unresolved",
                       },
                       qaFindings: [],
-                      risks: [],
                       sentiment: [],
                       summary: {
                         confidence: 0.8,

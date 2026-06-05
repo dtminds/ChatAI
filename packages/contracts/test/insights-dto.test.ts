@@ -37,11 +37,9 @@ describe("insights DTOs", () => {
             entityType: "product",
             mentionCount: 12,
             negativeCount: 2,
-            riskSessionCount: 1,
             sessionCount: 8,
           },
         ],
-        highRiskSessions: 3,
         intentDistribution: [
           {
             count: 10,
@@ -49,7 +47,6 @@ describe("insights DTOs", () => {
             intentLabel: "退款",
           },
         ],
-        negativeSessions: 5,
         problemSessions: 20,
         readySessions: 30,
         resolution: {
@@ -241,7 +238,6 @@ describe("insights DTOs", () => {
             problemSummary: "客户询问退款进度",
             resolutionStatus: "unresolved",
             sessionId: "session-1",
-            severity: "high",
             unresolvedReason: "客服未确认退款处理进度",
           },
         ],
@@ -423,7 +419,6 @@ describe("insights DTOs", () => {
           unresolvedReason: "客服未确认进度",
         },
         qaFindings: [],
-        risks: [],
         sentiment: [],
         session: {
           conversationId: "301",
@@ -442,6 +437,44 @@ describe("insights DTOs", () => {
         tags: [],
       }),
     ).toBe(true);
+    expect(
+      Value.Check(InsightDetailResponseSchema, {
+        actionItems: [],
+        analysisStatus: "ready",
+        currentSnapshotId: "snapshot-1",
+        entities: [],
+        evidenceItems: [],
+        evidenceMessageRecords: [],
+        evidenceMessages: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.9,
+          evidenceMessageIds: [],
+          problemDetected: false,
+          problemSummary: "",
+          resolutionStatus: "unknown",
+        },
+        qaFindings: [],
+        risks: [],
+        sentiment: [],
+        session: {
+          conversationId: "301",
+          customerName: "张三",
+          generatedAt: 1780245000000,
+          phase: "live",
+          sessionId: "session-1",
+          startedAt: 1780240000000,
+        },
+        sessionMessageRecords: [],
+        summary: {
+          customerIntent: "询问退款进度",
+          processSummary: "客户追问退款，客服尚未给出进度",
+          resultSummary: "未解决",
+        },
+        tags: [],
+      }),
+    ).toBe(false);
   });
 
   it("accepts seed-backed settings responses and rescan requests", () => {

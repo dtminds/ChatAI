@@ -575,10 +575,8 @@ function createInsightsDbMock(options: {
               consulting_customers: 1,
               customer_messages: 5,
               failed: 0,
-              high_risk_sessions: 1,
               logical_sessions: 1,
               messages: 8,
-              negative_sessions: 1,
               no_customer_problem_sessions: 0,
               partial: 0,
               partially_resolved_sessions: 0,
@@ -600,7 +598,6 @@ function createInsightsDbMock(options: {
               action_items_open: 1,
               analyzed_sessions: 1,
               date: "2026-06-01",
-              negative_sessions: 1,
               session_id: 501,
               started_at: 1_780_243_200_000,
               unresolved_sessions: 1,
@@ -709,21 +706,6 @@ function createInsightsDbMock(options: {
 
           return [row];
         });
-      }
-
-      if (table === "xy_wap_embed_session_risk") {
-        return createBuilder([
-          {
-            high_risk_count: 1,
-            negative_count: 1,
-            risk_id: 601,
-            risk_level: "high",
-            risk_severity: "high",
-            risk_type: "bad_review",
-            snapshot_id: 7001,
-            uid: 9001,
-          },
-        ]);
       }
 
       if (table === "xy_wap_embed_insight_evidence") {

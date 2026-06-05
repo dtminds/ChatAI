@@ -193,7 +193,7 @@ function buildSystemPrompt() {
     "</role>",
     "<output_format>",
     "只输出一个合法 JSON object，不要输出 Markdown、解释文字或代码块。",
-    "必须输出完整字段：summary, sentiment, tags, qaFindings, problemResolution, entities, intents, risks, actionItems, faqCandidates。",
+    "必须输出完整字段：summary, sentiment, tags, qaFindings, problemResolution, entities, intents, actionItems, faqCandidates。",
     "</output_format>",
     "<evidence_rules>",
     "所有 evidenceMessageIds 必须来自输入 messages.sourceMessageId；没有证据时输出空数组，不允许编造消息 ID。",
@@ -211,7 +211,6 @@ function buildSystemPrompt() {
     "标签只能从 tenantContext.labelConfigs 中选择；意图只能从 tenantContext.intentConfigs 中选择；实体只能从 tenantContext.entityDictionary 中选择；质检只能评估 tenantContext.qaRuleConfigs 中启用的规则；配置为空时输出空数组。",
     "未配置的意图不得输出到 intents；tenantContext.intentConfigs 为空时 intents 必须输出空数组。",
     "消息里出现但词库未配置的实体不得输出。",
-    "风险关注已并入质检规则和待办触发，risks 必须输出空数组。",
     "</config_rules>",
   ].join("\n");
 }
@@ -323,7 +322,6 @@ function buildOutputContract(context: InsightPromptContext) {
     ...buildSummaryOutputContract(),
     ...buildClassificationOutputContract(context),
     ...buildQaOutputContract(context),
-    risks: [],
   };
 }
 

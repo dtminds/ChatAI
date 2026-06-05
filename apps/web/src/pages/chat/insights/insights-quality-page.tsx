@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getInsightQuality } from "./api/insights-service";
-import { SeverityBadge } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
@@ -218,7 +217,6 @@ function ProblemList({
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <SeverityBadge severity={session.severity} />
                     <Badge variant="outline">
                       {formatResolutionStatus(session.resolutionStatus)}
                     </Badge>

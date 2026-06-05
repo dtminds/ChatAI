@@ -71,7 +71,6 @@ export const InsightEntityHotspotSchema = Type.Object({
   entityType: Type.String(),
   mentionCount: Type.Number(),
   negativeCount: Type.Number(),
-  riskSessionCount: Type.Number(),
   sessionCount: Type.Number(),
 });
 
@@ -154,9 +153,7 @@ export const InsightsOverviewResponseSchema = Type.Object({
     stale: Type.Number(),
   }),
   entityHotspots: Type.Array(InsightEntityHotspotSchema),
-  highRiskSessions: Type.Number(),
   intentDistribution: Type.Array(InsightIntentCountSchema),
-  negativeSessions: Type.Number(),
   problemSessions: Type.Number(),
   readySessions: Type.Number(),
   resolution: Type.Object({
@@ -293,7 +290,6 @@ export const InsightsUnresolvedSessionSchema = Type.Object({
   problemSummary: Type.String(),
   resolutionStatus: InsightResolutionStatusSchema,
   sessionId: Type.String(),
-  severity: InsightSeveritySchema,
   unresolvedReason: Type.String(),
 });
 
@@ -438,18 +434,12 @@ export const InsightDetailResponseSchema = Type.Object({
     reason: Type.String(),
     ruleCode: Type.String(),
   })),
-  risks: Type.Array(Type.Object({
-    evidenceMessageIds: Type.Array(Type.String()),
-    reason: Type.String(),
-    riskLevel: InsightSeveritySchema,
-    riskType: Type.String(),
-  })),
   sentiment: Type.Array(InsightSentimentSchema),
   session: InsightSessionMetaSchema,
   sessionMessageRecords: Type.Array(Type.Any()),
   summary: InsightSummarySchema,
   tags: Type.Array(InsightTagSchema),
-});
+}, { additionalProperties: false });
 
 export const InsightMessageContextRequestSchema = Type.Object({
   conversationId: Type.String({ minLength: 1 }),

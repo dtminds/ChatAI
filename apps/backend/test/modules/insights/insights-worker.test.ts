@@ -589,15 +589,6 @@ describe("InsightsWorkerService", () => {
             severity: "medium",
           },
         ],
-        risks: [
-          {
-            confidence: 0.6,
-            evidenceMessageIds: ["9001"],
-            reason: "模型越界输出风险",
-            riskLevel: "medium",
-            riskType: "custom_risk",
-          },
-        ],
         sentiment: [],
         summary: {
           confidence: 0.88,
@@ -633,7 +624,6 @@ describe("InsightsWorkerService", () => {
           expect.stringContaining("entity ai-service is not configured"),
           expect.stringContaining("intent free_text_intent is not configured"),
           expect.stringContaining("qa rule undefined_rule is not configured"),
-          expect.stringContaining("risk custom_risk is not accepted"),
         ]),
         output: expect.objectContaining({
           entities: [],
@@ -648,7 +638,6 @@ describe("InsightsWorkerService", () => {
             evidenceMessageIds: ["9001"],
           }),
           qaFindings: [],
-          risks: [],
         }),
       }),
     );
@@ -702,7 +691,6 @@ describe("InsightsWorkerService", () => {
           resolutionStatus: "unknown",
         },
         qaFindings: [],
-        risks: [],
         sentiment: [],
         summary: {
           confidence: 0.9,
@@ -764,7 +752,6 @@ describe("InsightsWorkerService", () => {
           severity: "high" as const,
         },
       ],
-      risks: [],
       sentiment: [
         {
           confidence: 0.75,
@@ -859,7 +846,6 @@ describe("InsightsWorkerService", () => {
           resolutionStatus: "unknown" as const,
         },
         qaFindings: [],
-        risks: [],
         sentiment: [],
         summary: {
           confidence: 0,
@@ -947,7 +933,6 @@ describe("InsightsWorkerService", () => {
           resolutionStatus: "unknown",
         },
         qaFindings: [],
-        risks: [],
         sentiment: [],
         summary: {
           confidence: 0.88,
@@ -1026,7 +1011,6 @@ describe("InsightsWorkerService", () => {
           resolutionStatus: "unknown",
         },
         qaFindings: [],
-        risks: [],
         sentiment: [],
         summary: {
           confidence: 0.8,
@@ -1160,7 +1144,6 @@ describe("InsightsWorkerService", () => {
           resolutionStatus: "no_customer_problem",
         },
         qaFindings: [],
-        risks: [],
         sentiment: [],
         summary: {
           confidence: 0.8,

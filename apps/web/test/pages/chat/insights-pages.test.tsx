@@ -459,14 +459,11 @@ function installInsightMocks() {
     items: [
       {
         actionItemId: "801",
-        actionType: "logistics_check",
         conversationId: "301",
+        createdAt: 1_780_244_000_000,
         customerAvatarUrl: "https://example.com/customer-1.png",
         customerName: "张三",
-        evidenceMessageIds: ["9002"],
-        lastCustomerMessageAt: 1_780_244_100_000,
         priority: "high",
-        reason: "物流进度未确认",
         sessionId: "501",
         status: "open",
         title: "确认快递状态",
@@ -1204,6 +1201,10 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights/quality?resolutionStatus=unresolved");
 
     expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
+    expect(serviceMocks.getInsightQuality).toHaveBeenCalledWith(
+      { page: 1, pageSize: 10 },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "问题列表" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "客服报表" })).toBeInTheDocument();
@@ -1243,7 +1244,7 @@ describe("conversation insights pages", () => {
     await waitFor(() => {
       expect(serviceMocks.getInsightQuality).toHaveBeenCalled();
     });
-    const requestOptions = serviceMocks.getInsightQuality.mock.calls[0]?.[0];
+    const requestOptions = serviceMocks.getInsightQuality.mock.calls[0]?.[1];
     expect(requestOptions?.signal?.aborted).toBe(false);
 
     cleanup();
@@ -1270,7 +1271,23 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights/follow-ups");
 
     expect(await screen.findByRole("heading", { name: "待处理" })).toBeInTheDocument();
+    expect(serviceMocks.getInsightFollowUps).toHaveBeenCalledWith(
+      { page: 1, pageSize: 10, status: "open" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(screen.getByRole("table", { name: "待处理列表" })).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader").map((item) => item.textContent)).toEqual([
+      "客户",
+      "action",
+      "优先级",
+      "状态",
+      "时间",
+      "操作",
+    ]);
     expect(screen.getByRole("img", { name: "张三" })).toBeInTheDocument();
+    expect(screen.getByText("确认快递状态")).toBeInTheDocument();
+    expect(screen.queryByText("物流进度未确认")).not.toBeInTheDocument();
+    expect(screen.queryByText("logistics_check")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "标记完成" }));
 
     await waitFor(() => {
@@ -1289,7 +1306,7 @@ describe("conversation insights pages", () => {
     });
     const requestOptions = serviceMocks.getInsightFollowUps.mock.calls[0]?.[1];
     expect(serviceMocks.getInsightFollowUps).toHaveBeenCalledWith(
-      { status: "open" },
+      { page: 1, pageSize: 10, status: "open" },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(requestOptions?.signal?.aborted).toBe(false);
@@ -1624,7 +1641,7 @@ describe("conversation insights pages", () => {
     expect(serviceMocks.createInsightEntityDictionaryItem).not.toHaveBeenCalled();
   });
 
-  it("shows table loading states while overview and business sessions are loading", async () => {
+  it("shows loading states while paginated insight sessions are loading", async () => {
     serviceMocks.getInsightOverviewSessions.mockImplementation(() => new Promise(() => undefined));
     renderRoute("/chat/insights");
 
@@ -1641,6 +1658,24 @@ describe("conversation insights pages", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "经营洞察" })).toBeInTheDocument();
     const relatedSessionsTable = screen.getByRole("table", { name: "相关会话" });
     expect(within(relatedSessionsTable).getByRole("status", { name: "正在加载会话" })).toBeInTheDocument();
+
+    cleanup();
+    mockSession("admin");
+    installInsightMocks();
+    serviceMocks.getInsightQuality.mockImplementation(() => new Promise(() => undefined));
+    renderRoute("/chat/insights/quality");
+
+    expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "正在加载会话" })).toBeInTheDocument();
+
+    cleanup();
+    mockSession("admin");
+    installInsightMocks();
+    serviceMocks.getInsightFollowUps.mockImplementation(() => new Promise(() => undefined));
+    renderRoute("/chat/insights/follow-ups");
+
+    expect(await screen.findByRole("heading", { name: "待处理" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "正在加载会话" })).toBeInTheDocument();
   });
 
   it("hides settings content for non-admin users", async () => {

@@ -148,7 +148,6 @@ export type InsightAnalysisRunInput = {
 
 export type InsightAnalysisOutput = {
   actionItems: Array<{
-    actionType: string;
     dueHint?: string;
     evidenceMessageIds: string[];
     priority: "high" | "low" | "medium";
@@ -253,6 +252,10 @@ export type InsightSessionAnalyzer = {
 
 export type InsightWorkerRepositoryPort = {
   appendSessionMessage(input: AppendSessionMessageInput): Promise<void>;
+  archiveTerminalJobs?(input: {
+    before: Date;
+    limit: number;
+  }): Promise<{ archivedJobs: number; deletedJobs: number }>;
   claimNextAnalyzeJob(): Promise<ClaimedAnalyzeJob | undefined>;
   claimNextSyncMessagesJob(input: {
     uidAllowlist?: Set<number>;
@@ -338,6 +341,8 @@ const INPUT_READINESS_RETRY_DELAY_MS = 5 * 60_000;
 const INPUT_READINESS_MAX_POSTPONES = 1;
 const PREVIOUS_SESSION_LOOKBACK_HOURS = 48;
 const PREVIOUS_SESSION_CONTEXT_LIMIT = 3;
+const TERMINAL_JOB_ARCHIVE_RETENTION_DAYS = 30;
+const TERMINAL_JOB_ARCHIVE_LIMIT = 5_000;
 
 export class InsightsWorkerService {
   private readonly batchSize: number;
@@ -412,6 +417,24 @@ export class InsightsWorkerService {
 
     await this.scheduleLiveAnalysisForOpenSessions();
     await this.closeTimedOutOpenSessions();
+    await this.archiveTerminalJobs();
+  }
+
+  private async archiveTerminalJobs() {
+    if (!this.repository.archiveTerminalJobs) {
+      return;
+    }
+
+    const before = new Date(Date.now() - TERMINAL_JOB_ARCHIVE_RETENTION_DAYS * 24 * 60 * 60_000);
+
+    try {
+      await this.repository.archiveTerminalJobs({
+        before,
+        limit: TERMINAL_JOB_ARCHIVE_LIMIT,
+      });
+    } catch (error) {
+      this.logger?.error({ err: error }, "会话洞察 worker 归档终态任务失败");
+    }
   }
 
   private async scheduleLiveAnalysisForOpenSessions() {

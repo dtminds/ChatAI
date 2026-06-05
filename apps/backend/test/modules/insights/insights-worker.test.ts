@@ -19,6 +19,7 @@ function createRepository(
 ): InsightWorkerRepositoryPort {
   return {
     appendSessionMessage: vi.fn(async () => undefined),
+    archiveTerminalJobs: vi.fn(async () => ({ archivedJobs: 0, deletedJobs: 0 })),
     closeSession: vi.fn(async () => undefined),
     createAnalyzeJob: vi.fn(async () => "job-1"),
     claimNextAnalyzeJob: vi.fn(async () => undefined),
@@ -149,6 +150,41 @@ describe("InsightsWorkerService", () => {
         skippedByAllowlist: 0,
       }),
       "会话洞察 worker 已扫描增量消息",
+    );
+  });
+
+  it("archives old terminal jobs after the main worker pass", async () => {
+    const repository = createRepository();
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.archiveTerminalJobs).toHaveBeenCalledWith({
+      before: expect.any(Date),
+      limit: 5000,
+    });
+  });
+
+  it("logs terminal job archive failures without blocking the worker pass", async () => {
+    const repository = createRepository({
+      archiveTerminalJobs: vi.fn(async () => {
+        throw new Error("archive failed");
+      }),
+    });
+    const logger = {
+      error: vi.fn(),
+      info: vi.fn(),
+    };
+    const service = new InsightsWorkerService(repository, { batchSize: 50, logger });
+
+    await service.runOnce();
+
+    expect(repository.updateCursor).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: expect.any(Error),
+      }),
+      "会话洞察 worker 归档终态任务失败",
     );
   });
 
@@ -494,7 +530,6 @@ describe("InsightsWorkerService", () => {
       analyzeSession: vi.fn(async () => ({
         actionItems: [
           {
-            actionType: "logistics_check",
             evidenceMessageIds: ["9002"],
             priority: "high",
             title: "确认快递状态",
@@ -696,7 +731,6 @@ describe("InsightsWorkerService", () => {
     const previousOutput = {
       actionItems: [
         {
-          actionType: "logistics_check",
           evidenceMessageIds: ["9002"],
           priority: "high" as const,
           title: "确认快递状态",

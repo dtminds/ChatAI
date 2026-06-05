@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   ended_at BIGINT UNSIGNED NULL COMMENT '逻辑会话结束时间戳',
   last_message_at BIGINT UNSIGNED NULL COMMENT '最后一条消息时间戳',
   last_meaningful_message_at BIGINT UNSIGNED NULL COMMENT '最后一条有效边界消息时间戳',
+  next_close_at BIGINT UNSIGNED NULL COMMENT '下一次可关闭检查时间戳',
   status VARCHAR(32) NOT NULL COMMENT '逻辑会话状态',
   close_reason VARCHAR(64) NULL COMMENT '逻辑会话关闭原因',
   rule_version VARCHAR(64) NOT NULL COMMENT '切片规则版本',
@@ -53,7 +54,9 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_logical_session_uid_conversation_status (uid, conversation_id, status),
-  KEY idx_logical_session_status_time (status, last_meaningful_message_at)
+  KEY idx_logical_session_status_time (status, last_meaningful_message_at),
+  KEY idx_logical_session_status_next_close (status, next_close_at),
+  KEY idx_logical_session_uid_started (uid, started_at)
 ) COMMENT='会话洞察逻辑会话表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
@@ -73,6 +76,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
   PRIMARY KEY (id),
   UNIQUE KEY uk_session_source_message (session_id, source_message_id),
   KEY idx_session_message_order (session_id, source_message_time, source_message_id),
+  KEY idx_session_message_asset (session_id, message_type, source_message_id),
   KEY idx_session_message_conversation_time (uid, conversation_id, source_message_time),
   KEY idx_session_message_source (source_message_id)
 ) COMMENT='逻辑会话消息归属表';
@@ -99,10 +103,39 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_insight_job_idempotency (idempotency_key),
-  KEY idx_insight_job_runnable (status, run_after, priority),
+  KEY idx_insight_job_runnable (status ASC, run_after ASC, priority DESC, id ASC),
+  KEY idx_insight_job_claim (target_type, job_type, status, run_after ASC, priority DESC, id ASC),
   KEY idx_insight_job_rescan_task (rescan_task_id),
   KEY idx_insight_job_target (uid, target_type, target_id)
 ) COMMENT='会话洞察异步任务表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job_archive (
+  id BIGINT UNSIGNED NOT NULL COMMENT '原任务主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  rescan_task_id BIGINT UNSIGNED NULL COMMENT '历史重刷任务ID',
+  job_type VARCHAR(64) NOT NULL COMMENT '任务类型',
+  analysis_scope VARCHAR(64) NOT NULL COMMENT '分析范围',
+  target_type VARCHAR(64) NOT NULL COMMENT '任务目标类型',
+  target_id VARCHAR(128) NOT NULL COMMENT '任务目标ID',
+  status VARCHAR(32) NOT NULL COMMENT '任务状态',
+  priority INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '任务优先级',
+  run_after DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最早执行时间',
+  attempt_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已尝试次数',
+  max_attempts INT UNSIGNED NOT NULL DEFAULT 3 COMMENT '最大尝试次数',
+  locked_by VARCHAR(128) NULL COMMENT '任务锁持有者',
+  lease_until DATETIME NULL COMMENT '任务租约到期时间',
+  idempotency_key VARCHAR(191) NOT NULL COMMENT '幂等键',
+  error_code VARCHAR(128) NULL COMMENT '错误码',
+  error_message VARCHAR(1024) NULL COMMENT '错误信息',
+  create_time DATETIME NOT NULL COMMENT '原任务创建时间',
+  update_time DATETIME NOT NULL COMMENT '原任务更新时间',
+  archived_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '归档时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_insight_job_archive_idempotency (idempotency_key),
+  KEY idx_insight_job_archive_uid_time (uid, update_time),
+  KEY idx_insight_job_archive_status_time (status, update_time),
+  KEY idx_insight_job_archive_rescan_task (rescan_task_id)
+) COMMENT='会话洞察异步任务归档表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_rescan_task (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -123,7 +156,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_rescan_task (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_insight_rescan_task_uid_time (uid, create_time),
-  KEY idx_insight_rescan_task_status (status)
+  KEY idx_insight_rescan_task_status (status),
+  KEY idx_insight_rescan_task_uid_status (uid, status)
 ) COMMENT='会话洞察历史重刷任务表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_analysis_run (
@@ -175,7 +209,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_insight_current (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_session_insight_current_session_id (session_id)
+  UNIQUE KEY uk_session_insight_current_session_id (session_id),
+  KEY idx_current_session_snapshot (session_id, current_snapshot_id)
 ) COMMENT='逻辑会话当前洞察快照指针表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_summary (
@@ -201,7 +236,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_sentiment (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  KEY idx_sentiment_snapshot (snapshot_id),
+  UNIQUE KEY uk_sentiment_snapshot_id (snapshot_id),
   KEY idx_sentiment_polarity (polarity)
 ) COMMENT='逻辑会话情绪分析结果表';
 
@@ -335,6 +370,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_evidence (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_evidence_dimension (snapshot_id, dimension_type, dimension_record_id),
+  KEY idx_evidence_uid_session_snapshot (uid, session_id, snapshot_id),
   KEY idx_evidence_session_message (session_id, source_message_id),
   KEY idx_evidence_conversation_message (conversation_id, source_message_id),
   KEY idx_evidence_source_message (source_message_id)

@@ -34,9 +34,15 @@ import type {
 import { http } from "@/lib/request";
 
 export type InsightFollowUpQuery = {
+  page?: number;
+  pageSize?: number;
   priority?: "low" | "medium" | "high";
   status?: InsightActionStatus;
-  type?: string;
+};
+
+export type InsightQualityQuery = {
+  page?: number;
+  pageSize?: number;
 };
 
 export type InsightOverviewQuery = {
@@ -123,10 +129,16 @@ export async function getInsightBusinessRelatedSessions(
   return response.data;
 }
 
-export async function getInsightQuality(options: InsightRequestOptions = {}) {
+export async function getInsightQuality(
+  query: InsightQualityQuery = {},
+  options: InsightRequestOptions = {},
+) {
   const response = await http.get<ApiSuccessEnvelope<InsightsQualityResponse>>(
     "/server/insights/quality",
-    options,
+    {
+      ...options,
+      params: compactQuery(query),
+    },
   );
 
   return response.data;

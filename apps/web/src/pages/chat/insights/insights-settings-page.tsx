@@ -1120,7 +1120,11 @@ function LabelConfigTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((item) => (
+          {items.length === 0 ? (
+            <TableRow>
+              <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={5}>暂无数据</TableCell>
+            </TableRow>
+          ) : items.map((item) => (
             <TableRow key={item.id}>
               <TableCell>
                 <PrimaryText main={item.labelName} sub={item.description} />
@@ -1182,7 +1186,11 @@ function IntentConfigTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((item) => (
+          {items.length === 0 ? (
+            <TableRow>
+              <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={6}>暂无数据</TableCell>
+            </TableRow>
+          ) : items.map((item) => (
             <TableRow key={item.id}>
               <TableCell>
                 <PrimaryText main={item.intentName} sub={item.description} />
@@ -1244,7 +1252,11 @@ function QaRuleConfigTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((item) => (
+          {items.length === 0 ? (
+            <TableRow>
+              <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={5}>暂无数据</TableCell>
+            </TableRow>
+          ) : items.map((item) => (
             <TableRow key={item.id}>
               <TableCell>
                 <PrimaryText main={item.ruleName} sub={item.judgmentCriteria ?? item.description} />
@@ -1295,7 +1307,7 @@ function EntityDictionaryTable({
   return (
     <ConfigTableShell
       actionText="新增实体"
-      description="统一商品、品牌、活动等名称，提升热点和主体聚合质量"
+      description="配置需要定向追踪的活动、品类、竞品，系统自动识别并归类统计"
       extra={(
         <div className="relative">
           <HugeiconsIcon
@@ -1327,7 +1339,11 @@ function EntityDictionaryTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((item) => (
+          {items.length === 0 ? (
+            <TableRow>
+              <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={6}>暂无数据</TableCell>
+            </TableRow>
+          ) : items.map((item) => (
             <TableRow key={item.id}>
               <TableCell className="font-medium">{item.canonicalName}</TableCell>
               <TableCell>{entityTypeText(item.entityType)}</TableCell>
@@ -1373,10 +1389,10 @@ function ConfigTableShell({
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-xs leading-5 text-muted-foreground">{description}</p>
+        <p className="max-w-2xl text-sm leading-5 text-muted-foreground">{description}</p>
         <div className="flex shrink-0 items-center gap-2">
           {extra}
-          <Button onClick={onCreate} size="sm">
+          <Button className="h-9" onClick={onCreate}>
             <HugeiconsIcon color="currentColor" icon={Add01Icon} size={16} strokeWidth={1.8} />
             {actionText}
           </Button>
@@ -1421,16 +1437,18 @@ function RescanPanel({
 }) {
   return (
     <section className="space-y-4">
-      <p className="text-xs leading-5 text-muted-foreground">
-        从指定时间重新生成洞察结果，适合规则、标签、实体词库或意图配置调整后的数据修正
-      </p>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        {state ? <div className="text-xs text-muted-foreground">{state}</div> : <div />}
-        <Button disabled={disabled} onClick={onCreateClick}>
-          新建重刷任务
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-sm leading-5 text-muted-foreground">
+          从指定时间重新生成洞察结果，适合规则、标签、实体词库或意图配置调整后的数据修正
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          {state ? <span className="text-xs text-muted-foreground">{state}</span> : null}
+          <Button className="h-9" disabled={disabled} onClick={onCreateClick}>
+            新建重刷任务
+          </Button>
+        </div>
       </div>
-      <div className="rounded-[8px] border bg-background">
+      <div className="overflow-x-auto bg-background">
         <Table>
           <TableHeader>
             <TableRow>
@@ -1446,7 +1464,7 @@ function RescanPanel({
             {tasks.length === 0 ? (
               <TableRow>
                 <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={6}>
-                  暂无历史重刷任务
+                  暂无数据
                 </TableCell>
               </TableRow>
             ) : tasks.map((task) => (

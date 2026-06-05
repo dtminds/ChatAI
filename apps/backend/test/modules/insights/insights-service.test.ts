@@ -200,6 +200,58 @@ const overviewAggregate = {
   unresolvedSessions: 2,
 } satisfies Awaited<ReturnType<InsightsRepositoryPort["getOverviewAggregate"]>>;
 
+const qualityAggregate = {
+  analyzedSessions: 3,
+  noCustomerProblem: 1,
+  partial: 1,
+  problemSessions: 2,
+  resolved: 0,
+  totalSessions: 4,
+  unresolved: 1,
+} satisfies Awaited<NonNullable<InsightsRepositoryPort["getQualityAggregate"]>>;
+
+const qualityAgentStats = [
+  {
+    agentAvatarUrl: "https://example.com/agent-1.png",
+    agentName: "客服一号",
+    agentSeatId: "seat-1",
+    partial: 0,
+    problemSessions: 1,
+    resolved: 0,
+    totalSessions: 1,
+    unresolved: 1,
+    unresolvedRate: 1,
+  },
+  {
+    agentAvatarUrl: "https://example.com/agent-2.png",
+    agentName: "客服二号",
+    agentSeatId: "seat-2",
+    partial: 1,
+    problemSessions: 1,
+    resolved: 0,
+    totalSessions: 1,
+    unresolved: 0,
+    unresolvedRate: 0,
+  },
+] satisfies Awaited<NonNullable<InsightsRepositoryPort["listQualityAgentStats"]>>;
+
+const businessSessionAggregates = baseRows.map((row) => ({
+  actionItemsOpen: ["partially_resolved", "unresolved"].includes(row.resolutionStatus)
+    ? row.actionOpenCount
+    : 0,
+  analyzedSessions: ["partial", "ready"].includes(row.analysisStatus) ? 1 : 0,
+  date: new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+  }).format(new Date(row.startedAt)),
+  negativeSessions: row.negativeCount > 0 ? 1 : 0,
+  sessionId: row.sessionId,
+  startedAt: row.startedAt,
+  unresolvedSessions: ["partially_resolved", "unresolved"].includes(row.resolutionStatus) ? 1 : 0,
+})) satisfies Awaited<NonNullable<InsightsRepositoryPort["listBusinessSessionAggregates"]>>;
+
 function createRepository(
   overrides: Partial<InsightsRepositoryPort> = {},
 ): InsightsRepositoryPort {
@@ -209,14 +261,11 @@ function createRepository(
       actionItems: [
         {
           actionItemId: "801",
-          actionType: "logistics_check",
           conversationId: "301",
           customerAvatarUrl: "https://example.com/customer-1.png",
           customerName: "张三",
           evidenceMessageIds: ["9002"],
-          lastCustomerMessageAt: 1_780_244_900_000,
           priority: "high",
-          reason: "物流进度未确认",
           sessionId: "501",
           status: "open",
           title: "确认快递状态",
@@ -279,14 +328,11 @@ function createRepository(
     listActionItems: vi.fn(async () => [
       {
         actionItemId: "801",
-        actionType: "logistics_check",
         conversationId: "301",
         customerAvatarUrl: "https://example.com/customer-1.png",
         customerName: "张三",
-        evidenceMessageIds: ["9002"],
-        lastCustomerMessageAt: 1_780_244_900_000,
+        createdAt: 1_780_244_800_000,
         priority: "high",
-        reason: "物流进度未确认",
         resolutionStatus: "unresolved",
         sessionId: "501",
         status: "open",
@@ -294,14 +340,11 @@ function createRepository(
       },
       {
         actionItemId: "802",
-        actionType: "faq_candidate_review",
         conversationId: "302",
         customerAvatarUrl: "https://example.com/customer-2.png",
         customerName: "李四",
-        evidenceMessageIds: ["9004"],
-        lastCustomerMessageAt: 1_780_243_900_000,
+        createdAt: 1_780_243_800_000,
         priority: "medium",
-        reason: "退款到账解释可沉淀",
         resolutionStatus: "partially_resolved",
         sessionId: "502",
         status: "done",
@@ -309,14 +352,11 @@ function createRepository(
       },
       {
         actionItemId: "803",
-        actionType: "manual_review",
         conversationId: "304",
         customerAvatarUrl: "https://example.com/customer-4.png",
         customerName: "赵六",
-        evidenceMessageIds: ["9006"],
-        lastCustomerMessageAt: 1_780_241_400_000,
+        createdAt: 1_780_241_300_000,
         priority: "high",
-        reason: "消息不足，不应进入待办",
         resolutionStatus: "unknown",
         sessionId: "504",
         status: "open",
@@ -373,11 +413,16 @@ function createRepository(
         startedAt: 1_780_243_200_000,
       },
     ]),
+    getQualityAggregate: vi.fn(async () => qualityAggregate),
     getOverviewAggregate: vi.fn(async () => overviewAggregate),
     hasActiveRescanTask: vi.fn(async () => false),
+    listQualityAgentStats: vi.fn(async () => qualityAgentStats),
+    listBusinessSessionAggregates: vi.fn(async () => businessSessionAggregates),
     listAllCurrentSessions: vi.fn(async () => baseRows),
     listCurrentSessions: vi.fn(async (_scope, filters) => ({
-      items: filters?.pageSize === 10_000 ? baseRows : [baseRows[0]],
+      items: filters?.pageSize === 10_000 || filters?.problemScope === "unresolved"
+        ? baseRows.filter((row) => ["partially_resolved", "unresolved"].includes(row.resolutionStatus))
+        : [baseRows[0]],
       total: baseRows.length,
     })),
     listRescanTasks: vi.fn(async () => ({
@@ -778,8 +823,46 @@ describe("InsightsService", () => {
         reasonLabel: "要求客户等待但未说明下一步",
       },
     ]);
-    expect(repository.listAllCurrentSessions).toHaveBeenCalledWith(scope);
-    expect(repository.listCurrentSessions).not.toHaveBeenCalled();
+    expect(repository.getQualityAggregate).toHaveBeenCalledWith(scope);
+    expect(repository.listQualityAgentStats).toHaveBeenCalledWith(scope);
+    expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
+    expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, expect.objectContaining({
+      page: 1,
+      pageSize: 20,
+      problemScope: "unresolved",
+    }));
+  });
+
+  it("paginates quality unresolved sessions", async () => {
+    const repository = createRepository({
+      listCurrentSessions: vi.fn(async (_scope, filters) => ({
+        items: [baseRows[1]],
+        total: 2,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    const result = await service.getQuality(scope, {
+      page: 2,
+      pageSize: 1,
+    });
+
+    expect(result.unresolvedSessions).toEqual([
+      expect.objectContaining({
+        sessionId: "502",
+      }),
+    ]);
+    expect(result.unresolvedSessionsPage).toMatchObject({
+      page: 2,
+      pageSize: 1,
+      total: 2,
+      totalPages: 2,
+    });
+    expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, {
+      page: 2,
+      pageSize: 1,
+      problemScope: "unresolved",
+    });
   });
 
   it("builds business topic analytics from current snapshots", async () => {
@@ -859,7 +942,8 @@ describe("InsightsService", () => {
         unresolvedSessions: 1,
       }),
     ]);
-    expect(repository.listAllCurrentSessions).toHaveBeenCalledWith(scope, {});
+    expect(repository.listBusinessSessionAggregates).toHaveBeenCalledWith(scope, {});
+    expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
     expect(repository.listCurrentSessions).not.toHaveBeenCalled();
   });
 
@@ -917,11 +1001,66 @@ describe("InsightsService", () => {
         {
           actionItemId: "801",
           conversationId: "301",
-          evidenceMessageIds: ["9002"],
+          createdAt: 1_780_244_800_000,
           status: "open",
         },
       ],
       total: 1,
+    });
+  });
+
+  it("paginates follow-up action items", async () => {
+    const repository = createRepository({
+      listActionItems: vi.fn(async () => [
+        {
+          actionItemId: "801",
+          conversationId: "301",
+          customerAvatarUrl: "https://example.com/customer-1.png",
+          customerName: "张三",
+          createdAt: 1_780_244_800_000,
+          priority: "high",
+          resolutionStatus: "unresolved",
+          sessionId: "501",
+          status: "open",
+          title: "确认快递状态",
+        },
+        {
+          actionItemId: "802",
+          conversationId: "302",
+          customerAvatarUrl: "https://example.com/customer-2.png",
+          customerName: "李四",
+          createdAt: 1_780_243_800_000,
+          priority: "medium",
+          resolutionStatus: "partially_resolved",
+          sessionId: "502",
+          status: "open",
+          title: "沉淀退款到账 FAQ",
+        },
+      ]),
+    });
+    const service = new InsightsService(repository);
+
+    const result = await service.getFollowUps(scope, {
+      page: 2,
+      pageSize: 1,
+      status: "open",
+    });
+
+    expect(result).toMatchObject({
+      items: [
+        expect.objectContaining({
+          actionItemId: "801",
+        }),
+      ],
+      page: 2,
+      pageSize: 1,
+      total: 2,
+      totalPages: 2,
+    });
+    expect(repository.listActionItems).toHaveBeenCalledWith(scope, {
+      page: 2,
+      pageSize: 1,
+      status: "open",
     });
   });
 

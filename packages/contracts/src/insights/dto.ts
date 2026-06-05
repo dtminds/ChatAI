@@ -301,27 +301,33 @@ export const InsightsQualityResponseSchema = Type.Object({
   agentStats: Type.Array(InsightsQualityAgentStatSchema),
   overview: InsightsQualityOverviewSchema,
   unresolvedReasons: Type.Array(InsightsUnresolvedReasonSchema),
+  unresolvedSessionsPage: Type.Object({
+    page: Type.Number(),
+    pageSize: Type.Number(),
+    total: Type.Number(),
+    totalPages: Type.Number(),
+  }),
   unresolvedSessions: Type.Array(InsightsUnresolvedSessionSchema),
 });
 
 export const InsightFollowUpItemSchema = Type.Object({
   actionItemId: Type.String(),
-  actionType: Type.String(),
   conversationId: Type.String(),
+  createdAt: Type.Number(),
   customerAvatarUrl: Type.Optional(Type.String()),
   customerName: Type.String(),
-  evidenceMessageIds: Type.Array(Type.String()),
-  lastCustomerMessageAt: Type.Optional(Type.Number()),
   priority: InsightPrioritySchema,
-  reason: Type.String(),
   sessionId: Type.String(),
   status: InsightActionStatusSchema,
   title: Type.String(),
-});
+}, { additionalProperties: false });
 
 export const InsightsFollowUpsResponseSchema = Type.Object({
   items: Type.Array(InsightFollowUpItemSchema),
+  page: Type.Number(),
+  pageSize: Type.Number(),
   total: Type.Number(),
+  totalPages: Type.Number(),
 });
 
 export const InsightSessionMetaSchema = Type.Object({
@@ -403,8 +409,20 @@ export const InsightFaqCandidateSchema = Type.Object({
   status: Type.String(),
 });
 
+export const InsightDetailActionItemSchema = Type.Object({
+  actionItemId: Type.String(),
+  conversationId: Type.String(),
+  customerAvatarUrl: Type.Optional(Type.String()),
+  customerName: Type.String(),
+  evidenceMessageIds: Type.Array(Type.String()),
+  priority: InsightPrioritySchema,
+  sessionId: Type.String(),
+  status: InsightActionStatusSchema,
+  title: Type.String(),
+}, { additionalProperties: false });
+
 export const InsightDetailResponseSchema = Type.Object({
-  actionItems: Type.Array(InsightFollowUpItemSchema),
+  actionItems: Type.Array(InsightDetailActionItemSchema),
   analysisStatus: InsightAnalysisStatusSchema,
   currentSnapshotId: Type.String(),
   entities: Type.Array(InsightDetailEntitySchema),

@@ -437,7 +437,6 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
 
   return {
     actionItems: readArray(record.actionItems).map((item) => ({
-      actionType: readString(item, "actionType") || "follow_up",
       dueHint: readOptionalString(item, "dueHint"),
       evidenceMessageIds: readStringArray(item, "evidenceMessageIds"),
       priority: readPriority(readString(item, "priority")),

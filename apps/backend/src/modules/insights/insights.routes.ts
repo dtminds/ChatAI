@@ -33,18 +33,24 @@ import {
 import { UnauthorizedError } from "../../shared/errors.js";
 
 const FollowUpsQuerySchema = Type.Object({
+  page: Type.Optional(Type.Number()),
+  pageSize: Type.Optional(Type.Number()),
   priority: Type.Optional(Type.Union([
     Type.Literal("low"),
     Type.Literal("medium"),
     Type.Literal("high"),
   ])),
   status: Type.Optional(InsightActionStatusSchema),
-  type: Type.Optional(Type.String()),
 });
 
 const OverviewQuerySchema = Type.Object({
   from: Type.Optional(Type.String()),
   to: Type.Optional(Type.String()),
+});
+
+const QualityQuerySchema = Type.Object({
+  page: Type.Optional(Type.Number()),
+  pageSize: Type.Optional(Type.Number()),
 });
 
 const OverviewSessionsQuerySchema = Type.Object({
@@ -110,6 +116,7 @@ type FollowUpsQuery = Static<typeof FollowUpsQuerySchema>;
 type OverviewQuery = Static<typeof OverviewQuerySchema>;
 type OverviewSessionsQuery = Static<typeof OverviewSessionsQuerySchema>;
 type BusinessRelatedSessionsQuery = Static<typeof BusinessRelatedSessionsQuerySchema>;
+type QualityQuery = Static<typeof QualityQuerySchema>;
 type SessionParams = Static<typeof SessionParamsSchema>;
 type ActionItemParams = Static<typeof ActionItemParamsSchema>;
 type ActionStatusBody = Static<typeof ActionStatusBodySchema>;
@@ -189,14 +196,20 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get(
+  app.get<{ Querystring: QualityQuery }>(
     "/api/server/insights/quality",
     {
       preHandler: app.authenticate,
+      schema: {
+        querystring: QualityQuerySchema,
+      },
     },
     async (request) => {
       return apiSuccess(
-        await createInsightsService(app).getQuality(await getUidScope(app, request)),
+        await createInsightsService(app).getQuality(
+          await getUidScope(app, request),
+          normalizeQualityQuery(request.query),
+        ),
       );
     },
   );
@@ -213,7 +226,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).getFollowUps(
           await getUidScope(app, request),
-          request.query,
+          normalizeFollowUpsQuery(request.query),
         ),
       );
     },
@@ -703,6 +716,22 @@ function normalizeOverviewSessionsQuery(query: OverviewSessionsQuery): InsightsO
     resolutionStatus: query.resolutionStatus,
     tagCode: query.tagCode,
     to: query.to,
+  };
+}
+
+function normalizeQualityQuery(query: QualityQuery) {
+  return {
+    page: normalizePositiveQueryNumber(query.page),
+    pageSize: normalizePositiveQueryNumber(query.pageSize),
+  };
+}
+
+function normalizeFollowUpsQuery(query: FollowUpsQuery) {
+  return {
+    page: normalizePositiveQueryNumber(query.page),
+    pageSize: normalizePositiveQueryNumber(query.pageSize),
+    priority: query.priority,
+    status: query.status,
   };
 }
 

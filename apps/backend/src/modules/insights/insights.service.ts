@@ -95,10 +95,14 @@ export type InsightActionItemRow = InsightsFollowUpsResponse["items"][number] & 
   resolutionStatus?: InsightResolutionStatus;
 };
 
+export type InsightDetailActionItemRow = InsightDetailResponse["actionItems"][number] & {
+  resolutionStatus?: InsightResolutionStatus;
+};
+
 export type InsightEvidenceMessageRow = InsightDetailResponse["evidenceMessages"][number];
 
 export type InsightDetailRow = {
-  actionItems: InsightDetailResponse["actionItems"];
+  actionItems: InsightDetailActionItemRow[];
   current: InsightCurrentSessionRow;
   entities: InsightDetailResponse["entities"];
   evidenceItems: InsightDetailResponse["evidenceItems"];
@@ -113,9 +117,15 @@ export type InsightDetailRow = {
 };
 
 export type InsightsFollowUpFilters = {
+  page?: number;
+  pageSize?: number;
   priority?: InsightActionItemRow["priority"];
   status?: InsightActionStatus;
-  type?: string;
+};
+
+export type InsightsQualityFilters = {
+  page?: number;
+  pageSize?: number;
 };
 
 export type InsightsOverviewFilters = {
@@ -193,6 +203,25 @@ export type InsightBusinessTopicFactRow = {
   type?: string | null;
 };
 
+export type InsightQualityAggregateRow = InsightsQualityResponse["overview"];
+
+export type InsightQualityAgentStatRow = InsightsQualityResponse["agentStats"][number];
+
+export type InsightBusinessSessionAggregateRow = {
+  actionItemsOpen: number;
+  analyzedSessions: number;
+  date: string;
+  negativeSessions: number;
+  sessionId: string;
+  startedAt: number;
+  unresolvedSessions: number;
+};
+
+export type InsightActionItemPage = {
+  items: InsightActionItemRow[];
+  total: number;
+};
+
 export type InsightsRepositoryPort = {
   createRescanJob(
     scope: InsightsUidScope,
@@ -209,6 +238,10 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     filters?: InsightsFollowUpFilters,
   ): Promise<InsightActionItemRow[]>;
+  listActionItemsPage?(
+    scope: InsightsUidScope,
+    filters?: InsightsFollowUpFilters,
+  ): Promise<InsightActionItemPage>;
   listCurrentSessions(
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
@@ -217,6 +250,16 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
   ): Promise<InsightCurrentSessionRow[]>;
+  getQualityAggregate?(
+    scope: InsightsUidScope,
+  ): Promise<InsightQualityAggregateRow>;
+  listQualityAgentStats?(
+    scope: InsightsUidScope,
+  ): Promise<InsightQualityAgentStatRow[]>;
+  listBusinessSessionAggregates?(
+    scope: InsightsUidScope,
+    filters?: InsightsOverviewFilters,
+  ): Promise<InsightBusinessSessionAggregateRow[]>;
   getOverviewAggregate(
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
@@ -396,9 +439,23 @@ export class InsightsService {
     };
   }
 
-  async getQuality(scope: InsightsUidScope): Promise<InsightsQualityResponse> {
-    const rows = await this.repository.listAllCurrentSessions(scope);
-    const unresolvedSessions = rows
+  async getQuality(
+    scope: InsightsUidScope,
+    filters: InsightsQualityFilters = {},
+  ): Promise<InsightsQualityResponse> {
+    const normalizedPage = normalizeOverviewPage(filters.page);
+    const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
+    const [overview, agentStats, unresolvedPage] = await Promise.all([
+      this.repository.getQualityAggregate?.(scope),
+      this.repository.listQualityAgentStats?.(scope),
+      this.repository.listCurrentSessions(scope, {
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+        problemScope: "unresolved",
+      }),
+    ]);
+    const unresolvedRows = unresolvedPage.items.filter((row) => unresolvedStatuses.has(row.resolutionStatus));
+    const unresolvedSessions = unresolvedRows
       .filter((row) => unresolvedStatuses.has(row.resolutionStatus))
       .sort(compareByRiskAndLastMessage)
       .map((row) => ({
@@ -417,19 +474,15 @@ export class InsightsService {
       }));
 
     return {
-      agentStats: buildAgentStats(rows),
-      overview: {
-        analyzedSessions: rows.filter((row) => analyzedStatuses.has(row.analysisStatus)).length,
-        noCustomerProblem: rows.filter(
-          (row) => row.resolutionStatus === "no_customer_problem",
-        ).length,
-        partial: rows.filter((row) => row.resolutionStatus === "partially_resolved").length,
-        problemSessions: rows.filter(isCustomerProblemSession).length,
-        resolved: rows.filter((row) => row.resolutionStatus === "resolved").length,
-        totalSessions: rows.length,
-        unresolved: rows.filter((row) => row.resolutionStatus === "unresolved").length,
-      },
+      agentStats: agentStats ?? buildAgentStats(unresolvedRows),
+      overview: overview ?? buildQualityOverview(unresolvedRows),
       unresolvedReasons: buildUnresolvedReasons(unresolvedSessions),
+      unresolvedSessionsPage: {
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+        total: unresolvedPage.total,
+        totalPages: Math.max(1, Math.ceil(unresolvedPage.total / normalizedPageSize)),
+      },
       unresolvedSessions,
     };
   }
@@ -438,9 +491,11 @@ export class InsightsService {
     scope: InsightsUidScope,
     filters: InsightsOverviewFilters = {},
   ): Promise<InsightsBusinessResponse> {
-    const rows = await this.repository.listAllCurrentSessions(scope, filters);
-    const facts = await this.repository.listBusinessTopicFacts?.(scope, filters) ?? [];
-    const sessionsById = new Map(rows.map((row) => [row.sessionId, row]));
+    const [sessionAggregates, facts] = await Promise.all([
+      this.repository.listBusinessSessionAggregates?.(scope, filters) ?? Promise.resolve([]),
+      this.repository.listBusinessTopicFacts?.(scope, filters) ?? Promise.resolve([]),
+    ]);
+    const sessionsById = new Map(sessionAggregates.map((row) => [row.sessionId, row]));
     const topicCollections = buildBusinessTopicCollections(facts, sessionsById);
 
     return {
@@ -451,19 +506,17 @@ export class InsightsService {
       qualityTopics: topicCollections.qualityTopics,
       tagDistribution: topicCollections.tagDistribution,
       totals: {
-        actionItemsOpen: rows
-          .filter(requiresHumanIntervention)
-          .reduce((total, row) => total + row.actionOpenCount, 0),
-        analyzedSessions: rows.filter((row) => analyzedStatuses.has(row.analysisStatus)).length,
+        actionItemsOpen: sessionAggregates.reduce((total, row) => total + row.actionItemsOpen, 0),
+        analyzedSessions: sessionAggregates.reduce((total, row) => total + row.analyzedSessions, 0),
         assetMentions: sumTopicMentions(topicCollections.assetHotspots),
         entityMentions: sumTopicMentions(topicCollections.entityHotspots),
         intentMentions: sumTopicMentions(topicCollections.intentDistribution),
-        negativeSessions: rows.filter((row) => row.negativeCount > 0).length,
+        negativeSessions: sessionAggregates.reduce((total, row) => total + row.negativeSessions, 0),
         tagMentions: sumTopicMentions(topicCollections.tagDistribution),
         topicSessions: new Set(facts.map((fact) => fact.sessionId)).size,
-        unresolvedSessions: rows.filter((row) => unresolvedStatuses.has(row.resolutionStatus)).length,
+        unresolvedSessions: sessionAggregates.reduce((total, row) => total + row.unresolvedSessions, 0),
       },
-      trend: buildBusinessTrend(rows, facts),
+      trend: buildBusinessTrend(sessionAggregates, facts),
     };
   }
 
@@ -515,18 +568,36 @@ export class InsightsService {
     scope: InsightsUidScope,
     filters: InsightsFollowUpFilters = {},
   ): Promise<InsightsFollowUpsResponse> {
-    const rows = await this.repository.listActionItems(scope, filters);
-    const items = rows
+    const normalizedPage = normalizeOverviewPage(filters.page);
+    const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
+    const pageResult = await this.repository.listActionItemsPage?.(scope, {
+      ...filters,
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+    });
+    const rows = pageResult
+      ? pageResult.items
+      : await this.repository.listActionItems(scope, filters);
+    const filteredItems = rows
       .filter((row) => !row.resolutionStatus || requiresHumanIntervention(row.resolutionStatus))
       .filter((row) => !filters.status || row.status === filters.status)
       .filter((row) => !filters.priority || row.priority === filters.priority)
-      .filter((row) => !filters.type || row.actionType === filters.type)
       .sort(compareActionItems)
       .map(stripActionItemInternalFields);
+    const total = pageResult?.total ?? filteredItems.length;
+    const items = pageResult
+      ? filteredItems
+      : filteredItems.slice(
+          (normalizedPage - 1) * normalizedPageSize,
+          normalizedPage * normalizedPageSize,
+        );
 
     return {
       items,
-      total: items.length,
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / normalizedPageSize)),
     };
   }
 
@@ -967,6 +1038,20 @@ function isCustomerProblemSession(row: InsightCurrentSessionRow) {
     row.resolutionStatus !== "unknown";
 }
 
+function buildQualityOverview(rows: InsightCurrentSessionRow[]): InsightQualityAggregateRow {
+  return {
+    analyzedSessions: rows.filter((row) => analyzedStatuses.has(row.analysisStatus)).length,
+    noCustomerProblem: rows.filter(
+      (row) => row.resolutionStatus === "no_customer_problem",
+    ).length,
+    partial: rows.filter((row) => row.resolutionStatus === "partially_resolved").length,
+    problemSessions: rows.filter(isCustomerProblemSession).length,
+    resolved: rows.filter((row) => row.resolutionStatus === "resolved").length,
+    totalSessions: rows.length,
+    unresolved: rows.filter((row) => row.resolutionStatus === "unresolved").length,
+  };
+}
+
 function stripActionItemInternalFields(row: InsightActionItemRow): InsightsFollowUpsResponse["items"][number] {
   const { resolutionStatus: _resolutionStatus, ...item } = row;
 
@@ -987,7 +1072,7 @@ type BusinessTopicAccumulator = {
 
 function buildBusinessTopicCollections(
   facts: InsightBusinessTopicFactRow[],
-  sessionsById: Map<string, InsightCurrentSessionRow>,
+  sessionsById: Map<string, InsightBusinessSessionAggregateRow>,
 ) {
   const accumulators = new Map<string, BusinessTopicAccumulator>();
 
@@ -1014,7 +1099,7 @@ function buildBusinessTopicCollections(
     accumulator.mentionCount += fact.mentionCount;
     accumulator.sessions.add(session.sessionId);
 
-    if (unresolvedStatuses.has(session.resolutionStatus)) {
+    if (session.unresolvedSessions > 0) {
       accumulator.unresolvedSessions.add(session.sessionId);
     }
 
@@ -1022,7 +1107,7 @@ function buildBusinessTopicCollections(
       accumulator.negativeSessions.add(session.sessionId);
     }
 
-    if (requiresHumanIntervention(session) && session.actionOpenCount > 0) {
+    if (session.actionItemsOpen > 0) {
       accumulator.actionItemSessions.add(session.sessionId);
     }
 
@@ -1084,13 +1169,13 @@ function compareBusinessTopics(
 
 function isNegativeTopicFact(
   fact: InsightBusinessTopicFactRow,
-  session: InsightCurrentSessionRow,
+  session: InsightBusinessSessionAggregateRow,
 ) {
   if (fact.dimension === "entity" && fact.sentiment) {
     return fact.sentiment === "negative";
   }
 
-  return session.negativeCount > 0;
+  return session.negativeSessions > 0;
 }
 
 function businessTopicFactMatchesFilter(
@@ -1109,7 +1194,7 @@ function sumTopicMentions(topics: InsightsBusinessResponse["tagDistribution"]) {
 }
 
 function buildBusinessTrend(
-  rows: InsightCurrentSessionRow[],
+  rows: InsightBusinessSessionAggregateRow[],
   facts: InsightBusinessTopicFactRow[],
 ) {
   const trend = new Map<
@@ -1120,16 +1205,11 @@ function buildBusinessTrend(
   >();
 
   for (const row of rows) {
-    const date = formatDateKey(row.startedAt);
+    const date = row.date || formatDateKey(row.startedAt);
     const point = getBusinessTrendPoint(trend, date);
 
-    if (unresolvedStatuses.has(row.resolutionStatus)) {
-      point.unresolvedSessions += 1;
-    }
-
-    if (row.negativeCount > 0) {
-      point.negativeSessions += 1;
-    }
+    point.unresolvedSessions += row.unresolvedSessions;
+    point.negativeSessions += row.negativeSessions;
   }
 
   for (const fact of facts) {
@@ -1338,13 +1418,18 @@ function compareByRiskAndLastMessage(
 }
 
 function compareActionItems(left: InsightActionItemRow, right: InsightActionItemRow) {
-  const priorityDelta = priorityRank(right.priority) - priorityRank(left.priority);
+  return compareNumericIdDesc(left.actionItemId, right.actionItemId);
+}
 
-  if (priorityDelta !== 0) {
-    return priorityDelta;
+function compareNumericIdDesc(left: string, right: string) {
+  const leftId = Number(left);
+  const rightId = Number(right);
+
+  if (Number.isFinite(leftId) && Number.isFinite(rightId)) {
+    return rightId - leftId;
   }
 
-  return (right.lastCustomerMessageAt ?? 0) - (left.lastCustomerMessageAt ?? 0);
+  return right.localeCompare(left);
 }
 
 function sortEvidenceMessages(rows: InsightEvidenceMessageRow[]) {
@@ -1373,18 +1458,6 @@ function severityRank(severity: InsightSeverity) {
   }
 
   if (severity === "medium") {
-    return 2;
-  }
-
-  return 1;
-}
-
-function priorityRank(priority: InsightActionItemRow["priority"]) {
-  if (priority === "high") {
-    return 3;
-  }
-
-  if (priority === "medium") {
     return 2;
   }
 

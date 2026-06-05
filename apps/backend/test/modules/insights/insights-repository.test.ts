@@ -3,6 +3,111 @@ import { InsightsRepository } from "../../../src/modules/insights/insights.repos
 import { MysqlInsightWorkerRepository } from "../../../src/modules/insights/insights-worker.repository";
 
 describe("InsightsRepository", () => {
+  it("loads quality overview through an aggregate query", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            analyzed_sessions: 3,
+            no_customer_problem: 1,
+            partial: 1,
+            problem_sessions: 2,
+            resolved: 0,
+            total_sessions: 4,
+            unresolved: 1,
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.getQualityAggregate({ uid: 9001 })).resolves.toMatchObject({
+      analyzedSessions: 3,
+      problemSessions: 2,
+      totalSessions: 4,
+      unresolved: 1,
+    });
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_session_insight_current as current");
+    expect(builders[0]?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+  });
+
+  it("loads quality agent stats through grouped SQL", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            agent_avatar_url: "https://example.com/agent.png",
+            agent_name: "客服一号",
+            agent_seat_id: "seat-1",
+            partial: 1,
+            problem_sessions: 2,
+            resolved: 1,
+            total_sessions: 3,
+            unresolved: 1,
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.listQualityAgentStats({ uid: 9001 })).resolves.toEqual([
+      expect.objectContaining({
+        agentSeatId: "seat-1",
+        problemSessions: 2,
+        totalSessions: 3,
+        unresolvedRate: 0.5,
+      }),
+    ]);
+
+    expect(builders[0]?.groupByCalls.length).toBeGreaterThan(0);
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain("seat.third_avatar");
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain("seat.third_user_name");
+    expect(builders[0]?.selectRawCalls.join("\n")).not.toContain("seat.avatar");
+    expect(builders[0]?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+  });
+
+  it("loads business session aggregates without hydrating current sessions", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            action_items_open: 1,
+            analyzed_sessions: 1,
+            date: "2026-06-01",
+            negative_sessions: 1,
+            session_id: 501,
+            started_at: 1_780_243_200_000,
+            unresolved_sessions: 1,
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.listBusinessSessionAggregates({ uid: 9001 })).resolves.toEqual([
+      expect.objectContaining({
+        actionItemsOpen: 1,
+        date: "2026-06-01",
+        negativeSessions: 1,
+        sessionId: "501",
+        unresolvedSessions: 1,
+      }),
+    ]);
+
+    expect(builders[0]?.joins).toContain("xy_wap_embed_session_action_item as aggregate_action");
+    expect(builders[0]?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+  });
+
   it("loads current sessions without joining one-to-many insight tables in the core query", async () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([
@@ -147,6 +252,49 @@ describe("InsightsRepository", () => {
     expect(countQuery.whereCalls).toContainEqual(["intent_filter.intent_code", "=", "refund"]);
   });
 
+  it("skips summary and problem joins for unfiltered current-session counts", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      currentQueryCount: 0,
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          table === "xy_wap_embed_session_insight_current as current" && db.currentQueryCount++ === 0
+            ? [{ count: 0 }]
+            : [],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await repository.listCurrentSessions({ uid: 9001 });
+
+    const countQuery = builders[0];
+    expect(countQuery?.joins).not.toContain("xy_wap_embed_session_summary as summary");
+    expect(countQuery?.joins).not.toContain("xy_wap_embed_session_problem_resolution as problem");
+    expect(countQuery?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+  });
+
+  it("bounds all-current-session hydration for aggregate pages", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await repository.listAllCurrentSessions({ uid: 9001 });
+
+    const currentQuery = builders.find((builder) => builder.table === "xy_wap_embed_session_insight_current as current");
+    expect(currentQuery?.limitCalls).toEqual([5000]);
+    expect(currentQuery?.offsetCalls).toEqual([0]);
+  });
+
   it("loads action-item evidence with a bounded follow-up query", async () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([
@@ -158,19 +306,13 @@ describe("InsightsRepository", () => {
             action_status: "open",
             action_type: "follow_up",
             conversation_id: 301,
+            created_at: 1_780_244_000_000,
             priority: "high",
             resolution_status: "unresolved",
             session_id: 201,
             snapshot_id: 501,
             title: "催物流",
           },
-        ],
-      ],
-      [
-        "xy_wap_embed_insight_evidence as evidence",
-        [
-          { action_id: 801, evidence_message_id: 9001, last_customer_message_at: 1_780_244_000_000, reason: "承诺催办" },
-          { action_id: 801, evidence_message_id: 9002, last_customer_message_at: 1_780_244_100_000, reason: "客户追问" },
         ],
       ],
       ["xy_wap_embed_conversation", []],
@@ -187,18 +329,14 @@ describe("InsightsRepository", () => {
     await expect(repository.listActionItems({ uid: 9001 })).resolves.toMatchObject([
       {
         actionItemId: "801",
-        evidenceMessageIds: ["9001", "9002"],
-        lastCustomerMessageAt: 1_780_244_100_000,
-        reason: "承诺催办",
+        createdAt: 1_780_244_000_000,
       },
     ]);
 
     const mainQuery = builders[0];
     expect(mainQuery.joins).not.toContain("xy_wap_embed_insight_evidence as evidence");
     expect(mainQuery.joins).not.toContain("xy_wap_embed_msg_audit_info as message");
-    const evidenceQuery = builders.find((builder) => builder.table === "xy_wap_embed_insight_evidence as evidence");
-    expect(evidenceQuery?.whereCalls).toContainEqual(["evidence.snapshot_id", "in", [501]]);
-    expect(evidenceQuery?.whereCalls).toContainEqual(["evidence.dimension_type", "=", "action_item"]);
+    expect(builders.map((builder) => builder.table)).not.toContain("xy_wap_embed_insight_evidence as evidence");
   });
 
   it("caps action item rows before evidence hydration", async () => {
@@ -215,6 +353,59 @@ describe("InsightsRepository", () => {
     await repository.listActionItems({ uid: 9001 });
 
     expect(builders[0]?.limitCalls).toContain(1000);
+  });
+
+  it("paginates action items before evidence hydration", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const rowsByTable = new Map<string, unknown[]>([
+      [
+        "xy_wap_embed_session_action_item as action",
+        [
+          {
+            action_id: 802,
+            action_status: "open",
+            action_type: "follow_up",
+            conversation_id: 302,
+            created_at: 1_780_243_900_000,
+            priority: "medium",
+            resolution_status: "partially_resolved",
+            session_id: 202,
+            snapshot_id: 502,
+            title: "沉淀退款 FAQ",
+            total_count: 2,
+          },
+        ],
+      ],
+      ["xy_wap_embed_conversation", []],
+    ]);
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(rowsByTable.get(table) ?? [], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.listActionItemsPage({ uid: 9001 }, {
+      page: 2,
+      pageSize: 1,
+      status: "open",
+    })).resolves.toMatchObject({
+      items: [
+        {
+          actionItemId: "802",
+          createdAt: 1_780_243_900_000,
+        },
+      ],
+      total: 2,
+    });
+
+    expect(builders[0]?.limitCalls).toEqual([1]);
+    expect(builders[0]?.offsetCalls).toEqual([1]);
+    expect(builders[0]?.orderByCalls).toEqual([["action.id", "desc"]]);
+    expect(builders[0]?.whereCalls).toContainEqual(["action.status", "=", "open"]);
+    expect(builders.map((builder) => builder.table)).not.toContain("xy_wap_embed_insight_evidence as evidence");
   });
 
   it("scopes business asset facts to sessions matched by the overview filters", async () => {
@@ -265,6 +456,61 @@ describe("InsightsRepository", () => {
     const assetQuery = builders.find((builder) => builder.table === "xy_wap_embed_logical_session_message as session_message");
     expect(assetQuery?.whereCalls).toContainEqual(["session_message.session_id", "in", [201, 202]]);
     expect(assetQuery?.whereCalls).toContainEqual(["current.current_snapshot_id", "in", [501, 502]]);
+  });
+
+  it("filters entity hotspot risk counts without concatenating indexed columns", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const rowsByTable = new Map<string, unknown[]>([
+      [
+        "xy_wap_embed_session_entity as entity",
+        [
+          {
+            entity_id: "sku-1",
+            entity_name: "羽绒服",
+            entity_type: "product",
+            mention_count: 3,
+            negative_count: 1,
+            session_count: 2,
+          },
+        ],
+      ],
+      [
+        "xy_wap_embed_session_entity as entity#2",
+        [
+          {
+            entity_id: "sku-1",
+            entity_type: "product",
+            risk_session_count: 1,
+          },
+        ],
+      ],
+    ]);
+    let entityQueryCount = 0;
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const key = table === "xy_wap_embed_session_entity as entity" && entityQueryCount++ > 0
+          ? `${table}#2`
+          : table;
+        const builder = createSelectBuilder(rowsByTable.get(key) ?? [], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.listEntityHotspots({ uid: 9001 })).resolves.toMatchObject([
+      {
+        entityId: "sku-1",
+        entityType: "product",
+        riskSessionCount: 1,
+      },
+    ]);
+
+    const riskQuery = builders[1];
+    expect(riskQuery?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+    expect(riskQuery?.whereCalls).toContainEqual(["entity.entity_id", "=", "sku-1"]);
+    expect(riskQuery?.whereCalls).toContainEqual(["entity.entity_type", "=", "product"]);
+    expect(riskQuery?.whereRawCalls.join("\n")).not.toContain("concat(");
   });
 
   it("loads detail qa findings, risks, and actions through focused snapshot queries", async () => {
@@ -513,24 +759,34 @@ describe("MysqlInsightWorkerRepository", () => {
   });
 
   it("does not claim an analysis job when another worker wins the status update", async () => {
+    const builders: SelectBuilderStub[] = [];
     const db = {
-      selectFrom: vi.fn(() =>
-        createSelectBuilder([
+      transaction: vi.fn(),
+      selectFrom: vi.fn(() => {
+        const builder = createSelectBuilder([
           {
             analysis_scope: "all",
+            attempt_count: 0,
             id: 701,
             idempotency_key: "analyze_session:9001:501:live:2026-06-01T00:00:00.000Z",
             job_type: "analyze_session",
+            max_attempts: 3,
             target_id: "501",
             uid: 9001,
           },
-        ]),
-      ),
+        ]);
+        builders.push(builder);
+        return builder;
+      }),
       updateTable: vi.fn(() => createUpdateBuilder(async () => ({ numAffectedRows: 0n }))),
     };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
     const repository = new MysqlInsightWorkerRepository(db as never);
 
     await expect(repository.claimNextAnalyzeJob()).resolves.toBeUndefined();
+    expect(db.transaction).toHaveBeenCalled();
+    expect(builders[0]?.forUpdateCalls).toBe(1);
+    expect(builders[0]?.skipLockedCalls).toBe(1);
   });
 
   it("claims an expired running analysis job for retry", async () => {
@@ -538,6 +794,7 @@ describe("MysqlInsightWorkerRepository", () => {
     const builders: SelectBuilderStub[] = [];
     const updateTables: string[] = [];
     const db = {
+      transaction: vi.fn(),
       selectFrom: vi.fn((table: string) => {
         const builder = createSelectBuilder([
           {
@@ -559,6 +816,7 @@ describe("MysqlInsightWorkerRepository", () => {
         return createUpdateBuilder(updateExecute);
       }),
     };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
     const repository = new MysqlInsightWorkerRepository(db as never);
 
     await expect(repository.claimNextAnalyzeJob()).resolves.toEqual({
@@ -571,36 +829,53 @@ describe("MysqlInsightWorkerRepository", () => {
       uid: 272,
     });
 
-    expect(builders[0]?.whereCalls[0]?.[0]).toEqual(expect.any(Function));
+    expect(builders[0]?.whereCalls).toContainEqual(["status", "=", "pending"]);
+    expect(builders[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
+    expect(builders[0]?.whereCalls).toContainEqual(["lease_until", "<=", expect.any(Date)]);
+    expect(builders[0]?.forUpdateCalls).toBe(1);
+    expect(builders[0]?.skipLockedCalls).toBe(1);
     expect(updateTables).toContain("xy_wap_embed_analysis_run");
     expect(updateExecute).toHaveBeenCalled();
   });
 
   it("does not claim a sync job when another worker wins the status update", async () => {
+    const builders: SelectBuilderStub[] = [];
     const db = {
-      selectFrom: vi.fn(() =>
-        createSelectBuilder([
+      transaction: vi.fn(),
+      selectFrom: vi.fn(() => {
+        const builder = createSelectBuilder([
           {
+            analysis_scope: "all",
             id: 702,
+            rescan_task_id: null,
             target_id: "2026-06-01T00:00:00.000Z",
             uid: 9001,
           },
-        ]),
-      ),
+        ]);
+        builders.push(builder);
+        return builder;
+      }),
       updateTable: vi.fn(() => createUpdateBuilder(async () => ({ numAffectedRows: 0n }))),
     };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
     const repository = new MysqlInsightWorkerRepository(db as never);
 
     await expect(repository.claimNextSyncMessagesJob({})).resolves.toBeUndefined();
+    expect(db.transaction).toHaveBeenCalled();
+    expect(builders[0]?.forUpdateCalls).toBe(1);
+    expect(builders[0]?.skipLockedCalls).toBe(1);
   });
 
   it("rejects malformed historical rescan cursors before claiming the job", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
     const db = {
+      transaction: vi.fn(),
       selectFrom: vi.fn(() =>
         createSelectBuilder([
           {
+            analysis_scope: "all",
             id: 702,
+            rescan_task_id: null,
             target_id: "not-a-date",
             uid: 9001,
           },
@@ -608,12 +883,135 @@ describe("MysqlInsightWorkerRepository", () => {
       ),
       updateTable: vi.fn(() => createUpdateBuilder(updateExecute)),
     };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
     const repository = new MysqlInsightWorkerRepository(db as never);
 
     await expect(repository.claimNextSyncMessagesJob({})).rejects.toThrow(
       "Invalid sync_messages target_id",
     );
     expect(updateExecute).not.toHaveBeenCalled();
+  });
+
+  it("archives terminal insight jobs before pruning them from the hot queue", async () => {
+    const insertBuilders: InsertBuilderStub[] = [];
+    const deleteBuilders: DeleteBuilderStub[] = [];
+    const db = {
+      deleteFrom: vi.fn((table: string) => {
+        const builder = createDeleteBuilder(async () => ({ numDeletedRows: 3n }), table);
+        deleteBuilders.push(builder);
+        return builder;
+      }),
+      insertInto: vi.fn((table: string) => {
+        const builder = createInsertBuilder(async () => ({ numInsertedOrUpdatedRows: 3n }), { table });
+        insertBuilders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.archiveTerminalJobs({
+      before: new Date("2026-06-01T00:00:00.000Z"),
+      limit: 5000,
+    })).resolves.toEqual({ archivedJobs: 3, deletedJobs: 3 });
+
+    expect(db.insertInto).toHaveBeenCalledWith("xy_wap_embed_insight_job_archive");
+    expect(insertBuilders[0]?.columnsCalls[0]).toContain("archived_at");
+    expect(insertBuilders[0]?.expressionCalls).toBe(1);
+    expect(db.deleteFrom).toHaveBeenCalledWith("xy_wap_embed_insight_job");
+    expect(deleteBuilders[0]?.whereCalls).toContainEqual(["status", "in", ["succeeded", "failed"]]);
+    expect(deleteBuilders[0]?.whereCalls).toContainEqual(["update_time", "<", new Date("2026-06-01T00:00:00.000Z")]);
+    expect(deleteBuilders[0]?.limitCalls).toEqual([5000]);
+  });
+
+  it("loads closable open sessions through the indexed next close timestamp", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            analysis_delay_minutes: 10,
+            hard_max_duration_hours: 8,
+            id: 501,
+            idle_timeout_minutes: 120,
+            last_meaningful_message_at: 1_780_244_000_000,
+            started_at: 1_780_230_000_000,
+            uid: 9001,
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.listClosableOpenSessions({
+      limit: 100,
+      now: 1_780_252_000_000,
+    })).resolves.toEqual([
+      expect.objectContaining({
+        closeReason: "idle_timeout",
+        sessionId: "501",
+      }),
+    ]);
+
+    expect(builders[0]?.whereCalls).toContainEqual(["status", "=", "open"]);
+    expect(builders[0]?.whereCalls).toContainEqual(["next_close_at", "<=", 1_780_252_000_000]);
+    expect(builders[0]?.orderByCalls).toContainEqual(["next_close_at", "asc"]);
+    expect(builders[0]?.whereRawCalls.join("\n")).not.toContain("hard_max_duration_hours * 3600000");
+  });
+
+  it("stores next close time when creating and appending logical-session messages", async () => {
+    const insertValues: Array<{ table: string; values: Record<string, unknown> | Record<string, unknown>[] }> = [];
+    const updateValues: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const db = {
+      insertInto: vi.fn((table: string) => createInsertBuilder(
+        async () => ({ insertId: 501, numInsertedOrUpdatedRows: 1n }),
+        {
+          onValues: (values) => insertValues.push({ table, values }),
+          table,
+        },
+      )),
+      updateTable: vi.fn((table: string) => createUpdateBuilder(
+        async () => ({ numAffectedRows: 1n }),
+        {
+          onSet: (values) => updateValues.push({ table, values }),
+          table,
+        },
+      )),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.createLogicalSession({
+      config: {
+        analysisDelayMinutes: 10,
+        hardMaxDurationHours: 8,
+        idleTimeoutMinutes: 120,
+        lateArrivalWindowMinutes: 30,
+        ruleVersion: "insights-v1",
+      },
+      conversationId: "301",
+      startedAt: 1_780_244_000_000,
+      uid: 9001,
+    });
+    await repository.appendSessionMessage({
+      conversationId: "301",
+      includedForAi: true,
+      meaningfulForBoundary: true,
+      messageType: "text",
+      occurredAt: 1_780_244_060_000,
+      senderRole: "customer",
+      sessionId: "501",
+      sourceMessageId: "9001",
+      sourceMessageTime: 1_780_244_060_000,
+      uid: 9001,
+    });
+
+    expect(insertValues.find((entry) => entry.table === "xy_wap_embed_logical_session")?.values)
+      .toMatchObject({
+        next_close_at: 1_780_244_000_000 + 120 * 60_000,
+      });
+    expect(updateValues.find((entry) => entry.table === "xy_wap_embed_logical_session")?.values)
+      .toHaveProperty("next_close_at");
   });
 
   it("writes analysis snapshots as building before publishing them", async () => {
@@ -722,6 +1120,87 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(logicalSessionUpdate?.whereCalls).toContainEqual(["uid", "=", 9001]);
   });
 
+  it("batches insight evidence rows into one insert after dimension rows are written", async () => {
+    const insertValues: Array<{ table: string; values: Record<string, unknown> | Record<string, unknown>[] }> = [];
+    let nextInsertId = 7001;
+    const db = {
+      insertInto: vi.fn((table: string) => createInsertBuilder(
+        async () => ({ insertId: nextInsertId++ }),
+        {
+          onValues: (values) => insertValues.push({ table, values }),
+          table,
+        },
+      )),
+      selectFrom: vi.fn(() => createSelectBuilder([{ conversation_id: 301 }])),
+      updateTable: vi.fn((table: string) => createUpdateBuilder(
+        async () => ({ numAffectedRows: 1n }),
+        { table },
+      )),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.saveAnalysisResult({
+      job: {
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "9001",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      output: {
+        actionItems: [
+          {
+            evidenceMessageIds: ["9201"],
+            priority: "high",
+            title: "跟进退款",
+          },
+        ],
+        entities: [
+          {
+            confidence: 0.8,
+            entityId: "sku-1",
+            entityName: "商品",
+            entityType: "product",
+            evidenceMessageIds: ["9202"],
+          },
+        ],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.9,
+          evidence: [],
+          evidenceMessageIds: ["9200"],
+          problemDetected: true,
+          problemSummary: "物流延迟",
+          resolutionStatus: "unresolved",
+        },
+        qaFindings: [],
+        risks: [],
+        sentiment: [],
+        summary: {
+          confidence: 0.9,
+          customerIntent: "查物流",
+          processSummary: "客户咨询物流",
+          resultSummary: "待跟进",
+        },
+        tags: [],
+      },
+      runId: "8001",
+      sourceMessageHighWatermark: "9202",
+      validationWarnings: [],
+    });
+
+    const evidenceInserts = insertValues.filter((entry) => entry.table === "xy_wap_embed_insight_evidence");
+    expect(evidenceInserts).toHaveLength(1);
+    expect(evidenceInserts[0]?.values).toEqual(expect.arrayContaining([
+      expect.objectContaining({ dimension_type: "problem_resolution", source_message_id: 9200 }),
+      expect.objectContaining({ dimension_type: "action_item", source_message_id: 9201 }),
+      expect.objectContaining({ dimension_type: "entity", source_message_id: 9202 }),
+    ]));
+  });
+
   it("scopes logical session count updates to the current uid", async () => {
     let logicalSessionUpdate: UpdateBuilderStub | undefined;
     const db = {
@@ -759,19 +1238,33 @@ describe("MysqlInsightWorkerRepository", () => {
 });
 
 type SelectBuilderStub = ReturnType<typeof createSelectBuilder>;
+type DeleteBuilderStub = ReturnType<typeof createDeleteBuilder>;
+type InsertBuilderStub = ReturnType<typeof createInsertBuilder>;
 type UpdateBuilderStub = ReturnType<typeof createUpdateBuilder>;
 
 function createSelectBuilder(rows: unknown[], table = "") {
   const builder = {
     joins: [] as string[],
+    forUpdateCalls: 0,
+    groupByCalls: [] as unknown[][],
     limitCalls: [] as number[],
     offsetCalls: [] as number[],
     orderByCalls: [] as unknown[][],
+    skipLockedCalls: 0,
     table,
+    whereRawCalls: [] as string[],
+    selectRawCalls: [] as string[],
     whereCalls: [] as unknown[][],
     execute: async () => rows,
     executeTakeFirst: async () => rows[0],
-    groupBy: () => builder,
+    forUpdate: () => {
+      builder.forUpdateCalls += 1;
+      return builder;
+    },
+    groupBy: (...args: unknown[]) => {
+      builder.groupByCalls.push(args);
+      return builder;
+    },
     innerJoin: (joinTable: string) => {
       builder.joins.push(joinTable);
       return builder;
@@ -792,8 +1285,24 @@ function createSelectBuilder(rows: unknown[], table = "") {
       builder.orderByCalls.push(args);
       return builder;
     },
-    select: () => builder,
+    select: (...args: unknown[]) => {
+      builder.selectRawCalls.push(args.map(String).join("\n"));
+      return builder;
+    },
+    skipLocked: () => {
+      builder.skipLockedCalls += 1;
+      return builder;
+    },
     where: (...args: unknown[]) => {
+      if (typeof args[0] === "function") {
+        args[0](createExpressionBuilderStub(builder));
+        return builder;
+      }
+
+      if (args.length === 1) {
+        builder.whereRawCalls.push(String(args[0]));
+      }
+
       builder.whereCalls.push(args);
       return builder;
     },
@@ -803,20 +1312,77 @@ function createSelectBuilder(rows: unknown[], table = "") {
   return builder;
 }
 
+function createExpressionBuilderStub(builder: { whereCalls: unknown[][] }) {
+  const expressionBuilder = ((...args: unknown[]) => {
+    builder.whereCalls.push(args);
+    return args;
+  }) as unknown as {
+    (...args: unknown[]): unknown[];
+    and: (conditions: unknown[]) => unknown[];
+    or: (conditions: unknown[]) => unknown[];
+  };
+
+  expressionBuilder.and = (conditions: unknown[]) => conditions;
+  expressionBuilder.or = (conditions: unknown[]) => conditions;
+
+  return expressionBuilder;
+}
+
+function createTransactionBuilder(db: {
+  selectFrom: (table: string) => SelectBuilderStub;
+  updateTable: (table: string) => UpdateBuilderStub;
+}) {
+  return {
+    execute: async <T>(callback: (trx: typeof db) => Promise<T>) => callback(db),
+  };
+}
+
 function createInsertBuilder(
   executeTakeFirstOrThrow: () => Promise<unknown>,
   options: {
-    onValues?: (values: Record<string, unknown>) => void;
+    onValues?: (values: Record<string, unknown> | Record<string, unknown>[]) => void;
     table?: string;
   } = {},
 ) {
   const builder = {
+    columnsCalls: [] as string[][],
     executeTakeFirst: executeTakeFirstOrThrow,
     executeTakeFirstOrThrow,
+    expressionCalls: 0,
+    columns: (columns: string[]) => {
+      builder.columnsCalls.push(columns);
+      return builder;
+    },
+    expression: () => {
+      builder.expressionCalls += 1;
+      return builder;
+    },
     ignore: () => builder,
     onDuplicateKeyUpdate: () => builder,
     values: (values: Record<string, unknown>) => {
       options.onValues?.(values);
+      return builder;
+    },
+  };
+
+  return builder;
+}
+
+function createDeleteBuilder(
+  executeTakeFirst: () => Promise<unknown>,
+  table = "",
+) {
+  const builder = {
+    executeTakeFirst,
+    limitCalls: [] as number[],
+    table,
+    whereCalls: [] as unknown[][],
+    limit: (value: number) => {
+      builder.limitCalls.push(value);
+      return builder;
+    },
+    where: (...args: unknown[]) => {
+      builder.whereCalls.push(args);
       return builder;
     },
   };

@@ -800,6 +800,7 @@ export interface XyWapEmbedLogicalSession {
   last_meaningful_message_at: number | null;
   last_message_at: number | null;
   message_count: Generated<number>;
+  next_close_at: number | null;
   rule_version: string;
   started_at: number;
   status: string;
@@ -844,6 +845,29 @@ export interface XyWapEmbedInsightJob {
   target_type: string;
   uid: number;
   update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightJobArchive {
+  archived_at: Generated<Date>;
+  attempt_count: Generated<number>;
+  create_time: Date;
+  error_code: string | null;
+  error_message: string | null;
+  id: number;
+  idempotency_key: string;
+  job_type: string;
+  analysis_scope: string;
+  lease_until: Date | null;
+  locked_by: string | null;
+  max_attempts: Generated<number>;
+  priority: Generated<number>;
+  rescan_task_id: number | null;
+  run_after: Generated<Date>;
+  status: string;
+  target_id: string;
+  target_type: string;
+  uid: number;
+  update_time: Date;
 }
 
 export interface XyWapEmbedInsightRescanTask {
@@ -905,6 +929,7 @@ export interface XyWapEmbedSessionInsightSnapshot {
 export interface XyWapEmbedSessionInsightCurrent {
   create_time: Generated<Date>;
   current_snapshot_id: number;
+  id: Generated<number>;
   session_id: number;
   update_time: Generated<Date>;
 }
@@ -914,6 +939,7 @@ export interface XyWapEmbedSessionSummary {
   create_time: Generated<Date>;
   customer_intent: string;
   follow_up: string | null;
+  id: Generated<number>;
   process_summary: string;
   result_summary: string;
   snapshot_id: number;
@@ -945,6 +971,7 @@ export interface XyWapEmbedSessionProblemResolution {
   confidence: number | null;
   create_time: Generated<Date>;
   customer_final_state: string | null;
+  id: Generated<number>;
   problem_detected: number;
   problem_summary: string;
   resolution_status: string;
@@ -1040,6 +1067,7 @@ export interface XyWapEmbedInsightAnalysisPolicy {
   create_time: Generated<Date>;
   enabled: Generated<number>;
   final_analysis_enabled: Generated<number>;
+  id: Generated<number>;
   live_analysis_enabled: Generated<number>;
   live_min_interval_minutes: number;
   live_min_new_meaningful_messages: number;
@@ -1146,6 +1174,7 @@ export interface DB {
   xy_wap_embed_insight_entity_dictionary: XyWapEmbedInsightEntityDictionary;
   xy_wap_embed_insight_evidence: XyWapEmbedInsightEvidence;
   xy_wap_embed_insight_job: XyWapEmbedInsightJob;
+  xy_wap_embed_insight_job_archive: XyWapEmbedInsightJobArchive;
   xy_wap_embed_insight_rescan_task: XyWapEmbedInsightRescanTask;
   xy_wap_embed_insight_intent_config: XyWapEmbedInsightIntentConfig;
   xy_wap_embed_insight_label_config: XyWapEmbedInsightLabelConfig;

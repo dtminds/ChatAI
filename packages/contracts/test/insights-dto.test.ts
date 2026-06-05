@@ -225,6 +225,12 @@ describe("insights DTOs", () => {
             reasonLabel: "回复未覆盖客户问题",
           },
         ],
+        unresolvedSessionsPage: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+          totalPages: 1,
+        },
         unresolvedSessions: [
           {
             agentName: "客服一号",
@@ -254,11 +260,50 @@ describe("insights DTOs", () => {
         items: [
           {
             actionItemId: "act-1",
+            conversationId: "301",
+            createdAt: 1780243000000,
+            customerName: "张三",
+            priority: "high",
+            sessionId: "session-1",
+            status: "open",
+            title: "确认退款进度并回复客户",
+          },
+        ],
+        page: 1,
+        pageSize: 10,
+        total: 1,
+        totalPages: 1,
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(InsightsFollowUpsResponseSchema, {
+        items: [
+          {
+            actionItemId: "act-1",
             actionType: "follow_up",
             conversationId: "301",
+            createdAt: 1780243000000,
             customerName: "张三",
-            evidenceMessageIds: ["9001"],
-            lastCustomerMessageAt: 1780243200000,
+            priority: "high",
+            sessionId: "session-1",
+            status: "open",
+            title: "确认退款进度并回复客户",
+          },
+        ],
+        page: 1,
+        pageSize: 10,
+        total: 1,
+        totalPages: 1,
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(InsightsFollowUpsResponseSchema, {
+        items: [
+          {
+            actionItemId: "act-1",
+            conversationId: "301",
+            createdAt: 1780243000000,
+            customerName: "张三",
             priority: "high",
             reason: "客户仍在追问退款进度",
             sessionId: "session-1",
@@ -266,9 +311,54 @@ describe("insights DTOs", () => {
             title: "确认退款进度并回复客户",
           },
         ],
+        page: 1,
+        pageSize: 10,
         total: 1,
+        totalPages: 1,
       }),
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      Value.Check(InsightsFollowUpsResponseSchema, {
+        items: [
+          {
+            actionItemId: "act-1",
+            conversationId: "301",
+            createdAt: 1780243000000,
+            customerName: "张三",
+            evidenceMessageIds: ["9001"],
+            priority: "high",
+            sessionId: "session-1",
+            status: "open",
+            title: "确认退款进度并回复客户",
+          },
+        ],
+        page: 1,
+        pageSize: 10,
+        total: 1,
+        totalPages: 1,
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(InsightsFollowUpsResponseSchema, {
+        items: [
+          {
+            actionItemId: "act-1",
+            conversationId: "301",
+            createdAt: 1780243000000,
+            customerName: "张三",
+            lastCustomerMessageAt: 1780243200000,
+            priority: "high",
+            sessionId: "session-1",
+            status: "open",
+            title: "确认退款进度并回复客户",
+          },
+        ],
+        page: 1,
+        pageSize: 10,
+        total: 1,
+        totalPages: 1,
+      }),
+    ).toBe(false);
   });
 
   it("accepts detail responses with evidence message contexts", () => {

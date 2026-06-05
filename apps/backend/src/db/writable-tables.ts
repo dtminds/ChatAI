@@ -14,6 +14,7 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_insight_entity_dictionary",
   "xy_wap_embed_insight_evidence",
   "xy_wap_embed_insight_job",
+  "xy_wap_embed_insight_job_archive",
   "xy_wap_embed_insight_intent_config",
   "xy_wap_embed_insight_label_config",
   "xy_wap_embed_insight_qa_rule_config",

@@ -331,7 +331,6 @@ function buildSummaryOutputContract() {
   return {
     actionItems: [
       {
-        actionType: "<follow_up|refund_check|logistics_check|complaint_handle|custom>",
         dueHint: "<string optional: 处理时效或时间提示>",
         evidenceMessageIds: ["<sourceMessageId>"],
         priority: "<high|medium|low>",

@@ -18,7 +18,7 @@ describe("insights routes", () => {
     const quality = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/insights/quality",
+      url: "/api/server/insights/quality?page=1&pageSize=1",
     });
     const business = await app.inject({
       headers: { authorization },
@@ -33,7 +33,7 @@ describe("insights routes", () => {
     const followUps = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/insights/follow-ups?status=open",
+      url: "/api/server/insights/follow-ups?status=open&page=1&pageSize=1",
     });
     const detail = await app.inject({
       headers: { authorization },
@@ -107,6 +107,12 @@ describe("insights routes", () => {
       evidenceMessageIds: ["9001", "9002"],
       sessionId: "501",
     });
+    expect(quality.json().data.unresolvedSessionsPage).toMatchObject({
+      page: 1,
+      pageSize: 1,
+      total: 1,
+      totalPages: 1,
+    });
     expect(business.statusCode).toBe(200);
     expect(business.json().data).toMatchObject({
       entityHotspots: [
@@ -140,6 +146,19 @@ describe("insights routes", () => {
     });
     expect(followUps.statusCode).toBe(200);
     expect(followUps.json().data.items).toHaveLength(1);
+    expect(followUps.json().data.items[0]).toMatchObject({
+      actionItemId: "801",
+      createdAt: 1_780_244_000_000,
+      sessionId: "501",
+    });
+    expect(followUps.json().data.items[0]).not.toHaveProperty("evidenceMessageIds");
+    expect(followUps.json().data.items[0]).not.toHaveProperty("lastCustomerMessageAt");
+    expect(followUps.json().data).toMatchObject({
+      page: 1,
+      pageSize: 1,
+      total: 1,
+      totalPages: 1,
+    });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().data.evidenceMessages.map((item: { messageId: string }) => item.messageId)).toEqual([
       "9001",
@@ -573,6 +592,21 @@ function createInsightsDbMock(options: {
             }];
           }
 
+          if (
+            selectedAliases.has("action_items_open") &&
+            (selectedAliases.has("session_id") || selectedAliases.has("session.id as session_id"))
+          ) {
+            return [{
+              action_items_open: 1,
+              analyzed_sessions: 1,
+              date: "2026-06-01",
+              negative_sessions: 1,
+              session_id: 501,
+              started_at: 1_780_243_200_000,
+              unresolved_sessions: 1,
+            }];
+          }
+
           if (selectedAliases.has("date")) {
             return [{
               agent_messages: 3,
@@ -622,15 +656,13 @@ function createInsightsDbMock(options: {
             action_status: "open",
             action_type: "logistics_check",
             conversation_id: 301,
-            customer_name: "张三",
-            evidence_message_id: 9002,
-            last_customer_message_at: 1_780_244_100_000,
+            created_at: 1_780_244_000_000,
             priority: "high",
-            reason: "物流进度未确认",
             resolution_status: "unresolved",
             session_id: 501,
             snapshot_id: 7001,
             title: "确认快递状态",
+            total_count: 1,
           },
         ]);
       }

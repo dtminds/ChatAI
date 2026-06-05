@@ -32,6 +32,7 @@ import {
   formatInsightTime,
   formatResolutionStatus,
 } from "./insights-utils";
+import { insightQualityRuleColors } from "./insights-chart-palette";
 import { useInsightDetail } from "./use-insight-detail";
 
 type QualityView = "agent-report" | "problem-list";
@@ -498,22 +499,11 @@ function buildPaginationNumbers(page: number, totalPages: number): Array<number 
   return result;
 }
 
-const ruleDistributionColors = [
-  "#df3f40",
-  "#f0a337",
-  "#5b5ff0",
-  "#14a6a6",
-  "#7b61d9",
-  "#2f8bc9",
-  "#58a65c",
-  "#c16d9b",
-];
-
 function buildRuleDistributionData(
   ruleDistribution: InsightsQualityResponse["overview"]["ruleDistribution"],
 ) {
   return ruleDistribution.map((rule, index) => ({
-    color: ruleDistributionColors[index % ruleDistributionColors.length],
+    color: insightQualityRuleColors[index % insightQualityRuleColors.length],
     name: rule.ruleName,
     ruleCode: rule.ruleCode,
     value: rule.count,

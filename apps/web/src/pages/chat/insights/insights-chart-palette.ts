@@ -29,3 +29,14 @@ export const insightResolutionColors = {
   unknown: "#94a3b8",
   unresolved: "#df3f40",
 } as const;
+
+export const insightQualityRuleColors = [
+  insightResolutionColors.unresolved,
+  insightResolutionColors.partiallyResolved,
+  insightChartColors.primary,
+  "#14a6a6",
+  "#7b61d9",
+  "#2f8bc9",
+  "#58a65c",
+  "#c16d9b",
+] as const;

@@ -34,6 +34,10 @@ import {
 } from "./insights.service.js";
 import { UnauthorizedError } from "../../shared/errors.js";
 
+const DateQuerySchema = Type.String({
+  pattern: "^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?(?:Z|[+-]\\d{2}:\\d{2})?)?$",
+});
+
 const FollowUpsQuerySchema = Type.Object({
   page: Type.Optional(Type.Number()),
   pageSize: Type.Optional(Type.Number()),
@@ -46,15 +50,15 @@ const FollowUpsQuerySchema = Type.Object({
 });
 
 const OverviewQuerySchema = Type.Object({
-  from: Type.Optional(Type.String()),
-  to: Type.Optional(Type.String()),
+  from: Type.Optional(DateQuerySchema),
+  to: Type.Optional(DateQuerySchema),
 });
 
 const QualityQuerySchema = Type.Object({
-  from: Type.Optional(Type.String()),
+  from: Type.Optional(DateQuerySchema),
   page: Type.Optional(Type.Number()),
   pageSize: Type.Optional(Type.Number()),
-  to: Type.Optional(Type.String()),
+  to: Type.Optional(DateQuerySchema),
 });
 
 const OverviewSessionsQuerySchema = Type.Object({
@@ -65,7 +69,7 @@ const OverviewSessionsQuerySchema = Type.Object({
     Type.Literal("stale"),
   ])),
   entityName: Type.Optional(Type.String()),
-  from: Type.Optional(Type.String()),
+  from: Type.Optional(DateQuerySchema),
   intentCode: Type.Optional(Type.String()),
   keyword: Type.Optional(Type.String()),
   page: Type.Optional(Type.Number()),
@@ -83,7 +87,7 @@ const OverviewSessionsQuerySchema = Type.Object({
     Type.Literal("unknown"),
   ])),
   tagCode: Type.Optional(Type.String()),
-  to: Type.Optional(Type.String()),
+  to: Type.Optional(DateQuerySchema),
 });
 
 const BusinessRelatedSessionsQuerySchema = Type.Intersect([
@@ -302,7 +306,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).getSettings(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
         ),
       );
     },
@@ -320,7 +324,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).updateSessionizationSettings(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.body,
         ),
       );
@@ -339,7 +343,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).updateAnalysisPolicy(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.body,
         ),
       );
@@ -358,7 +362,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).updateFeatureConfig(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.body,
         ),
       );
@@ -377,7 +381,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).createIntentConfig(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.body,
         ),
       );
@@ -397,7 +401,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).updateIntentConfig(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
           request.body,
         ),
@@ -418,7 +422,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).updateIntentConfigStatus(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
           request.body,
         ),
@@ -438,7 +442,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).deleteIntentConfig(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
         ),
       );
@@ -457,7 +461,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).createLabelConfig(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.body,
         ),
       );
@@ -477,7 +481,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).updateLabelConfig(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
           request.body,
         ),
@@ -498,7 +502,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).updateLabelConfigStatus(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
           request.body,
         ),
@@ -518,7 +522,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).deleteLabelConfig(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
         ),
       );
@@ -537,7 +541,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).createQaRuleConfig(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.body,
         ),
       );
@@ -557,7 +561,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).updateQaRuleConfig(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
           request.body,
         ),
@@ -578,7 +582,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).updateQaRuleConfigStatus(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
           request.body,
         ),
@@ -598,7 +602,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).deleteQaRuleConfig(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
         ),
       );
@@ -617,7 +621,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).createEntityDictionaryItem(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.body,
         ),
       );
@@ -637,7 +641,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).updateEntityDictionaryItem(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
           request.body,
         ),
@@ -658,7 +662,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).updateEntityDictionaryItemStatus(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
           request.body,
         ),
@@ -678,7 +682,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
       return apiSuccess(
         await createInsightsService(app).deleteEntityDictionaryItem(
           await getUidScope(app, request),
-          request.user?.roles?.[0] as AccountRole | undefined,
+          getAccountRole(request),
           request.params.configId,
         ),
       );
@@ -789,6 +793,28 @@ function createInsightsService(app: FastifyInstance) {
   return new InsightsService(new InsightsRepository(app.db));
 }
 
+function getAccountRole(request: FastifyRequest): AccountRole | undefined {
+  const roles = request.user?.roles ?? [];
+
+  if (roles.includes("owner")) {
+    return "owner";
+  }
+
+  if (roles.includes("admin")) {
+    return "admin";
+  }
+
+  if (roles.includes("operator")) {
+    return "operator";
+  }
+
+  if (roles.includes("viewer")) {
+    return "viewer";
+  }
+
+  return undefined;
+}
+
 async function getUidScope(
   app: FastifyInstance,
   request: FastifyRequest,
@@ -802,7 +828,7 @@ async function getUidScope(
   const row = await app.db
     .selectFrom("xy_wap_embed_sub_user")
     .select(["uid"])
-    .where("id", "=", Number(subUserId))
+    .where("id", "=", subUserId as never)
     .where("status", "=", 1)
     .executeTakeFirst();
 

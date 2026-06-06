@@ -738,6 +738,29 @@ describe("InsightsWorkerService", () => {
       .toHaveBeenCalledWith("cleanup-job-1");
   });
 
+  it("fails cleanup-disabled-insights jobs when cleanup exceeds the batch safety limit", async () => {
+    const repository = createRepository({
+      claimNextCleanupDisabledInsightsJob: vi.fn(async () => ({
+        enableEpoch: 1_780_243_000_000,
+        jobId: "cleanup-job-1",
+        uid: 9001,
+      })),
+      closeDisabledOpenSessions: vi.fn(async () => 2),
+      getActiveFeatureConfigs: vi.fn(async () => []),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 2 });
+
+    await service.runOnce();
+
+    expect(repository.markCleanupDisabledInsightsJobFailed).toHaveBeenCalledWith(
+      "cleanup-job-1",
+      expect.objectContaining({
+        message: expect.stringContaining("exceeded"),
+      }),
+    );
+    expect(repository.markCleanupDisabledInsightsJobSucceeded).not.toHaveBeenCalled();
+  });
+
   it("skips stale cleanup-disabled-insights jobs after insights are re-enabled", async () => {
     const repository = createRepository({
       claimNextCleanupDisabledInsightsJob: vi.fn(async () => ({
@@ -826,6 +849,43 @@ describe("InsightsWorkerService", () => {
     expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
     expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
     expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith("rescan-job-1");
+  });
+
+  it("fails historical rescan jobs when the source cursor stops advancing", async () => {
+    const message = {
+      chatType: 1,
+      content: JSON.stringify({ content: "历史消息" }),
+      fromType: 2,
+      id: "8001",
+      msgtime: 1_780_000_000_000,
+      msgtype: "text",
+      platform: 5,
+      uid: 9001,
+      thirdExternalId: "external-1",
+      thirdGroupId: "",
+      thirdUserId: "user-1",
+    };
+    const repository = createRepository({
+      claimNextSyncMessagesJob: vi.fn(async () => ({
+        analysisScope: "classification",
+        cursorMsgtime: 1_780_000_000_000,
+        jobId: "rescan-job-1",
+        rescanTaskId: "9901",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => [message]),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 1 });
+
+    await service.runOnce();
+
+    expect(repository.markSyncMessagesJobFailed).toHaveBeenCalledWith(
+      "rescan-job-1",
+      expect.objectContaining({
+        message: expect.stringContaining("cursor did not advance"),
+      }),
+    );
+    expect(repository.markSyncMessagesJobSucceeded).not.toHaveBeenCalled();
   });
 
   it("reuses existing logical sessions during historical rescan instead of creating duplicate sessions", async () => {

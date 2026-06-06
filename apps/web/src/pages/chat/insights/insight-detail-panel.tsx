@@ -31,11 +31,15 @@ import { formatInsightTime } from "./insights-utils";
 
 export function InsightDetailPanel({
   detail,
+  error,
   isOpen,
+  isLoading,
   onOpenChange,
 }: {
   detail?: InsightDetailResponse;
+  error?: Error;
   isOpen: boolean;
+  isLoading?: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const evidenceRecordMessages = detail
@@ -180,7 +184,7 @@ export function InsightDetailPanel({
             </div>
           ) : (
             <div className="px-6 py-8 text-sm text-muted-foreground">
-              正在加载详情
+              {isLoading ? "正在加载洞察详情" : error ? "洞察详情加载失败" : "暂无洞察详情"}
             </div>
           )}
       </SheetContent>

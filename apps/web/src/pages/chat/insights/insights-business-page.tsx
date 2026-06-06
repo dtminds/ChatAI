@@ -111,6 +111,7 @@ const businessRelatedSessionsPageSize = 20;
 export function InsightsBusinessPage() {
   const [activeDimension, setActiveDimension] = useState<BusinessDimension>("intent");
   const [business, setBusiness] = useState<InsightsBusinessResponse>();
+  const [businessError, setBusinessError] = useState(false);
   const [from, setFrom] = useState(() => getRecentDateRange(7).from);
   const [isRelatedSessionsLoading, setIsRelatedSessionsLoading] = useState(false);
   const [relatedSessionsPage, setRelatedSessionsPage] = useState<InsightBusinessRelatedSessionsResponse>();
@@ -127,13 +128,20 @@ export function InsightsBusinessPage() {
       to: toBoundaryDate(to, "end"),
     };
 
+    setBusinessError(false);
     void getInsightBusiness(query, { signal: controller.signal })
       .then((businessResponse) => {
         if (!controller.signal.aborted) {
           setBusiness(businessResponse);
+          setBusinessError(false);
         }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setBusiness(undefined);
+          setBusinessError(true);
+        }
+      });
 
     return () => {
       controller.abort();
@@ -222,6 +230,12 @@ export function InsightsBusinessPage() {
           </div>
         </section>
 
+        {businessError ? (
+          <div className="rounded-[8px] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            数据加载失败
+          </div>
+        ) : null}
+
         <DimensionMetricStrip
             activeDimension={activeDimension}
             onChangeDimension={setActiveDimension}
@@ -257,7 +271,9 @@ export function InsightsBusinessPage() {
 
       <InsightDetailPanel
         detail={detail.detail}
+        error={detail.error}
         isOpen={detail.isOpen}
+        isLoading={detail.isLoading}
         onOpenChange={detail.onOpenChange}
       />
     </InsightsLayout>
@@ -689,10 +705,10 @@ function RelatedSessionsPanel({
                 </TableCell>
                 <TableCell className="max-w-[320px] py-4">
                   <div className="truncate text-sm font-medium text-foreground">
-                    {session.summaryCustomerIntent || "暂无意图"}
+                    {session.summaryCustomerIntent || <span className="text-muted-foreground/50">—</span>}
                   </div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">
-                    {session.problemSummary || "暂无客户问题摘要"}
+                    {session.problemSummary || <span className="text-muted-foreground/50">—</span>}
                   </div>
                 </TableCell>
                 <TableCell className="py-4">

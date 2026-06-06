@@ -12,6 +12,9 @@ type WorkerLogger = {
   info(payload: Record<string, unknown>, message: string): void;
 };
 
+const CLEANUP_DISABLED_INSIGHTS_MAX_BATCHES = 1_000;
+const SYNC_MESSAGES_MAX_BATCHES = 10_000;
+
 export type InsightWorkerCursor = {
   cursorAuditId: number;
   cursorMsgtime: number;
@@ -566,9 +569,10 @@ export class InsightsWorkerService {
       let cursorMsgtime = job.cursorMsgtime;
       let scannedMessages = 0;
       let sessionizedMessages = 0;
+      let scanCompleted = false;
       const sessionsToReanalyze = new Map<string, number>();
 
-      while (true) {
+      for (let batchIndex = 0; batchIndex < SYNC_MESSAGES_MAX_BATCHES; batchIndex += 1) {
         const messages = await this.repository.listIncrementalMessages({
           cursorAuditId,
           cursorMsgtime,
@@ -603,11 +607,29 @@ export class InsightsWorkerService {
         const lastMessage = messages.at(-1);
 
         if (!lastMessage || messages.length < this.batchSize) {
+          scanCompleted = true;
           break;
         }
 
-        cursorAuditId = Number(lastMessage.id);
-        cursorMsgtime = lastMessage.msgtime;
+        const nextCursorAuditId = Number(lastMessage.id);
+        const nextCursorMsgtime = lastMessage.msgtime;
+
+        if (
+          nextCursorMsgtime < cursorMsgtime
+          || (
+            nextCursorMsgtime === cursorMsgtime
+            && nextCursorAuditId <= cursorAuditId
+          )
+        ) {
+          throw new Error("sync_messages cursor did not advance");
+        }
+
+        cursorAuditId = nextCursorAuditId;
+        cursorMsgtime = nextCursorMsgtime;
+      }
+
+      if (!scanCompleted) {
+        throw new Error("sync_messages exceeded batch safety limit");
       }
 
       for (const [sessionId, uid] of sessionsToReanalyze) {
@@ -668,7 +690,9 @@ export class InsightsWorkerService {
         return;
       }
 
-      while (true) {
+      let cleanupCompleted = false;
+
+      for (let batchIndex = 0; batchIndex < CLEANUP_DISABLED_INSIGHTS_MAX_BATCHES; batchIndex += 1) {
         const closedSessions = await this.repository.closeDisabledOpenSessions({
           endedAt: Date.now(),
           limit: this.batchSize,
@@ -676,8 +700,13 @@ export class InsightsWorkerService {
         });
 
         if (closedSessions < this.batchSize) {
+          cleanupCompleted = true;
           break;
         }
+      }
+
+      if (!cleanupCompleted) {
+        throw new Error("cleanup_disabled_insights exceeded batch safety limit");
       }
 
       await this.repository.markCleanupDisabledInsightsJobSucceeded(job.jobId);

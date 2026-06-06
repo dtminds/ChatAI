@@ -236,7 +236,9 @@ export function InsightsQualityPage() {
 
       <InsightDetailPanel
         detail={detail.detail}
+        error={detail.error}
         isOpen={detail.isOpen}
+        isLoading={detail.isLoading}
         onOpenChange={detail.onOpenChange}
       />
     </InsightsLayout>

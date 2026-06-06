@@ -230,6 +230,183 @@ function createDeferred<T = void>() {
   return { promise, reject, resolve };
 }
 
+function createMockInsightDetail() {
+  return {
+    actionItems: [],
+    analysisStatus: "ready",
+    currentSnapshotId: "7001",
+    entities: [
+      {
+        entityId: "sku-1",
+        entityName: "白色羽绒服",
+        entityType: "product",
+        evidenceMessageIds: ["9002"],
+        sentiment: "negative",
+      },
+    ],
+    evidenceItems: [
+      {
+        dimensionRecordId: "7002",
+        dimensionType: "problem_resolution",
+        evidenceRole: "customer_problem",
+        messageId: "9002",
+        reason: "客户明确反馈物流不更新",
+      },
+      {
+        dimensionRecordId: "7002",
+        dimensionType: "problem_resolution",
+        evidenceRole: "agent_solution",
+        messageId: "9001",
+        reason: "客服表示会催快递",
+      },
+    ],
+    evidenceMessages: [
+      {
+        contentText: "帮您催一下快递",
+        contentType: "text",
+        messageId: "9001",
+        msgtime: 1_780_244_000_000,
+        senderName: "客服一号",
+        senderRole: "agent",
+      },
+      {
+        contentText: "还没收到货，物流也不更新",
+        contentType: "text",
+        messageId: "9002",
+        msgtime: 1_780_244_100_000,
+        senderName: "张三",
+        senderRole: "customer",
+      },
+    ],
+    evidenceMessageRecords: [
+      {
+        content: { text: "帮您催一下快递" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_000_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9001",
+        seatId: "seat-1",
+        senderAvatar: "https://example.com/agent-1.png",
+        senderName: "客服一号",
+        senderType: "agent",
+        seq: 9001,
+        status: "sent",
+      },
+      {
+        content: { text: "还没收到货，物流也不更新" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_100_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9002",
+        seatId: "seat-1",
+        senderAvatar: "https://example.com/customer-1.png",
+        senderName: "张三",
+        senderType: "customer",
+        seq: 9002,
+        status: "sent",
+      },
+    ],
+    sessionMessageRecords: [
+      {
+        content: { text: "帮您催一下快递" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_000_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9001",
+        seatId: "seat-1",
+        senderAvatar: "https://example.com/agent-1.png",
+        senderName: "客服一号",
+        senderType: "agent",
+        seq: 9001,
+        status: "sent",
+      },
+      {
+        content: { text: "还没收到货，物流也不更新" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_100_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9002",
+        seatId: "seat-1",
+        senderAvatar: "https://example.com/customer-1.png",
+        senderName: "张三",
+        senderType: "customer",
+        seq: 9002,
+        status: "sent",
+      },
+    ],
+    faqCandidates: [
+      {
+        answerHint: "先核实物流停滞节点，再告知预计回复时间",
+        evidenceMessageIds: ["9002"],
+        question: "物流停滞怎么处理",
+        status: "candidate",
+      },
+    ],
+    intents: [
+      {
+        confidence: 0.84,
+        evidenceMessageIds: ["9002"],
+        intentCode: "logistics_delay",
+        intentLabel: "物流异常",
+      },
+    ],
+    problemResolution: {
+      confidence: 0.82,
+      evidenceMessageIds: ["9001", "9002"],
+      problemDetected: true,
+      problemSummary: "客户反馈物流异常",
+      resolutionStatus: "unresolved",
+      unresolvedReason: "售后/物流/退款进度未确认",
+    },
+    qaFindings: [
+      {
+        evidenceMessageIds: ["9002"],
+        passed: false,
+        reason: "未确认物流进展",
+        ruleCode: "problem_resolution",
+      },
+    ],
+    sentiment: [
+      {
+        confidence: 0.82,
+        evidenceMessageIds: ["9002"],
+        polarity: "negative",
+        reason: "客户明确表达物流不更新的不满",
+      },
+    ],
+    session: {
+      agentAvatarUrl: "https://example.com/agent-1.png",
+      agentName: "客服一号",
+      conversationId: "301",
+      customerAvatarUrl: "https://example.com/customer-1.png",
+      customerName: "张三",
+      endedAt: 1_780_245_000_000,
+      generatedAt: 1_780_245_100_000,
+      phase: "final",
+      sessionId: "501",
+      startedAt: 1_780_243_200_000,
+    },
+    summary: {
+      customerIntent: "查物流",
+      followUp: "确认快递状态",
+      processSummary: "客服要求客户等待",
+      resultSummary: "未确认物流进展",
+    },
+    tags: [
+      {
+        confidence: 0.91,
+        evidenceMessageIds: ["9002"],
+        tagCode: "logistics_issue",
+        tagName: "物流异常",
+      },
+    ],
+  };
+}
+
 function installInsightMocks() {
   serviceMocks.getInsightOverview.mockResolvedValue({
     actionItemsOpen: 3,
@@ -614,178 +791,7 @@ function installInsightMocks() {
     ],
     total: 1,
   });
-  serviceMocks.getInsightDetail.mockResolvedValue({
-    actionItems: [],
-    analysisStatus: "ready",
-    currentSnapshotId: "7001",
-    entities: [
-      {
-        entityId: "sku-1",
-        entityName: "白色羽绒服",
-        entityType: "product",
-        evidenceMessageIds: ["9002"],
-        sentiment: "negative",
-      },
-    ],
-    evidenceItems: [
-      {
-        dimensionType: "problem_resolution",
-        evidenceRole: "customer_problem",
-        messageId: "9002",
-        reason: "客户明确反馈物流不更新",
-      },
-      {
-        dimensionType: "problem_resolution",
-        evidenceRole: "unresolved_signal",
-        messageId: "9002",
-        reason: "当前会话未确认物流处理结果",
-      },
-    ],
-    evidenceMessages: [
-      {
-        contentText: "帮您催一下快递",
-        contentType: "text",
-        messageId: "9001",
-        msgtime: 1_780_244_000_000,
-        senderName: "客服一号",
-        senderRole: "agent",
-      },
-      {
-        contentText: "还没收到货，物流也不更新",
-        contentType: "text",
-        messageId: "9002",
-        msgtime: 1_780_244_100_000,
-        senderName: "张三",
-        senderRole: "customer",
-      },
-    ],
-    evidenceMessageRecords: [
-      {
-        content: { text: "帮您催一下快递" },
-        contentType: "text",
-        conversationId: "301",
-        createdAt: 1_780_244_000_000,
-        customerId: "customer-301",
-        messageId: "external-msg-9001",
-        seatId: "seat-1",
-        senderAvatar: "https://example.com/agent-1.png",
-        senderName: "客服一号",
-        senderType: "agent",
-        seq: 9001,
-        status: "sent",
-      },
-      {
-        content: { text: "还没收到货，物流也不更新" },
-        contentType: "text",
-        conversationId: "301",
-        createdAt: 1_780_244_100_000,
-        customerId: "customer-301",
-        messageId: "external-msg-9002",
-        seatId: "seat-1",
-        senderAvatar: "https://example.com/customer-1.png",
-        senderName: "张三",
-        senderType: "customer",
-        seq: 9002,
-        status: "sent",
-      },
-    ],
-    sessionMessageRecords: [
-      {
-        content: { text: "帮您催一下快递" },
-        contentType: "text",
-        conversationId: "301",
-        createdAt: 1_780_244_000_000,
-        customerId: "customer-301",
-        messageId: "external-msg-9001",
-        seatId: "seat-1",
-        senderAvatar: "https://example.com/agent-1.png",
-        senderName: "客服一号",
-        senderType: "agent",
-        seq: 9001,
-        status: "sent",
-      },
-      {
-        content: { text: "还没收到货，物流也不更新" },
-        contentType: "text",
-        conversationId: "301",
-        createdAt: 1_780_244_100_000,
-        customerId: "customer-301",
-        messageId: "external-msg-9002",
-        seatId: "seat-1",
-        senderAvatar: "https://example.com/customer-1.png",
-        senderName: "张三",
-        senderType: "customer",
-        seq: 9002,
-        status: "sent",
-      },
-    ],
-    faqCandidates: [
-      {
-        answerHint: "先核实物流停滞节点，再告知预计回复时间",
-        evidenceMessageIds: ["9002"],
-        question: "物流停滞怎么处理",
-        status: "candidate",
-      },
-    ],
-    intents: [
-      {
-        confidence: 0.84,
-        evidenceMessageIds: ["9002"],
-        intentCode: "logistics_delay",
-        intentLabel: "物流异常",
-      },
-    ],
-    problemResolution: {
-      confidence: 0.82,
-      evidenceMessageIds: ["9001", "9002"],
-      problemDetected: true,
-      problemSummary: "客户反馈物流异常",
-      resolutionStatus: "unresolved",
-      unresolvedReason: "售后/物流/退款进度未确认",
-    },
-    qaFindings: [
-      {
-        evidenceMessageIds: ["9002"],
-        passed: false,
-        reason: "未确认物流进展",
-        ruleCode: "problem_resolution",
-      },
-    ],
-    sentiment: [
-      {
-        confidence: 0.82,
-        evidenceMessageIds: ["9002"],
-        polarity: "negative",
-        reason: "客户明确表达物流不更新的不满",
-      },
-    ],
-    session: {
-      agentAvatarUrl: "https://example.com/agent-1.png",
-      agentName: "客服一号",
-      conversationId: "301",
-      customerAvatarUrl: "https://example.com/customer-1.png",
-      customerName: "张三",
-      endedAt: 1_780_245_000_000,
-      generatedAt: 1_780_245_100_000,
-      phase: "final",
-      sessionId: "501",
-      startedAt: 1_780_243_200_000,
-    },
-    summary: {
-      customerIntent: "查物流",
-      followUp: "确认快递状态",
-      processSummary: "客服要求客户等待",
-      resultSummary: "未确认物流进展",
-    },
-    tags: [
-      {
-        confidence: 0.91,
-        evidenceMessageIds: ["9002"],
-        tagCode: "logistics_issue",
-        tagName: "物流异常",
-      },
-    ],
-  });
+  serviceMocks.getInsightDetail.mockResolvedValue(createMockInsightDetail());
   serviceMocks.getInsightMessageContext.mockResolvedValue({
     contextAfter: 30,
     contextBefore: 30,
@@ -1072,6 +1078,110 @@ describe("conversation insights pages", () => {
     expect(screen.queryByRole("link", { name: "跳转聊天" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "查看上下文" })).not.toBeInTheDocument();
     expect(serviceMocks.getInsightMessageContext).not.toHaveBeenCalled();
+  });
+
+  it("shows insight detail loading and error states", async () => {
+    const detailRequest = createDeferred<ReturnType<typeof createMockInsightDetail>>();
+    serviceMocks.getInsightDetail.mockReturnValueOnce(detailRequest.promise);
+
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
+
+    expect(await screen.findByText("正在加载洞察详情")).toBeInTheDocument();
+    detailRequest.reject(new Error("detail failed"));
+    expect(await screen.findByText("洞察详情加载失败")).toBeInTheDocument();
+  });
+
+  it("keeps the latest insight detail request when users switch sessions quickly", async () => {
+    const baseDetail = createMockInsightDetail();
+    const slowDetail = createDeferred<typeof baseDetail>();
+    const latestDetail = {
+      ...baseDetail,
+      problemResolution: {
+        ...baseDetail.problemResolution,
+        problemSummary: "第二个会话的问题",
+      },
+      session: {
+        ...baseDetail.session,
+        sessionId: "502",
+      },
+    };
+    serviceMocks.getInsightOverviewSessions.mockResolvedValue({
+      items: [
+        {
+          agentAvatarUrl: "https://example.com/agent-1.png",
+          agentName: "客服一号",
+          analysisStatus: "ready",
+          conversationId: "301",
+          customerAvatarUrl: "https://example.com/customer-1.png",
+          customerName: "张三",
+          generatedAt: 1_780_245_100_000,
+          lastMessageAt: 1_780_244_950_000,
+          messageCount: 8,
+          phase: "final",
+          problemSummary: "第一个会话的问题",
+          resolutionStatus: "unresolved",
+          sessionId: "501",
+          startedAt: 1_780_243_200_000,
+          unresolvedReason: "待确认",
+        },
+        {
+          agentAvatarUrl: "https://example.com/agent-1.png",
+          agentName: "客服二号",
+          analysisStatus: "ready",
+          conversationId: "302",
+          customerAvatarUrl: "https://example.com/customer-2.png",
+          customerName: "李四",
+          generatedAt: 1_780_245_200_000,
+          lastMessageAt: 1_780_244_980_000,
+          messageCount: 6,
+          phase: "final",
+          problemSummary: "第二个会话的问题",
+          resolutionStatus: "resolved",
+          sessionId: "502",
+          startedAt: 1_780_243_500_000,
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+      total: 2,
+      totalPages: 1,
+    });
+    serviceMocks.getInsightDetail
+      .mockReturnValueOnce(slowDetail.promise)
+      .mockResolvedValueOnce(latestDetail);
+
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    const detailButtons = await screen.findAllByRole("button", { name: /查看详情/ });
+    await userEvent.click(detailButtons[0]);
+    await userEvent.click(await screen.findByRole("button", { name: "关闭" }));
+    await userEvent.click(detailButtons[1]);
+    const detailDialog = await screen.findByRole("dialog", { name: "洞察详情" });
+    expect(await within(detailDialog).findByText("第二个会话的问题")).toBeInTheDocument();
+
+    slowDetail.resolve(baseDetail);
+    await waitFor(() => {
+      expect(within(detailDialog).queryByText("第一个会话的问题")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows request failure states on overview and business pages", async () => {
+    serviceMocks.getInsightOverview.mockRejectedValueOnce(new Error("overview failed"));
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByText("数据加载失败")).toBeInTheDocument();
+
+    cleanup();
+    mockSession("admin");
+    installInsightMocks();
+    serviceMocks.getInsightBusiness.mockRejectedValueOnce(new Error("business failed"));
+    renderRoute("/chat/insights/business");
+
+    expect(await screen.findByText("数据加载失败")).toBeInTheDocument();
   });
 
   it("applies date range presets to insight overview queries", async () => {

@@ -204,7 +204,6 @@ export function InsightsSettingsPage() {
   const [rescanDialogOpen, setRescanDialogOpen] = useState(false);
   const [rescanFrom, setRescanFrom] = useState(() => toDateTimeLocalValue(Date.now() - 24 * 60 * 60 * 1000));
   const [rescanScope, setRescanScope] = useState<InsightRescanAnalysisScope>("classification");
-  const [rescanState, setRescanState] = useState<string>();
   const [rescanTasks, setRescanTasks] = useState<InsightRescanTask[]>([]);
   const [settings, setSettings] = useState<InsightSettingsResponse>();
   const [settingsTab, setSettingsTab] = useState("policy");
@@ -446,13 +445,11 @@ export function InsightsSettingsPage() {
     setPendingKey("rescan");
 
     try {
-      const result = await createInsightRescanJob({
+      await createInsightRescanJob({
         analysisScope: rescanScope,
         from: new Date(rescanFrom).toISOString(),
       });
-      const tasks = await getInsightRescanTasks();
-      setRescanTasks(tasks.items);
-      setRescanState(`已创建任务 ${result.taskId}`);
+      await getInsightRescanTasks().then((tasks) => setRescanTasks(tasks.items));
       setRescanDialogOpen(false);
       toast.success("历史重刷任务已创建");
     } catch (error) {
@@ -620,7 +617,6 @@ export function InsightsSettingsPage() {
             <RescanPanel
               disabled={pendingKey === "rescan"}
               onCreateClick={() => setRescanDialogOpen(true)}
-              state={rescanState}
               tasks={rescanTasks}
             />
           </TabsContent>
@@ -1652,12 +1648,10 @@ function RowActions({
 function RescanPanel({
   disabled,
   onCreateClick,
-  state,
   tasks,
 }: {
   disabled?: boolean;
   onCreateClick: () => void;
-  state?: string;
   tasks: InsightRescanTask[];
 }) {
   return (
@@ -1667,7 +1661,6 @@ function RescanPanel({
           从指定时间重新生成洞察结果，适合规则、标签、实体词库或意图配置调整后的数据修正
         </p>
         <div className="flex shrink-0 items-center gap-2">
-          {state ? <span className="text-xs text-muted-foreground">{state}</span> : null}
           <Button className="h-9" disabled={disabled} onClick={onCreateClick}>
             新建重刷任务
           </Button>

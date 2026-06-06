@@ -297,6 +297,70 @@ describe("insights routes", () => {
     });
   });
 
+  it("allows settings access when an admin role is not the first role", async () => {
+    const admin = await createInsightsApp("operator", {
+      roles: ["operator", "admin"],
+    });
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "GET",
+      url: "/api/server/insights/settings",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("looks up bigint sub user ids without coercing them through Number", async () => {
+    const subUserId = "9007199254740993";
+    const operator = await createInsightsApp("operator", {
+      subUserId,
+    });
+
+    const response = await operator.app.inject({
+      headers: { authorization: operator.authorization },
+      method: "GET",
+      url: "/api/server/insights/overview",
+    });
+
+    await operator.app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(operator.db.selectBuilders.some((builder) =>
+      builder.wheres.some((where) => where[0] === "id" && where[2] === subUserId)
+    )).toBe(true);
+  });
+
+  it("accepts offset date-time insight filters", async () => {
+    const operator = await createInsightsApp("operator");
+
+    const response = await operator.app.inject({
+      headers: { authorization: operator.authorization },
+      method: "GET",
+      url: "/api/server/insights/overview?from=2026-05-31T00:00:00.000%2B08:00&to=2026-06-06T23:59:59.999%2B08:00",
+    });
+
+    await operator.app.close();
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("rejects malformed insight date filters before querying data", async () => {
+    const operator = await createInsightsApp("operator");
+
+    const response = await operator.app.inject({
+      headers: { authorization: operator.authorization },
+      method: "GET",
+      url: "/api/server/insights/overview?from=not-a-date&to=2026-06-30",
+    });
+
+    await operator.app.close();
+
+    expect(response.statusCode).toBe(400);
+  });
+
   it("allows admins to update tenant insight feature switches", async () => {
     const admin = await createInsightsApp("admin");
 
@@ -502,16 +566,19 @@ async function createInsightsApp(
     intentConfigRows?: unknown[];
     labelConfigRows?: unknown[];
     qaRuleConfigRows?: unknown[];
+    roles?: Array<"admin" | "operator" | "owner" | "viewer">;
+    subUserId?: string;
   } = {},
 ) {
   const app = await buildMockedApp();
+  const subUserId = options.subUserId ?? "1";
   const token = app.jwt.sign({
-    roles: [role],
+    roles: options.roles ?? [role],
     sessionId: "501",
     sessionVersion: 1,
-    subUserId: "1",
+    subUserId,
   });
-  const db = createInsightsDbMock(options);
+  const db = createInsightsDbMock({ ...options, subUserId });
 
   app.db = db as never;
 
@@ -528,6 +595,7 @@ function createInsightsDbMock(options: {
   intentConfigRows?: unknown[];
   labelConfigRows?: unknown[];
   qaRuleConfigRows?: unknown[];
+  subUserId?: string;
 } = {}) {
   const state = {
     insertedJob: undefined as Record<string, unknown> | undefined,
@@ -639,7 +707,7 @@ function createInsightsDbMock(options: {
             refresh_token_hash: "hash",
             revoked_at: null,
             session_version: 1,
-            sub_user_id: "1",
+            sub_user_id: options.subUserId ?? "1",
           },
         ]);
       }
@@ -647,7 +715,7 @@ function createInsightsDbMock(options: {
       if (table === "xy_wap_embed_sub_user") {
         return createBuilder([
           {
-            id: 1,
+            id: options.subUserId ?? 1,
             platform: 5,
             status: 1,
             uid: 9001,

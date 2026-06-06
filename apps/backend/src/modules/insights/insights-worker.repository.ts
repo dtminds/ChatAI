@@ -1803,11 +1803,35 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       return;
     }
 
+    const uniqueRows = dedupeEvidenceRows(rows);
+
     await this.db
       .insertInto("xy_wap_embed_insight_evidence")
-      .values(rows)
+      .values(uniqueRows)
       .executeTakeFirst();
   }
+}
+
+function dedupeEvidenceRows(rows: EvidenceInsertRow[]) {
+  const uniqueRows = new Map<string, EvidenceInsertRow>();
+
+  for (const row of rows) {
+    const key = [
+      row.uid,
+      row.snapshot_id,
+      row.dimension_type,
+      row.dimension_record_id ?? "",
+      row.session_id,
+      row.source_message_id,
+      row.evidence_role,
+    ].join(":");
+
+    if (!uniqueRows.has(key)) {
+      uniqueRows.set(key, row);
+    }
+  }
+
+  return Array.from(uniqueRows.values());
 }
 
 function parseNumber(value: Date | number | string | undefined) {

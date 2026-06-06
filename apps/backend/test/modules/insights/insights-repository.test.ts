@@ -1546,6 +1546,81 @@ describe("MysqlInsightWorkerRepository", () => {
     ]));
   });
 
+  it("deduplicates repeated evidence rows before inserting analysis results", async () => {
+    const evidenceValues: unknown[] = [];
+    let insertId = 7000;
+    const db = {
+      insertInto: vi.fn((table: string) => createInsertBuilder(
+        async () => ({ insertId: ++insertId }),
+        {
+          onValues: (values) => {
+            if (table === "xy_wap_embed_insight_evidence") {
+              evidenceValues.push(...(Array.isArray(values) ? values : [values]));
+            }
+          },
+          table,
+        },
+      )),
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_logical_session") {
+          return createSelectBuilder([{ conversation_id: 301 }], table);
+        }
+
+        return createSelectBuilder([], table);
+      }),
+      updateTable: vi.fn(() => createUpdateBuilder(async () => ({ numAffectedRows: 1n }))),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.saveAnalysisResult({
+      job: {
+        analysisScope: "all",
+        idempotencyKey: "analysis:501",
+        jobId: "9001",
+        jobType: "analyze_session",
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      output: {
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.9,
+          evidence: [],
+          evidenceMessageIds: [
+            { evidenceRole: "customer_problem", messageId: "9200", reason: "客户反馈物流异常" },
+            { evidenceRole: "customer_problem", messageId: "9200", reason: "客户反馈物流异常" },
+          ],
+          problemDetected: true,
+          problemSummary: "物流延迟",
+          resolutionStatus: "unresolved",
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          confidence: 0.9,
+          customerIntent: "查物流",
+          processSummary: "客户咨询物流",
+          resultSummary: "待跟进",
+        },
+        tags: [],
+      },
+      runId: "8001",
+      sourceMessageHighWatermark: "9200",
+      validationWarnings: [],
+    });
+
+    expect(evidenceValues).toHaveLength(1);
+    expect(evidenceValues[0]).toEqual(expect.objectContaining({
+      dimension_type: "problem_resolution",
+      evidence_role: "customer_problem",
+      source_message_id: 9200,
+    }));
+  });
+
   it("scopes logical session count updates to the current uid", async () => {
     let logicalSessionUpdate: UpdateBuilderStub | undefined;
     const db = {

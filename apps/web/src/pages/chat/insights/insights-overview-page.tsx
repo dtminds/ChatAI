@@ -126,6 +126,7 @@ const analysisStatusFilterOptions = [
 
 export function InsightsOverviewPage() {
   const [overview, setOverview] = useState<InsightsOverviewResponse>();
+  const [overviewError, setOverviewError] = useState(false);
   const [sessionsPage, setSessionsPage] = useState<InsightOverviewSessionsResponse>();
   const [settings, setSettings] = useState<InsightSettingsResponse>();
   const [activeMetric, setActiveMetric] = useState<TrendMetric>("logicalSessions");
@@ -180,16 +181,19 @@ export function InsightsOverviewPage() {
   useEffect(() => {
     let isActive = true;
 
+    setOverviewError(false);
     void getInsightOverview({
       from: toBoundaryDate(from, "start"),
       to: toBoundaryDate(to, "end"),
     }).then((response) => {
       if (isActive) {
         setOverview(response);
+        setOverviewError(false);
       }
     }).catch(() => {
       if (isActive) {
         setOverview(undefined);
+        setOverviewError(true);
       }
     });
 
@@ -261,6 +265,11 @@ export function InsightsOverviewPage() {
           overview={overview}
           to={to}
         />
+        {overviewError ? (
+          <div className="rounded-[8px] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            数据加载失败
+          </div>
+        ) : null}
         <MetricStrip
           activeMetric={activeMetric}
           onMetricChange={setActiveMetric}
@@ -302,7 +311,9 @@ export function InsightsOverviewPage() {
 
       <InsightDetailPanel
         detail={detail.detail}
+        error={detail.error}
         isOpen={detail.isOpen}
+        isLoading={detail.isLoading}
         onOpenChange={detail.onOpenChange}
       />
     </InsightsLayout>
@@ -765,10 +776,10 @@ function SessionTableCard({
                   </TableCell>
                   <TableCell className="max-w-[300px] py-4">
                     <div className="truncate text-xs font-medium text-foreground">
-                      {row.summaryCustomerIntent || "暂无诉求"}
+                      {row.summaryCustomerIntent || <span className="text-muted-foreground/50">—</span>}
                     </div>
                     <div className="mt-1 truncate text-xs text-muted-foreground">
-                      {row.problemSummary || "暂无客户问题摘要"}
+                      {row.problemSummary || <span className="text-muted-foreground/50">—</span>}
                     </div>
                   </TableCell>
                   <TableCell className="py-4">

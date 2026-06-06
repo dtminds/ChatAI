@@ -122,20 +122,25 @@ export function InsightsQualityPage() {
             to={dateRange.to}
           />
         </div>
-        <section className="rounded-[8px] border bg-background p-5">
-          <div className="mb-4">
-            <h2 className="text-base font-semibold">质检概览</h2>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <Stat label="总会话数" value={overview?.totalSessions} />
-            <Stat label="质检率" value={overview?.inspectionRate} format="percent" />
-            <Stat label="通过率" value={overview?.passRate} format="percent" />
-          </div>
-          <div className="mt-5 border-t pt-4">
-            <h3 className="mb-4 text-sm font-medium text-muted-foreground">质检不通过项分布</h3>
+        <div
+          className="grid gap-5 lg:grid-cols-2"
+          data-testid="quality-overview-content"
+        >
+          <section aria-label="质检指标" className="min-w-0 rounded-[8px] border bg-background p-5">
+            <h3 className="mb-3 text-sm font-medium text-muted-foreground">质检指标</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Stat label="会话数" value={overview?.totalSessions} />
+              <Stat label="分析会话数" value={overview?.analyzedSessions} />
+              <Stat label="质检覆盖率" value={overview?.inspectionRate} format="percent" />
+              <Stat label="质检通过率" value={overview?.passRate} format="percent" />
+            </div>
+          </section>
+
+          <section aria-label="质检分布" className="min-w-0 rounded-[8px] border bg-background p-5">
+            <h3 className="mb-3 text-sm font-medium text-muted-foreground">质检分布</h3>
             {(overview?.ruleDistribution?.length ?? 0) > 0 ? (
               <div className="flex flex-col items-center gap-4 sm:flex-row">
-                <div className="relative size-[200px] shrink-0">
+                <div className="relative size-[180px] shrink-0">
                   <ResponsiveContainer height="100%" width="100%">
                     <PieChart>
                       <Pie
@@ -179,8 +184,8 @@ export function InsightsQualityPage() {
             ) : (
               <div className="py-8 text-center text-sm text-muted-foreground">暂无数据</div>
             )}
-          </div>
-        </section>
+          </section>
+        </div>
 
         <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

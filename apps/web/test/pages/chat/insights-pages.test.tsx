@@ -1360,10 +1360,25 @@ describe("conversation insights pages", () => {
       expect.objectContaining({ page: 1, pageSize: 10 }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(screen.getByText("质检概览")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "质检概览" })).not.toBeInTheDocument();
+    const qualityOverviewContent = screen.getByTestId("quality-overview-content");
+    expect(qualityOverviewContent).toHaveClass("lg:grid-cols-2");
+    const qualityMetrics = screen.getByRole("region", { name: "质检指标" });
+    expect(qualityMetrics).toBeInTheDocument();
+    expect(qualityMetrics).toHaveClass("rounded-[8px]", "border", "bg-background");
+    expect(screen.getByRole("region", { name: "质检分布" })).toHaveClass(
+      "rounded-[8px]",
+      "border",
+      "bg-background",
+    );
+    expect(within(qualityMetrics).getByText("会话数")).toBeInTheDocument();
+    expect(within(qualityMetrics).getByText("22")).toBeInTheDocument();
+    expect(within(qualityMetrics).getByText("分析会话数")).toBeInTheDocument();
+    expect(within(qualityMetrics).getByText("20")).toBeInTheDocument();
+    expect(within(qualityMetrics).getByText("质检覆盖率")).toBeInTheDocument();
+    expect(within(qualityMetrics).getByText("质检通过率")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "问题列表" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "客服报表" })).toBeInTheDocument();
-    expect(screen.getByText("总会话数")).toBeInTheDocument();
     expect(screen.queryByText("无明确问题")).not.toBeInTheDocument();
     expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
     expect(screen.getAllByText("售后/物流/退款进度未确认").length).toBeGreaterThan(0);

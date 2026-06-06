@@ -23,6 +23,7 @@ import { getInsightQuality } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
+import { InsightTablePagination } from "./insight-table-pagination";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import {
   getDefaultDateRange,
@@ -269,7 +270,6 @@ function ProblemList({
   const totalPages = page?.totalPages ?? 1;
   const startRow = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endRow = Math.min(total, currentPage * pageSize);
-  const pageNumbers = buildPaginationNumbers(currentPage, totalPages);
 
   return (
     <div className="rounded-[8px] border bg-background">
@@ -327,46 +327,15 @@ function ProblemList({
           </div>
         )}
       </div>
-      {totalPages > 1 ? (
-        <div className="flex flex-col gap-3 border-t px-5 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>
-            显示 {startRow}-{endRow} / 共 {total} 条
-          </span>
-          <div className="flex items-center gap-1">
-            <Button
-              className="h-8 rounded-[8px]"
-              disabled={currentPage <= 1}
-              onClick={() => onPageChange(currentPage - 1)}
-              size="sm"
-              variant="outline"
-            >
-              上一页
-            </Button>
-            {pageNumbers.map((item, index) => item === "ellipsis" ? (
-              <span className="px-2" key={`${item}-${index}`}>...</span>
-            ) : (
-              <Button
-                className="h-8 min-w-8 rounded-[8px] px-2"
-                key={item}
-                onClick={() => onPageChange(item)}
-                size="sm"
-                variant={item === currentPage ? "default" : "outline"}
-              >
-                {item}
-              </Button>
-            ))}
-            <Button
-              className="h-8 rounded-[8px]"
-              disabled={currentPage >= totalPages}
-              onClick={() => onPageChange(currentPage + 1)}
-              size="sm"
-              variant="outline"
-            >
-              下一页
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      <InsightTablePagination
+        className="px-5"
+        endRow={endRow}
+        onPageChange={onPageChange}
+        page={currentPage}
+        startRow={startRow}
+        total={total}
+        totalPages={totalPages}
+      />
     </div>
   );
 }
@@ -482,28 +451,6 @@ function formatPercent(value: number) {
   }
 
   return `${(value * 100).toFixed(2)}%`;
-}
-
-function buildPaginationNumbers(page: number, totalPages: number): Array<number | "ellipsis"> {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  const pages = new Set([1, totalPages, page - 1, page, page + 1].filter((item) => item >= 1 && item <= totalPages));
-  const sorted = Array.from(pages).sort((left, right) => left - right);
-  const result: Array<number | "ellipsis"> = [];
-
-  for (const item of sorted) {
-    const previous = result.at(-1);
-
-    if (typeof previous === "number" && item - previous > 1) {
-      result.push("ellipsis");
-    }
-
-    result.push(item);
-  }
-
-  return result;
 }
 
 function buildRuleDistributionData(

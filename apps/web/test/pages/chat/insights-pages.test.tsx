@@ -1003,6 +1003,7 @@ describe("conversation insights pages", () => {
     expect(within(trendPanel as HTMLElement).getByText("2026-05-28 至 2026-06-03")).toBeInTheDocument();
     expect(screen.queryByText("最近 30 天")).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "咨询会话明细" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "分页" })).toHaveClass("!mx-0", "!ml-auto");
     expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
     expect(screen.getAllByText("消息不足").length).toBeGreaterThan(0);
     expect(screen.queryByText("待复核")).not.toBeInTheDocument();

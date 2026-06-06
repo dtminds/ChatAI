@@ -22,6 +22,8 @@ import {
   formatActionStatus,
   formatInsightTime,
 } from "./insights-utils";
+import { InsightTableLoadingRow } from "./insight-table-loading-row";
+import { InsightTablePagination } from "./insight-table-pagination";
 import { useInsightDetail } from "./use-insight-detail";
 
 const followUpsPageSize = 10;
@@ -85,7 +87,6 @@ export function InsightsFollowUpsPage() {
   const totalPages = followUps?.totalPages ?? 1;
   const startRow = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endRow = Math.min(total, currentPage * pageSize);
-  const pageNumbers = buildPaginationNumbers(currentPage, totalPages);
 
   return (
     <InsightsLayout title="待处理">
@@ -113,7 +114,7 @@ export function InsightsFollowUpsPage() {
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableLoadingRow />
+                  <InsightTableLoadingRow colSpan={6} />
                 ) : (followUps?.items ?? []).length > 0 ? (
                   (followUps?.items ?? []).map((item) => (
                     <TableRow key={item.actionItemId}>
@@ -178,46 +179,16 @@ export function InsightsFollowUpsPage() {
               </TableBody>
             </Table>
           </div>
-          {totalPages > 1 ? (
-            <div className="flex flex-col gap-3 border-t px-5 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              <span>
-                显示 {startRow}-{endRow} / 共 {total} 项
-              </span>
-              <div className="flex items-center gap-1">
-                <Button
-                  className="h-8 rounded-[8px]"
-                  disabled={currentPage <= 1}
-                  onClick={() => setPage(currentPage - 1)}
-                  size="sm"
-                  variant="outline"
-                >
-                  上一页
-                </Button>
-                {pageNumbers.map((item, index) => item === "ellipsis" ? (
-                  <span className="px-2" key={`${item}-${index}`}>...</span>
-                ) : (
-                  <Button
-                    className="h-8 min-w-8 rounded-[8px] px-2"
-                    key={item}
-                    onClick={() => setPage(item)}
-                    size="sm"
-                    variant={item === currentPage ? "default" : "outline"}
-                  >
-                    {item}
-                  </Button>
-                ))}
-                <Button
-                  className="h-8 rounded-[8px]"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setPage(currentPage + 1)}
-                  size="sm"
-                  variant="outline"
-                >
-                  下一页
-                </Button>
-              </div>
-            </div>
-          ) : null}
+          <InsightTablePagination
+            className="px-5"
+            endRow={endRow}
+            itemLabel="项"
+            onPageChange={setPage}
+            page={currentPage}
+            startRow={startRow}
+            total={total}
+            totalPages={totalPages}
+          />
         </div>
       </div>
 
@@ -230,43 +201,4 @@ export function InsightsFollowUpsPage() {
       />
     </InsightsLayout>
   );
-}
-
-function TableLoadingRow() {
-  return (
-    <TableRow>
-      <TableCell className="py-10 text-center" colSpan={6}>
-        <div
-          aria-label="正在加载会话"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground"
-          role="status"
-        >
-          <span className="size-3.5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
-          <span>正在加载会话</span>
-        </div>
-      </TableCell>
-    </TableRow>
-  );
-}
-
-function buildPaginationNumbers(page: number, totalPages: number): Array<number | "ellipsis"> {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  const pages = new Set([1, totalPages, page - 1, page, page + 1].filter((item) => item >= 1 && item <= totalPages));
-  const sorted = Array.from(pages).sort((left, right) => left - right);
-  const result: Array<number | "ellipsis"> = [];
-
-  for (const item of sorted) {
-    const previous = result.at(-1);
-
-    if (typeof previous === "number" && item - previous > 1) {
-      result.push("ellipsis");
-    }
-
-    result.push(item);
-  }
-
-  return result;
 }

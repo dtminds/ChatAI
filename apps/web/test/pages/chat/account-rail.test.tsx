@@ -172,6 +172,24 @@ describe("AccountRail", () => {
     expect(screen.getByRole("link", { name: "洞察" })).toHaveAttribute("href", "/chat/insights");
   });
 
+  it("keeps the collapsed insight nav link aligned with button nav items", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        isCollapsed
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    const insightLink = screen.getByRole("link", { name: "洞察" });
+    const chatButton = screen.getByRole("button", { name: "聊天" });
+
+    expect(insightLink).toHaveClass("inline-flex", "size-9", "items-center", "justify-center");
+    expect(chatButton).toHaveClass("inline-flex", "size-9", "items-center", "justify-center");
+  });
+
   it("shows account takeover state and takes over from the status popover", async () => {
     const user = userEvent.setup();
     const handleTakeOverAccount = vi.fn();

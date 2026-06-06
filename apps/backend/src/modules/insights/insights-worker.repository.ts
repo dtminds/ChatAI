@@ -1807,6 +1807,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
 
     await this.db
       .insertInto("xy_wap_embed_insight_evidence")
+      .ignore()
       .values(uniqueRows)
       .executeTakeFirst();
   }

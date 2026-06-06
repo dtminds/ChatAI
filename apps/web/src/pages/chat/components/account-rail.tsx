@@ -13,7 +13,7 @@ import {
   UserSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,6 +46,17 @@ const railItems = [
 const visibleRailItems = import.meta.env.DEV
   ? railItems
   : railItems.filter((item) => !item.devOnly);
+
+const collapsedNavItemClassName =
+  "inline-flex size-9 items-center justify-center rounded-[8px] text-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25 [&_svg]:shrink-0";
+
+function isRouteItemActive(pathname: string, to?: string) {
+  if (!to) {
+    return false;
+  }
+
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
 
 type AccountRailProps = {
   accounts: Account[];
@@ -99,6 +110,7 @@ export function AccountRail({
   onTakeOverAccount,
   takeoverStatusByAccountId = {},
 }: AccountRailProps) {
+  const location = useLocation();
   const signedInName = currentEmployee?.displayName.trim() || "未登录";
   const signedInAvatarFallback = getFirstGrapheme(signedInName);
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
@@ -194,6 +206,7 @@ export function AccountRail({
           >
             {visibleRailItems.map((item) => {
               const isActive = item.label === activeNavItem;
+              const isRouteActive = isRouteItemActive(location.pathname, item.to);
               const itemContent = (
                 <HugeiconsIcon
                   color="currentColor"
@@ -209,13 +222,11 @@ export function AccountRail({
                     {item.to ? (
                       <NavLink
                         aria-label={item.label}
-                        className={({ isActive: isRouteActive }) =>
-                          cn(
-                            "flex size-9 items-center justify-center rounded-[8px] text-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25",
-                            (isActive || isRouteActive) &&
-                              "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
-                          )
-                        }
+                        className={cn(
+                          collapsedNavItemClassName,
+                          (isActive || isRouteActive) &&
+                            "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+                        )}
                         to={item.to}
                       >
                         {itemContent}
@@ -224,7 +235,7 @@ export function AccountRail({
                       <button
                         aria-label={item.label}
                         className={cn(
-                          "flex size-9 items-center justify-center rounded-[8px] text-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25",
+                          collapsedNavItemClassName,
                           isActive &&
                             "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
                         )}

@@ -1547,12 +1547,18 @@ describe("MysqlInsightWorkerRepository", () => {
   });
 
   it("deduplicates repeated evidence rows before inserting analysis results", async () => {
+    let evidenceInsert: InsertBuilderStub | undefined;
     const evidenceValues: unknown[] = [];
     let insertId = 7000;
     const db = {
       insertInto: vi.fn((table: string) => createInsertBuilder(
         async () => ({ insertId: ++insertId }),
         {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_insight_evidence") {
+              evidenceInsert = builder;
+            }
+          },
           onValues: (values) => {
             if (table === "xy_wap_embed_insight_evidence") {
               evidenceValues.push(...(Array.isArray(values) ? values : [values]));
@@ -1619,6 +1625,7 @@ describe("MysqlInsightWorkerRepository", () => {
       evidence_role: "customer_problem",
       source_message_id: 9200,
     }));
+    expect(evidenceInsert?.ignoreCalls).toBe(1);
   });
 
   it("scopes logical session count updates to the current uid", async () => {
@@ -1760,6 +1767,7 @@ function createTransactionBuilder(db: {
 function createInsertBuilder(
   executeTakeFirstOrThrow: () => Promise<unknown>,
   options: {
+    onCreate?: (builder: InsertBuilderStub) => void;
     onValues?: (values: Record<string, unknown> | Record<string, unknown>[]) => void;
     table?: string;
   } = {},
@@ -1769,6 +1777,7 @@ function createInsertBuilder(
     executeTakeFirst: executeTakeFirstOrThrow,
     executeTakeFirstOrThrow,
     expressionCalls: 0,
+    ignoreCalls: 0,
     columns: (columns: string[]) => {
       builder.columnsCalls.push(columns);
       return builder;
@@ -1777,13 +1786,18 @@ function createInsertBuilder(
       builder.expressionCalls += 1;
       return builder;
     },
-    ignore: () => builder,
+    ignore: () => {
+      builder.ignoreCalls += 1;
+      return builder;
+    },
     onDuplicateKeyUpdate: () => builder,
     values: (values: Record<string, unknown>) => {
       options.onValues?.(values);
       return builder;
     },
   };
+
+  options.onCreate?.(builder);
 
   return builder;
 }

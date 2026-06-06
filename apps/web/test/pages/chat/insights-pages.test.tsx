@@ -185,6 +185,37 @@ vi.mock("recharts", async (importOriginal) => {
 
   return {
     ...actual,
+    AreaChart: (props: React.ComponentProps<typeof actual.AreaChart>) => (
+      <div data-testid="recharts-area-chart">
+        <actual.AreaChart {...props} />
+      </div>
+    ),
+    BarChart: (props: React.ComponentProps<typeof actual.BarChart>) => (
+      <div
+        data-margin-left={String(props.margin?.left ?? "")}
+        data-testid="recharts-bar-chart"
+      >
+        <actual.BarChart {...props} />
+      </div>
+    ),
+    Tooltip: (props: React.ComponentProps<typeof actual.Tooltip>) => {
+      const contentName = React.isValidElement(props.content) && typeof props.content.type === "function"
+        ? props.content.type.name
+        : "";
+      const cursor = props.cursor;
+      const cursorProps = cursor && typeof cursor === "object" && !React.isValidElement(cursor)
+        ? cursor as { fill?: string; fillOpacity?: number }
+        : undefined;
+
+      return (
+        <div
+          data-content-name={contentName}
+          data-cursor-fill={cursorProps?.fill ?? ""}
+          data-cursor-fill-opacity={cursorProps?.fillOpacity?.toString() ?? ""}
+          data-testid="recharts-tooltip"
+        />
+      );
+    },
     ResponsiveContainer: ({ children }: { children: React.ReactNode }) => {
       const chart = React.Children.only(children);
 
@@ -1594,6 +1625,18 @@ describe("conversation insights pages", () => {
     });
     expect(screen.getByRole("heading", { name: "客户意图 Top10" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "客户意图分布趋势" })).toBeInTheDocument();
+    const businessOverviewPanel = screen.getByRole("region", { name: "客户意图 Top10" });
+    const businessTrendPanel = screen.getByRole("region", { name: "客户意图分布趋势" });
+    expect(businessOverviewPanel.compareDocumentPosition(businessTrendPanel)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(within(businessOverviewPanel).getByText("2026-05-28 至 2026-06-03")).toBeInTheDocument();
+    expect(within(businessTrendPanel).getByText("2026-05-28 至 2026-06-03")).toBeInTheDocument();
+    expect(screen.getByTestId("recharts-bar-chart")).toHaveAttribute("data-margin-left", "4");
+    const intentTrendTooltip = screen
+      .getAllByTestId("recharts-tooltip")
+      .find((tooltip) => tooltip.dataset.contentName === "IntentDistributionTrendTooltip");
+    expect(intentTrendTooltip).toHaveAttribute("data-cursor-fill", "var(--muted-foreground)");
+    expect(intentTrendTooltip).toHaveAttribute("data-cursor-fill-opacity", "0.1");
+    expect(screen.getByTestId("business-topic-list-scroll")).toHaveClass("max-h-[260px]", "overflow-y-auto");
     expect(screen.getByRole("heading", { name: "相关会话" })).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "客户意图 Top10" })).toBeInTheDocument();
     expect(screen.queryByText("关注点会话")).not.toBeInTheDocument();
@@ -1605,6 +1648,8 @@ describe("conversation insights pages", () => {
     expect(screen.getByRole("button", { name: /实体对象/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /链接文件/ })).toBeInTheDocument();
     expect(screen.getAllByText("物流异常").length).toBeGreaterThan(0);
+    expect(within(businessOverviewPanel).getByText("8 个会话提及")).toBeInTheDocument();
+    expect(within(businessOverviewPanel).queryByText("8 次提及")).not.toBeInTheDocument();
 
     const relatedSessionsTable = screen.getByRole("table", { name: "相关会话" });
     expect(within(relatedSessionsTable).getByText("客户反馈物流异常")).toBeInTheDocument();
@@ -1619,6 +1664,10 @@ describe("conversation insights pages", () => {
     await userEvent.click(screen.getByRole("button", { name: /实体对象/ }));
     expect(screen.getByRole("heading", { name: "实体对象 Top10" })).toBeInTheDocument();
     expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
+
+    await userEvent.click(screen.getByRole("button", { name: /业务标签/ }));
+    expect(screen.getByRole("heading", { name: "业务标签 Top10" })).toBeInTheDocument();
+    expect(screen.getByText("8 个会话 10 次提及")).toBeInTheDocument();
 
     await userEvent.type(screen.getByRole("textbox", { name: "搜索相关会话" }), "物流异常");
     expect(within(relatedSessionsTable).getByText("客户反馈物流异常")).toBeInTheDocument();

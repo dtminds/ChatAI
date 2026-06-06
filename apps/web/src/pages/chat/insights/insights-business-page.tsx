@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { type ReactNode, memo, useEffect, useMemo, useState } from "react";
 import {
   Analytics02Icon,
   ArrowLeft01Icon,
@@ -18,6 +18,8 @@ import type {
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   Cell,
   Pie,
@@ -56,6 +58,7 @@ type BusinessDimension = BusinessTopic["dimension"];
 type BusinessTrendMetric = "assetMentions" | "entityMentions" | "intentMentions" | "tagMentions";
 type IntentTrendSeries = {
   color: string;
+  opacity?: number;
   key: string;
   name: string;
 };
@@ -243,17 +246,21 @@ export function InsightsBusinessPage() {
           />
 
         <div className="grid gap-5 xl:grid-cols-2">
-          <BusinessTrendPanel
-            activeDimension={activeDimension}
-            business={business}
-            topTopics={topTopics}
-          />
-
           <TopicDistributionPanel
             activeDimension={activeDimension}
+            from={from}
             onSelectTopic={setSelectedTopic}
             selectedTopic={activeTopic}
             topics={topTopics}
+            to={to}
+          />
+
+          <BusinessTrendPanel
+            activeDimension={activeDimension}
+            business={business}
+            from={from}
+            to={to}
+            topTopics={topTopics}
           />
         </div>
 
@@ -336,18 +343,26 @@ function DimensionMetricStrip({
 const BusinessTrendPanel = memo(function BusinessTrendPanel({
   activeDimension,
   business,
+  from,
+  to,
   topTopics,
 }: {
   activeDimension: BusinessDimension;
   business: InsightsBusinessResponse | undefined;
+  from: string;
+  to: string;
   topTopics: BusinessTopic[];
 }) {
   const dimension = getDimensionConfig(activeDimension);
   const title = activeDimension === "intent" ? "客户意图分布趋势" : `${dimension.title}趋势`;
 
   return (
-    <section className="flex min-h-[320px] flex-col rounded-xl border bg-card p-4">
-      <PanelTitle icon={ChartAreaIcon} title={title} />
+    <section aria-label={title} className="flex min-h-[320px] flex-col rounded-xl border bg-card p-4">
+      <PanelTitle
+        icon={ChartAreaIcon}
+        title={title}
+        trailing={<DateRangeSummary from={from} to={to} />}
+      />
       <div className="mt-4 min-h-[240px] flex-1">
         <DimensionTrendChart
           business={business}
@@ -438,7 +453,7 @@ function IntentDistributionTrendChart({
     <div className="flex h-full min-h-[240px] flex-col gap-3">
       <div className="min-h-[190px] flex-1">
         <ResponsiveContainer height="100%" width="100%">
-          <AreaChart data={chart.points} margin={{ bottom: 0, left: -14, right: 14, top: 10 }}>
+          <BarChart data={chart.points} margin={{ bottom: 0, left: 4, right: 14, top: 10 }}>
             <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.45} vertical={false} />
             <XAxis
               axisLine={false}
@@ -455,24 +470,26 @@ function IntentDistributionTrendChart({
               tickFormatter={formatPercentTick}
               tickLine={false}
               ticks={[0, 0.25, 0.5, 0.75, 1]}
-              width={44}
+              width={56}
             />
-            <Tooltip content={<IntentDistributionTrendTooltip series={chart.series} />} />
+            <Tooltip
+              content={<IntentDistributionTrendTooltip series={chart.series} />}
+              cursor={{ fill: "var(--muted-foreground)", fillOpacity: 0.1 }}
+            />
             {chart.series.map((series) => (
-              <Area
+              <Bar
                 animationDuration={450}
+                barSize={24}
                 dataKey={series.key}
                 fill={series.color}
-                fillOpacity={0.78}
+                fillOpacity={series.opacity ?? 1}
                 key={series.key}
                 name={series.name}
+                radius={0}
                 stackId="intent"
-                stroke={series.color}
-                strokeWidth={1.4}
-                type="monotone"
               />
             ))}
-          </AreaChart>
+          </BarChart>
         </ResponsiveContainer>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-2 px-1 text-xs text-muted-foreground">
@@ -489,21 +506,30 @@ function IntentDistributionTrendChart({
 
 const TopicDistributionPanel = memo(function TopicDistributionPanel({
   activeDimension,
+  from,
   onSelectTopic,
   selectedTopic,
+  to,
   topics,
 }: {
   activeDimension: BusinessDimension;
+  from: string;
   onSelectTopic: (topic: BusinessTopic) => void;
   selectedTopic: BusinessTopic | undefined;
+  to: string;
   topics: BusinessTopic[];
 }) {
   const dimension = getDimensionConfig(activeDimension);
   const topicSlots = buildTopicSlots(topics);
+  const title = `${dimension.title} Top10`;
 
   return (
-    <aside className="flex min-h-[320px] min-w-0 flex-col rounded-xl border bg-card p-4">
-      <PanelTitle icon={ChartAreaIcon} title={`${dimension.title} Top10`} />
+    <section aria-label={title} className="flex min-h-[320px] min-w-0 flex-col rounded-xl border bg-card p-4">
+      <PanelTitle
+        icon={ChartAreaIcon}
+        title={title}
+        trailing={<DateRangeSummary from={from} to={to} />}
+      />
 
       <div className="grid min-w-0 flex-1 items-center gap-5 lg:grid-cols-[190px_minmax(0,1fr)]">
         <div className="h-[210px] p-2">
@@ -538,36 +564,38 @@ const TopicDistributionPanel = memo(function TopicDistributionPanel({
           )}
         </div>
 
-        <div
-          aria-label={`${dimension.title} Top10`}
-          className="grid min-w-0 gap-x-4 gap-y-2 2xl:grid-cols-2"
-          role="list"
-        >
-          {topicSlots.map((column, columnIndex) => (
-            <div className="grid min-w-0 content-start gap-2" key={columnIndex}>
-              {column.map(({ index, topic }) => (
-                <div
-                  className="min-w-0"
-                  key={topic ? `${topic.dimension}:${topic.code}` : `topic-placeholder-${index}`}
-                  role="listitem"
-                >
-                  {topic ? (
-                    <TopicRankButton
-                      index={index}
-                      isSelected={isSameTopic(selectedTopic, topic)}
-                      onClick={() => onSelectTopic(topic)}
-                      topic={topic}
-                    />
-                  ) : (
-                    <TopicRankSkeleton index={index} />
-                  )}
-                </div>
-              ))}
-            </div>
-          ))}
+        <div className="max-h-[260px] min-w-0 overflow-y-auto pr-1" data-testid="business-topic-list-scroll">
+          <div
+            aria-label={`${dimension.title} Top10`}
+            className="grid min-w-0 gap-x-4 gap-y-2 2xl:grid-cols-2"
+            role="list"
+          >
+            {topicSlots.map((column, columnIndex) => (
+              <div className="grid min-w-0 content-start gap-2" key={columnIndex}>
+                {column.map(({ index, topic }) => (
+                  <div
+                    className="min-w-0"
+                    key={topic ? `${topic.dimension}:${topic.code}` : `topic-placeholder-${index}`}
+                    role="listitem"
+                  >
+                    {topic ? (
+                      <TopicRankButton
+                        index={index}
+                        isSelected={isSameTopic(selectedTopic, topic)}
+                        onClick={() => onSelectTopic(topic)}
+                        topic={topic}
+                      />
+                    ) : (
+                      <TopicRankSkeleton index={index} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </aside>
+    </section>
   );
 });
 
@@ -599,9 +627,8 @@ function TopicRankButton({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium leading-5 text-foreground">{topic.name}</span>
-        <span className="flex items-center gap-2 text-xs leading-4 text-muted-foreground">
-          <span>{topic.sessionCount} 个会话</span>
-          <span>{topic.mentionCount} 次提及</span>
+        <span className="block truncate text-xs leading-4 text-muted-foreground">
+          {formatTopicMentionSummary(topic)}
         </span>
       </span>
     </button>
@@ -801,13 +828,30 @@ function TableLoadingRow({ colSpan, label }: { colSpan: number; label: string })
   );
 }
 
-function PanelTitle({ icon, title }: { icon: typeof Analytics02Icon; title: string }) {
+function PanelTitle({
+  icon,
+  title,
+  trailing,
+}: {
+  icon: typeof Analytics02Icon;
+  title: string;
+  trailing?: ReactNode;
+}) {
   return (
     <div className="flex items-center gap-2.5">
       <span className="flex size-8 shrink-0 items-center justify-center rounded-[8px] border bg-background text-muted-foreground">
         <HugeiconsIcon icon={icon} size={17} />
       </span>
       <h2 className="text-base font-medium">{title}</h2>
+      {trailing ? <div className="ml-auto">{trailing}</div> : null}
+    </div>
+  );
+}
+
+function DateRangeSummary({ from, to }: { from: string; to: string }) {
+  return (
+    <div className="shrink-0 text-xs text-muted-foreground">
+      {formatDateRangeSummary(from, to)}
     </div>
   );
 }
@@ -960,7 +1004,7 @@ function buildIntentDistributionTrendChart(
       key: seriesKeyByIntentCode.get(topic.code) ?? `intent_${index}`,
       name: topic.name,
     })),
-    ...(hasOther ? [{ color: insightChartColors.axis, key: "other", name: "其他" }] : []),
+    ...(hasOther ? [{ color: "var(--muted-foreground)", key: "other", name: "其他", opacity: 0.22 }] : []),
   ];
 
   if (!business?.intentTrend?.length || series.length === 0) {
@@ -1118,4 +1162,14 @@ function formatTrendDate(value: string) {
 
 function formatFullTrendDate(value: string) {
   return value.replaceAll("-", "/");
+}
+
+function formatDateRangeSummary(from: string, to: string) {
+  return from === to ? from : `${from} 至 ${to}`;
+}
+
+function formatTopicMentionSummary(topic: BusinessTopic) {
+  return topic.sessionCount === topic.mentionCount
+    ? `${formatNumber(topic.sessionCount)} 个会话提及`
+    : `${formatNumber(topic.sessionCount)} 个会话 ${formatNumber(topic.mentionCount)} 次提及`;
 }

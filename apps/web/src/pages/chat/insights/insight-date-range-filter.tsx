@@ -34,40 +34,56 @@ const presetOptions: Array<{
   { label: "上月", range: () => getPreviousMonthDateRange() },
 ];
 
-export function InsightDateRangeFilter({
-  from,
-  onChange,
-  to,
-}: {
-  from: string;
-  onChange: (range: InsightDateRange) => void;
-  to: string;
-}) {
+type InsightDateRangeFilterProps =
+  | {
+    allowEmpty?: false;
+    emptyLabel?: string;
+    from: string;
+    onChange: (range: InsightDateRange) => void;
+    to: string;
+  }
+  | {
+    allowEmpty: true;
+    emptyLabel?: string;
+    from?: string;
+    onChange: (range: InsightDateRange | undefined) => void;
+    to?: string;
+  };
+
+export function InsightDateRangeFilter(props: InsightDateRangeFilterProps) {
+  const {
+    allowEmpty = false,
+    emptyLabel = "选择时间",
+    from,
+    to,
+  } = props;
   const [isOpen, setIsOpen] = useState(false);
-  const [draftRange, setDraftRange] = useState<DateRange>(() => toCalendarRange({ from, to }));
+  const [draftRange, setDraftRange] = useState<DateRange>(() => toCalendarRange(toValueRange(from, to)));
   const [draftPresetLabel, setDraftPresetLabel] = useState<string | undefined>(() =>
-    getPresetLabel({ from, to }),
+    getPresetLabel(toValueRange(from, to)),
   );
   const [selectedPresetLabel, setSelectedPresetLabel] = useState<string | undefined>(() =>
-    getPresetLabel({ from, to }),
+    getPresetLabel(toValueRange(from, to)),
   );
-  const [visibleMonth, setVisibleMonth] = useState(() => getVisibleMonth({ from, to }));
-  const value = useMemo(() => ({ from, to }), [from, to]);
-  const label = getActivePresetLabel(value, selectedPresetLabel) ?? "自定义";
-  const rangeText = formatRangeText(value);
+  const [visibleMonth, setVisibleMonth] = useState(() => getVisibleMonth(toValueRange(from, to)));
+  const value = useMemo(() => from && to ? { from, to } : undefined, [from, to]);
+  const label = value ? getActivePresetLabel(value, selectedPresetLabel) ?? "自定义" : emptyLabel;
+  const rangeText = value ? formatRangeText(value) : "";
 
   useEffect(() => {
     if (isOpen) {
-      setDraftRange(toCalendarRange(value));
-      setDraftPresetLabel(getActivePresetLabel(value, selectedPresetLabel));
-      setVisibleMonth(getVisibleMonth(value));
+      const nextValue = toValueRange(from, to);
+
+      setDraftRange(toCalendarRange(nextValue));
+      setDraftPresetLabel(value ? getActivePresetLabel(value, selectedPresetLabel) : undefined);
+      setVisibleMonth(getVisibleMonth(nextValue));
     }
-  }, [isOpen, selectedPresetLabel, value]);
+  }, [from, isOpen, selectedPresetLabel, to, value]);
 
   function selectPreset(option: (typeof presetOptions)[number]) {
     const range = option.range();
 
-    onChange(range);
+    props.onChange(range);
     setSelectedPresetLabel(option.label);
     setIsOpen(false);
   }
@@ -79,7 +95,7 @@ export function InsightDateRangeFilter({
       return;
     }
 
-    onChange(normalizedRange);
+    props.onChange(normalizedRange);
     setSelectedPresetLabel(draftPresetLabel ?? getPresetLabel(normalizedRange));
     setIsOpen(false);
   }
@@ -92,11 +108,22 @@ export function InsightDateRangeFilter({
     setVisibleMonth(getVisibleMonth(range));
   }
 
+  function clearRange() {
+    if (props.allowEmpty !== true) {
+      resetToRecent30Days();
+      return;
+    }
+
+    props.onChange(undefined);
+    setSelectedPresetLabel(undefined);
+    setIsOpen(false);
+  }
+
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button
-          aria-label={`日期范围 ${label} ${rangeText}`}
+          aria-label={rangeText ? `日期范围 ${label} ${rangeText}` : `日期范围 ${label}`}
           className="h-9 w-full justify-between rounded-[8px] px-3 text-left font-normal sm:w-auto sm:min-w-[17.5rem]"
           variant="outline"
         >
@@ -108,10 +135,10 @@ export function InsightDateRangeFilter({
               size={16}
               strokeWidth={1.8}
             />
-            <span className="min-w-0 truncate">
-              <span className="font-medium text-foreground">{label}</span>
-              <span className="ml-2 text-muted-foreground">{rangeText}</span>
-            </span>
+              <span className="min-w-0 truncate">
+                <span className="font-medium text-foreground">{label}</span>
+                {rangeText ? <span className="ml-2 text-muted-foreground">{rangeText}</span> : null}
+              </span>
           </span>
           <HugeiconsIcon
             aria-hidden="true"
@@ -167,8 +194,8 @@ export function InsightDateRangeFilter({
                 </span>
               </div>
               <div className="flex items-center justify-end gap-2">
-                <Button onClick={resetToRecent30Days} size="sm" type="button" variant="ghost">
-                  重置
+                <Button onClick={allowEmpty ? clearRange : resetToRecent30Days} size="sm" type="button" variant="ghost">
+                  {allowEmpty ? "清除" : "重置"}
                 </Button>
                 <Button
                   disabled={!normalizeCalendarRange(draftRange)}
@@ -185,6 +212,10 @@ export function InsightDateRangeFilter({
       </PopoverContent>
     </Popover>
   );
+}
+
+function toValueRange(from: string | undefined, to: string | undefined): InsightDateRange {
+  return from && to ? { from, to } : getDefaultDateRange();
 }
 
 function toCalendarRange(range: InsightDateRange): DateRange {

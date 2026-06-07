@@ -37,10 +37,12 @@ import type {
 import { http } from "@/lib/request";
 
 export type InsightFollowUpQuery = {
+  from?: string;
   page?: number;
   pageSize?: number;
   priority?: "low" | "medium" | "high";
-  status?: InsightActionStatus;
+  status?: InsightActionStatus | "processed";
+  to?: string;
 };
 
 export type InsightQualityQuery = {

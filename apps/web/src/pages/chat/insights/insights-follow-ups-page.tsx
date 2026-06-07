@@ -3,6 +3,14 @@ import type { InsightsFollowUpsResponse } from "@chatai/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
   Table,
   TableBody,
   TableCell,
@@ -15,23 +23,41 @@ import {
   updateInsightActionStatus,
 } from "./api/insights-service";
 import { PriorityBadge } from "./insight-badges";
+import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import {
+  toBoundaryDate,
+  type InsightDateRange,
+} from "./insights-date-range";
+import {
   formatActionStatus,
   formatInsightTime,
+  formatPriority,
 } from "./insights-utils";
 import { InsightTableLoadingRow } from "./insight-table-loading-row";
 import { InsightTablePagination } from "./insight-table-pagination";
 import { useInsightDetail } from "./use-insight-detail";
 
 const followUpsPageSize = 10;
+type PriorityFilter = "high" | "low" | "medium";
+type StatusFilter = "open" | "processed";
+
+const priorityFilterOptions: Array<{ label: string; value: PriorityFilter | "none" }> = [
+  { label: "全部优先级", value: "none" },
+  { label: formatPriority("high"), value: "high" },
+  { label: formatPriority("medium"), value: "medium" },
+  { label: formatPriority("low"), value: "low" },
+];
 
 export function InsightsFollowUpsPage() {
   const [followUps, setFollowUps] = useState<InsightsFollowUpsResponse>();
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [dateRange, setDateRange] = useState<InsightDateRange>();
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
   const detail = useInsightDetail();
 
   useEffect(() => {
@@ -39,12 +65,19 @@ export function InsightsFollowUpsPage() {
 
     setIsLoading(true);
 
+    const query = {
+      ...(dateRange ? {
+        from: toBoundaryDate(dateRange.from, "start"),
+        to: toBoundaryDate(dateRange.to, "end"),
+      } : {}),
+      page,
+      pageSize: followUpsPageSize,
+      ...(priorityFilter ? { priority: priorityFilter } : {}),
+      status: statusFilter,
+    };
+
     void getInsightFollowUps(
-      {
-        page,
-        pageSize: followUpsPageSize,
-        status: "open",
-      },
+      query,
       { signal: controller.signal },
     )
       .then((data) => {
@@ -62,7 +95,7 @@ export function InsightsFollowUpsPage() {
     return () => {
       controller.abort();
     };
-  }, [page]);
+  }, [dateRange, page, priorityFilter, statusFilter]);
 
   async function updateStatus(actionItemId: string, status: "dismissed" | "done") {
     await updateInsightActionStatus(actionItemId, status);
@@ -91,15 +124,51 @@ export function InsightsFollowUpsPage() {
   return (
     <InsightsLayout title="待处理">
       <div className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <InsightsPageHeader
-            description="集中处理风险、跟进和异常事项，状态只在洞察模块内生效"
-            title="待处理"
+        <InsightsPageHeader
+          description="集中处理风险、跟进和异常事项，状态只在洞察模块内生效"
+          title="待处理"
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Tabs
+            onValueChange={(value) => {
+              setStatusFilter(value as StatusFilter);
+              setPage(1);
+            }}
+            value={statusFilter}
+          >
+            <TabsList className="h-10 rounded-[8px] bg-muted p-1">
+              <TabsTrigger className="h-8 min-w-20 rounded-[6px] px-4 py-0 text-sm" value="open">
+                待处理
+              </TabsTrigger>
+              <TabsTrigger className="h-8 min-w-20 rounded-[6px] px-4 py-0 text-sm" value="processed">
+                已处理
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <InsightDateRangeFilter
+            allowEmpty
+            from={dateRange?.from}
+            onChange={(range) => {
+              setDateRange(range);
+              setPage(1);
+            }}
+            to={dateRange?.to}
           />
-          <Badge className="mt-1" variant="outline">{total} 项</Badge>
+          <FilterSelect
+            label="优先级"
+            onValueChange={(value) => {
+              setPriorityFilter(value === "none" ? undefined : value as PriorityFilter);
+              setPage(1);
+            }}
+            options={priorityFilterOptions}
+            placeholder="选择优先级"
+            value={priorityFilter}
+            widthClassName="w-[132px]"
+          />
         </div>
 
-        <div className="rounded-[8px] border bg-background">
+        <div className="bg-background">
           <div className="overflow-x-auto">
             <Table aria-label="待处理列表">
               <TableHeader>
@@ -107,9 +176,9 @@ export function InsightsFollowUpsPage() {
                   <TableHead className="h-12 min-w-[180px] px-5">客户</TableHead>
                   <TableHead className="h-12 min-w-[300px] px-5">概要</TableHead>
                   <TableHead className="h-12 min-w-[90px] px-5">优先级</TableHead>
-                  <TableHead className="h-12 min-w-[90px] px-5">状态</TableHead>
+                  <TableHead className="h-12 min-w-[112px] px-5">状态</TableHead>
                   <TableHead className="h-12 min-w-[150px] px-5">时间</TableHead>
-                  <TableHead className="h-12 w-[190px] px-5 text-right">操作</TableHead>
+                  <TableHead className="h-12 min-w-[190px] px-5 text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -132,13 +201,13 @@ export function InsightsFollowUpsPage() {
                       <TableCell className="px-5 py-4">
                         <PriorityBadge priority={item.priority} />
                       </TableCell>
-                      <TableCell className="px-5 py-4">
-                        <Badge variant="outline">{formatActionStatus(item.status)}</Badge>
+                      <TableCell className="min-w-[112px] px-5 py-4">
+                        <Badge className="whitespace-nowrap" variant="outline">{formatActionStatus(item.status)}</Badge>
                       </TableCell>
                       <TableCell className="px-5 py-4 text-sm text-muted-foreground">
                         {formatInsightTime(item.createdAt)}
                       </TableCell>
-                      <TableCell className="px-5 py-4">
+                      <TableCell className="min-w-[190px] px-5 py-4">
                         <div className="flex justify-end gap-2">
                           <Button
                             className="h-8 rounded-[8px]"
@@ -200,5 +269,36 @@ export function InsightsFollowUpsPage() {
         onOpenChange={detail.onOpenChange}
       />
     </InsightsLayout>
+  );
+}
+
+function FilterSelect({
+  label,
+  onValueChange,
+  options,
+  placeholder,
+  value,
+  widthClassName,
+}: {
+  label: string;
+  onValueChange: (value: string) => void;
+  options: Array<{ label: string; value: string }>;
+  placeholder?: string;
+  value: string | undefined;
+  widthClassName: string;
+}) {
+  return (
+    <Select onValueChange={onValueChange} value={value ?? ""}>
+      <SelectTrigger aria-label={label} className={`h-9 rounded-[8px] ${widthClassName}`}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

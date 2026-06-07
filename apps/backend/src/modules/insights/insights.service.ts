@@ -44,6 +44,18 @@ import {
   NotFoundError,
 } from "../../shared/errors.js";
 
+type InsightConfigLimitType = "entityDictionary" | "intentConfigs" | "labelConfigs" | "qaRuleConfigs";
+
+type InsightConfigLimitRule = {
+  hardLimit: number;
+  softLimit: number;
+};
+
+type InsightConfigIdentity = {
+  id: string;
+  status: -1 | 0 | 1;
+};
+
 export type InsightsUidScope = {
   uid: number;
 };
@@ -122,10 +134,12 @@ export type InsightDetailRow = {
 };
 
 export type InsightsFollowUpFilters = {
+  from?: string;
   page?: number;
   pageSize?: number;
   priority?: InsightActionItemRow["priority"];
-  status?: InsightActionStatus;
+  status?: InsightActionStatus | "processed";
+  to?: string;
 };
 
 export type InsightsQualityFilters = {
@@ -195,7 +209,7 @@ export type InsightCurrentSessionPage = {
 
 export type InsightOverviewAggregateRow = Omit<
   InsightsOverviewResponse,
-  "entityHotspots" | "intentDistribution" | "sessions"
+  "comparison" | "entityHotspots" | "intentDistribution" | "sessions"
 >;
 
 export type InsightBusinessTopicFactRow = {
@@ -268,6 +282,7 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     filters?: { from?: string; to?: string },
   ): Promise<{
+    inspectedSessions: number;
     inspectionRate: number;
     passRate: number;
     ruleDistribution: Array<{ count: number; ruleCode: string; ruleName: string }>;
@@ -331,6 +346,8 @@ export type InsightsRepositoryPort = {
   listLabelConfigs(scope: InsightsUidScope): Promise<InsightLabelConfig[]>;
   listQaRuleConfigs(scope: InsightsUidScope): Promise<InsightQaRuleConfig[]>;
   listEntityDictionary(scope: InsightsUidScope): Promise<InsightEntityDictionaryItem[]>;
+  countEnabledConfigs(scope: InsightsUidScope, configType: InsightConfigLimitType): Promise<number>;
+  countActiveConfigs(scope: InsightsUidScope, configType: InsightConfigLimitType): Promise<number>;
   upsertFeatureConfig(
     scope: InsightsUidScope,
     payload: InsightFeatureConfigUpdateRequest,
@@ -423,6 +440,13 @@ const defaultMessageContextSize = 30;
 const defaultOverviewPageSize = 20;
 const maxOverviewPageSize = 100;
 const defaultOverviewRangeDays = 30;
+const insightConfigLimitRules: Record<InsightConfigLimitType, InsightConfigLimitRule> = {
+  entityDictionary: { hardLimit: 20, softLimit: 15 },
+  intentConfigs: { hardLimit: 20, softLimit: 15 },
+  labelConfigs: { hardLimit: 20, softLimit: 15 },
+  qaRuleConfigs: { hardLimit: 10, softLimit: 8 },
+};
+const insightConfigTotalLimit = 50;
 
 export class InsightsService {
   constructor(private readonly repository: InsightsRepositoryPort) {}
@@ -436,14 +460,17 @@ export class InsightsService {
       from: boundedFilters.from,
       to: boundedFilters.to,
     };
-    const [aggregate, entityHotspots, intentDistribution] = await Promise.all([
+    const comparisonFilters = getPreviousOverviewDateRange(aggregateFilters);
+    const [aggregate, previousAggregate, entityHotspots, intentDistribution] = await Promise.all([
       this.repository.getOverviewAggregate(scope, aggregateFilters),
+      this.repository.getOverviewAggregate(scope, comparisonFilters),
       this.repository.listEntityHotspots?.(scope) ?? Promise.resolve([]),
       this.repository.listIntentDistribution?.(scope) ?? Promise.resolve([]),
     ]);
 
     return {
       ...aggregate,
+      comparison: buildOverviewComparison(aggregate.totals, previousAggregate.totals),
       entityHotspots,
       intentDistribution,
     };
@@ -513,6 +540,7 @@ export class InsightsService {
       agentStats: agentStats ?? buildAgentStats(unresolvedRows),
       overview: {
         ...baseOverview,
+        inspectedSessions: qaAggregate?.inspectedSessions ?? baseOverview.inspectedSessions,
         inspectionRate: qaAggregate?.inspectionRate ?? baseOverview.inspectionRate,
         passRate: qaAggregate?.passRate ?? baseOverview.passRate,
         ruleDistribution: qaAggregate?.ruleDistribution ?? baseOverview.ruleDistribution,
@@ -860,6 +888,8 @@ export class InsightsService {
     payload: InsightIntentConfigMutationRequest,
   ): Promise<InsightIntentConfig> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigTotalAllowed(scope, "intentConfigs");
+    await this.assertConfigEnableAllowed(scope, "intentConfigs", payload.status);
     return this.repository.createIntentConfig(scope, payload);
   }
 
@@ -870,6 +900,12 @@ export class InsightsService {
     payload: InsightIntentConfigMutationRequest,
   ): Promise<InsightIntentConfig> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigEnableAllowed(
+      scope,
+      "intentConfigs",
+      payload.status,
+      await this.getCurrentConfig(scope, "intentConfigs", id),
+    );
     return await this.repository.updateIntentConfig(scope, id, payload)
       ?? raiseConfigNotFound();
   }
@@ -881,6 +917,12 @@ export class InsightsService {
     payload: InsightConfigStatusUpdateRequest,
   ): Promise<InsightIntentConfig> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigEnableAllowed(
+      scope,
+      "intentConfigs",
+      payload.status,
+      await this.getCurrentConfig(scope, "intentConfigs", id),
+    );
     return await this.repository.updateIntentConfigStatus(scope, id, payload.status)
       ?? raiseConfigNotFound();
   }
@@ -900,6 +942,8 @@ export class InsightsService {
     payload: InsightLabelConfigMutationRequest,
   ): Promise<InsightLabelConfig> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigTotalAllowed(scope, "labelConfigs");
+    await this.assertConfigEnableAllowed(scope, "labelConfigs", payload.status);
     return this.repository.createLabelConfig(scope, payload);
   }
 
@@ -910,6 +954,12 @@ export class InsightsService {
     payload: InsightLabelConfigMutationRequest,
   ): Promise<InsightLabelConfig> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigEnableAllowed(
+      scope,
+      "labelConfigs",
+      payload.status,
+      await this.getCurrentConfig(scope, "labelConfigs", id),
+    );
     return await this.repository.updateLabelConfig(scope, id, payload)
       ?? raiseConfigNotFound();
   }
@@ -921,6 +971,12 @@ export class InsightsService {
     payload: InsightConfigStatusUpdateRequest,
   ): Promise<InsightLabelConfig> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigEnableAllowed(
+      scope,
+      "labelConfigs",
+      payload.status,
+      await this.getCurrentConfig(scope, "labelConfigs", id),
+    );
     return await this.repository.updateLabelConfigStatus(scope, id, payload.status)
       ?? raiseConfigNotFound();
   }
@@ -940,6 +996,8 @@ export class InsightsService {
     payload: InsightQaRuleConfigMutationRequest,
   ): Promise<InsightQaRuleConfig> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigTotalAllowed(scope, "qaRuleConfigs");
+    await this.assertConfigEnableAllowed(scope, "qaRuleConfigs", payload.status);
     return this.repository.createQaRuleConfig(scope, payload);
   }
 
@@ -950,6 +1008,12 @@ export class InsightsService {
     payload: InsightQaRuleConfigMutationRequest,
   ): Promise<InsightQaRuleConfig> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigEnableAllowed(
+      scope,
+      "qaRuleConfigs",
+      payload.status,
+      await this.getCurrentConfig(scope, "qaRuleConfigs", id),
+    );
     return await this.repository.updateQaRuleConfig(scope, id, payload)
       ?? raiseConfigNotFound();
   }
@@ -961,6 +1025,12 @@ export class InsightsService {
     payload: InsightConfigStatusUpdateRequest,
   ): Promise<InsightQaRuleConfig> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigEnableAllowed(
+      scope,
+      "qaRuleConfigs",
+      payload.status,
+      await this.getCurrentConfig(scope, "qaRuleConfigs", id),
+    );
     return await this.repository.updateQaRuleConfigStatus(scope, id, payload.status)
       ?? raiseConfigNotFound();
   }
@@ -980,6 +1050,8 @@ export class InsightsService {
     payload: InsightEntityDictionaryMutationRequest,
   ): Promise<InsightEntityDictionaryItem> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigTotalAllowed(scope, "entityDictionary");
+    await this.assertConfigEnableAllowed(scope, "entityDictionary", payload.status);
     return this.repository.createEntityDictionaryItem(scope, payload);
   }
 
@@ -990,6 +1062,12 @@ export class InsightsService {
     payload: InsightEntityDictionaryMutationRequest,
   ): Promise<InsightEntityDictionaryItem> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigEnableAllowed(
+      scope,
+      "entityDictionary",
+      payload.status,
+      await this.getCurrentConfig(scope, "entityDictionary", id),
+    );
     return await this.repository.updateEntityDictionaryItem(scope, id, payload)
       ?? raiseConfigNotFound();
   }
@@ -1001,6 +1079,12 @@ export class InsightsService {
     payload: InsightConfigStatusUpdateRequest,
   ): Promise<InsightEntityDictionaryItem> {
     assertInsightSettingsAdmin(role);
+    await this.assertConfigEnableAllowed(
+      scope,
+      "entityDictionary",
+      payload.status,
+      await this.getCurrentConfig(scope, "entityDictionary", id),
+    );
     return await this.repository.updateEntityDictionaryItemStatus(scope, id, payload.status)
       ?? raiseConfigNotFound();
   }
@@ -1107,6 +1191,75 @@ export class InsightsService {
 
     return true;
   }
+
+  private async assertConfigEnableAllowed(
+    scope: InsightsUidScope,
+    configType: InsightConfigLimitType,
+    status: 0 | 1,
+    currentConfig?: InsightConfigIdentity,
+  ) {
+    if (status !== 1) {
+      return;
+    }
+
+    if (currentConfig?.status === 1) {
+      return;
+    }
+
+    const currentEnabled = await this.repository.countEnabledConfigs(scope, configType);
+    const rule = insightConfigLimitRules[configType];
+
+    if (currentEnabled >= rule.hardLimit) {
+      throw new BadRequestError(
+        "INSIGHT_CONFIG_ENABLED_LIMIT_REACHED",
+        `当前已启用 ${currentEnabled} 条（上限 ${rule.hardLimit} 条），请先停用其他配置`,
+        {
+          configType,
+          currentEnabled,
+          limit: rule.hardLimit,
+        },
+      );
+    }
+  }
+
+  private async assertConfigTotalAllowed(
+    scope: InsightsUidScope,
+    configType: InsightConfigLimitType,
+  ) {
+    const currentTotal = await this.repository.countActiveConfigs(scope, configType);
+
+    if (currentTotal >= insightConfigTotalLimit) {
+      throw new BadRequestError(
+        "INSIGHT_CONFIG_TOTAL_LIMIT_REACHED",
+        `当前已有 ${currentTotal} 条配置（上限 ${insightConfigTotalLimit} 条），请先删除无用配置后再新建`,
+        {
+          configType,
+          currentTotal,
+          limit: insightConfigTotalLimit,
+        },
+      );
+    }
+  }
+
+  private async getCurrentConfig(
+    scope: InsightsUidScope,
+    configType: InsightConfigLimitType,
+    id: string,
+  ): Promise<InsightConfigIdentity | undefined> {
+    if (configType === "intentConfigs") {
+      return this.repository.listIntentConfigs(scope).then((items) => items.find((item) => item.id === id));
+    }
+
+    if (configType === "labelConfigs") {
+      return this.repository.listLabelConfigs(scope).then((items) => items.find((item) => item.id === id));
+    }
+
+    if (configType === "qaRuleConfigs") {
+      return this.repository.listQaRuleConfigs(scope).then((items) => items.find((item) => item.id === id));
+    }
+
+    return this.repository.listEntityDictionary(scope).then((items) => items.find((item) => item.id === id));
+  }
 }
 
 function assertInsightSettingsAdmin(role: AccountRole | string | undefined) {
@@ -1203,6 +1356,7 @@ function isCustomerProblemSession(row: InsightCurrentSessionRow) {
 function buildQualityOverview(rows: InsightCurrentSessionRow[]): InsightQualityAggregateRow {
   return {
     analyzedSessions: rows.filter((row) => analyzedStatuses.has(row.analysisStatus)).length,
+    inspectedSessions: 0,
     inspectionRate: 0,
     noCustomerProblem: rows.filter(
       (row) => row.resolutionStatus === "no_customer_problem",
@@ -1502,6 +1656,80 @@ function withDefaultOverviewDateRange<T extends InsightsOverviewFilters>(filters
     ...filters,
     from: `${range.from}T00:00:00.000+08:00`,
     to: `${range.to}T23:59:59.999+08:00`,
+  };
+}
+
+function normalizeOverviewBoundary(value: string, boundary: "end" | "start") {
+  if (Number.isNaN(Date.parse(value)) || value.includes("T")) {
+    return value;
+  }
+
+  return boundary === "start"
+    ? `${value}T00:00:00.000+08:00`
+    : `${value}T23:59:59.999+08:00`;
+}
+
+function getPreviousOverviewDateRange(filters: Pick<InsightsOverviewFilters, "from" | "to">) {
+  const normalizedFilters = {
+    from: filters.from ? normalizeOverviewBoundary(filters.from, "start") : filters.from,
+    to: filters.to ? normalizeOverviewBoundary(filters.to, "end") : filters.to,
+  };
+  const from = parseOverviewBoundary(normalizedFilters.from);
+  const to = parseOverviewBoundary(normalizedFilters.to);
+
+  if (from == null || to == null || to < from) {
+    return filters;
+  }
+
+  const duration = to - from + 1;
+  const previousTo = from - 1;
+  const previousFrom = previousTo - duration + 1;
+
+  return {
+    from: formatOverviewBoundary(previousFrom, "start"),
+    to: formatOverviewBoundary(previousTo, "end"),
+  };
+}
+
+function parseOverviewBoundary(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  const timestamp = Date.parse(value);
+
+  return Number.isNaN(timestamp) ? undefined : timestamp;
+}
+
+function formatOverviewBoundary(value: number, boundary: "end" | "start") {
+  const date = formatDateKey(value);
+
+  return boundary === "start"
+    ? `${date}T00:00:00.000+08:00`
+    : `${date}T23:59:59.999+08:00`;
+}
+
+function buildOverviewComparison(
+  current: InsightsOverviewResponse["totals"],
+  previous: InsightsOverviewResponse["totals"],
+): InsightsOverviewResponse["comparison"] {
+  return {
+    agentMessages: buildOverviewComparisonValue(current.agentMessages, previous.agentMessages),
+    consultingCustomers: buildOverviewComparisonValue(current.consultingCustomers, previous.consultingCustomers),
+    customerMessages: buildOverviewComparisonValue(current.customerMessages, previous.customerMessages),
+    logicalSessions: buildOverviewComparisonValue(current.logicalSessions, previous.logicalSessions),
+    messages: buildOverviewComparisonValue(current.messages, previous.messages),
+  };
+}
+
+function buildOverviewComparisonValue(current: number, previous: number) {
+  const delta = current - previous;
+
+  return {
+    current,
+    delta,
+    deltaRate: previous > 0 ? delta / previous : current > 0 ? 1 : 0,
+    previous,
   };
 }
 

@@ -88,6 +88,21 @@ export const InsightOverviewTotalsSchema = Type.Object({
   messages: Type.Number(),
 });
 
+export const InsightOverviewComparisonValueSchema = Type.Object({
+  current: Type.Number(),
+  delta: Type.Number(),
+  deltaRate: Type.Optional(Type.Number()),
+  previous: Type.Number(),
+});
+
+export const InsightOverviewComparisonSchema = Type.Object({
+  agentMessages: InsightOverviewComparisonValueSchema,
+  consultingCustomers: InsightOverviewComparisonValueSchema,
+  customerMessages: InsightOverviewComparisonValueSchema,
+  logicalSessions: InsightOverviewComparisonValueSchema,
+  messages: InsightOverviewComparisonValueSchema,
+});
+
 export const InsightOverviewTrendPointSchema = Type.Object({
   agentMessages: Type.Number(),
   consultingCustomers: Type.Number(),
@@ -152,6 +167,7 @@ export const InsightsOverviewResponseSchema = Type.Object({
     ready: Type.Number(),
     stale: Type.Number(),
   }),
+  comparison: InsightOverviewComparisonSchema,
   entityHotspots: Type.Array(InsightEntityHotspotSchema),
   intentDistribution: Type.Array(InsightIntentCountSchema),
   problemSessions: Type.Number(),
@@ -259,6 +275,7 @@ export const InsightsQualityRuleDistributionSchema = Type.Object({
 
 export const InsightsQualityOverviewSchema = Type.Object({
   analyzedSessions: Type.Number(),
+  inspectedSessions: Type.Number(),
   inspectionRate: Type.Number(),
   noCustomerProblem: Type.Number(),
   partial: Type.Number(),
@@ -624,13 +641,24 @@ export const InsightSettingsResponseSchema = Type.Object({
 
 export const InsightSettingsSummaryResponseSchema = Type.Object({
   enabledIntentCount: Type.Number(),
+  intentLimit: Type.Number(),
+  intentSoftLimit: Type.Number(),
   enabledLabelCount: Type.Number(),
+  labelLimit: Type.Number(),
+  labelSoftLimit: Type.Number(),
   enabledQaCount: Type.Number(),
-  entityCount: Type.Number(),
+  qaLimit: Type.Number(),
+  qaSoftLimit: Type.Number(),
+  enabledEntityCount: Type.Number(),
+  entityLimit: Type.Number(),
+  entitySoftLimit: Type.Number(),
+  entityEnabled: Type.Boolean(),
   insightAvailable: Type.Optional(Type.Boolean()),
   insightEnabled: Type.Boolean(),
-  liveAnalysisEnabled: Type.Boolean(),
-  sessionizationIdleMinutes: Type.Number(),
+  intentEnabled: Type.Boolean(),
+  labelEnabled: Type.Boolean(),
+  qaEnabled: Type.Boolean(),
+  todoEnabled: Type.Boolean(),
 });
 
 export const InsightsRescanRequestSchema = Type.Object(

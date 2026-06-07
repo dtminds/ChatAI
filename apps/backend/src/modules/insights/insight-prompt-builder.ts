@@ -462,7 +462,11 @@ function normalizePreviousSessionContexts(contexts: InsightPreviousSessionContex
 
 function normalizeContext(context: InsightPromptContext) {
   return {
-    entityDictionary: context.entityDictionary.slice(0, 80).map((item) => ({
+    entityDictionary: context.entityDictionary
+      .slice()
+      .sort((left, right) => Number(right.includeInAggregation) - Number(left.includeInAggregation))
+      .slice(0, 20)
+      .map((item) => ({
       aliases: item.aliases.slice(0, 8).map((alias) => truncatePromptText(alias, PROMPT_LIMITS.name)),
       attributes: item.attributes,
       canonicalName: truncatePromptText(item.canonicalName, PROMPT_LIMITS.name),
@@ -472,7 +476,7 @@ function normalizeContext(context: InsightPromptContext) {
     intentConfigs: context.intentConfigs
       .slice()
       .sort((left, right) => left.weight - right.weight)
-      .slice(0, 80)
+      .slice(0, 20)
       .map((item) => ({
         aliases: item.aliases.slice(0, 8).map((alias) => truncatePromptText(alias, PROMPT_LIMITS.name)),
         description: truncatePromptText(item.description, PROMPT_LIMITS.description),
@@ -482,7 +486,11 @@ function normalizeContext(context: InsightPromptContext) {
         negativeExamples: item.negativeExamples.slice(0, 5).map((example) => truncatePromptText(example, PROMPT_LIMITS.example)),
         positiveExamples: item.positiveExamples.slice(0, 5).map((example) => truncatePromptText(example, PROMPT_LIMITS.example)),
       })),
-    labelConfigs: context.labelConfigs.slice(0, 50).map((item) => ({
+    labelConfigs: context.labelConfigs
+      .slice()
+      .sort((left, right) => Number(right.includeInStatistics) - Number(left.includeInStatistics))
+      .slice(0, 20)
+      .map((item) => ({
       description: truncatePromptText(item.description, PROMPT_LIMITS.description),
       includeInStatistics: item.includeInStatistics,
       labelCode: truncatePromptText(item.labelCode, PROMPT_LIMITS.code),
@@ -490,7 +498,11 @@ function normalizeContext(context: InsightPromptContext) {
       negativeExamples: item.negativeExamples.slice(0, 5).map((example) => truncatePromptText(example, PROMPT_LIMITS.example)),
       positiveExamples: item.positiveExamples.slice(0, 5).map((example) => truncatePromptText(example, PROMPT_LIMITS.example)),
     })),
-    qaRuleConfigs: context.qaRuleConfigs.slice(0, 40).map((item) => ({
+    qaRuleConfigs: context.qaRuleConfigs
+      .slice()
+      .sort((left, right) => compareSeverity(left.severity, right.severity))
+      .slice(0, 10)
+      .map((item) => ({
       applicableScene: truncatePromptText(item.applicableScene, PROMPT_LIMITS.description),
       description: truncatePromptText(item.description, PROMPT_LIMITS.description),
       judgmentCriteria: truncatePromptText(item.judgmentCriteria, PROMPT_LIMITS.qaCriteria),
@@ -501,6 +513,11 @@ function normalizeContext(context: InsightPromptContext) {
       severity: item.severity,
     })),
   };
+}
+
+function compareSeverity(left: "high" | "low" | "medium", right: "high" | "low" | "medium") {
+  const rank = { high: 0, medium: 1, low: 2 };
+  return rank[left] - rank[right];
 }
 
 function truncatePromptText(value: string | undefined, maxLength: number) {

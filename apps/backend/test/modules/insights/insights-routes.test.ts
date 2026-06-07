@@ -48,7 +48,7 @@ describe("insights routes", () => {
     const followUps = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/insights/follow-ups?status=open&page=1&pageSize=1",
+      url: "/api/server/insights/follow-ups?from=2026-06-01T00:00:00.000%2B08:00&to=2026-06-30T23:59:59.999%2B08:00&priority=high&status=open&page=1&pageSize=1",
     });
     const detail = await app.inject({
       headers: { authorization },
@@ -166,6 +166,13 @@ describe("insights routes", () => {
       success: true,
     });
     expect(followUps.statusCode).toBe(200);
+    expect(
+      db.selectBuilders.some((builder) =>
+        builder.wheres.some((call) => call[0] === "action.priority" && call[1] === "=" && call[2] === "high")
+          && builder.wheres.some((call) => call[0] === "session.started_at" && call[1] === ">=")
+          && builder.wheres.some((call) => call[0] === "session.started_at" && call[1] === "<="),
+      ),
+    ).toBe(true);
     expect(followUps.json().data.items).toHaveLength(1);
     expect(followUps.json().data.items[0]).toMatchObject({
       actionItemId: "801",

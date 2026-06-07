@@ -39,6 +39,7 @@ const DateQuerySchema = Type.String({
 });
 
 const FollowUpsQuerySchema = Type.Object({
+  from: Type.Optional(DateQuerySchema),
   page: Type.Optional(Type.Number()),
   pageSize: Type.Optional(Type.Number()),
   priority: Type.Optional(Type.Union([
@@ -46,7 +47,11 @@ const FollowUpsQuerySchema = Type.Object({
     Type.Literal("medium"),
     Type.Literal("high"),
   ])),
-  status: Type.Optional(InsightActionStatusSchema),
+  status: Type.Optional(Type.Union([
+    InsightActionStatusSchema,
+    Type.Literal("processed"),
+  ])),
+  to: Type.Optional(DateQuerySchema),
 });
 
 const OverviewQuerySchema = Type.Object({
@@ -875,10 +880,12 @@ function normalizeQualityQuery(query: QualityQuery) {
 
 function normalizeFollowUpsQuery(query: FollowUpsQuery) {
   return {
+    from: query.from,
     page: normalizePositiveQueryNumber(query.page),
     pageSize: normalizePositiveQueryNumber(query.pageSize),
     priority: query.priority,
     status: query.status,
+    to: query.to,
   };
 }
 

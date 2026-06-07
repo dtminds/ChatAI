@@ -402,8 +402,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       enabledLabelResult,
       enabledQaResult,
       entityResult,
-      sessionization,
-      analysisPolicy,
       featureConfig,
     ] = await Promise.all([
       this.db
@@ -430,19 +428,28 @@ export class InsightsRepository implements InsightsRepositoryPort {
         .where("uid", "=", scope.uid)
         .where("status", "=", 1)
         .executeTakeFirst(),
-      this.getSessionizationSettings(scope),
-      this.getAnalysisPolicy(scope),
       this.getFeatureConfig(scope),
     ]);
 
     return {
       enabledIntentCount: Number(enabledIntentResult?.count ?? 0),
+      intentLimit: 20,
+      intentSoftLimit: 15,
       enabledLabelCount: Number(enabledLabelResult?.count ?? 0),
+      labelLimit: 20,
+      labelSoftLimit: 15,
       enabledQaCount: Number(enabledQaResult?.count ?? 0),
-      entityCount: Number(entityResult?.count ?? 0),
+      qaLimit: 10,
+      qaSoftLimit: 8,
+      enabledEntityCount: Number(entityResult?.count ?? 0),
+      entityLimit: 20,
+      entitySoftLimit: 15,
+      entityEnabled: featureConfig.entityEnabled,
       insightEnabled: featureConfig.insightEnabled,
-      liveAnalysisEnabled: analysisPolicy.liveAnalysisEnabled,
-      sessionizationIdleMinutes: sessionization.idleTimeoutMinutes,
+      intentEnabled: featureConfig.intentEnabled,
+      labelEnabled: featureConfig.labelEnabled,
+      qaEnabled: featureConfig.qaEnabled,
+      todoEnabled: featureConfig.todoEnabled,
     };
   }
 
@@ -1043,8 +1050,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ])
       .where("uid", "=", scope.uid)
       .where("status", "!=", -1)
-      .orderBy("sort_order", "asc")
-      .orderBy("id", "asc")
+      .orderBy("id", "desc")
       .execute();
 
     return rows.map(mapIntentRow);
@@ -1123,7 +1129,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ])
       .where("uid", "=", scope.uid)
       .where("status", "!=", -1)
-      .orderBy("id", "asc")
+      .orderBy("id", "desc")
       .execute();
 
     return rows.map(mapLabelRow);
@@ -1200,7 +1206,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ])
       .where("uid", "=", scope.uid)
       .where("status", "!=", -1)
-      .orderBy("id", "asc")
+      .orderBy("id", "desc")
       .execute();
 
     return rows.map(mapQaRuleRow);
@@ -1280,10 +1286,38 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ])
       .where("uid", "=", scope.uid)
       .where("status", "!=", -1)
-      .orderBy("id", "asc")
+      .orderBy("id", "desc")
       .execute();
 
     return rows.map(mapEntityRow);
+  }
+
+  async countEnabledConfigs(
+    scope: InsightsUidScope,
+    configType: "entityDictionary" | "intentConfigs" | "labelConfigs" | "qaRuleConfigs",
+  ): Promise<number> {
+    const result = await this.db
+      .selectFrom(getConfigTableName(configType))
+      .select((eb) => eb.fn.countAll().as("count"))
+      .where("uid", "=", scope.uid)
+      .where("status", "=", 1)
+      .executeTakeFirst();
+
+    return Number(result?.count ?? 0);
+  }
+
+  async countActiveConfigs(
+    scope: InsightsUidScope,
+    configType: "entityDictionary" | "intentConfigs" | "labelConfigs" | "qaRuleConfigs",
+  ): Promise<number> {
+    const result = await this.db
+      .selectFrom(getConfigTableName(configType))
+      .select((eb) => eb.fn.countAll().as("count"))
+      .where("uid", "=", scope.uid)
+      .where("status", "!=", -1)
+      .executeTakeFirst();
+
+    return Number(result?.count ?? 0);
   }
 
   private async getEntityDictionaryItemById(
@@ -1394,6 +1428,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     return {
       analyzedSessions: parseNumber(row?.analyzed_sessions ?? 0),
+      inspectedSessions: 0,
       inspectionRate: 0,
       noCustomerProblem: parseNumber(row?.no_customer_problem ?? 0),
       partial: parseNumber(row?.partial ?? 0),
@@ -1475,6 +1510,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     scope: InsightsUidScope,
     filters: { from?: string; to?: string } = {},
   ): Promise<{
+    inspectedSessions: number;
     inspectionRate: number;
     passRate: number;
     ruleDistribution: Array<{ count: number; ruleCode: string; ruleName: string }>;
@@ -1535,6 +1571,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const passed = parseNumber(aggRow?.passed ?? 0);
 
     return {
+      inspectedSessions: totalQa,
       inspectionRate: totalAnalyzed > 0 ? totalQa / totalAnalyzed : 0,
       passRate: totalQa > 0 ? passed / totalQa : 0,
       ruleDistribution: ruleRows.map((row) => ({
@@ -2098,13 +2135,17 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .where("action.uid", "=", scope.uid)
       .where("problem.resolution_status", "in", ["unresolved", "partially_resolved"]);
 
-    if (filters.status) {
+    if (filters.status === "processed") {
+      query = query.where("action.status", "in", ["done", "dismissed"]);
+    } else if (filters.status) {
       query = query.where("action.status", "=", filters.status);
     }
 
     if (filters.priority) {
       query = query.where("action.priority", "=", filters.priority);
     }
+
+    query = applyTopicDateFilters(query, filters);
 
     return (await query
       .orderBy("action.id", "desc")
@@ -4442,6 +4483,24 @@ function isDuplicateKeyError(error: unknown) {
   const value = error as { code?: unknown; errno?: unknown };
 
   return value.code === "ER_DUP_ENTRY" || value.errno === 1062;
+}
+
+function getConfigTableName(
+  configType: "entityDictionary" | "intentConfigs" | "labelConfigs" | "qaRuleConfigs",
+) {
+  if (configType === "intentConfigs") {
+    return "xy_wap_embed_insight_intent_config";
+  }
+
+  if (configType === "labelConfigs") {
+    return "xy_wap_embed_insight_label_config";
+  }
+
+  if (configType === "qaRuleConfigs") {
+    return "xy_wap_embed_insight_qa_rule_config";
+  }
+
+  return "xy_wap_embed_insight_entity_dictionary";
 }
 
 function parseInsertedMySqlId(result: InsertResult) {

@@ -475,6 +475,38 @@ function installInsightMocks() {
       unresolved: 5,
     },
     totalSessions: 22,
+    comparison: {
+      agentMessages: {
+        current: 38,
+        delta: 38,
+        deltaRate: 1,
+        previous: 0,
+      },
+      consultingCustomers: {
+        current: 16,
+        delta: 16,
+        deltaRate: 1,
+        previous: 0,
+      },
+      customerMessages: {
+        current: 64,
+        delta: 64,
+        deltaRate: 1,
+        previous: 0,
+      },
+      logicalSessions: {
+        current: 22,
+        delta: 22,
+        deltaRate: 1,
+        previous: 0,
+      },
+      messages: {
+        current: 102,
+        delta: 102,
+        deltaRate: 1,
+        previous: 0,
+      },
+    },
     totals: {
       agentMessages: 38,
       consultingCustomers: 16,
@@ -767,6 +799,7 @@ function installInsightMocks() {
     ],
     overview: {
       analyzedSessions: 20,
+      inspectedSessions: 19,
       inspectionRate: 0.91,
       noCustomerProblem: 6,
       partial: 3,
@@ -774,8 +807,17 @@ function installInsightMocks() {
       problemSessions: 14,
       resolved: 6,
       ruleDistribution: [
-        { count: 8, ruleCode: "problem_resolution", ruleName: "客户问题是否解决" },
-        { count: 3, ruleCode: "clear_next_step", ruleName: "是否明确下一步" },
+        { count: 20, ruleCode: "problem_resolution", ruleName: "客户问题是否解决" },
+        { count: 18, ruleCode: "clear_next_step", ruleName: "是否明确下一步" },
+        { count: 16, ruleCode: "tone", ruleName: "服务语气不佳" },
+        { count: 14, ruleCode: "response_speed", ruleName: "响应不及时" },
+        { count: 12, ruleCode: "solution", ruleName: "方案不完整" },
+        { count: 10, ruleCode: "wrong_info", ruleName: "信息错误" },
+        { count: 8, ruleCode: "handoff", ruleName: "转接不规范" },
+        { count: 6, ruleCode: "empathy", ruleName: "缺少安抚" },
+        { count: 4, ruleCode: "closing", ruleName: "结束语缺失" },
+        { count: 3, ruleCode: "upsell", ruleName: "推荐不恰当" },
+        { count: 1, ruleCode: "privacy", ruleName: "隐私提醒缺失" },
       ],
       totalSessions: 22,
       unresolved: 5,
@@ -881,13 +923,24 @@ function installInsightMocks() {
   serviceMocks.getInsightSettings.mockResolvedValue(mockInsightSettings);
   serviceMocks.getInsightSettingsSummary.mockResolvedValue({
     enabledIntentCount: mockInsightSettings.intentConfigs.filter((item) => item.status === 1).length,
+    intentLimit: 20,
+    intentSoftLimit: 15,
     enabledLabelCount: mockInsightSettings.labelConfigs.filter((item) => item.status === 1).length,
+    labelLimit: 20,
+    labelSoftLimit: 15,
     enabledQaCount: mockInsightSettings.qaRuleConfigs.filter((item) => item.status === 1).length,
-    entityCount: mockInsightSettings.entityDictionary.length,
+    qaLimit: 10,
+    qaSoftLimit: 8,
+    enabledEntityCount: mockInsightSettings.entityDictionary.filter((item) => item.status === 1).length,
+    entityLimit: 20,
+    entitySoftLimit: 15,
+    entityEnabled: mockInsightSettings.featureConfig.entityEnabled,
     insightAvailable: mockInsightSettings.featureConfig.insightAvailable,
     insightEnabled: mockInsightSettings.featureConfig.insightEnabled,
-    liveAnalysisEnabled: mockInsightSettings.analysisPolicy.liveAnalysisEnabled,
-    sessionizationIdleMinutes: mockInsightSettings.sessionization.idleTimeoutMinutes,
+    intentEnabled: mockInsightSettings.featureConfig.intentEnabled,
+    labelEnabled: mockInsightSettings.featureConfig.labelEnabled,
+    qaEnabled: mockInsightSettings.featureConfig.qaEnabled,
+    todoEnabled: mockInsightSettings.featureConfig.todoEnabled,
   });
   serviceMocks.getInsightPolicyAndSessionization.mockResolvedValue({
     analysisPolicy: mockInsightSettings.analysisPolicy,
@@ -1029,6 +1082,15 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("咨询用户数")).toBeInTheDocument();
     expect(screen.getByText("消息数")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^消息数/ })).toBeInTheDocument();
+    expect(screen.getByText("环比 ↑100.0% +22")).toBeInTheDocument();
+    expect(screen.getByText("环比 ↑100.0% +16")).toBeInTheDocument();
+    expect(screen.getByText("环比 ↑100.0% +102")).toBeInTheDocument();
+    expect(screen.getByText("环比 ↑100.0% +64")).toBeInTheDocument();
+    expect(screen.queryByText(/环比 .* -/)).not.toBeInTheDocument();
+    expect(screen.queryByText("按咨询过程归并")).not.toBeInTheDocument();
+    expect(screen.queryByText("按客户去重")).not.toBeInTheDocument();
+    expect(screen.queryByText("客户与客服合计")).not.toBeInTheDocument();
+    expect(screen.queryByText("客户主动表达量")).not.toBeInTheDocument();
     const distributionPanel = screen.getByRole("heading", { name: "问题解决分布" }).closest("section");
     const trendPanel = screen.getByRole("button", { name: "咨询会话" }).closest("section");
 
@@ -1393,7 +1455,12 @@ describe("conversation insights pages", () => {
 
     expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
     expect(serviceMocks.getInsightQuality).toHaveBeenCalledWith(
-      expect.objectContaining({ page: 1, pageSize: 10 }),
+      expect.objectContaining({
+        from: "2026-05-28",
+        page: 1,
+        pageSize: 10,
+        to: "2026-06-03",
+      }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(screen.queryByRole("region", { name: "质检概览" })).not.toBeInTheDocument();
@@ -1401,18 +1468,50 @@ describe("conversation insights pages", () => {
     expect(qualityOverviewContent).toHaveClass("lg:grid-cols-2");
     const qualityMetrics = screen.getByRole("region", { name: "质检指标" });
     expect(qualityMetrics).toBeInTheDocument();
-    expect(qualityMetrics).toHaveClass("rounded-[8px]", "border", "bg-background");
-    expect(screen.getByRole("region", { name: "质检分布" })).toHaveClass(
+    expect(qualityMetrics).toHaveClass("flex", "flex-col", "rounded-[8px]", "border", "bg-background");
+    const qualityDistribution = screen.getByRole("region", { name: "质检分布" });
+    expect(qualityDistribution).toHaveClass(
       "rounded-[8px]",
       "border",
       "bg-background",
     );
+    expect(within(qualityMetrics).getByText("2026-05-28 至 2026-06-03")).toBeInTheDocument();
+    expect(within(qualityDistribution).getByText("2026-05-28 至 2026-06-03")).toBeInTheDocument();
     expect(within(qualityMetrics).getByText("会话数")).toBeInTheDocument();
     expect(within(qualityMetrics).getByText("22")).toBeInTheDocument();
-    expect(within(qualityMetrics).getByText("分析会话数")).toBeInTheDocument();
-    expect(within(qualityMetrics).getByText("20")).toBeInTheDocument();
+    expect(within(qualityMetrics).getByText("质检会话数")).toBeInTheDocument();
+    expect(within(qualityMetrics).getByText("19")).toBeInTheDocument();
     expect(within(qualityMetrics).getByText("质检覆盖率")).toBeInTheDocument();
     expect(within(qualityMetrics).getByText("质检通过率")).toBeInTheDocument();
+    expect(within(qualityMetrics).getByTestId("quality-metric-grid")).toHaveClass("flex-1");
+    expect(
+      within(qualityMetrics).getByRole("progressbar", { name: "质检覆盖率" }),
+    ).toHaveAttribute("aria-valuenow", "91");
+    expect(
+      within(qualityMetrics).getByRole("progressbar", { name: "质检通过率" }),
+    ).toHaveAttribute("aria-valuenow", "43");
+    expect(within(qualityDistribution).getByTestId("quality-rule-distribution-chart")).toHaveClass("size-[180px]");
+    expect(within(qualityDistribution).getByText("112")).toBeInTheDocument();
+    expect(within(qualityDistribution).getByText("命中次数")).toBeInTheDocument();
+    expect(within(qualityDistribution).queryByText("规则")).not.toBeInTheDocument();
+    expect(within(qualityDistribution).queryByText("命中占比")).not.toBeInTheDocument();
+    expect(within(qualityDistribution).queryByText("总数")).not.toBeInTheDocument();
+    expect(within(qualityDistribution).getByTestId("quality-rule-distribution-scroll")).toHaveAttribute(
+      "data-scrollbar-visibility",
+      "hover",
+    );
+    expect(within(qualityDistribution).getByTestId("quality-rule-distribution-viewport")).toHaveClass("pr-4");
+    expect(within(qualityDistribution).getByTestId("quality-rule-distribution-list")).toBeInTheDocument();
+    const distributionItems = within(qualityDistribution).getAllByRole("listitem");
+    expect(distributionItems).toHaveLength(10);
+    expect(within(qualityDistribution).getByText("客户问题是否解决")).toBeInTheDocument();
+    expect(within(qualityDistribution).getByText("17.9%")).toBeInTheDocument();
+    expect(within(qualityDistribution).getByText("20")).toBeInTheDocument();
+    const otherItem = distributionItems.find((item) => item.textContent?.includes("其他"));
+    expect(otherItem).toBeDefined();
+    expect(within(otherItem!).getByText("3.6%")).toBeInTheDocument();
+    expect(within(otherItem!).getByText("4")).toBeInTheDocument();
+    expect(within(qualityDistribution).queryByText("推荐不恰当")).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "问题列表" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "客服报表" })).toBeInTheDocument();
     expect(screen.queryByText("无明确问题")).not.toBeInTheDocument();
@@ -1441,6 +1540,49 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("85.71%")).toBeInTheDocument();
   });
 
+  it("keeps quality distribution slots when fewer than ten rules are available", async () => {
+    serviceMocks.getInsightQuality.mockResolvedValueOnce({
+      agentStats: [],
+      overview: {
+        analyzedSessions: 6,
+        inspectedSessions: 6,
+        inspectionRate: 1,
+        noCustomerProblem: 0,
+        partial: 0,
+        passRate: 0.5,
+        problemSessions: 6,
+        resolved: 3,
+        ruleDistribution: [
+          { count: 7, ruleCode: "problem_resolution", ruleName: "客户问题是否解决" },
+          { count: 3, ruleCode: "clear_next_step", ruleName: "是否明确下一步" },
+        ],
+        totalSessions: 6,
+        unresolved: 3,
+      },
+      unresolvedReasons: [],
+      unresolvedSessions: [],
+      unresolvedSessionsPage: {
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        totalPages: 1,
+      },
+    });
+
+    renderRoute("/chat/insights/quality");
+
+    const qualityDistribution = await screen.findByRole("region", { name: "质检分布" });
+    const distributionItems = within(qualityDistribution).getAllByRole("listitem");
+
+    expect(distributionItems).toHaveLength(10);
+    expect(within(qualityDistribution).getByText("客户问题是否解决")).toBeInTheDocument();
+    expect(within(qualityDistribution).getByText("70.0%")).toBeInTheDocument();
+    expect(within(qualityDistribution).getByText("是否明确下一步")).toBeInTheDocument();
+    expect(within(qualityDistribution).getByText("30.0%")).toBeInTheDocument();
+    expect(within(qualityDistribution).queryByText("其他")).not.toBeInTheDocument();
+    expect(distributionItems.slice(2).every((item) => item.textContent === "")).toBe(true);
+  });
+
   it("aborts quality loading when the page unmounts", async () => {
     const qualityGate = createDeferred<Awaited<ReturnType<typeof serviceMocks.getInsightQuality>>>();
     serviceMocks.getInsightQuality.mockReturnValueOnce(qualityGate.promise);
@@ -1460,6 +1602,7 @@ describe("conversation insights pages", () => {
       agentStats: [],
       overview: {
         analyzedSessions: 0,
+        inspectedSessions: 0,
         inspectionRate: 0,
         noCustomerProblem: 0,
         partial: 0,
@@ -1481,7 +1624,11 @@ describe("conversation insights pages", () => {
 
     expect(await screen.findByRole("heading", { name: "待处理" })).toBeInTheDocument();
     expect(serviceMocks.getInsightFollowUps).toHaveBeenCalledWith(
-      { page: 1, pageSize: 10, status: "open" },
+      {
+        page: 1,
+        pageSize: 10,
+        status: "open",
+      },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(screen.getByRole("table", { name: "待处理列表" })).toBeInTheDocument();
@@ -1504,6 +1651,87 @@ describe("conversation insights pages", () => {
     });
   });
 
+  it("applies follow-up filters to pending insight queries", async () => {
+    renderRoute("/chat/insights/follow-ups");
+
+    expect(await screen.findByRole("heading", { name: "待处理" })).toBeInTheDocument();
+    expect(serviceMocks.getInsightFollowUps).toHaveBeenCalledWith(
+      {
+        page: 1,
+        pageSize: 10,
+        status: "open",
+      },
+      expect.any(Object),
+    );
+    expect(screen.getByRole("button", { name: "日期范围 选择时间" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("combobox", { name: "优先级" }));
+    expect(await screen.findByRole("option", { name: "全部优先级" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "选择优先级" })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("option", { name: "高" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          page: 1,
+          priority: "high",
+        }),
+        expect.any(Object),
+      );
+    });
+
+    await userEvent.click(screen.getByRole("combobox", { name: "优先级" }));
+    await userEvent.click(await screen.findByRole("option", { name: "全部优先级" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
+        {
+          page: 1,
+          pageSize: 10,
+          status: "open",
+        },
+        expect.any(Object),
+      );
+    });
+
+    await userEvent.click(screen.getByRole("combobox", { name: "优先级" }));
+    await userEvent.click(await screen.findByRole("option", { name: "高" }));
+
+    expect(screen.getByRole("tab", { name: "待处理" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "已处理" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "全部" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "状态" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "已处理" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          page: 1,
+          priority: "high",
+          status: "processed",
+        }),
+        expect.any(Object),
+      );
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "日期范围 选择时间" }));
+    await userEvent.click(await screen.findByRole("button", { name: "昨天" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          from: "2026-06-02T00:00:00.000+08:00",
+          page: 1,
+          priority: "high",
+          status: "processed",
+          to: "2026-06-02T23:59:59.999+08:00",
+        }),
+        expect.any(Object),
+      );
+    });
+  });
+
   it("aborts follow-up loading when the page unmounts", async () => {
     const followUpsGate = createDeferred<Awaited<ReturnType<typeof serviceMocks.getInsightFollowUps>>>();
     serviceMocks.getInsightFollowUps.mockReturnValueOnce(followUpsGate.promise);
@@ -1515,7 +1743,11 @@ describe("conversation insights pages", () => {
     });
     const requestOptions = serviceMocks.getInsightFollowUps.mock.calls[0]?.[1];
     expect(serviceMocks.getInsightFollowUps).toHaveBeenCalledWith(
-      { page: 1, pageSize: 10, status: "open" },
+      {
+        page: 1,
+        pageSize: 10,
+        status: "open",
+      },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(requestOptions?.signal?.aborted).toBe(false);
@@ -1596,8 +1828,8 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
     expect(screen.getByRole("table").parentElement).not.toHaveClass("rounded-[8px]", "border");
 
-    await userEvent.click(screen.getByRole("tab", { name: "标签体系" }));
-    expect(screen.getAllByText("标签体系")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("tab", { name: "标签配置" }));
+    expect(screen.getAllByText("标签配置")).toHaveLength(1);
     expect(screen.getByRole("table").parentElement).not.toHaveClass("rounded-[8px]", "border");
     await userEvent.click(screen.getByRole("button", { name: "新增标签" }));
     expect(await screen.findByRole("dialog", { name: "新增标签" })).toBeInTheDocument();
@@ -1626,7 +1858,7 @@ describe("conversation insights pages", () => {
     expect(screen.queryByRole("dialog", { name: "新建重刷任务" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "新建重刷任务" }));
     expect(screen.getByRole("dialog", { name: "新建重刷任务" })).toBeInTheDocument();
-    expect(screen.getByText("重新识别标签、实体和意图，适合调整标签体系、实体词库或意图配置后使用。")).toBeInTheDocument();
+    expect(screen.getByText("重新识别标签、实体和意图，适合调整标签配置、实体词库或意图配置后使用。")).toBeInTheDocument();
     expect(screen.getByText("只重新评估服务质检结果，适合新增或调整质检规则后使用。")).toBeInTheDocument();
     expect(screen.getByText("重新生成该时间范围内的全部洞察结果，适合配置整体调整后使用，耗时最长。")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "创建任务" }));
@@ -1748,11 +1980,130 @@ describe("conversation insights pages", () => {
     });
   });
 
+  it("shows enabled count with backend limits in the summary cards", async () => {
+    renderRoute("/chat/insights/settings");
+
+    expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
+    const summary = screen.getByRole("region", { name: "洞察配置概览" });
+    const cards = within(summary).getAllByRole("article");
+
+    expect(cards.map((card) => card.textContent)).toEqual([
+      "总开关未开启",
+      "智能创建待办已开启",
+      "智能意图识别已开启（2 / 20）",
+      "智能质检已开启（1 / 10）",
+      "智能标签已开启（3 / 20）",
+      "智能实体识别已开启（2 / 20）",
+    ]);
+    expect(within(cards[0]).getByText("未开启")).toHaveClass("text-muted-foreground");
+    expect(within(cards[1]).getByText("已开启")).toHaveClass("text-success");
+  });
+
+  it("keeps settings tabs on the existing configuration sections", async () => {
+    renderRoute("/chat/insights/settings");
+
+    expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "洞察策略",
+      "意图配置",
+      "标签配置",
+      "质检规则",
+      "实体词库",
+      "历史重刷",
+    ]);
+    expect(screen.queryByRole("tab", { name: "智能创建待办" })).not.toBeInTheDocument();
+  });
+
+  it("shows a blocking dialog instead of toast when enabling over the limit fails", async () => {
+    serviceMocks.updateInsightEntityDictionaryItemStatus.mockRejectedValueOnce({
+      code: "INSIGHT_CONFIG_ENABLED_LIMIT_REACHED",
+      details: {
+        configType: "entityDictionary",
+        currentEnabled: 20,
+        limit: 20,
+      },
+      message: "当前已启用 20 条（上限 20 条），请先停用其他配置",
+    });
+
+    renderRoute("/chat/insights/settings");
+
+    expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "实体词库" }));
+
+    const disabledRow = await screen.findByRole("row", { name: /隐藏实体/ });
+    await userEvent.click(within(disabledRow).getByRole("switch"));
+
+    expect(await screen.findByRole("alertdialog", { name: "启用数量已达上限" })).toBeInTheDocument();
+    expect(screen.getByText("当前已启用 20 条（上限 20 条），请先停用其他配置")).toBeInTheDocument();
+  });
+
+  it("shows a blocking dialog when creating over the total config limit fails", async () => {
+    serviceMocks.createInsightLabelConfig.mockRejectedValueOnce({
+      code: "INSIGHT_CONFIG_TOTAL_LIMIT_REACHED",
+      details: {
+        configType: "labelConfigs",
+        currentTotal: 50,
+        limit: 50,
+      },
+      message: "当前已有 50 条配置（上限 50 条），请先删除无用配置后再新建",
+    });
+
+    renderRoute("/chat/insights/settings");
+
+    expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "标签配置" }));
+    await userEvent.click(await screen.findByRole("button", { name: "新增标签" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "新增标签" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "标签名称" }), "挽留机会");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "标签编码" }), "retention");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "判定标准" }), "客户有流失风险");
+    await userEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByRole("alertdialog", { name: "配置数量已达上限" })).toBeInTheDocument();
+    expect(screen.getByText("当前已有 50 条配置（上限 50 条），请先删除无用配置后再新建")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { hidden: true })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("挽留机会")).toBeInTheDocument();
+  });
+
+  it("inserts a newly created config at the top when the list is sorted newest first", async () => {
+    serviceMocks.createInsightLabelConfig.mockResolvedValueOnce({
+      description: "新建标签的说明",
+      id: "99",
+      includeInStatistics: true,
+      labelCode: "new_label",
+      labelName: "新增标签",
+      negativeExamples: [],
+      positiveExamples: [],
+      status: 1,
+    });
+
+    renderRoute("/chat/insights/settings");
+
+    expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "标签配置" }));
+    await userEvent.click(screen.getByRole("button", { name: "新增标签" }));
+
+    expect(await screen.findByRole("dialog", { name: "新增标签" })).toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "标签名称" }), "新增标签");
+    await userEvent.type(screen.getByRole("textbox", { name: "标签编码" }), "new_label");
+    await userEvent.type(screen.getByRole("textbox", { name: "判定标准" }), "新建标签的说明");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    const labelRows = await screen.findAllByRole("row");
+    const createdRow = labelRows.find((row) => row.textContent?.includes("新增标签"));
+    const existingRow = labelRows.find((row) => row.textContent?.includes("退款咨询"));
+
+    expect(createdRow).toBeDefined();
+    expect(existingRow).toBeDefined();
+    expect(labelRows.indexOf(createdRow!)).toBeLessThan(labelRows.indexOf(existingRow!));
+  });
+
   it("requires delete confirmation before removing a label config", async () => {
     renderRoute("/chat/insights/settings");
 
     expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("tab", { name: "标签体系" }));
+    await userEvent.click(screen.getByRole("tab", { name: "标签配置" }));
 
     const labelRow = await screen.findByRole("row", { name: /退款咨询/ });
     await userEvent.click(within(labelRow).getByRole("button", { name: "删除" }));
@@ -1922,7 +2273,7 @@ describe("conversation insights pages", () => {
   });
 
   it("validates required label configuration dialog fields before submit", async () => {
-    const labelDialog = await openSettingsDialog("标签体系", "新增标签", "新增标签");
+    const labelDialog = await openSettingsDialog("标签配置", "新增标签", "新增标签");
     expect(labelDialog).toBeInTheDocument();
     await userEvent.click(within(labelDialog).getByRole("button", { name: "保存" }));
     expect(await screen.findAllByText("请填写必填项")).toHaveLength(3);
@@ -1959,20 +2310,41 @@ describe("conversation insights pages", () => {
 
     renderRoute("/chat/insights/settings");
 
-    expect(await screen.findByText("未运行")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "运行配置" })).toBeInTheDocument();
+    expect(screen.queryByText("未运行")).not.toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "智能意图识别" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "配置洞察运行" }));
-    expect(await screen.findByRole("dialog", { name: "洞察运行配置" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "运行配置" }));
+    const runDialog = await screen.findByRole("dialog", { name: "洞察运行配置" });
+
+    expect(within(runDialog).getAllByRole("switch").map((item) => item.getAttribute("aria-label"))).toEqual([
+      "启用会话洞察",
+      "智能创建待办",
+      "智能意图识别",
+      "智能质检",
+      "智能标签",
+      "智能实体识别",
+    ]);
     await userEvent.click(screen.getByRole("switch", { name: "启用会话洞察" }));
     serviceMocks.getInsightSettingsSummary.mockResolvedValueOnce({
       enabledIntentCount: mockInsightSettings.intentConfigs.filter((item) => item.status === 1).length,
+      intentLimit: 20,
+      intentSoftLimit: 15,
       enabledLabelCount: mockInsightSettings.labelConfigs.filter((item) => item.status === 1).length,
+      labelLimit: 20,
+      labelSoftLimit: 15,
       enabledQaCount: mockInsightSettings.qaRuleConfigs.filter((item) => item.status === 1).length,
-      entityCount: mockInsightSettings.entityDictionary.length,
+      qaLimit: 10,
+      qaSoftLimit: 8,
+      enabledEntityCount: mockInsightSettings.entityDictionary.filter((item) => item.status === 1).length,
+      entityLimit: 20,
+      entitySoftLimit: 15,
+      entityEnabled: true,
       insightAvailable: true,
       insightEnabled: true,
-      liveAnalysisEnabled: mockInsightSettings.analysisPolicy.liveAnalysisEnabled,
-      sessionizationIdleMinutes: mockInsightSettings.sessionization.idleTimeoutMinutes,
+      intentEnabled: true,
+      labelEnabled: true,
+      qaEnabled: true,
+      todoEnabled: true,
     });
     await userEvent.click(screen.getByRole("button", { name: "保存" }));
 
@@ -1986,7 +2358,7 @@ describe("conversation insights pages", () => {
         todoEnabled: true,
       });
     });
-    expect(await screen.findByText("运行中")).toBeInTheDocument();
+    expect(screen.queryByText("运行中")).not.toBeInTheDocument();
 
     serviceMocks.updateInsightFeatureConfig.mockResolvedValueOnce({
       entityEnabled: true,
@@ -1998,7 +2370,7 @@ describe("conversation insights pages", () => {
       qaEnabled: true,
       todoEnabled: true,
     });
-    await userEvent.click(screen.getByRole("button", { name: "配置洞察运行" }));
+    await userEvent.click(screen.getByRole("button", { name: "运行配置" }));
     await userEvent.click(screen.getByRole("switch", { name: "智能意图识别" }));
     await userEvent.click(screen.getByRole("button", { name: "保存" }));
 
@@ -2017,13 +2389,24 @@ describe("conversation insights pages", () => {
   it("disables the global insight switch when insights are not available", async () => {
     serviceMocks.getInsightSettingsSummary.mockResolvedValue({
       enabledIntentCount: mockInsightSettings.intentConfigs.filter((item) => item.status === 1).length,
+      intentLimit: 20,
+      intentSoftLimit: 15,
       enabledLabelCount: mockInsightSettings.labelConfigs.filter((item) => item.status === 1).length,
+      labelLimit: 20,
+      labelSoftLimit: 15,
       enabledQaCount: mockInsightSettings.qaRuleConfigs.filter((item) => item.status === 1).length,
-      entityCount: mockInsightSettings.entityDictionary.length,
+      qaLimit: 10,
+      qaSoftLimit: 8,
+      enabledEntityCount: mockInsightSettings.entityDictionary.filter((item) => item.status === 1).length,
+      entityLimit: 20,
+      entitySoftLimit: 15,
+      entityEnabled: mockInsightSettings.featureConfig.entityEnabled,
       insightAvailable: false,
       insightEnabled: mockInsightSettings.featureConfig.insightEnabled,
-      liveAnalysisEnabled: mockInsightSettings.analysisPolicy.liveAnalysisEnabled,
-      sessionizationIdleMinutes: mockInsightSettings.sessionization.idleTimeoutMinutes,
+      intentEnabled: mockInsightSettings.featureConfig.intentEnabled,
+      labelEnabled: mockInsightSettings.featureConfig.labelEnabled,
+      qaEnabled: mockInsightSettings.featureConfig.qaEnabled,
+      todoEnabled: mockInsightSettings.featureConfig.todoEnabled,
     });
     serviceMocks.getInsightFeatureConfig.mockResolvedValue({
       ...mockInsightSettings.featureConfig,
@@ -2032,8 +2415,9 @@ describe("conversation insights pages", () => {
 
     renderRoute("/chat/insights/settings");
 
-    expect(await screen.findByText("未运行")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "配置洞察运行" }));
+    expect(await screen.findByRole("button", { name: "运行配置" })).toBeInTheDocument();
+    expect(screen.queryByText("未运行")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "运行配置" }));
     expect(await screen.findByRole("dialog", { name: "洞察运行配置" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "启用会话洞察" })).toBeDisabled();
     expect(screen.getByText("当前账号暂未开通会话洞察")).toBeInTheDocument();

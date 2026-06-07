@@ -186,8 +186,26 @@ const overviewAggregate = {
   unresolvedSessions: 2,
 } satisfies Awaited<ReturnType<InsightsRepositoryPort["getOverviewAggregate"]>>;
 
+const previousOverviewAggregate = {
+  ...overviewAggregate,
+  actionItemsOpen: 0,
+  problemSessions: 1,
+  readySessions: 1,
+  totalSessions: 3,
+  totals: {
+    agentMessages: 3,
+    consultingCustomers: 2,
+    customerMessages: 8,
+    logicalSessions: 3,
+    messages: 11,
+  },
+  trend: [],
+  unresolvedSessions: 1,
+} satisfies Awaited<ReturnType<InsightsRepositoryPort["getOverviewAggregate"]>>;
+
 const qualityAggregate = {
   analyzedSessions: 3,
+  inspectedSessions: 0,
   inspectionRate: 0,
   noCustomerProblem: 1,
   partial: 1,
@@ -200,6 +218,7 @@ const qualityAggregate = {
 } satisfies Awaited<NonNullable<InsightsRepositoryPort["getQualityAggregate"]>>;
 
 const qaFindingAggregate = {
+  inspectedSessions: 3,
   inspectionRate: 0.75,
   passRate: 0.5,
   ruleDistribution: [
@@ -252,6 +271,8 @@ function createRepository(
   overrides: Partial<InsightsRepositoryPort> = {},
 ): InsightsRepositoryPort {
   return {
+    countEnabledConfigs: vi.fn(async () => 0),
+    countActiveConfigs: vi.fn(async () => 0),
     createRescanJob: vi.fn(async () => ({ jobId: "8801", taskId: "9901" })),
     findDetail: vi.fn(async () => ({
       actionItems: [
@@ -320,6 +341,56 @@ function createRepository(
         },
       ],
     })),
+    listEntityDictionary: vi.fn(async () => [
+      {
+        aliases: ["白色羽绒服"],
+        canonicalName: "白色羽绒服",
+        entityType: "product",
+        id: "41",
+        includeInAggregation: true,
+        status: 1,
+      },
+    ]),
+    listIntentConfigs: vi.fn(async () => [
+      {
+        aliases: ["物流"],
+        description: "物流相关咨询",
+        id: "90",
+        includeInStatistics: true,
+        intentCode: "logistics_delay",
+        intentName: "物流异常",
+        negativeExamples: [],
+        positiveExamples: ["物流一直没更新"],
+        status: 1,
+        weight: 5,
+      },
+    ]),
+    listLabelConfigs: vi.fn(async () => [
+      {
+        description: "退款咨询相关标签",
+        id: "91",
+        includeInStatistics: true,
+        labelCode: "retention",
+        labelName: "挽留机会",
+        negativeExamples: [],
+        positiveExamples: [],
+        status: 1,
+      },
+    ]),
+    listQaRuleConfigs: vi.fn(async () => [
+      {
+        applicableScene: "售后",
+        description: "售后跟进规则",
+        id: "92",
+        judgmentCriteria: "必须给出明确处理动作",
+        negativeExamples: [],
+        positiveExamples: [],
+        ruleCode: "after_sale_followup",
+        ruleName: "售后跟进",
+        severity: "high",
+        status: 1,
+      },
+    ]),
     listActionItems: vi.fn(async () => [
       {
         actionItemId: "801",
@@ -409,7 +480,9 @@ function createRepository(
       },
     ]),
     getQualityAggregate: vi.fn(async () => qualityAggregate),
-    getOverviewAggregate: vi.fn(async () => overviewAggregate),
+    getOverviewAggregate: vi.fn(async (_scope, filters) =>
+      filters.from === "2026-05-02T00:00:00.000+08:00" ? previousOverviewAggregate : overviewAggregate
+    ),
     hasActiveRescanTask: vi.fn(async () => false),
     listQualityAgentStats: vi.fn(async () => qualityAgentStats),
     listBusinessSessionAggregates: vi.fn(async () => businessSessionAggregates),
@@ -625,6 +698,26 @@ function createRepository(
         preset: "custom",
       },
     })),
+    getSettingsSummary: vi.fn(async () => ({
+      enabledEntityCount: 2,
+      enabledIntentCount: 2,
+      enabledLabelCount: 3,
+      enabledQaCount: 1,
+      entityEnabled: true,
+      entityLimit: 20,
+      entitySoftLimit: 15,
+      insightEnabled: false,
+      intentEnabled: true,
+      intentLimit: 20,
+      intentSoftLimit: 15,
+      labelEnabled: true,
+      labelLimit: 20,
+      labelSoftLimit: 15,
+      qaEnabled: true,
+      qaLimit: 10,
+      qaSoftLimit: 8,
+      todoEnabled: false,
+    })),
     upsertAnalysisPolicy: vi.fn(async (_scope, payload) => payload),
     upsertSessionizationSettings: vi.fn(async (_scope, payload) => payload),
     createIntentConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "90" })),
@@ -732,6 +825,38 @@ describe("InsightsService", () => {
         unresolved: 1,
       },
       totalSessions: 4,
+      comparison: {
+        agentMessages: {
+          current: 7,
+          delta: 4,
+          deltaRate: 1.3333333333333333,
+          previous: 3,
+        },
+        consultingCustomers: {
+          current: 4,
+          delta: 2,
+          deltaRate: 1,
+          previous: 2,
+        },
+        customerMessages: {
+          current: 10,
+          delta: 2,
+          deltaRate: 0.25,
+          previous: 8,
+        },
+        logicalSessions: {
+          current: 4,
+          delta: 1,
+          deltaRate: 0.3333333333333333,
+          previous: 3,
+        },
+        messages: {
+          current: 17,
+          delta: 6,
+          deltaRate: 0.5454545454545454,
+          previous: 11,
+        },
+      },
       totals: {
         agentMessages: 7,
         consultingCustomers: 4,
@@ -764,7 +889,44 @@ describe("InsightsService", () => {
       from: "2026-06-01",
       to: "2026-06-30",
     });
+    expect(repository.getOverviewAggregate).toHaveBeenCalledWith(scope, {
+      from: "2026-05-02T00:00:00.000+08:00",
+      to: "2026-05-31T23:59:59.999+08:00",
+    });
     expect(repository.listCurrentSessions).not.toHaveBeenCalled();
+  });
+
+  it("returns bounded comparison rates when the previous period has no data", async () => {
+    const repository = createRepository({
+      getOverviewAggregate: vi.fn(async (_scope, filters) =>
+        filters.from === "2026-05-02T00:00:00.000+08:00"
+          ? {
+              ...previousOverviewAggregate,
+              totals: {
+                agentMessages: 0,
+                consultingCustomers: 0,
+                customerMessages: 0,
+                logicalSessions: 0,
+                messages: 0,
+              },
+            }
+          : overviewAggregate
+      ),
+    });
+    const service = new InsightsService(repository);
+
+    const result = await service.getOverview(scope, {
+      from: "2026-06-01",
+      to: "2026-06-30",
+    });
+
+    expect(result.comparison).toMatchObject({
+      agentMessages: { current: 7, delta: 7, deltaRate: 1, previous: 0 },
+      consultingCustomers: { current: 4, delta: 4, deltaRate: 1, previous: 0 },
+      customerMessages: { current: 10, delta: 10, deltaRate: 1, previous: 0 },
+      logicalSessions: { current: 4, delta: 4, deltaRate: 1, previous: 0 },
+      messages: { current: 17, delta: 17, deltaRate: 1, previous: 0 },
+    });
   });
 
   it("paginates overview sessions separately from overview metrics", async () => {
@@ -808,6 +970,7 @@ describe("InsightsService", () => {
 
     expect(result.overview).toMatchObject({
       analyzedSessions: 3,
+      inspectedSessions: 0,
       noCustomerProblem: 1,
       partial: 1,
       problemSessions: 2,
@@ -853,6 +1016,10 @@ describe("InsightsService", () => {
 
   it("merges QA finding aggregate into the quality overview", async () => {
     const repository = createRepository({
+      getQualityAggregate: vi.fn(async () => ({
+        ...qualityAggregate,
+        analyzedSessions: 4,
+      })),
       getQaFindingAggregate: vi.fn(async () => qaFindingAggregate),
     });
     const service = new InsightsService(repository);
@@ -862,7 +1029,8 @@ describe("InsightsService", () => {
     });
 
     expect(result.overview).toMatchObject({
-      analyzedSessions: 3,
+      analyzedSessions: 4,
+      inspectedSessions: 3,
       inspectionRate: 0.75,
       passRate: 0.5,
       ruleDistribution: [
@@ -1259,6 +1427,19 @@ describe("InsightsService", () => {
     });
   });
 
+  it("returns feature switch state in settings summary", async () => {
+    const service = new InsightsService(createRepository());
+
+    await expect(service.getSettingsSummary(scope, "admin")).resolves.toMatchObject({
+      entityEnabled: true,
+      insightAvailable: true,
+      intentEnabled: true,
+      labelEnabled: true,
+      qaEnabled: true,
+      todoEnabled: false,
+    });
+  });
+
   it("persists insight settings mutations for admin roles", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
@@ -1309,6 +1490,130 @@ describe("InsightsService", () => {
       }),
     ).resolves.toMatchObject({ id: "91", labelCode: "retention" });
     expect(repository.createLabelConfig).toHaveBeenCalled();
+  });
+
+  it("rejects config writes that would exceed enabled limits", async () => {
+    const repository = createRepository({
+      countEnabledConfigs: vi.fn(async (currentScope, configType) => {
+        expect(currentScope).toEqual(scope);
+        return configType === "qaRuleConfigs" ? 10 : 20;
+      }),
+      listIntentConfigs: vi.fn(async () => [
+        {
+          aliases: ["物流"],
+          description: "物流相关咨询",
+          id: "90",
+          includeInStatistics: true,
+          intentCode: "logistics_delay",
+          intentName: "物流异常",
+          negativeExamples: [],
+          positiveExamples: ["物流一直没更新"],
+          status: 0,
+          weight: 5,
+        },
+      ]),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.createQaRuleConfig(scope, "admin", {
+        status: 1,
+        applicableScene: "售后",
+        judgmentCriteria: "必须给出明确处理动作",
+        positiveExamples: [],
+        negativeExamples: [],
+        ruleCode: "after_sale_followup",
+        ruleName: "售后跟进",
+        severity: "high",
+      }),
+    ).rejects.toMatchObject({
+      code: "INSIGHT_CONFIG_ENABLED_LIMIT_REACHED",
+      details: {
+        configType: "qaRuleConfigs",
+        currentEnabled: 10,
+        limit: 10,
+      },
+    });
+
+    await expect(
+      service.updateIntentConfigStatus(scope, "admin", "90", { status: 1 }),
+    ).rejects.toMatchObject({
+      code: "INSIGHT_CONFIG_ENABLED_LIMIT_REACHED",
+      details: {
+        configType: "intentConfigs",
+        currentEnabled: 20,
+        limit: 20,
+      },
+    });
+  });
+
+  it("rejects creating configs when the active record total reaches 50", async () => {
+    const repository = createRepository({
+      countActiveConfigs: vi.fn(async (currentScope, configType) => {
+        expect(currentScope).toEqual(scope);
+        expect(configType).toBe("labelConfigs");
+        return 50;
+      }),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.createLabelConfig(scope, "admin", {
+        status: 0,
+        includeInStatistics: true,
+        labelCode: "retention",
+        labelName: "挽留机会",
+      }),
+    ).rejects.toMatchObject({
+      code: "INSIGHT_CONFIG_TOTAL_LIMIT_REACHED",
+      details: {
+        configType: "labelConfigs",
+        currentTotal: 50,
+        limit: 50,
+      },
+    });
+    expect(repository.createLabelConfig).not.toHaveBeenCalled();
+  });
+
+  it("allows updating an already-enabled config without consuming a new slot at the limit", async () => {
+    const repository = createRepository({
+      countEnabledConfigs: vi.fn(async (currentScope, configType) => {
+        expect(currentScope).toEqual(scope);
+        expect(configType).toBe("intentConfigs");
+        return 20;
+      }),
+      updateIntentConfig: vi.fn(async (_scope, id, payload) => ({
+        id,
+        aliases: payload.aliases ?? [],
+        description: payload.description,
+        includeInStatistics: payload.includeInStatistics,
+        intentCode: payload.intentCode,
+        intentName: payload.intentName,
+        negativeExamples: payload.negativeExamples ?? [],
+        positiveExamples: payload.positiveExamples ?? [],
+        status: payload.status,
+        weight: payload.weight,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.updateIntentConfig(scope, "admin", "90", {
+        aliases: ["物流"],
+        description: "重新整理判定标准",
+        includeInStatistics: true,
+        intentCode: "logistics_delay",
+        intentName: "物流异常",
+        negativeExamples: [],
+        positiveExamples: ["物流一直没更新"],
+        status: 1,
+        weight: 3,
+      }),
+    ).resolves.toMatchObject({
+      id: "90",
+      intentCode: "logistics_delay",
+      status: 1,
+    });
   });
 
   it("throws not found when deleting missing insight config records", async () => {

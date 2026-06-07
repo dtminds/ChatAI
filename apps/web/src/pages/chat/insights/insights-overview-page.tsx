@@ -4,15 +4,16 @@ import {
   AiIdeaIcon,
   ArrowDown01Icon,
   ArrowRight01Icon,
-  BubbleChatIcon,
   ChartAreaIcon,
   ChartBubbleIcon,
+  ConversationIcon,
   CubeIcon,
   FilterIcon,
   Message01Icon,
+  MessageMultiple02Icon,
+  MessageUser02Icon,
   Search01Icon,
   TagIcon,
-  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
@@ -84,15 +85,14 @@ type OverviewSessionItem = InsightOverviewSessionsResponse["items"][number];
 const overviewPageSize = 20;
 
 const metricCards: Array<{
-  icon: typeof BubbleChatIcon;
+  icon: typeof Message01Icon;
   key: TrendMetric;
   label: string;
-  subLabel: string;
 }> = [
-  { icon: BubbleChatIcon, key: "logicalSessions", label: "咨询会话数", subLabel: "按咨询过程归并" },
-  { icon: UserGroupIcon, key: "consultingCustomers", label: "咨询用户数", subLabel: "按客户去重" },
-  { icon: Message01Icon, key: "messages", label: "消息数", subLabel: "客户与客服合计" },
-  { icon: ChartAreaIcon, key: "customerMessages", label: "客户消息数", subLabel: "客户主动表达量" },
+  { icon: MessageMultiple02Icon, key: "logicalSessions", label: "咨询会话数" },
+  { icon: ConversationIcon, key: "consultingCustomers", label: "咨询用户数" },
+  { icon: Message01Icon, key: "messages", label: "消息数" },
+  { icon: MessageUser02Icon, key: "customerMessages", label: "客户消息数" },
 ];
 
 const trendOptions: Array<{ key: TrendMetric; label: string }> = [
@@ -376,7 +376,7 @@ function MetricStrip({
   return (
     <section className="grid gap-0 overflow-hidden rounded-xl border bg-card sm:grid-cols-2 lg:grid-cols-4">
       {metricCards.map((metric, index) => {
-        const delta = getTrendDelta(overview, metric.key);
+        const delta = getComparisonDelta(overview, metric.key);
         const isActive = activeMetric === metric.key;
 
         return (
@@ -404,10 +404,9 @@ function MetricStrip({
                 </span>
               </span>
               <span className="flex flex-wrap items-center gap-2 text-xs font-medium">
-                <span className={delta.value >= 0 ? "text-emerald-600" : "text-red-600"}>
+                <span className={getComparisonClassName(delta.value)}>
                   {delta.label}
                 </span>
-                <span className="text-muted-foreground">{metric.subLabel}</span>
               </span>
             </span>
           </button>
@@ -1226,29 +1225,47 @@ function buildResolutionData(overview: InsightsOverviewResponse | undefined) {
   return data;
 }
 
-function getTrendDelta(
+function getComparisonDelta(
   overview: InsightsOverviewResponse | undefined,
   metric: TrendMetric,
 ) {
-  const points = overview?.trend ?? [];
+  const comparison = overview?.comparison?.[metric];
 
-  if (points.length < 2) {
+  if (!comparison) {
     return { label: "暂无对比", value: 0 };
   }
 
-  const current = points.at(-1)?.[metric] ?? 0;
-  const previous = points.at(-2)?.[metric] ?? 0;
-  const delta = current - previous;
+  const delta = comparison.delta;
+  const rateLabel = formatPercent(comparison.deltaRate);
 
   if (delta === 0) {
-    return { label: "持平", value: 0 };
+    return { label: `环比持平 ${rateLabel}`, value: 0 };
   }
 
-  return { label: `${delta > 0 ? "+" : ""}${formatNumber(delta)}`, value: delta };
+  const direction = delta > 0 ? "↑" : "↓";
+  const absolutePrefix = delta > 0 ? "+" : "-";
+
+  return { label: `环比 ${direction}${rateLabel} ${absolutePrefix}${formatNumber(Math.abs(delta))}`, value: delta };
+}
+
+function getComparisonClassName(value: number) {
+  if (value === 0) {
+    return "text-muted-foreground";
+  }
+
+  return value > 0 ? "text-emerald-600" : "text-red-600";
 }
 
 function formatNumber(value: number | undefined) {
   return value == null ? "-" : value.toLocaleString("zh-CN");
+}
+
+function formatPercent(value: number | undefined) {
+  if (value == null) {
+    return "-";
+  }
+
+  return `${(Math.abs(value) * 100).toFixed(1)}%`;
 }
 
 function formatDateRangeSummary(from: string, to: string) {

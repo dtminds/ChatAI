@@ -436,9 +436,11 @@ describe("InsightsRepository", () => {
     const repository = new InsightsRepository(db as never);
 
     await expect(repository.listActionItemsPage({ uid: 9001 }, {
+      from: "2026-06-01T00:00:00.000+08:00",
       page: 2,
       pageSize: 1,
       status: "open",
+      to: "2026-06-30T23:59:59.999+08:00",
     })).resolves.toMatchObject({
       items: [
         {
@@ -455,7 +457,30 @@ describe("InsightsRepository", () => {
     expect(builders[0]?.whereCalls).toContainEqual(["action.uid", "=", 9001]);
     expect(builders[0]?.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
     expect(builders[0]?.whereCalls).toContainEqual(["action.status", "=", "open"]);
+    expect(builders[0]?.whereCalls).toContainEqual(["session.started_at", ">=", Date.parse("2026-06-01T00:00:00.000+08:00")]);
+    expect(builders[0]?.whereCalls).toContainEqual(["session.started_at", "<=", Date.parse("2026-06-30T23:59:59.999+08:00")]);
     expect(builders.map((builder) => builder.table)).not.toContain("xy_wap_embed_insight_evidence as evidence");
+  });
+
+  it("filters processed action items by completed and dismissed statuses", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await repository.listActionItemsPage({ uid: 9001 }, {
+      page: 1,
+      pageSize: 10,
+      status: "processed",
+    });
+
+    expect(builders[0]?.whereCalls).toContainEqual(["action.status", "in", ["done", "dismissed"]]);
+    expect(builders[0]?.whereCalls).not.toContainEqual(["action.status", "=", "processed"]);
   });
 
   it("scopes business asset facts to sessions matched by the overview filters", async () => {
@@ -782,6 +807,27 @@ describe("InsightsRepository", () => {
 
     expect(builders.some((builder) => builder.joins.includes("xy_wap_embed_insight_qa_rule_config as rule"))).toBe(false);
     expect(builders.some((builder) => builder.selectRawCalls.join("\n").includes("qa.rule_name as rule_name"))).toBe(true);
+  });
+
+  it("returns inspected sessions from QA finding aggregate", async () => {
+    const db = {
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder([
+          {
+            passed: 2,
+            total_analyzed: 4,
+            total_qa: 3,
+          },
+        ], table),
+      ),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.getQaFindingAggregate({ uid: 9001 })).resolves.toMatchObject({
+      inspectedSessions: 3,
+      inspectionRate: 0.75,
+      passRate: 2 / 3,
+    });
   });
 });
 

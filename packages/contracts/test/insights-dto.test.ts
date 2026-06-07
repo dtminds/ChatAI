@@ -11,6 +11,7 @@ import {
   InsightQaRuleConfigMutationRequestSchema,
   InsightRescanTaskListResponseSchema,
   InsightSettingsResponseSchema,
+  InsightSettingsSummaryResponseSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
   InsightsBusinessResponseSchema,
   InsightsFollowUpsResponseSchema,
@@ -63,6 +64,38 @@ describe("insights DTOs", () => {
           customerMessages: 180,
           logicalSessions: 36,
           messages: 300,
+        },
+        comparison: {
+          agentMessages: {
+            current: 120,
+            delta: 30,
+            deltaRate: 0.3333333333333333,
+            previous: 90,
+          },
+          consultingCustomers: {
+            current: 28,
+            delta: -2,
+            deltaRate: -0.06666666666666667,
+            previous: 30,
+          },
+          customerMessages: {
+            current: 180,
+            delta: 0,
+            deltaRate: 0,
+            previous: 180,
+          },
+          logicalSessions: {
+            current: 36,
+            delta: 6,
+            deltaRate: 0.2,
+            previous: 30,
+          },
+          messages: {
+            current: 300,
+            delta: 50,
+            deltaRate: 0.2,
+            previous: 250,
+          },
         },
         trend: [
           {
@@ -208,6 +241,7 @@ describe("insights DTOs", () => {
         ],
         overview: {
           analyzedSessions: 9,
+          inspectedSessions: 8,
           inspectionRate: 0.8,
           noCustomerProblem: 2,
           partial: 1,
@@ -605,6 +639,30 @@ describe("insights DTOs", () => {
           },
         ],
         total: 1,
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(InsightSettingsSummaryResponseSchema, {
+        enabledIntentCount: 2,
+        intentLimit: 20,
+        intentSoftLimit: 15,
+        enabledLabelCount: 3,
+        labelLimit: 20,
+        labelSoftLimit: 15,
+        enabledQaCount: 1,
+        qaLimit: 10,
+        qaSoftLimit: 8,
+        enabledEntityCount: 2,
+        entityLimit: 20,
+        entitySoftLimit: 15,
+        entityEnabled: true,
+        insightAvailable: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: false,
       }),
     ).toBe(true);
   });

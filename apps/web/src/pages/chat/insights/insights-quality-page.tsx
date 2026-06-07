@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -19,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import { getInsightQuality } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { InsightDetailPanel } from "./insight-detail-panel";
@@ -26,7 +28,7 @@ import { InsightPerson } from "./insight-person";
 import { InsightTablePagination } from "./insight-table-pagination";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import {
-  getDefaultDateRange,
+  getRecentDateRange,
   type InsightDateRange,
 } from "./insights-date-range";
 import {
@@ -41,6 +43,8 @@ type ProblemSession = InsightsQualityResponse["unresolvedSessions"][number];
 type ResolutionFilter = "all" | ProblemSession["resolutionStatus"];
 
 const qualityProblemPageSize = 10;
+const qualityRuleSlotCount = 10;
+const qualityRuleOtherSlotIndex = qualityRuleSlotCount - 1;
 
 const resolutionFilterItems: Array<{
   label: string;
@@ -59,7 +63,7 @@ export function InsightsQualityPage() {
   const [problemPage, setProblemPage] = useState(1);
   const [resolutionFilter, setResolutionFilter] =
     useState<ResolutionFilter>("unresolved");
-  const [dateRange, setDateRange] = useState<InsightDateRange>(() => getDefaultDateRange());
+  const [dateRange, setDateRange] = useState<InsightDateRange>(() => getRecentDateRange(7));
   const detail = useInsightDetail();
 
   useEffect(() => {
@@ -127,63 +131,37 @@ export function InsightsQualityPage() {
           className="grid gap-5 lg:grid-cols-2"
           data-testid="quality-overview-content"
         >
-          <section aria-label="质检指标" className="min-w-0 rounded-[8px] border bg-background p-5">
-            <h3 className="mb-3 text-sm font-medium text-muted-foreground">质检指标</h3>
-            <div className="grid gap-3 sm:grid-cols-2">
+          <section aria-label="质检指标" className="flex min-w-0 flex-col rounded-[8px] border bg-background p-5">
+            <PanelTitle
+              title="质检指标"
+              trailing={<DateRangeSummary from={dateRange.from} to={dateRange.to} />}
+            />
+            <div
+              className="grid flex-1 gap-3 sm:grid-cols-2 sm:grid-rows-2"
+              data-testid="quality-metric-grid"
+            >
               <Stat label="会话数" value={overview?.totalSessions} />
-              <Stat label="分析会话数" value={overview?.analyzedSessions} />
+              <Stat label="质检会话数" value={overview?.inspectedSessions ?? overview?.analyzedSessions} />
               <Stat label="质检覆盖率" value={overview?.inspectionRate} format="percent" />
               <Stat label="质检通过率" value={overview?.passRate} format="percent" />
             </div>
           </section>
 
           <section aria-label="质检分布" className="min-w-0 rounded-[8px] border bg-background p-5">
-            <h3 className="mb-3 text-sm font-medium text-muted-foreground">质检分布</h3>
             {(overview?.ruleDistribution?.length ?? 0) > 0 ? (
-              <div className="flex flex-col items-center gap-4 sm:flex-row">
-                <div className="relative size-[180px] shrink-0">
-                  <ResponsiveContainer height="100%" width="100%">
-                    <PieChart>
-                      <Pie
-                        animationDuration={450}
-                        cx="50%"
-                        cy="50%"
-                        data={buildRuleDistributionData(overview!.ruleDistribution)}
-                        dataKey="value"
-                        innerRadius="48%"
-                        outerRadius="72%"
-                        paddingAngle={3}
-                        strokeWidth={0}
-                      >
-                        {buildRuleDistributionData(overview!.ruleDistribution).map((item) => (
-                          <Cell fill={item.color} key={item.name} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        content={<RuleDistributionTooltip />}
-                        wrapperStyle={{ zIndex: 20 }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-2xl font-semibold">
-                      {overview!.ruleDistribution.reduce((sum, r) => sum + r.count, 0)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">命中次数</span>
-                  </div>
-                </div>
-                <div className="grid w-full gap-2 sm:max-w-[200px]">
-                  {buildRuleDistributionData(overview!.ruleDistribution).map((item) => (
-                    <div className="flex items-center gap-2" key={item.name}>
-                      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="min-w-0 flex-1 truncate text-sm">{item.name}</span>
-                      <span className="shrink-0 text-sm tabular-nums text-muted-foreground">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <QualityRuleDistribution
+                distribution={overview!.ruleDistribution}
+                from={dateRange.from}
+                to={dateRange.to}
+              />
             ) : (
-              <div className="py-8 text-center text-sm text-muted-foreground">暂无数据</div>
+              <>
+                <PanelTitle
+                  title="质检分布"
+                  trailing={<DateRangeSummary from={dateRange.from} to={dateRange.to} />}
+                />
+                <div className="py-8 text-center text-sm text-muted-foreground">暂无数据</div>
+              </>
             )}
           </section>
         </div>
@@ -426,21 +404,44 @@ function Stat({
   const display = format === "percent" && value != null
     ? `${(value * 100).toFixed(1)}%`
     : value ?? "-";
+  const percentValue = format === "percent" && typeof value === "number" && Number.isFinite(value)
+    ? Math.min(Math.max(value, 0), 1)
+    : undefined;
+  const progressValue = percentValue == null
+    ? undefined
+    : Math.round(percentValue * 100);
 
   return (
-    <div className="rounded-[8px] bg-muted/35 px-3 py-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div
-        className={
-          tone === "danger"
-            ? "mt-1 text-xl font-semibold text-destructive"
-            : tone === "warning"
-              ? "mt-1 text-xl font-semibold text-amber-600"
-              : "mt-1 text-xl font-semibold"
-        }
-      >
-        {display}
+    <div className="flex min-h-[96px] flex-col justify-between rounded-[8px] bg-muted/35 px-3 py-3.5">
+      <div>
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div
+          className={
+            tone === "danger"
+              ? "mt-2 text-2xl font-semibold leading-none text-destructive"
+              : tone === "warning"
+                ? "mt-2 text-2xl font-semibold leading-none text-amber-600"
+                : "mt-2 text-2xl font-semibold leading-none"
+          }
+        >
+          {display}
+        </div>
       </div>
+      {format === "percent" ? (
+        <div
+          aria-label={label}
+          aria-valuemax={100}
+          aria-valuemin={0}
+          aria-valuenow={progressValue}
+          className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+        >
+          <div
+            className="h-full rounded-full bg-primary/70"
+            style={{ width: `${progressValue ?? 0}%` }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -453,18 +454,210 @@ function formatPercent(value: number) {
   return `${(value * 100).toFixed(2)}%`;
 }
 
+function QualityRuleDistribution({
+  distribution,
+  from,
+  to,
+}: {
+  distribution: InsightsQualityResponse["overview"]["ruleDistribution"];
+  from: string;
+  to: string;
+}) {
+  const data = buildRuleDistributionData(distribution);
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const slots = buildRuleDistributionSlots(data, total);
+
+  return (
+    <div className="flex min-h-0 flex-col gap-3">
+      <PanelTitle
+        title="质检分布"
+        trailing={<DateRangeSummary from={from} to={to} />}
+      />
+      <div className="grid min-w-0 items-center gap-4 sm:grid-cols-[180px_minmax(0,1fr)]">
+        <div className="relative size-[180px] shrink-0 justify-self-center" data-testid="quality-rule-distribution-chart">
+          <ResponsiveContainer height="100%" width="100%">
+            <PieChart>
+              <Pie
+                animationDuration={450}
+                cx="50%"
+                cy="50%"
+                data={data}
+                dataKey="value"
+                innerRadius="60%"
+                nameKey="name"
+                outerRadius="76%"
+                paddingAngle={2}
+                stroke="hsl(var(--background))"
+                strokeWidth={2}
+              >
+                {data.map((item) => (
+                  <Cell fill={item.color} key={item.ruleCode} />
+                ))}
+              </Pie>
+              <Tooltip
+                content={<RuleDistributionTooltip />}
+                wrapperStyle={{ zIndex: 20 }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-xl font-semibold tabular-nums">{total}</span>
+            <span className="text-xs text-muted-foreground">命中次数</span>
+          </div>
+        </div>
+
+        <ScrollArea
+          className="h-[152px] min-w-0"
+          data-testid="quality-rule-distribution-scroll"
+          viewportProps={{ className: "pr-4" }}
+          viewportTestId="quality-rule-distribution-viewport"
+        >
+          <div
+            className="grid gap-1"
+            data-testid="quality-rule-distribution-list"
+            role="list"
+          >
+            {slots.map(({ index, item }) => (
+              <div
+                className={cn(
+                  "grid min-h-7 grid-cols-[minmax(0,1fr)_60px_44px] items-center gap-2 rounded-[8px] px-0.5",
+                  item ? "text-foreground" : "text-muted-foreground/45",
+                )}
+                key={item ? item.ruleCode : `quality-rule-placeholder-${index}`}
+                role="listitem"
+              >
+                {item ? (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="size-2.5 shrink-0 rounded-[3px]" style={{ backgroundColor: item.color }} />
+                      <span className="min-w-0 truncate text-sm">{item.name}</span>
+                    </div>
+                    <span className="text-right text-xs tabular-nums text-muted-foreground">
+                      {formatShare(item.share)}
+                    </span>
+                    <span className="text-right text-sm tabular-nums">{item.value}</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="size-2.5 shrink-0 rounded-[3px] bg-muted" />
+                      <span className="h-2.5 min-w-0 flex-1 rounded-full bg-muted" />
+                    </div>
+                    <span className="justify-self-end h-2.5 w-10 rounded-full bg-muted" />
+                    <span className="justify-self-end h-2.5 w-7 rounded-full bg-muted" />
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
+    </div>
+  );
+}
+
+function PanelTitle({
+  title,
+  trailing,
+}: {
+  title: string;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
+      <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+      {trailing}
+    </div>
+  );
+}
+
+function DateRangeSummary({ from, to }: { from: string; to: string }) {
+  return (
+    <div className="shrink-0 text-xs text-muted-foreground">
+      {formatDateRangeSummary(from, to)}
+    </div>
+  );
+}
+
+function formatDateRangeSummary(from: string, to: string) {
+  return from === to ? from : `${from} 至 ${to}`;
+}
+
 function buildRuleDistributionData(
   ruleDistribution: InsightsQualityResponse["overview"]["ruleDistribution"],
 ) {
-  return ruleDistribution.map((rule, index) => ({
+  const sorted = [...ruleDistribution].sort((left, right) =>
+    right.count - left.count
+    || left.ruleName.localeCompare(right.ruleName, "zh-CN")
+    || left.ruleCode.localeCompare(right.ruleCode),
+  );
+  const total = sorted.reduce((sum, rule) => sum + rule.count, 0);
+  const visibleRules = sorted.length > qualityRuleSlotCount
+    ? sorted.slice(0, qualityRuleOtherSlotIndex)
+    : sorted.slice(0, qualityRuleSlotCount);
+  const otherRules = sorted.length > qualityRuleSlotCount
+    ? sorted.slice(qualityRuleOtherSlotIndex)
+    : [];
+  const items = visibleRules.map((rule, index) => ({
     color: insightQualityRuleColors[index % insightQualityRuleColors.length],
     name: rule.ruleName,
     ruleCode: rule.ruleCode,
+    share: total > 0 ? rule.count / total : 0,
     value: rule.count,
   }));
+
+  if (otherRules.length > 0) {
+    const otherValue = otherRules.reduce((sum, rule) => sum + rule.count, 0);
+    items.push({
+      color: insightQualityRuleColors[qualityRuleOtherSlotIndex % insightQualityRuleColors.length],
+      name: "其他",
+      ruleCode: "__other__",
+      share: total > 0 ? otherValue / total : 0,
+      value: otherValue,
+    });
+  }
+
+  return items;
 }
 
-function RuleDistributionTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number; payload: { color: string } }> }) {
+function buildRuleDistributionSlots(
+  data: ReturnType<typeof buildRuleDistributionData>,
+  total: number,
+) {
+  const slots = Array.from({ length: qualityRuleSlotCount }, (_, index) => ({
+    index,
+    item: data[index],
+  }));
+
+  if (total <= 0) {
+    return slots.map((slot) => ({ ...slot, item: undefined }));
+  }
+
+  return slots;
+}
+
+function formatShare(value: number) {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function RuleDistributionTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{
+    name: string;
+    value: number;
+    payload: {
+      color: string;
+      share: number;
+    };
+  }>;
+}) {
   if (!active || !payload?.length) {
     return null;
   }
@@ -474,8 +667,9 @@ function RuleDistributionTooltip({ active, payload }: { active?: boolean; payloa
   return (
     <div className="rounded-[8px] border bg-background px-3 py-2 text-sm shadow-sm">
       <div className="flex items-center gap-2">
-        <span className="size-2.5 rounded-full" style={{ backgroundColor: item.payload.color }} />
+        <span className="size-2.5 rounded-[3px]" style={{ backgroundColor: item.payload.color }} />
         <span>{item.name}</span>
+        <span className="text-muted-foreground">{formatShare(item.payload.share)}</span>
         <span className="font-medium tabular-nums">{item.value}</span>
       </div>
     </div>

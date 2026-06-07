@@ -2,9 +2,6 @@ import {
   Add01Icon,
   AiContentGenerator01Icon,
   AiGenerativeIcon,
-  BubbleChatIcon,
-  ChartAreaIcon,
-  ClipboardCheckIcon,
   Delete02Icon,
   Edit02Icon,
   AiIdeaIcon,
@@ -13,7 +10,6 @@ import {
   Search01Icon,
   Setting07Icon,
   UserAiIcon,
-  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
@@ -147,6 +143,12 @@ type DeleteConfirmState = {
   name: string;
 };
 
+type LimitAlertState = {
+  limit: number;
+  message: string;
+  type: "enabled" | "total";
+};
+
 const analysisFrequencyPresets = [
   {
     description: "兼顾时效性和成本",
@@ -186,7 +188,7 @@ const rescanScopeOptions: Array<{
   value: InsightRescanAnalysisScope;
 }> = [
   {
-    description: "重新识别标签、实体和意图，适合调整标签体系、实体词库或意图配置后使用。",
+    description: "重新识别标签、实体和意图，适合调整标签配置、实体词库或意图配置后使用。",
     label: "标签 / 实体 / 意图",
     value: "classification",
   },
@@ -206,6 +208,7 @@ export function InsightsSettingsPage() {
   const role = useAuthStore((state) => state.subUser?.role);
   const [dialogState, setDialogState] = useState<ConfigDialogState | null>(null);
   const [deleteConfirmState, setDeleteConfirmState] = useState<DeleteConfirmState | null>(null);
+  const [limitAlertState, setLimitAlertState] = useState<LimitAlertState | null>(null);
   const [entityQuery, setEntityQuery] = useState("");
   const [pendingKey, setPendingKey] = useState<string>();
   const [rescanDialogOpen, setRescanDialogOpen] = useState(false);
@@ -416,7 +419,9 @@ export function InsightsSettingsPage() {
 
       toast.success(status === 1 ? "已启用" : "已停用");
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      if (!handleLimitError(error)) {
+        toast.error(getErrorMessage(error));
+      }
     } finally {
       setPendingKey(undefined);
     }
@@ -506,7 +511,9 @@ export function InsightsSettingsPage() {
       setDialogState(null);
       toast.success(dialogState.mode === "create" ? "配置已新增" : "配置已更新");
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      if (!handleLimitError(error)) {
+        toast.error(getErrorMessage(error));
+      }
     } finally {
       setPendingKey(undefined);
     }
@@ -552,7 +559,7 @@ export function InsightsSettingsPage() {
 
       return exists
         ? items.map((current) => current.id === item.id ? item : current)
-        : [...items, item];
+        : [item, ...items];
     });
   }
 
@@ -566,6 +573,23 @@ export function InsightsSettingsPage() {
 
       return { ...current, items: updater(current.items) } as MutableTabData;
     });
+  }
+
+  function handleLimitError(error: unknown) {
+    if (
+      isRequestError(error)
+      && (error.code === "INSIGHT_CONFIG_ENABLED_LIMIT_REACHED" || error.code === "INSIGHT_CONFIG_TOTAL_LIMIT_REACHED")
+      && typeof error.details?.limit === "number"
+    ) {
+      setLimitAlertState({
+        limit: error.details.limit,
+        message: error.message,
+        type: error.code === "INSIGHT_CONFIG_TOTAL_LIMIT_REACHED" ? "total" : "enabled",
+      });
+      return true;
+    }
+
+    return false;
   }
 
   if (!canAccessSettings) {
@@ -596,7 +620,6 @@ export function InsightsSettingsPage() {
             <InsightRunStatusControl
               disabled={summaryLoading || pendingKey === "feature-config"}
               insightAvailable={summary?.insightAvailable}
-              insightEnabled={summary?.insightEnabled ?? false}
               onFeatureConfigChange={(next) => void handleFeatureConfigChange(next)}
             />
           )}
@@ -610,7 +633,7 @@ export function InsightsSettingsPage() {
             <TabsList className="h-auto min-w-0 flex-1 justify-start gap-8 overflow-x-auto rounded-none bg-transparent p-0 text-muted-foreground">
               <SettingsTabTrigger value="policy">洞察策略</SettingsTabTrigger>
               <SettingsTabTrigger value="intents">意图配置</SettingsTabTrigger>
-              <SettingsTabTrigger value="labels">标签体系</SettingsTabTrigger>
+              <SettingsTabTrigger value="labels">标签配置</SettingsTabTrigger>
               <SettingsTabTrigger value="qa">质检规则</SettingsTabTrigger>
               <SettingsTabTrigger value="entities">实体词库</SettingsTabTrigger>
               <SettingsTabTrigger value="rescan">历史重刷</SettingsTabTrigger>
@@ -755,6 +778,14 @@ export function InsightsSettingsPage() {
         open={rescanDialogOpen}
         scope={rescanScope}
       />
+      <LimitReachedDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setLimitAlertState(null);
+          }
+        }}
+        state={limitAlertState}
+      />
     </InsightsLayout>
   );
 }
@@ -797,12 +828,10 @@ function TabLoadingPlaceholder() {
 function InsightRunStatusControl({
   disabled,
   insightAvailable,
-  insightEnabled,
   onFeatureConfigChange,
 }: {
   disabled: boolean;
   insightAvailable?: boolean;
-  insightEnabled: boolean;
   onFeatureConfigChange: (next: InsightFeatureConfig) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -830,18 +859,15 @@ function InsightRunStatusControl({
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        <Badge variant={insightEnabled ? "default" : "secondary"}>{insightEnabled ? "运行中" : "未运行"}</Badge>
-        <Button
-          aria-label="配置洞察运行"
-          className="size-9 p-0"
-          disabled={disabled}
-          onClick={() => void handleOpenChange(true)}
-          variant="outline"
-        >
-          <HugeiconsIcon icon={Setting07Icon} size={18} />
-        </Button>
-      </div>
+      <Button
+        className="h-9 gap-2 px-3"
+        disabled={disabled}
+        onClick={() => void handleOpenChange(true)}
+        variant="outline"
+      >
+        <HugeiconsIcon icon={Setting07Icon} size={18} />
+        <span>运行配置</span>
+      </Button>
       {featureConfig ? (
         <InsightRunConfigDialog
           disabled={disabled || loadingConfig}
@@ -931,20 +957,20 @@ function InsightRunConfigDialog({
                 onCheckedChange={(checked) => setForm((current) => ({ ...current, qaEnabled: checked }))}
               />
               <RunSettingRow
+                checked={form.labelEnabled}
+                description="根据标签配置提炼会话特征，用于统计和筛选"
+                disabled={disabled}
+                icon={AiGenerativeIcon}
+                label="智能标签"
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, labelEnabled: checked }))}
+              />
+              <RunSettingRow
                 checked={form.entityEnabled}
                 description="从会话中识别商品、活动、服务等业务主体"
                 disabled={disabled}
                 icon={AppleIntelligenceIcon}
                 label="智能实体识别"
                 onCheckedChange={(checked) => setForm((current) => ({ ...current, entityEnabled: checked }))}
-              />
-              <RunSettingRow
-                checked={form.labelEnabled}
-                description="根据标签体系提炼会话特征，用于统计和筛选"
-                disabled={disabled}
-                icon={AiGenerativeIcon}
-                label="智能标签"
-                onCheckedChange={(checked) => setForm((current) => ({ ...current, labelEnabled: checked }))}
               />
             </div>
           </div>
@@ -996,29 +1022,57 @@ function RunSettingRow({
 }
 
 function SettingsSummary({ summary }: { summary: InsightSettingsSummaryResponse }) {
+  const statusText = (enabled: boolean) => enabled ? "已开启" : "未开启";
   const stats = [
-    { icon: BubbleChatIcon, label: "切分规则", value: `${summary.sessionizationIdleMinutes} 分钟结束` },
-    { icon: ChartAreaIcon, label: "提前分析", value: summary.liveAnalysisEnabled ? "开启" : "关闭" },
-    { icon: Search01Icon, label: "启用意图", value: `${summary.enabledIntentCount} 个` },
-    { icon: Setting07Icon, label: "启用标签", value: `${summary.enabledLabelCount} 个` },
-    { icon: ClipboardCheckIcon, label: "质检规则", value: `${summary.enabledQaCount} 条` },
-    { icon: UserGroupIcon, label: "启用实体", value: `${summary.entityCount} 个` },
+    { enabled: summary.insightEnabled, icon: AiIdeaIcon, label: "总开关" },
+    { enabled: summary.todoEnabled, icon: AiContentGenerator01Icon, label: "智能创建待办" },
+    { count: `${summary.enabledIntentCount} / ${summary.intentLimit}`, enabled: summary.intentEnabled, icon: UserAiIcon, label: "智能意图识别" },
+    { count: `${summary.enabledQaCount} / ${summary.qaLimit}`, enabled: summary.qaEnabled, icon: AiSecurity02Icon, label: "智能质检" },
+    { count: `${summary.enabledLabelCount} / ${summary.labelLimit}`, enabled: summary.labelEnabled, icon: AiGenerativeIcon, label: "智能标签" },
+    { count: `${summary.enabledEntityCount} / ${summary.entityLimit}`, enabled: summary.entityEnabled, icon: AppleIntelligenceIcon, label: "智能实体识别" },
   ];
 
   return (
     <section aria-label="洞察配置概览" className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
       {stats.map((item) => (
-        <div className="flex min-h-[112px] flex-col justify-between rounded-[8px] border bg-background px-4 py-4" key={item.label}>
+        <article className="flex min-h-[112px] flex-col justify-between rounded-[8px] border bg-background px-4 py-4" key={item.label}>
           <span className="flex size-9 shrink-0 items-center justify-center rounded-[8px] border bg-muted/35 text-muted-foreground">
             <HugeiconsIcon color="currentColor" icon={item.icon} size={18} strokeWidth={1.8} />
           </span>
           <div className="min-w-0 pt-4">
             <div className="text-xs text-muted-foreground">{item.label}</div>
-            <div className="mt-1 truncate text-sm font-semibold text-foreground">{item.value}</div>
+            <div className="mt-1 truncate text-sm font-semibold">
+              <span className={item.enabled ? "text-success" : "text-muted-foreground"}>
+                {statusText(item.enabled)}
+              </span>
+              {item.count ? <span className="text-foreground">（{item.count}）</span> : null}
+            </div>
           </div>
-        </div>
+        </article>
       ))}
     </section>
+  );
+}
+
+function LimitReachedDialog({
+  onOpenChange,
+  state,
+}: {
+  onOpenChange: (open: boolean) => void;
+  state: LimitAlertState | null;
+}) {
+  return (
+    <AlertDialog onOpenChange={onOpenChange} open={state != null}>
+      <AlertDialogContent size="sm">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{state?.type === "total" ? "配置数量已达上限" : "启用数量已达上限"}</AlertDialogTitle>
+          <AlertDialogDescription>{state?.message}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction>知道了</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

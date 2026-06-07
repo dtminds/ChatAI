@@ -130,6 +130,66 @@ describe("insight prompt builder", () => {
     expect(JSON.stringify(classificationPayload.outputContract)).not.toContain("problemResolution");
   });
 
+  it("caps worker prompt config counts with the new enabled limits", () => {
+    const prompt = buildInsightPromptMessages({
+      context: {
+        entityDictionary: Array.from({ length: 25 }, (_, index) => ({
+          aliases: [`entity-${index}`],
+          canonicalName: `实体-${index}`,
+          entityType: "product",
+          includeInAggregation: index < 5,
+        })),
+        intentConfigs: Array.from({ length: 25 }, (_, index) => ({
+          aliases: [`intent-${index}`],
+          description: `意图-${index}`,
+          includeInStatistics: true,
+          intentCode: `intent_${index}`,
+          intentName: `意图${index}`,
+          negativeExamples: [],
+          positiveExamples: [],
+          weight: 25 - index,
+        })),
+        labelConfigs: Array.from({ length: 25 }, (_, index) => ({
+          description: `标签-${index}`,
+          includeInStatistics: index < 5,
+          labelCode: `label_${index}`,
+          labelName: `标签${index}`,
+          negativeExamples: [],
+          positiveExamples: [],
+        })),
+        qaRuleConfigs: Array.from({ length: 15 }, (_, index) => ({
+          applicableScene: `场景-${index}`,
+          judgmentCriteria: `规则-${index}`,
+          negativeExamples: [],
+          positiveExamples: [],
+          ruleCode: `qa_${index}`,
+          ruleName: `质检${index}`,
+          severity: index % 3 === 0 ? "high" : index % 3 === 1 ? "medium" : "low" as const,
+        })),
+      },
+      messages: [
+        {
+          aiText: "客户反馈物流一直不更新",
+          contentStatus: "ready",
+          conversationId: "301",
+          evidenceLabel: "[9001]",
+          includedForAi: true,
+          meaningfulForBoundary: true,
+          messageType: "text",
+          occurredAt: 1_780_244_000_000,
+          senderRole: "customer",
+          sourceMessageId: "9001",
+        },
+      ],
+    });
+
+    const payload = JSON.parse(prompt[1]?.content ?? "{}");
+    expect(payload.tenantContext.intentConfigs).toHaveLength(20);
+    expect(payload.tenantContext.labelConfigs).toHaveLength(20);
+    expect(payload.tenantContext.qaRuleConfigs).toHaveLength(10);
+    expect(payload.tenantContext.entityDictionary).toHaveLength(20);
+  });
+
   it("injects tenant labels, QA rules, entity dictionary and strict output rules", () => {
     const prompt = buildInsightPromptMessages({
       context: {

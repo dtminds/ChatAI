@@ -73,7 +73,12 @@ describe("insights service adapter", () => {
     });
     await getInsightBusiness({ from: "2026-06-01", to: "2026-06-02" });
     await getInsightQuality();
-    await getInsightFollowUps({ priority: "high", status: "open" });
+    await getInsightFollowUps({
+      from: "2026-06-01",
+      priority: "high",
+      status: "open",
+      to: "2026-06-02",
+    });
     await getInsightDetail("501");
     await getInsightMessageContext({ conversationId: "301", messageId: "9002" });
     await updateInsightActionStatus("801", "done");
@@ -112,8 +117,10 @@ describe("insights service adapter", () => {
     expect(mock.history.get[3]?.url).toBe("/server/insights/quality");
     expect(mock.history.get[4]?.url).toBe("/server/insights/follow-ups");
     expect(mock.history.get[4]?.params).toEqual({
+      from: "2026-06-01",
       priority: "high",
       status: "open",
+      to: "2026-06-02",
     });
     expect(mock.history.get[5]?.url).toBe("/server/insights/sessions/501");
     expect(mock.history.get[6]?.url).toBe("/server/insights/messages/context");

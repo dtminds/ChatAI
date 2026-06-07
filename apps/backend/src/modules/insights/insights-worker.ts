@@ -210,6 +210,7 @@ export type InsightAnalysisOutput = {
     passed: boolean;
     reason: string;
     ruleCode: string;
+    ruleName: string;
     severity: "high" | "low" | "medium";
   }>;
   sentiment: Array<{
@@ -1234,7 +1235,9 @@ function filterConfiguredAnalysisOutput(
     context.intentConfigs.map((item) => [item.intentCode, item]),
   );
   const labelCodes = new Set(context.labelConfigs.map((item) => item.labelCode));
-  const qaRuleCodes = new Set(context.qaRuleConfigs.map((item) => item.ruleCode));
+  const qaRuleConfigsByCode = new Map(
+    context.qaRuleConfigs.map((item) => [item.ruleCode, item]),
+  );
   const configuredEntities = context.entityDictionary.map((item) => ({
     aliases: new Set([item.canonicalName, ...item.aliases].map(normalizeMatchText)),
     canonicalName: item.canonicalName,
@@ -1276,13 +1279,19 @@ function filterConfiguredAnalysisOutput(
     validationWarnings.push(`intent ${item.intentCode} is not configured`);
     return [];
   });
-  const qaFindings = output.qaFindings.filter((item) => {
-    if (qaRuleCodes.has(item.ruleCode)) {
-      return true;
+  const qaFindings = output.qaFindings.flatMap((item) => {
+    const config = qaRuleConfigsByCode.get(item.ruleCode);
+
+    if (config) {
+      return [{
+        ...item,
+        ruleName: config.ruleName,
+        severity: config.severity,
+      }];
     }
 
     validationWarnings.push(`qa rule ${item.ruleCode} is not configured`);
-    return false;
+    return [];
   });
 
   return {

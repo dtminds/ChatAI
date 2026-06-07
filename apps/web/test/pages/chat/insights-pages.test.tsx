@@ -17,6 +17,13 @@ const serviceMocks = vi.hoisted(() => ({
   getInsightQuality: vi.fn(),
   getInsightRescanTasks: vi.fn(),
   getInsightSettings: vi.fn(),
+  getInsightSettingsSummary: vi.fn(),
+  getInsightPolicyAndSessionization: vi.fn(),
+  getInsightFeatureConfig: vi.fn(),
+  listInsightIntentConfigs: vi.fn(),
+  listInsightLabelConfigs: vi.fn(),
+  listInsightQaRuleConfigs: vi.fn(),
+  listInsightEntityDictionary: vi.fn(),
   createInsightIntentConfig: vi.fn(),
   createInsightLabelConfig: vi.fn(),
   updateInsightAnalysisPolicy: vi.fn(),
@@ -52,7 +59,7 @@ const mockInsightSettings = {
     {
       aliases: ["白鸭绒外套"],
       canonicalName: "白色羽绒服",
-      enabled: true,
+      status: 1,
       entityType: "product",
       id: "41",
       includeInAggregation: true,
@@ -60,7 +67,7 @@ const mockInsightSettings = {
     {
       aliases: ["雨伞"],
       canonicalName: "黑色雨伞",
-      enabled: true,
+      status: 1,
       entityType: "product",
       id: "42",
       includeInAggregation: true,
@@ -68,7 +75,7 @@ const mockInsightSettings = {
     {
       aliases: [],
       canonicalName: "隐藏实体",
-      enabled: false,
+      status: 0,
       entityType: "product",
       id: "43",
       includeInAggregation: true,
@@ -87,7 +94,7 @@ const mockInsightSettings = {
     {
       aliases: ["查快递"],
       description: "客户咨询物流或发货进度",
-      enabled: true,
+      status: 1,
       id: "31",
       includeInStatistics: true,
       intentCode: "logistics",
@@ -99,7 +106,7 @@ const mockInsightSettings = {
     {
       aliases: ["AI客服"],
       description: "客户咨询AI客服系统相关信息",
-      enabled: true,
+      status: 1,
       id: "32",
       includeInStatistics: true,
       intentCode: "ai_customer_service_info",
@@ -110,7 +117,7 @@ const mockInsightSettings = {
     },
     {
       aliases: [],
-      enabled: false,
+      status: 0,
       id: "33",
       includeInStatistics: true,
       intentCode: "hidden_intent",
@@ -120,28 +127,28 @@ const mockInsightSettings = {
   ],
   labelConfigs: [
     {
-      enabled: true,
+      status: 1,
       id: "11",
       includeInStatistics: true,
       labelCode: "refund",
       labelName: "退款咨询",
     },
     {
-      enabled: true,
+      status: 1,
       id: "12",
       includeInStatistics: true,
       labelCode: "price_sensitive",
       labelName: "价格敏感",
     },
     {
-      enabled: true,
+      status: 1,
       id: "13",
       includeInStatistics: true,
       labelCode: "high_intent",
       labelName: "高意向",
     },
     {
-      enabled: false,
+      status: 0,
       id: "14",
       includeInStatistics: true,
       labelCode: "hidden_label",
@@ -150,7 +157,7 @@ const mockInsightSettings = {
   ],
   qaRuleConfigs: [
     {
-      enabled: true,
+      status: 1,
       id: "21",
       ruleCode: "problem_resolution",
       ruleName: "客户问题是否解决",
@@ -399,6 +406,7 @@ function createMockInsightDetail() {
         passed: false,
         reason: "未确认物流进展",
         ruleCode: "problem_resolution",
+        ruleName: "客户问题是否解决",
       },
     ],
     sentiment: [
@@ -871,6 +879,25 @@ function installInsightMocks() {
     targetMessageId: "9002",
   });
   serviceMocks.getInsightSettings.mockResolvedValue(mockInsightSettings);
+  serviceMocks.getInsightSettingsSummary.mockResolvedValue({
+    enabledIntentCount: mockInsightSettings.intentConfigs.filter((item) => item.status === 1).length,
+    enabledLabelCount: mockInsightSettings.labelConfigs.filter((item) => item.status === 1).length,
+    enabledQaCount: mockInsightSettings.qaRuleConfigs.filter((item) => item.status === 1).length,
+    entityCount: mockInsightSettings.entityDictionary.length,
+    insightAvailable: mockInsightSettings.featureConfig.insightAvailable,
+    insightEnabled: mockInsightSettings.featureConfig.insightEnabled,
+    liveAnalysisEnabled: mockInsightSettings.analysisPolicy.liveAnalysisEnabled,
+    sessionizationIdleMinutes: mockInsightSettings.sessionization.idleTimeoutMinutes,
+  });
+  serviceMocks.getInsightPolicyAndSessionization.mockResolvedValue({
+    analysisPolicy: mockInsightSettings.analysisPolicy,
+    sessionization: mockInsightSettings.sessionization,
+  });
+  serviceMocks.getInsightFeatureConfig.mockResolvedValue(mockInsightSettings.featureConfig);
+  serviceMocks.listInsightIntentConfigs.mockResolvedValue(mockInsightSettings.intentConfigs);
+  serviceMocks.listInsightLabelConfigs.mockResolvedValue(mockInsightSettings.labelConfigs);
+  serviceMocks.listInsightQaRuleConfigs.mockResolvedValue(mockInsightSettings.qaRuleConfigs);
+  serviceMocks.listInsightEntityDictionary.mockResolvedValue(mockInsightSettings.entityDictionary);
   serviceMocks.updateInsightActionStatus.mockResolvedValue({
     actionItemId: "801",
     status: "done",
@@ -902,7 +929,7 @@ function installInsightMocks() {
     total: 1,
   });
   serviceMocks.createInsightLabelConfig.mockResolvedValue({
-    enabled: true,
+    status: 1,
     id: "12",
     includeInStatistics: true,
     labelCode: "high_intent",
@@ -911,7 +938,7 @@ function installInsightMocks() {
   serviceMocks.createInsightIntentConfig.mockResolvedValue({
     aliases: ["报价"],
     description: "客户咨询价格",
-    enabled: true,
+    status: 1,
     id: "34",
     includeInStatistics: true,
     intentCode: "price_consult",
@@ -920,6 +947,14 @@ function installInsightMocks() {
     positiveExamples: ["多少钱"],
     weight: 3,
   });
+  serviceMocks.updateInsightEntityDictionaryItemStatus.mockImplementation(async (
+    id: string,
+    payload: { status: 0 | 1 },
+  ) => ({
+    ...mockInsightSettings.entityDictionary.find((item) => item.id === id),
+    ...payload,
+    id,
+  }));
 }
 
 async function applyDateRangePreset(label: string, expectedFrom: string, expectedTo: string) {
@@ -1692,7 +1727,48 @@ describe("conversation insights pages", () => {
 
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
     expect(screen.getByText("未确认物流进展")).toBeInTheDocument();
+    expect(screen.getByText("未通过：客户问题是否解决")).toBeInTheDocument();
+    expect(screen.queryByText("未通过：problem_resolution")).not.toBeInTheDocument();
     expect(screen.queryByText("后续版本接入")).not.toBeInTheDocument();
+  });
+
+  it("refreshes summary after toggling entity status", async () => {
+    renderRoute("/chat/insights/settings");
+
+    expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
+    expect(serviceMocks.getInsightSettingsSummary).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("tab", { name: "实体词库" }));
+    const entityRow = await screen.findByRole("row", { name: /白色羽绒服/ });
+    await userEvent.click(within(entityRow).getByRole("switch"));
+
+    await waitFor(() => {
+      expect(serviceMocks.updateInsightEntityDictionaryItemStatus).toHaveBeenCalledWith("41", { status: 0 });
+      expect(serviceMocks.getInsightSettingsSummary).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("requires delete confirmation before removing a label config", async () => {
+    renderRoute("/chat/insights/settings");
+
+    expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "标签体系" }));
+
+    const labelRow = await screen.findByRole("row", { name: /退款咨询/ });
+    await userEvent.click(within(labelRow).getByRole("button", { name: "删除" }));
+
+    expect(serviceMocks.deleteInsightLabelConfig).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alertdialog", { name: "确认删除标签" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(serviceMocks.deleteInsightLabelConfig).not.toHaveBeenCalled();
+
+    await userEvent.click(within(labelRow).getByRole("button", { name: "删除" }));
+    await userEvent.click(await screen.findByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.deleteInsightLabelConfig).toHaveBeenCalledWith("11");
+    });
   });
 
   it("aborts business insight requests when the page unmounts", async () => {
@@ -1888,6 +1964,16 @@ describe("conversation insights pages", () => {
     await userEvent.click(screen.getByRole("button", { name: "配置洞察运行" }));
     expect(await screen.findByRole("dialog", { name: "洞察运行配置" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("switch", { name: "启用会话洞察" }));
+    serviceMocks.getInsightSettingsSummary.mockResolvedValueOnce({
+      enabledIntentCount: mockInsightSettings.intentConfigs.filter((item) => item.status === 1).length,
+      enabledLabelCount: mockInsightSettings.labelConfigs.filter((item) => item.status === 1).length,
+      enabledQaCount: mockInsightSettings.qaRuleConfigs.filter((item) => item.status === 1).length,
+      entityCount: mockInsightSettings.entityDictionary.length,
+      insightAvailable: true,
+      insightEnabled: true,
+      liveAnalysisEnabled: mockInsightSettings.analysisPolicy.liveAnalysisEnabled,
+      sessionizationIdleMinutes: mockInsightSettings.sessionization.idleTimeoutMinutes,
+    });
     await userEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
@@ -1929,12 +2015,19 @@ describe("conversation insights pages", () => {
   });
 
   it("disables the global insight switch when insights are not available", async () => {
-    serviceMocks.getInsightSettings.mockResolvedValue({
-      ...mockInsightSettings,
-      featureConfig: {
-        ...mockInsightSettings.featureConfig,
-        insightAvailable: false,
-      },
+    serviceMocks.getInsightSettingsSummary.mockResolvedValue({
+      enabledIntentCount: mockInsightSettings.intentConfigs.filter((item) => item.status === 1).length,
+      enabledLabelCount: mockInsightSettings.labelConfigs.filter((item) => item.status === 1).length,
+      enabledQaCount: mockInsightSettings.qaRuleConfigs.filter((item) => item.status === 1).length,
+      entityCount: mockInsightSettings.entityDictionary.length,
+      insightAvailable: false,
+      insightEnabled: mockInsightSettings.featureConfig.insightEnabled,
+      liveAnalysisEnabled: mockInsightSettings.analysisPolicy.liveAnalysisEnabled,
+      sessionizationIdleMinutes: mockInsightSettings.sessionization.idleTimeoutMinutes,
+    });
+    serviceMocks.getInsightFeatureConfig.mockResolvedValue({
+      ...mockInsightSettings.featureConfig,
+      insightAvailable: false,
     });
 
     renderRoute("/chat/insights/settings");

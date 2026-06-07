@@ -9,6 +9,7 @@ import type {
   InsightBusinessRelatedSessionsResponse,
   InsightOverviewQuery,
   InsightConfigDeletedResponse,
+  InsightConfigStatus,
   InsightConfigStatusUpdateRequest,
   InsightDetailResponse,
   InsightEntityDictionaryItem,
@@ -25,6 +26,7 @@ import type {
   InsightRescanAnalysisScope,
   InsightRescanTaskListResponse,
   InsightSettingsResponse,
+  InsightSettingsSummaryResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
   InsightsBusinessResponse,
@@ -110,7 +112,10 @@ export type InsightDetailRow = {
   faqCandidates: InsightDetailResponse["faqCandidates"];
   intents: InsightDetailResponse["intents"];
   problemEvidenceMessageIds: string[];
-  qaFindingDetails?: Array<InsightDetailResponse["qaFindings"][number] & { severity: InsightSeverity }>;
+  qaFindingDetails?: Array<InsightDetailResponse["qaFindings"][number] & {
+    ruleName: string;
+    severity: InsightSeverity;
+  }>;
   qaFindings: InsightDetailResponse["qaFindings"];
   sentiment: InsightDetailResponse["sentiment"];
   tags: InsightDetailResponse["tags"];
@@ -295,7 +300,7 @@ export type InsightsRepositoryPort = {
   hasActiveRescanTask(scope: InsightsUidScope): Promise<boolean>;
   listRescanTasks(
     scope: InsightsUidScope,
-    filters: { limit: number },
+    filters: { limit: number; offset: number },
   ): Promise<{ items: InsightRescanTaskRow[]; total: number }>;
   listSessionMessageRecords(
     scope: InsightsUidScope,
@@ -316,6 +321,16 @@ export type InsightsRepositoryPort = {
     status: Extract<InsightActionStatus, "done" | "dismissed">,
   ): Promise<boolean>;
   getSettings(scope: InsightsUidScope): Promise<InsightSettingsResponse>;
+  getSettingsSummary(scope: InsightsUidScope): Promise<InsightSettingsSummaryResponse>;
+  getPolicySettings(scope: InsightsUidScope): Promise<{
+    analysisPolicy: InsightAnalysisPolicy;
+    sessionization: InsightSessionizationSettings;
+  }>;
+  getFeatureConfig(scope: InsightsUidScope): Promise<InsightFeatureConfig>;
+  listIntentConfigs(scope: InsightsUidScope): Promise<InsightIntentConfig[]>;
+  listLabelConfigs(scope: InsightsUidScope): Promise<InsightLabelConfig[]>;
+  listQaRuleConfigs(scope: InsightsUidScope): Promise<InsightQaRuleConfig[]>;
+  listEntityDictionary(scope: InsightsUidScope): Promise<InsightEntityDictionaryItem[]>;
   upsertFeatureConfig(
     scope: InsightsUidScope,
     payload: InsightFeatureConfigUpdateRequest,
@@ -340,7 +355,7 @@ export type InsightsRepositoryPort = {
   updateIntentConfigStatus(
     scope: InsightsUidScope,
     id: string,
-    enabled: boolean,
+    status: Exclude<InsightConfigStatus, -1>,
   ): Promise<InsightIntentConfig | undefined>;
   deleteIntentConfig(scope: InsightsUidScope, id: string): Promise<boolean>;
   createLabelConfig(
@@ -355,7 +370,7 @@ export type InsightsRepositoryPort = {
   updateLabelConfigStatus(
     scope: InsightsUidScope,
     id: string,
-    enabled: boolean,
+    status: Exclude<InsightConfigStatus, -1>,
   ): Promise<InsightLabelConfig | undefined>;
   deleteLabelConfig(scope: InsightsUidScope, id: string): Promise<boolean>;
   createQaRuleConfig(
@@ -370,7 +385,7 @@ export type InsightsRepositoryPort = {
   updateQaRuleConfigStatus(
     scope: InsightsUidScope,
     id: string,
-    enabled: boolean,
+    status: Exclude<InsightConfigStatus, -1>,
   ): Promise<InsightQaRuleConfig | undefined>;
   deleteQaRuleConfig(scope: InsightsUidScope, id: string): Promise<boolean>;
   createEntityDictionaryItem(
@@ -385,7 +400,7 @@ export type InsightsRepositoryPort = {
   updateEntityDictionaryItemStatus(
     scope: InsightsUidScope,
     id: string,
-    enabled: boolean,
+    status: Exclude<InsightConfigStatus, -1>,
   ): Promise<InsightEntityDictionaryItem | undefined>;
   deleteEntityDictionaryItem(scope: InsightsUidScope, id: string): Promise<boolean>;
 };
@@ -741,6 +756,76 @@ export class InsightsService {
     };
   }
 
+  async getSettingsSummary(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+  ): Promise<InsightSettingsSummaryResponse> {
+    assertInsightSettingsAdmin(role);
+
+    const summary = await this.repository.getSettingsSummary(scope);
+
+    return {
+      ...summary,
+      insightAvailable: isInsightAvailable(scope),
+    };
+  }
+
+  async getPolicySettings(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+  ): Promise<{
+    analysisPolicy: InsightAnalysisPolicy;
+    sessionization: InsightSessionizationSettings;
+  }> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.getPolicySettings(scope);
+  }
+
+  async getFeatureConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+  ): Promise<InsightFeatureConfig> {
+    assertInsightSettingsAdmin(role);
+    const config = await this.repository.getFeatureConfig(scope);
+
+    return {
+      ...config,
+      insightAvailable: isInsightAvailable(scope),
+    };
+  }
+
+  async listIntentConfigs(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+  ): Promise<InsightIntentConfig[]> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.listIntentConfigs(scope);
+  }
+
+  async listLabelConfigs(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+  ): Promise<InsightLabelConfig[]> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.listLabelConfigs(scope);
+  }
+
+  async listQaRuleConfigs(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+  ): Promise<InsightQaRuleConfig[]> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.listQaRuleConfigs(scope);
+  }
+
+  async listEntityDictionary(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+  ): Promise<InsightEntityDictionaryItem[]> {
+    assertInsightSettingsAdmin(role);
+    return this.repository.listEntityDictionary(scope);
+  }
+
   async updateSessionizationSettings(
     scope: InsightsUidScope,
     role: AccountRole | string | undefined,
@@ -796,7 +881,7 @@ export class InsightsService {
     payload: InsightConfigStatusUpdateRequest,
   ): Promise<InsightIntentConfig> {
     assertInsightSettingsAdmin(role);
-    return await this.repository.updateIntentConfigStatus(scope, id, payload.enabled)
+    return await this.repository.updateIntentConfigStatus(scope, id, payload.status)
       ?? raiseConfigNotFound();
   }
 
@@ -836,7 +921,7 @@ export class InsightsService {
     payload: InsightConfigStatusUpdateRequest,
   ): Promise<InsightLabelConfig> {
     assertInsightSettingsAdmin(role);
-    return await this.repository.updateLabelConfigStatus(scope, id, payload.enabled)
+    return await this.repository.updateLabelConfigStatus(scope, id, payload.status)
       ?? raiseConfigNotFound();
   }
 
@@ -876,7 +961,7 @@ export class InsightsService {
     payload: InsightConfigStatusUpdateRequest,
   ): Promise<InsightQaRuleConfig> {
     assertInsightSettingsAdmin(role);
-    return await this.repository.updateQaRuleConfigStatus(scope, id, payload.enabled)
+    return await this.repository.updateQaRuleConfigStatus(scope, id, payload.status)
       ?? raiseConfigNotFound();
   }
 
@@ -916,7 +1001,7 @@ export class InsightsService {
     payload: InsightConfigStatusUpdateRequest,
   ): Promise<InsightEntityDictionaryItem> {
     assertInsightSettingsAdmin(role);
-    return await this.repository.updateEntityDictionaryItemStatus(scope, id, payload.enabled)
+    return await this.repository.updateEntityDictionaryItemStatus(scope, id, payload.status)
       ?? raiseConfigNotFound();
   }
 
@@ -997,8 +1082,12 @@ export class InsightsService {
 
   async listRescanTasks(
     scope: InsightsUidScope,
+    options?: { page?: number; pageSize?: number },
   ): Promise<InsightRescanTaskListResponse> {
-    const tasks = await this.repository.listRescanTasks(scope, { limit: 20 });
+    const page = Math.max(1, options?.page ?? 1);
+    const pageSize = Math.min(50, Math.max(1, options?.pageSize ?? 10));
+    const offset = (page - 1) * pageSize;
+    const tasks = await this.repository.listRescanTasks(scope, { limit: pageSize, offset });
 
     return {
       items: tasks.items.map((task) => ({

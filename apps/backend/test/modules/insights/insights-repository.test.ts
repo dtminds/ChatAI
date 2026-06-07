@@ -611,7 +611,13 @@ describe("InsightsRepository", () => {
           },
         ],
       ],
-      ["xy_wap_embed_session_qa_finding", [{ qa_finding_id: 701, qa_passed: 0, qa_reason: "未说明时效", qa_rule_code: "reply_quality" }]],
+      ["xy_wap_embed_session_qa_finding", [{
+        qa_finding_id: 701,
+        qa_passed: 0,
+        qa_reason: "未说明时效",
+        qa_rule_code: "reply_quality",
+        qa_rule_name: "回复质量",
+      }]],
       [
         "xy_wap_embed_session_action_item as action",
         [
@@ -647,7 +653,13 @@ describe("InsightsRepository", () => {
 
     await expect(repository.findDetail({ uid: 9001 }, "201")).resolves.toMatchObject({
       actionItems: [{ actionItemId: "801", evidenceMessageIds: ["9001"] }],
-      qaFindings: [{ evidenceMessageIds: ["9001"], passed: false, reason: "未说明时效", ruleCode: "reply_quality" }],
+      qaFindings: [{
+        evidenceMessageIds: ["9001"],
+        passed: false,
+        reason: "未说明时效",
+        ruleCode: "reply_quality",
+        ruleName: "回复质量",
+      }],
     });
 
     const coreQuery = builders[0];
@@ -698,6 +710,78 @@ describe("InsightsRepository", () => {
         "rescan:9001:2026-06-01T00:00:00.000Z",
       ),
     ).resolves.toEqual({ jobId: "8801", taskId: "9901" });
+  });
+
+  it("logically deletes label configs by marking status deleted", async () => {
+    let updateBuilder: UpdateBuilderStub | undefined;
+    const db = {
+      selectFrom: vi.fn(() =>
+        createSelectBuilder([
+          {
+            description: null,
+            id: 11,
+            include_in_statistics: 1,
+            label_code: "refund",
+            label_name: "退款咨询",
+            negative_examples_json: null,
+            positive_examples_json: null,
+            status: 1,
+          },
+        ]),
+      ),
+      updateTable: vi.fn((table: string) => createUpdateBuilder(
+        async () => ({ numAffectedRows: 1n }),
+        {
+          onCreate: (builder) => {
+            updateBuilder = builder;
+          },
+          table,
+        },
+      )),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.deleteLabelConfig({ uid: 9001 }, "11")).resolves.toBe(true);
+
+    expect(updateBuilder?.table).toBe("xy_wap_embed_insight_label_config");
+    expect(updateBuilder?.setCalls[0]).toEqual(expect.objectContaining({ status: -1 }));
+    expect(updateBuilder?.whereCalls).toContainEqual(["id", "=", 11]);
+    expect(updateBuilder?.whereCalls).toContainEqual(["uid", "=", 9001]);
+  });
+
+  it("builds business intent facts from snapshot labels without joining current configs", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await repository.listBusinessTopicFacts({ uid: 9001 });
+
+    const intentQuery = builders.find((builder) => builder.table === "xy_wap_embed_session_intent as intent");
+    expect(intentQuery?.joins).not.toContain("xy_wap_embed_insight_intent_config as intent_config");
+    expect(intentQuery?.selectRawCalls.join("\n")).toContain("intent.intent_label as name");
+  });
+
+  it("aggregates QA finding names from stored snapshot values", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await repository.getQaFindingAggregate({ uid: 9001 });
+
+    expect(builders.some((builder) => builder.joins.includes("xy_wap_embed_insight_qa_rule_config as rule"))).toBe(false);
+    expect(builders.some((builder) => builder.selectRawCalls.join("\n").includes("qa.rule_name as rule_name"))).toBe(true);
   });
 });
 

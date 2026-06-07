@@ -29,11 +29,21 @@ import type {
   InsightQaRuleConfigMutationRequest,
   InsightRescanAnalysisScope,
   InsightRescanTask,
-  InsightSettingsResponse,
+  InsightSettingsSummaryResponse,
   InsightSessionizationSettings,
 } from "@chatai/contracts";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,7 +91,13 @@ import {
   deleteInsightLabelConfig,
   deleteInsightQaRuleConfig,
   getInsightRescanTasks,
-  getInsightSettings,
+  getInsightSettingsSummary,
+  getInsightPolicyAndSessionization,
+  getInsightFeatureConfig,
+  listInsightIntentConfigs,
+  listInsightLabelConfigs,
+  listInsightQaRuleConfigs,
+  listInsightEntityDictionary,
   updateInsightAnalysisPolicy,
   updateInsightEntityDictionaryItem,
   updateInsightEntityDictionaryItemStatus,
@@ -95,9 +111,25 @@ import {
   updateInsightSessionizationSettings,
 } from "./api/insights-service";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
+import { InsightTablePagination } from "./insight-table-pagination";
 
 type MutableCollection = "entity" | "intent" | "label" | "qa";
 type ConfigDialogErrors = Partial<Record<string, string>>;
+
+type TabData =
+  | { tab: "policy"; analysisPolicy: InsightAnalysisPolicy; sessionization: InsightSessionizationSettings }
+  | { tab: "intents"; items: InsightIntentConfig[] }
+  | { tab: "labels"; items: InsightLabelConfig[] }
+  | { tab: "qa"; items: InsightQaRuleConfig[] }
+  | { tab: "entities"; items: InsightEntityDictionaryItem[] }
+  | { tab: "rescan"; items: InsightRescanTask[]; total: number; page: number };
+
+type MutableTabData = Extract<TabData, { tab: "entities" | "intents" | "labels" | "qa" }>;
+type ConfigItem =
+  | InsightEntityDictionaryItem
+  | InsightIntentConfig
+  | InsightLabelConfig
+  | InsightQaRuleConfig;
 
 type ConfigDialogState =
   | { collection: "label"; mode: "create" }
@@ -109,35 +141,10 @@ type ConfigDialogState =
   | { collection: "entity"; mode: "create" }
   | { collection: "entity"; item: InsightEntityDictionaryItem; mode: "edit" };
 
-const defaultSettings: InsightSettingsResponse = {
-  analysisPolicy: {
-    finalAnalysisEnabled: true,
-    liveAnalysisEnabled: true,
-    liveMinIntervalMinutes: 15,
-    liveMinNewMeaningfulMessages: 20,
-    lowConfidenceThreshold: 0.6,
-    ruleFallbackEnabled: true,
-  },
-  featureConfig: {
-    entityEnabled: true,
-    insightAvailable: true,
-    insightEnabled: false,
-    intentEnabled: true,
-    labelEnabled: true,
-    qaEnabled: true,
-    todoEnabled: true,
-  },
-  entityDictionary: [],
-  intentConfigs: [],
-  labelConfigs: [],
-  qaRuleConfigs: [],
-  sessionization: {
-    analysisDelayMinutes: 10,
-    hardMaxDurationHours: 8,
-    idleTimeoutMinutes: 120,
-    lateArrivalWindowMinutes: 30,
-    preset: "custom",
-  },
+type DeleteConfirmState = {
+  collection: MutableCollection;
+  id: string;
+  name: string;
 };
 
 const analysisFrequencyPresets = [
@@ -198,16 +205,31 @@ const rescanScopeOptions: Array<{
 export function InsightsSettingsPage() {
   const role = useAuthStore((state) => state.subUser?.role);
   const [dialogState, setDialogState] = useState<ConfigDialogState | null>(null);
+  const [deleteConfirmState, setDeleteConfirmState] = useState<DeleteConfirmState | null>(null);
   const [entityQuery, setEntityQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
   const [pendingKey, setPendingKey] = useState<string>();
   const [rescanDialogOpen, setRescanDialogOpen] = useState(false);
   const [rescanFrom, setRescanFrom] = useState(() => toDateTimeLocalValue(Date.now() - 24 * 60 * 60 * 1000));
   const [rescanScope, setRescanScope] = useState<InsightRescanAnalysisScope>("classification");
-  const [rescanTasks, setRescanTasks] = useState<InsightRescanTask[]>([]);
-  const [settings, setSettings] = useState<InsightSettingsResponse>();
   const [settingsTab, setSettingsTab] = useState("policy");
+  const [summary, setSummary] = useState<InsightSettingsSummaryResponse>();
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [tabData, setTabData] = useState<TabData>();
+  const [tabLoading, setTabLoading] = useState(false);
   const canAccessSettings = role === "owner" || role === "admin";
+
+  async function refreshSummary() {
+    setSummaryLoading(true);
+
+    try {
+      const result = await getInsightSettingsSummary();
+      setSummary(result);
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!canAccessSettings) {
@@ -217,13 +239,11 @@ export function InsightsSettingsPage() {
     let ignore = false;
 
     async function load() {
-      setIsLoading(true);
-
       try {
-        const result = await getInsightSettings();
+        const result = await getInsightSettingsSummary();
 
         if (!ignore) {
-          setSettings(result);
+          setSummary(result);
         }
       } catch (error) {
         if (!ignore) {
@@ -231,7 +251,7 @@ export function InsightsSettingsPage() {
         }
       } finally {
         if (!ignore) {
-          setIsLoading(false);
+          setSummaryLoading(false);
         }
       }
     }
@@ -251,15 +271,53 @@ export function InsightsSettingsPage() {
     let ignore = false;
 
     async function load() {
-      try {
-        const result = await getInsightRescanTasks();
+      setTabLoading(true);
 
-        if (!ignore) {
-          setRescanTasks(result.items);
+      try {
+        if (settingsTab === "policy") {
+          const result = await getInsightPolicyAndSessionization();
+
+          if (!ignore) {
+            setTabData({ tab: "policy", ...result });
+          }
+        } else if (settingsTab === "intents") {
+          const items = await listInsightIntentConfigs();
+
+          if (!ignore) {
+            setTabData({ tab: "intents", items });
+          }
+        } else if (settingsTab === "labels") {
+          const items = await listInsightLabelConfigs();
+
+          if (!ignore) {
+            setTabData({ tab: "labels", items });
+          }
+        } else if (settingsTab === "qa") {
+          const items = await listInsightQaRuleConfigs();
+
+          if (!ignore) {
+            setTabData({ tab: "qa", items });
+          }
+        } else if (settingsTab === "entities") {
+          const items = await listInsightEntityDictionary();
+
+          if (!ignore) {
+            setTabData({ tab: "entities", items });
+          }
+        } else if (settingsTab === "rescan") {
+          const result = await getInsightRescanTasks(1, 10);
+
+          if (!ignore) {
+            setTabData({ tab: "rescan", items: result.items, total: result.total, page: 1 });
+          }
         }
       } catch (error) {
         if (!ignore) {
           toast.error(getErrorMessage(error));
+        }
+      } finally {
+        if (!ignore) {
+          setTabLoading(false);
         }
       }
     }
@@ -269,22 +327,25 @@ export function InsightsSettingsPage() {
     return () => {
       ignore = true;
     };
-  }, [canAccessSettings]);
+  }, [canAccessSettings, settingsTab]);
 
-  const currentSettings = settings ?? defaultSettings;
   const filteredEntities = useMemo(() => {
+    if (tabData?.tab !== "entities") {
+      return [];
+    }
+
     const query = entityQuery.trim().toLowerCase();
 
     if (!query) {
-      return currentSettings.entityDictionary;
+      return tabData.items;
     }
 
-    return currentSettings.entityDictionary.filter((item) =>
+    return tabData.items.filter((item) =>
       [item.canonicalName, item.entityType, item.aliases.join(" ")].some((value) =>
         value.toLowerCase().includes(query),
       ),
     );
-  }, [currentSettings.entityDictionary, entityQuery]);
+  }, [tabData, entityQuery]);
 
   async function handleInsightPolicySubmit(payload: {
     analysisPolicy: InsightAnalysisPolicy;
@@ -298,11 +359,8 @@ export function InsightsSettingsPage() {
         updateInsightAnalysisPolicy(payload.analysisPolicy),
       ]);
 
-      setSettings((current) => ({
-        ...(current ?? defaultSettings),
-        analysisPolicy,
-        sessionization,
-      }));
+      setTabData({ tab: "policy", analysisPolicy, sessionization });
+      await refreshSummary();
       toast.success("洞察策略已保存");
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -324,10 +382,7 @@ export function InsightsSettingsPage() {
         todoEnabled: next.todoEnabled,
       });
 
-      setSettings((current) => ({
-        ...(current ?? defaultSettings),
-        featureConfig,
-      }));
+      await refreshSummary();
       toast.success(featureConfig.insightEnabled ? "会话洞察已开启" : "会话洞察已暂停");
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -336,25 +391,30 @@ export function InsightsSettingsPage() {
     }
   }
 
-  async function handleStatusToggle(collection: MutableCollection, id: string, enabled: boolean) {
+  async function handleStatusToggle(collection: MutableCollection, id: string, status: 0 | 1) {
     setPendingKey(`status:${collection}:${id}`);
 
     try {
+      let updatedItem: { id: string; status: -1 | 0 | 1 } | undefined;
+
       if (collection === "label") {
-        const next = await updateInsightLabelConfigStatus(id, { enabled });
-        updateSettingsList("label", next);
+        updatedItem = await updateInsightLabelConfigStatus(id, { status });
       } else if (collection === "intent") {
-        const next = await updateInsightIntentConfigStatus(id, { enabled });
-        updateSettingsList("intent", next);
+        updatedItem = await updateInsightIntentConfigStatus(id, { status });
       } else if (collection === "qa") {
-        const next = await updateInsightQaRuleConfigStatus(id, { enabled });
-        updateSettingsList("qa", next);
+        updatedItem = await updateInsightQaRuleConfigStatus(id, { status });
       } else {
-        const next = await updateInsightEntityDictionaryItemStatus(id, { enabled });
-        updateSettingsList("entity", next);
+        updatedItem = await updateInsightEntityDictionaryItemStatus(id, { status });
       }
 
-      toast.success(enabled ? "已启用" : "已停用");
+      if (updatedItem) {
+        updateCurrentTabItems((items) =>
+          items.map((item) => item.id === updatedItem.id ? { ...item, ...updatedItem } : item),
+        );
+        await refreshSummary();
+      }
+
+      toast.success(status === 1 ? "已启用" : "已停用");
     } catch (error) {
       toast.error(getErrorMessage(error));
     } finally {
@@ -376,13 +436,23 @@ export function InsightsSettingsPage() {
         await deleteInsightEntityDictionaryItem(id);
       }
 
-      removeSettingsListItem(collection, id);
+      updateCurrentTabItems((items) => items.filter((item) => item.id !== id));
+      await refreshSummary();
       toast.success("配置已删除");
     } catch (error) {
       toast.error(getErrorMessage(error));
     } finally {
       setPendingKey(undefined);
     }
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirmState) {
+      return;
+    }
+
+    await handleDelete(deleteConfirmState.collection, deleteConfirmState.id);
+    setDeleteConfirmState(null);
   }
 
   async function handleDialogSubmit(payload: Record<string, unknown>) {
@@ -402,7 +472,7 @@ export function InsightsSettingsPage() {
             payload as InsightLabelConfigMutationRequest,
           );
 
-        updateSettingsList("label", next);
+        upsertCurrentTabItem(next);
       } else if (dialogState.collection === "intent") {
         const next = dialogState.mode === "create"
           ? await createInsightIntentConfig(payload as InsightIntentConfigMutationRequest)
@@ -411,7 +481,7 @@ export function InsightsSettingsPage() {
             payload as InsightIntentConfigMutationRequest,
           );
 
-        updateSettingsList("intent", next);
+        upsertCurrentTabItem(next);
       } else if (dialogState.collection === "qa") {
         const next = dialogState.mode === "create"
           ? await createInsightQaRuleConfig(payload as InsightQaRuleConfigMutationRequest)
@@ -420,7 +490,7 @@ export function InsightsSettingsPage() {
             payload as InsightQaRuleConfigMutationRequest,
           );
 
-        updateSettingsList("qa", next);
+        upsertCurrentTabItem(next);
       } else {
         const next = dialogState.mode === "create"
           ? await createInsightEntityDictionaryItem(payload as InsightEntityDictionaryMutationRequest)
@@ -429,9 +499,10 @@ export function InsightsSettingsPage() {
             payload as InsightEntityDictionaryMutationRequest,
           );
 
-        updateSettingsList("entity", next);
+        upsertCurrentTabItem(next);
       }
 
+      await refreshSummary();
       setDialogState(null);
       toast.success(dialogState.mode === "create" ? "配置已新增" : "配置已更新");
     } catch (error) {
@@ -449,7 +520,9 @@ export function InsightsSettingsPage() {
         analysisScope: rescanScope,
         from: new Date(rescanFrom).toISOString(),
       });
-      await getInsightRescanTasks().then((tasks) => setRescanTasks(tasks.items));
+      const result = await getInsightRescanTasks(1, 10);
+
+      setTabData({ tab: "rescan", items: result.items, total: result.total, page: 1 });
       setRescanDialogOpen(false);
       toast.success("历史重刷任务已创建");
     } catch (error) {
@@ -459,61 +532,39 @@ export function InsightsSettingsPage() {
     }
   }
 
-  function updateSettingsList(collection: MutableCollection, item: unknown) {
-    setSettings((current) => {
-      const next = current ?? defaultSettings;
+  async function handleRescanPageChange(page: number) {
+    setTabLoading(true);
 
-      if (collection === "label") {
-        return {
-          ...next,
-          labelConfigs: upsertById(next.labelConfigs, item as InsightLabelConfig),
-        };
-      }
+    try {
+      const result = await getInsightRescanTasks(page, 10);
 
-      if (collection === "intent") {
-        return {
-          ...next,
-          intentConfigs: upsertById(next.intentConfigs, item as InsightIntentConfig),
-        };
-      }
+      setTabData({ tab: "rescan", items: result.items, total: result.total, page });
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setTabLoading(false);
+    }
+  }
 
-      if (collection === "qa") {
-        return {
-          ...next,
-          qaRuleConfigs: upsertById(next.qaRuleConfigs, item as InsightQaRuleConfig),
-        };
-      }
+  function upsertCurrentTabItem(item: ConfigItem) {
+    updateCurrentTabItems((items) => {
+      const exists = items.some((current) => current.id === item.id);
 
-      return {
-        ...next,
-        entityDictionary: upsertById(
-          next.entityDictionary,
-          item as InsightEntityDictionaryItem,
-        ),
-      };
+      return exists
+        ? items.map((current) => current.id === item.id ? item : current)
+        : [...items, item];
     });
   }
 
-  function removeSettingsListItem(collection: MutableCollection, id: string) {
-    setSettings((current) => {
-      const next = current ?? defaultSettings;
-
-      if (collection === "label") {
-        return { ...next, labelConfigs: next.labelConfigs.filter((item) => item.id !== id) };
+  function updateCurrentTabItems(
+    updater: (items: ConfigItem[]) => ConfigItem[],
+  ) {
+    setTabData((current) => {
+      if (!isMutableTabData(current)) {
+        return current;
       }
 
-      if (collection === "intent") {
-        return { ...next, intentConfigs: next.intentConfigs.filter((item) => item.id !== id) };
-      }
-
-      if (collection === "qa") {
-        return { ...next, qaRuleConfigs: next.qaRuleConfigs.filter((item) => item.id !== id) };
-      }
-
-      return {
-        ...next,
-        entityDictionary: next.entityDictionary.filter((item) => item.id !== id),
-      };
+      return { ...current, items: updater(current.items) } as MutableTabData;
     });
   }
 
@@ -530,21 +581,29 @@ export function InsightsSettingsPage() {
     );
   }
 
+  const policyData = tabData?.tab === "policy" ? tabData : undefined;
+  const intentsData = tabData?.tab === "intents" ? tabData : undefined;
+  const labelsData = tabData?.tab === "labels" ? tabData : undefined;
+  const qaData = tabData?.tab === "qa" ? tabData : undefined;
+  const entitiesData = tabData?.tab === "entities" ? tabData : undefined;
+  const rescanData = tabData?.tab === "rescan" ? tabData : undefined;
+
   return (
     <InsightsLayout title="洞察配置">
       <div className="space-y-5">
         <InsightsPageHeader
           actions={(
             <InsightRunStatusControl
-              disabled={isLoading || pendingKey === "feature-config"}
-              featureConfig={currentSettings.featureConfig}
-              onChange={(next) => void handleFeatureConfigChange(next)}
+              disabled={summaryLoading || pendingKey === "feature-config"}
+              insightAvailable={summary?.insightAvailable}
+              insightEnabled={summary?.insightEnabled ?? false}
+              onFeatureConfigChange={(next) => void handleFeatureConfigChange(next)}
             />
           )}
           description="个性化调整洞察策略、标签、质检规则和实体词库"
           title="洞察配置"
         />
-        <SettingsSummary settings={currentSettings} />
+        {summary ? <SettingsSummary summary={summary} /> : null}
 
         <Tabs className="gap-4" onValueChange={setSettingsTab} value={settingsTab}>
           <div className="flex items-center justify-between gap-4 border-b border-divider">
@@ -559,66 +618,109 @@ export function InsightsSettingsPage() {
           </div>
 
           <TabsContent value="policy">
-            <InsightPolicyPanel
-              analysisPolicy={currentSettings.analysisPolicy}
-              disabled={isLoading || pendingKey === "insight-policy"}
-              onSubmit={(payload) => void handleInsightPolicySubmit(payload)}
-              sessionization={currentSettings.sessionization}
-            />
+            {policyData ? (
+              <InsightPolicyPanel
+                analysisPolicy={policyData.analysisPolicy}
+                disabled={tabLoading || pendingKey === "insight-policy"}
+                onSubmit={(payload) => void handleInsightPolicySubmit(payload)}
+                sessionization={policyData.sessionization}
+              />
+            ) : (
+              <TabLoadingPlaceholder />
+            )}
           </TabsContent>
 
           <TabsContent value="intents">
-            <IntentConfigTable
-              items={currentSettings.intentConfigs}
-              onCreate={() => setDialogState({ collection: "intent", mode: "create" })}
-              onDelete={(item) => void handleDelete("intent", item.id)}
-              onEdit={(item) => setDialogState({ collection: "intent", item, mode: "edit" })}
-              onToggle={(item) => void handleStatusToggle("intent", item.id, !item.enabled)}
-              pendingKey={pendingKey}
-            />
+            {intentsData ? (
+              <IntentConfigTable
+                items={intentsData.items}
+                onCreate={() => setDialogState({ collection: "intent", mode: "create" })}
+                onDelete={(item) => setDeleteConfirmState({
+                  collection: "intent",
+                  id: item.id,
+                  name: item.intentName,
+                })}
+                onEdit={(item) => setDialogState({ collection: "intent", item, mode: "edit" })}
+                onToggle={(item) => void handleStatusToggle("intent", item.id, item.status === 1 ? 0 : 1)}
+                pendingKey={pendingKey}
+              />
+            ) : (
+              <TabLoadingPlaceholder />
+            )}
           </TabsContent>
 
           <TabsContent value="labels">
-            <LabelConfigTable
-              items={currentSettings.labelConfigs}
-              onCreate={() => setDialogState({ collection: "label", mode: "create" })}
-              onDelete={(item) => void handleDelete("label", item.id)}
-              onEdit={(item) => setDialogState({ collection: "label", item, mode: "edit" })}
-              onToggle={(item) => void handleStatusToggle("label", item.id, !item.enabled)}
-              pendingKey={pendingKey}
-            />
+            {labelsData ? (
+              <LabelConfigTable
+                items={labelsData.items}
+                onCreate={() => setDialogState({ collection: "label", mode: "create" })}
+                onDelete={(item) => setDeleteConfirmState({
+                  collection: "label",
+                  id: item.id,
+                  name: item.labelName,
+                })}
+                onEdit={(item) => setDialogState({ collection: "label", item, mode: "edit" })}
+                onToggle={(item) => void handleStatusToggle("label", item.id, item.status === 1 ? 0 : 1)}
+                pendingKey={pendingKey}
+              />
+            ) : (
+              <TabLoadingPlaceholder />
+            )}
           </TabsContent>
 
           <TabsContent value="qa">
-            <QaRuleConfigTable
-              items={currentSettings.qaRuleConfigs}
-              onCreate={() => setDialogState({ collection: "qa", mode: "create" })}
-              onDelete={(item) => void handleDelete("qa", item.id)}
-              onEdit={(item) => setDialogState({ collection: "qa", item, mode: "edit" })}
-              onToggle={(item) => void handleStatusToggle("qa", item.id, !item.enabled)}
-              pendingKey={pendingKey}
-            />
+            {qaData ? (
+              <QaRuleConfigTable
+                items={qaData.items}
+                onCreate={() => setDialogState({ collection: "qa", mode: "create" })}
+                onDelete={(item) => setDeleteConfirmState({
+                  collection: "qa",
+                  id: item.id,
+                  name: item.ruleName,
+                })}
+                onEdit={(item) => setDialogState({ collection: "qa", item, mode: "edit" })}
+                onToggle={(item) => void handleStatusToggle("qa", item.id, item.status === 1 ? 0 : 1)}
+                pendingKey={pendingKey}
+              />
+            ) : (
+              <TabLoadingPlaceholder />
+            )}
           </TabsContent>
 
           <TabsContent value="entities">
-            <EntityDictionaryTable
-              items={filteredEntities}
-              onCreate={() => setDialogState({ collection: "entity", mode: "create" })}
-              onDelete={(item) => void handleDelete("entity", item.id)}
-              onEdit={(item) => setDialogState({ collection: "entity", item, mode: "edit" })}
-              onQueryChange={setEntityQuery}
-              onToggle={(item) => void handleStatusToggle("entity", item.id, !item.enabled)}
-              pendingKey={pendingKey}
-              query={entityQuery}
-            />
+            {entitiesData ? (
+              <EntityDictionaryTable
+                items={filteredEntities}
+                onCreate={() => setDialogState({ collection: "entity", mode: "create" })}
+                onDelete={(item) => setDeleteConfirmState({
+                  collection: "entity",
+                  id: item.id,
+                  name: item.canonicalName,
+                })}
+                onEdit={(item) => setDialogState({ collection: "entity", item, mode: "edit" })}
+                onQueryChange={setEntityQuery}
+                onToggle={(item) => void handleStatusToggle("entity", item.id, item.status === 1 ? 0 : 1)}
+                pendingKey={pendingKey}
+                query={entityQuery}
+              />
+            ) : (
+              <TabLoadingPlaceholder />
+            )}
           </TabsContent>
 
           <TabsContent value="rescan">
-            <RescanPanel
-              disabled={pendingKey === "rescan"}
-              onCreateClick={() => setRescanDialogOpen(true)}
-              tasks={rescanTasks}
-            />
+            {rescanData ? (
+              <RescanPanel
+                disabled={pendingKey === "rescan" || tabLoading}
+                onCreateClick={() => setRescanDialogOpen(true)}
+                onPageChange={(page) => void handleRescanPageChange(page)}
+                page={rescanData.page}
+                tasks={rescanData.items}
+                total={rescanData.total}
+              />
+            ) : (
+              <TabLoadingPlaceholder />
+            )}
           </TabsContent>
         </Tabs>
       </div>
@@ -633,6 +735,16 @@ export function InsightsSettingsPage() {
         onSubmit={(payload) => void handleDialogSubmit(payload)}
         state={dialogState}
       />
+      <DeleteConfirmDialog
+        onConfirm={() => void confirmDelete()}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteConfirmState(null);
+          }
+        }}
+        pendingKey={pendingKey}
+        state={deleteConfirmState}
+      />
       <RescanCreateDialog
         disabled={pendingKey === "rescan"}
         from={rescanFrom}
@@ -645,6 +757,13 @@ export function InsightsSettingsPage() {
       />
     </InsightsLayout>
   );
+}
+
+function isMutableTabData(data: TabData | undefined): data is MutableTabData {
+  return data?.tab === "entities"
+    || data?.tab === "intents"
+    || data?.tab === "labels"
+    || data?.tab === "qa";
 }
 
 function SettingsTabTrigger({
@@ -664,42 +783,78 @@ function SettingsTabTrigger({
   );
 }
 
+function TabLoadingPlaceholder() {
+  return (
+    <div className="flex items-center justify-center py-16" role="status">
+      <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+        <span className="size-3.5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
+        <span>正在加载</span>
+      </span>
+    </div>
+  );
+}
+
 function InsightRunStatusControl({
   disabled,
-  featureConfig,
-  onChange,
+  insightAvailable,
+  insightEnabled,
+  onFeatureConfigChange,
 }: {
   disabled: boolean;
-  featureConfig: InsightFeatureConfig;
-  onChange: (next: InsightFeatureConfig) => void;
+  insightAvailable?: boolean;
+  insightEnabled: boolean;
+  onFeatureConfigChange: (next: InsightFeatureConfig) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const running = featureConfig.insightEnabled;
+  const [featureConfig, setFeatureConfig] = useState<InsightFeatureConfig>();
+  const [loadingConfig, setLoadingConfig] = useState(false);
+
+  async function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+
+    if (nextOpen && !featureConfig) {
+      setLoadingConfig(true);
+
+      try {
+        const config = await getInsightFeatureConfig();
+
+        setFeatureConfig(config);
+      } catch (error) {
+        toast.error(getErrorMessage(error));
+        setOpen(false);
+      } finally {
+        setLoadingConfig(false);
+      }
+    }
+  }
 
   return (
     <>
       <div className="flex items-center gap-2">
-        <Badge variant={running ? "default" : "secondary"}>{running ? "运行中" : "未运行"}</Badge>
+        <Badge variant={insightEnabled ? "default" : "secondary"}>{insightEnabled ? "运行中" : "未运行"}</Badge>
         <Button
           aria-label="配置洞察运行"
           className="size-9 p-0"
           disabled={disabled}
-          onClick={() => setOpen(true)}
+          onClick={() => void handleOpenChange(true)}
           variant="outline"
         >
           <HugeiconsIcon icon={Setting07Icon} size={18} />
         </Button>
       </div>
-      <InsightRunConfigDialog
-        disabled={disabled}
-        featureConfig={featureConfig}
-        onOpenChange={setOpen}
-        onSubmit={(next) => {
-          onChange(next);
-          setOpen(false);
-        }}
-        open={open}
-      />
+      {featureConfig ? (
+        <InsightRunConfigDialog
+          disabled={disabled || loadingConfig}
+          featureConfig={featureConfig}
+          onOpenChange={handleOpenChange}
+          onSubmit={(next) => {
+            setFeatureConfig(next);
+            onFeatureConfigChange(next);
+            setOpen(false);
+          }}
+          open={open}
+        />
+      ) : null}
     </>
   );
 }
@@ -840,18 +995,18 @@ function RunSettingRow({
   );
 }
 
-function SettingsSummary({ settings }: { settings: InsightSettingsResponse }) {
+function SettingsSummary({ summary }: { summary: InsightSettingsSummaryResponse }) {
   const stats = [
-    { icon: BubbleChatIcon, label: "切分规则", value: `${settings.sessionization.idleTimeoutMinutes} 分钟结束` },
-    { icon: ChartAreaIcon, label: "提前分析", value: settings.analysisPolicy.liveAnalysisEnabled ? "开启" : "关闭" },
-    { icon: Search01Icon, label: "启用意图", value: `${settings.intentConfigs.filter((item) => item.enabled).length} 个` },
-    { icon: Setting07Icon, label: "启用标签", value: `${settings.labelConfigs.filter((item) => item.enabled).length} 个` },
-    { icon: ClipboardCheckIcon, label: "质检规则", value: `${settings.qaRuleConfigs.filter((item) => item.enabled).length} 条` },
-    { icon: UserGroupIcon, label: "实体词库", value: `${settings.entityDictionary.length} 个` },
+    { icon: BubbleChatIcon, label: "切分规则", value: `${summary.sessionizationIdleMinutes} 分钟结束` },
+    { icon: ChartAreaIcon, label: "提前分析", value: summary.liveAnalysisEnabled ? "开启" : "关闭" },
+    { icon: Search01Icon, label: "启用意图", value: `${summary.enabledIntentCount} 个` },
+    { icon: Setting07Icon, label: "启用标签", value: `${summary.enabledLabelCount} 个` },
+    { icon: ClipboardCheckIcon, label: "质检规则", value: `${summary.enabledQaCount} 条` },
+    { icon: UserGroupIcon, label: "启用实体", value: `${summary.entityCount} 个` },
   ];
 
   return (
-    <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <section aria-label="洞察配置概览" className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
       {stats.map((item) => (
         <div className="flex min-h-[112px] flex-col justify-between rounded-[8px] border bg-background px-4 py-4" key={item.label}>
           <span className="flex size-9 shrink-0 items-center justify-center rounded-[8px] border bg-muted/35 text-muted-foreground">
@@ -1354,7 +1509,7 @@ function LabelConfigTable({
               <TableCell>{item.includeInStatistics ? "纳入" : "不纳入"}</TableCell>
               <TableCell>
                 <Switch
-                  checked={item.enabled}
+                  checked={item.status === 1}
                   disabled={pendingKey === `status:label:${item.id}`}
                   onCheckedChange={() => onToggle(item)}
                 />
@@ -1421,7 +1576,7 @@ function IntentConfigTable({
               <TableCell>{item.includeInStatistics ? "纳入" : "不纳入"}</TableCell>
               <TableCell>
                 <Switch
-                  checked={item.enabled}
+                  checked={item.status === 1}
                   disabled={pendingKey === `status:intent:${item.id}`}
                   onCheckedChange={() => onToggle(item)}
                 />
@@ -1486,7 +1641,7 @@ function QaRuleConfigTable({
               <TableCell><SeverityBadge severity={item.severity} /></TableCell>
               <TableCell>
                 <Switch
-                  checked={item.enabled}
+                  checked={item.status === 1}
                   disabled={pendingKey === `status:qa:${item.id}`}
                   onCheckedChange={() => onToggle(item)}
                 />
@@ -1574,7 +1729,7 @@ function EntityDictionaryTable({
               <TableCell>{item.includeInAggregation ? "纳入" : "不纳入"}</TableCell>
               <TableCell>
                 <Switch
-                  checked={item.enabled}
+                  checked={item.status === 1}
                   disabled={pendingKey === `status:entity:${item.id}`}
                   onCheckedChange={() => onToggle(item)}
                 />
@@ -1645,15 +1800,63 @@ function RowActions({
   );
 }
 
+function DeleteConfirmDialog({
+  onConfirm,
+  onOpenChange,
+  pendingKey,
+  state,
+}: {
+  onConfirm: () => void;
+  onOpenChange: (open: boolean) => void;
+  pendingKey?: string;
+  state: DeleteConfirmState | null;
+}) {
+  if (!state) {
+    return null;
+  }
+
+  const deleting = pendingKey === `delete:${state.collection}:${state.id}`;
+
+  return (
+    <AlertDialog onOpenChange={onOpenChange} open={state != null}>
+      <AlertDialogContent size="sm">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{`确认删除${collectionText(state.collection)}`}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {`删除后无法恢复，“${state.name}”将从${collectionText(state.collection)}中移除`}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+          <AlertDialogAction disabled={deleting} onClick={onConfirm} variant="destructive">
+            确认删除
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 function RescanPanel({
   disabled,
   onCreateClick,
+  onPageChange,
+  page,
   tasks,
+  total,
 }: {
   disabled?: boolean;
   onCreateClick: () => void;
+  onPageChange: (page: number) => void;
+  page: number;
   tasks: InsightRescanTask[];
+  total: number;
 }) {
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const startRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endRow = Math.min(page * pageSize, total);
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1711,6 +1914,16 @@ function RescanPanel({
           </TableBody>
         </Table>
       </div>
+      {total > pageSize ? (
+        <InsightTablePagination
+          endRow={endRow}
+          onPageChange={onPageChange}
+          page={page}
+          startRow={startRow}
+          total={total}
+          totalPages={totalPages}
+        />
+      ) : null}
     </section>
   );
 }
@@ -1881,7 +2094,7 @@ function ConfigMutationDialog({
                   required
                 />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
+                  <SwitchEditorField checked={Number(form.status ?? 1) === 1} label="启用" onChange={(value) => setValue("status", value ? 1 : 0)} />
                   <SwitchEditorField checked={Boolean(form.includeInStatistics)} label="纳入统计" onChange={(value) => setValue("includeInStatistics", value)} />
                 </div>
               </div>
@@ -1924,7 +2137,7 @@ function ConfigMutationDialog({
                   required
                 />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
+                  <SwitchEditorField checked={Number(form.status ?? 1) === 1} label="启用" onChange={(value) => setValue("status", value ? 1 : 0)} />
                   <SwitchEditorField checked={Boolean(form.includeInStatistics)} label="纳入统计" onChange={(value) => setValue("includeInStatistics", value)} />
                 </div>
               </div>
@@ -1959,7 +2172,7 @@ function ConfigMutationDialog({
                 <TextField error={errors.ruleCode} form={form} label="规则编码" name="ruleCode" onChange={setValue} required />
                 <TextField form={form} label="适用场景" name="applicableScene" onChange={setValue} />
                 <TextareaField error={errors.judgmentCriteria} form={form} label="判定标准" name="judgmentCriteria" onChange={setValue} required />
-                <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
+                <SwitchEditorField checked={Number(form.status ?? 1) === 1} label="启用" onChange={(value) => setValue("status", value ? 1 : 0)} />
               </div>
               <div className="grid content-start gap-4">
                 <TextareaField
@@ -1987,7 +2200,7 @@ function ConfigMutationDialog({
               <TextField error={errors.canonicalName} form={form} label="实体名称" name="canonicalName" onChange={setValue} required />
               <TextField error={errors.entityType} form={form} label="实体类型" name="entityType" onChange={setValue} required />
               <TextareaField className="md:col-span-2" form={form} label="别名" name="aliasesText" onChange={setValue} placeholder="每行一个别名" />
-              <SwitchEditorField checked={Boolean(form.enabled)} label="启用" onChange={(value) => setValue("enabled", value)} />
+              <SwitchEditorField checked={Number(form.status ?? 1) === 1} label="启用" onChange={(value) => setValue("status", value ? 1 : 0)} />
               <SwitchEditorField checked={Boolean(form.includeInAggregation)} label="纳入聚合" onChange={(value) => setValue("includeInAggregation", value)} />
             </>
           ) : null}
@@ -2217,7 +2430,7 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
     const item = state.mode === "edit" ? state.item : undefined;
     return {
       description: item?.description ?? "",
-      enabled: item?.enabled ?? true,
+      status: item?.status ?? 1,
       includeInStatistics: item?.includeInStatistics ?? true,
       labelCode: item?.labelCode ?? "",
       labelName: item?.labelName ?? "",
@@ -2231,7 +2444,7 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
     return {
       aliasesText: (item?.aliases ?? []).join("\n"),
       description: item?.description ?? "",
-      enabled: item?.enabled ?? true,
+      status: item?.status ?? 1,
       includeInStatistics: item?.includeInStatistics ?? true,
       intentCode: item?.intentCode ?? "",
       intentName: item?.intentName ?? "",
@@ -2246,7 +2459,7 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
     return {
       applicableScene: item?.applicableScene ?? "",
       description: item?.description ?? "",
-      enabled: item?.enabled ?? true,
+      status: item?.status ?? 1,
       judgmentCriteria: item?.judgmentCriteria ?? "",
       negativeExamplesText: (item?.negativeExamples ?? []).join("\n"),
       positiveExamplesText: (item?.positiveExamples ?? []).join("\n"),
@@ -2260,7 +2473,7 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
   return {
     aliasesText: (item?.aliases ?? []).join("\n"),
     canonicalName: item?.canonicalName ?? "",
-    enabled: item?.enabled ?? true,
+    status: item?.status ?? 1,
     entityType: item?.entityType ?? "",
     includeInAggregation: item?.includeInAggregation ?? true,
   };
@@ -2288,7 +2501,7 @@ function normalizeDialogPayload(collection: MutableCollection, form: Record<stri
   if (collection === "label") {
     return {
       description: trimOptional(form.description),
-      enabled: Boolean(form.enabled),
+      status: Number(form.status ?? 1) === 1 ? 1 : 0,
       includeInStatistics: Boolean(form.includeInStatistics),
       labelCode: String(form.labelCode ?? "").trim(),
       labelName: String(form.labelName ?? "").trim(),
@@ -2301,7 +2514,7 @@ function normalizeDialogPayload(collection: MutableCollection, form: Record<stri
     return {
       aliases: splitLines(form.aliasesText),
       description: trimOptional(form.description),
-      enabled: Boolean(form.enabled),
+      status: Number(form.status ?? 1) === 1 ? 1 : 0,
       includeInStatistics: Boolean(form.includeInStatistics),
       intentCode: String(form.intentCode ?? "").trim(),
       intentName: String(form.intentName ?? "").trim(),
@@ -2315,7 +2528,7 @@ function normalizeDialogPayload(collection: MutableCollection, form: Record<stri
     return {
       applicableScene: trimOptional(form.applicableScene),
       description: trimOptional(form.description),
-      enabled: Boolean(form.enabled),
+      status: Number(form.status ?? 1) === 1 ? 1 : 0,
       judgmentCriteria: trimOptional(form.judgmentCriteria),
       negativeExamples: splitLines(form.negativeExamplesText),
       positiveExamples: splitLines(form.positiveExamplesText),
@@ -2328,16 +2541,10 @@ function normalizeDialogPayload(collection: MutableCollection, form: Record<stri
   return {
     aliases: splitLines(form.aliasesText),
     canonicalName: String(form.canonicalName ?? "").trim(),
-    enabled: Boolean(form.enabled),
+    status: Number(form.status ?? 1) === 1 ? 1 : 0,
     entityType: String(form.entityType ?? "").trim(),
     includeInAggregation: Boolean(form.includeInAggregation),
   };
-}
-
-function upsertById<T extends { id: string }>(items: T[], item: T) {
-  return items.some((current) => current.id === item.id)
-    ? items.map((current) => current.id === item.id ? item : current)
-    : [...items, item];
 }
 
 function splitLines(value: unknown) {

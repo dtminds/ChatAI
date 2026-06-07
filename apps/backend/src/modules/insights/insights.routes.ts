@@ -104,6 +104,11 @@ const BusinessRelatedSessionsQuerySchema = Type.Intersect([
   }),
 ]);
 
+const RescanTasksQuerySchema = Type.Object({
+  page: Type.Optional(Type.Number()),
+  pageSize: Type.Optional(Type.Number()),
+});
+
 const SessionParamsSchema = Type.Object({
   sessionId: Type.String({ minLength: 1 }),
 });
@@ -312,6 +317,96 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get(
+    "/api/server/insights/settings/summary",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).getSettingsSummary(
+          await getUidScope(app, request),
+          getAccountRole(request),
+        ),
+      );
+    },
+  );
+
+  app.get(
+    "/api/server/insights/settings/policy",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).getPolicySettings(
+          await getUidScope(app, request),
+          getAccountRole(request),
+        ),
+      );
+    },
+  );
+
+  app.get(
+    "/api/server/insights/settings/intent-configs",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).listIntentConfigs(
+          await getUidScope(app, request),
+          getAccountRole(request),
+        ),
+      );
+    },
+  );
+
+  app.get(
+    "/api/server/insights/settings/label-configs",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).listLabelConfigs(
+          await getUidScope(app, request),
+          getAccountRole(request),
+        ),
+      );
+    },
+  );
+
+  app.get(
+    "/api/server/insights/settings/qa-rule-configs",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).listQaRuleConfigs(
+          await getUidScope(app, request),
+          getAccountRole(request),
+        ),
+      );
+    },
+  );
+
+  app.get(
+    "/api/server/insights/settings/entity-dictionary",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).listEntityDictionary(
+          await getUidScope(app, request),
+          getAccountRole(request),
+        ),
+      );
+    },
+  );
+
   app.put<{ Body: InsightSessionizationSettingsUpdateRequest }>(
     "/api/server/insights/settings/sessionization",
     {
@@ -345,6 +440,21 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
           await getUidScope(app, request),
           getAccountRole(request),
           request.body,
+        ),
+      );
+    },
+  );
+
+  app.get(
+    "/api/server/insights/settings/feature-config",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).getFeatureConfig(
+          await getUidScope(app, request),
+          getAccountRole(request),
         ),
       );
     },
@@ -712,11 +822,19 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     "/api/server/insights/jobs/rescan",
     {
       preHandler: app.authenticate,
+      schema: {
+        querystring: RescanTasksQuerySchema,
+      },
     },
     async (request) => {
+      const query = request.query as Static<typeof RescanTasksQuerySchema>;
+      const page = normalizePositiveQueryNumber(query.page) ?? 1;
+      const pageSize = Math.min(50, normalizePositiveQueryNumber(query.pageSize) ?? 10);
+
       return apiSuccess(
         await createInsightsService(app).listRescanTasks(
           await getUidScope(app, request),
+          { page, pageSize },
         ),
       );
     },

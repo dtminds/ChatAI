@@ -22,7 +22,7 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
     {
       aliases: ["白鸭绒外套", "直播间羽绒服"],
       canonicalName: "白色羽绒服",
-      enabled: true,
+      status: 1,
       entityType: "product",
       id: "1",
       includeInAggregation: true,
@@ -32,7 +32,7 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
     {
       aliases: ["查快递", "催发货", "物流不更新"],
       description: "客户咨询发货、快递进度或反馈物流异常",
-      enabled: true,
+      status: 1,
       id: "1",
       includeInStatistics: true,
       intentCode: "logistics_delay",
@@ -44,7 +44,7 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
     {
       aliases: ["退钱", "退货退款", "退款到账"],
       description: "客户咨询退款、退货退款或退款到账问题",
-      enabled: true,
+      status: 1,
       id: "2",
       includeInStatistics: true,
       intentCode: "after_sale.refund",
@@ -56,14 +56,14 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
   ],
   labelConfigs: [
     {
-      enabled: true,
+      status: 1,
       id: "1",
       includeInStatistics: true,
       labelCode: "price_sensitive",
       labelName: "价格敏感",
     },
     {
-      enabled: true,
+      status: 1,
       id: "2",
       includeInStatistics: true,
       labelCode: "high_intent",
@@ -72,14 +72,14 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
   ],
   qaRuleConfigs: [
     {
-      enabled: true,
+      status: 1,
       id: "1",
       ruleCode: "problem_resolution",
       ruleName: "客户问题是否解决",
       severity: "high",
     },
     {
-      enabled: true,
+      status: 1,
       id: "2",
       ruleCode: "clear_next_step",
       ruleName: "是否明确下一步",

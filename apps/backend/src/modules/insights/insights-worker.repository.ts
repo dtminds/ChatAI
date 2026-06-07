@@ -274,7 +274,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           "positive_examples_json",
         ])
         .where("uid", "=", uid)
-        .where("enabled", "=", 1)
+        .where("status", "=", 1)
         .orderBy("id", "asc")
         .execute() as Promise<Array<{
           description: string | null;
@@ -298,7 +298,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           "sort_order",
         ])
         .where("uid", "=", uid)
-        .where("enabled", "=", 1)
+        .where("status", "=", 1)
         .orderBy("sort_order", "asc")
         .orderBy("id", "asc")
         .execute() as Promise<Array<{
@@ -325,7 +325,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           "severity",
         ])
         .where("uid", "=", uid)
-        .where("enabled", "=", 1)
+        .where("status", "=", 1)
         .orderBy("id", "asc")
         .execute() as Promise<Array<{
           applicable_scene: string | null;
@@ -348,7 +348,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           "include_in_aggregation",
         ])
         .where("uid", "=", uid)
-        .where("enabled", "=", 1)
+        .where("status", "=", 1)
         .orderBy("id", "asc")
         .execute() as Promise<Array<{
           aliases_json: string | null;
@@ -1189,6 +1189,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         passed: item.passed,
         reason: item.reason,
         ruleCode: item.ruleCode,
+        ruleName: item.ruleName,
         severity: item.severity,
       })),
       sentiment: detail.sentiment,
@@ -1563,6 +1564,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         passed: item.passed ? 1 : 0,
         reason: item.reason,
         rule_code: item.ruleCode,
+        rule_name: item.ruleName,
         severity: item.severity,
         snapshot_id: snapshotId,
       });

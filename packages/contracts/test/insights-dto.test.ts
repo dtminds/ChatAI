@@ -423,7 +423,15 @@ describe("insights DTOs", () => {
           resolutionStatus: "unresolved",
           unresolvedReason: "客服未确认进度",
         },
-        qaFindings: [],
+        qaFindings: [
+          {
+            evidenceMessageIds: ["9001"],
+            passed: false,
+            reason: "未确认退款进度",
+            ruleCode: "problem_resolution",
+            ruleName: "客户问题是否解决",
+          },
+        ],
         sentiment: [],
         session: {
           conversationId: "301",
@@ -497,10 +505,10 @@ describe("insights DTOs", () => {
           {
             aliases: ["白鸭绒外套"],
             canonicalName: "白色羽绒服",
-            enabled: true,
             entityType: "product",
             id: "1",
             includeInAggregation: true,
+            status: 1,
           },
         ],
         featureConfig: {
@@ -515,32 +523,32 @@ describe("insights DTOs", () => {
           {
             aliases: ["退款", "退钱"],
             description: "客户咨询退款、退货退款或退款到账问题",
-            enabled: true,
             id: "1",
             includeInStatistics: true,
             intentCode: "after_sale.refund",
             intentName: "退款咨询",
             negativeExamples: ["只咨询发货时间"],
             positiveExamples: ["退款什么时候到账"],
+            status: 1,
             weight: 8,
           },
         ],
         labelConfigs: [
           {
-            enabled: true,
             id: "1",
             includeInStatistics: true,
             labelCode: "price_sensitive",
             labelName: "价格敏感",
+            status: 1,
           },
         ],
         qaRuleConfigs: [
           {
-            enabled: true,
             id: "1",
             ruleCode: "problem_resolution",
             ruleName: "客户问题是否解决",
             severity: "high",
+            status: 1,
           },
         ],
         sessionization: {
@@ -626,12 +634,12 @@ describe("insights DTOs", () => {
     expect(
       Value.Check(InsightLabelConfigMutationRequestSchema, {
         description: "客户对价格较敏感",
-        enabled: true,
         includeInStatistics: true,
         labelCode: "price_sensitive",
         labelName: "价格敏感",
         negativeExamples: ["只问库存"],
         positiveExamples: ["太贵了"],
+        status: 1,
       }),
     ).toBe(true);
 
@@ -639,12 +647,12 @@ describe("insights DTOs", () => {
       Value.Check(InsightIntentConfigMutationRequestSchema, {
         aliases: ["退款", "退钱"],
         description: "客户咨询退款、退货退款或退款到账问题",
-        enabled: true,
         includeInStatistics: true,
         intentCode: "after_sale.refund",
         intentName: "退款咨询",
         negativeExamples: ["只咨询发货时间"],
         positiveExamples: ["退款什么时候到账"],
+        status: 1,
         weight: 8,
       }),
     ).toBe(true);
@@ -652,11 +660,11 @@ describe("insights DTOs", () => {
     expect(
       Value.Check(InsightQaRuleConfigMutationRequestSchema, {
         applicableScene: "售后",
-        enabled: true,
         judgmentCriteria: "客户问题需要有明确处理结果",
         ruleCode: "problem_resolution",
         ruleName: "客户问题是否解决",
         severity: "high",
+        status: 1,
       }),
     ).toBe(true);
 
@@ -665,9 +673,9 @@ describe("insights DTOs", () => {
         aliases: ["直播间羽绒服"],
         attributes: { brand: "A" },
         canonicalName: "白色羽绒服",
-        enabled: true,
         entityType: "product",
         includeInAggregation: true,
+        status: 1,
       }),
     ).toBe(true);
   });

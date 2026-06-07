@@ -442,6 +442,7 @@ export const InsightDetailResponseSchema = Type.Object({
     passed: Type.Boolean(),
     reason: Type.String(),
     ruleCode: Type.String(),
+    ruleName: Type.String(),
   })),
   sentiment: Type.Array(InsightSentimentSchema),
   session: InsightSessionMetaSchema,
@@ -510,56 +511,66 @@ export const InsightFeatureConfigUpdateRequestSchema = Type.Object({
   todoEnabled: Type.Boolean(),
 });
 
+export const InsightConfigStatusSchema = Type.Union([
+  Type.Literal(-1),
+  Type.Literal(0),
+  Type.Literal(1),
+]);
+
+export const InsightConfigActiveStatusSchema = Type.Union([
+  Type.Literal(0),
+  Type.Literal(1),
+]);
+
 export const InsightLabelConfigSchema = Type.Object({
   description: Type.Optional(Type.String()),
-  enabled: Type.Boolean(),
   id: Type.String(),
   includeInStatistics: Type.Boolean(),
   labelCode: Type.String(),
   labelName: Type.String(),
   negativeExamples: Type.Optional(Type.Array(Type.String())),
   positiveExamples: Type.Optional(Type.Array(Type.String())),
+  status: InsightConfigStatusSchema,
 });
 
 export const InsightLabelConfigMutationRequestSchema = Type.Object({
   description: Type.Optional(Type.String()),
-  enabled: Type.Boolean(),
   includeInStatistics: Type.Boolean(),
   labelCode: Type.String({ minLength: 1 }),
   labelName: Type.String({ minLength: 1 }),
   negativeExamples: Type.Optional(Type.Array(Type.String())),
   positiveExamples: Type.Optional(Type.Array(Type.String())),
+  status: InsightConfigActiveStatusSchema,
 });
 
 export const InsightIntentConfigSchema = Type.Object({
   aliases: Type.Optional(Type.Array(Type.String())),
   description: Type.Optional(Type.String()),
-  enabled: Type.Boolean(),
   id: Type.String(),
   includeInStatistics: Type.Boolean(),
   intentCode: Type.String(),
   intentName: Type.String(),
   negativeExamples: Type.Optional(Type.Array(Type.String())),
   positiveExamples: Type.Optional(Type.Array(Type.String())),
+  status: InsightConfigStatusSchema,
   weight: Type.Number(),
 });
 
 export const InsightIntentConfigMutationRequestSchema = Type.Object({
   aliases: Type.Optional(Type.Array(Type.String())),
   description: Type.Optional(Type.String()),
-  enabled: Type.Boolean(),
   includeInStatistics: Type.Boolean(),
   intentCode: Type.String({ minLength: 1 }),
   intentName: Type.String({ minLength: 1 }),
   negativeExamples: Type.Optional(Type.Array(Type.String())),
   positiveExamples: Type.Optional(Type.Array(Type.String())),
+  status: InsightConfigActiveStatusSchema,
   weight: Type.Number(),
 });
 
 export const InsightQaRuleConfigSchema = Type.Object({
   applicableScene: Type.Optional(Type.String()),
   description: Type.Optional(Type.String()),
-  enabled: Type.Boolean(),
   id: Type.String(),
   judgmentCriteria: Type.Optional(Type.String()),
   negativeExamples: Type.Optional(Type.Array(Type.String())),
@@ -567,37 +578,38 @@ export const InsightQaRuleConfigSchema = Type.Object({
   ruleCode: Type.String(),
   ruleName: Type.String(),
   severity: InsightSeveritySchema,
+  status: InsightConfigStatusSchema,
 });
 
 export const InsightQaRuleConfigMutationRequestSchema = Type.Object({
   applicableScene: Type.Optional(Type.String()),
   description: Type.Optional(Type.String()),
-  enabled: Type.Boolean(),
   judgmentCriteria: Type.Optional(Type.String()),
   negativeExamples: Type.Optional(Type.Array(Type.String())),
   positiveExamples: Type.Optional(Type.Array(Type.String())),
   ruleCode: Type.String({ minLength: 1 }),
   ruleName: Type.String({ minLength: 1 }),
   severity: InsightSeveritySchema,
+  status: InsightConfigActiveStatusSchema,
 });
 
 export const InsightEntityDictionaryItemSchema = Type.Object({
   aliases: Type.Array(Type.String()),
   attributes: Type.Optional(Type.Record(Type.String(), Type.Any())),
   canonicalName: Type.String(),
-  enabled: Type.Boolean(),
   entityType: Type.String(),
   id: Type.String(),
   includeInAggregation: Type.Boolean(),
+  status: InsightConfigStatusSchema,
 });
 
 export const InsightEntityDictionaryMutationRequestSchema = Type.Object({
   aliases: Type.Array(Type.String()),
   attributes: Type.Optional(Type.Record(Type.String(), Type.Any())),
   canonicalName: Type.String({ minLength: 1 }),
-  enabled: Type.Boolean(),
   entityType: Type.String({ minLength: 1 }),
   includeInAggregation: Type.Boolean(),
+  status: InsightConfigActiveStatusSchema,
 });
 
 export const InsightSettingsResponseSchema = Type.Object({
@@ -608,6 +620,17 @@ export const InsightSettingsResponseSchema = Type.Object({
   labelConfigs: Type.Array(InsightLabelConfigSchema),
   qaRuleConfigs: Type.Array(InsightQaRuleConfigSchema),
   sessionization: InsightSessionizationSettingsSchema,
+});
+
+export const InsightSettingsSummaryResponseSchema = Type.Object({
+  enabledIntentCount: Type.Number(),
+  enabledLabelCount: Type.Number(),
+  enabledQaCount: Type.Number(),
+  entityCount: Type.Number(),
+  insightAvailable: Type.Optional(Type.Boolean()),
+  insightEnabled: Type.Boolean(),
+  liveAnalysisEnabled: Type.Boolean(),
+  sessionizationIdleMinutes: Type.Number(),
 });
 
 export const InsightsRescanRequestSchema = Type.Object(
@@ -649,7 +672,7 @@ export const InsightRescanTaskListResponseSchema = Type.Object({
 });
 
 export const InsightConfigStatusUpdateRequestSchema = Type.Object({
-  enabled: Type.Boolean(),
+  status: InsightConfigActiveStatusSchema,
 });
 
 export const InsightConfigDeletedResponseSchema = Type.Object({
@@ -684,6 +707,7 @@ export type InsightFeatureConfig = Static<typeof InsightFeatureConfigSchema>;
 export type InsightFeatureConfigUpdateRequest = Static<
   typeof InsightFeatureConfigUpdateRequestSchema
 >;
+export type InsightConfigStatus = Static<typeof InsightConfigStatusSchema>;
 export type InsightConfigDeletedResponse = Static<typeof InsightConfigDeletedResponseSchema>;
 export type InsightConfigStatusUpdateRequest = Static<typeof InsightConfigStatusUpdateRequestSchema>;
 export type InsightEntityDictionaryItem = Static<typeof InsightEntityDictionaryItemSchema>;
@@ -703,6 +727,7 @@ export type InsightQaRuleConfigMutationRequest = Static<
   typeof InsightQaRuleConfigMutationRequestSchema
 >;
 export type InsightSettingsResponse = Static<typeof InsightSettingsResponseSchema>;
+export type InsightSettingsSummaryResponse = Static<typeof InsightSettingsSummaryResponseSchema>;
 export type InsightSessionizationSettings = Static<typeof InsightSessionizationSettingsSchema>;
 export type InsightSessionizationSettingsUpdateRequest = Static<
   typeof InsightSessionizationSettingsUpdateRequestSchema

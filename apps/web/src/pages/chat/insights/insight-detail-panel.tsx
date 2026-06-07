@@ -508,7 +508,7 @@ function buildInsightResultItems(
     {
       icon: ClipboardCheckIcon,
       items: detail.qaFindings.map((item) =>
-        `${item.passed ? "通过" : "未通过"}：${item.ruleCode}`,
+        `${item.passed ? "通过" : "未通过"}：${item.ruleName || item.ruleCode}`,
       ),
       label: "质检",
     },

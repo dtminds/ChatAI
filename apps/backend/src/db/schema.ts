@@ -988,6 +988,7 @@ export interface XyWapEmbedSessionQaFinding {
   passed: number;
   reason: string;
   rule_code: string;
+  rule_name: string;
   severity: string;
   snapshot_id: number;
   update_time: Generated<Date>;
@@ -1088,13 +1089,13 @@ export interface XyWapEmbedInsightFeatureConfig {
 export interface XyWapEmbedInsightLabelConfig {
   create_time: Generated<Date>;
   description: string | null;
-  enabled: Generated<number>;
   id: Generated<number>;
   include_in_statistics: Generated<number>;
   label_code: string;
   label_name: string;
   negative_examples_json: string | null;
   positive_examples_json: string | null;
+  status: Generated<number>;
   uid: number;
   update_time: Generated<Date>;
 }
@@ -1103,7 +1104,6 @@ export interface XyWapEmbedInsightIntentConfig {
   aliases_json: string | null;
   create_time: Generated<Date>;
   description: string | null;
-  enabled: Generated<number>;
   id: Generated<number>;
   include_in_statistics: Generated<number>;
   intent_code: string;
@@ -1111,6 +1111,7 @@ export interface XyWapEmbedInsightIntentConfig {
   negative_examples_json: string | null;
   positive_examples_json: string | null;
   sort_order: Generated<number>;
+  status: Generated<number>;
   uid: number;
   update_time: Generated<Date>;
 }
@@ -1119,7 +1120,6 @@ export interface XyWapEmbedInsightQaRuleConfig {
   applicable_scene: string | null;
   create_time: Generated<Date>;
   description: string | null;
-  enabled: Generated<number>;
   id: Generated<number>;
   judgment_criteria: string | null;
   negative_examples_json: string | null;
@@ -1127,6 +1127,7 @@ export interface XyWapEmbedInsightQaRuleConfig {
   rule_code: string;
   rule_name: string;
   severity: string;
+  status: Generated<number>;
   uid: number;
   update_time: Generated<Date>;
 }
@@ -1136,10 +1137,10 @@ export interface XyWapEmbedInsightEntityDictionary {
   attributes_json: string | null;
   canonical_name: string;
   create_time: Generated<Date>;
-  enabled: Generated<number>;
   entity_type: string;
   id: Generated<number>;
   include_in_aggregation: Generated<number>;
+  status: Generated<number>;
   uid: number;
   update_time: Generated<Date>;
 }

@@ -3,6 +3,7 @@ import type {
   InsightAnalysisPolicyUpdateRequest,
   InsightActionStatus,
   InsightAnalysisStatus,
+  InsightConfigStatus,
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
@@ -19,6 +20,7 @@ import type {
   InsightRescanTaskStatus,
   WorkbenchMessageDto,
   InsightSettingsResponse,
+  InsightSettingsSummaryResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
 } from "@chatai/contracts";
@@ -196,6 +198,7 @@ type QaFindingQueryRow = {
   qa_passed: number | string | null;
   qa_reason: string | null;
   qa_rule_code: string | null;
+  qa_rule_name: string | null;
   qa_severity: string | null;
 };
 
@@ -393,6 +396,68 @@ export class InsightsRepository implements InsightsRepositoryPort {
     };
   }
 
+  async getSettingsSummary(scope: InsightsUidScope): Promise<InsightSettingsSummaryResponse> {
+    const [
+      enabledIntentResult,
+      enabledLabelResult,
+      enabledQaResult,
+      entityResult,
+      sessionization,
+      analysisPolicy,
+      featureConfig,
+    ] = await Promise.all([
+      this.db
+        .selectFrom("xy_wap_embed_insight_intent_config")
+        .select((eb) => eb.fn.countAll().as("count"))
+        .where("uid", "=", scope.uid)
+        .where("status", "=", 1)
+        .executeTakeFirst(),
+      this.db
+        .selectFrom("xy_wap_embed_insight_label_config")
+        .select((eb) => eb.fn.countAll().as("count"))
+        .where("uid", "=", scope.uid)
+        .where("status", "=", 1)
+        .executeTakeFirst(),
+      this.db
+        .selectFrom("xy_wap_embed_insight_qa_rule_config")
+        .select((eb) => eb.fn.countAll().as("count"))
+        .where("uid", "=", scope.uid)
+        .where("status", "=", 1)
+        .executeTakeFirst(),
+      this.db
+        .selectFrom("xy_wap_embed_insight_entity_dictionary")
+        .select((eb) => eb.fn.countAll().as("count"))
+        .where("uid", "=", scope.uid)
+        .where("status", "=", 1)
+        .executeTakeFirst(),
+      this.getSessionizationSettings(scope),
+      this.getAnalysisPolicy(scope),
+      this.getFeatureConfig(scope),
+    ]);
+
+    return {
+      enabledIntentCount: Number(enabledIntentResult?.count ?? 0),
+      enabledLabelCount: Number(enabledLabelResult?.count ?? 0),
+      enabledQaCount: Number(enabledQaResult?.count ?? 0),
+      entityCount: Number(entityResult?.count ?? 0),
+      insightEnabled: featureConfig.insightEnabled,
+      liveAnalysisEnabled: analysisPolicy.liveAnalysisEnabled,
+      sessionizationIdleMinutes: sessionization.idleTimeoutMinutes,
+    };
+  }
+
+  async getPolicySettings(scope: InsightsUidScope): Promise<{
+    analysisPolicy: InsightAnalysisPolicy;
+    sessionization: InsightSessionizationSettings;
+  }> {
+    const [analysisPolicy, sessionization] = await Promise.all([
+      this.getAnalysisPolicy(scope),
+      this.getSessionizationSettings(scope),
+    ]);
+
+    return { analysisPolicy, sessionization };
+  }
+
   async upsertSessionizationSettings(
     scope: InsightsUidScope,
     payload: InsightSessionizationSettingsUpdateRequest,
@@ -521,7 +586,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .values({
         aliases_json: encodeJson(payload.aliases),
         description: payload.description ?? null,
-        enabled: payload.enabled ? 1 : 0,
+        status: payload.status,
         include_in_statistics: payload.includeInStatistics ? 1 : 0,
         intent_code: payload.intentCode,
         intent_name: payload.intentName,
@@ -553,7 +618,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .set({
         aliases_json: encodeJson(payload.aliases),
         description: payload.description ?? null,
-        enabled: payload.enabled ? 1 : 0,
+        status: payload.status,
         include_in_statistics: payload.includeInStatistics ? 1 : 0,
         intent_code: payload.intentCode,
         intent_name: payload.intentName,
@@ -572,7 +637,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   async updateIntentConfigStatus(
     scope: InsightsUidScope,
     id: string,
-    enabled: boolean,
+    status: Exclude<InsightConfigStatus, -1>,
   ): Promise<InsightIntentConfig | undefined> {
     const numericId = parsePositiveInteger(id);
 
@@ -582,7 +647,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     await this.db
       .updateTable("xy_wap_embed_insight_intent_config")
-      .set({ enabled: enabled ? 1 : 0, update_time: new Date() })
+      .set({ status, update_time: new Date() })
       .where("id", "=", numericId)
       .where("uid", "=", scope.uid)
       .execute();
@@ -598,7 +663,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }
 
     await this.db
-      .deleteFrom("xy_wap_embed_insight_intent_config")
+      .updateTable("xy_wap_embed_insight_intent_config")
+      .set({ status: -1, update_time: new Date() })
       .where("id", "=", numericId)
       .where("uid", "=", scope.uid)
       .execute();
@@ -614,7 +680,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .insertInto("xy_wap_embed_insight_label_config")
       .values({
         description: payload.description ?? null,
-        enabled: payload.enabled ? 1 : 0,
+        status: payload.status,
         include_in_statistics: payload.includeInStatistics ? 1 : 0,
         label_code: payload.labelCode,
         label_name: payload.labelName,
@@ -644,7 +710,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .updateTable("xy_wap_embed_insight_label_config")
       .set({
         description: payload.description ?? null,
-        enabled: payload.enabled ? 1 : 0,
+        status: payload.status,
         include_in_statistics: payload.includeInStatistics ? 1 : 0,
         label_code: payload.labelCode,
         label_name: payload.labelName,
@@ -662,7 +728,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   async updateLabelConfigStatus(
     scope: InsightsUidScope,
     id: string,
-    enabled: boolean,
+    status: Exclude<InsightConfigStatus, -1>,
   ): Promise<InsightLabelConfig | undefined> {
     const numericId = parsePositiveInteger(id);
 
@@ -672,7 +738,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     await this.db
       .updateTable("xy_wap_embed_insight_label_config")
-      .set({ enabled: enabled ? 1 : 0, update_time: new Date() })
+      .set({ status, update_time: new Date() })
       .where("id", "=", numericId)
       .where("uid", "=", scope.uid)
       .execute();
@@ -688,7 +754,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }
 
     await this.db
-      .deleteFrom("xy_wap_embed_insight_label_config")
+      .updateTable("xy_wap_embed_insight_label_config")
+      .set({ status: -1, update_time: new Date() })
       .where("id", "=", numericId)
       .where("uid", "=", scope.uid)
       .execute();
@@ -705,7 +772,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .values({
         applicable_scene: payload.applicableScene ?? null,
         description: payload.description ?? null,
-        enabled: payload.enabled ? 1 : 0,
+        status: payload.status,
         judgment_criteria: payload.judgmentCriteria ?? null,
         negative_examples_json: encodeJson(payload.negativeExamples),
         positive_examples_json: encodeJson(payload.positiveExamples),
@@ -737,7 +804,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .set({
         applicable_scene: payload.applicableScene ?? null,
         description: payload.description ?? null,
-        enabled: payload.enabled ? 1 : 0,
+        status: payload.status,
         judgment_criteria: payload.judgmentCriteria ?? null,
         negative_examples_json: encodeJson(payload.negativeExamples),
         positive_examples_json: encodeJson(payload.positiveExamples),
@@ -756,7 +823,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   async updateQaRuleConfigStatus(
     scope: InsightsUidScope,
     id: string,
-    enabled: boolean,
+    status: Exclude<InsightConfigStatus, -1>,
   ): Promise<InsightQaRuleConfig | undefined> {
     const numericId = parsePositiveInteger(id);
 
@@ -766,7 +833,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     await this.db
       .updateTable("xy_wap_embed_insight_qa_rule_config")
-      .set({ enabled: enabled ? 1 : 0, update_time: new Date() })
+      .set({ status, update_time: new Date() })
       .where("id", "=", numericId)
       .where("uid", "=", scope.uid)
       .execute();
@@ -782,7 +849,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }
 
     await this.db
-      .deleteFrom("xy_wap_embed_insight_qa_rule_config")
+      .updateTable("xy_wap_embed_insight_qa_rule_config")
+      .set({ status: -1, update_time: new Date() })
       .where("id", "=", numericId)
       .where("uid", "=", scope.uid)
       .execute();
@@ -800,7 +868,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         aliases_json: encodeJson(payload.aliases),
         attributes_json: encodeJson(payload.attributes),
         canonical_name: payload.canonicalName,
-        enabled: payload.enabled ? 1 : 0,
+        status: payload.status,
         entity_type: payload.entityType,
         include_in_aggregation: payload.includeInAggregation ? 1 : 0,
         uid: scope.uid,
@@ -828,7 +896,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         aliases_json: encodeJson(payload.aliases),
         attributes_json: encodeJson(payload.attributes),
         canonical_name: payload.canonicalName,
-        enabled: payload.enabled ? 1 : 0,
+        status: payload.status,
         entity_type: payload.entityType,
         include_in_aggregation: payload.includeInAggregation ? 1 : 0,
         update_time: new Date(),
@@ -843,7 +911,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   async updateEntityDictionaryItemStatus(
     scope: InsightsUidScope,
     id: string,
-    enabled: boolean,
+    status: Exclude<InsightConfigStatus, -1>,
   ): Promise<InsightEntityDictionaryItem | undefined> {
     const numericId = parsePositiveInteger(id);
 
@@ -853,7 +921,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     await this.db
       .updateTable("xy_wap_embed_insight_entity_dictionary")
-      .set({ enabled: enabled ? 1 : 0, update_time: new Date() })
+      .set({ status, update_time: new Date() })
       .where("id", "=", numericId)
       .where("uid", "=", scope.uid)
       .execute();
@@ -869,7 +937,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }
 
     await this.db
-      .deleteFrom("xy_wap_embed_insight_entity_dictionary")
+      .updateTable("xy_wap_embed_insight_entity_dictionary")
+      .set({ status: -1, update_time: new Date() })
       .where("id", "=", numericId)
       .where("uid", "=", scope.uid)
       .execute();
@@ -935,7 +1004,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     };
   }
 
-  private async getFeatureConfig(scope: InsightsUidScope): Promise<InsightFeatureConfig> {
+  async getFeatureConfig(scope: InsightsUidScope): Promise<InsightFeatureConfig> {
     const row = await this.db
       .selectFrom("xy_wap_embed_insight_feature_config")
       .select([
@@ -957,13 +1026,13 @@ export class InsightsRepository implements InsightsRepositoryPort {
     return parseFeatureConfigRow(row);
   }
 
-  private async listIntentConfigs(scope: InsightsUidScope): Promise<InsightIntentConfig[]> {
+  async listIntentConfigs(scope: InsightsUidScope): Promise<InsightIntentConfig[]> {
     const rows = await this.db
       .selectFrom("xy_wap_embed_insight_intent_config")
       .select([
         "aliases_json",
         "description",
-        "enabled",
+        "status",
         "id",
         "include_in_statistics",
         "intent_code",
@@ -973,6 +1042,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "sort_order",
       ])
       .where("uid", "=", scope.uid)
+      .where("status", "!=", -1)
       .orderBy("sort_order", "asc")
       .orderBy("id", "asc")
       .execute();
@@ -995,7 +1065,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .select([
         "aliases_json",
         "description",
-        "enabled",
+        "status",
         "id",
         "include_in_statistics",
         "intent_code",
@@ -1006,6 +1076,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ])
       .where("uid", "=", scope.uid)
       .where("id", "=", numericId)
+      .where("status", "!=", -1)
       .executeTakeFirst();
 
     return row ? mapIntentRow(row) : undefined;
@@ -1020,7 +1091,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .select([
         "aliases_json",
         "description",
-        "enabled",
+        "status",
         "id",
         "include_in_statistics",
         "intent_code",
@@ -1031,17 +1102,18 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ])
       .where("uid", "=", scope.uid)
       .where("intent_code", "=", intentCode)
+      .where("status", "!=", -1)
       .executeTakeFirst();
 
     return row ? mapIntentRow(row) : undefined;
   }
 
-  private async listLabelConfigs(scope: InsightsUidScope): Promise<InsightLabelConfig[]> {
+  async listLabelConfigs(scope: InsightsUidScope): Promise<InsightLabelConfig[]> {
     const rows = await this.db
       .selectFrom("xy_wap_embed_insight_label_config")
       .select([
         "description",
-        "enabled",
+        "status",
         "id",
         "include_in_statistics",
         "label_code",
@@ -1050,6 +1122,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "positive_examples_json",
       ])
       .where("uid", "=", scope.uid)
+      .where("status", "!=", -1)
       .orderBy("id", "asc")
       .execute();
 
@@ -1070,7 +1143,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .selectFrom("xy_wap_embed_insight_label_config")
       .select([
         "description",
-        "enabled",
+        "status",
         "id",
         "include_in_statistics",
         "label_code",
@@ -1080,6 +1153,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ])
       .where("uid", "=", scope.uid)
       .where("id", "=", numericId)
+      .where("status", "!=", -1)
       .executeTakeFirst();
 
     return row ? mapLabelRow(row) : undefined;
@@ -1093,7 +1167,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .selectFrom("xy_wap_embed_insight_label_config")
       .select([
         "description",
-        "enabled",
+        "status",
         "id",
         "include_in_statistics",
         "label_code",
@@ -1103,18 +1177,19 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ])
       .where("uid", "=", scope.uid)
       .where("label_code", "=", labelCode)
+      .where("status", "!=", -1)
       .executeTakeFirst();
 
     return row ? mapLabelRow(row) : undefined;
   }
 
-  private async listQaRuleConfigs(scope: InsightsUidScope): Promise<InsightQaRuleConfig[]> {
+  async listQaRuleConfigs(scope: InsightsUidScope): Promise<InsightQaRuleConfig[]> {
     const rows = await this.db
       .selectFrom("xy_wap_embed_insight_qa_rule_config")
       .select([
         "applicable_scene",
         "description",
-        "enabled",
+        "status",
         "id",
         "judgment_criteria",
         "negative_examples_json",
@@ -1124,6 +1199,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "severity",
       ])
       .where("uid", "=", scope.uid)
+      .where("status", "!=", -1)
       .orderBy("id", "asc")
       .execute();
 
@@ -1145,7 +1221,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .select([
         "applicable_scene",
         "description",
-        "enabled",
+        "status",
         "id",
         "judgment_criteria",
         "negative_examples_json",
@@ -1156,6 +1232,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ])
       .where("uid", "=", scope.uid)
       .where("id", "=", numericId)
+      .where("status", "!=", -1)
       .executeTakeFirst();
 
     return row ? mapQaRuleRow(row) : undefined;
@@ -1170,7 +1247,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .select([
         "applicable_scene",
         "description",
-        "enabled",
+        "status",
         "id",
         "judgment_criteria",
         "negative_examples_json",
@@ -1181,12 +1258,13 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ])
       .where("uid", "=", scope.uid)
       .where("rule_code", "=", ruleCode)
+      .where("status", "!=", -1)
       .executeTakeFirst();
 
     return row ? mapQaRuleRow(row) : undefined;
   }
 
-  private async listEntityDictionary(
+  async listEntityDictionary(
     scope: InsightsUidScope,
   ): Promise<InsightEntityDictionaryItem[]> {
     const rows = await this.db
@@ -1195,12 +1273,13 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "aliases_json",
         "attributes_json",
         "canonical_name",
-        "enabled",
+        "status",
         "entity_type",
         "id",
         "include_in_aggregation",
       ])
       .where("uid", "=", scope.uid)
+      .where("status", "!=", -1)
       .orderBy("id", "asc")
       .execute();
 
@@ -1223,13 +1302,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "aliases_json",
         "attributes_json",
         "canonical_name",
-        "enabled",
+        "status",
         "entity_type",
         "id",
         "include_in_aggregation",
       ])
       .where("uid", "=", scope.uid)
       .where("id", "=", numericId)
+      .where("status", "!=", -1)
       .executeTakeFirst();
 
     return row ? mapEntityRow(row) : undefined;
@@ -1436,21 +1516,16 @@ export class InsightsRepository implements InsightsRepositoryPort {
           .innerJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
             join.onRef("qa.snapshot_id", "=", "snapshot.id"),
           )
-          .leftJoin("xy_wap_embed_insight_qa_rule_config as rule", (join) =>
-            join
-              .onRef("rule.rule_code", "=", "qa.rule_code")
-              .on("rule.uid", "=", scope.uid),
-          )
           .where("session.uid", "=", scope.uid)
           .where("snapshot.status", "in", ["ready", "partial"])
           .where("qa.passed", "=", 0),
       )
         .select([
           "qa.rule_code as rule_code",
-          sql<string>`coalesce(rule.rule_name, qa.rule_code)`.as("rule_name"),
+          "qa.rule_name as rule_name",
           sql<number>`count(*)`.as("count"),
         ])
-        .groupBy(["qa.rule_code", "rule.rule_name"])
+        .groupBy(["qa.rule_code", "qa.rule_name"])
         .orderBy(sql`count(*)`, "desc")
         .execute() as Promise<Array<{ rule_code: string; rule_name: string; count: number }>>,
     ]);
@@ -1843,23 +1918,16 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .innerJoin("xy_wap_embed_logical_session as session", (join) =>
         join.onRef("session.id", "=", "current.session_id"),
       )
-      .innerJoin("xy_wap_embed_insight_intent_config as intent_config", (join) =>
-        join
-          .on("intent_config.uid", "=", scope.uid)
-          .onRef("intent_config.intent_code", "=", "intent.intent_code")
-          .on("intent_config.enabled", "=", 1)
-          .on("intent_config.include_in_statistics", "=", 1),
-      )
       .select([
         "intent.intent_code as code",
-        "intent_config.intent_name as name",
+        "intent.intent_label as name",
         "session.id as session_id",
         "session.started_at as started_at",
         "intent.snapshot_id as snapshot_id",
         sql<number>`count(intent.id)`.as("mention_count"),
       ])
       .where("intent.uid", "=", scope.uid)
-      .groupBy(["intent.intent_code", "intent_config.intent_name", "session.id", "session.started_at", "intent.snapshot_id"])
+      .groupBy(["intent.intent_code", "intent.intent_label", "session.id", "session.started_at", "intent.snapshot_id"])
       .orderBy(sql<number>`count(intent.id)`, "desc")
       .limit(500);
 
@@ -2087,21 +2155,13 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .innerJoin("xy_wap_embed_logical_session as session", (join) =>
         join.onRef("session.id", "=", "snapshot.session_id"),
       )
-      .innerJoin("xy_wap_embed_insight_intent_config as intent_config", (join) =>
-        join
-          .on("intent_config.uid", "=", scope.uid)
-          .onRef("intent_config.intent_code", "=", "intent.intent_code")
-          .on("intent_config.enabled", "=", 1)
-          .on("intent_config.include_in_statistics", "=", 1),
-      )
       .select([
         sql<number>`count(*)`.as("count"),
         "intent.intent_code as intent_code",
-        "intent_config.intent_name as intent_label",
+        "intent.intent_label as intent_label",
       ])
       .where("intent.uid", "=", scope.uid)
-      .groupBy(["intent.intent_code", "intent_config.intent_name", "intent_config.sort_order"])
-      .orderBy("intent_config.sort_order", "asc")
+      .groupBy(["intent.intent_code", "intent.intent_label"])
       .orderBy(sql<number>`count(*)`, "desc")
       .limit(10)
       .execute() as IntentDistributionQueryRow[];
@@ -2212,6 +2272,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
           passed: row.qa_passed === 1,
           reason: row.qa_reason ?? "",
           ruleCode: row.qa_rule_code ?? "",
+          ruleName: row.qa_rule_name ?? row.qa_rule_code ?? "",
           severity: normalizeSeverity(row.qa_severity) ?? "low",
         })),
       (row) => row.ruleCode,
@@ -2266,6 +2327,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "passed as qa_passed",
         "reason as qa_reason",
         "rule_code as qa_rule_code",
+        "rule_name as qa_rule_name",
         "severity as qa_severity",
       ])
       .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
@@ -2978,9 +3040,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
   async listRescanTasks(
     scope: InsightsUidScope,
-    filters: { limit: number },
+    filters: { limit: number; offset: number },
   ) {
-    const rows = await this.db
+    const rowsQuery = this.db
       .selectFrom("xy_wap_embed_insight_rescan_task")
       .select([
         "analysis_scope",
@@ -3001,7 +3063,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .where("uid", "=", scope.uid)
       .orderBy("create_time", "desc")
       .limit(filters.limit)
-      .execute() as Array<{
+      .offset(filters.offset)
+      .execute() as Promise<Array<{
         analysis_scope: string;
         create_time: Date | string;
         created_by: string | null;
@@ -3016,7 +3079,15 @@ export class InsightsRepository implements InsightsRepositoryPort {
         to_time: Date | string | null;
         total_sessions: number | string;
         update_time: Date | string;
-      }>;
+      }>>;
+
+    const totalQuery = this.db
+      .selectFrom("xy_wap_embed_insight_rescan_task")
+      .select((eb) => eb.fn.countAll().as("count"))
+      .where("uid", "=", scope.uid)
+      .executeTakeFirst();
+
+    const [rows, totalResult] = await Promise.all([rowsQuery, totalQuery]);
 
     return {
       items: rows.map((row) => ({
@@ -3035,7 +3106,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         totalSessions: parseNumber(row.total_sessions),
         updateTime: toTimestamp(row.update_time),
       })),
-      total: rows.length,
+      total: Number(totalResult?.count ?? 0),
     };
   }
 
@@ -3782,10 +3853,15 @@ function optionalString(value: string | null | undefined) {
   return value || undefined;
 }
 
+function parseConfigStatus(value: number | string): InsightConfigStatus {
+  const status = Number(value);
+  return status === -1 || status === 0 || status === 1 ? status : 0;
+}
+
 function mapLabelPayload(id: string, payload: InsightLabelConfigMutationRequest): InsightLabelConfig {
   return {
     description: payload.description,
-    enabled: payload.enabled,
+    status: payload.status,
     id,
     includeInStatistics: payload.includeInStatistics,
     labelCode: payload.labelCode,
@@ -3799,7 +3875,7 @@ function mapIntentPayload(id: string, payload: InsightIntentConfigMutationReques
   return {
     aliases: payload.aliases,
     description: payload.description,
-    enabled: payload.enabled,
+    status: payload.status,
     id,
     includeInStatistics: payload.includeInStatistics,
     intentCode: payload.intentCode,
@@ -3814,7 +3890,7 @@ function mapQaRulePayload(id: string, payload: InsightQaRuleConfigMutationReques
   return {
     applicableScene: payload.applicableScene,
     description: payload.description,
-    enabled: payload.enabled,
+    status: payload.status,
     id,
     judgmentCriteria: payload.judgmentCriteria,
     negativeExamples: payload.negativeExamples,
@@ -3833,7 +3909,7 @@ function mapEntityPayload(
     aliases: payload.aliases,
     attributes: payload.attributes,
     canonicalName: payload.canonicalName,
-    enabled: payload.enabled,
+    status: payload.status,
     entityType: payload.entityType,
     id,
     includeInAggregation: payload.includeInAggregation,
@@ -3842,7 +3918,7 @@ function mapEntityPayload(
 
 function mapLabelRow(row: {
   description: string | null;
-  enabled: number;
+  status: number;
   id: number | string;
   include_in_statistics: number;
   label_code: string;
@@ -3852,7 +3928,7 @@ function mapLabelRow(row: {
 }): InsightLabelConfig {
   return {
     description: optionalString(row.description),
-    enabled: row.enabled === 1,
+    status: parseConfigStatus(row.status),
     id: String(row.id),
     includeInStatistics: row.include_in_statistics === 1,
     labelCode: row.label_code,
@@ -3865,7 +3941,7 @@ function mapLabelRow(row: {
 function mapIntentRow(row: {
   aliases_json: string | null;
   description: string | null;
-  enabled: number;
+  status: number;
   id: number | string;
   include_in_statistics: number;
   intent_code: string;
@@ -3877,7 +3953,7 @@ function mapIntentRow(row: {
   return {
     aliases: parseJsonArray(row.aliases_json),
     description: optionalString(row.description),
-    enabled: row.enabled === 1,
+    status: parseConfigStatus(row.status),
     id: String(row.id),
     includeInStatistics: row.include_in_statistics === 1,
     intentCode: row.intent_code,
@@ -3891,7 +3967,7 @@ function mapIntentRow(row: {
 function mapQaRuleRow(row: {
   applicable_scene: string | null;
   description: string | null;
-  enabled: number;
+  status: number;
   id: number | string;
   judgment_criteria: string | null;
   negative_examples_json: string | null;
@@ -3903,7 +3979,7 @@ function mapQaRuleRow(row: {
   return {
     applicableScene: optionalString(row.applicable_scene),
     description: optionalString(row.description),
-    enabled: row.enabled === 1,
+    status: parseConfigStatus(row.status),
     id: String(row.id),
     judgmentCriteria: optionalString(row.judgment_criteria),
     negativeExamples: parseJsonArray(row.negative_examples_json),
@@ -3918,7 +3994,7 @@ function mapEntityRow(row: {
   aliases_json: string | null;
   attributes_json: string | null;
   canonical_name: string;
-  enabled: number;
+  status: number;
   entity_type: string;
   id: number | string;
   include_in_aggregation: number;
@@ -3927,7 +4003,7 @@ function mapEntityRow(row: {
     aliases: parseJsonArray(row.aliases_json),
     attributes: parseJsonObject(row.attributes_json),
     canonicalName: row.canonical_name,
-    enabled: row.enabled === 1,
+    status: parseConfigStatus(row.status),
     entityType: row.entity_type,
     id: String(row.id),
     includeInAggregation: row.include_in_aggregation === 1,

@@ -1133,7 +1133,7 @@ function buildSessionFilterOptions(
   return {
     entities: toFilterOptions(
       settings?.entityDictionary
-        .filter((entity) => entity.enabled && entity.includeInAggregation)
+        .filter((entity) => entity.status === 1 && entity.includeInAggregation)
         .map((entity) => ({
           label: entity.canonicalName,
           value: entity.canonicalName,
@@ -1141,7 +1141,7 @@ function buildSessionFilterOptions(
     ),
     intents: toFilterOptions(
       settings?.intentConfigs
-        .filter((intent) => intent.enabled && intent.includeInStatistics)
+        .filter((intent) => intent.status === 1 && intent.includeInStatistics)
         .map((intent) => ({
           label: intent.intentName,
           value: intent.intentCode,
@@ -1149,7 +1149,7 @@ function buildSessionFilterOptions(
     ),
     tags: toFilterOptions(
       settings?.labelConfigs
-        .filter((label) => label.enabled && label.includeInStatistics)
+        .filter((label) => label.status === 1 && label.includeInStatistics)
         .map((label) => ({
           label: label.labelName,
           value: label.labelCode,

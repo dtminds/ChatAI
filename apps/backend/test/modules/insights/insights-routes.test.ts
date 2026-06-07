@@ -259,8 +259,24 @@ describe("insights routes", () => {
       uid: 9001,
     });
     expect(db.insertedJob?.idempotency_key).toMatch(/^rescan:9001:classification:2026-06-01T00:00:00\.000Z:2026-06-02T00:00:00\.000Z:/);
+    expect(db.rescanTaskListQueries[0]).toMatchObject({ limit: 10, offset: 0 });
 
     await app.close();
+  });
+
+  it("rejects malformed rescan task pagination before querying data", async () => {
+    const admin = await createInsightsApp("admin");
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "GET",
+      url: "/api/server/insights/jobs/rescan?page=abc&pageSize=xyz",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(400);
+    expect(admin.db.rescanTaskListQueries).toHaveLength(0);
   });
 
   it("allows only admins to read settings", async () => {
@@ -601,6 +617,7 @@ function createInsightsDbMock(options: {
     insertedJob: undefined as Record<string, unknown> | undefined,
     insertedRescanTask: undefined as Record<string, unknown> | undefined,
     insightCurrentSelectCount: 0,
+    rescanTaskListQueries: [] as Array<{ limit?: unknown; offset?: unknown }>,
     selectBuilders: [] as Array<{ wheres: Array<[string, string, unknown]> }>,
     upsertedFeatureConfig: undefined as Record<string, unknown> | undefined,
     updatedActionStatus: undefined as { id: number | undefined; status: string | undefined } | undefined,
@@ -654,6 +671,8 @@ function createInsightsDbMock(options: {
         const builder = {
           groupByCalls: [] as unknown[][],
           joins,
+          limitValue: undefined as unknown,
+          offsetValue: undefined as unknown,
           selectCalls: [] as unknown[][],
           wheres,
           execute: async () => typeof result === "function" ? result(builder) : result,
@@ -681,8 +700,14 @@ function createInsightsDbMock(options: {
             }
             return builder;
           },
-          limit: () => builder,
-          offset: () => builder,
+          limit: (limit: unknown) => {
+            builder.limitValue = limit;
+            return builder;
+          },
+          offset: (offset: unknown) => {
+            builder.offsetValue = offset;
+            return builder;
+          },
           orderBy: () => builder,
           select: (...args: unknown[]) => {
             builder.selectCalls.push(args);
@@ -780,7 +805,7 @@ function createInsightsDbMock(options: {
         return createBuilder(options.labelConfigRows ?? [
           {
             description: null,
-            enabled: 1,
+            status: 1,
             id: 1,
             include_in_statistics: 1,
             label_code: "price_sensitive",
@@ -796,7 +821,7 @@ function createInsightsDbMock(options: {
           {
             aliases_json: JSON.stringify(["查快递"]),
             description: "客户咨询发货、快递或物流异常",
-            enabled: 1,
+            status: 1,
             id: 1,
             include_in_statistics: 1,
             intent_code: "logistics_delay",
@@ -813,7 +838,7 @@ function createInsightsDbMock(options: {
           {
             applicable_scene: null,
             description: null,
-            enabled: 1,
+            status: 1,
             id: 1,
             judgment_criteria: null,
             negative_examples_json: null,
@@ -831,7 +856,7 @@ function createInsightsDbMock(options: {
             aliases_json: JSON.stringify(["白鸭绒外套"]),
             attributes_json: null,
             canonical_name: "白色羽绒服",
-            enabled: 1,
+            status: 1,
             entity_type: "product",
             id: 1,
             include_in_aggregation: 1,
@@ -985,6 +1010,20 @@ function createInsightsDbMock(options: {
 
       if (table === "xy_wap_embed_insight_rescan_task") {
         return createBuilder((builder) => {
+          if (
+            builder.selectCalls.some((call) => String(call[0]).includes("countAll"))
+              || builder.selectCalls.some((call) => typeof call[0] === "function")
+          ) {
+            return [{ count: state.insertedRescanTask ? 1 : 0 }];
+          }
+
+          if (builder.offsetValue !== undefined) {
+            state.rescanTaskListQueries.push({
+              limit: builder.limitValue,
+              offset: builder.offsetValue,
+            });
+          }
+
           if (!state.insertedRescanTask) {
             return [];
           }

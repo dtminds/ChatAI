@@ -23,6 +23,7 @@ import type {
   InsightQaRuleConfigMutationRequest,
   InsightRescanTaskListResponse,
   InsightSettingsResponse,
+  InsightSettingsSummaryResponse,
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
   InsightBusinessRelatedSessionsResponse,
@@ -204,6 +205,57 @@ export async function getInsightSettings() {
   return response.data;
 }
 
+export async function getInsightSettingsSummary() {
+  const response = await http.get<ApiSuccessEnvelope<InsightSettingsSummaryResponse>>(
+    "/server/insights/settings/summary",
+  );
+
+  return response.data;
+}
+
+export async function getInsightPolicyAndSessionization() {
+  const response = await http.get<
+    ApiSuccessEnvelope<{
+      analysisPolicy: InsightAnalysisPolicy;
+      sessionization: InsightSessionizationSettings;
+    }>
+  >("/server/insights/settings/policy");
+
+  return response.data;
+}
+
+export async function listInsightIntentConfigs() {
+  const response = await http.get<ApiSuccessEnvelope<InsightIntentConfig[]>>(
+    "/server/insights/settings/intent-configs",
+  );
+
+  return response.data;
+}
+
+export async function listInsightLabelConfigs() {
+  const response = await http.get<ApiSuccessEnvelope<InsightLabelConfig[]>>(
+    "/server/insights/settings/label-configs",
+  );
+
+  return response.data;
+}
+
+export async function listInsightQaRuleConfigs() {
+  const response = await http.get<ApiSuccessEnvelope<InsightQaRuleConfig[]>>(
+    "/server/insights/settings/qa-rule-configs",
+  );
+
+  return response.data;
+}
+
+export async function listInsightEntityDictionary() {
+  const response = await http.get<ApiSuccessEnvelope<InsightEntityDictionaryItem[]>>(
+    "/server/insights/settings/entity-dictionary",
+  );
+
+  return response.data;
+}
+
 export async function updateInsightSessionizationSettings(
   payload: InsightSessionizationSettingsUpdateRequest,
 ) {
@@ -222,6 +274,14 @@ export async function updateInsightAnalysisPolicy(
     ApiSuccessEnvelope<InsightAnalysisPolicy>,
     InsightAnalysisPolicyUpdateRequest
   >("/server/insights/settings/analysis-policy", payload);
+
+  return response.data;
+}
+
+export async function getInsightFeatureConfig() {
+  const response = await http.get<ApiSuccessEnvelope<InsightFeatureConfig>>(
+    "/server/insights/settings/feature-config",
+  );
 
   return response.data;
 }
@@ -412,9 +472,13 @@ export async function createInsightRescanJob(payload: InsightsRescanRequest) {
   return response.data;
 }
 
-export async function getInsightRescanTasks() {
+export async function getInsightRescanTasks(page = 1, pageSize = 10) {
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
   const response = await http.get<ApiSuccessEnvelope<InsightRescanTaskListResponse>>(
-    "/server/insights/jobs/rescan",
+    `/server/insights/jobs/rescan?${params.toString()}`,
   );
 
   return response.data;

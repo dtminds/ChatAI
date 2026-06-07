@@ -579,7 +579,7 @@ function createRepository(
         {
           aliases: ["白鸭绒外套"],
           canonicalName: "白色羽绒服",
-          enabled: true,
+          status: 1,
           entityType: "product",
           id: "41",
           includeInAggregation: true,
@@ -589,7 +589,7 @@ function createRepository(
         {
           aliases: ["物流", "查快递"],
           description: "客户咨询发货、快递或物流异常",
-          enabled: true,
+          status: 1,
           id: "31",
           includeInStatistics: true,
           intentCode: "logistics_delay",
@@ -601,7 +601,7 @@ function createRepository(
       ],
       labelConfigs: [
         {
-          enabled: true,
+          status: 1,
           id: "11",
           includeInStatistics: true,
           labelCode: "price_sensitive",
@@ -610,7 +610,7 @@ function createRepository(
       ],
       qaRuleConfigs: [
         {
-          enabled: true,
+          status: 1,
           id: "21",
           ruleCode: "problem_resolution",
           ruleName: "客户问题是否解决",
@@ -629,8 +629,8 @@ function createRepository(
     upsertSessionizationSettings: vi.fn(async (_scope, payload) => payload),
     createIntentConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "90" })),
     updateIntentConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
-    updateIntentConfigStatus: vi.fn(async (_scope, id, enabled) => ({
-      enabled,
+    updateIntentConfigStatus: vi.fn(async (_scope, id, status) => ({
+      status,
       id,
       includeInStatistics: true,
       intentCode: "logistics_delay",
@@ -640,8 +640,8 @@ function createRepository(
     deleteIntentConfig: vi.fn(async () => true),
     createLabelConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "91" })),
     updateLabelConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
-    updateLabelConfigStatus: vi.fn(async (_scope, id, enabled) => ({
-      enabled,
+    updateLabelConfigStatus: vi.fn(async (_scope, id, status) => ({
+      status,
       id,
       includeInStatistics: true,
       labelCode: "price_sensitive",
@@ -650,8 +650,8 @@ function createRepository(
     deleteLabelConfig: vi.fn(async () => true),
     createQaRuleConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "92" })),
     updateQaRuleConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
-    updateQaRuleConfigStatus: vi.fn(async (_scope, id, enabled) => ({
-      enabled,
+    updateQaRuleConfigStatus: vi.fn(async (_scope, id, status) => ({
+      status,
       id,
       ruleCode: "problem_resolution",
       ruleName: "客户问题是否解决",
@@ -660,10 +660,10 @@ function createRepository(
     deleteQaRuleConfig: vi.fn(async () => true),
     createEntityDictionaryItem: vi.fn(async (_scope, payload) => ({ ...payload, id: "94" })),
     updateEntityDictionaryItem: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
-    updateEntityDictionaryItemStatus: vi.fn(async (_scope, id, enabled) => ({
+    updateEntityDictionaryItemStatus: vi.fn(async (_scope, id, status) => ({
       aliases: ["白鸭绒外套"],
       canonicalName: "白色羽绒服",
-      enabled,
+      status,
       entityType: "product",
       id,
       includeInAggregation: true,
@@ -1284,7 +1284,7 @@ describe("InsightsService", () => {
       service.createIntentConfig(scope, "admin", {
         aliases: ["物流", "查快递"],
         description: "客户咨询发货、快递或物流异常",
-        enabled: true,
+        status: 1,
         includeInStatistics: true,
         intentCode: "logistics_delay",
         intentName: "物流异常",
@@ -1296,13 +1296,13 @@ describe("InsightsService", () => {
     expect(repository.createIntentConfig).toHaveBeenCalled();
 
     await expect(
-      service.updateIntentConfigStatus(scope, "admin", "90", { enabled: false }),
-    ).resolves.toMatchObject({ enabled: false, id: "90" });
-    expect(repository.updateIntentConfigStatus).toHaveBeenCalledWith(scope, "90", false);
+      service.updateIntentConfigStatus(scope, "admin", "90", { status: 0 }),
+    ).resolves.toMatchObject({ status: 0, id: "90" });
+    expect(repository.updateIntentConfigStatus).toHaveBeenCalledWith(scope, "90", 0);
 
     await expect(
       service.createLabelConfig(scope, "admin", {
-        enabled: true,
+        status: 1,
         includeInStatistics: true,
         labelCode: "retention",
         labelName: "挽留机会",
@@ -1402,7 +1402,7 @@ describe("InsightsService", () => {
       ],
       total: 1,
     });
-    expect(repository.listRescanTasks).toHaveBeenCalledWith(scope, { limit: 20 });
+    expect(repository.listRescanTasks).toHaveBeenCalledWith(scope, { limit: 10, offset: 0 });
   });
 
   it("throws not found when a detail session is outside uid scope", async () => {

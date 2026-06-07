@@ -476,6 +476,7 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
       passed: readBoolean(item, "passed"),
       reason: readString(item, "reason"),
       ruleCode: readString(item, "ruleCode") || "custom",
+      ruleName: readString(item, "ruleName"),
       severity: readSeverity(readString(item, "severity")),
     })),
     sentiment: readArray(record.sentiment).map((item) => ({

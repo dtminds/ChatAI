@@ -49,7 +49,7 @@ describe("insights service adapter", () => {
       200,
       { data: { ...JSON.parse(config.data ?? "{}"), jobId: "8801", status: "accepted", taskId: "9901" }, success: true },
     ]);
-    mock.onGet("/server/insights/jobs/rescan").reply(200, {
+    mock.onGet(/\/server\/insights\/jobs\/rescan.*/).reply(200, {
       data: { items: [], total: 0 },
       success: true,
     });
@@ -130,7 +130,7 @@ describe("insights service adapter", () => {
       from: "2026-06-01T00:00:00.000Z",
       to: "2026-06-02T00:00:00.000Z",
     });
-    expect(mock.history.get[8]?.url).toBe("/server/insights/jobs/rescan");
+    expect(mock.history.get[8]?.url).toBe("/server/insights/jobs/rescan?page=1&pageSize=10");
   });
 
   it("uses public /server insights endpoints for settings CRUD", async () => {
@@ -189,21 +189,21 @@ describe("insights service adapter", () => {
       todoEnabled: false,
     });
     await createInsightLabelConfig({
-      enabled: true,
+      status: 1,
       includeInStatistics: true,
       labelCode: "price_sensitive",
       labelName: "价格敏感",
     });
     await updateInsightLabelConfig("11", {
-      enabled: true,
+      status: 1,
       includeInStatistics: true,
       labelCode: "price_sensitive",
       labelName: "价格敏感",
     });
-    await updateInsightLabelConfigStatus("11", { enabled: false });
+    await updateInsightLabelConfigStatus("11", { status: 0 });
     await deleteInsightLabelConfig("11");
     await createInsightQaRuleConfig({
-      enabled: true,
+      status: 1,
       ruleCode: "problem_resolution",
       ruleName: "客户问题是否解决",
       severity: "high",
@@ -211,7 +211,7 @@ describe("insights service adapter", () => {
     await createInsightEntityDictionaryItem({
       aliases: ["白鸭绒外套"],
       canonicalName: "白色羽绒服",
-      enabled: true,
+      status: 1,
       entityType: "product",
       includeInAggregation: true,
     });
@@ -222,6 +222,7 @@ describe("insights service adapter", () => {
     expect(mock.history.post[0]?.url).toBe("/server/insights/settings/label-configs");
     expect(mock.history.put[3]?.url).toBe("/server/insights/settings/label-configs/11");
     expect(mock.history.patch[0]?.url).toBe("/server/insights/settings/label-configs/11/status");
+    expect(JSON.parse(mock.history.patch[0]?.data ?? "{}")).toEqual({ status: 0 });
     expect(mock.history.delete[0]?.url).toBe("/server/insights/settings/label-configs/11");
     expect(mock.history.post[1]?.url).toBe("/server/insights/settings/qa-rule-configs");
     expect(mock.history.post[2]?.url).toBe("/server/insights/settings/entity-dictionary");

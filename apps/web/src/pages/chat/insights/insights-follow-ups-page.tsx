@@ -172,7 +172,7 @@ export function InsightsFollowUpsPage() {
           <div className="overflow-x-auto">
             <Table aria-label="待处理列表">
               <TableHeader>
-                <TableRow className="bg-muted/35 hover:bg-muted/35">
+                <TableRow>
                   <TableHead className="h-12 min-w-[180px] px-5">客户</TableHead>
                   <TableHead className="h-12 min-w-[300px] px-5">概要</TableHead>
                   <TableHead className="h-12 min-w-[90px] px-5">优先级</TableHead>

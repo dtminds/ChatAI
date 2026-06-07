@@ -501,6 +501,7 @@ export const InsightAnalysisPolicySchema = Type.Object({
   liveMinIntervalMinutes: Type.Number(),
   liveMinNewMeaningfulMessages: Type.Number(),
   lowConfidenceThreshold: Type.Number(),
+  minAnalysisMessages: Type.Integer({ minimum: 1 }),
   ruleFallbackEnabled: Type.Boolean(),
 });
 

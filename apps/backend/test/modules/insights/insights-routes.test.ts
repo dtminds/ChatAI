@@ -791,6 +791,7 @@ function createInsightsDbMock(options: {
             live_min_interval_minutes: 15,
             live_min_new_meaningful_messages: 20,
             low_confidence_threshold: "0.6000",
+            min_analysis_messages: 5,
             rule_fallback_enabled: 1,
           },
         ]);

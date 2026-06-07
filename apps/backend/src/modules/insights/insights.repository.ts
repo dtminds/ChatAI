@@ -530,6 +530,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         live_min_interval_minutes: payload.liveMinIntervalMinutes,
         live_min_new_meaningful_messages: payload.liveMinNewMeaningfulMessages,
         low_confidence_threshold: String(payload.lowConfidenceThreshold),
+        min_analysis_messages: payload.minAnalysisMessages,
         rule_fallback_enabled: payload.ruleFallbackEnabled ? 1 : 0,
         uid: scope.uid,
       })
@@ -540,6 +541,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         live_min_interval_minutes: payload.liveMinIntervalMinutes,
         live_min_new_meaningful_messages: payload.liveMinNewMeaningfulMessages,
         low_confidence_threshold: String(payload.lowConfidenceThreshold),
+        min_analysis_messages: payload.minAnalysisMessages,
         rule_fallback_enabled: payload.ruleFallbackEnabled ? 1 : 0,
         update_time: new Date(),
       })
@@ -1013,6 +1015,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "live_min_interval_minutes",
         "live_min_new_meaningful_messages",
         "low_confidence_threshold",
+        "min_analysis_messages",
         "rule_fallback_enabled",
       ])
       .where("uid", "=", scope.uid)
@@ -1029,6 +1032,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       liveMinIntervalMinutes: Number(row.live_min_interval_minutes),
       liveMinNewMeaningfulMessages: Number(row.live_min_new_meaningful_messages),
       lowConfidenceThreshold: Number(row.low_confidence_threshold),
+      minAnalysisMessages: Number(row.min_analysis_messages),
       ruleFallbackEnabled: row.rule_fallback_enabled === 1,
     };
   }

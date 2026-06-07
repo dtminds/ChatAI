@@ -935,7 +935,6 @@ export interface XyWapEmbedSessionInsightCurrent {
 }
 
 export interface XyWapEmbedSessionSummary {
-  confidence: number | null;
   create_time: Generated<Date>;
   customer_intent: string;
   follow_up: string | null;
@@ -1067,6 +1066,7 @@ export interface XyWapEmbedInsightAnalysisPolicy {
   live_min_interval_minutes: number;
   live_min_new_meaningful_messages: number;
   low_confidence_threshold: string;
+  min_analysis_messages: Generated<number>;
   rule_fallback_enabled: Generated<number>;
   uid: number;
   update_time: Generated<Date>;

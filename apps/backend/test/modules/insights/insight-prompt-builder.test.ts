@@ -330,11 +330,11 @@ describe("insight prompt builder", () => {
         entities: Array<{ confidence: unknown }>;
         intents: Array<{ intentCode: unknown; intentLabel: unknown }>;
         problemResolution: { confidence: unknown; resolutionStatus: unknown };
-        summary: { confidence: unknown };
+        summary: Record<string, unknown>;
       };
     };
 
-    expect(userPayload.outputContract.summary.confidence).toBe("<number 0-1>");
+    expect(userPayload.outputContract.summary).not.toHaveProperty("confidence");
     expect(userPayload.outputContract.problemResolution.confidence).toBe("<number 0-1>");
     expect(userPayload.outputContract.problemResolution.resolutionStatus).toBe(
       "<resolved|partially_resolved|unresolved|no_customer_problem|unknown>",

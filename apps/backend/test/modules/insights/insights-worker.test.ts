@@ -80,6 +80,7 @@ function createRepository(
     })),
     listPreviousSessionContexts: vi.fn(async () => []),
     getAnalysisPolicy: vi.fn(async () => ({
+      minAnalysisMessages: 1,
       lowConfidenceThreshold: 0.6,
     })),
     getSessionizationConfig: vi.fn(async () => defaultConfig),
@@ -120,6 +121,7 @@ function createRepository(
     postponeAnalysisJobForInputReadiness: vi.fn(async () => undefined),
     markAnalysisJobSucceeded: vi.fn(async () => undefined),
     markAnalysisRunFailed: vi.fn(async () => undefined),
+    markAnalysisRunSucceededWithoutSnapshot: vi.fn(async () => undefined),
     markSyncMessagesJobFailed: vi.fn(async () => undefined),
     markSyncMessagesJobSucceeded: vi.fn(async () => undefined),
     markCleanupDisabledInsightsJobFailed: vi.fn(async () => undefined),
@@ -1357,7 +1359,6 @@ describe("InsightsWorkerService", () => {
         ],
         sentiment: [],
         summary: {
-          confidence: 0.88,
           customerIntent: "查物流",
           processSummary: "客服承诺催快递",
           resultSummary: "尚未确认物流进展",
@@ -1415,7 +1416,113 @@ describe("InsightsWorkerService", () => {
     expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
   });
 
-  it("marks low-confidence analysis output as partial using tenant policy", async () => {
+  it("skips final LLM analysis and saves an insufficient-information snapshot when AI-ready messages are below policy threshold", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      getAnalysisPolicy: vi.fn(async () => ({
+        minAnalysisMessages: 5,
+        lowConfidenceThreshold: 0.6,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "帮您催一下快递" }),
+          conversationId: "301",
+          fromType: 1,
+          id: "9002",
+          msgtime: 1_780_244_060_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "谢谢" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9003",
+          msgtime: 1_780_244_120_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "不客气" }),
+          conversationId: "301",
+          fromType: 1,
+          id: "9004",
+          msgtime: 1_780_244_180_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => {
+        throw new Error("model should not be called when messages are insufficient");
+      }),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.startAnalysisRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: "job-1",
+        mode: "final",
+        sourceMessageFrom: "9001",
+        sourceMessageTo: "9004",
+      }),
+    );
+    expect(model.analyzeSession).not.toHaveBeenCalled();
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        job: expect.objectContaining({
+          mode: "final",
+        }),
+        output: expect.objectContaining({
+          actionItems: [],
+          faqCandidates: [],
+          problemResolution: expect.objectContaining({
+            problemDetected: false,
+            problemSummary: "消息不足，未进行模型分析",
+            resolutionStatus: "unknown",
+            unresolvedReason: "AI有效消息数不足",
+          }),
+          summary: expect.objectContaining({
+            customerIntent: "消息不足",
+            processSummary: "AI有效消息数不足，未进行模型分析",
+            resultSummary: "消息不足",
+          }),
+        }),
+        runId: "run-1",
+        sourceMessageHighWatermark: "9004",
+        validationWarnings: [],
+      }),
+    );
+    expect(repository.markAnalysisRunSucceededWithoutSnapshot).not.toHaveBeenCalled();
+    expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
+  });
+
+  it("skips live LLM analysis without writing a snapshot when AI-ready messages are below policy threshold", async () => {
     const repository = createRepository({
       claimNextAnalyzeJob: vi.fn(async () => ({
         analysisScope: "all",
@@ -1427,6 +1534,333 @@ describe("InsightsWorkerService", () => {
         uid: 9001,
       })),
       getAnalysisPolicy: vi.fn(async () => ({
+        minAnalysisMessages: 5,
+        lowConfidenceThreshold: 0.6,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "帮您催一下快递" }),
+          conversationId: "301",
+          fromType: 1,
+          id: "9002",
+          msgtime: 1_780_244_060_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => {
+        throw new Error("model should not be called when messages are insufficient");
+      }),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(model.analyzeSession).not.toHaveBeenCalled();
+    expect(repository.saveAnalysisResult).not.toHaveBeenCalled();
+    expect(repository.markAnalysisRunSucceededWithoutSnapshot).toHaveBeenCalledWith({
+      reason: "AI有效消息数 2 低于最小分析消息数 5",
+      runId: "run-1",
+    });
+    expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
+  });
+
+  it("skips manual reanalysis with a final insufficient-information snapshot when AI-ready messages are below policy threshold", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "manual_reanalyze",
+        rescanTaskId: "9901",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      getAnalysisPolicy: vi.fn(async () => ({
+        minAnalysisMessages: 5,
+        lowConfidenceThreshold: 0.6,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => {
+        throw new Error("model should not be called when messages are insufficient");
+      }),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(model.analyzeSession).not.toHaveBeenCalled();
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        job: expect.objectContaining({
+          mode: "manual_reanalyze",
+        }),
+        output: expect.objectContaining({
+          summary: expect.objectContaining({
+            customerIntent: "消息不足",
+          }),
+        }),
+      }),
+    );
+    expect(repository.updateRescanTaskAfterAnalysis).toHaveBeenCalledWith({
+      failedSessions: 0,
+      rescanTaskId: "9901",
+      succeededSessions: 1,
+    });
+  });
+
+  it("preserves out-of-scope dimensions when scoped manual reanalysis has insufficient messages", async () => {
+    const previousOutput = {
+      actionItems: [
+        {
+          evidenceMessageIds: ["9002"],
+          priority: "high" as const,
+          title: "确认快递状态",
+        },
+      ],
+      entities: [
+        {
+          confidence: 0.8,
+          entityId: "sku-1",
+          entityName: "白色羽绒服",
+          entityType: "product",
+          evidenceMessageIds: ["9001"],
+        },
+      ],
+      faqCandidates: [
+        {
+          answerHint: "先查物流轨迹",
+          evidenceMessageIds: ["9001"],
+          question: "物流停滞怎么办",
+          status: "candidate",
+        },
+      ],
+      intents: [
+        {
+          confidence: 0.7,
+          evidenceMessageIds: ["9001"],
+          intentCode: "logistics",
+          intentName: "物流咨询",
+        },
+      ],
+      problemResolution: {
+        confidence: 0.82,
+        evidence: [],
+        evidenceMessageIds: ["9001"],
+        problemDetected: true,
+        problemSummary: "客户反馈物流异常",
+        resolutionStatus: "unresolved" as const,
+      },
+      qaFindings: [
+        {
+          confidence: 0.8,
+          evidenceMessageIds: ["9002"],
+          passed: true,
+          reason: "客服有回应",
+          ruleCode: "reply_quality",
+          severity: "high" as const,
+        },
+      ],
+      sentiment: [
+        {
+          confidence: 0.75,
+          evidenceMessageIds: ["9001"],
+          polarity: "negative" as const,
+          reason: "客户表达不满",
+        },
+      ],
+      summary: {
+        customerIntent: "查物流",
+        processSummary: "客服承诺处理",
+        resultSummary: "尚未解决",
+      },
+      tags: [
+        {
+          confidence: 0.6,
+          evidenceMessageIds: ["9001"],
+          tagCode: "old",
+          tagName: "旧标签",
+        },
+      ],
+    };
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "classification",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "manual_reanalyze",
+        rescanTaskId: "9901",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      getAnalysisPolicy: vi.fn(async () => ({
+        minAnalysisMessages: 5,
+        lowConfidenceThreshold: 0.6,
+      })),
+      getCurrentAnalysisOutput: vi.fn(async () => previousOutput),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => {
+        throw new Error("model should not be called when messages are insufficient");
+      }),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(model.analyzeSession).not.toHaveBeenCalled();
+    expect(repository.getCurrentAnalysisOutput).toHaveBeenCalledWith({
+      sessionId: "501",
+      uid: 9001,
+    });
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output: expect.objectContaining({
+          actionItems: previousOutput.actionItems,
+          entities: [],
+          faqCandidates: previousOutput.faqCandidates,
+          intents: [],
+          problemResolution: previousOutput.problemResolution,
+          qaFindings: previousOutput.qaFindings,
+          sentiment: previousOutput.sentiment,
+          summary: previousOutput.summary,
+          tags: [],
+        }),
+        resultKind: "insufficient_messages",
+      }),
+    );
+  });
+
+  it("runs LLM analysis when AI-ready messages exactly meet the policy threshold", async () => {
+    const rows = Array.from({ length: 5 }, (_, index) => ({
+      chatType: 1,
+      content: JSON.stringify({ content: `消息 ${index + 1}` }),
+      conversationId: "301",
+      fromType: index % 2 === 0 ? 2 : 1,
+      id: String(9001 + index),
+      msgtime: 1_780_244_000_000 + index * 60_000,
+      msgtype: "text",
+      thirdUserId: "user-1",
+    }));
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      getAnalysisPolicy: vi.fn(async () => ({
+        minAnalysisMessages: 5,
+        lowConfidenceThreshold: 0.6,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => rows),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [
+          {
+            evidenceMessageIds: ["9001"],
+            priority: "high",
+            title: "跟进物流异常",
+          },
+        ],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.82,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户咨询物流",
+          resolutionStatus: "unknown",
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          customerIntent: "查物流",
+          processSummary: "客服处理中",
+          resultSummary: "待确认",
+        },
+        tags: [],
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(model.analyzeSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({ sourceMessageId: "9001" }),
+          expect.objectContaining({ sourceMessageId: "9005" }),
+        ]),
+      }),
+    );
+    expect(repository.markAnalysisRunSucceededWithoutSnapshot).not.toHaveBeenCalled();
+    expect(repository.saveAnalysisResult).toHaveBeenCalled();
+  });
+
+  it("normalizes low-confidence problem resolution to unknown and suppresses action items", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "live",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      getAnalysisPolicy: vi.fn(async () => ({
+        minAnalysisMessages: 1,
         lowConfidenceThreshold: 0.75,
       })),
       listIncrementalMessages: vi.fn(async () => []),
@@ -1455,12 +1889,12 @@ describe("InsightsWorkerService", () => {
           evidenceMessageIds: [],
           problemDetected: true,
           problemSummary: "客户反馈物流异常",
-          resolutionStatus: "unknown",
+          resolutionStatus: "unresolved",
+          unresolvedReason: "物流异常未处理",
         },
         qaFindings: [],
         sentiment: [],
         summary: {
-          confidence: 0.9,
           customerIntent: "物流异常",
           processSummary: "客服已回复",
           resultSummary: "结果不明确",
@@ -1475,9 +1909,17 @@ describe("InsightsWorkerService", () => {
     expect(repository.getAnalysisPolicy).toHaveBeenCalledWith(9001);
     expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
       expect.objectContaining({
-        validationWarnings: expect.arrayContaining([
-          expect.stringContaining("confidence 0.62 is below threshold 0.75"),
-        ]),
+        output: expect.objectContaining({
+          actionItems: [],
+          problemResolution: expect.objectContaining({
+            confidence: 0.62,
+            problemDetected: false,
+            problemSummary: "客户反馈物流异常",
+            resolutionStatus: "unknown",
+            unresolvedReason: "物流异常未处理",
+          }),
+        }),
+        validationWarnings: [],
       }),
     );
   });
@@ -1528,7 +1970,6 @@ describe("InsightsWorkerService", () => {
         },
       ],
       summary: {
-        confidence: 0.9,
         customerIntent: "查物流",
         processSummary: "客服承诺处理",
         resultSummary: "尚未解决",
@@ -1615,7 +2056,6 @@ describe("InsightsWorkerService", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          confidence: 0,
           customerIntent: "",
           processSummary: "",
           resultSummary: "",
@@ -1702,7 +2142,6 @@ describe("InsightsWorkerService", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          confidence: 0.88,
           customerIntent: "查物流",
           processSummary: "客服处理中",
           resultSummary: "待确认",
@@ -1780,7 +2219,6 @@ describe("InsightsWorkerService", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          confidence: 0.8,
           customerIntent: "发货咨询",
           processSummary: "客服未明确回复",
           resultSummary: "待确认",
@@ -1913,7 +2351,6 @@ describe("InsightsWorkerService", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          confidence: 0.8,
           customerIntent: "寒暄",
           processSummary: "客服已回复",
           resultSummary: "无需处理",

@@ -151,6 +151,8 @@ const defaultConfig: InsightWorkerSessionizationConfig = {
 const DEFAULT_LIVE_MIN_INTERVAL_MINUTES = 15;
 const DEFAULT_LIVE_MIN_NEW_MEANINGFUL_MESSAGES = 20;
 const DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.6;
+const DEFAULT_MIN_ANALYSIS_MESSAGES = 5;
+const LIVE_RUN_WATERMARK_LOOKBACK_LIMIT = 20;
 const PRE_CONTEXT_CANDIDATE_MULTIPLIER = 5;
 const cursorSource = "xy_wap_embed_msg_audit_info";
 const globalCursorUid = 0;
@@ -403,16 +405,23 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   async getAnalysisPolicy(uid: number): Promise<InsightWorkerAnalysisPolicy> {
     const row = await this.db
       .selectFrom("xy_wap_embed_insight_analysis_policy")
-      .select(["low_confidence_threshold"])
+      .select(["low_confidence_threshold", "min_analysis_messages"])
       .where("uid", "=", uid)
       .where("enabled", "=", 1)
-      .executeTakeFirst() as { low_confidence_threshold: number | string } | undefined;
+      .executeTakeFirst() as {
+        low_confidence_threshold: number | string;
+        min_analysis_messages: number | string;
+      } | undefined;
     const threshold = Number(row?.low_confidence_threshold);
+    const minAnalysisMessages = Number(row?.min_analysis_messages);
 
     return {
       lowConfidenceThreshold: Number.isFinite(threshold)
         ? threshold
         : DEFAULT_LOW_CONFIDENCE_THRESHOLD,
+      minAnalysisMessages: Number.isFinite(minAnalysisMessages) && minAnalysisMessages > 0
+        ? minAnalysisMessages
+        : DEFAULT_MIN_ANALYSIS_MESSAGES,
     };
   }
 
@@ -1309,7 +1318,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       })),
       sentiment: detail.sentiment,
       summary: {
-        confidence: 1,
         customerIntent: detail.current.summaryCustomerIntent,
         followUp: detail.current.summaryFollowUp ?? undefined,
         processSummary: detail.current.summaryProcess ?? "",
@@ -1533,6 +1541,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         "live_analysis_enabled",
         "live_min_interval_minutes",
         "live_min_new_meaningful_messages",
+        "min_analysis_messages",
       ])
       .where("uid", "=", input.uid)
       .where("enabled", "=", 1)
@@ -1540,6 +1549,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         live_analysis_enabled: number | string;
         live_min_interval_minutes: number | string;
         live_min_new_meaningful_messages: number | string;
+        min_analysis_messages: number | string;
       } | undefined;
     const liveEnabled = policy ? Number(policy.live_analysis_enabled) === 1 : true;
 
@@ -1561,31 +1571,62 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       return false;
     }
 
-    const minMessages = policy
+    const liveMinMessages = policy
       ? parseNumber(policy.live_min_new_meaningful_messages)
       : DEFAULT_LIVE_MIN_NEW_MEANINGFUL_MESSAGES;
+    const minAnalysisMessages = policy
+      ? parseNumber(policy.min_analysis_messages)
+      : DEFAULT_MIN_ANALYSIS_MESSAGES;
+    const minMessages = Math.max(liveMinMessages, minAnalysisMessages);
     const minIntervalMs = (policy
       ? parseNumber(policy.live_min_interval_minutes)
       : DEFAULT_LIVE_MIN_INTERVAL_MINUTES) * 60_000;
-    const latestLiveRun = await this.db
+    const liveRuns = await this.db
       .selectFrom("xy_wap_embed_analysis_run")
-      .select(["source_message_to", "create_time"])
+      .select(["source_message_to", "create_time", "error_code"])
       .where("session_id", "=", parsePositiveInteger(input.sessionId) ?? -1)
       .where("mode", "=", "live")
       .where("status", "in", ["running", "succeeded"])
       .orderBy("id", "desc")
-      .executeTakeFirst() as {
+      .limit(LIVE_RUN_WATERMARK_LOOKBACK_LIMIT)
+      .execute() as Array<{
         create_time: Date | string;
+        error_code: string | null;
         source_message_to: number | string | null;
-      } | undefined;
+      }>;
+    const latestLiveRun = liveRuns.at(0);
 
     if (latestLiveRun && Date.now() - new Date(latestLiveRun.create_time).getTime() < minIntervalMs) {
       return false;
     }
 
-    const sinceMessageId = latestLiveRun?.source_message_to == null
+    let latestAnalyzedLiveRun: { source_message_to: number | string | null } | undefined = liveRuns.find((run) =>
+      run.error_code !== "INSUFFICIENT_MESSAGES"
+    );
+
+    if (!latestAnalyzedLiveRun && liveRuns.length >= LIVE_RUN_WATERMARK_LOOKBACK_LIMIT) {
+      latestAnalyzedLiveRun = await this.db
+        .selectFrom("xy_wap_embed_analysis_run")
+        .select(["source_message_to"])
+        .where("session_id", "=", parsePositiveInteger(input.sessionId) ?? -1)
+        .where("mode", "=", "live")
+        .where("status", "in", ["running", "succeeded"])
+        .where((eb) =>
+          eb.or([
+            eb("error_code", "is", null),
+            eb("error_code", "!=", "INSUFFICIENT_MESSAGES"),
+          ])
+        )
+        .orderBy("id", "desc")
+        .limit(1)
+        .executeTakeFirst() as {
+          source_message_to: number | string | null;
+        } | undefined;
+    }
+
+    const sinceMessageId = latestAnalyzedLiveRun?.source_message_to == null
       ? 0
-      : parseNumber(latestLiveRun.source_message_to);
+      : parseNumber(latestAnalyzedLiveRun.source_message_to);
     const row = await this.db
       .selectFrom("xy_wap_embed_logical_session_message")
       .select((eb) => eb.fn.count<number>("id").as("count"))
@@ -1595,7 +1636,11 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .where("source_message_id", ">", sinceMessageId)
       .executeTakeFirst() as { count: number | string } | undefined;
 
-    return parseNumber(row?.count) >= minMessages;
+    if (parseNumber(row?.count) < minMessages) {
+      return false;
+    }
+
+    return true;
   }
 
   async saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string> {
@@ -1605,7 +1650,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .insertInto("xy_wap_embed_session_insight_snapshot")
       .values({
         analysis_version: "insights-v1",
-        phase: input.job.mode === "final" ? "final" : "live",
+        phase: input.job.mode === "final" || input.resultKind === "insufficient_messages" ? "final" : "live",
         prompt_version: "insights-v1",
         rule_version: "insights-v1",
         session_id: sessionId,
@@ -1622,7 +1667,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     const evidenceRows: EvidenceInsertRow[] = [];
 
     await this.db.insertInto("xy_wap_embed_session_summary").values({
-      confidence: output.summary.confidence,
       customer_intent: output.summary.customerIntent,
       follow_up: output.summary.followUp ?? null,
       process_summary: output.summary.processSummary,
@@ -1785,6 +1829,20 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       status: "succeeded",
       update_time: new Date(),
     }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
+  }
+
+  async markAnalysisRunSucceededWithoutSnapshot(input: {
+    reason: string;
+    runId: string;
+  }): Promise<void> {
+    // Succeeded means the worker handled the run; INSUFFICIENT_MESSAGES classifies the skip reason.
+    await this.db.updateTable("xy_wap_embed_analysis_run").set({
+      error_code: "INSUFFICIENT_MESSAGES",
+      error_message: input.reason,
+      finished_at: new Date(),
+      status: "succeeded",
+      update_time: new Date(),
+    }).where("id", "=", parsePositiveInteger(input.runId) ?? -1).executeTakeFirst();
   }
 
   async postponeAnalysisJobForInputReadiness(

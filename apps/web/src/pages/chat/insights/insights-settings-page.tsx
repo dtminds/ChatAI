@@ -1183,13 +1183,13 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
       <SettingsSection title="未完结会话">
         <BooleanSettingRow
           checked={analysisForm.liveAnalysisEnabled}
-          description="会话未结束时提前生成风险、待办和问题判断"
+          description="会话未结束时提前生成摘要、待办和业务归因"
           label="未完结会话提前分析"
           onChange={(liveAnalysisEnabled) => setAnalysisForm((current) => ({ ...current, liveAnalysisEnabled }))}
         />
         {analysisForm.liveAnalysisEnabled ? (
           <FrequencyPresetRow
-            description="高频更及时，标准可减少重复判断"
+            description="控制未完结会话多久重新分析一次，会消耗更多 AI 分析次数"
             label="未完结会话分析频率"
             onChange={updateFrequency}
             value={detectAnalysisFrequencyPreset(analysisForm)}
@@ -1197,10 +1197,19 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
         ) : null}
       </SettingsSection>
 
-      <SettingsSection title="低可信提示">
+      <SettingsSection title="准入规则">
+        <NumberSettingRow
+          description="会话中的消息数少于该数量时，AI 会跳过分析，避免得出无效结论"
+          label="有效会话门槛"
+          onChange={(minAnalysisMessages) => setAnalysisForm((current) => ({ ...current, minAnalysisMessages }))}
+          max={100}
+          min={1}
+          suffix="条"
+          value={analysisForm.minAnalysisMessages}
+        />
         <SliderSettingRow
-          description="阈值越高，越多结果会提示人工复核"
-          label="低可信提示阈值"
+          description="低于该阈值时，问题解决判断会标记为未知，且不会自动生成待办"
+          label="AI 置信度阈值"
           onChange={(lowConfidenceThreshold) => setAnalysisForm((current) => ({ ...current, lowConfidenceThreshold }))}
           value={analysisForm.lowConfidenceThreshold}
         />
@@ -1432,6 +1441,63 @@ function SliderSettingRow({
   );
 }
 
+function NumberSettingRow({
+  description,
+  label,
+  max,
+  min,
+  onChange,
+  suffix,
+  value,
+}: {
+  description: string;
+  label: string;
+  max: number;
+  min: number;
+  onChange: (value: number) => void;
+  suffix?: string;
+  value: number;
+}) {
+  const [draftValue, setDraftValue] = useState(String(value));
+
+  useEffect(() => {
+    setDraftValue(String(value));
+  }, [value]);
+
+  return (
+    <SettingsRow description={description} label={label}>
+      <div className="flex items-center gap-2">
+        <Input
+          aria-label={label}
+          className="w-28 text-right"
+          max={max}
+          min={min}
+          onBlur={() => {
+            if (draftValue === "") {
+              setDraftValue(String(value));
+            }
+          }}
+          onChange={(event) => {
+            const rawValue = event.currentTarget.value;
+            setDraftValue(rawValue);
+            if (rawValue === "") {
+              return;
+            }
+            const parsed = Number(rawValue);
+            if (Number.isFinite(parsed)) {
+              onChange(Math.max(min, Math.min(max, Math.trunc(parsed))));
+            }
+          }}
+          step={1}
+          type="number"
+          value={draftValue}
+        />
+        {suffix ? <span className="text-sm text-muted-foreground">{suffix}</span> : null}
+      </div>
+    </SettingsRow>
+  );
+}
+
 function detectAnalysisFrequencyPreset(policy: InsightAnalysisPolicy): AnalysisFrequencyPresetValue {
   const matchedPreset = analysisFrequencyPresets.find(
     (preset) =>
@@ -1448,6 +1514,7 @@ function normalizeAnalysisPolicyForCompare(policy: InsightAnalysisPolicy) {
     liveMinIntervalMinutes: policy.liveMinIntervalMinutes,
     liveMinNewMeaningfulMessages: policy.liveMinNewMeaningfulMessages,
     lowConfidenceThreshold: policy.lowConfidenceThreshold,
+    minAnalysisMessages: policy.minAnalysisMessages,
   };
 }
 
@@ -1467,6 +1534,7 @@ function isInsightPolicySame(
     && currentAnalysisPolicy.liveMinIntervalMinutes === baseline.analysisPolicy.liveMinIntervalMinutes
     && currentAnalysisPolicy.liveMinNewMeaningfulMessages === baseline.analysisPolicy.liveMinNewMeaningfulMessages
     && currentAnalysisPolicy.lowConfidenceThreshold === baseline.analysisPolicy.lowConfidenceThreshold
+    && currentAnalysisPolicy.minAnalysisMessages === baseline.analysisPolicy.minAnalysisMessages
     && current.sessionization.analysisDelayMinutes === baseline.sessionization.analysisDelayMinutes
     && current.sessionization.hardMaxDurationHours === baseline.sessionization.hardMaxDurationHours
     && current.sessionization.idleTimeoutMinutes === baseline.sessionization.idleTimeoutMinutes

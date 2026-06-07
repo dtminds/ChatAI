@@ -486,7 +486,6 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
       reason: readString(item, "reason"),
     })),
     summary: {
-      confidence: readNumber(summary, "confidence"),
       customerIntent: readString(summary, "customerIntent"),
       followUp: readOptionalString(summary, "followUp"),
       processSummary: readString(summary, "processSummary"),

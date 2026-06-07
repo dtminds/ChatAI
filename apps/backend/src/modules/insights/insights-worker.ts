@@ -220,7 +220,6 @@ export type InsightAnalysisOutput = {
     reason: string;
   }>;
   summary: {
-    confidence: number;
     customerIntent: string;
     followUp?: string;
     processSummary: string;
@@ -247,6 +246,7 @@ export type InsightEvidenceReference = {
 export type SaveAnalysisResultInput = {
   job: ClaimedAnalyzeJob;
   output: InsightAnalysisOutput;
+  resultKind?: "insufficient_messages" | "model_analysis";
   runId: string;
   sourceMessageHighWatermark: string | null;
   validationWarnings: string[];
@@ -254,6 +254,7 @@ export type SaveAnalysisResultInput = {
 
 export type InsightWorkerAnalysisPolicy = {
   lowConfidenceThreshold: number;
+  minAnalysisMessages: number;
 };
 
 export type InsightSessionAnalyzer = {
@@ -342,6 +343,11 @@ export type InsightWorkerRepositoryPort = {
   markAnalysisJobFailed(jobId: string, error: unknown): Promise<void>;
   markAnalysisJobSucceeded(jobId: string): Promise<void>;
   markAnalysisRunFailed(runId: string, error: unknown): Promise<void>;
+  // The run completed successfully, but model analysis was skipped before publishing a snapshot.
+  markAnalysisRunSucceededWithoutSnapshot(input: {
+    reason: string;
+    runId: string;
+  }): Promise<void>;
   markSyncMessagesJobFailed(jobId: string, error: unknown): Promise<void>;
   markSyncMessagesJobSucceeded(jobId: string): Promise<void>;
   markCleanupDisabledInsightsJobFailed(jobId: string, error: unknown): Promise<void>;
@@ -1004,6 +1010,7 @@ export class InsightsWorkerService {
       const pendingInputWarnings = pendingTranscriptionCount > 0
         ? ["存在未完成语音转写"]
         : [];
+      const policy = await this.repository.getAnalysisPolicy(job.uid);
       runId = await this.repository.startAnalysisRun({
         analysisScope: job.analysisScope,
         jobId: job.jobId,
@@ -1012,6 +1019,58 @@ export class InsightsWorkerService {
         sourceMessageFrom: sourceMessageIds.at(0) ?? null,
         sourceMessageTo: sourceMessageIds.at(-1) ?? null,
       });
+      if (modelMessages.length < policy.minAnalysisMessages) {
+        const reason = `AI有效消息数 ${modelMessages.length} 低于最小分析消息数 ${policy.minAnalysisMessages}`;
+
+        if (job.mode === "live") {
+          await this.repository.markAnalysisRunSucceededWithoutSnapshot({
+            reason,
+            runId,
+          });
+        } else {
+          const previousOutput = job.analysisScope === "all"
+            ? undefined
+            : await this.repository.getCurrentAnalysisOutput({
+              sessionId: job.sessionId,
+              uid: job.uid,
+            });
+          const output = mergeScopedAnalysisOutput(
+            job.analysisScope,
+            previousOutput,
+            buildInsufficientMessagesOutput(),
+          );
+
+          await this.repository.saveAnalysisResult({
+            job,
+            output,
+            resultKind: "insufficient_messages",
+            runId,
+            sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
+            validationWarnings: [],
+          });
+        }
+
+        await this.repository.markAnalysisJobSucceeded(job.jobId);
+        if (job.rescanTaskId) {
+          await this.repository.updateRescanTaskAfterAnalysis({
+            failedSessions: 0,
+            rescanTaskId: job.rescanTaskId,
+            succeededSessions: 1,
+          });
+        }
+        this.logger?.info(
+          {
+            jobId: job.jobId,
+            messageCount: modelMessages.length,
+            minAnalysisMessages: policy.minAnalysisMessages,
+            mode: job.mode,
+            sessionId: job.sessionId,
+            uid: job.uid,
+          },
+          "会话洞察 worker 跳过模型分析，消息不足",
+        );
+        return;
+      }
       const context = await this.repository.getPromptContext(job.uid);
       const previousSessionContexts = await this.repository.listPreviousSessionContexts({
         currentSessionId: job.sessionId,
@@ -1036,18 +1095,19 @@ export class InsightsWorkerService {
       const { analysisWarnings, output: cleanAnalyzerOutput } = splitAnalyzerOutput(analyzerOutput);
       const configuredOutput = filterConfiguredAnalysisOutput(cleanAnalyzerOutput, context);
       const output = normalizeEvidenceIds(configuredOutput.output, new Set(sourceMessageIds));
-      const mergedOutput = mergeScopedAnalysisOutput(job.analysisScope, previousOutput, output.output);
+      const confidenceAdjustedOutput = applyProblemResolutionConfidencePolicy(policy, output.output);
+      const mergedOutput = mergeScopedAnalysisOutput(job.analysisScope, previousOutput, confidenceAdjustedOutput);
       const validationWarnings = [
         ...analysisWarnings,
         ...configuredOutput.validationWarnings,
         ...output.validationWarnings,
         ...pendingInputWarnings,
-        ...await this.getConfidenceWarnings(job.uid, mergedOutput),
       ];
 
       const snapshotId = await this.repository.saveAnalysisResult({
         job,
         output: mergedOutput,
+        resultKind: "model_analysis",
         runId,
         sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
         validationWarnings,
@@ -1099,16 +1159,51 @@ export class InsightsWorkerService {
     }
   }
 
-  private async getConfidenceWarnings(uid: number, output: InsightAnalysisOutput) {
-    const policy = await this.repository.getAnalysisPolicy(uid);
-    const confidence = Math.min(output.summary.confidence, output.problemResolution.confidence);
+}
 
-    if (confidence >= policy.lowConfidenceThreshold) {
-      return [];
-    }
+function buildInsufficientMessagesOutput(): InsightAnalysisOutput {
+  return {
+    actionItems: [],
+    entities: [],
+    faqCandidates: [],
+    intents: [],
+    problemResolution: {
+      confidence: 0,
+      evidence: [],
+      evidenceMessageIds: [],
+      problemDetected: false,
+      problemSummary: "消息不足，未进行模型分析",
+      resolutionStatus: "unknown",
+      unresolvedReason: "AI有效消息数不足",
+    },
+    qaFindings: [],
+    sentiment: [],
+    summary: {
+      customerIntent: "消息不足",
+      processSummary: "AI有效消息数不足，未进行模型分析",
+      resultSummary: "消息不足",
+    },
+    tags: [],
+  };
+}
 
-    return [`confidence ${confidence} is below threshold ${policy.lowConfidenceThreshold}`];
+function applyProblemResolutionConfidencePolicy(
+  policy: InsightWorkerAnalysisPolicy,
+  output: InsightAnalysisOutput,
+): InsightAnalysisOutput {
+  if (output.problemResolution.confidence >= policy.lowConfidenceThreshold) {
+    return output;
   }
+
+  return {
+    ...output,
+    actionItems: [],
+    problemResolution: {
+      ...output.problemResolution,
+      problemDetected: false,
+      resolutionStatus: "unknown",
+    },
+  };
 }
 
 function splitAnalyzerOutput(output: InsightAnalyzerOutput) {

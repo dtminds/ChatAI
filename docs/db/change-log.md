@@ -131,3 +131,36 @@ ALTER TABLE xy_wap_embed_session_entity
 ALTER TABLE xy_wap_embed_session_intent
   DROP KEY idx_session_intent_code;
 ```
+
+## 2026-06-07
+
+- Removed `xy_wap_embed_session_summary.confidence`; summary confidence is no longer produced, parsed, or stored.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_session_summary
+  DROP COLUMN confidence;
+```
+
+- Added `xy_wap_embed_insight_analysis_policy.min_analysis_messages` as the tenant-level minimum AI-ready message count before model analysis runs. Live jobs below the threshold skip snapshot creation; final/manual jobs below the threshold write a deterministic insufficient-information final snapshot.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_insight_analysis_policy
+  ADD COLUMN min_analysis_messages INT UNSIGNED NOT NULL DEFAULT 5 COMMENT '触发模型分析的最少AI有效消息数'
+  AFTER low_confidence_threshold;
+```
+
+- Added live-analysis scheduling indexes so open-session checks can find recent live runs and count AI-ready session messages by source-message watermark.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_analysis_run
+  ADD KEY idx_analysis_run_live_watermark (session_id, mode, status, id);
+
+ALTER TABLE xy_wap_embed_logical_session_message
+  ADD KEY idx_session_message_ai_count (session_id, included_for_ai, meaningful_for_boundary, source_message_id);
+```

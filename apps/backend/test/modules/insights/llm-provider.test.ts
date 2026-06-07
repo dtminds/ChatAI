@@ -120,7 +120,6 @@ describe("LLM provider config", () => {
                     qaFindings: [],
                     sentiment: [],
                     summary: {
-                      confidence: 0.8,
                       customerIntent: "咨询",
                       processSummary: "已回复",
                       resultSummary: "已解决",
@@ -198,7 +197,6 @@ describe("LLM provider config", () => {
                 },
               ],
               summary: {
-                confidence: 0.88,
                 customerIntent: "查物流",
                 processSummary: "客服承诺处理",
                 resultSummary: "尚未解决",
@@ -361,7 +359,6 @@ describe("LLM provider config", () => {
               },
               sentiment: [],
               summary: {
-                confidence: 0.8,
                 customerIntent: "查物流",
                 processSummary: "客服处理中",
                 resultSummary: "待确认",
@@ -576,7 +573,6 @@ describe("LLM provider config", () => {
                     },
                     sentiment: [],
                     summary: {
-                      confidence: 0.8,
                       customerIntent: "查物流",
                       processSummary: "客服处理中",
                       resultSummary: "待确认",
@@ -711,7 +707,6 @@ describe("LLM provider config", () => {
                   qaFindings: [],
                   sentiment: [],
                   summary: {
-                    confidence: 0.8,
                     customerIntent: "寒暄",
                     processSummary: "无明确问题",
                     resultSummary: "无需处理",
@@ -811,7 +806,6 @@ describe("LLM provider config", () => {
                   qaFindings: [],
                   sentiment: [],
                   summary: {
-                    confidence: 0.8,
                     customerIntent: "寒暄",
                     processSummary: "无明确问题",
                     resultSummary: "无需处理",
@@ -946,7 +940,6 @@ describe("LLM provider config", () => {
                     qaFindings: [],
                     sentiment: [],
                     summary: {
-                      confidence: 0.8,
                       customerIntent: "寒暄",
                       processSummary: "客服已回复",
                       resultSummary: "无需处理",
@@ -1037,7 +1030,6 @@ describe("LLM provider config", () => {
                       qaFindings: [],
                       sentiment: [],
                       summary: {
-                        confidence: 0.8,
                         customerIntent: "查物流",
                         processSummary: "客服承诺处理",
                         resultSummary: "尚未解决",

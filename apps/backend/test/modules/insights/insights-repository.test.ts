@@ -974,6 +974,65 @@ describe("InsightsRepository", () => {
     expect(updateBuilder?.whereCalls).toContainEqual(["uid", "=", 9001]);
   });
 
+  it("persists and reads analysis policy minimum analysis messages", async () => {
+    let insertedPolicy: Record<string, unknown> | undefined;
+    const db = {
+      insertInto: vi.fn((table: string) => createInsertBuilder(
+        async () => ({ numAffectedRows: 1n }),
+        {
+          onValues: (values) => {
+            if (table === "xy_wap_embed_insight_analysis_policy") {
+              insertedPolicy = values as Record<string, unknown>;
+            }
+          },
+          table,
+        },
+      )),
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_sessionization_config") {
+          return createSelectBuilder([], table);
+        }
+
+        if (table === "xy_wap_embed_insight_analysis_policy") {
+          return createSelectBuilder([
+            {
+              final_analysis_enabled: 1,
+              live_analysis_enabled: 1,
+              live_min_interval_minutes: 15,
+              live_min_new_meaningful_messages: 20,
+              low_confidence_threshold: "0.6000",
+              min_analysis_messages: 8,
+              rule_fallback_enabled: 1,
+            },
+          ], table);
+        }
+
+        if (table === "xy_wap_embed_insight_feature_config") {
+          return createSelectBuilder([], table);
+        }
+
+        return createSelectBuilder([], table);
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.upsertAnalysisPolicy({ uid: 9001 }, {
+      finalAnalysisEnabled: true,
+      liveAnalysisEnabled: true,
+      liveMinIntervalMinutes: 15,
+      liveMinNewMeaningfulMessages: 20,
+      lowConfidenceThreshold: 0.6,
+      minAnalysisMessages: 8,
+      ruleFallbackEnabled: true,
+    })).resolves.toMatchObject({
+      minAnalysisMessages: 8,
+    });
+
+    expect(insertedPolicy).toEqual(expect.objectContaining({
+      min_analysis_messages: 8,
+    }));
+  });
+
   it("builds business intent facts from snapshot labels without joining current configs", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
@@ -1032,6 +1091,45 @@ describe("InsightsRepository", () => {
 });
 
 describe("MysqlInsightWorkerRepository", () => {
+  it("loads worker analysis policy including minimum analysis messages and falls back to defaults", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.getAnalysisPolicy(9001)).resolves.toEqual({
+      lowConfidenceThreshold: 0.6,
+      minAnalysisMessages: 5,
+    });
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_insight_analysis_policy");
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain("min_analysis_messages");
+  });
+
+  it("loads configured worker analysis policy minimum analysis messages", async () => {
+    const db = {
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder([
+          {
+            low_confidence_threshold: "0.7000",
+            min_analysis_messages: 8,
+          },
+        ], table)
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.getAnalysisPolicy(9001)).resolves.toEqual({
+      lowConfidenceThreshold: 0.7,
+      minAnalysisMessages: 8,
+    });
+  });
+
   it("finds an existing logical session by source message during rescan", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
@@ -1555,6 +1653,140 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(jobQuery?.whereCalls.some((call) => call[0] === "idempotency_key" && call[1] === "like")).toBe(false);
   });
 
+  it("waits for minimum analysis messages after an insufficient live run before triggering again", async () => {
+    const skippedRun = {
+      create_time: new Date(Date.now() - 20 * 60_000),
+      error_code: "INSUFFICIENT_MESSAGES",
+      id: 6001,
+      source_message_to: 9004,
+    };
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_insight_analysis_policy") {
+          return createSelectBuilder([
+            {
+              live_analysis_enabled: 1,
+              live_min_interval_minutes: 15,
+              live_min_new_meaningful_messages: 4,
+              min_analysis_messages: 20,
+            },
+          ], table);
+        }
+
+        if (table === "xy_wap_embed_analysis_run") {
+          return createSelectBuilder([skippedRun], table);
+        }
+
+        if (table === "xy_wap_embed_logical_session_message") {
+          return createSelectBuilder([{ count: 19 }], table);
+        }
+
+        return createSelectBuilder([], table);
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.shouldCreateLiveAnalyzeJob({
+      occurredAt: 1_780_244_000_000,
+      sessionId: "501",
+      uid: 9001,
+    })).resolves.toBe(false);
+
+    const messageQueriesAfterSkippedRun = (db.selectFrom as ReturnType<typeof vi.fn>).mock.results
+      .map((result) => result.value as SelectBuilderStub)
+      .filter((builder) => builder.table === "xy_wap_embed_logical_session_message");
+    expect(messageQueriesAfterSkippedRun).toHaveLength(1);
+    expect(messageQueriesAfterSkippedRun[0]?.whereCalls).toContainEqual(["source_message_id", ">", 0]);
+    expect((db.selectFrom as ReturnType<typeof vi.fn>).mock.calls.filter(([table]) =>
+      table === "xy_wap_embed_analysis_run"
+    )).toHaveLength(1);
+
+    db.selectFrom = vi.fn((table: string) => {
+      if (table === "xy_wap_embed_insight_analysis_policy") {
+        return createSelectBuilder([
+          {
+            live_analysis_enabled: 1,
+            live_min_interval_minutes: 15,
+            live_min_new_meaningful_messages: 4,
+            min_analysis_messages: 20,
+          },
+        ], table);
+      }
+
+      if (table === "xy_wap_embed_analysis_run") {
+        return createSelectBuilder([skippedRun], table);
+      }
+
+      if (table === "xy_wap_embed_logical_session_message") {
+        return createSelectBuilder([{ count: 20 }], table);
+      }
+
+      return createSelectBuilder([], table);
+    });
+
+    await expect(repository.shouldCreateLiveAnalyzeJob({
+      occurredAt: 1_780_244_060_000,
+      sessionId: "501",
+      uid: 9001,
+    })).resolves.toBe(true);
+  });
+
+  it("falls back to an older analyzed live run when the lookback window only contains insufficient runs", async () => {
+    const insufficientRuns = Array.from({ length: 20 }, (_, index) => ({
+      create_time: new Date(Date.now() - (20 + index) * 60_000),
+      error_code: "INSUFFICIENT_MESSAGES",
+      id: 7000 - index,
+      source_message_to: 9200 - index,
+    }));
+    const olderAnalyzedRun = {
+      source_message_to: 9000,
+    };
+    let analysisRunQueryCount = 0;
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_insight_analysis_policy") {
+          return createSelectBuilder([
+            {
+              live_analysis_enabled: 1,
+              live_min_interval_minutes: 15,
+              live_min_new_meaningful_messages: 4,
+              min_analysis_messages: 20,
+            },
+          ], table);
+        }
+
+        if (table === "xy_wap_embed_analysis_run") {
+          analysisRunQueryCount += 1;
+          return createSelectBuilder(analysisRunQueryCount === 1 ? insufficientRuns : [olderAnalyzedRun], table);
+        }
+
+        if (table === "xy_wap_embed_logical_session_message") {
+          return createSelectBuilder([{ count: 20 }], table);
+        }
+
+        return createSelectBuilder([], table);
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.shouldCreateLiveAnalyzeJob({
+      occurredAt: 1_780_244_120_000,
+      sessionId: "501",
+      uid: 9001,
+    })).resolves.toBe(true);
+
+    const analysisRunQueries = (db.selectFrom as ReturnType<typeof vi.fn>).mock.results
+      .map((result) => result.value as SelectBuilderStub)
+      .filter((builder) => builder.table === "xy_wap_embed_analysis_run");
+    expect(analysisRunQueries).toHaveLength(2);
+    expect(analysisRunQueries[1]?.whereCalls).toContainEqual(["error_code", "!=", "INSUFFICIENT_MESSAGES"]);
+
+    const messageQuery = (db.selectFrom as ReturnType<typeof vi.fn>).mock.results
+      .map((result) => result.value as SelectBuilderStub)
+      .find((builder) => builder.table === "xy_wap_embed_logical_session_message");
+    expect(messageQuery?.whereCalls).toContainEqual(["source_message_id", ">", 9000]);
+  });
+
   it("updates rescan task progress and completion state without a follow-up select", async () => {
     const updates: UpdateBuilderStub[] = [];
     const db = {
@@ -1931,7 +2163,6 @@ describe("MysqlInsightWorkerRepository", () => {
           },
         ],
         summary: {
-          confidence: 0.9,
           customerIntent: "查物流",
           processSummary: "已登记",
           resultSummary: "未解决",
@@ -1971,6 +2202,105 @@ describe("MysqlInsightWorkerRepository", () => {
       && builder.whereCalls.some((call) => call[0] === "id" && call[2] === 501),
     );
     expect(logicalSessionUpdate?.whereCalls).toContainEqual(["uid", "=", 9001]);
+  });
+
+  it("writes insufficient-message manual reanalysis snapshots as final", async () => {
+    const snapshotValues: Record<string, unknown>[] = [];
+    let nextInsertId = 7001;
+    const db = {
+      insertInto: vi.fn((table: string) => createInsertBuilder(async () => ({ insertId: nextInsertId++ }), {
+        onValues: (values) => {
+          if (table === "xy_wap_embed_session_insight_snapshot") {
+            snapshotValues.push(values as Record<string, unknown>);
+          }
+        },
+        table,
+      })),
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          table === "xy_wap_embed_logical_session"
+            ? [{ conversation_id: 301 }]
+            : [],
+          table,
+        )
+      ),
+      updateTable: vi.fn((table: string) => createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table })),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.saveAnalysisResult({
+      job: {
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "manual_reanalyze",
+        sessionId: "501",
+        uid: 9001,
+      },
+      output: {
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0,
+          evidence: [],
+          evidenceMessageIds: [],
+          problemDetected: false,
+          problemSummary: "消息不足，未进行模型分析",
+          resolutionStatus: "unknown",
+          unresolvedReason: "AI有效消息数不足",
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          customerIntent: "消息不足",
+          processSummary: "AI有效消息数不足，未进行模型分析",
+          resultSummary: "消息不足",
+        },
+        tags: [],
+      },
+      resultKind: "insufficient_messages",
+      runId: "6001",
+      sourceMessageHighWatermark: "9001",
+      validationWarnings: [],
+    });
+
+    expect(snapshotValues[0]).toEqual(expect.objectContaining({
+      phase: "final",
+      status: "building",
+    }));
+  });
+
+  it("marks live insufficient-message runs succeeded without publishing a snapshot", async () => {
+    let analysisRunUpdate: UpdateBuilderStub | undefined;
+    const db = {
+      updateTable: vi.fn((table: string) => createUpdateBuilder(
+        async () => ({ numAffectedRows: 1n }),
+        {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_analysis_run") {
+              analysisRunUpdate = builder;
+            }
+          },
+          table,
+        },
+      )),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.markAnalysisRunSucceededWithoutSnapshot({
+      reason: "AI有效消息数 2 低于最小分析消息数 5",
+      runId: "6001",
+    });
+
+    expect(analysisRunUpdate?.setCalls[0]).toMatchObject({
+      error_code: "INSUFFICIENT_MESSAGES",
+      error_message: "AI有效消息数 2 低于最小分析消息数 5",
+      status: "succeeded",
+    });
+    expect(analysisRunUpdate?.whereCalls).toContainEqual(["id", "=", 6001]);
   });
 
   it("batches insight evidence rows into one insert after dimension rows are written", async () => {
@@ -2062,7 +2392,6 @@ describe("MysqlInsightWorkerRepository", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          confidence: 0.9,
           customerIntent: "查物流",
           processSummary: "客户咨询物流",
           resultSummary: "待跟进",
@@ -2081,6 +2410,8 @@ describe("MysqlInsightWorkerRepository", () => {
       validationWarnings: [],
     });
 
+    const summaryInsert = insertValues.find((entry) => entry.table === "xy_wap_embed_session_summary");
+    expect(summaryInsert?.values).not.toHaveProperty("confidence");
     const evidenceInserts = insertValues.filter((entry) => entry.table === "xy_wap_embed_insight_evidence");
     for (const table of [
       "xy_wap_embed_session_action_item",
@@ -2161,7 +2492,6 @@ describe("MysqlInsightWorkerRepository", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          confidence: 0.9,
           customerIntent: "查物流",
           processSummary: "客户咨询物流",
           resultSummary: "待跟进",
@@ -2336,6 +2666,7 @@ function createInsertBuilder(
     columnsCalls: [] as string[][],
     executeTakeFirst: executeTakeFirstOrThrow,
     executeTakeFirstOrThrow,
+    execute: async () => [await executeTakeFirstOrThrow()],
     expressionCalls: 0,
     ignoreCalls: 0,
     columns: (columns: string[]) => {

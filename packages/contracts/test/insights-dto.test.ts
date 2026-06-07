@@ -530,6 +530,7 @@ describe("insights DTOs", () => {
           liveMinIntervalMinutes: 15,
           liveMinNewMeaningfulMessages: 20,
           lowConfidenceThreshold: 0.6,
+          minAnalysisMessages: 5,
           ruleFallbackEnabled: true,
         },
         entityDictionary: [
@@ -682,9 +683,31 @@ describe("insights DTOs", () => {
         liveMinIntervalMinutes: 8,
         liveMinNewMeaningfulMessages: 5,
         lowConfidenceThreshold: 0.55,
+        minAnalysisMessages: 5,
         ruleFallbackEnabled: true,
       }),
     ).toBe(true);
+    expect(
+      Value.Check(InsightAnalysisPolicyUpdateRequestSchema, {
+        finalAnalysisEnabled: true,
+        liveAnalysisEnabled: true,
+        liveMinIntervalMinutes: 8,
+        liveMinNewMeaningfulMessages: 5,
+        lowConfidenceThreshold: 0.55,
+        ruleFallbackEnabled: true,
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(InsightAnalysisPolicyUpdateRequestSchema, {
+        finalAnalysisEnabled: true,
+        liveAnalysisEnabled: true,
+        liveMinIntervalMinutes: 8,
+        liveMinNewMeaningfulMessages: 5,
+        lowConfidenceThreshold: 0.55,
+        minAnalysisMessages: 0,
+        ruleFallbackEnabled: true,
+      }),
+    ).toBe(false);
 
     expect(
       Value.Check(InsightLabelConfigMutationRequestSchema, {

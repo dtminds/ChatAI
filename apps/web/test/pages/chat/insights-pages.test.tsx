@@ -53,6 +53,7 @@ const mockInsightSettings = {
     liveMinIntervalMinutes: 15,
     liveMinNewMeaningfulMessages: 20,
     lowConfidenceThreshold: 0.6,
+    minAnalysisMessages: 5,
     ruleFallbackEnabled: true,
   },
   entityDictionary: [
@@ -977,6 +978,8 @@ function installInsightMocks() {
     analysisPolicy: mockInsightSettings.analysisPolicy,
     sessionization: mockInsightSettings.sessionization,
   });
+  serviceMocks.updateInsightAnalysisPolicy.mockImplementation(async (payload) => payload);
+  serviceMocks.updateInsightSessionizationSettings.mockImplementation(async (payload) => payload);
   serviceMocks.getInsightFeatureConfig.mockResolvedValue(mockInsightSettings.featureConfig);
   serviceMocks.listInsightIntentConfigs.mockResolvedValue(mockInsightSettings.intentConfigs);
   serviceMocks.listInsightLabelConfigs.mockResolvedValue(mockInsightSettings.labelConfigs);
@@ -1858,7 +1861,16 @@ describe("conversation insights pages", () => {
     expect(screen.queryByText("私域运营")).not.toBeInTheDocument();
     expect(screen.queryByText("自定义")).not.toBeInTheDocument();
     expect(screen.getByText("未完结会话提前分析")).toBeInTheDocument();
+    expect(screen.getByText("会话未结束时提前生成摘要、待办和业务归因")).toBeInTheDocument();
     expect(screen.getByText("未完结会话分析频率")).toBeInTheDocument();
+    expect(screen.getByText("控制未完结会话多久重新分析一次，会消耗更多 AI 分析次数")).toBeInTheDocument();
+    expect(screen.getByText("准入规则")).toBeInTheDocument();
+    expect(screen.getByText("有效会话门槛")).toBeInTheDocument();
+    expect(screen.getByText("会话中的消息数少于该数量时，AI 会跳过分析，避免得出无效结论")).toBeInTheDocument();
+    expect(screen.getByText("AI 置信度阈值")).toBeInTheDocument();
+    expect(screen.getByText("低于该阈值时，问题解决判断会标记为未知，且不会自动生成待办")).toBeInTheDocument();
+    expect(screen.queryByText("低可信提示阈值")).not.toBeInTheDocument();
+    expect(screen.queryByText("阈值越高，越多结果会提示人工复核")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("combobox", { name: "未完结会话分析频率" }));
@@ -1881,6 +1893,18 @@ describe("conversation insights pages", () => {
     expect(await screen.findByRole("option", { name: "5 分钟" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "立即" })).not.toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
+
+    await userEvent.clear(screen.getByRole("spinbutton", { name: "有效会话门槛" }));
+    await userEvent.type(screen.getByRole("spinbutton", { name: "有效会话门槛" }), "8");
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => {
+      expect(serviceMocks.updateInsightAnalysisPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          minAnalysisMessages: 8,
+        }),
+      );
+    });
 
     await userEvent.click(screen.getByRole("switch", { name: "未完结会话提前分析" }));
     expect(screen.queryByText("未完结会话分析频率")).not.toBeInTheDocument();

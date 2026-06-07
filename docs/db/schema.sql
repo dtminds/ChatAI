@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
   UNIQUE KEY uk_session_message_source_uid (uid, source_message_id),
   KEY idx_session_message_order (session_id, source_message_time, source_message_id),
   KEY idx_session_message_asset (session_id, message_type, source_message_id),
+  KEY idx_session_message_ai_count (session_id, included_for_ai, meaningful_for_boundary, source_message_id),
   KEY idx_session_message_conversation_time (uid, conversation_id, source_message_time),
   KEY idx_session_message_source (source_message_id)
 ) COMMENT='逻辑会话消息归属表';
@@ -190,13 +191,14 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_analysis_run (
   model_name VARCHAR(128) NULL COMMENT '模型名称',
   prompt_version VARCHAR(64) NULL COMMENT '提示词版本',
   raw_output_ref VARCHAR(512) NULL COMMENT '原始输出引用',
-  error_code VARCHAR(128) NULL COMMENT '错误码',
-  error_message VARCHAR(1024) NULL COMMENT '错误信息',
+  error_code VARCHAR(128) NULL COMMENT '错误或跳过原因码',
+  error_message VARCHAR(1024) NULL COMMENT '错误或跳过原因说明',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   finished_at DATETIME NULL COMMENT '完成时间',
   PRIMARY KEY (id),
   KEY idx_analysis_run_session (session_id, create_time),
+  KEY idx_analysis_run_live_watermark (session_id, mode, status, id),
   KEY idx_analysis_run_job (job_id)
 ) COMMENT='会话洞察模型分析运行记录表';
 
@@ -234,7 +236,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_summary (
   process_summary VARCHAR(2048) NOT NULL COMMENT '处理过程摘要',
   result_summary VARCHAR(2048) NOT NULL COMMENT '当前结果摘要',
   follow_up VARCHAR(2048) NULL COMMENT '跟进建议',
-  confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
@@ -390,6 +391,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_analysis_policy (
   final_analysis_enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用最终分析',
   rule_fallback_enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用规则降级',
   low_confidence_threshold DECIMAL(5,4) NOT NULL COMMENT '低置信度阈值',
+  min_analysis_messages INT UNSIGNED NOT NULL DEFAULT 5 COMMENT '触发模型分析的最少AI有效消息数',
   status TINYINT NOT NULL DEFAULT 1 COMMENT '配置状态，1启用0禁用-1删除',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

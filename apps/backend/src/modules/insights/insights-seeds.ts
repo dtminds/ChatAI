@@ -7,6 +7,7 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
     liveMinIntervalMinutes: 15,
     liveMinNewMeaningfulMessages: 20,
     lowConfidenceThreshold: 0.6,
+    minAnalysisMessages: 5,
     ruleFallbackEnabled: true,
   },
   featureConfig: {

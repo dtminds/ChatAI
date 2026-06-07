@@ -185,6 +185,7 @@ describe("insights service adapter", () => {
       liveMinIntervalMinutes: 15,
       liveMinNewMeaningfulMessages: 20,
       lowConfidenceThreshold: 0.6,
+      minAnalysisMessages: 5,
       ruleFallbackEnabled: true,
     });
     await updateInsightFeatureConfig({

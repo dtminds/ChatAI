@@ -49,7 +49,9 @@ export type InsightQualityQuery = {
   from?: string;
   page?: number;
   pageSize?: number;
+  passed?: boolean;
   to?: string;
+  view?: "agent-report" | "all" | "quality-results";
 };
 
 export type InsightOverviewQuery = {

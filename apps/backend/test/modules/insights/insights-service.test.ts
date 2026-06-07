@@ -226,28 +226,63 @@ const qaFindingAggregate = {
   ],
 } satisfies Awaited<NonNullable<InsightsRepositoryPort["getQaFindingAggregate"]>>;
 
+const qualityResults = [
+  {
+    agentAvatarUrl: "https://example.com/agent-1.png",
+    agentName: "客服一号",
+    conversationId: "301",
+    customerAvatarUrl: "https://example.com/customer-1.png",
+    customerName: "张三",
+    lastCustomerMessageAt: 1_780_244_900_000,
+    passed: false,
+    passedRules: 1,
+    rules: [
+      { passed: false, ruleCode: "reply_quality", ruleName: "回复质量" },
+      { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
+    ],
+    sessionId: "501",
+    summary: "客户反馈物流异常",
+    totalRules: 2,
+  },
+  {
+    agentAvatarUrl: "https://example.com/agent-2.png",
+    agentName: "客服二号",
+    conversationId: "302",
+    customerAvatarUrl: "https://example.com/customer-2.png",
+    customerName: "李四",
+    lastCustomerMessageAt: 1_780_243_900_000,
+    passed: true,
+    passedRules: 2,
+    rules: [
+      { passed: true, ruleCode: "reply_quality", ruleName: "回复质量" },
+      { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
+    ],
+    sessionId: "502",
+    summary: "客户咨询退款到账时间",
+    totalRules: 2,
+  },
+] satisfies Awaited<NonNullable<InsightsRepositoryPort["listQualityResults"]>>["items"];
+
 const qualityAgentStats = [
   {
     agentAvatarUrl: "https://example.com/agent-1.png",
     agentName: "客服一号",
     agentSeatId: "seat-1",
-    partial: 0,
-    problemSessions: 1,
-    resolved: 0,
+    failedSessions: 1,
+    inspectedSessions: 1,
+    passedSessions: 0,
+    passRate: 0,
     totalSessions: 1,
-    unresolved: 1,
-    unresolvedRate: 1,
   },
   {
     agentAvatarUrl: "https://example.com/agent-2.png",
     agentName: "客服二号",
     agentSeatId: "seat-2",
-    partial: 1,
-    problemSessions: 1,
-    resolved: 0,
+    failedSessions: 0,
+    inspectedSessions: 1,
+    passedSessions: 1,
+    passRate: 1,
     totalSessions: 1,
-    unresolved: 0,
-    unresolvedRate: 0,
   },
 ] satisfies Awaited<NonNullable<InsightsRepositoryPort["listQualityAgentStats"]>>;
 
@@ -483,6 +518,10 @@ function createRepository(
     getOverviewAggregate: vi.fn(async (_scope, filters) =>
       filters.from === "2026-05-02T00:00:00.000+08:00" ? previousOverviewAggregate : overviewAggregate
     ),
+    listQualityResults: vi.fn(async (_scope, filters) => ({
+      items: filters?.passed === false ? qualityResults.filter((item) => !item.passed) : qualityResults,
+      total: filters?.passed === false ? 1 : qualityResults.length,
+    })),
     hasActiveRescanTask: vi.fn(async () => false),
     listQualityAgentStats: vi.fn(async () => qualityAgentStats),
     listBusinessSessionAggregates: vi.fn(async () => businessSessionAggregates),
@@ -963,10 +1002,10 @@ describe("InsightsService", () => {
     });
   });
 
-  it("builds service quality counts, unresolved ordering and reasons", async () => {
+  it("builds service quality counts and paginated failed QA results", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
-    const result = await service.getQuality(scope);
+    const result = await service.getQuality(scope, { passed: false });
 
     expect(result.overview).toMatchObject({
       analyzedSessions: 3,
@@ -978,24 +1017,16 @@ describe("InsightsService", () => {
       totalSessions: 4,
       unresolved: 1,
     });
-    expect(result.unresolvedSessions.map((item) => item.sessionId)).toEqual(["501", "502"]);
-    expect(result.unresolvedSessions[0]).toMatchObject({
-      evidenceMessageIds: ["9001", "9002"],
-      resolutionStatus: "unresolved",
-      unresolvedReason: "售后/物流/退款进度未确认",
+    expect(result.qualityResults.map((item) => item.sessionId)).toEqual(["501"]);
+    expect(result.qualityResults[0]).toMatchObject({
+      passed: false,
+      passedRules: 1,
+      rules: [
+        { passed: false, ruleCode: "reply_quality", ruleName: "回复质量" },
+        { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
+      ],
+      totalRules: 2,
     });
-    expect(result.unresolvedReasons).toEqual([
-      {
-        count: 1,
-        reasonCode: "售后/物流/退款进度未确认",
-        reasonLabel: "售后/物流/退款进度未确认",
-      },
-      {
-        count: 1,
-        reasonCode: "要求客户等待但未说明下一步",
-        reasonLabel: "要求客户等待但未说明下一步",
-      },
-    ]);
     expect(repository.getQualityAggregate).toHaveBeenCalledWith(scope, {
       from: undefined,
       to: undefined,
@@ -1005,11 +1036,14 @@ describe("InsightsService", () => {
       to: undefined,
     });
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
-    expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, expect.objectContaining({
+    expect(repository.listCurrentSessions).not.toHaveBeenCalledWith(scope, expect.objectContaining({
+      problemScope: "unresolved",
+    }));
+    expect(repository.listQualityResults).toHaveBeenCalledWith(scope, expect.objectContaining({
       from: undefined,
       page: 1,
       pageSize: 20,
-      problemScope: "unresolved",
+      passed: false,
       to: undefined,
     }));
   });
@@ -1044,10 +1078,10 @@ describe("InsightsService", () => {
     });
   });
 
-  it("paginates quality unresolved sessions", async () => {
+  it("paginates quality QA results", async () => {
     const repository = createRepository({
-      listCurrentSessions: vi.fn(async (_scope, filters) => ({
-        items: [baseRows[1]],
+      listQualityResults: vi.fn(async (_scope, filters) => ({
+        items: [qualityResults[1]!],
         total: 2,
       })),
     });
@@ -1056,32 +1090,98 @@ describe("InsightsService", () => {
     const result = await service.getQuality(scope, {
       from: "2026-06-01",
       page: 2,
+      passed: false,
       pageSize: 1,
       to: "2026-06-30",
     });
 
-    expect(result.unresolvedSessions).toEqual([
+    expect(result.qualityResults).toEqual([
       expect.objectContaining({
+        passed: true,
         sessionId: "502",
       }),
     ]);
-    expect(result.unresolvedSessionsPage).toMatchObject({
+    expect(result.qualityResultsPage).toMatchObject({
       page: 2,
       pageSize: 1,
       total: 2,
       totalPages: 2,
     });
-    expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, {
+    expect(repository.listQualityResults).toHaveBeenCalledWith(scope, {
       from: "2026-06-01",
       page: 2,
       pageSize: 1,
-      problemScope: "unresolved",
+      passed: false,
       to: "2026-06-30",
     });
     expect(repository.listQualityAgentStats).toHaveBeenCalledWith(scope, {
       from: "2026-06-01",
       to: "2026-06-30",
     });
+  });
+
+  it("does not apply QA result pass filter when requesting all quality results", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await service.getQuality(scope, {
+      from: "2026-06-01",
+      page: 1,
+      pageSize: 10,
+      to: "2026-06-30",
+    });
+
+    expect(repository.listQualityResults).toHaveBeenCalledWith(scope, expect.objectContaining({
+      from: "2026-06-01",
+      page: 1,
+      pageSize: 10,
+      passed: undefined,
+      to: "2026-06-30",
+    }));
+  });
+
+  it("skips quality result list when requesting the agent quality report", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    const result = await service.getQuality(scope, {
+      from: "2026-06-01",
+      to: "2026-06-30",
+      view: "agent-report",
+    });
+
+    expect(result.agentStats).toHaveLength(2);
+    expect(result.qualityResults).toEqual([]);
+    expect(result.qualityResultsPage).toMatchObject({
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      totalPages: 1,
+    });
+    expect(repository.listQualityAgentStats).toHaveBeenCalledWith(scope, {
+      from: "2026-06-01",
+      to: "2026-06-30",
+    });
+    expect(repository.listQualityResults).not.toHaveBeenCalled();
+  });
+
+  it("skips agent quality report when requesting quality results", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    const result = await service.getQuality(scope, {
+      from: "2026-06-01",
+      to: "2026-06-30",
+      view: "quality-results",
+    });
+
+    expect(result.agentStats).toEqual([]);
+    expect(result.qualityResults).toHaveLength(2);
+    expect(repository.listQualityAgentStats).not.toHaveBeenCalled();
+    expect(repository.listQualityResults).toHaveBeenCalledWith(scope, expect.objectContaining({
+      from: "2026-06-01",
+      to: "2026-06-30",
+    }));
   });
 
   it("builds business topic analytics from current snapshots", async () => {

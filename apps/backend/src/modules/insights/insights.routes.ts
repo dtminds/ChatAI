@@ -63,7 +63,13 @@ const QualityQuerySchema = Type.Object({
   from: Type.Optional(DateQuerySchema),
   page: Type.Optional(Type.Number()),
   pageSize: Type.Optional(Type.Number()),
+  passed: Type.Optional(Type.Boolean()),
   to: Type.Optional(DateQuerySchema),
+  view: Type.Optional(Type.Union([
+    Type.Literal("agent-report"),
+    Type.Literal("all"),
+    Type.Literal("quality-results"),
+  ])),
 });
 
 const OverviewSessionsQuerySchema = Type.Object({
@@ -874,7 +880,9 @@ function normalizeQualityQuery(query: QualityQuery) {
     from: query.from,
     page: normalizePositiveQueryNumber(query.page),
     pageSize: normalizePositiveQueryNumber(query.pageSize),
+    passed: query.passed,
     to: query.to,
+    view: query.view,
   };
 }
 

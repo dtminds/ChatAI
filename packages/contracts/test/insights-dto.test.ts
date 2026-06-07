@@ -224,19 +224,18 @@ describe("insights DTOs", () => {
     ).toBe(true);
   });
 
-  it("requires quality result evidence and resolution status", () => {
+  it("requires quality result evidence and pass status", () => {
     expect(
       Value.Check(InsightsQualityResponseSchema, {
         agentStats: [
           {
             agentName: "客服一号",
             agentSeatId: "101",
-            partial: 1,
-            problemSessions: 6,
-            resolved: 4,
+            failedSessions: 2,
+            inspectedSessions: 6,
+            passedSessions: 4,
             totalSessions: 8,
-            unresolved: 1,
-            unresolvedRate: 0.125,
+            passRate: 4 / 6,
           },
         ],
         overview: {
@@ -254,30 +253,28 @@ describe("insights DTOs", () => {
           totalSessions: 10,
           unresolved: 1,
         },
-        unresolvedReasons: [
-          {
-            count: 1,
-            reasonCode: "reply_not_cover_problem",
-            reasonLabel: "回复未覆盖客户问题",
-          },
-        ],
-        unresolvedSessionsPage: {
+        qualityResultsPage: {
           page: 1,
           pageSize: 10,
           total: 1,
           totalPages: 1,
         },
-        unresolvedSessions: [
+        qualityResults: [
           {
             agentName: "客服一号",
             conversationId: "301",
             customerName: "张三",
-            evidenceMessageIds: ["9001"],
             lastCustomerMessageAt: 1780243200000,
-            problemSummary: "客户询问退款进度",
-            resolutionStatus: "unresolved",
+            passed: false,
+            passedRules: 2,
+            rules: [
+              { passed: false, ruleCode: "reply_quality", ruleName: "回复质量" },
+              { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
+              { passed: true, ruleCode: "tone", ruleName: "服务语气" },
+            ],
             sessionId: "session-1",
-            unresolvedReason: "客服未确认退款处理进度",
+            summary: "客户咨询退款处理进度，客服未确认后续状态",
+            totalRules: 3,
           },
         ],
       }),

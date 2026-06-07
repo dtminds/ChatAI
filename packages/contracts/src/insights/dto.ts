@@ -291,45 +291,44 @@ export const InsightsQualityAgentStatSchema = Type.Object({
   agentAvatarUrl: Type.Optional(Type.String()),
   agentName: Type.String(),
   agentSeatId: Type.String(),
-  partial: Type.Number(),
-  problemSessions: Type.Number(),
-  resolved: Type.Number(),
+  failedSessions: Type.Number(),
+  inspectedSessions: Type.Number(),
+  passedSessions: Type.Number(),
+  passRate: Type.Number(),
   totalSessions: Type.Number(),
-  unresolved: Type.Number(),
-  unresolvedRate: Type.Number(),
 });
 
-export const InsightsUnresolvedReasonSchema = Type.Object({
-  count: Type.Number(),
-  reasonCode: Type.String(),
-  reasonLabel: Type.String(),
+export const InsightsQualityRuleResultSchema = Type.Object({
+  passed: Type.Boolean(),
+  ruleCode: Type.String(),
+  ruleName: Type.String(),
 });
 
-export const InsightsUnresolvedSessionSchema = Type.Object({
+export const InsightsQualityResultSchema = Type.Object({
   agentAvatarUrl: Type.Optional(Type.String()),
   agentName: Type.Optional(Type.String()),
   conversationId: Type.String(),
   customerAvatarUrl: Type.Optional(Type.String()),
   customerName: Type.String(),
-  evidenceMessageIds: Type.Array(Type.String()),
   lastCustomerMessageAt: Type.Optional(Type.Number()),
-  problemSummary: Type.String(),
-  resolutionStatus: InsightResolutionStatusSchema,
+  passed: Type.Boolean(),
+  passedRules: Type.Number(),
+  rules: Type.Array(InsightsQualityRuleResultSchema),
   sessionId: Type.String(),
-  unresolvedReason: Type.String(),
+  summary: Type.String(),
+  totalRules: Type.Number(),
 });
 
 export const InsightsQualityResponseSchema = Type.Object({
   agentStats: Type.Array(InsightsQualityAgentStatSchema),
   overview: InsightsQualityOverviewSchema,
-  unresolvedReasons: Type.Array(InsightsUnresolvedReasonSchema),
-  unresolvedSessionsPage: Type.Object({
+  qualityResultsPage: Type.Object({
     page: Type.Number(),
     pageSize: Type.Number(),
     total: Type.Number(),
     totalPages: Type.Number(),
   }),
-  unresolvedSessions: Type.Array(InsightsUnresolvedSessionSchema),
+  qualityResults: Type.Array(InsightsQualityResultSchema),
 });
 
 export const InsightFollowUpItemSchema = Type.Object({

@@ -783,18 +783,74 @@ function installInsightMocks() {
     total: 1,
     totalPages: 1,
   });
-  serviceMocks.getInsightQuality.mockResolvedValue({
+  const qualityResults = [
+    {
+      agentAvatarUrl: "https://example.com/agent-1.png",
+      agentName: "客服一号",
+      conversationId: "301",
+      customerAvatarUrl: "https://example.com/customer-1.png",
+      customerName: "张三",
+      lastCustomerMessageAt: 1_780_244_100_000,
+      passed: false,
+      passedRules: 1,
+      rules: [
+        { passed: false, ruleCode: "reply_quality", ruleName: "回复质量" },
+        { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
+      ],
+      sessionId: "501",
+      summary: "客户反馈物流异常",
+      totalRules: 2,
+    },
+    {
+      agentAvatarUrl: "https://example.com/agent-2.png",
+      agentName: "客服二号",
+      conversationId: "302",
+      customerAvatarUrl: "https://example.com/customer-2.png",
+      customerName: "李四",
+      lastCustomerMessageAt: 1_780_244_500_000,
+      passed: true,
+      passedRules: 2,
+      rules: [
+        { passed: true, ruleCode: "reply_quality", ruleName: "回复质量" },
+        { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
+      ],
+      sessionId: "502",
+      summary: "客户咨询退款到账时间",
+      totalRules: 2,
+    },
+    {
+      agentAvatarUrl: "https://example.com/agent-3.png",
+      agentName: "客服三号",
+      conversationId: "303",
+      customerAvatarUrl: "https://example.com/customer-3.png",
+      customerName: "王五",
+      lastCustomerMessageAt: 1_780_244_800_000,
+      passed: false,
+      passedRules: 0,
+      rules: [
+        { passed: false, ruleCode: "reply_quality", ruleName: "回复质量" },
+      ],
+      sessionId: "503",
+      summary: "",
+      totalRules: 1,
+    },
+  ];
+  serviceMocks.getInsightQuality.mockImplementation(async (query = {}) => {
+    const filteredResults = query.passed == null
+      ? qualityResults
+      : qualityResults.filter((item) => item.passed === query.passed);
+
+    return {
     agentStats: [
       {
         agentAvatarUrl: "https://example.com/agent-report.png",
         agentName: "企微小助手1号",
         agentSeatId: "seat-1",
-        partial: 2,
-        problemSessions: 21,
-        resolved: 18,
+        failedSessions: 3,
+        inspectedSessions: 21,
+        passedSessions: 18,
+        passRate: 0.8571,
         totalSessions: 13,
-        unresolved: 3,
-        unresolvedRate: 0.1429,
       },
     ],
     overview: {
@@ -822,39 +878,14 @@ function installInsightMocks() {
       totalSessions: 22,
       unresolved: 5,
     },
-    unresolvedReasons: [
-      { count: 3, reasonCode: "logistics_pending", reasonLabel: "售后/物流/退款进度未确认" },
-    ],
-    unresolvedSessions: [
-      {
-        agentAvatarUrl: "https://example.com/agent-1.png",
-        agentName: "客服一号",
-        conversationId: "301",
-        customerAvatarUrl: "https://example.com/customer-1.png",
-        customerName: "张三",
-        evidenceMessageIds: ["9001", "9002"],
-        lastCustomerMessageAt: 1_780_244_100_000,
-        problemSummary: "客户反馈物流异常",
-        resolutionStatus: "unresolved",
-        sessionId: "501",
-        severity: "high",
-        unresolvedReason: "售后/物流/退款进度未确认",
-      },
-      {
-        agentAvatarUrl: "https://example.com/agent-2.png",
-        agentName: "客服二号",
-        conversationId: "302",
-        customerAvatarUrl: "https://example.com/customer-2.png",
-        customerName: "李四",
-        evidenceMessageIds: ["9004"],
-        lastCustomerMessageAt: 1_780_244_500_000,
-        problemSummary: "客户咨询退款到账时间",
-        resolutionStatus: "resolved",
-        sessionId: "502",
-        severity: "medium",
-        unresolvedReason: "",
-      },
-    ],
+    qualityResults: filteredResults,
+    qualityResultsPage: {
+      page: query.page ?? 1,
+      pageSize: 10,
+      total: filteredResults.length,
+      totalPages: 1,
+    },
+  };
   });
   serviceMocks.getInsightFollowUps.mockResolvedValue({
     items: [
@@ -1451,8 +1482,8 @@ describe("conversation insights pages", () => {
     );
   });
 
-  it("renders quality problem list and agent report", async () => {
-    renderRoute("/chat/insights/quality?resolutionStatus=unresolved");
+  it("renders quality result list and agent report", async () => {
+    renderRoute("/chat/insights/quality");
 
     expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
     expect(screen.queryByText("按咨询会话判断客户问题是否解决，辅助主管复核服务质量")).not.toBeInTheDocument();
@@ -1463,6 +1494,7 @@ describe("conversation insights pages", () => {
         page: 1,
         pageSize: 10,
         to: "2026-06-03",
+        view: "agent-report",
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
@@ -1515,32 +1547,79 @@ describe("conversation insights pages", () => {
     expect(within(otherItem!).getByText("3.6%")).toBeInTheDocument();
     expect(within(otherItem!).getByText("4")).toBeInTheDocument();
     expect(within(qualityDistribution).queryByText("推荐不恰当")).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "问题列表" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "客服报表" })).toBeInTheDocument();
+    const qualityTabs = screen.getByRole("tablist");
+    expect(within(qualityTabs).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "客服报表",
+      "质检结果",
+    ]);
+    expect(screen.getByRole("tab", { name: "客服报表", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "质检结果", selected: false })).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "客服账号",
+      "接待会话数",
+      "质检会话数",
+      "质检覆盖率",
+      "质检通过数",
+      "质检未通过数",
+      "质检通过率",
+    ]);
+    expect(screen.getByText("企微小助手1号")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "企微小助手1号" })).toBeInTheDocument();
+    expect(screen.getByText("161.54%")).toBeInTheDocument();
+    expect(screen.getByText("85.71%")).toBeInTheDocument();
+    const callsBeforeQualityResults = serviceMocks.getInsightQuality.mock.calls.length;
+
+    await userEvent.click(screen.getByRole("tab", { name: "质检结果" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightQuality).toHaveBeenCalledTimes(callsBeforeQualityResults + 1);
+    });
+    expect(serviceMocks.getInsightQuality).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        view: "quality-results",
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(screen.getByRole("columnheader", { name: "客户" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "接待客服" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "摘要" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "时间" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "质检结果" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
     expect(screen.queryByText("无明确问题")).not.toBeInTheDocument();
     expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
-    expect(screen.getAllByText("售后/物流/退款进度未确认").length).toBeGreaterThan(0);
+    expect(screen.getByText("-")).toBeInTheDocument();
+    expect(screen.queryByText("回复质量")).not.toBeInTheDocument();
+    expect(screen.queryByText("售后/物流/退款进度未确认")).not.toBeInTheDocument();
+    expect(screen.getByText("未通过 1/2")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "张三" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "客服一号" })).toBeInTheDocument();
     expect(screen.queryByText("会话 301")).not.toBeInTheDocument();
     expect(screen.queryByText("客户咨询退款到账时间")).not.toBeInTheDocument();
 
+    await userEvent.hover(screen.getByText("未通过 1/2"));
+
+    const ruleMenu = await screen.findByRole("menu");
+    expect(within(ruleMenu).getAllByText("回复质量").length).toBeGreaterThan(0);
+    expect(within(ruleMenu).getAllByText("未通过").length).toBeGreaterThan(0);
+    expect(within(ruleMenu).getAllByText("明确下一步").length).toBeGreaterThan(0);
+    expect(within(ruleMenu).getAllByText("已通过").length).toBeGreaterThan(0);
+
     await userEvent.click(screen.getByRole("combobox"));
-    await userEvent.click(await screen.findByRole("option", { name: "全部问题" }));
+    await userEvent.click(await screen.findByRole("option", { name: "全部结果" }));
 
     expect(screen.getByText("客户咨询退款到账时间")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("tab", { name: "客服报表" }));
-
-    expect(screen.getByRole("columnheader", { name: "客服账号" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "接待会话数" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "客户问题数" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "质检通过数" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "质检未通过数" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "质检通过率" })).toBeInTheDocument();
-    expect(screen.getByText("企微小助手1号")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "企微小助手1号" })).toBeInTheDocument();
-    expect(screen.getByText("85.71%")).toBeInTheDocument();
+    expect(screen.getAllByText("已通过").length).toBeGreaterThan(0);
+    expect(screen.queryByText("2 / 2")).not.toBeInTheDocument();
+    expect(serviceMocks.getInsightQuality).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        page: 1,
+        pageSize: 10,
+        passed: undefined,
+        view: "quality-results",
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("keeps quality distribution slots when fewer than ten rules are available", async () => {
@@ -1562,9 +1641,8 @@ describe("conversation insights pages", () => {
         totalSessions: 6,
         unresolved: 3,
       },
-      unresolvedReasons: [],
-      unresolvedSessions: [],
-      unresolvedSessionsPage: {
+      qualityResults: [],
+      qualityResultsPage: {
         page: 1,
         pageSize: 10,
         total: 0,
@@ -1616,8 +1694,13 @@ describe("conversation insights pages", () => {
         totalSessions: 0,
         unresolved: 0,
       },
-      unresolvedReasons: [],
-      unresolvedSessions: [],
+      qualityResults: [],
+      qualityResultsPage: {
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        totalPages: 1,
+      },
     });
     await expect(qualityGate.promise).resolves.toBeDefined();
   });
@@ -2457,7 +2540,7 @@ describe("conversation insights pages", () => {
     cleanup();
     mockSession("admin");
     installInsightMocks();
-    serviceMocks.getInsightQuality.mockImplementation(() => new Promise(() => undefined));
+    serviceMocks.getInsightQuality.mockImplementationOnce(() => new Promise(() => undefined));
     renderRoute("/chat/insights/quality");
 
     expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
@@ -2471,6 +2554,41 @@ describe("conversation insights pages", () => {
 
     expect(await screen.findByRole("heading", { name: "待处理" })).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "正在加载会话" })).toBeInTheDocument();
+  });
+
+  it("shows a loading row when switching quality result views", async () => {
+    serviceMocks.getInsightQuality
+      .mockResolvedValueOnce({
+        agentStats: [],
+        overview: {
+          analyzedSessions: 0,
+          inspectedSessions: 0,
+          inspectionRate: 0,
+          noCustomerProblem: 0,
+          partial: 0,
+          passRate: 0,
+          problemSessions: 0,
+          resolved: 0,
+          ruleDistribution: [],
+          totalSessions: 0,
+          unresolved: 0,
+        },
+        qualityResults: [],
+        qualityResultsPage: {
+          page: 1,
+          pageSize: 10,
+          total: 0,
+          totalPages: 1,
+        },
+      })
+      .mockImplementationOnce(() => new Promise(() => undefined));
+
+    renderRoute("/chat/insights/quality");
+
+    expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "质检结果" }));
+
+    expect(await screen.findByRole("status", { name: "正在加载会话" })).toBeInTheDocument();
   });
 
   it("shows a centered empty state for overview sessions", async () => {

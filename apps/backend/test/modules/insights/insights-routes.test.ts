@@ -33,7 +33,7 @@ describe("insights routes", () => {
     const quality = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/insights/quality?from=2026-06-01&to=2026-06-30&page=1&pageSize=1",
+      url: "/api/server/insights/quality?from=2026-06-01&to=2026-06-30&page=1&pageSize=1&passed=false",
     });
     const business = await app.inject({
       headers: { authorization },
@@ -123,12 +123,18 @@ describe("insights routes", () => {
           && builder.wheres.some((call) => call[0] === "session.started_at" && call[1] === "<="),
       ),
     ).toBe(true);
-    expect(quality.json().data.unresolvedSessions[0]).toMatchObject({
+    expect(quality.json().data.qualityResults[0]).toMatchObject({
       conversationId: "301",
-      evidenceMessageIds: ["9001", "9002"],
+      passed: false,
+      passedRules: 1,
+      rules: [
+        { passed: false, ruleCode: "reply_quality", ruleName: "回复质量" },
+        { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
+      ],
       sessionId: "501",
+      totalRules: 2,
     });
-    expect(quality.json().data.unresolvedSessionsPage).toMatchObject({
+    expect(quality.json().data.qualityResultsPage).toMatchObject({
       page: 1,
       pageSize: 1,
       total: 1,
@@ -665,7 +671,7 @@ function createInsightsDbMock(options: {
 
       return builder;
     },
-    selectFrom(table: string) {
+    selectFrom(table: string | ((eb: unknown) => unknown)) {
       const wheres: Array<[string, string, unknown]> = [];
       const joins: Array<{ conditions: Array<[string, string, unknown]>; table: string }> = [];
 
@@ -676,7 +682,9 @@ function createInsightsDbMock(options: {
         wheres: Array<[string, string, unknown]>;
       }) => unknown[])) {
         const builder = {
+          $call: (callback: (query: typeof builder) => typeof builder) => callback(builder),
           groupByCalls: [] as unknown[][],
+          havingCalls: [] as unknown[][],
           joins,
           limitValue: undefined as unknown,
           offsetValue: undefined as unknown,
@@ -689,6 +697,10 @@ function createInsightsDbMock(options: {
           },
           groupBy: (...args: unknown[]) => {
             builder.groupByCalls.push(args);
+            return builder;
+          },
+          having: (...args: unknown[]) => {
+            builder.havingCalls.push(args);
             return builder;
           },
           innerJoin: (joinTable: string, callback?: (join: ReturnType<typeof createJoinBuilder>) => unknown) => {
@@ -729,6 +741,10 @@ function createInsightsDbMock(options: {
         state.selectBuilders.push(builder);
 
         return builder;
+      }
+
+      if (typeof table === "function") {
+        return createBuilder([{ total_count: 1 }]);
       }
 
       if (table === "xy_wap_embed_sub_user_session") {
@@ -956,6 +972,52 @@ function createInsightsDbMock(options: {
             }];
           }
 
+          if (selectedAliases.has("total_rules")) {
+            return [
+              {
+                agent_avatar_url: "https://example.com/agent-1.png",
+                agent_name: "客服一号",
+                agent_seat_id: "seat-1",
+                conversation_id: 301,
+                customer_summary: "客户反馈物流异常",
+                failed_rules: 1,
+                last_customer_message_at: 1_780_244_100_000,
+                passed_rules: 1,
+                session_id: 501,
+                snapshot_id: 7001,
+                third_external_userid: "customer-1",
+                total_rules: 2,
+              },
+            ];
+          }
+
+          if (selectedAliases.has("qa.id as qa_finding_id")) {
+            return [
+              {
+                passed: 0,
+                qa_finding_id: 701,
+                reason: "物流进度未确认",
+                rule_code: "reply_quality",
+                rule_name: "回复质量",
+                session_id: 501,
+                severity: "high",
+              },
+              {
+                passed: 1,
+                qa_finding_id: 702,
+                reason: "客服明确说明下一步",
+                rule_code: "clear_next_step",
+                rule_name: "明确下一步",
+                session_id: 501,
+                severity: "medium",
+              },
+            ];
+          }
+
+          if (selectedAliases.has("total_count")) {
+            return [{ total_count: 1 }];
+          }
+
           if (selectedAliases.has("count") && selectedAliases.size === 1) {
             return [{ count: 1 }];
           }
@@ -1107,15 +1169,40 @@ function createInsightsDbMock(options: {
         return createBuilder([
           {
             action_id: 801,
+            agent_avatar_url: "https://example.com/agent.png",
+            agent_name: "客服一号",
+            agent_seat_id: "seat-1",
+            conversation_id: 301,
             evidence_message_id: 9002,
             last_customer_message_at: 1_780_244_100_000,
+            passed: 0,
+            qa_finding_id: 701,
             reason: "物流进度未确认",
+            rule_code: "reply_quality",
+            rule_name: "回复质量",
+            session_id: 501,
+            severity: "high",
             snapshot_id: 7001,
+            third_external_userid: "customer-1",
+            total_count: 1,
           },
           {
+            agent_avatar_url: "https://example.com/agent.png",
+            agent_name: "客服一号",
+            agent_seat_id: "seat-1",
+            conversation_id: 301,
             evidence_message_id: 9001,
             last_customer_message_at: 1_780_244_000_000,
+            passed: 0,
+            qa_finding_id: 701,
+            reason: "物流进度未确认",
+            rule_code: "reply_quality",
+            rule_name: "回复质量",
+            session_id: 501,
+            severity: "high",
             snapshot_id: 7001,
+            third_external_userid: "customer-1",
+            total_count: 1,
           },
         ]);
       }
@@ -1236,15 +1323,49 @@ function createInsightsDbMock(options: {
         ]);
       }
 
-      if (table === "xy_wap_embed_session_qa_finding") {
+      if (table === "xy_wap_embed_session_problem_resolution") {
         return createBuilder([
           {
-            qa_finding_id: 701,
-            qa_passed: 0,
-            qa_reason: "未确认物流进展",
-            qa_rule_code: "problem_resolution",
+            problem_summary: "客户反馈物流异常",
+            snapshot_id: 7001,
           },
         ]);
+      }
+
+      if (table === "xy_wap_embed_session_qa_finding") {
+        return createBuilder((builder) => {
+          const selectedAliases = collectSelectAliases(builder.selectCalls);
+
+          if (selectedAliases.has("id as qa_finding_id")) {
+            return [
+              {
+                passed: 0,
+                qa_finding_id: 701,
+                rule_code: "reply_quality",
+                rule_name: "回复质量",
+                snapshot_id: 7001,
+              },
+              {
+                passed: 1,
+                qa_finding_id: 702,
+                rule_code: "clear_next_step",
+                rule_name: "明确下一步",
+                snapshot_id: 7001,
+              },
+            ];
+          }
+
+          return [
+            {
+              qa_finding_id: 701,
+              qa_passed: 0,
+              qa_reason: "未确认物流进展",
+              qa_rule_code: "reply_quality",
+              qa_rule_name: "回复质量",
+              qa_severity: "high",
+            },
+          ];
+        });
       }
 
       if (table === "xy_wap_embed_msg_audit_info as message") {

@@ -99,11 +99,10 @@ describe("InsightsRepository", () => {
             agent_avatar_url: "https://example.com/agent.png",
             agent_name: "客服一号",
             agent_seat_id: "seat-1",
-            partial: 1,
-            problem_sessions: 2,
-            resolved: 1,
+            failed_sessions: 1,
+            inspected_sessions: 2,
+            passed_sessions: 1,
             total_sessions: 3,
-            unresolved: 1,
           },
         ], table);
         builders.push(builder);
@@ -115,17 +114,175 @@ describe("InsightsRepository", () => {
     await expect(repository.listQualityAgentStats({ uid: 9001 })).resolves.toEqual([
       expect.objectContaining({
         agentSeatId: "seat-1",
-        problemSessions: 2,
+        failedSessions: 1,
+        inspectedSessions: 2,
+        passedSessions: 1,
+        passRate: 0.5,
         totalSessions: 3,
-        unresolvedRate: 0.5,
       }),
     ]);
 
     expect(builders[0]?.groupByCalls.length).toBeGreaterThan(0);
     expect(builders[0]?.selectRawCalls.join("\n")).toContain("seat.third_avatar");
     expect(builders[0]?.selectRawCalls.join("\n")).toContain("seat.third_user_name");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_session_qa_finding as qa");
     expect(builders[0]?.selectRawCalls.join("\n")).not.toContain("seat.avatar");
     expect(builders[0]?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+  });
+
+  it("loads paginated quality results by session", async () => {
+    const builders: SelectBuilderStub[] = [];
+    let currentSelectCount = 0;
+    const qualitySessionRows = [
+      {
+        conversation_id: 301,
+        failed_rules: 1,
+        last_customer_message_at: 1_780_244_000_000,
+        passed_rules: 1,
+        session_id: 501,
+        snapshot_id: 701,
+        total_rules: 2,
+      },
+    ];
+    const rowsByTable = new Map<string, unknown[]>([
+      [
+        "xy_wap_embed_conversation",
+        [{ id: 301, third_external_userid: "external-1", third_userid: "agent-1" }],
+      ],
+      [
+        "xy_wap_embed_session_problem_resolution",
+        [{ problem_summary: "客户反馈物流异常", snapshot_id: 701 }],
+      ],
+      [
+        "xy_wap_embed_session_qa_finding",
+        [
+          {
+            passed: 0,
+            qa_finding_id: 701,
+            rule_code: "reply_quality",
+            rule_name: "回复质量",
+            snapshot_id: 701,
+          },
+          {
+            passed: 1,
+            qa_finding_id: 702,
+            rule_code: "clear_next_step",
+            rule_name: "明确下一步",
+            snapshot_id: 701,
+          },
+        ],
+      ],
+      [
+        "xy_wap_embed_user_seat",
+        [{
+          id: "seat-1",
+          third_avatar: "https://example.com/agent.png",
+          third_user_name: "客服一号",
+          third_userid: "agent-1",
+        }],
+      ],
+      [
+        "xy_wap_embed_contact",
+        [{
+          avatar: "https://example.com/customer.png",
+          name: "张三",
+          real_name: "",
+          third_external_userid: "external-1",
+        }],
+      ],
+    ]);
+    const db = {
+      selectFrom: vi.fn((table: unknown) => {
+        const tableName = typeof table === "string" ? table : "quality_session_count";
+        let rows = rowsByTable.get(tableName) ?? [];
+
+        if (tableName === "quality_session_count") {
+          rows = [{ total_count: 1 }];
+        } else if (tableName === "xy_wap_embed_session_insight_current as current") {
+          currentSelectCount += 1;
+          rows = currentSelectCount === 1 ? qualitySessionRows : [];
+        }
+        const builder = createSelectBuilder(rows, tableName);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.listQualityResults({ uid: 9001 }, {
+      from: "2026-06-01",
+      page: 1,
+      pageSize: 10,
+      passed: false,
+      to: "2026-06-30",
+    })).resolves.toMatchObject({
+      items: [
+        {
+          customerName: "张三",
+          passed: false,
+          passedRules: 1,
+          rules: [
+            { passed: false, ruleCode: "reply_quality", ruleName: "回复质量" },
+            { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
+          ],
+          sessionId: "501",
+          summary: "客户反馈物流异常",
+          totalRules: 2,
+        },
+      ],
+      total: 1,
+    });
+
+    expect(builders[1]?.joins).toContain("xy_wap_embed_session_qa_finding as qa");
+    expect(builders[1]?.joins).not.toContain("xy_wap_embed_session_problem_resolution as problem");
+    expect(builders[1]?.joins).not.toContain("xy_wap_embed_conversation as conversation");
+    expect(builders[1]?.joins).not.toContain("xy_wap_embed_user_seat as seat");
+    expect(builders[1]?.whereCalls).not.toContainEqual(["qa.passed", "=", 0]);
+    expect(builders[1]?.havingRawCalls.join("\n")).toContain(">");
+    expect(builders[1]?.havingRawCalls.join("\n")).toContain("0");
+    expect(builders[1]?.selectRawCalls.join("\n")).not.toContain("over()");
+    expect(builders[1]?.limitCalls).toContain(10);
+    expect(builders[1]?.joins).not.toContain("xy_wap_embed_insight_evidence as evidence");
+    expect(builders[1]?.joins).not.toContain("xy_wap_embed_msg_audit_info as message");
+    expect(builders[2]?.table).toBe("xy_wap_embed_session_qa_finding");
+    expect(builders[2]?.joins).not.toContain("xy_wap_embed_session_insight_current as current");
+    expect(builders[2]?.joins).not.toContain("xy_wap_embed_logical_session as session");
+    expect(builders[2]?.joins).not.toContain("xy_wap_embed_session_insight_snapshot as snapshot");
+    expect(builders[2]?.joins).not.toContain("xy_wap_embed_insight_evidence as evidence");
+    expect(builders[2]?.joins).not.toContain("xy_wap_embed_msg_audit_info as message");
+    expect(builders[2]?.whereCalls).toContainEqual(["snapshot_id", "in", [701]]);
+    expect(builders[2]?.selectRawCalls.join("\n")).not.toContain("qa.reason");
+    expect(builders[2]?.selectRawCalls.join("\n")).not.toContain("qa.severity");
+    expect(builders.some((builder) =>
+      builder.table === "xy_wap_embed_session_problem_resolution"
+        && builder.whereCalls.some((call) => call[0] === "snapshot_id" && call[1] === "in")
+    )).toBe(true);
+    expect(builders.some((builder) =>
+      builder.table === "xy_wap_embed_user_seat"
+        && builder.whereCalls.some((call) => call[0] === "third_userid" && call[1] === "in")
+    )).toBe(true);
+  });
+
+  it("filters passed quality results to sessions without failed QA findings", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: unknown) => {
+        const tableName = typeof table === "string" ? table : "quality_session_count";
+        const builder = createSelectBuilder([], tableName);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await repository.listQualityResults({ uid: 9001 }, {
+      page: 1,
+      pageSize: 10,
+      passed: true,
+    });
+
+    expect(builders[1]?.havingRawCalls.join("\n")).toContain("=");
+    expect(builders[1]?.havingRawCalls.join("\n")).toContain("0");
   });
 
   it("loads business session aggregates without hydrating current sessions", async () => {
@@ -2071,6 +2228,7 @@ function createSelectBuilder(rows: unknown[], table = "") {
     joins: [] as string[],
     forUpdateCalls: 0,
     groupByCalls: [] as unknown[][],
+    havingRawCalls: [] as string[],
     limitCalls: [] as number[],
     offsetCalls: [] as number[],
     orderByCalls: [] as unknown[][],
@@ -2079,6 +2237,7 @@ function createSelectBuilder(rows: unknown[], table = "") {
     whereRawCalls: [] as string[],
     selectRawCalls: [] as string[],
     whereCalls: [] as unknown[][],
+    $call: (callback: (query: typeof builder) => typeof builder) => callback(builder),
     execute: async () => rows,
     executeTakeFirst: async () => rows[0],
     forUpdate: () => {
@@ -2087,6 +2246,10 @@ function createSelectBuilder(rows: unknown[], table = "") {
     },
     groupBy: (...args: unknown[]) => {
       builder.groupByCalls.push(args);
+      return builder;
+    },
+    having: (...args: unknown[]) => {
+      builder.havingRawCalls.push(args.map(String).join("\n"));
       return builder;
     },
     innerJoin: (joinTable: string) => {

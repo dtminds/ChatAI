@@ -146,7 +146,9 @@ export type InsightsQualityFilters = {
   from?: string;
   page?: number;
   pageSize?: number;
+  passed?: boolean;
   to?: string;
+  view?: "agent-report" | "all" | "quality-results";
 };
 
 export type InsightsOverviewFilters = {
@@ -228,6 +230,13 @@ export type InsightQualityAggregateRow = InsightsQualityResponse["overview"];
 
 export type InsightQualityAgentStatRow = InsightsQualityResponse["agentStats"][number];
 
+export type InsightQualityResultRow = InsightsQualityResponse["qualityResults"][number];
+
+export type InsightQualityResultPage = {
+  items: InsightQualityResultRow[];
+  total: number;
+};
+
 export type InsightBusinessSessionAggregateRow = {
   actionItemsOpen: number;
   analyzedSessions: number;
@@ -278,6 +287,10 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     filters?: { from?: string; to?: string },
   ): Promise<InsightQualityAgentStatRow[]>;
+  listQualityResults?(
+    scope: InsightsUidScope,
+    filters?: InsightsQualityFilters,
+  ): Promise<InsightQualityResultPage>;
   getQaFindingAggregate?(
     scope: InsightsUidScope,
     filters?: { from?: string; to?: string },
@@ -504,40 +517,30 @@ export class InsightsService {
   ): Promise<InsightsQualityResponse> {
     const normalizedPage = normalizeOverviewPage(filters.page);
     const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
-    const [overview, qaAggregate, agentStats, unresolvedPage] = await Promise.all([
+    const view = filters.view ?? "all";
+    const shouldLoadAgentStats = view === "all" || view === "agent-report";
+    const shouldLoadQualityResults = view === "all" || view === "quality-results";
+    const [overview, qaAggregate, agentStats, qualityResultsPage] = await Promise.all([
       this.repository.getQualityAggregate?.(scope, { from: filters.from, to: filters.to }),
       this.repository.getQaFindingAggregate?.(scope, { from: filters.from, to: filters.to }),
-      this.repository.listQualityAgentStats?.(scope, { from: filters.from, to: filters.to }),
-      this.repository.listCurrentSessions(scope, {
+      shouldLoadAgentStats
+        ? this.repository.listQualityAgentStats?.(scope, { from: filters.from, to: filters.to })
+        : Promise.resolve([]),
+      shouldLoadQualityResults && this.repository.listQualityResults
+        ? this.repository.listQualityResults(scope, {
         from: filters.from,
         page: normalizedPage,
         pageSize: normalizedPageSize,
-        problemScope: "unresolved",
+        passed: filters.passed,
         to: filters.to,
-      }),
+      })
+        : Promise.resolve({ items: [], total: 0 }),
     ]);
-    const unresolvedRows = unresolvedPage.items.filter((row) => unresolvedStatuses.has(row.resolutionStatus));
-    const unresolvedSessions = unresolvedRows
-      .filter((row) => unresolvedStatuses.has(row.resolutionStatus))
-      .sort(compareByLastCustomerMessage)
-      .map((row) => ({
-        agentAvatarUrl: row.agentAvatarUrl ?? undefined,
-        agentName: row.agentName ?? undefined,
-        conversationId: row.conversationId,
-        customerAvatarUrl: row.customerAvatarUrl ?? undefined,
-        customerName: row.customerName,
-        evidenceMessageIds: row.problemEvidenceMessageIds,
-        lastCustomerMessageAt: row.lastCustomerMessageAt ?? undefined,
-        problemSummary: row.problemSummary,
-        resolutionStatus: row.resolutionStatus,
-        sessionId: row.sessionId,
-        unresolvedReason: row.unresolvedReason ?? "未给出判定理由",
-      }));
 
-    const baseOverview = overview ?? buildQualityOverview(unresolvedRows);
+    const baseOverview = overview ?? buildQualityOverview([]);
 
     return {
-      agentStats: agentStats ?? buildAgentStats(unresolvedRows),
+      agentStats: agentStats ?? [],
       overview: {
         ...baseOverview,
         inspectedSessions: qaAggregate?.inspectedSessions ?? baseOverview.inspectedSessions,
@@ -545,14 +548,13 @@ export class InsightsService {
         passRate: qaAggregate?.passRate ?? baseOverview.passRate,
         ruleDistribution: qaAggregate?.ruleDistribution ?? baseOverview.ruleDistribution,
       },
-      unresolvedReasons: buildUnresolvedReasons(unresolvedSessions),
-      unresolvedSessionsPage: {
+      qualityResultsPage: {
         page: normalizedPage,
         pageSize: normalizedPageSize,
-        total: unresolvedPage.total,
-        totalPages: Math.max(1, Math.ceil(unresolvedPage.total / normalizedPageSize)),
+        total: qualityResultsPage.total,
+        totalPages: Math.max(1, Math.ceil(qualityResultsPage.total / normalizedPageSize)),
       },
-      unresolvedSessions,
+      qualityResults: qualityResultsPage.items,
     };
   }
 
@@ -1742,88 +1744,6 @@ function getDefaultOverviewDateRange() {
     from: formatDateKey(from.getTime()),
     to: formatDateKey(today.getTime()),
   };
-}
-
-function buildAgentStats(rows: InsightCurrentSessionRow[]) {
-  const stats = new Map<
-    string,
-    {
-      agentName: string;
-      agentAvatarUrl?: string;
-      agentSeatId: string;
-      partial: number;
-      problemSessions: number;
-      resolved: number;
-      totalSessions: number;
-      unresolved: number;
-    }
-  >();
-
-  for (const row of rows) {
-    const agentSeatId = row.agentSeatId ?? "unknown";
-    const stat =
-      stats.get(agentSeatId) ??
-      {
-        agentName: row.agentName ?? "未分配客服",
-        agentAvatarUrl: row.agentAvatarUrl ?? undefined,
-        agentSeatId,
-        partial: 0,
-        problemSessions: 0,
-        resolved: 0,
-        totalSessions: 0,
-        unresolved: 0,
-      };
-
-    stat.totalSessions += 1;
-
-    if (isCustomerProblemSession(row)) {
-      stat.problemSessions += 1;
-    }
-
-    if (row.resolutionStatus === "resolved") {
-      stat.resolved += 1;
-    }
-
-    if (row.resolutionStatus === "unresolved") {
-      stat.unresolved += 1;
-    }
-
-    if (row.resolutionStatus === "partially_resolved") {
-      stat.partial += 1;
-    }
-
-    stats.set(agentSeatId, stat);
-  }
-
-  return Array.from(stats.values()).map((stat) => ({
-    ...stat,
-    unresolvedRate: stat.problemSessions > 0 ? stat.unresolved / stat.problemSessions : 0,
-  }));
-}
-
-function buildUnresolvedReasons(
-  rows: InsightsQualityResponse["unresolvedSessions"],
-) {
-  const counts = new Map<string, number>();
-
-  for (const row of rows) {
-    counts.set(row.unresolvedReason, (counts.get(row.unresolvedReason) ?? 0) + 1);
-  }
-
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hans-CN"))
-    .map(([reason, count]) => ({
-      count,
-      reasonCode: reason,
-      reasonLabel: reason,
-    }));
-}
-
-function compareByLastCustomerMessage(
-  left: InsightCurrentSessionRow,
-  right: InsightCurrentSessionRow,
-) {
-  return (right.lastCustomerMessageAt ?? 0) - (left.lastCustomerMessageAt ?? 0);
 }
 
 function compareActionItems(left: InsightActionItemRow, right: InsightActionItemRow) {

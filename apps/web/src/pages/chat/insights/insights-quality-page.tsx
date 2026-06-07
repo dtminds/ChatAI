@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { InsightsQualityResponse } from "@chatai/contracts";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -33,36 +38,33 @@ import {
 } from "./insights-date-range";
 import {
   formatInsightTime,
-  formatResolutionStatus,
 } from "./insights-utils";
 import { insightQualityRuleColors } from "./insights-chart-palette";
 import { useInsightDetail } from "./use-insight-detail";
 
-type QualityView = "agent-report" | "problem-list";
-type ProblemSession = InsightsQualityResponse["unresolvedSessions"][number];
-type ResolutionFilter = "all" | ProblemSession["resolutionStatus"];
+type QualityView = "agent-report" | "quality-results";
+type QualityResultFilter = "all" | "failed" | "passed";
 
-const qualityProblemPageSize = 10;
+const qualityResultPageSize = 10;
 const qualityRuleSlotCount = 10;
 const qualityRuleOtherSlotIndex = qualityRuleSlotCount - 1;
 
-const resolutionFilterItems: Array<{
+const qualityResultFilterItems: Array<{
   label: string;
-  value: ResolutionFilter;
+  value: QualityResultFilter;
 }> = [
-  { label: "全部问题", value: "all" },
-  { label: "未解决", value: "unresolved" },
-  { label: "部分解决", value: "partially_resolved" },
-  { label: "已解决", value: "resolved" },
+  { label: "全部结果", value: "all" },
+  { label: "未通过", value: "failed" },
+  { label: "已通过", value: "passed" },
 ];
 
 export function InsightsQualityPage() {
   const [quality, setQuality] = useState<InsightsQualityResponse>();
   const [isLoading, setIsLoading] = useState(true);
-  const [activeView, setActiveView] = useState<QualityView>("problem-list");
-  const [problemPage, setProblemPage] = useState(1);
-  const [resolutionFilter, setResolutionFilter] =
-    useState<ResolutionFilter>("unresolved");
+  const [activeView, setActiveView] = useState<QualityView>("agent-report");
+  const [resultPage, setResultPage] = useState(1);
+  const [resultFilter, setResultFilter] =
+    useState<QualityResultFilter>("failed");
   const [dateRange, setDateRange] = useState<InsightDateRange>(() => getRecentDateRange(7));
   const detail = useInsightDetail();
 
@@ -74,9 +76,11 @@ export function InsightsQualityPage() {
     void getInsightQuality(
       {
         from: dateRange.from,
-        page: problemPage,
-        pageSize: qualityProblemPageSize,
+        page: resultPage,
+        pageSize: qualityResultPageSize,
+        passed: normalizeQualityResultPassedFilter(resultFilter),
         to: dateRange.to,
+        view: activeView,
       },
       { signal: controller.signal },
     )
@@ -95,20 +99,9 @@ export function InsightsQualityPage() {
     return () => {
       controller.abort();
     };
-  }, [dateRange.from, dateRange.to, problemPage]);
+  }, [activeView, dateRange.from, dateRange.to, resultFilter, resultPage]);
 
   const overview = quality?.overview;
-  const problemItems = useMemo(() => {
-    const sessions = quality?.unresolvedSessions ?? [];
-
-    if (resolutionFilter === "all") {
-      return sessions;
-    }
-
-    return sessions.filter(
-      (session) => session.resolutionStatus === resolutionFilter,
-    );
-  }, [quality?.unresolvedSessions, resolutionFilter]);
 
   return (
     <InsightsLayout title="服务质检">
@@ -124,7 +117,7 @@ export function InsightsQualityPage() {
             from={dateRange.from}
             onChange={(range) => {
               setDateRange(range);
-              setProblemPage(1);
+              setResultPage(1);
             }}
             to={dateRange.to}
           />
@@ -171,32 +164,35 @@ export function InsightsQualityPage() {
         <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Tabs
-              onValueChange={(value) => setActiveView(value as QualityView)}
+              onValueChange={(value) => {
+                setActiveView(value as QualityView);
+                setResultPage(1);
+              }}
               value={activeView}
             >
               <TabsList className="h-10 rounded-[8px] bg-muted p-1">
-                <TabsTrigger className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm" value="problem-list">
-                  问题列表
-                </TabsTrigger>
                 <TabsTrigger className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm" value="agent-report">
                   客服报表
+                </TabsTrigger>
+                <TabsTrigger className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm" value="quality-results">
+                  质检结果
                 </TabsTrigger>
               </TabsList>
             </Tabs>
 
-            {activeView === "problem-list" ? (
+            {activeView === "quality-results" ? (
               <Select
                 onValueChange={(value) => {
-                  setProblemPage(1);
-                  setResolutionFilter(value as ResolutionFilter);
+                  setResultPage(1);
+                  setResultFilter(value as QualityResultFilter);
                 }}
-                value={resolutionFilter}
+                value={resultFilter}
               >
                 <SelectTrigger className="h-8 rounded-[8px] text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {resolutionFilterItems.map((item) => (
+                  {qualityResultFilterItems.map((item) => (
                     <SelectItem key={item.value} value={item.value}>
                       {item.label}
                     </SelectItem>
@@ -206,16 +202,16 @@ export function InsightsQualityPage() {
             ) : null}
           </div>
 
-          {activeView === "problem-list" ? (
-            <ProblemList
+          {activeView === "quality-results" ? (
+            <QualityResultList
               isLoading={isLoading}
-              items={problemItems}
+              items={quality?.qualityResults ?? []}
               onOpenDetail={(sessionId) => void detail.openDetail(sessionId)}
-              onPageChange={setProblemPage}
-              page={quality?.unresolvedSessionsPage}
+              onPageChange={setResultPage}
+              page={quality?.qualityResultsPage}
             />
           ) : (
-            <AgentReportTable rows={quality?.agentStats ?? []} />
+            <AgentReportTable isLoading={isLoading} rows={quality?.agentStats ?? []} />
           )}
         </section>
       </div>
@@ -231,7 +227,7 @@ export function InsightsQualityPage() {
   );
 }
 
-function ProblemList({
+function QualityResultList({
   isLoading,
   items,
   onPageChange,
@@ -239,74 +235,90 @@ function ProblemList({
   page,
 }: {
   isLoading: boolean;
-  items: InsightsQualityResponse["unresolvedSessions"];
+  items: InsightsQualityResponse["qualityResults"];
   onPageChange: (page: number) => void;
   onOpenDetail: (sessionId: string) => void;
-  page: InsightsQualityResponse["unresolvedSessionsPage"] | undefined;
+  page: InsightsQualityResponse["qualityResultsPage"] | undefined;
 }) {
   const currentPage = page?.page ?? 1;
-  const pageSize = page?.pageSize ?? qualityProblemPageSize;
+  const pageSize = page?.pageSize ?? qualityResultPageSize;
   const total = page?.total ?? items.length;
   const totalPages = page?.totalPages ?? 1;
   const startRow = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endRow = Math.min(total, currentPage * pageSize);
 
   return (
-    <div className="rounded-[8px] border bg-background">
-      <div className="flex items-center justify-between border-b px-5 py-4">
-        <h2 className="text-base font-semibold">问题列表</h2>
-      </div>
-      <div className="divide-y">
+    <div className="bg-background">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="h-12 px-5">客户</TableHead>
+            <TableHead className="h-12 px-5">接待客服</TableHead>
+            <TableHead className="h-12 px-5">摘要</TableHead>
+            <TableHead className="h-12 px-5">时间</TableHead>
+            <TableHead className="h-12 px-5">质检结果</TableHead>
+            <TableHead className="h-12 px-5 text-right">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
         {isLoading ? (
-          <ListLoadingState />
+          <TableRow>
+            <TableCell colSpan={6}>
+              <ListLoadingState />
+            </TableCell>
+          </TableRow>
         ) : items.length > 0 ? (
-          items.map((session) => (
-            <article className="grid gap-3 px-5 py-4" key={session.sessionId}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">
-                      {formatResolutionStatus(session.resolutionStatus)}
-                    </Badge>
-                    <InsightPerson
-                      avatarUrl={session.customerAvatarUrl}
-                      name={session.customerName}
-                    />
-                  </div>
-                  <p className="mt-2 text-sm text-foreground">
-                    {session.problemSummary}
-                  </p>
-                  {session.unresolvedReason ? (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {session.unresolvedReason}
-                    </p>
-                  ) : null}
-                </div>
+          items.map((result) => {
+            const summary = result.summary || "-";
+
+            return (
+              <TableRow key={result.sessionId}>
+                <TableCell className="px-5 py-4 font-medium">
+                  <InsightPerson
+                    avatarUrl={result.customerAvatarUrl}
+                    name={result.customerName}
+                  />
+                </TableCell>
+                <TableCell className="px-5 py-4">
+                  <InsightPerson
+                    avatarUrl={result.agentAvatarUrl}
+                    name={result.agentName ?? "未分配"}
+                  />
+                </TableCell>
+                <TableCell className="max-w-[360px] px-5 py-4">
+                  <div className="line-clamp-2 text-sm text-foreground">{summary}</div>
+                </TableCell>
+                <TableCell className="px-5 py-4 text-sm text-muted-foreground">
+                  {formatInsightTime(result.lastCustomerMessageAt)}
+                </TableCell>
+                <TableCell className="px-5 py-4">
+                  <QualityResultBadge result={result} />
+                </TableCell>
+                <TableCell className="px-5 py-4 text-right">
                 <Button
                   className="h-8 rounded-[8px]"
-                  onClick={() => onOpenDetail(session.sessionId)}
+                  onClick={() => onOpenDetail(result.sessionId)}
                   size="sm"
                   variant="outline"
                 >
                   详情
                 </Button>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                <InsightPerson
-                  avatarUrl={session.agentAvatarUrl}
-                  name={session.agentName ?? "未分配"}
-                  roleLabel="客服"
-                />
-                <span>{formatInsightTime(session.lastCustomerMessageAt)}</span>
-              </div>
-            </article>
-          ))
+                </TableCell>
+              </TableRow>
+            );
+          })
         ) : (
-          <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-            暂无数据
-          </div>
+          <TableRow>
+            <TableCell
+              className="px-5 py-8 text-center text-sm text-muted-foreground"
+              colSpan={6}
+            >
+              暂无数据
+            </TableCell>
+          </TableRow>
         )}
-      </div>
+        </TableBody>
+      </Table>
       <InsightTablePagination
         className="px-5"
         endRow={endRow}
@@ -317,6 +329,108 @@ function ProblemList({
         totalPages={totalPages}
       />
     </div>
+  );
+}
+
+function QualityResultBadge({
+  result,
+}: {
+  result: InsightsQualityResponse["qualityResults"][number];
+}) {
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMounted = useRef(false);
+  const failedRules = Math.max(result.totalRules - result.passedRules, 0);
+  const passedPercent = result.totalRules > 0
+    ? Math.max(0, Math.min(100, (result.passedRules / result.totalRules) * 100))
+    : 0;
+  const failedPercent = 100 - passedPercent;
+  const openMenu = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+    setOpen(true);
+  };
+  const scheduleClose = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+    }
+    closeTimer.current = setTimeout(() => {
+      if (isMounted.current) {
+        setOpen(false);
+      }
+    }, 100);
+  };
+
+  useEffect(() => {
+    isMounted.current = true;
+
+    return () => {
+      isMounted.current = false;
+      if (closeTimer.current) {
+        clearTimeout(closeTimer.current);
+      }
+    };
+  }, []);
+
+  return (
+    <DropdownMenu modal={false} onOpenChange={setOpen} open={open}>
+      <DropdownMenuTrigger asChild>
+        <div
+          className="inline-flex min-w-28 cursor-default flex-col gap-1.5 outline-none"
+          onFocus={openMenu}
+          onMouseEnter={openMenu}
+          onMouseLeave={scheduleClose}
+        >
+          <span
+            className={cn(
+              "text-xs font-medium",
+              result.passed ? "text-muted-foreground" : "text-destructive",
+            )}
+          >
+            {result.passed ? "已通过" : `未通过 ${failedRules}/${result.totalRules}`}
+          </span>
+          <div
+            aria-label={result.passed ? "质检规则全部通过" : `质检规则未通过 ${failedRules}/${result.totalRules}`}
+            className="flex h-1.5 w-24 overflow-hidden rounded-full bg-muted"
+          >
+            {failedPercent > 0 ? (
+              <span
+                className="h-full bg-destructive"
+                style={{ width: `${failedPercent}%` }}
+              />
+            ) : null}
+            {passedPercent > 0 ? (
+              <span
+                className="h-full bg-emerald-500"
+                style={{ width: `${passedPercent}%` }}
+              />
+            ) : null}
+          </div>
+        </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-56"
+        onMouseEnter={openMenu}
+        onMouseLeave={scheduleClose}
+        side="top"
+      >
+        {result.rules.map((rule) => (
+          <DropdownMenuItem
+            className="justify-between"
+            key={rule.ruleCode}
+            onSelect={(event) => event.preventDefault()}
+          >
+            <span className="min-w-0 truncate">{rule.ruleName}</span>
+            <span className={rule.passed ? "shrink-0 text-emerald-600" : "shrink-0 text-destructive"}>
+              {rule.passed ? "已通过" : "未通过"}
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -336,28 +450,35 @@ function ListLoadingState() {
 }
 
 function AgentReportTable({
+  isLoading,
   rows,
 }: {
+  isLoading: boolean;
   rows: InsightsQualityResponse["agentStats"];
 }) {
   return (
-    <div className="rounded-[8px] border bg-background">
+    <div className="bg-background">
       <Table>
         <TableHeader>
-          <TableRow className="bg-muted/35 hover:bg-muted/35">
+          <TableRow>
             <TableHead className="h-12 px-5">客服账号</TableHead>
             <TableHead className="h-12 px-5">接待会话数</TableHead>
-            <TableHead className="h-12 px-5">客户问题数</TableHead>
+            <TableHead className="h-12 px-5">质检会话数</TableHead>
+            <TableHead className="h-12 px-5">质检覆盖率</TableHead>
             <TableHead className="h-12 px-5">质检通过数</TableHead>
             <TableHead className="h-12 px-5">质检未通过数</TableHead>
             <TableHead className="h-12 px-5">质检通过率</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.length > 0 ? (
+          {isLoading ? (
+            <TableRow>
+              <TableCell colSpan={7}>
+                <ListLoadingState />
+              </TableCell>
+            </TableRow>
+          ) : rows.length > 0 ? (
             rows.map((row) => {
-              const failedCount = row.unresolved + row.partial;
-
               return (
                 <TableRow key={row.agentSeatId}>
                   <TableCell className="px-5 py-4 font-medium">
@@ -367,11 +488,14 @@ function AgentReportTable({
                     />
                   </TableCell>
                   <TableCell className="px-5 py-4">{row.totalSessions}</TableCell>
-                  <TableCell className="px-5 py-4">{row.problemSessions}</TableCell>
-                  <TableCell className="px-5 py-4">{row.resolved}</TableCell>
-                  <TableCell className="px-5 py-4">{failedCount}</TableCell>
+                  <TableCell className="px-5 py-4">{row.inspectedSessions}</TableCell>
                   <TableCell className="px-5 py-4">
-                    {formatPercent(1 - row.unresolvedRate)}
+                    {formatPercent(row.totalSessions > 0 ? row.inspectedSessions / row.totalSessions : 0)}
+                  </TableCell>
+                  <TableCell className="px-5 py-4">{row.passedSessions}</TableCell>
+                  <TableCell className="px-5 py-4">{row.failedSessions}</TableCell>
+                  <TableCell className="px-5 py-4">
+                    {formatPercent(row.passRate)}
                   </TableCell>
                 </TableRow>
               );
@@ -380,7 +504,7 @@ function AgentReportTable({
             <TableRow>
               <TableCell
                 className="px-5 py-8 text-center text-sm text-muted-foreground"
-                colSpan={6}
+                colSpan={7}
               >
                 暂无数据
               </TableCell>
@@ -390,6 +514,18 @@ function AgentReportTable({
       </Table>
     </div>
   );
+}
+
+function normalizeQualityResultPassedFilter(value: QualityResultFilter) {
+  if (value === "passed") {
+    return true;
+  }
+
+  if (value === "failed") {
+    return false;
+  }
+
+  return undefined;
 }
 
 function Stat({

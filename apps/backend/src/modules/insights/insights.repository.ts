@@ -50,6 +50,7 @@ import type {
   InsightOverviewAggregateRow,
   InsightQualityAgentStatRow,
   InsightQualityAggregateRow,
+  InsightQualityResultPage,
   InsightsFollowUpFilters,
   InsightsOverviewFilters,
   InsightsRepositoryPort,
@@ -111,6 +112,28 @@ type ActionItemQueryRow = {
   total_count?: number | string;
 };
 
+type QualityResultQueryRow = {
+  conversation_id: number | string;
+  failed_rules: number | string;
+  last_customer_message_at: Date | number | string | null;
+  passed_rules: number | string;
+  session_id: number | string;
+  snapshot_id: number | string;
+  total_rules: number | string;
+};
+
+type QualityRuleQueryRow = {
+  qa_finding_id: number | string;
+  passed: number | string;
+  rule_code: string;
+  rule_name: string;
+  snapshot_id: number | string;
+};
+
+type QualityResultListItemWithSnapshot = InsightQualityResultPage["items"][number] & {
+  currentSnapshotId: string;
+};
+
 type CurrentSessionCoreQueryRow = Omit<CurrentSessionQueryRow,
   "last_customer_message_at"
 > & {
@@ -164,11 +187,10 @@ type QualityAgentStatQueryRow = {
   agent_avatar_url: string | null;
   agent_name: string | null;
   agent_seat_id: string | null;
-  partial: number | string;
-  problem_sessions: number | string;
-  resolved: number | string;
+  failed_sessions: number | string;
+  inspected_sessions: number | string;
+  passed_sessions: number | string;
   total_sessions: number | string;
-  unresolved: number | string;
 };
 
 type BusinessSessionAggregateQueryRow = {
@@ -1445,7 +1467,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     scope: InsightsUidScope,
     filters: { from?: string; to?: string } = {},
   ): Promise<InsightQualityAgentStatRow[]> {
-    let query = buildCurrentSessionBaseQuery(this.db)
+    let query = buildCurrentSessionLeanBaseQuery(this.db)
       .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
         join
           .onRef("conversation.id", "=", "session.conversation_id")
@@ -1456,21 +1478,20 @@ export class InsightsRepository implements InsightsRepositoryPort {
           .onRef("seat.uid", "=", "conversation.uid")
           .onRef("seat.third_userid", "=", "conversation.third_userid"),
       )
+      .leftJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
+        join.onRef("qa.snapshot_id", "=", "snapshot.id"),
+      )
       .select([
         "seat.third_avatar as agent_avatar_url",
         "seat.third_user_name as agent_name",
         "seat.id as agent_seat_id",
         sql<number>`count(distinct session.id)`.as("total_sessions"),
+        sql<number>`count(distinct case when qa.id is not null then session.id end)`.as("inspected_sessions"),
+        sql<number>`count(distinct case when qa.passed = 0 then session.id end)`.as("failed_sessions"),
         sql<number>`
-          count(distinct case
-            when problem.problem_detected = 1
-              and problem.resolution_status not in ('no_customer_problem', 'unknown')
-            then session.id
-          end)
-        `.as("problem_sessions"),
-        sql<number>`count(distinct case when problem.resolution_status = 'resolved' then session.id end)`.as("resolved"),
-        sql<number>`count(distinct case when problem.resolution_status = 'unresolved' then session.id end)`.as("unresolved"),
-        sql<number>`count(distinct case when problem.resolution_status = 'partially_resolved' then session.id end)`.as("partial"),
+          count(distinct case when qa.id is not null then session.id end)
+          - count(distinct case when qa.passed = 0 then session.id end)
+        `.as("passed_sessions"),
       ])
       .where("session.uid", "=", scope.uid);
 
@@ -1489,21 +1510,69 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .execute() as unknown as QualityAgentStatQueryRow[];
 
     return rows.map((row) => {
-      const problemSessions = parseNumber(row.problem_sessions);
-      const unresolved = parseNumber(row.unresolved);
+      const passedSessions = parseNumber(row.passed_sessions);
+      const failedSessions = parseNumber(row.failed_sessions);
+      const inspectedSessions = parseNumber(row.inspected_sessions);
 
       return {
         agentAvatarUrl: row.agent_avatar_url ?? undefined,
         agentName: row.agent_name ?? "未分配客服",
         agentSeatId: row.agent_seat_id == null ? "unknown" : String(row.agent_seat_id),
-        partial: parseNumber(row.partial),
-        problemSessions,
-        resolved: parseNumber(row.resolved),
+        failedSessions,
+        inspectedSessions,
+        passedSessions,
+        passRate: inspectedSessions > 0 ? passedSessions / inspectedSessions : 0,
         totalSessions: parseNumber(row.total_sessions),
-        unresolved,
-        unresolvedRate: problemSessions > 0 ? unresolved / problemSessions : 0,
       };
     });
+  }
+
+  async listQualityResults(
+    scope: InsightsUidScope,
+    filters: { from?: string; page?: number; pageSize?: number; passed?: boolean; to?: string } = {},
+  ): Promise<InsightQualityResultPage> {
+    const page = normalizeQualityPage(filters.page);
+    const pageSize = normalizeQualityPageSize(filters.pageSize);
+    const fromTs = parseDateBoundary(filters.from);
+    const toTs = parseDateBoundary(filters.to);
+
+    const baseFilters = {
+      fromTs,
+      passed: filters.passed,
+      toTs,
+      uid: scope.uid,
+    };
+    const countRow = await this.db
+      .selectFrom((eb) => buildQualityResultSessionQuery(eb as unknown as Kysely<Database>, baseFilters)
+        .$call((query) => applyQualityResultSessionStatusFilter(query, filters.passed))
+        .as("quality_session"))
+      .select([
+        sql<number>`count(*)`.as("total_count"),
+      ])
+      .executeTakeFirst() as { total_count: number | string } | undefined;
+    const total = parseNumber(countRow?.total_count ?? 0);
+
+    const rows = await buildQualityResultSessionQuery(this.db, baseFilters)
+      .$call((query) => applyQualityResultSessionStatusFilter(query, filters.passed))
+      .orderBy("session.started_at", "desc")
+      .orderBy("session.id", "desc")
+      .limit(pageSize)
+      .offset((page - 1) * pageSize)
+      .execute() as unknown as QualityResultQueryRow[];
+
+    const ruleRows = await this.listQualityRules(
+      uniquePositiveNumbers(rows.map((row) => Number(row.snapshot_id))),
+    );
+    const items = mapQualityResultRows(rows, ruleRows);
+    await Promise.all([
+      this.hydrateQualityResultSummaries(items),
+      this.hydrateQualityResultActors(scope, items),
+    ]);
+
+    return {
+      items: items.map(({ currentSnapshotId: _currentSnapshotId, ...item }) => item),
+      total,
+    };
   }
 
   async getQaFindingAggregate(
@@ -3406,6 +3475,97 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }
   }
 
+  private async hydrateQualityResultSummaries(
+    rows: QualityResultListItemWithSnapshot[],
+  ) {
+    const snapshotIds = uniquePositiveNumbers(
+      rows.map((row) => Number(row.currentSnapshotId)),
+    );
+
+    if (snapshotIds.length === 0) {
+      return;
+    }
+
+    const summaries = await this.db
+      .selectFrom("xy_wap_embed_session_problem_resolution")
+      .select(["problem_summary", "snapshot_id"])
+      .where("snapshot_id", "in", snapshotIds)
+      .execute();
+    const summariesBySnapshotId = new Map(
+      summaries.map((row) => [String(row.snapshot_id), row.problem_summary]),
+    );
+
+    for (const row of rows) {
+      row.summary = summariesBySnapshotId.get(row.currentSnapshotId) ?? row.summary;
+    }
+  }
+
+  private async hydrateQualityResultActors(
+    scope: InsightsUidScope,
+    rows: InsightQualityResultPage["items"],
+  ) {
+    const conversationIds = uniquePositiveNumbers(
+      rows.map((row) => Number(row.conversationId)),
+    );
+
+    if (conversationIds.length === 0) {
+      return;
+    }
+
+    const conversations = await this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select(["id", "third_external_userid", "third_userid"])
+      .where("uid", "=", scope.uid)
+      .where("id", "in", conversationIds)
+      .execute();
+    const contacts = await this.listContactProfiles(
+      scope.uid,
+      uniqueNonEmpty(conversations.map((row) => row.third_external_userid)),
+    );
+    const seats = await this.listSeatProfiles(
+      scope.uid,
+      uniqueNonEmpty(conversations.map((row) => row.third_userid)),
+    );
+    const conversationsById = new Map(
+      conversations.map((row) => [String(row.id), row]),
+    );
+
+    for (const row of rows) {
+      const conversation = conversationsById.get(row.conversationId);
+      const contact = conversation
+        ? contacts.get(conversation.third_external_userid)
+        : undefined;
+      const seat = conversation
+        ? seats.get(conversation.third_userid)
+        : undefined;
+
+      row.customerAvatarUrl = contact?.avatarUrl ?? row.customerAvatarUrl;
+      row.customerName = contact?.name ?? row.customerName;
+      row.agentAvatarUrl = seat?.avatarUrl ?? row.agentAvatarUrl;
+      row.agentName = seat?.name ?? row.agentName;
+    }
+  }
+
+  private async listQualityRules(
+    snapshotIds: number[],
+  ): Promise<QualityRuleQueryRow[]> {
+    if (snapshotIds.length === 0) {
+      return [];
+    }
+
+    return await this.db
+      .selectFrom("xy_wap_embed_session_qa_finding")
+      .select([
+        "id as qa_finding_id",
+        "passed",
+        "rule_code",
+        "rule_name",
+        "snapshot_id",
+      ])
+      .where("snapshot_id", "in", snapshotIds)
+      .execute() as unknown as QualityRuleQueryRow[];
+  }
+
   private async hydrateActionItemEvidence(
     snapshotIds: number[],
     actionItems: InsightDetailActionItemRow[],
@@ -3647,6 +3807,55 @@ function mapFollowUpActionItemRows(rows: ActionItemQueryRow[]): InsightActionIte
   }));
 }
 
+function mapQualityResultRows(
+  rows: QualityResultQueryRow[],
+  ruleRows: QualityRuleQueryRow[],
+): QualityResultListItemWithSnapshot[] {
+  const rulesBySession = new Map<
+    string,
+    Map<string, InsightQualityResultPage["items"][number]["rules"][number]>
+  >();
+
+  for (const row of ruleRows) {
+    const snapshotId = String(row.snapshot_id);
+    const findingId = String(row.qa_finding_id);
+    let sessionRuleResults = rulesBySession.get(snapshotId);
+
+    if (!sessionRuleResults) {
+      sessionRuleResults = new Map();
+      rulesBySession.set(snapshotId, sessionRuleResults);
+    }
+
+    sessionRuleResults.set(findingId, {
+      passed: row.passed === 1 || row.passed === "1",
+      ruleCode: row.rule_code,
+      ruleName: row.rule_name,
+    });
+  }
+
+  return rows.map((row) => {
+    const sessionId = String(row.session_id);
+    const rules = Array.from(rulesBySession.get(String(row.snapshot_id))?.values() ?? []);
+    const failedRuleCount = parseNumber(row.failed_rules);
+
+    return {
+      agentAvatarUrl: undefined,
+      agentName: undefined,
+      conversationId: String(row.conversation_id),
+      currentSnapshotId: String(row.snapshot_id),
+      customerAvatarUrl: undefined,
+      customerName: "未知客户",
+      lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at) ?? undefined,
+      passed: failedRuleCount === 0,
+      passedRules: parseNumber(row.passed_rules),
+      rules,
+      sessionId,
+      summary: "",
+      totalRules: parseNumber(row.total_rules),
+    };
+  });
+}
+
 function mapActionItemRows(rows: ActionItemQueryRow[]): InsightDetailActionItemRow[] {
   const byAction = new Map<string, InsightDetailActionItemRow>();
 
@@ -3846,6 +4055,22 @@ function parsePositiveInteger(value: number | string | undefined) {
   const parsed = Number(value);
 
   return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+function normalizeQualityPage(value: number | undefined) {
+  if (!value || !Number.isFinite(value) || value < 1) {
+    return 1;
+  }
+
+  return Math.trunc(value);
+}
+
+function normalizeQualityPageSize(value: number | undefined) {
+  if (!value || !Number.isFinite(value) || value < 1) {
+    return 20;
+  }
+
+  return Math.min(Math.trunc(value), 100);
 }
 
 function normalizePreset(value: string): InsightSessionizationSettings["preset"] {
@@ -4218,6 +4443,85 @@ function buildCurrentSessionBaseQuery(db: Kysely<Database>) {
     .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
       join.onRef("problem.snapshot_id", "=", "snapshot.id"),
     );
+}
+
+function buildQualityResultBaseQuery(db: Kysely<Database>) {
+  return buildCurrentSessionLeanBaseQuery(db)
+    .innerJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
+      join.onRef("qa.snapshot_id", "=", "snapshot.id"),
+    );
+}
+
+function buildQualityResultSessionQuery(
+  db: Pick<Kysely<Database>, "selectFrom">,
+  filters: {
+    fromTs: number | null | undefined;
+    passed: boolean | undefined;
+    toTs: number | null | undefined;
+    uid: number;
+  },
+) {
+  return applyQualityResultFilters(
+    buildQualityResultBaseQuery(db as Kysely<Database>),
+    filters,
+  )
+    .select([
+      "session.conversation_id as conversation_id",
+      "session.id as session_id",
+      "snapshot.id as snapshot_id",
+      sql<number>`count(distinct qa.id)`.as("total_rules"),
+      sql<number>`count(distinct case when qa.passed = 1 then qa.id end)`.as("passed_rules"),
+      sql<number>`count(distinct case when qa.passed = 0 then qa.id end)`.as("failed_rules"),
+      sql<number>`coalesce(session.last_message_at, session.started_at)`.as("last_customer_message_at"),
+    ])
+    .groupBy([
+      "session.id",
+      "session.conversation_id",
+      "session.last_message_at",
+      "session.started_at",
+      "snapshot.id",
+    ]);
+}
+
+function applyQualityResultFilters<Query>(
+  query: Query,
+  filters: {
+    fromTs: number | null | undefined;
+    passed: boolean | undefined;
+    toTs: number | null | undefined;
+    uid: number;
+  },
+): Query {
+  let next = query as Query & {
+    where(column: string, operator: string, value: unknown): Query;
+  };
+
+  next = next.where("session.uid", "=", filters.uid) as typeof next;
+  next = next.where("snapshot.status", "in", ["ready", "partial"]) as typeof next;
+
+  if (filters.fromTs != null) {
+    next = next.where("session.started_at", ">=", filters.fromTs) as typeof next;
+  }
+  if (filters.toTs != null) {
+    next = next.where("session.started_at", "<=", filters.toTs) as typeof next;
+  }
+
+  return next;
+}
+
+function applyQualityResultSessionStatusFilter<Query>(
+  query: Query,
+  passed: boolean | undefined,
+): Query {
+  if (passed == null) {
+    return query;
+  }
+
+  const next = query as Query & {
+    having(expression: unknown, operator: string, value: unknown): Query;
+  };
+
+  return next.having(sql<number>`count(distinct case when qa.passed = 0 then qa.id end)`, passed ? "=" : ">", 0);
 }
 
 function needsCurrentSessionHydrationJoins(filters: InsightsOverviewFilters) {

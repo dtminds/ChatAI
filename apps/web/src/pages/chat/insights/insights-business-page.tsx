@@ -218,7 +218,6 @@ export function InsightsBusinessPage() {
       <div className="space-y-5">
         <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <InsightsPageHeader
-            description="从客户意图、业务标签、实体对象和链接文件四个维度查看经营主题，并追溯到对应会话"
             title="经营洞察"
           />
           <div className="flex flex-wrap items-center gap-2">

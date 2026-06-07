@@ -333,29 +333,12 @@ function OverviewHeader({
   overview: InsightsOverviewResponse | undefined;
   to: string;
 }) {
-  const lastPoint = overview?.trend.at(-1);
-
   return (
     <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="space-y-2">
         <InsightsPageHeader
-          description={`当前范围内有 ${overview?.totals.logicalSessions ?? "-"} 个咨询会话，${overview?.totals.consultingCustomers ?? "-"} 位咨询用户，最近一天新增 ${lastPoint?.logicalSessions ?? "-"} 个会话`}
           title="会话数据总览"
         />
-        <p className="sr-only">
-          当前范围内有{" "}
-          <span className="font-medium text-foreground">
-            {overview?.totals.logicalSessions ?? "-"} 个咨询会话
-          </span>
-          ，{" "}
-          <span className="font-medium text-foreground">
-            {overview?.totals.consultingCustomers ?? "-"} 位咨询用户
-          </span>
-          ，最近一天新增{" "}
-          <span className="font-medium text-foreground">
-            {lastPoint?.logicalSessions ?? "-"} 个会话
-          </span>
-        </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <InsightDateRangeFilter from={from} onChange={onDateRangeChange} to={to} />

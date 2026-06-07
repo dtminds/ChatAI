@@ -623,7 +623,6 @@ export function InsightsSettingsPage() {
               onFeatureConfigChange={(next) => void handleFeatureConfigChange(next)}
             />
           )}
-          description="个性化调整洞察策略、标签、质检规则和实体词库"
           title="洞察配置"
         />
         {summary ? <SettingsSummary summary={summary} /> : null}

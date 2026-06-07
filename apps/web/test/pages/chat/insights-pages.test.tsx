@@ -1055,6 +1055,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    expect(screen.queryByText(/当前范围内有/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /日期范围.*近7天.*2026-05-28.*2026-06-03/ })).toBeInTheDocument();
     expect(screen.queryByLabelText("开始日期")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("结束日期")).not.toBeInTheDocument();
@@ -1454,6 +1455,8 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights/quality?resolutionStatus=unresolved");
 
     expect(await screen.findByRole("heading", { name: "服务质检" })).toBeInTheDocument();
+    expect(screen.queryByText("按咨询会话判断客户问题是否解决，辅助主管复核服务质量")).not.toBeInTheDocument();
+    expect(screen.getByTestId("quality-page-header")).toHaveClass("sm:items-end");
     expect(serviceMocks.getInsightQuality).toHaveBeenCalledWith(
       expect.objectContaining({
         from: "2026-05-28",
@@ -1623,6 +1626,8 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights/follow-ups");
 
     expect(await screen.findByRole("heading", { name: "待处理" })).toBeInTheDocument();
+    expect(screen.getByText("由 AI 智能识别未解决的问题、或待跟进的事项，自动为你生成待办")).toBeInTheDocument();
+    expect(screen.queryByText("集中处理风险、跟进和异常事项，状态只在洞察模块内生效")).not.toBeInTheDocument();
     expect(serviceMocks.getInsightFollowUps).toHaveBeenCalledWith(
       {
         page: 1,
@@ -1763,6 +1768,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights/settings");
 
     expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
+    expect(screen.queryByText("个性化调整洞察策略、标签、质检规则和实体词库")).not.toBeInTheDocument();
     expect(screen.getAllByText("洞察策略")[0]).toBeInTheDocument();
     expect(screen.getByText("会话切分规则")).toBeInTheDocument();
     expect(screen.queryByText("实时客服")).not.toBeInTheDocument();
@@ -1879,6 +1885,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights/business");
 
     expect(await screen.findByRole("heading", { level: 1, name: "经营洞察" })).toBeInTheDocument();
+    expect(screen.queryByText("从客户意图、业务标签、实体对象和链接文件四个维度查看经营主题，并追溯到对应会话")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /日期范围.*近7天.*2026-05-28.*2026-06-03/ })).toBeInTheDocument();
     expect(screen.queryByLabelText("开始日期")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("结束日期")).not.toBeInTheDocument();

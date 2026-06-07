@@ -132,14 +132,16 @@ export function InsightsPageHeader({
   title,
 }: {
   actions?: ReactNode;
-  description: string;
+  description?: string;
   title: string;
 }) {
   return (
     <header className="flex items-start justify-between gap-4">
       <div className="min-w-0">
         <h1 className="text-[22px] font-semibold leading-tight text-foreground">{title}</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+        {description ? (
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+        ) : null}
       </div>
       {actions ? <div className="shrink-0">{actions}</div> : null}
     </header>

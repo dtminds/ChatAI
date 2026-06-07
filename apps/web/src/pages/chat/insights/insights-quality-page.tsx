@@ -113,9 +113,11 @@ export function InsightsQualityPage() {
   return (
     <InsightsLayout title="服务质检">
       <div className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div
+          className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+          data-testid="quality-page-header"
+        >
           <InsightsPageHeader
-            description="按咨询会话判断客户问题是否解决，辅助主管复核服务质量"
             title="服务质检"
           />
           <InsightDateRangeFilter

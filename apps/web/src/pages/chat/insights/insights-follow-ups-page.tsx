@@ -125,7 +125,7 @@ export function InsightsFollowUpsPage() {
     <InsightsLayout title="待处理">
       <div className="space-y-5">
         <InsightsPageHeader
-          description="集中处理风险、跟进和异常事项，状态只在洞察模块内生效"
+          description="由 AI 智能识别未解决的问题、或待跟进的事项，自动为你生成待办"
           title="待处理"
         />
 

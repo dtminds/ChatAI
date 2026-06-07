@@ -17,6 +17,8 @@ const defaultConfig = {
 function createRepository(
   overrides: Partial<InsightWorkerRepositoryPort> = {},
 ): InsightWorkerRepositoryPort {
+  let createdSessionId: string | undefined;
+
   return {
     appendSessionMessage: vi.fn(async () => undefined),
     archiveTerminalJobs: vi.fn(async () => ({ archivedJobs: 0, deletedJobs: 0 })),
@@ -25,9 +27,21 @@ function createRepository(
     createAnalyzeJob: vi.fn(async () => "job-1"),
     claimNextAnalyzeJob: vi.fn(async () => undefined),
     claimNextSyncMessagesJob: vi.fn(async () => undefined),
-    createLogicalSession: vi.fn(async () => "501"),
+    createLogicalSession: vi.fn(async () => {
+      createdSessionId = "501";
+      return "501";
+    }),
     findOpenSession: vi.fn(async () => undefined),
-    findReusableSession: vi.fn(async () => undefined),
+    findReusableSession: vi.fn(async () =>
+      createdSessionId
+        ? {
+            lastMeaningfulMessageAt: 1_780_244_000_000,
+            sessionId: createdSessionId,
+            startedAt: 1_780_244_000_000,
+            status: "open",
+          }
+        : undefined
+    ),
     findSessionBySourceMessage: vi.fn(async () => undefined),
     listSessionsBySourceMessages: vi.fn(async () => []),
     findPlatformConversation: vi.fn(async () => ({
@@ -99,6 +113,7 @@ function createRepository(
       },
     ]),
     listOpenSessionsForLiveAnalysis: vi.fn(async () => []),
+    listUnassignedPreContextMessages: vi.fn(async () => []),
     listSessionMessagesForAnalysis: vi.fn(async () => []),
     getCurrentAnalysisOutput: vi.fn(async () => undefined),
     markAnalysisJobFailed: vi.fn(async () => undefined),
@@ -230,6 +245,161 @@ describe("InsightsWorkerService", () => {
     expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
   });
 
+  it("does not open a logical session for agent-only touch messages", async () => {
+    const repository = createRepository({
+      listIncrementalMessages: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "今晚八点会员专场开播" }),
+          fromType: 1,
+          id: "9101",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          platform: 5,
+          uid: 9001,
+          thirdExternalId: "external-1",
+          thirdGroupId: "",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "下单前可领取优惠券" }),
+          fromType: 1,
+          id: "9102",
+          msgtime: 1_780_244_060_000,
+          msgtype: "text",
+          platform: 5,
+          uid: 9001,
+          thirdExternalId: "external-1",
+          thirdGroupId: "",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runOnce();
+
+    expect(repository.createLogicalSession).not.toHaveBeenCalled();
+    expect(repository.appendSessionMessage).not.toHaveBeenCalled();
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.updateCursor).toHaveBeenCalledWith({
+      cursorAuditId: 9102,
+      cursorMsgtime: 1_780_244_060_000,
+      uid: 9001,
+    });
+  });
+
+  it("does not open a logical session for customer messages that cannot enter AI context", async () => {
+    const repository = createRepository({
+      listIncrementalMessages: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ alt: "活动截图" }),
+          fromType: 2,
+          id: "9151",
+          msgtime: 1_780_244_000_000,
+          msgtype: "image",
+          platform: 5,
+          uid: 9001,
+          thirdExternalId: "external-1",
+          thirdGroupId: "",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runOnce();
+
+    expect(repository.createLogicalSession).not.toHaveBeenCalled();
+    expect(repository.appendSessionMessage).not.toHaveBeenCalled();
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.updateCursor).toHaveBeenCalledWith({
+      cursorAuditId: 9151,
+      cursorMsgtime: 1_780_244_000_000,
+      uid: 9001,
+    });
+  });
+
+  it("backfills up to ten unassigned agent or bot messages when a customer opens a session", async () => {
+    const listUnassignedPreContextMessages = vi.fn(async () => [
+      {
+        chatType: 1,
+        content: JSON.stringify({ content: "会员专场今晚开始" }),
+        conversationId: "301",
+        fromType: 1,
+        id: "9201",
+        msgtime: 1_780_243_800_000,
+        msgtype: "text",
+        thirdUserId: "user-1",
+      },
+      {
+        chatType: 1,
+        content: JSON.stringify({ content: "我是自动助手，可以帮您领券" }),
+        conversationId: "301",
+        fromType: 3,
+        id: "9202",
+        msgtime: 1_780_243_860_000,
+        msgtype: "text",
+        thirdUserId: "user-1",
+      },
+    ]);
+    const repository = createRepository({
+      listIncrementalMessages: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "这个活动还有库存吗" }),
+          fromType: 2,
+          id: "9301",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          platform: 5,
+          uid: 9001,
+          thirdExternalId: "external-1",
+          thirdGroupId: "",
+          thirdUserId: "user-1",
+        },
+      ]),
+      listUnassignedPreContextMessages,
+    } as Partial<InsightWorkerRepositoryPort>);
+    const service = new InsightsWorkerService(repository);
+
+    await service.runOnce();
+
+    expect(listUnassignedPreContextMessages).toHaveBeenCalledWith({
+      conversationId: "301",
+      limit: 10,
+      occurredBefore: 1_780_244_000_000,
+      uid: 9001,
+      windowStart: 1_780_244_000_000 - 120 * 60_000,
+    });
+    expect(repository.appendSessionMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        senderRole: "agent",
+        sessionId: "501",
+        sourceMessageId: "9201",
+      }),
+    );
+    expect(repository.appendSessionMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        senderRole: "bot",
+        sessionId: "501",
+        sourceMessageId: "9202",
+      }),
+    );
+    expect(repository.appendSessionMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        senderRole: "customer",
+        sessionId: "501",
+        sourceMessageId: "9301",
+      }),
+    );
+  });
+
   it("closes timed-out open sessions even when no new message arrives", async () => {
     const repository = createRepository({
       listClosableOpenSessions: vi.fn(async () => [
@@ -338,6 +508,108 @@ describe("InsightsWorkerService", () => {
       }),
     );
     expect(repository.createLogicalSession).toHaveBeenCalled();
+  });
+
+  it("backfills only new unassigned context after an idle session closes in the same conversation", async () => {
+    const sessionIds = ["501", "502"];
+    const listUnassignedPreContextMessages = vi.fn(async (input: { occurredBefore: number }) =>
+      input.occurredBefore === 1_780_244_000_000
+        ? [
+            {
+              chatType: 1,
+              content: JSON.stringify({ content: "首轮活动提醒" }),
+              conversationId: "301",
+              fromType: 1,
+              id: "9201",
+              msgtime: 1_780_243_900_000,
+              msgtype: "text",
+              thirdUserId: "user-1",
+            },
+          ]
+        : [
+            {
+              chatType: 1,
+              content: JSON.stringify({ content: "第二轮活动提醒" }),
+              conversationId: "301",
+              fromType: 1,
+              id: "9401",
+              msgtime: 1_780_251_150_000,
+              msgtype: "text",
+              thirdUserId: "user-1",
+            },
+          ]
+    );
+    const repository = createRepository({
+      createLogicalSession: vi.fn(async () => sessionIds.shift() ?? "unexpected-session"),
+      findReusableSession: vi
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce({
+          lastMeaningfulMessageAt: 1_780_244_000_000,
+          sessionId: "501",
+          startedAt: 1_780_244_000_000,
+          status: "open",
+        }),
+      listIncrementalMessages: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "第一次回复" }),
+          fromType: 2,
+          id: "9301",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          platform: 5,
+          uid: 9001,
+          thirdExternalId: "external-1",
+          thirdGroupId: "",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "第二次回复" }),
+          fromType: 2,
+          id: "9501",
+          msgtime: 1_780_251_200_001,
+          msgtype: "text",
+          platform: 5,
+          uid: 9001,
+          thirdExternalId: "external-1",
+          thirdGroupId: "",
+          thirdUserId: "user-1",
+        },
+      ]),
+      listUnassignedPreContextMessages,
+    });
+    const service = new InsightsWorkerService(repository);
+
+    await service.runOnce();
+
+    expect(repository.closeSession).toHaveBeenCalledWith({
+      closeReason: "idle_timeout",
+      endedAt: 1_780_251_200_001,
+      sessionId: "501",
+    });
+    expect(repository.createLogicalSession).toHaveBeenCalledTimes(2);
+    expect(listUnassignedPreContextMessages).toHaveBeenCalledTimes(2);
+    expect(repository.appendSessionMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ sessionId: "501", sourceMessageId: "9201" }),
+    );
+    expect(repository.appendSessionMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ sessionId: "501", sourceMessageId: "9301" }),
+    );
+    expect(repository.appendSessionMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ sessionId: "502", sourceMessageId: "9401" }),
+    );
+    expect(repository.appendSessionMessage).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({ sessionId: "502", sourceMessageId: "9501" }),
+    );
+    expect(repository.appendSessionMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "502", sourceMessageId: "9201" }),
+    );
   });
 
   it("reopens a canceled session when the next message still belongs to it", async () => {

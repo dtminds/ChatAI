@@ -904,6 +904,230 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.whereCalls).toContainEqual(["source_message_id", "=", 8001]);
   });
 
+  it("lists recent unassigned agent and bot messages for customer-opened pre-context", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        let rows: unknown[] = [];
+
+        if (table === "xy_wap_embed_conversation") {
+          rows = [
+            {
+              chat_type: 1,
+              platform: 5,
+              third_external_userid: "external-1",
+              third_group_id: "",
+              third_userid: "user-1",
+            },
+          ];
+        } else if (table === "xy_wap_embed_msg_audit_info as message") {
+          rows = [
+            {
+              chat_type: 1,
+              content: JSON.stringify({ content: "自动助手提醒领券" }),
+              conversation_id: 301,
+              from_type: 3,
+              id: 9202,
+              msgtime: 1_780_243_860_000,
+              msgtype: "text",
+              platform: 5,
+              third_external_id: "external-1",
+              third_group_id: "",
+              third_user_id: "user-1",
+              uid: 9001,
+            },
+            {
+              chat_type: 1,
+              content: JSON.stringify({ content: "会员专场今晚开始" }),
+              conversation_id: 301,
+              from_type: 1,
+              id: 9201,
+              msgtime: 1_780_243_800_000,
+              msgtype: "text",
+              platform: 5,
+              third_external_id: "external-1",
+              third_group_id: "",
+              third_user_id: "user-1",
+              uid: 9001,
+            },
+          ];
+        } else if (table === "xy_wap_embed_logical_session_message") {
+          rows = [
+            {
+              source_message_id: 9202,
+            },
+          ];
+        }
+
+        const builder = createSelectBuilder(rows, table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.listUnassignedPreContextMessages({
+      conversationId: "301",
+      limit: 12,
+      occurredBefore: 1_780_244_000_000,
+      uid: 9001,
+      windowStart: 1_780_236_800_000,
+    })).resolves.toEqual([
+      expect.objectContaining({
+        fromType: 1,
+        id: "9201",
+        thirdUserId: "user-1",
+      }),
+    ]);
+
+    const messageQuery = builders.find((builder) => builder.table === "xy_wap_embed_msg_audit_info as message");
+    const assignedQuery = builders.find((builder) => builder.table === "xy_wap_embed_logical_session_message");
+
+    expect(messageQuery?.joins).not.toContain("xy_wap_embed_logical_session_message as assigned");
+    expect(messageQuery?.whereCalls).toContainEqual(["message.uid", "=", 9001]);
+    expect(messageQuery?.whereCalls).toContainEqual(["message.platform", "=", 5]);
+    expect(messageQuery?.whereCalls).toContainEqual(["message.chat_type", "=", 1]);
+    expect(messageQuery?.whereCalls).toContainEqual(["message.third_user_id", "=", "user-1"]);
+    expect(messageQuery?.whereCalls).toContainEqual(["message.from_type", "in", [1, 3]]);
+    expect(messageQuery?.whereCalls).toContainEqual(["message.msgtype", "in", [
+      "file",
+      "link",
+      "markdown",
+      "mixed",
+      "news",
+      "text",
+      "voice",
+      "weapp",
+    ]]);
+    expect(messageQuery?.whereCalls).toContainEqual(["message.msgtime", ">=", 1_780_236_800_000]);
+    expect(messageQuery?.whereCalls).toContainEqual(["message.msgtime", "<", 1_780_244_000_000]);
+    expect(messageQuery?.whereCalls).toContainEqual(["message.third_external_id", "=", "external-1"]);
+    expect(messageQuery?.orderByCalls).toEqual([
+      ["message.msgtime", "desc"],
+      ["message.id", "desc"],
+    ]);
+    expect(messageQuery?.limitCalls).toEqual([50]);
+    expect(assignedQuery?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(assignedQuery?.whereCalls).toContainEqual(["source_message_id", "in", [9202, 9201]]);
+  });
+
+  it("uses group identity when listing group-chat pre-context messages", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const rows = table === "xy_wap_embed_conversation"
+          ? [
+              {
+                chat_type: 2,
+                platform: 5,
+                third_external_userid: "",
+                third_group_id: "group-1",
+                third_userid: "user-1",
+              },
+            ]
+          : table === "xy_wap_embed_msg_audit_info as message"
+            ? [
+                {
+                  chat_type: 2,
+                  content: JSON.stringify({ content: "群活动提醒" }),
+                  conversation_id: 302,
+                  from_type: 1,
+                  id: 9301,
+                  msgtime: 1_780_243_800_000,
+                  msgtype: "text",
+                  platform: 5,
+                  third_external_id: "",
+                  third_group_id: "group-1",
+                  third_user_id: "user-1",
+                  uid: 9001,
+                },
+              ]
+            : [];
+        const builder = createSelectBuilder(rows, table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.listUnassignedPreContextMessages({
+      conversationId: "302",
+      limit: 10,
+      occurredBefore: 1_780_244_000_000,
+      uid: 9001,
+      windowStart: 1_780_236_800_000,
+    })).resolves.toEqual([
+      expect.objectContaining({
+        id: "9301",
+        thirdUserId: "user-1",
+      }),
+    ]);
+
+    const messageQuery = builders.find((builder) => builder.table === "xy_wap_embed_msg_audit_info as message");
+
+    expect(messageQuery?.whereCalls).toContainEqual(["message.chat_type", "=", 2]);
+    expect(messageQuery?.whereCalls).toContainEqual(["message.third_group_id", "=", "group-1"]);
+    expect(messageQuery?.whereCalls).not.toContainEqual(["message.third_external_id", "=", ""]);
+  });
+
+  it("keeps pre-context candidates inside the idle-time window", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const rows = table === "xy_wap_embed_conversation"
+          ? [
+              {
+                chat_type: 1,
+                platform: 5,
+                third_external_userid: "external-1",
+                third_group_id: "",
+                third_userid: "user-1",
+              },
+            ]
+          : table === "xy_wap_embed_msg_audit_info as message"
+            ? [
+                {
+                  chat_type: 1,
+                  content: JSON.stringify({ content: "窗口内提醒" }),
+                  conversation_id: 301,
+                  from_type: 1,
+                  id: 9401,
+                  msgtime: 1_780_236_800_000,
+                  msgtype: "text",
+                  platform: 5,
+                  third_external_id: "external-1",
+                  third_group_id: "",
+                  third_user_id: "user-1",
+                  uid: 9001,
+                },
+              ]
+            : [];
+        const builder = createSelectBuilder(rows, table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.listUnassignedPreContextMessages({
+      conversationId: "301",
+      limit: 10,
+      occurredBefore: 1_780_244_000_000,
+      uid: 9001,
+      windowStart: 1_780_236_800_000,
+    })).resolves.toEqual([
+      expect.objectContaining({
+        id: "9401",
+        msgtime: 1_780_236_800_000,
+      }),
+    ]);
+
+    const messageQuery = builders.find((builder) => builder.table === "xy_wap_embed_msg_audit_info as message");
+
+    expect(messageQuery?.whereCalls).toContainEqual(["message.msgtime", ">=", 1_780_236_800_000]);
+    expect(messageQuery?.whereCalls).toContainEqual(["message.msgtime", "<", 1_780_244_000_000]);
+  });
+
   it("loads compact previous session summaries without tags, entities or evidence", async () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([

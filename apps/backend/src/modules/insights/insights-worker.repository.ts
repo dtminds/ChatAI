@@ -151,6 +151,7 @@ const defaultConfig: InsightWorkerSessionizationConfig = {
 const DEFAULT_LIVE_MIN_INTERVAL_MINUTES = 15;
 const DEFAULT_LIVE_MIN_NEW_MEANINGFUL_MESSAGES = 20;
 const DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.6;
+const PRE_CONTEXT_CANDIDATE_MULTIPLIER = 5;
 const cursorSource = "xy_wap_embed_msg_audit_info";
 const globalCursorUid = 0;
 const terminalJobStatuses = ["succeeded", "failed"] as const;
@@ -635,6 +636,120 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       sessionId: String(row.id),
       uid: parseNumber(row.uid),
     }));
+  }
+
+  async listUnassignedPreContextMessages(input: {
+    conversationId: string;
+    limit: number;
+    occurredBefore: number;
+    uid: number;
+    windowStart: number;
+  }) {
+    const conversationId = parsePositiveInteger(input.conversationId) ?? -1;
+    const boundedLimit = Math.max(1, Math.min(Math.floor(input.limit), 10));
+    const candidateLimit = boundedLimit * PRE_CONTEXT_CANDIDATE_MULTIPLIER;
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select([
+        "chat_type",
+        "platform",
+        "third_external_userid",
+        "third_group_id",
+        "third_userid",
+      ])
+      .where("id", "=", conversationId)
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", 1)
+      .executeTakeFirst() as {
+        chat_type: number | string;
+        platform: number | string;
+        third_external_userid: string;
+        third_group_id: string;
+        third_userid: string;
+      } | undefined;
+
+    if (!conversation) {
+      return [];
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.chat_type as chat_type",
+        "message.content as content",
+        "message.from_type as from_type",
+        "message.id as id",
+        "message.msgtime as msgtime",
+        "message.msgtype as msgtype",
+        "message.platform as platform",
+        "message.third_external_id as third_external_id",
+        "message.third_group_id as third_group_id",
+        "message.third_user_id as third_user_id",
+        "message.uid as uid",
+        sql<number>`${conversationId}`.as("conversation_id"),
+      ])
+      .where("message.uid", "=", input.uid)
+      .where("message.platform", "=", parseNumber(conversation.platform))
+      .where("message.chat_type", "=", parseNumber(conversation.chat_type))
+      .where("message.third_user_id", "=", conversation.third_userid)
+      .where("message.from_type", "in", [1, 3])
+      .where("message.msgtype", "in", [
+        "file",
+        "link",
+        "markdown",
+        "mixed",
+        "news",
+        "text",
+        "voice",
+        "weapp",
+      ])
+      .where("message.msgtime", ">=", input.windowStart)
+      .where("message.msgtime", "<", input.occurredBefore);
+
+    query = parseNumber(conversation.chat_type) === 2
+      ? query.where("message.third_group_id", "=", conversation.third_group_id)
+      : query.where("message.third_external_id", "=", conversation.third_external_userid);
+
+    const rows = await query
+      .orderBy("message.msgtime", "desc")
+      .orderBy("message.id", "desc")
+      .limit(candidateLimit)
+      .execute() as AnalysisMessageRow[];
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const candidateMessageIds = rows
+      .map((row) => parsePositiveInteger(String(row.id)))
+      .filter((id): id is number => id != null);
+
+    const assignedRows = candidateMessageIds.length === 0
+      ? []
+      : await this.db
+        .selectFrom("xy_wap_embed_logical_session_message")
+        .select(["source_message_id"])
+        .where("uid", "=", input.uid)
+        .where("source_message_id", "in", candidateMessageIds)
+        .execute() as Array<{ source_message_id: number | string }>;
+    const assignedSourceMessageIds = new Set(
+      assignedRows.map((row) => String(row.source_message_id)),
+    );
+
+    return rows
+      .filter((row) => !assignedSourceMessageIds.has(String(row.id)))
+      .slice(0, boundedLimit)
+      .reverse()
+      .map((row) => ({
+        chatType: parseNumber(row.chat_type),
+        content: row.content,
+        conversationId: String(row.conversation_id),
+        fromType: row.from_type == null ? null : parseNumber(row.from_type),
+        id: String(row.id),
+        msgtime: parseNumber(row.msgtime),
+        msgtype: row.msgtype,
+        thirdUserId: row.third_user_id,
+      }));
   }
 
   async createLogicalSession(input: CreateLogicalSessionInput): Promise<string> {

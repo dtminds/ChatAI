@@ -326,6 +326,13 @@ export type InsightWorkerRepositoryPort = {
     activeUids?: Set<number>;
     limit: number;
   }): Promise<OpenSessionForLiveAnalysis[]>;
+  listUnassignedPreContextMessages(input: {
+    conversationId: string;
+    limit: number;
+    occurredBefore: number;
+    uid: number;
+    windowStart: number;
+  }): Promise<InsightAnalysisMessageRow[]>;
   listSessionMessagesForAnalysis(sessionId: string): Promise<InsightAnalysisMessageRow[]>;
   getCurrentAnalysisOutput(input: {
     sessionId: string;
@@ -375,6 +382,7 @@ const PREVIOUS_SESSION_LOOKBACK_HOURS = 48;
 const PREVIOUS_SESSION_CONTEXT_LIMIT = 3;
 const TERMINAL_JOB_ARCHIVE_RETENTION_DAYS = 30;
 const TERMINAL_JOB_ARCHIVE_LIMIT = 5_000;
+const PRE_CONTEXT_MESSAGE_LIMIT = 10;
 
 export class InsightsWorkerService {
   private readonly batchSize: number;
@@ -770,13 +778,26 @@ export class InsightsWorkerService {
       conversationId: conversation.conversationId,
       uid: conversation.uid,
     });
-    const sessionId = await this.resolveSessionId({
+    const session = await this.resolveSessionId({
       config,
       conversation,
       input,
       message,
       openSession,
     });
+
+    if (!session) {
+      return false;
+    }
+
+    if (session.created && input.senderRole === "customer") {
+      await this.appendPreContextMessages({
+        config,
+        conversation,
+        occurredAt: input.occurredAt,
+        sessionId: session.sessionId,
+      });
+    }
 
     await this.repository.appendSessionMessage({
       conversationId: conversation.conversationId,
@@ -785,7 +806,7 @@ export class InsightsWorkerService {
       messageType: input.messageType,
       occurredAt: input.occurredAt,
       senderRole: input.senderRole,
-      sessionId,
+      sessionId: session.sessionId,
       sourceMessageId: input.sourceMessageId,
       sourceMessageTime: input.occurredAt,
       uid: conversation.uid,
@@ -796,7 +817,7 @@ export class InsightsWorkerService {
       && input.includedForAi
       && await this.repository.shouldCreateLiveAnalyzeJob({
         occurredAt: input.occurredAt,
-        sessionId,
+        sessionId: session.sessionId,
         uid: conversation.uid,
       })
     ) {
@@ -805,12 +826,51 @@ export class InsightsWorkerService {
         jobType: "analyze_session",
         mode: "live",
         runAfter: new Date(Date.now()),
-        sessionId,
+        sessionId: session.sessionId,
         uid: conversation.uid,
       });
     }
 
     return true;
+  }
+
+  private async appendPreContextMessages(input: {
+    config: InsightWorkerSessionizationConfig;
+    conversation: InsightWorkerConversation;
+    occurredAt: number;
+    sessionId: string;
+  }) {
+    const rows = await this.repository.listUnassignedPreContextMessages({
+      conversationId: input.conversation.conversationId,
+      limit: PRE_CONTEXT_MESSAGE_LIMIT,
+      occurredBefore: input.occurredAt,
+      uid: input.conversation.uid,
+      windowStart: input.occurredAt - input.config.idleTimeoutMinutes * 60_000,
+    });
+
+    for (const row of rows) {
+      const preContext = buildInsightMessageInput(toAnalysisMessageSourceRow(row));
+
+      if (
+        !preContext.includedForAi
+        || (preContext.senderRole !== "agent" && preContext.senderRole !== "bot")
+      ) {
+        continue;
+      }
+
+      await this.repository.appendSessionMessage({
+        conversationId: input.conversation.conversationId,
+        includedForAi: preContext.includedForAi,
+        meaningfulForBoundary: preContext.meaningfulForBoundary,
+        messageType: preContext.messageType,
+        occurredAt: preContext.occurredAt,
+        senderRole: preContext.senderRole,
+        sessionId: input.sessionId,
+        sourceMessageId: preContext.sourceMessageId,
+        sourceMessageTime: preContext.occurredAt,
+        uid: input.conversation.uid,
+      });
+    }
   }
 
   private async resolveSessionId(input: {
@@ -819,30 +879,45 @@ export class InsightsWorkerService {
     input: ReturnType<typeof buildInsightMessageInput>;
     message: InsightWorkerMessage;
     openSession: InsightWorkerOpenSession | undefined;
-  }) {
+  }): Promise<{ created: boolean; sessionId: string } | undefined> {
     const { config, conversation, openSession } = input;
     const occurredAt = input.input.occurredAt;
+    const canOpenSession = input.input.senderRole === "customer" && input.input.includedForAi;
 
     if (!openSession) {
-      return await this.repository.createLogicalSession({
-        config,
-        conversationId: conversation.conversationId,
-        startedAt: occurredAt,
-        uid: conversation.uid,
-      });
+      if (!canOpenSession) {
+        return undefined;
+      }
+
+      return {
+        created: true,
+        sessionId: await this.repository.createLogicalSession({
+          config,
+          conversationId: conversation.conversationId,
+          startedAt: occurredAt,
+          uid: conversation.uid,
+        }),
+      };
     }
 
     const closeReason = getCloseReason(openSession, config, occurredAt);
 
     if (!closeReason) {
       if (openSession.status === "canceled") {
+        if (!canOpenSession) {
+          return undefined;
+        }
+
         await this.repository.reopenSession({
           sessionId: openSession.sessionId,
           uid: conversation.uid,
         });
       }
 
-      return openSession.sessionId;
+      return {
+        created: false,
+        sessionId: openSession.sessionId,
+      };
     }
 
     if (openSession.status !== "canceled") {
@@ -861,12 +936,19 @@ export class InsightsWorkerService {
       });
     }
 
-    return await this.repository.createLogicalSession({
-      config,
-      conversationId: conversation.conversationId,
-      startedAt: occurredAt,
-      uid: conversation.uid,
-    });
+    if (!canOpenSession) {
+      return undefined;
+    }
+
+    return {
+      created: true,
+      sessionId: await this.repository.createLogicalSession({
+        config,
+        conversationId: conversation.conversationId,
+        startedAt: occurredAt,
+        uid: conversation.uid,
+      }),
+    };
   }
 
   private async runAnalyzeJob() {

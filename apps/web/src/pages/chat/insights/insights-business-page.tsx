@@ -1094,7 +1094,13 @@ function formatDateRangeSummary(from: string, to: string) {
 }
 
 function formatTopicMentionSummary(topic: BusinessTopic) {
-  return topic.sessionCount === topic.mentionCount
+  const summary = topic.sessionCount === topic.mentionCount
     ? `${formatNumber(topic.sessionCount)} 个会话提及`
     : `${formatNumber(topic.sessionCount)} 个会话 ${formatNumber(topic.mentionCount)} 次提及`;
+
+  if (topic.dimension !== "asset" || !topic.type) {
+    return summary;
+  }
+
+  return `${assetTypeText(topic.type)} · ${summary}`;
 }

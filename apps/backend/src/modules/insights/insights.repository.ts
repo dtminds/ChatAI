@@ -4367,8 +4367,9 @@ function parseBusinessAssetTopic(row: AssetTopicMessageQueryRow) {
       readInsightContentString(parsed, "path");
     const normalizedPath = normalizePathWithoutQuery(rawPath);
     const title =
-      readInsightContentString(parsed, "title") ||
+      readInsightContentString(parsed, "description") ||
       readInsightContentString(parsed, "appName") ||
+      readInsightContentString(parsed, "title") ||
       normalizedPath ||
       "未知小程序";
     const code = [appId, normalizedPath].filter(Boolean).join(":");

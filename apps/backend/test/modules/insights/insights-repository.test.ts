@@ -542,6 +542,49 @@ describe("InsightsRepository", () => {
     expect(assetQuery?.whereCalls).toContainEqual(["current.current_snapshot_id", "in", [501, 502]]);
   });
 
+  it("uses mini-program description as the business asset display name", async () => {
+    const rowsByTable = new Map<string, unknown[]>([
+      [
+        "xy_wap_embed_session_insight_current as current",
+        [{ session_id: 201, snapshot_id: 501, started_at: 1_780_244_000_000 }],
+      ],
+      [
+        "xy_wap_embed_logical_session_message as session_message",
+        [
+          {
+            content: JSON.stringify({
+              appId: "wx21c7506e98a2fe75",
+              description: "生椰拿铁（首创）",
+              pagePath: "pages/subMenu/productDetail/productDetail.html?type=qr&productId=1262&skuCode=SP2077-00195",
+              title: "luckincoffee瑞幸咖啡",
+            }),
+            message_type: "miniapp",
+            session_id: 201,
+            snapshot_id: 501,
+            source_message_id: 9001,
+            started_at: 1_780_244_000_000,
+          },
+        ],
+      ],
+      ["xy_wap_embed_session_tag as tag", []],
+      ["xy_wap_embed_session_entity as entity", []],
+      ["xy_wap_embed_session_intent as intent", []],
+    ]);
+    const db = {
+      selectFrom: vi.fn((table: string) => createSelectBuilder(rowsByTable.get(table) ?? [], table)),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.listBusinessTopicFacts({ uid: 9001 }, {})).resolves.toEqual([
+      expect.objectContaining({
+        code: "wx21c7506e98a2fe75:pages/subMenu/productDetail/productDetail.html",
+        dimension: "asset",
+        name: "生椰拿铁（首创）",
+        type: "miniapp",
+      }),
+    ]);
+  });
+
   it("filters entity hotspot risk counts without concatenating indexed columns", async () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([

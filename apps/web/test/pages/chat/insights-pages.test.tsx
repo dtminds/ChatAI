@@ -1959,6 +1959,12 @@ describe("conversation insights pages", () => {
     expect(screen.getByRole("heading", { name: "业务标签 Top10" })).toBeInTheDocument();
     expect(screen.getByText("8 个会话 10 次提及")).toBeInTheDocument();
 
+    await userEvent.click(screen.getByRole("button", { name: /链接文件/ }));
+    expect(screen.getByRole("heading", { name: "链接文件 Top10" })).toBeInTheDocument();
+    const assetTop10List = screen.getByRole("list", { name: "链接文件 Top10" });
+    expect(within(assetTop10List).getByText("红包活动")).toBeInTheDocument();
+    expect(within(assetTop10List).getByText("H5链接 · 5 个会话 6 次提及")).toBeInTheDocument();
+
     await userEvent.type(screen.getByRole("textbox", { name: "搜索相关会话" }), "物流异常");
     expect(within(relatedSessionsTable).getByText("客户反馈物流异常")).toBeInTheDocument();
 

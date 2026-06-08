@@ -1525,7 +1525,14 @@ describe("InsightsWorkerService", () => {
             evidenceMessageIds: ["9001"],
           },
         ],
-        faqCandidates: [],
+        faqCandidates: [
+          {
+            answerHint: "查询物流异常处理流程",
+            evidenceMessageIds: ["9001"],
+            question: "物流不更新怎么办",
+            status: "candidate",
+          },
+        ],
         intents: [
           {
             confidence: 0.84,
@@ -2098,9 +2105,9 @@ describe("InsightsWorkerService", () => {
     expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
       expect.objectContaining({
         output: expect.objectContaining({
-          actionItems: previousOutput.actionItems,
+          actionItems: [],
           entities: [],
-          faqCandidates: previousOutput.faqCandidates,
+          faqCandidates: [],
           intents: [],
           problemResolution: previousOutput.problemResolution,
           qaFindings: previousOutput.qaFindings,
@@ -2183,7 +2190,16 @@ describe("InsightsWorkerService", () => {
       }),
     );
     expect(repository.markAnalysisRunSucceededWithoutSnapshot).not.toHaveBeenCalled();
-    expect(repository.saveAnalysisResult).toHaveBeenCalled();
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output: expect.objectContaining({
+          actionItems: [
+            expect.objectContaining({ title: "跟进物流异常" }),
+          ],
+          faqCandidates: [],
+        }),
+      }),
+    );
   });
 
   it("normalizes low-confidence problem resolution to unknown and suppresses action items", async () => {
@@ -2421,9 +2437,9 @@ describe("InsightsWorkerService", () => {
     expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
       expect.objectContaining({
         output: expect.objectContaining({
-          actionItems: previousOutput.actionItems,
+          actionItems: [],
           entities: [expect.objectContaining({ entityId: "sku-1" })],
-          faqCandidates: previousOutput.faqCandidates,
+          faqCandidates: [],
           problemResolution: previousOutput.problemResolution,
           qaFindings: previousOutput.qaFindings,
           sentiment: previousOutput.sentiment,
@@ -2570,6 +2586,160 @@ describe("InsightsWorkerService", () => {
     expect(model.analyzeSession).toHaveBeenCalledWith(
       expect.objectContaining({
         previousSessionContexts,
+      }),
+    );
+  });
+
+  it("does not save follow-up outputs for live analysis", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "live",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [
+          {
+            dueHint: "今天",
+            evidenceMessageIds: ["9001"],
+            priority: "high" as const,
+            title: "跟进物流",
+          },
+        ],
+        entities: [],
+        faqCandidates: [
+          {
+            answerHint: "查询物流异常处理流程",
+            evidenceMessageIds: ["9001"],
+            question: "物流不更新怎么办",
+            status: "candidate",
+          },
+        ],
+        intents: [],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户反馈物流异常",
+          resolutionStatus: "unknown" as const,
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          sessionTitle: "查物流",
+          text: "客服处理中",
+        },
+        tags: [],
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        job: expect.objectContaining({ mode: "live" }),
+        output: expect.objectContaining({
+          actionItems: [],
+          faqCandidates: [],
+        }),
+      }),
+    );
+  });
+
+  it("does not save newly generated follow-up outputs for manual all reanalysis", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "manual_reanalyze",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [
+          {
+            dueHint: "今天",
+            evidenceMessageIds: ["9001"],
+            priority: "high" as const,
+            title: "跟进物流",
+          },
+        ],
+        entities: [],
+        faqCandidates: [
+          {
+            answerHint: "查询物流异常处理流程",
+            evidenceMessageIds: ["9001"],
+            question: "物流不更新怎么办",
+            status: "candidate",
+          },
+        ],
+        intents: [],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户反馈物流异常",
+          resolutionStatus: "unknown" as const,
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          sessionTitle: "查物流",
+          text: "客服处理中",
+        },
+        tags: [],
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        job: expect.objectContaining({ mode: "manual_reanalyze" }),
+        output: expect.objectContaining({
+          actionItems: [],
+          faqCandidates: [],
+        }),
       }),
     );
   });

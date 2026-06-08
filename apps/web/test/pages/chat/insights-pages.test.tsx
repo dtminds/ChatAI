@@ -1001,10 +1001,10 @@ function installInsightMocks() {
   serviceMocks.listInsightLabelConfigs.mockResolvedValue(mockInsightSettings.labelConfigs);
   serviceMocks.listInsightQaRuleConfigs.mockResolvedValue(mockInsightSettings.qaRuleConfigs);
   serviceMocks.listInsightEntityDictionary.mockResolvedValue(mockInsightSettings.entityDictionary);
-  serviceMocks.updateInsightActionStatus.mockResolvedValue({
-    actionItemId: "801",
-    status: "done",
-  });
+  serviceMocks.updateInsightActionStatus.mockImplementation(async (actionItemId: string, status: string) => ({
+    actionItemId,
+    status,
+  }));
   serviceMocks.createInsightRescanJob.mockResolvedValue({
     jobId: "8801",
     status: "accepted",
@@ -1289,6 +1289,30 @@ describe("conversation insights pages", () => {
       actionItemsLabel.compareDocumentPosition(businessAttributionHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(within(insightRegion).getByText("跟进物流是否已更新")).toBeInTheDocument();
+    expect(within(insightRegion).queryByText("标记完成")).not.toBeInTheDocument();
+    const completeActionItemButton = within(insightRegion).getByRole("button", { name: "标记完成：跟进物流是否已更新" });
+    expect(within(completeActionItemButton).queryByText("标记完成")).not.toBeInTheDocument();
+    expect(within(insightRegion).getByRole("button", { name: "忽略：跟进物流是否已更新" })).toBeInTheDocument();
+    await userEvent.click(completeActionItemButton);
+    await waitFor(() => {
+      expect(serviceMocks.updateInsightActionStatus).toHaveBeenCalledWith("801", "done");
+    });
+    expect(within(insightRegion).getByText("跟进物流是否已更新")).toHaveClass("line-through");
+    expect(within(insightRegion).queryByRole("button", { name: "恢复待完成：跟进物流是否已更新" })).not.toBeInTheDocument();
+    await userEvent.click(within(insightRegion).getByRole("button", { name: "重新打开：跟进物流是否已更新" }));
+    await waitFor(() => {
+      expect(serviceMocks.updateInsightActionStatus).toHaveBeenCalledWith("801", "open");
+    });
+    expect(within(insightRegion).getByText("跟进物流是否已更新")).not.toHaveClass("line-through");
+    await userEvent.click(within(insightRegion).getByRole("button", { name: "忽略：跟进物流是否已更新" }));
+    await waitFor(() => {
+      expect(serviceMocks.updateInsightActionStatus).toHaveBeenLastCalledWith("801", "dismissed");
+    });
+    expect(within(insightRegion).queryByRole("button", { name: "恢复待完成：跟进物流是否已更新" })).not.toBeInTheDocument();
+    await userEvent.click(within(insightRegion).getByRole("button", { name: "重新打开：跟进物流是否已更新" }));
+    await waitFor(() => {
+      expect(serviceMocks.updateInsightActionStatus).toHaveBeenLastCalledWith("801", "open");
+    });
     expect(within(insightRegion).getByText("发送补偿说明")).toHaveClass("line-through");
     expect(screen.getAllByText("物流异常").length).toBeGreaterThan(0);
     expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
@@ -1885,7 +1909,6 @@ describe("conversation insights pages", () => {
       "客户",
       "概要",
       "优先级",
-      "状态",
       "时间",
       "操作",
     ]);
@@ -1893,10 +1916,162 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("确认快递状态")).toBeInTheDocument();
     expect(screen.queryByText("物流进度未确认")).not.toBeInTheDocument();
     expect(screen.queryByText("logistics_check")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "标记完成" }));
+    expect(screen.queryByRole("button", { name: "标记完成" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "忽略" })).not.toBeInTheDocument();
+
+    const actionTrigger = screen.getByRole("button", { name: "处理" });
+    expect(actionTrigger.querySelector('[data-icon-name="arrow-down-01"]')).toBeInTheDocument();
+    await userEvent.click(actionTrigger);
+    const actionMenu = await screen.findByRole("menu", { name: "处理待办" });
+    expect(within(actionMenu).getByRole("menuitem", { name: "标记完成" })).toBeInTheDocument();
+    expect(within(actionMenu).getByRole("menuitem", { name: "忽略" })).toBeInTheDocument();
+    expect(within(actionMenu).queryByRole("menuitem", { name: "重新打开" })).not.toBeInTheDocument();
+
+    await userEvent.click(within(actionMenu).getByRole("menuitem", { name: "标记完成" }));
 
     await waitFor(() => {
       expect(serviceMocks.updateInsightActionStatus).toHaveBeenCalledWith("801", "done");
+    });
+  });
+
+  it("styles follow-up status badges by action state", async () => {
+    serviceMocks.getInsightFollowUps.mockResolvedValueOnce({
+      items: [
+        {
+          actionItemId: "801",
+          conversationId: "301",
+          createdAt: 1_780_244_000_000,
+          customerAvatarUrl: "https://example.com/customer-1.png",
+          customerName: "张三",
+          priority: "high",
+          sessionId: "501",
+          status: "open",
+          title: "待处理事项",
+        },
+        {
+          actionItemId: "802",
+          conversationId: "302",
+          createdAt: 1_780_244_000_000,
+          customerAvatarUrl: "https://example.com/customer-2.png",
+          customerName: "李四",
+          priority: "medium",
+          sessionId: "502",
+          status: "done",
+          title: "已完成事项",
+        },
+        {
+          actionItemId: "803",
+          conversationId: "303",
+          createdAt: 1_780_244_000_000,
+          customerAvatarUrl: "https://example.com/customer-3.png",
+          customerName: "王五",
+          priority: "low",
+          sessionId: "503",
+          status: "dismissed",
+          title: "已忽略事项",
+        },
+      ],
+      page: 1,
+      pageSize: 10,
+      total: 3,
+      totalPages: 1,
+    });
+
+    renderRoute("/chat/insights/follow-ups");
+
+    const openRow = (await screen.findByText("待处理事项")).closest("tr");
+    const doneRow = screen.getByText("已完成事项").closest("tr");
+    const dismissedRow = screen.getByText("已忽略事项").closest("tr");
+    expect(openRow).not.toBeNull();
+    expect(doneRow).not.toBeNull();
+    expect(dismissedRow).not.toBeNull();
+
+    const openCells = within(openRow as HTMLElement).getAllByRole("cell");
+    const openSummaryCell = openCells[1];
+    expect(within(openSummaryCell).getByText("待处理")).toBeInTheDocument();
+    expect(within(openSummaryCell).getByText("待处理事项")).toBeInTheDocument();
+    expect(
+      within(openSummaryCell).getByText("待处理").compareDocumentPosition(
+        within(openSummaryCell).getByText("待处理事项"),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(openCells[3]).toHaveTextContent("周一 00:13");
+    const highPriority = within(openRow as HTMLElement).getByText("高");
+    const mediumPriority = within(doneRow as HTMLElement).getByText("中");
+    const lowPriority = within(dismissedRow as HTMLElement).getByText("低");
+    expect(within(openRow as HTMLElement).getByText("待处理")).toHaveClass("text-warning");
+    expect(within(openRow as HTMLElement).getByText("待处理")).not.toHaveClass("line-through");
+    const doneStatus = within(doneRow as HTMLElement).getByText("已完成");
+    const dismissedStatus = within(dismissedRow as HTMLElement).getByText("已忽略");
+    expect(within(openRow as HTMLElement).getByText("待处理事项")).toHaveClass("text-foreground");
+    expect(within(doneRow as HTMLElement).getByText("已完成事项")).toHaveClass("text-foreground");
+    expect(within(dismissedRow as HTMLElement).getByText("已忽略事项")).toHaveClass("text-muted-foreground");
+    expect(doneStatus).toHaveClass("text-success");
+    expect(doneStatus).not.toHaveClass("line-through");
+    expect(dismissedStatus).toHaveClass("text-muted-foreground");
+    expect(dismissedStatus).not.toHaveClass("line-through");
+    expect(highPriority).toHaveClass("text-destructive");
+    expect(highPriority).toHaveClass("text-sm");
+    expect(highPriority).not.toHaveClass("text-[11px]");
+    expect(highPriority).not.toHaveClass("rounded-full");
+    expect(highPriority).not.toHaveClass("bg-primary/12");
+    expect(highPriority).not.toHaveClass("bg-destructive/12");
+    expect(mediumPriority).toHaveClass("text-warning");
+    expect(mediumPriority).toHaveClass("text-sm");
+    expect(mediumPriority).not.toHaveClass("text-[11px]");
+    expect(mediumPriority).not.toHaveClass("rounded-full");
+    expect(mediumPriority).not.toHaveClass("bg-primary/12");
+    expect(mediumPriority).not.toHaveClass("bg-amber-500/16");
+    expect(lowPriority).toHaveClass("text-success");
+    expect(lowPriority).toHaveClass("text-sm");
+    expect(lowPriority).not.toHaveClass("text-[11px]");
+    expect(lowPriority).not.toHaveClass("rounded-full");
+    expect(lowPriority).not.toHaveClass("bg-primary/12");
+    expect(lowPriority).not.toHaveClass("bg-emerald-500/12");
+  });
+
+  it("reopens processed follow-ups from the action menu", async () => {
+    renderRoute("/chat/insights/follow-ups");
+
+    expect(await screen.findByRole("heading", { name: "待处理" })).toBeInTheDocument();
+    serviceMocks.getInsightFollowUps.mockResolvedValueOnce({
+      items: [
+        {
+          actionItemId: "801",
+          conversationId: "301",
+          createdAt: 1_780_244_000_000,
+          customerAvatarUrl: "https://example.com/customer-1.png",
+          customerName: "张三",
+          priority: "high",
+          sessionId: "501",
+          status: "done",
+          title: "确认快递状态",
+        },
+      ],
+      page: 1,
+      pageSize: 10,
+      total: 1,
+      totalPages: 1,
+    });
+    await userEvent.click(screen.getByRole("tab", { name: "已处理" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: "processed" }),
+        expect.any(Object),
+      );
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: "处理" }));
+    const actionMenu = await screen.findByRole("menu", { name: "处理待办" });
+    expect(within(actionMenu).getByRole("menuitem", { name: "重新打开" })).toBeInTheDocument();
+    expect(within(actionMenu).queryByRole("menuitem", { name: "标记完成" })).not.toBeInTheDocument();
+    expect(within(actionMenu).queryByRole("menuitem", { name: "忽略" })).not.toBeInTheDocument();
+
+    await userEvent.click(within(actionMenu).getByRole("menuitem", { name: "重新打开" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.updateInsightActionStatus).toHaveBeenCalledWith("801", "open");
     });
   });
 

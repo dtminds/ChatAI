@@ -316,6 +316,7 @@ export function InsightsOverviewPage() {
         error={detail.error}
         isOpen={detail.isOpen}
         isLoading={detail.isLoading}
+        onActionStatusChange={detail.updateActionStatus}
         onOpenChange={detail.onOpenChange}
       />
     </InsightsLayout>

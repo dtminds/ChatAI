@@ -133,19 +133,20 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
   private async doAnalyzeSession(
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
   ): Promise<InsightAnalysisOutput> {
-    if (this.config.analysisMode !== "single") {
-      return await this.doAnalyzeSessionInSteps(input);
-    }
+    const output = this.config.analysisMode !== "single"
+      ? await this.doAnalyzeSessionInSteps(input)
+      : await this.completeAnalysisStep({
+        maxTokens: this.config.maxTokens,
+        messages: buildInsightPromptMessages({
+          context: input.context,
+          includeActionItems: shouldGenerateActionItems(input.job),
+          messages: input.messages,
+          previousSessionContexts: input.previousSessionContexts,
+        }),
+        model: this.config.model,
+      });
 
-    return await this.completeAnalysisStep({
-      maxTokens: this.config.maxTokens,
-      messages: buildInsightPromptMessages({
-        context: input.context,
-        messages: input.messages,
-        previousSessionContexts: input.previousSessionContexts,
-      }),
-      model: this.config.model,
-    });
+    return stripFaqCandidates(output);
   }
 
   private async doAnalyzeSessionInSteps(
@@ -183,6 +184,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       maxTokens: this.config.maxTokens,
       messages: buildInsightSummaryPromptMessages({
         context: input.context,
+        includeActionItems: shouldGenerateActionItems(input.job),
         messages: input.messages,
         previousSessionContexts: input.previousSessionContexts,
       }),
@@ -506,6 +508,17 @@ function buildPriorConclusions(output: InsightAnalysisOutput | undefined) {
     actionItems: base.actionItems,
     problemResolution: base.problemResolution,
     summary: base.summary,
+  };
+}
+
+function shouldGenerateActionItems(job: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0]["job"]) {
+  return job == null || job.mode === "final";
+}
+
+function stripFaqCandidates(output: InsightAnalyzerOutput): InsightAnalyzerOutput {
+  return {
+    ...output,
+    faqCandidates: [],
   };
 }
 

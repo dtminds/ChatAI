@@ -19,6 +19,7 @@ import {
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -48,17 +49,24 @@ import { ResolutionBadge } from "./insight-badges";
 import { InsightPerson } from "./insight-person";
 import { formatInsightTime } from "./insights-utils";
 
+type DetailActionStatus = Extract<
+  InsightDetailResponse["actionItems"][number]["status"],
+  "done" | "dismissed" | "open"
+>;
+
 export function InsightDetailPanel({
   detail,
   error,
   isOpen,
   isLoading,
+  onActionStatusChange,
   onOpenChange,
 }: {
   detail?: InsightDetailResponse;
   error?: Error;
   isOpen: boolean;
   isLoading?: boolean;
+  onActionStatusChange?: (actionItemId: string, status: DetailActionStatus) => Promise<void>;
   onOpenChange: (open: boolean) => void;
 }) {
   const evidenceRecordMessages = detail
@@ -82,7 +90,10 @@ export function InsightDetailPanel({
                     className="max-w-[760px] space-y-7"
                     role="region"
                   >
-                    <DetailSummarySection detail={detail} />
+                    <DetailSummarySection
+                      detail={detail}
+                      onActionStatusChange={onActionStatusChange}
+                    />
 
                     <div className="space-y-6">
                       <QualityFindingsSection items={detail.qaFindings} />
@@ -209,7 +220,13 @@ function buildInsightAccounts(
   );
 }
 
-function DetailSummarySection({ detail }: { detail: InsightDetailResponse }) {
+function DetailSummarySection({
+  detail,
+  onActionStatusChange,
+}: {
+  detail: InsightDetailResponse;
+  onActionStatusChange?: (actionItemId: string, status: DetailActionStatus) => Promise<void>;
+}) {
   const summaryTitle = detail.summary.sessionTitle || "未命名会话";
   const sessionTime = detail.session.endedAt
     ? `${formatInsightTime(detail.session.startedAt)} 至 ${formatInsightTime(detail.session.endedAt)}`
@@ -266,7 +283,10 @@ function DetailSummarySection({ detail }: { detail: InsightDetailResponse }) {
             {sessionTime}
           </span>
         </DetailMetaRow>
-        <ActionItemsSection items={detail.actionItems} />
+        <ActionItemsSection
+          items={detail.actionItems}
+          onActionStatusChange={onActionStatusChange}
+        />
       </dl>
 
     </section>
@@ -575,7 +595,7 @@ function QualityFindingItem({
   return (
     <div
       className={cn(
-        "rounded-[12px] border px-3 py-2.5",
+        "rounded-[12px] border bg-clip-padding bg-origin-border px-3 py-2.5",
         item.passed
           ? "border-success/15 bg-linear-to-r from-background from-55% to-success-muted/70"
           : "border-destructive/15 bg-linear-to-r from-background from-55% to-destructive-muted/70",
@@ -652,39 +672,119 @@ function QualityScoreRing({ value }: { value: number }) {
 
 function ActionItemsSection({
   items,
+  onActionStatusChange,
 }: {
   items: InsightDetailResponse["actionItems"];
+  onActionStatusChange?: (actionItemId: string, status: DetailActionStatus) => Promise<void>;
 }) {
+  const [pendingActionId, setPendingActionId] = useState<string>();
+
   if (items.length === 0) {
     return null;
   }
 
+  async function handleActionStatusChange(actionItemId: string, status: DetailActionStatus) {
+    if (!onActionStatusChange) {
+      return;
+    }
+
+    setPendingActionId(actionItemId);
+    try {
+      await onActionStatusChange(actionItemId, status);
+    } finally {
+      setPendingActionId((current) => (current === actionItemId ? undefined : current));
+    }
+  }
+
   return (
     <DetailMetaRow label="待办任务">
-      <ul className="space-y-2">
-        {items.map((item) => (
-          <li
-            className={cn(
-              "flex items-start gap-2.5 rounded-[8px] bg-muted/45 px-3 py-2",
-              item.status === "dismissed" || item.status === "expired" ? "opacity-65" : null,
-            )}
-            key={item.actionItemId}
-          >
-            <TodoStatusIcon status={item.status} />
-            <p
-              className={cn(
-                "min-w-0 text-sm font-medium leading-6 text-foreground",
-                item.status === "done" ? "text-muted-foreground line-through decoration-muted-foreground/70" : null,
-                item.status === "dismissed" || item.status === "expired" ? "text-muted-foreground" : null,
-              )}
-            >
-              {item.title}
-            </p>
-          </li>
-        ))}
-      </ul>
+      <>
+        <ul className="space-y-2">
+          {items.map((item) => {
+            const isPending = pendingActionId === item.actionItemId;
+            const canReopen = item.status === "done" || item.status === "dismissed";
+
+            return (
+              <li
+                className={cn(
+                  "flex items-start gap-2.5 rounded-[8px] border border-transparent px-3 py-2",
+                  getActionItemSurfaceClassName(item.status),
+                  item.status === "dismissed" || item.status === "expired" ? "opacity-65" : null,
+                )}
+                key={item.actionItemId}
+              >
+                {item.status === "open" && onActionStatusChange ? (
+                  <Button
+                    aria-label={`标记完成：${item.title}`}
+                    className="mt-[3px] size-4 shrink-0 rounded-[4px] border border-muted-foreground/70 bg-background p-0 hover:border-foreground hover:bg-background"
+                    disabled={isPending}
+                    onClick={() => void handleActionStatusChange(item.actionItemId, "done")}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  />
+                ) : (
+                  <TodoStatusIcon status={item.status} />
+                )}
+                <p
+                  className={cn(
+                    "min-w-0 flex-1 text-sm font-medium leading-6 text-foreground",
+                    item.status === "done" ? "text-success/85 line-through decoration-success/55" : null,
+                    item.status === "dismissed" || item.status === "expired" ? "text-muted-foreground" : null,
+                  )}
+                >
+                  {item.title}
+                </p>
+                {(item.status === "open" || canReopen) && onActionStatusChange ? (
+                  <div className="ml-auto flex shrink-0 items-center gap-1">
+                    {item.status === "open" ? (
+                      <Button
+                        aria-label={`忽略：${item.title}`}
+                        className="h-6 rounded-[6px] px-2 text-xs text-muted-foreground"
+                        disabled={isPending}
+                        onClick={() => void handleActionStatusChange(item.actionItemId, "dismissed")}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        忽略
+                      </Button>
+                    ) : (
+                      <Button
+                        aria-label={`重新打开：${item.title}`}
+                        className="h-6 rounded-[6px] px-2 text-xs text-muted-foreground"
+                        disabled={isPending}
+                        onClick={() => void handleActionStatusChange(item.actionItemId, "open")}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        重新打开
+                      </Button>
+                    )}
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      </>
     </DetailMetaRow>
   );
+}
+
+function getActionItemSurfaceClassName(
+  status: InsightDetailResponse["actionItems"][number]["status"],
+) {
+  if (status === "done") {
+    return "[background:linear-gradient(to_right,var(--color-success-muted)_0%,var(--color-background)_45%)_padding-box,linear-gradient(to_right,color-mix(in_oklch,var(--color-success)_42%,transparent)_0%,color-mix(in_oklch,var(--color-success)_12%,transparent)_48%,color-mix(in_oklch,var(--color-success)_12%,transparent)_100%)_border-box]";
+  }
+
+  if (status === "dismissed" || status === "expired") {
+    return "[background:linear-gradient(to_right,var(--color-muted)_0%,var(--color-background)_45%)_padding-box,linear-gradient(to_right,color-mix(in_oklch,var(--color-muted-foreground)_34%,transparent)_0%,color-mix(in_oklch,var(--color-muted-foreground)_11%,transparent)_48%,color-mix(in_oklch,var(--color-muted-foreground)_11%,transparent)_100%)_border-box]";
+  }
+
+  return "[background:linear-gradient(to_right,var(--color-warning-muted)_0%,var(--color-background)_45%)_padding-box,linear-gradient(to_right,color-mix(in_oklch,var(--color-warning)_44%,transparent)_0%,color-mix(in_oklch,var(--color-warning)_13%,transparent)_48%,color-mix(in_oklch,var(--color-warning)_13%,transparent)_100%)_border-box]";
 }
 
 function TodoStatusIcon({
@@ -696,7 +796,7 @@ function TodoStatusIcon({
     return (
       <HugeiconsIcon
         aria-hidden
-        className="mt-0.5 shrink-0 text-muted-foreground"
+        className="mt-0.5 shrink-0 text-success"
         icon={CheckmarkSquare02Icon}
         size={18}
         strokeWidth={1.8}

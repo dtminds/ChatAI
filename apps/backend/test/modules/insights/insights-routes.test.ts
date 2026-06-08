@@ -64,6 +64,15 @@ describe("insights routes", () => {
       payload: { status: "done" },
       url: "/api/server/insights/action-items/801/status",
     });
+    const reopenedStatus = await app.inject({
+      headers: {
+        authorization,
+        "x-workbench-client": "chat-ai-ui",
+      },
+      method: "PATCH",
+      payload: { status: "open" },
+      url: "/api/server/insights/action-items/801/status",
+    });
     const rescan = await app.inject({
       headers: {
         authorization,
@@ -236,6 +245,14 @@ describe("insights routes", () => {
       },
       success: true,
     });
+    expect(reopenedStatus.statusCode).toBe(200);
+    expect(reopenedStatus.json()).toMatchObject({
+      data: {
+        actionItemId: "801",
+        status: "open",
+      },
+      success: true,
+    });
     expect(rescan.statusCode).toBe(200);
     expect(rescan.json()).toMatchObject({
       data: {
@@ -260,7 +277,7 @@ describe("insights routes", () => {
       },
       success: true,
     });
-    expect(db.updatedActionStatus).toMatchObject({ id: 801, status: "done" });
+    expect(db.updatedActionStatus).toMatchObject({ id: 801, status: "open" });
     expect(db.insertedRescanTask).toMatchObject({
       analysis_scope: "classification",
       uid: 9001,
@@ -290,6 +307,31 @@ describe("insights routes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(admin.db.rescanTaskListQueries).toHaveLength(0);
+  });
+
+  it("returns action status update misses as a business error envelope", async () => {
+    const { app, authorization } = await createInsightsApp("operator");
+
+    const response = await app.inject({
+      headers: {
+        authorization,
+        "x-workbench-client": "chat-ai-ui",
+      },
+      method: "PATCH",
+      payload: { status: "done" },
+      url: "/api/server/insights/action-items/404/status",
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "INSIGHT_ACTION_ITEM_NOT_FOUND",
+        message: "待处理事项不存在",
+      },
+      success: false,
+    });
   });
 
   it("allows only admins to read settings", async () => {
@@ -1049,7 +1091,14 @@ function createInsightsDbMock(options: {
       }
 
       if (table === "xy_wap_embed_session_action_item as action") {
-        return createBuilder([
+        return createBuilder((builder) => {
+          const actionId = builder.wheres.find(([column]) => column === "action.id")?.[2];
+
+          if (actionId === 404) {
+            return [];
+          }
+
+          return [
           {
             action_id: 801,
             action_status: "open",
@@ -1064,7 +1113,8 @@ function createInsightsDbMock(options: {
             total_count: 1,
             uid: 9001,
           },
-        ]);
+          ];
+        });
       }
 
       if (table === "xy_wap_embed_session_action_item") {

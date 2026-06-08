@@ -1091,10 +1091,11 @@ export class InsightsWorkerService {
             previousOutput,
             buildInsufficientMessagesOutput(),
           );
+          const policyAdjustedOutput = applyModeOutputPolicy(job.mode, output);
 
           await this.repository.saveAnalysisResult({
             job,
-            output,
+            output: policyAdjustedOutput,
             resultKind: "insufficient_messages",
             runId,
             sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
@@ -1149,6 +1150,7 @@ export class InsightsWorkerService {
       const output = normalizeEvidenceIds(configuredOutput.output, new Set(sourceMessageIds));
       const confidenceAdjustedOutput = applyProblemResolutionConfidencePolicy(policy, output.output);
       const mergedOutput = mergeScopedAnalysisOutput(job.analysisScope, previousOutput, confidenceAdjustedOutput);
+      const policyAdjustedOutput = applyModeOutputPolicy(job.mode, mergedOutput);
       const validationWarnings = [
         ...analysisWarnings,
         ...configuredOutput.validationWarnings,
@@ -1158,7 +1160,7 @@ export class InsightsWorkerService {
 
       const snapshotId = await this.repository.saveAnalysisResult({
         job,
-        output: mergedOutput,
+        output: policyAdjustedOutput,
         resultKind: "model_analysis",
         runId,
         sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
@@ -1287,6 +1289,24 @@ function mergeScopedAnalysisOutput(
     entities: nextOutput.entities,
     intents: nextOutput.intents,
     tags: nextOutput.tags,
+  };
+}
+
+function applyModeOutputPolicy(
+  mode: ClaimedAnalyzeJob["mode"],
+  output: InsightAnalysisOutput,
+): InsightAnalysisOutput {
+  if (mode === "final") {
+    return {
+      ...output,
+      faqCandidates: [],
+    };
+  }
+
+  return {
+    ...output,
+    actionItems: [],
+    faqCandidates: [],
   };
 }
 

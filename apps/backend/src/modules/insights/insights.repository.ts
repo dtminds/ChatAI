@@ -377,7 +377,7 @@ type InsertResult = {
   insertId?: bigint | number | string | null;
 };
 
-const manualActionStatuses = new Set<InsightActionStatus>(["done", "dismissed"]);
+const manualActionStatuses = new Set<InsightActionStatus>(["open", "done", "dismissed"]);
 const allCurrentSessionsLimit = 5_000;
 
 export class InsightsRepository implements InsightsRepositoryPort {
@@ -3039,7 +3039,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   async updateActionStatus(
     scope: InsightsUidScope,
     actionItemId: string,
-    status: Extract<InsightActionStatus, "done" | "dismissed">,
+    status: Extract<InsightActionStatus, "open" | "done" | "dismissed">,
   ): Promise<boolean> {
     if (!manualActionStatuses.has(status)) {
       return false;
@@ -3061,7 +3061,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       )
       .select(["action.id"])
       .where("action.id", "=", id)
-      .where("action.status", "=", "open")
       .where("session.uid", "=", scope.uid)
       .executeTakeFirst();
 
@@ -3076,7 +3075,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         update_time: new Date(),
       })
       .where("id", "=", id)
-      .where("status", "=", "open")
+      .where("status", "in", ["open", "done", "dismissed"])
       .executeTakeFirst();
 
     return getAffectedRows(result) !== 0;

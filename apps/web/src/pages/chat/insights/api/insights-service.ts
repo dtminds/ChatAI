@@ -191,7 +191,7 @@ export async function getInsightMessageContext(
 
 export async function updateInsightActionStatus(
   actionItemId: string,
-  status: Extract<InsightActionStatus, "done" | "dismissed">,
+  status: Extract<InsightActionStatus, "done" | "dismissed" | "open">,
 ) {
   const response = await http.patch<
     ApiSuccessEnvelope<{ actionItemId: string; status: InsightActionStatus }>,

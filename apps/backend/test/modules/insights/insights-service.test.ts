@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ForbiddenError, NotFoundError } from "../../../src/shared/errors.js";
+import { BusinessError, ForbiddenError, NotFoundError } from "../../../src/shared/errors.js";
 import {
   InsightsService,
   type InsightsRepositoryPort,
@@ -1711,6 +1711,23 @@ describe("InsightsService", () => {
       status: "done",
     });
     expect(repository.updateActionStatus).toHaveBeenCalledWith(scope, "801", "done");
+
+    await expect(service.updateActionStatus(scope, "801", "open")).resolves.toMatchObject({
+      actionItemId: "801",
+      status: "open",
+    });
+    expect(repository.updateActionStatus).toHaveBeenCalledWith(scope, "801", "open");
+  });
+
+  it("returns a business error when an action item cannot be updated", async () => {
+    const repository = createRepository({ updateActionStatus: vi.fn(async () => false) });
+    const service = new InsightsService(repository);
+
+    await expect(service.updateActionStatus(scope, "21", "done")).rejects.toBeInstanceOf(BusinessError);
+    await expect(service.updateActionStatus(scope, "21", "done")).rejects.toMatchObject({
+      code: "INSIGHT_ACTION_ITEM_NOT_FOUND",
+      statusCode: 200,
+    });
   });
 
   it("creates a scoped historical rescan task on each manual trigger", async () => {

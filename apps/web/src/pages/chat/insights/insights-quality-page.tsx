@@ -221,6 +221,7 @@ export function InsightsQualityPage() {
         error={detail.error}
         isOpen={detail.isOpen}
         isLoading={detail.isLoading}
+        onActionStatusChange={detail.updateActionStatus}
         onOpenChange={detail.onOpenChange}
       />
     </InsightsLayout>

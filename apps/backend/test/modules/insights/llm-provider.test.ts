@@ -325,6 +325,7 @@ describe("LLM provider config", () => {
 
     expect(requestBodies.map((body) => body.model)).toEqual(["ep-main", "ep-main", "ep-lite"]);
     expect(requestBodies.map((body) => body.max_tokens)).toEqual([4096, 4096, 1024]);
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("faqCandidates");
     expect(JSON.stringify(requestBodies[1]?.messages)).toContain("qaFindings");
     expect(JSON.stringify(requestBodies[2]?.messages)).toContain("priorConclusions");
     expect(result).toMatchObject({
@@ -345,8 +346,22 @@ describe("LLM provider config", () => {
         requestBodies.push(requestBody);
         const content = requestBodies.length === 1
           ? {
-              actionItems: [],
-              faqCandidates: [],
+              actionItems: [
+                {
+                  dueHint: "今天",
+                  evidenceMessageIds: ["9001"],
+                  priority: "high",
+                  title: "跟进物流",
+                },
+              ],
+              faqCandidates: [
+                {
+                  answerHint: "查询物流异常处理流程",
+                  evidenceMessageIds: ["9001"],
+                  question: "物流不更新怎么办",
+                  status: "candidate",
+                },
+              ],
               problemResolution: {
                 confidence: 0.8,
                 evidence: [],
@@ -444,10 +459,105 @@ describe("LLM provider config", () => {
     expect(requestBodies).toHaveLength(2);
     expect(requestBodies.map((body) => body.model)).toEqual(["ep-main", "ep-lite"]);
     expect(JSON.stringify(requestBodies)).not.toContain("qaFindings");
+    const summaryMessages = requestBodies[0]?.messages as Array<{ content: string; role: string }>;
+    const summaryPayload = JSON.parse(summaryMessages[1]?.content ?? "{}");
+    expect(summaryPayload.outputContract).not.toHaveProperty("actionItems");
+    expect(summaryPayload.outputContract).not.toHaveProperty("faqCandidates");
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("actionItems");
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("faqCandidates");
+    expect(result.actionItems).toEqual([
+      expect.objectContaining({ title: "跟进物流" }),
+    ]);
+    expect(result.faqCandidates).toEqual([]);
     expect(result.qaFindings).toEqual([]);
     expect(result.intents).toEqual([
       expect.objectContaining({ intentCode: "logistics_delay" }),
     ]);
+  });
+
+  it("does not ask for follow-up outputs during manual all reanalysis", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        requestBodies.push(requestBody);
+        const content = requestBodies.length === 1
+          ? {
+              problemResolution: {
+                confidence: 0.8,
+                evidence: [],
+                evidenceMessageIds: ["9001"],
+                problemDetected: true,
+                problemSummary: "客户反馈物流异常",
+                resolutionStatus: "unknown",
+              },
+              sentiment: [],
+              summary: {
+                sessionTitle: "查物流",
+                text: "客服处理中",
+              },
+            }
+          : requestBodies.length === 2
+            ? { qaFindings: [] }
+            : { entities: [], intents: [], tags: [] };
+
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify(content) } }],
+          }),
+          { headers: { "Content-Type": "application/json" }, status: 200 },
+        );
+      }),
+    );
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      liteMaxTokens: 1024,
+      liteModel: "ep-lite",
+      maxTokens: 4096,
+      model: "ep-main",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      responseFormat: "json_object",
+    });
+
+    await analyzer.analyzeSession({
+      context: {
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [],
+        qaRuleConfigs: [],
+      },
+      job: {
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "manual_reanalyze",
+        sessionId: "501",
+        uid: 9001,
+      },
+      messages: [
+        {
+          aiText: "快递一直没更新",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "9001",
+        },
+      ],
+      previousSessionContexts: [],
+    });
+
+    expect(requestBodies).toHaveLength(3);
+    const summaryMessages = requestBodies[0]?.messages as Array<{ content: string; role: string }>;
+    const summaryPayload = JSON.parse(summaryMessages[1]?.content ?? "{}");
+    expect(summaryPayload.outputContract).not.toHaveProperty("actionItems");
+    expect(summaryPayload.outputContract).not.toHaveProperty("faqCandidates");
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("actionItems");
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("faqCandidates");
   });
 
   it("runs only classification for classification scoped reanalysis", async () => {

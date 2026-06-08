@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
-import type { InsightDetailResponse } from "@chatai/contracts";
-import { getInsightDetail } from "./api/insights-service";
+import type { InsightActionStatus, InsightDetailResponse } from "@chatai/contracts";
+import { getInsightDetail, updateInsightActionStatus } from "./api/insights-service";
+
+type DetailActionStatus = Extract<InsightActionStatus, "done" | "dismissed" | "open">;
 
 export function useInsightDetail() {
   const [detail, setDetail] = useState<InsightDetailResponse>();
@@ -51,6 +53,22 @@ export function useInsightDetail() {
     }
   }
 
+  async function updateActionStatus(actionItemId: string, status: DetailActionStatus) {
+    await updateInsightActionStatus(actionItemId, status);
+    setDetail((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        actionItems: current.actionItems.map((item) =>
+          item.actionItemId === actionItemId ? { ...item, status } : item,
+        ),
+      };
+    });
+  }
+
   return {
     detail,
     error,
@@ -58,5 +76,6 @@ export function useInsightDetail() {
     isLoading,
     onOpenChange: handleOpenChange,
     openDetail,
+    updateActionStatus,
   };
 }

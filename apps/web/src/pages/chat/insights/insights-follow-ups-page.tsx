@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import type { InsightsFollowUpsResponse } from "@chatai/contracts";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -18,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import {
   getInsightFollowUps,
   updateInsightActionStatus,
@@ -97,7 +106,7 @@ export function InsightsFollowUpsPage() {
     };
   }, [dateRange, page, priorityFilter, statusFilter]);
 
-  async function updateStatus(actionItemId: string, status: "dismissed" | "done") {
+  async function updateStatus(actionItemId: string, status: "done" | "dismissed" | "open") {
     await updateInsightActionStatus(actionItemId, status);
     setFollowUps((current) =>
       current
@@ -176,14 +185,13 @@ export function InsightsFollowUpsPage() {
                   <TableHead className="h-12 min-w-[180px] px-5">客户</TableHead>
                   <TableHead className="h-12 min-w-[300px] px-5">概要</TableHead>
                   <TableHead className="h-12 min-w-[90px] px-5">优先级</TableHead>
-                  <TableHead className="h-12 min-w-[112px] px-5">状态</TableHead>
                   <TableHead className="h-12 min-w-[150px] px-5">时间</TableHead>
                   <TableHead className="h-12 min-w-[190px] px-5 text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <InsightTableLoadingRow colSpan={6} />
+                  <InsightTableLoadingRow colSpan={5} />
                 ) : (followUps?.items ?? []).length > 0 ? (
                   (followUps?.items ?? []).map((item) => (
                     <TableRow key={item.actionItemId}>
@@ -194,15 +202,25 @@ export function InsightsFollowUpsPage() {
                         />
                       </TableCell>
                       <TableCell className="max-w-[360px] px-5 py-4">
-                        <div className="truncate text-sm font-medium text-foreground">
-                          {item.title}
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Badge
+                            className={cn("shrink-0 whitespace-nowrap", getActionStatusTextClassName(item.status))}
+                            variant="outline"
+                          >
+                            {formatActionStatus(item.status)}
+                          </Badge>
+                          <span
+                            className={cn(
+                              "min-w-0 truncate text-sm font-medium",
+                              item.status === "dismissed" ? "text-muted-foreground" : "text-foreground",
+                            )}
+                          >
+                            {item.title}
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell className="px-5 py-4">
                         <PriorityBadge priority={item.priority} />
-                      </TableCell>
-                      <TableCell className="min-w-[112px] px-5 py-4">
-                        <Badge className="whitespace-nowrap" variant="outline">{formatActionStatus(item.status)}</Badge>
                       </TableCell>
                       <TableCell className="px-5 py-4 text-sm text-muted-foreground">
                         {formatInsightTime(item.createdAt)}
@@ -217,30 +235,62 @@ export function InsightsFollowUpsPage() {
                           >
                             详情
                           </Button>
-                          <Button
-                            className="h-8 rounded-[8px]"
-                            disabled={item.status !== "open"}
-                            onClick={() => void updateStatus(item.actionItemId, "done")}
-                            size="sm"
-                          >
-                            标记完成
-                          </Button>
-                          <Button
-                            className="h-8 rounded-[8px]"
-                            disabled={item.status !== "open"}
-                            onClick={() => void updateStatus(item.actionItemId, "dismissed")}
-                            size="sm"
-                            variant="ghost"
-                          >
-                            忽略
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                className="h-8 rounded-[8px]"
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                处理
+                                <HugeiconsIcon
+                                  aria-hidden="true"
+                                  data-icon-name="arrow-down-01"
+                                  icon={ArrowDown01Icon}
+                                  size={14}
+                                  strokeWidth={1.8}
+                                />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              aria-labelledby={`follow-up-action-menu-${item.actionItemId}`}
+                              className="w-32"
+                            >
+                              <span className="sr-only" id={`follow-up-action-menu-${item.actionItemId}`}>
+                                处理待办
+                              </span>
+                              {item.status === "open" ? (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={() => void updateStatus(item.actionItemId, "done")}
+                                  >
+                                    标记完成
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => void updateStatus(item.actionItemId, "dismissed")}
+                                  >
+                                    忽略
+                                  </DropdownMenuItem>
+                                </>
+                              ) : null}
+                              {item.status === "done" || item.status === "dismissed" ? (
+                                <DropdownMenuItem
+                                  onClick={() => void updateStatus(item.actionItemId, "open")}
+                                >
+                                  重新打开
+                                </DropdownMenuItem>
+                              ) : null}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell className="px-5 py-8 text-center text-sm text-muted-foreground" colSpan={6}>
+                    <TableCell className="px-5 py-8 text-center text-sm text-muted-foreground" colSpan={5}>
                       暂无数据
                     </TableCell>
                   </TableRow>
@@ -266,10 +316,25 @@ export function InsightsFollowUpsPage() {
         error={detail.error}
         isOpen={detail.isOpen}
         isLoading={detail.isLoading}
+        onActionStatusChange={detail.updateActionStatus}
         onOpenChange={detail.onOpenChange}
       />
     </InsightsLayout>
   );
+}
+
+function getActionStatusTextClassName(
+  status: InsightsFollowUpsResponse["items"][number]["status"],
+) {
+  if (status === "done") {
+    return "text-success";
+  }
+
+  if (status === "dismissed") {
+    return "text-muted-foreground";
+  }
+
+  return "text-warning";
 }
 
 function FilterSelect({

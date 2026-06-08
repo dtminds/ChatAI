@@ -24,22 +24,22 @@ import {
 type Level = "high" | "low" | "medium";
 
 const levelClasses: Record<Level, string> = {
-  high: "bg-destructive/12 text-destructive",
-  low: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
-  medium: "bg-amber-500/16 text-amber-700 dark:text-amber-300",
+  high: "text-destructive",
+  low: "text-success",
+  medium: "text-warning",
 };
 
 export function PriorityBadge({ priority }: { priority: Level }) {
   return (
-    <Badge className={levelClasses[priority]}>
+    <span className={cn("text-sm font-medium", levelClasses[priority])}>
       {formatPriority(priority)}
-    </Badge>
+    </span>
   );
 }
 
 export function SeverityBadge({ severity }: { severity: Level }) {
   return (
-    <Badge className={levelClasses[severity]}>
+    <Badge className={cn("border-transparent bg-transparent", levelClasses[severity])} variant="outline">
       {formatSeverity(severity)}
     </Badge>
   );

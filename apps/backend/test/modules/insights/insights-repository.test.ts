@@ -890,6 +890,30 @@ describe("InsightsRepository", () => {
     expect(coreQuery.joins).not.toContain("xy_wap_embed_user_seat as seat");
   });
 
+  it("updates an action item back to open status", async () => {
+    let selectBuilder: SelectBuilderStub | undefined;
+    let updateBuilder: UpdateBuilderStub | undefined;
+    const db = {
+      selectFrom: vi.fn(() => {
+        selectBuilder = createSelectBuilder([{ uid: 9001 }]);
+        return selectBuilder;
+      }),
+      updateTable: vi.fn(() => {
+        updateBuilder = createUpdateBuilder(async () => ({ numAffectedRows: 1n }));
+        return updateBuilder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.updateActionStatus({ uid: 9001 }, "801", "open")).resolves.toBe(true);
+
+    expect(selectBuilder?.whereCalls).not.toContainEqual(["action.status", "=", "open"]);
+    expect(updateBuilder?.setCalls[0]).toEqual(expect.objectContaining({ status: "open" }));
+    expect(updateBuilder?.whereCalls).toContainEqual(["id", "=", 801]);
+    expect(updateBuilder?.whereCalls).toContainEqual(["status", "in", ["open", "done", "dismissed"]]);
+    expect(updateBuilder?.whereCalls).not.toContainEqual(["status", "=", "open"]);
+  });
+
   it("does not update an action item outside the current uid scope", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
     const db = {

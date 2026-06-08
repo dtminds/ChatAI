@@ -40,6 +40,7 @@ import type {
 import { DEFAULT_INSIGHT_SETTINGS } from "./insights-seeds.js";
 import {
   BadRequestError,
+  BusinessError,
   ForbiddenError,
   NotFoundError,
 } from "../../shared/errors.js";
@@ -341,7 +342,7 @@ export type InsightsRepositoryPort = {
   updateActionStatus(
     scope: InsightsUidScope,
     actionItemId: string,
-    status: Extract<InsightActionStatus, "done" | "dismissed">,
+    status: Extract<InsightActionStatus, "done" | "dismissed" | "open">,
   ): Promise<boolean>;
   getSettings(scope: InsightsUidScope): Promise<InsightSettingsResponse>;
   getSettingsSummary(scope: InsightsUidScope): Promise<InsightSettingsSummaryResponse>;
@@ -1098,14 +1099,14 @@ export class InsightsService {
     actionItemId: string,
     status: InsightActionStatus,
   ) {
-    if (status !== "done" && status !== "dismissed") {
+    if (status !== "done" && status !== "dismissed" && status !== "open") {
       throw new BadRequestError("INVALID_ACTION_STATUS", "不支持的处理状态");
     }
 
     const updated = await this.repository.updateActionStatus(scope, actionItemId, status);
 
     if (!updated) {
-      throw new NotFoundError("INSIGHT_ACTION_ITEM_NOT_FOUND", "待处理事项不存在");
+      throw new BusinessError("INSIGHT_ACTION_ITEM_NOT_FOUND", "待处理事项不存在");
     }
 
     return {

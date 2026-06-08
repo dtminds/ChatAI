@@ -90,11 +90,11 @@ describe("insight prompt builder", () => {
 
     expect(Object.keys(summaryContract).sort()).toEqual([
       "actionItems",
-      "faqCandidates",
       "problemResolution",
       "sentiment",
       "summary",
     ]);
+    expect(JSON.stringify(summaryPrompt)).not.toContain("faqCandidates");
     expect(summaryPayload.tenantContext).toEqual({
       intentConfigs: [
         expect.objectContaining({
@@ -126,6 +126,39 @@ describe("insight prompt builder", () => {
     });
     expect(JSON.stringify(classificationPayload.outputContract)).not.toContain("qaFindings");
     expect(JSON.stringify(classificationPayload.outputContract)).not.toContain("problemResolution");
+  });
+
+  it("can build summary prompts without action item outputs", () => {
+    const prompt = buildInsightSummaryPromptMessages({
+      includeActionItems: false,
+      messages: [
+        {
+          aiText: "快递一直没更新",
+          contentStatus: "ready",
+          conversationId: "301",
+          evidenceLabel: "[9001]",
+          includedForAi: true,
+          meaningfulForBoundary: true,
+          messageType: "text",
+          occurredAt: 1_780_244_000_000,
+          senderRole: "customer",
+          sourceMessageId: "9001",
+        },
+      ],
+    });
+    const systemPrompt = prompt[0]?.content ?? "";
+    const payload = JSON.parse(prompt[1]?.content ?? "{}");
+
+    expect(Object.keys(payload.outputContract).sort()).toEqual([
+      "problemResolution",
+      "sentiment",
+      "summary",
+    ]);
+    expect(systemPrompt).toContain("不要输出其它字段");
+    expect(JSON.stringify(payload.outputContract)).not.toContain("actionItems");
+    expect(JSON.stringify(payload.outputContract)).not.toContain("faqCandidates");
+    expect(JSON.stringify(prompt)).not.toContain("actionItems");
+    expect(JSON.stringify(prompt)).not.toContain("faqCandidates");
   });
 
   it("instructs the summary step to keep problem evidence as a minimal decision set", () => {

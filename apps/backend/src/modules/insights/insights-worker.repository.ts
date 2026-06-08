@@ -14,6 +14,7 @@ import type {
   CreateLogicalSessionInput,
   InsightAnalysisOutput,
   InsightWorkerAnalysisPolicy,
+  InsightWorkerExistingSession,
   InsightWorkerFeatureConfig,
   SaveAnalysisResultInput,
   ShouldCreateLiveAnalyzeJobInput,
@@ -116,15 +117,21 @@ type CurrentSessionLookupRow = {
   started_at: number | string;
 };
 
+type ExistingSessionLookupRow = {
+  session_id: number | string;
+  source_message_id?: number | string;
+  status: string;
+  uid: number | string;
+};
+
 type PreviousSessionContextRow = {
   ended_at: number | string | null;
-  follow_up: string | null;
   problem_summary: string | null;
-  process_summary: string | null;
   resolution_status: string | null;
-  result_summary: string | null;
   session_id: number | string;
+  session_title: string | null;
   started_at: number | string;
+  summary_text: string | null;
   unresolved_reason: string | null;
 };
 
@@ -863,15 +870,25 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     uid: number;
   }) {
     const row = await this.db
-      .selectFrom("xy_wap_embed_logical_session_message")
-      .select(["session_id", "uid"])
-      .where("uid", "=", input.uid)
-      .where("source_message_id", "=", parsePositiveInteger(input.sourceMessageId) ?? -1)
-      .executeTakeFirst() as { session_id: number | string; uid: number | string } | undefined;
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join
+          .onRef("session.id", "=", "session_message.session_id")
+          .onRef("session.uid", "=", "session_message.uid")
+      )
+      .select([
+        "session_message.session_id as session_id",
+        "session_message.uid as uid",
+        "session.status as status",
+      ])
+      .where("session_message.uid", "=", input.uid)
+      .where("session_message.source_message_id", "=", parsePositiveInteger(input.sourceMessageId) ?? -1)
+      .executeTakeFirst() as ExistingSessionLookupRow | undefined;
 
     return row
       ? {
           sessionId: String(row.session_id),
+          status: normalizeLogicalSessionStatus(row.status),
           uid: parseNumber(row.uid),
         }
       : undefined;
@@ -890,19 +907,26 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }
 
     const rows = await this.db
-      .selectFrom("xy_wap_embed_logical_session_message")
-      .select(["session_id", "source_message_id", "uid"])
-      .where("uid", "=", input.uid)
-      .where("source_message_id", "in", sourceMessageIds)
-      .execute() as Array<{
-        session_id: number | string;
-        source_message_id: number | string;
-        uid: number | string;
-      }>;
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
+        join
+          .onRef("session.id", "=", "session_message.session_id")
+          .onRef("session.uid", "=", "session_message.uid")
+      )
+      .select([
+        "session_message.session_id as session_id",
+        "session_message.source_message_id as source_message_id",
+        "session_message.uid as uid",
+        "session.status as status",
+      ])
+      .where("session_message.uid", "=", input.uid)
+      .where("session_message.source_message_id", "in", sourceMessageIds)
+      .execute() as ExistingSessionLookupRow[];
 
     return rows.map((row) => ({
       sessionId: String(row.session_id),
-      sourceMessageId: String(row.source_message_id),
+      sourceMessageId: row.source_message_id == null ? undefined : String(row.source_message_id),
+      status: normalizeLogicalSessionStatus(row.status),
       uid: parseNumber(row.uid),
     }));
   }
@@ -1318,10 +1342,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       })),
       sentiment: detail.sentiment,
       summary: {
-        customerIntent: detail.current.summaryCustomerIntent,
-        followUp: detail.current.summaryFollowUp ?? undefined,
-        processSummary: detail.current.summaryProcess ?? "",
-        resultSummary: detail.current.summaryResult ?? "",
+        sessionTitle: detail.current.summarySessionTitle,
+        text: detail.current.summaryText,
       },
       tags: detail.tags,
     };
@@ -1481,9 +1503,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         "previous_session.id as session_id",
         "previous_session.started_at as started_at",
         "previous_session.ended_at as ended_at",
-        "summary.follow_up as follow_up",
-        "summary.process_summary as process_summary",
-        "summary.result_summary as result_summary",
+        "summary.session_title as session_title",
+        "summary.summary_text as summary_text",
         "problem.problem_summary as problem_summary",
         "problem.resolution_status as resolution_status",
         "problem.unresolved_reason as unresolved_reason",
@@ -1499,13 +1520,12 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
 
     return rows.map((row) => ({
       endedAt: row.ended_at == null ? undefined : parseNumber(row.ended_at),
-      followUp: optionalString(row.follow_up),
       problemSummary: row.problem_summary ?? "",
-      processSummary: row.process_summary ?? "",
       resolutionStatus: normalizeResolutionStatus(row.resolution_status),
-      resultSummary: row.result_summary ?? "",
       sessionId: String(row.session_id),
+      sessionTitle: row.session_title ?? "",
       startedAt: parseNumber(row.started_at),
+      summaryText: row.summary_text ?? "",
       unresolvedReason: optionalString(row.unresolved_reason),
     }));
   }
@@ -1667,11 +1687,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     const evidenceRows: EvidenceInsertRow[] = [];
 
     await this.db.insertInto("xy_wap_embed_session_summary").values({
-      customer_intent: output.summary.customerIntent,
-      follow_up: output.summary.followUp ?? null,
-      process_summary: output.summary.processSummary,
-      result_summary: output.summary.resultSummary,
+      session_title: output.summary.sessionTitle,
       snapshot_id: snapshotId,
+      summary_text: output.summary.text,
     }).executeTakeFirst();
 
     await this.db.insertInto("xy_wap_embed_session_problem_resolution").values({
@@ -2166,6 +2184,19 @@ function normalizeAnalysisScope(value: string): InsightRescanAnalysisScope {
   }
 
   return "all";
+}
+
+function normalizeLogicalSessionStatus(value: string): InsightWorkerExistingSession["status"] {
+  if (
+    value === "open"
+    || value === "canceled"
+    || value === "closed_pending_analysis"
+    || value === "analyzed"
+  ) {
+    return value;
+  }
+
+  return "analyzed";
 }
 
 function parseJobMode(row: AnalyzeJobRow) {

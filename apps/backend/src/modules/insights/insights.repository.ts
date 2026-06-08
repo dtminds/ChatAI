@@ -70,17 +70,14 @@ type CurrentSessionQueryRow = {
   action_type?: string | null;
   action_priority?: string | null;
   action_title?: string | null;
-  agent_message_count: number | string;
   conversation_id: number | string;
   current_snapshot_id: number | string;
-  customer_message_count: number | string;
   ended_at: number | string | null;
   evidence_message_id?: number | string | null;
   evidence_role?: string | null;
   generated_at: number | string | Date;
   last_message_at: number | string | null;
   last_customer_message_at: number | string | null;
-  message_count: number | string;
   phase: string;
   problem_detected: number | string | null;
   problem_confidence?: number | string | null;
@@ -89,10 +86,8 @@ type CurrentSessionQueryRow = {
   session_id: number | string;
   started_at: number | string;
   status: string;
-  summary_customer_intent: string | null;
-  summary_follow_up: string | null;
-  summary_process: string | null;
-  summary_result: string | null;
+  summary_session_title: string | null;
+  summary_text: string | null;
   unresolved_reason: string | null;
 };
 
@@ -1722,19 +1717,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "problem.unresolved_reason as unresolved_reason",
         "session.conversation_id as conversation_id",
         "session.ended_at as ended_at",
-        "session.agent_message_count as agent_message_count",
         "session.id as session_id",
-        "session.customer_message_count as customer_message_count",
         "session.last_message_at as last_message_at",
-        "session.message_count as message_count",
         "session.started_at as started_at",
         "snapshot.phase as phase",
         "snapshot.create_time as generated_at",
         "snapshot.status as status",
-        "summary.customer_intent as summary_customer_intent",
-        "summary.follow_up as summary_follow_up",
-        "summary.process_summary as summary_process",
-        "summary.result_summary as summary_result",
+        "summary.session_title as summary_session_title",
+        "summary.summary_text as summary_text",
       ]);
 
     query = applyCurrentSessionFilters(query, scope, filters);
@@ -1748,19 +1738,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "problem.unresolved_reason",
         "session.conversation_id",
         "session.ended_at",
-        "session.agent_message_count",
         "session.id",
-        "session.customer_message_count",
         "session.last_message_at",
-        "session.message_count",
         "session.started_at",
         "snapshot.phase",
         "snapshot.create_time",
         "snapshot.status",
-        "summary.customer_intent",
-        "summary.follow_up",
-        "summary.process_summary",
-        "summary.result_summary",
+        "summary.session_title",
+        "summary.summary_text",
       ])
       .orderBy("session.started_at", "desc");
 
@@ -2322,10 +2307,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "snapshot.phase as phase",
         "snapshot.create_time as generated_at",
         "snapshot.status as status",
-        "summary.customer_intent as summary_customer_intent",
-        "summary.follow_up as summary_follow_up",
-        "summary.process_summary as summary_process",
-        "summary.result_summary as summary_result",
+        "summary.session_title as summary_session_title",
+        "summary.summary_text as summary_text",
       ])
       .where("session.uid", "=", scope.uid)
       .where("session.id", "=", parsePositiveInteger(sessionId) ?? -1)
@@ -3675,7 +3658,6 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
       {
         actionOpenCount: 0,
         agentAvatarUrl: null,
-        agentMessageCount: parseNumber(row.agent_message_count),
         agentName: readOptionalDetailField<string>(row, "agent_name"),
         agentSeatId: normalizeOptionalString(
           readOptionalDetailField<number | string>(row, "agent_seat_id"),
@@ -3684,13 +3666,11 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         conversationId: String(row.conversation_id),
         currentSnapshotId: String(row.current_snapshot_id),
         customerAvatarUrl: null,
-        customerMessageCount: parseNumber(row.customer_message_count),
         customerName: readOptionalDetailField<string>(row, "customer_name") ?? "未知客户",
         endedAt: parseNullableNumber(row.ended_at),
         generatedAt: parseNumber(row.generated_at),
         lastMessageAt: parseNullableNumber(row.last_message_at),
         lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at),
-        messageCount: parseNumber(row.message_count),
         phase: row.phase === "final" ? "final" : "live",
         problemDetected: row.problem_detected === 1,
         problemEvidenceMessageIds: [],
@@ -3699,10 +3679,8 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         resolutionStatus: normalizeResolutionStatus(row.resolution_status),
         sessionId,
         startedAt: parseNumber(row.started_at),
-        summaryCustomerIntent: row.summary_customer_intent ?? "",
-        summaryFollowUp: row.summary_follow_up,
-        summaryProcess: row.summary_process ?? "",
-        summaryResult: row.summary_result ?? "",
+        summarySessionTitle: row.summary_session_title ?? "",
+        summaryText: row.summary_text ?? "",
         unresolvedReason: row.unresolved_reason,
       };
 
@@ -4599,7 +4577,8 @@ function applyCurrentSessionFilters<Query>(
     next = next.where(sql<boolean>`
       (
         problem.problem_summary like ${pattern} escape '\\'
-        or summary.customer_intent like ${pattern} escape '\\'
+        or summary.session_title like ${pattern} escape '\\'
+        or summary.summary_text like ${pattern} escape '\\'
       )
     `) as typeof next;
   }

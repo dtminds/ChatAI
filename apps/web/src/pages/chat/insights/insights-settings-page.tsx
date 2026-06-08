@@ -153,8 +153,8 @@ const analysisFrequencyPresets = [
   {
     description: "兼顾时效性和成本",
     label: "标准（推荐）",
-    liveMinIntervalMinutes: 20,
-    liveMinNewMeaningfulMessages: 12,
+    liveMinIntervalMinutes: 15,
+    liveMinNewMeaningfulMessages: 20,
     value: "stable",
   },
   {

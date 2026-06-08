@@ -745,10 +745,8 @@ xy_wap_embed_analysis_run
 ```text
 xy_wap_embed_session_summary
 - snapshot_id
-- customer_intent
-- process_summary
-- result_summary
-- follow_up
+- session_title
+- summary_text
 - confidence
 ```
 
@@ -1093,7 +1091,7 @@ GET /api/server/insights/intents
 - 总览指标卡。
 - 优先处理队列。
 - 会话洞察列表和详情。
-- 摘要、客户诉求、跟进建议。
+- 会话短标题、摘要和客户诉求。
 - 情绪、标签、实体和意图。
 - 风险等级和风险原因。
 - 质检命中项和证据消息。

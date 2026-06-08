@@ -61,8 +61,18 @@ export type InsightWorkerConversation = {
 export type InsightWorkerExistingSession = {
   sessionId: string;
   sourceMessageId?: string;
+  status: "analyzed" | "canceled" | "closed_pending_analysis" | "open";
   uid: number;
 };
+
+type SessionizedMessageResult = {
+  includedForAi: boolean;
+  occurredAt: number;
+  sessionId: string;
+  uid: number;
+};
+
+type LiveAnalyzeCandidate = Omit<SessionizedMessageResult, "includedForAi">;
 
 export type InsightWorkerSessionizationConfig = {
   analysisDelayMinutes: number;
@@ -220,10 +230,8 @@ export type InsightAnalysisOutput = {
     reason: string;
   }>;
   summary: {
-    customerIntent: string;
-    followUp?: string;
-    processSummary: string;
-    resultSummary: string;
+    sessionTitle: string;
+    text: string;
   };
   tags: Array<{
     confidence: number;
@@ -536,21 +544,11 @@ export class InsightsWorkerService {
     let scheduledJobs = 0;
 
     for (const session of sessions) {
-      if (
-        await this.repository.shouldCreateLiveAnalyzeJob({
-          occurredAt: Date.now(),
-          sessionId: session.sessionId,
-          uid: session.uid,
-        })
-      ) {
-        await this.repository.createAnalyzeJob({
-          analysisScope: "all",
-          jobType: "analyze_session",
-          mode: "live",
-          runAfter: new Date(),
-          sessionId: session.sessionId,
-          uid: session.uid,
-        });
+      if (await this.createLiveAnalyzeJobIfNeeded({
+        occurredAt: Date.now(),
+        sessionId: session.sessionId,
+        uid: session.uid,
+      })) {
         scheduledJobs += 1;
       }
     }
@@ -585,7 +583,14 @@ export class InsightsWorkerService {
       let scannedMessages = 0;
       let sessionizedMessages = 0;
       let scanCompleted = false;
-      const sessionsToReanalyze = new Map<string, number>();
+      const sessionsToAnalyze = new Map<
+        string,
+        {
+          lastMessageAt: number;
+          status: InsightWorkerExistingSession["status"];
+          uid: number;
+        }
+      >();
 
       for (let batchIndex = 0; batchIndex < SYNC_MESSAGES_MAX_BATCHES; batchIndex += 1) {
         const messages = await this.repository.listIncrementalMessages({
@@ -609,12 +614,25 @@ export class InsightsWorkerService {
           const existingSession = existingSessionsBySourceMessageId.get(message.id);
 
           if (existingSession) {
-            sessionsToReanalyze.set(existingSession.sessionId, existingSession.uid);
+            sessionsToAnalyze.set(existingSession.sessionId, {
+              lastMessageAt: message.msgtime,
+              status: existingSession.status,
+              uid: existingSession.uid,
+            });
             continue;
           }
 
-          if (await this.sessionizeMessage(message, { skipLiveAnalysis: true })) {
+          const sessionizedMessage = await this.sessionizeMessage(message, { skipLiveAnalysis: true });
+
+          if (sessionizedMessage) {
             sessionizedMessages += 1;
+            if (sessionizedMessage.includedForAi) {
+              sessionsToAnalyze.set(sessionizedMessage.sessionId, {
+                lastMessageAt: sessionizedMessage.occurredAt,
+                status: "open",
+                uid: sessionizedMessage.uid,
+              });
+            }
           }
         }
         scannedMessages += messages.length;
@@ -647,7 +665,22 @@ export class InsightsWorkerService {
         throw new Error("sync_messages exceeded batch safety limit");
       }
 
-      for (const [sessionId, uid] of sessionsToReanalyze) {
+      let queuedFinalSessions = 0;
+      let queuedLiveSessions = 0;
+
+      for (const [sessionId, session] of sessionsToAnalyze) {
+        if (session.status === "open") {
+          if (await this.createLiveAnalyzeJobIfNeeded({
+            occurredAt: session.lastMessageAt,
+            sessionId,
+            uid: session.uid,
+          })) {
+            queuedLiveSessions += 1;
+          }
+
+          continue;
+        }
+
         await this.repository.createAnalyzeJob({
           analysisScope: job.analysisScope,
           jobType: "reanalyze_session",
@@ -655,15 +688,16 @@ export class InsightsWorkerService {
           rescanTaskId: job.rescanTaskId,
           runAfter: new Date(),
           sessionId,
-          uid,
+          uid: session.uid,
         });
+        queuedFinalSessions += 1;
       }
 
       if (job.rescanTaskId) {
         await this.repository.updateRescanTaskAfterScan({
-          queuedSessions: sessionsToReanalyze.size,
+          queuedSessions: queuedFinalSessions,
           rescanTaskId: job.rescanTaskId,
-          totalSessions: sessionsToReanalyze.size,
+          totalSessions: queuedFinalSessions,
         });
       }
 
@@ -671,7 +705,8 @@ export class InsightsWorkerService {
       this.logger?.info(
         {
           jobId: job.jobId,
-          reanalyzeSessions: sessionsToReanalyze.size,
+          liveAnalyzeSessions: queuedLiveSessions,
+          reanalyzeSessions: queuedFinalSessions,
           scannedMessages,
           sessionizedMessages,
           uid: job.uid,
@@ -771,11 +806,11 @@ export class InsightsWorkerService {
   private async sessionizeMessage(
     message: InsightWorkerMessage,
     options: { skipLiveAnalysis?: boolean } = {},
-  ) {
+  ): Promise<SessionizedMessageResult | undefined> {
     const conversation = await this.repository.findPlatformConversation(message);
 
     if (!conversation) {
-      return false;
+      return undefined;
     }
 
     const input = buildInsightMessageInput(toMessageSourceRow(message, conversation.conversationId));
@@ -793,7 +828,7 @@ export class InsightsWorkerService {
     });
 
     if (!session) {
-      return false;
+      return undefined;
     }
 
     if (session.created && input.senderRole === "customer") {
@@ -818,24 +853,41 @@ export class InsightsWorkerService {
       uid: conversation.uid,
     });
 
-    if (
-      !options.skipLiveAnalysis
-      && input.includedForAi
-      && await this.repository.shouldCreateLiveAnalyzeJob({
+    if (!options.skipLiveAnalysis && input.includedForAi) {
+      await this.createLiveAnalyzeJobIfNeeded({
         occurredAt: input.occurredAt,
-        sessionId: session.sessionId,
-        uid: conversation.uid,
-      })
-    ) {
-      await this.repository.createAnalyzeJob({
-        analysisScope: "all",
-        jobType: "analyze_session",
-        mode: "live",
-        runAfter: new Date(Date.now()),
         sessionId: session.sessionId,
         uid: conversation.uid,
       });
     }
+
+    return {
+      includedForAi: input.includedForAi,
+      occurredAt: input.occurredAt,
+      sessionId: session.sessionId,
+      uid: conversation.uid,
+    };
+  }
+
+  private async createLiveAnalyzeJobIfNeeded(input: LiveAnalyzeCandidate) {
+    if (
+      !await this.repository.shouldCreateLiveAnalyzeJob({
+        occurredAt: input.occurredAt,
+        sessionId: input.sessionId,
+        uid: input.uid,
+      })
+    ) {
+      return false;
+    }
+
+    await this.repository.createAnalyzeJob({
+      analysisScope: "all",
+      jobType: "analyze_session",
+      mode: "live",
+      runAfter: new Date(),
+      sessionId: input.sessionId,
+      uid: input.uid,
+    });
 
     return true;
   }
@@ -1172,16 +1224,15 @@ function buildInsufficientMessagesOutput(): InsightAnalysisOutput {
       evidence: [],
       evidenceMessageIds: [],
       problemDetected: false,
-      problemSummary: "消息不足，未进行模型分析",
+      problemSummary: "",
       resolutionStatus: "unknown",
-      unresolvedReason: "AI有效消息数不足",
+      unresolvedReason: "",
     },
     qaFindings: [],
     sentiment: [],
     summary: {
-      customerIntent: "消息不足",
-      processSummary: "AI有效消息数不足，未进行模型分析",
-      resultSummary: "消息不足",
+      sessionTitle: "",
+      text: "",
     },
     tags: [],
   };
@@ -1456,20 +1507,34 @@ function filterConfiguredAnalysisOutput(
     validationWarnings.push(`intent ${item.intentCode} is not configured`);
     return [];
   });
-  const qaFindings = output.qaFindings.flatMap((item) => {
+  const qaFindingsByRuleCode = new Map<string, InsightAnalysisOutput["qaFindings"][number]>();
+  for (const item of output.qaFindings) {
     const config = qaRuleConfigsByCode.get(item.ruleCode);
 
     if (config) {
-      return [{
-        ...item,
-        ruleName: config.ruleName,
-        severity: config.severity,
-      }];
+      if (!qaFindingsByRuleCode.has(item.ruleCode)) {
+        qaFindingsByRuleCode.set(item.ruleCode, {
+          ...item,
+          ruleName: config.ruleName,
+          severity: config.severity,
+        });
+      }
+      continue;
     }
 
     validationWarnings.push(`qa rule ${item.ruleCode} is not configured`);
-    return [];
-  });
+  }
+  const qaFindings = context.qaRuleConfigs.map((config) =>
+    qaFindingsByRuleCode.get(config.ruleCode) ?? {
+      confidence: 0,
+      evidenceMessageIds: [],
+      passed: true,
+      reason: "模型未识别出该质检项存在问题，按通过处理",
+      ruleCode: config.ruleCode,
+      ruleName: config.ruleName,
+      severity: config.severity,
+    }
+  );
 
   return {
     output: {

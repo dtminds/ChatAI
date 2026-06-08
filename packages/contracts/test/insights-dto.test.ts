@@ -117,16 +117,13 @@ describe("insights DTOs", () => {
       Value.Check(InsightOverviewSessionsResponseSchema, {
         items: [
           {
-            agentMessageCount: 3,
             analysisStatus: "ready",
             conversationId: "301",
-            customerMessageCount: 5,
             customerName: "张三",
-            messageCount: 8,
             resolutionStatus: "unresolved",
             sessionId: "session-1",
             startedAt: 1780243200000,
-            summaryCustomerIntent: "退款咨询",
+            summarySessionTitle: "退款进度咨询",
           },
         ],
         page: 1,
@@ -473,10 +470,8 @@ describe("insights DTOs", () => {
           startedAt: 1780240000000,
         },
         summary: {
-          customerIntent: "询问退款进度",
-          followUp: "确认退款状态后回复客户",
-          processSummary: "客户追问退款，客服尚未给出进度",
-          resultSummary: "未解决",
+          sessionTitle: "退款进度咨询",
+          text: "客户追问退款进度，客服尚未给出明确进度。",
         },
         tags: [],
       }),
@@ -513,6 +508,7 @@ describe("insights DTOs", () => {
         sessionMessageRecords: [],
         summary: {
           customerIntent: "询问退款进度",
+          followUp: "确认退款状态后回复客户",
           processSummary: "客户追问退款，客服尚未给出进度",
           resultSummary: "未解决",
         },

@@ -48,13 +48,12 @@ export type InsightPromptContext = {
 
 export type InsightPreviousSessionContext = {
   endedAt?: number;
-  followUp?: string;
   problemSummary: string;
-  processSummary: string;
   resolutionStatus: "no_customer_problem" | "partially_resolved" | "resolved" | "unknown" | "unresolved";
-  resultSummary: string;
   sessionId: string;
+  sessionTitle: string;
   startedAt: number;
+  summaryText: string;
   unresolvedReason?: string;
 };
 
@@ -209,12 +208,18 @@ function buildSystemPrompt() {
     "<evidence_rules>",
     "所有 evidenceMessageIds 必须来自输入 messages.sourceMessageId；没有证据时输出空数组，不允许编造消息 ID。",
     "problemResolution.evidence 必须说明关键证据消息、证据角色和引用原因，用于前端高亮对话消息。",
+    "problemResolution.evidence 不是会话摘要来源，也不是所有相关消息列表；只选择影响 problemDetected / resolutionStatus 判定的最小证据集，通常 1-4 条。",
+    "优先选择客户首次或最清楚提出问题/诉求的 customer_problem、客服给出解决方案/处理结果/明确答复的 agent_solution、客户确认接受/感谢/闭环的 closure_signal、证明未解决或部分解决的 unresolved_signal。",
+    "不要选择寒暄、表情、纯确认、重复追问、客服“好的/稍等/帮您看下”、只提供背景但不影响判定的上下文消息、与最终解决状态无关的后续闲聊，或多条表达同一事实的重复消息。",
+    "problemResolution.evidenceMessageIds 必须等于 problemResolution.evidence 中 messageId 的去重集合，不要额外加入上下文消息。",
+    "actionItems、sentiment 和 faqCandidates 的 evidenceMessageIds 只选择直接支撑该条结论的 1-2 条关键消息，不要输出泛化上下文。",
     "</evidence_rules>",
     "<analysis_rules>",
     "问题是否解决只判断当前逻辑会话内是否解决，不要推断会话外后续处理。",
     "前序逻辑会话摘要只能作为背景，帮助理解客户连续诉求和客服处理习惯；不得改变当前逻辑会话的问题是否解决判定边界。",
     "problemResolution、qaFindings 和所有 evidenceMessageIds 必须只基于当前 messages，不得把前序逻辑会话内容作为当前证据。",
-    "summary.customerIntent 必须优先使用命中的 tenantContext.intentConfigs.intentName；未命中配置意图时输出简短业务诉求；无法判断时输出空字符串，不要写消息不足等说明文字，不要复述 problemSummary。",
+    "summary.sessionTitle 必须是 2-12 个汉字的会话短标题，类似 AI Chatbot 会话命名；不要输出配置意图名列表，不要写完整句子。",
+    "summary.text 必须是 1-3 句纯会话摘要，只概括客户诉求、客服回应和当前状态；不要输出下一步建议、待办、意图标签或未解决判定理由。",
     "problemResolution.problemSummary 才用于描述客户提出的具体问题，可写成一句完整摘要。",
     "判断类结果的 confidence 取 0 到 1 之间的小数；证据不足时降低 confidence，不要强行下结论。",
     "</analysis_rules>",
@@ -241,13 +246,19 @@ function buildSummarySystemPrompt() {
     "<evidence_rules>",
     "所有 evidenceMessageIds 必须来自输入 messages.sourceMessageId；没有证据时输出空数组，不允许编造消息 ID。",
     "problemResolution.evidence 必须说明关键证据消息、证据角色和引用原因，用于前端高亮对话消息。",
+    "problemResolution.evidence 不是会话摘要来源，也不是所有相关消息列表；只选择影响 problemDetected / resolutionStatus 判定的最小证据集，通常 1-4 条。",
+    "优先选择客户首次或最清楚提出问题/诉求的 customer_problem、客服给出解决方案/处理结果/明确答复的 agent_solution、客户确认接受/感谢/闭环的 closure_signal、证明未解决或部分解决的 unresolved_signal。",
+    "不要选择寒暄、表情、纯确认、重复追问、客服“好的/稍等/帮您看下”、只提供背景但不影响判定的上下文消息、与最终解决状态无关的后续闲聊，或多条表达同一事实的重复消息。",
+    "problemResolution.evidenceMessageIds 必须等于 problemResolution.evidence 中 messageId 的去重集合，不要额外加入上下文消息。",
+    "actionItems、sentiment 和 faqCandidates 的 evidenceMessageIds 只选择直接支撑该条结论的 1-2 条关键消息，不要输出泛化上下文。",
     "</evidence_rules>",
     "<analysis_rules>",
     "problemResolution 判断客户是否在对话中得到明确结果或确认，依据是对话内容本身。",
     "问题是否解决只判断当前逻辑会话内是否解决，不要推断会话外后续处理。",
     "前序逻辑会话摘要只能作为背景，帮助理解客户连续诉求和客服处理习惯；不得改变当前逻辑会话的问题是否解决判定边界。",
     "problemResolution 和所有 evidenceMessageIds 必须只基于当前 messages，不得把前序逻辑会话内容作为当前证据。",
-    "summary.customerIntent 必须优先使用命中的 tenantContext.intentConfigs.intentName；未命中配置意图时输出简短业务诉求；无法判断时输出空字符串，不要写消息不足等说明文字，不要复述 problemSummary。",
+    "summary.sessionTitle 必须是 2-12 个汉字的会话短标题，类似 AI Chatbot 会话命名；不要输出配置意图名列表，不要写完整句子。",
+    "summary.text 必须是 1-3 句纯会话摘要，只概括客户诉求、客服回应和当前状态；不要输出下一步建议、待办、意图标签或未解决判定理由。",
     "problemResolution.problemSummary 才用于描述客户提出的具体问题，可写成一句完整摘要。",
     "actionItems 只输出明确需要人工后续处理的事项；未解决或部分解决不等于一定要生成待办。",
     "判断类结果的 confidence 取 0 到 1 之间的小数；证据不足时降低 confidence，不要强行下结论。",
@@ -391,10 +402,8 @@ function buildSummaryOutputContract() {
       },
     ],
     summary: {
-      customerIntent: "<string: 2-6 个汉字短意图标签>",
-      followUp: "<string optional: 后续建议>",
-      processSummary: "<string: 客服处理过程摘要>",
-      resultSummary: "<string: 当前结果摘要>",
+      sessionTitle: "<string: 2-12 个汉字会话短标题>",
+      text: "<string: 1-3 句纯会话摘要>",
     },
   };
 }
@@ -448,13 +457,12 @@ function buildClassificationOutputContract(context: InsightPromptContext) {
 function normalizePreviousSessionContexts(contexts: InsightPreviousSessionContext[]) {
   return contexts.slice(0, 3).map((context) => ({
     endedAt: context.endedAt,
-    followUp: context.followUp,
     problemSummary: context.problemSummary,
-    processSummary: context.processSummary,
     resolutionStatus: context.resolutionStatus,
-    resultSummary: context.resultSummary,
     sessionId: context.sessionId,
+    sessionTitle: context.sessionTitle,
     startedAt: context.startedAt,
+    summaryText: context.summaryText,
     unresolvedReason: context.unresolvedReason,
   }));
 }

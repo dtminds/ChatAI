@@ -114,12 +114,10 @@ export const InsightOverviewTrendPointSchema = Type.Object({
 
 export const InsightOverviewSessionItemSchema = Type.Object({
   agentAvatarUrl: Type.Optional(Type.String()),
-  agentMessageCount: Type.Number(),
   agentName: Type.Optional(Type.String()),
   analysisStatus: InsightAnalysisStatusSchema,
   conversationId: Type.String(),
   customerAvatarUrl: Type.Optional(Type.String()),
-  customerMessageCount: Type.Number(),
   customerName: Type.String(),
   assets: Type.Optional(Type.Array(Type.Object({
     assetCode: Type.String(),
@@ -137,12 +135,11 @@ export const InsightOverviewSessionItemSchema = Type.Object({
     intentLabel: Type.String(),
   }))),
   lastMessageAt: Type.Optional(Type.Number()),
-  messageCount: Type.Number(),
   problemSummary: Type.Optional(Type.String()),
   resolutionStatus: InsightResolutionStatusSchema,
   sessionId: Type.String(),
   startedAt: Type.Number(),
-  summaryCustomerIntent: Type.String(),
+  summarySessionTitle: Type.String(),
   tags: Type.Optional(Type.Array(Type.Object({
     tagCode: Type.String(),
     tagName: Type.String(),
@@ -365,10 +362,8 @@ export const InsightSessionMetaSchema = Type.Object({
 });
 
 export const InsightSummarySchema = Type.Object({
-  customerIntent: Type.String(),
-  followUp: Type.Optional(Type.String()),
-  processSummary: Type.String(),
-  resultSummary: Type.String(),
+  sessionTitle: Type.String(),
+  text: Type.String(),
 });
 
 export const InsightProblemResolutionSchema = Type.Object({

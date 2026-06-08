@@ -486,10 +486,8 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
       reason: readString(item, "reason"),
     })),
     summary: {
-      customerIntent: readString(summary, "customerIntent"),
-      followUp: readOptionalString(summary, "followUp"),
-      processSummary: readString(summary, "processSummary"),
-      resultSummary: readString(summary, "resultSummary"),
+      sessionTitle: readString(summary, "sessionTitle"),
+      text: readString(summary, "text"),
     },
     tags: readArray(record.tags).map((item) => ({
       confidence: readNumber(item, "confidence"),

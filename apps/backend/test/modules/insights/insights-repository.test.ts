@@ -344,10 +344,8 @@ describe("InsightsRepository", () => {
             session_id: 201,
             started_at: 1_780_244_000_000,
             status: "ready",
-            summary_customer_intent: "查物流",
-            summary_follow_up: "需要跟进",
-            summary_process: "已登记",
-            summary_result: "未解决",
+            summary_session_title: "查物流",
+            summary_text: "已登记",
             unresolved_reason: "待仓库反馈",
           },
         ],
@@ -816,10 +814,8 @@ describe("InsightsRepository", () => {
             session_id: 201,
             started_at: 1_780_244_000_000,
             status: "ready",
-            summary_customer_intent: "查物流",
-            summary_follow_up: "需要跟进",
-            summary_process: "已登记",
-            summary_result: "未解决",
+            summary_session_title: "查物流",
+            summary_text: "已登记",
             unresolved_reason: "待仓库反馈",
           },
         ],
@@ -1137,6 +1133,7 @@ describe("MysqlInsightWorkerRepository", () => {
         const builder = createSelectBuilder([
           {
             session_id: 501,
+            status: "open",
             uid: 9001,
           },
         ], table);
@@ -1151,12 +1148,14 @@ describe("MysqlInsightWorkerRepository", () => {
       uid: 9001,
     })).resolves.toEqual({
       sessionId: "501",
+      status: "open",
       uid: 9001,
     });
 
-    expect(builders[0]?.table).toBe("xy_wap_embed_logical_session_message");
-    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
-    expect(builders[0]?.whereCalls).toContainEqual(["source_message_id", "=", 8001]);
+    expect(builders[0]?.table).toBe("xy_wap_embed_logical_session_message as session_message");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_logical_session as session");
+    expect(builders[0]?.whereCalls).toContainEqual(["session_message.uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual(["session_message.source_message_id", "=", 8001]);
   });
 
   it("lists recent unassigned agent and bot messages for customer-opened pre-context", async () => {
@@ -1400,13 +1399,12 @@ describe("MysqlInsightWorkerRepository", () => {
         [
           {
             ended_at: 1_780_100_000_000,
-            follow_up: "建议关注补发物流",
             problem_summary: "客户反馈上次订单少发",
-            process_summary: "客服登记并承诺补寄",
             resolution_status: "partially_resolved",
-            result_summary: "已登记补寄，物流未确认",
             session_id: 200,
+            session_title: "订单少发补寄",
             started_at: 1_780_090_000_000,
+            summary_text: "客户反馈上次订单少发，客服登记并承诺补寄。",
             unresolved_reason: "尚未给出补寄单号",
           },
         ],
@@ -1429,13 +1427,12 @@ describe("MysqlInsightWorkerRepository", () => {
     })).resolves.toEqual([
       {
         endedAt: 1_780_100_000_000,
-        followUp: "建议关注补发物流",
         problemSummary: "客户反馈上次订单少发",
-        processSummary: "客服登记并承诺补寄",
         resolutionStatus: "partially_resolved",
-        resultSummary: "已登记补寄，物流未确认",
         sessionId: "200",
+        sessionTitle: "订单少发补寄",
         startedAt: 1_780_090_000_000,
+        summaryText: "客户反馈上次订单少发，客服登记并承诺补寄。",
         unresolvedReason: "尚未给出补寄单号",
       },
     ]);
@@ -2163,9 +2160,8 @@ describe("MysqlInsightWorkerRepository", () => {
           },
         ],
         summary: {
-          customerIntent: "查物流",
-          processSummary: "已登记",
-          resultSummary: "未解决",
+          sessionTitle: "查物流",
+          text: "已登记",
         },
         tags: [
           {
@@ -2248,16 +2244,15 @@ describe("MysqlInsightWorkerRepository", () => {
           evidence: [],
           evidenceMessageIds: [],
           problemDetected: false,
-          problemSummary: "消息不足，未进行模型分析",
+          problemSummary: "",
           resolutionStatus: "unknown",
-          unresolvedReason: "AI有效消息数不足",
+          unresolvedReason: "",
         },
         qaFindings: [],
         sentiment: [],
         summary: {
-          customerIntent: "消息不足",
-          processSummary: "AI有效消息数不足，未进行模型分析",
-          resultSummary: "消息不足",
+          sessionTitle: "",
+          text: "",
         },
         tags: [],
       },
@@ -2392,9 +2387,8 @@ describe("MysqlInsightWorkerRepository", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          customerIntent: "查物流",
-          processSummary: "客户咨询物流",
-          resultSummary: "待跟进",
+          sessionTitle: "查物流",
+          text: "客户咨询物流",
         },
         tags: [
           {
@@ -2492,9 +2486,8 @@ describe("MysqlInsightWorkerRepository", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          customerIntent: "查物流",
-          processSummary: "客户咨询物流",
-          resultSummary: "待跟进",
+          sessionTitle: "查物流",
+          text: "客户咨询物流",
         },
         tags: [],
       },

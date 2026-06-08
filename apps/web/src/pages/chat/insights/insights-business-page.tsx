@@ -41,7 +41,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getInsightBusiness, getInsightBusinessRelatedSessions } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
-import { ResolutionBadge } from "./insight-badges";
+import { ResolutionBadge, ResolutionDiagnosisHeader } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
 import { InsightTableLoadingRow } from "./insight-table-loading-row";
@@ -704,9 +704,11 @@ function RelatedSessionsPanel({
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="h-11 min-w-[210px]">客户</TableHead>
-              <TableHead className="h-11 min-w-[170px]">客服</TableHead>
-              <TableHead className="h-11 min-w-[280px]">意图/问题</TableHead>
-              <TableHead className="h-11 min-w-[120px]">状态</TableHead>
+              <TableHead className="h-11 min-w-[170px]">接待客服</TableHead>
+              <TableHead className="h-11 min-w-[280px]">摘要</TableHead>
+              <TableHead className="h-11 min-w-[120px]">
+                <ResolutionDiagnosisHeader />
+              </TableHead>
               <TableHead className="h-11 min-w-[150px]">开始时间</TableHead>
               <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
             </TableRow>
@@ -730,10 +732,7 @@ function RelatedSessionsPanel({
                 </TableCell>
                 <TableCell className="max-w-[320px] py-4">
                   <div className="truncate text-sm font-medium text-foreground">
-                    {session.summaryCustomerIntent || <span className="text-muted-foreground/50">—</span>}
-                  </div>
-                  <div className="mt-1 truncate text-xs text-muted-foreground">
-                    {session.problemSummary || <span className="text-muted-foreground/50">—</span>}
+                    {formatSessionSummaryCell(session.summarySessionTitle, session.problemSummary)}
                   </div>
                 </TableCell>
                 <TableCell className="py-4">
@@ -773,6 +772,10 @@ function RelatedSessionsPanel({
       />
     </section>
   );
+}
+
+function formatSessionSummaryCell(summarySessionTitle?: string, problemSummary?: string) {
+  return summarySessionTitle || problemSummary || <span className="text-muted-foreground/50">-</span>;
 }
 
 function PanelTitle({

@@ -726,6 +726,7 @@ describe("InsightsWorkerService", () => {
       findSessionBySourceMessage: vi.fn(async () => ({
         sessionId: "501",
         sourceMessageId: "9001",
+        status: "open",
         uid: 9001,
       })),
       listIncrementalMessages: vi.fn(async () => [
@@ -1102,6 +1103,7 @@ describe("InsightsWorkerService", () => {
 
         return [];
       }),
+      shouldCreateLiveAnalyzeJob: vi.fn(async () => false),
     });
     const service = new InsightsWorkerService(repository, { batchSize: 1 });
 
@@ -1121,6 +1123,11 @@ describe("InsightsWorkerService", () => {
       uid: 9001,
     });
     expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
+    expect(repository.shouldCreateLiveAnalyzeJob).toHaveBeenCalledWith({
+      occurredAt: 1_780_000_020_000,
+      sessionId: "501",
+      uid: 9001,
+    });
     expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
     expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith("rescan-job-1");
   });
@@ -1176,6 +1183,7 @@ describe("InsightsWorkerService", () => {
         {
           sessionId: "501",
           sourceMessageId: "8001",
+          status: "analyzed",
           uid: 9001,
         },
       ]),
@@ -1230,6 +1238,211 @@ describe("InsightsWorkerService", () => {
       totalSessions: 1,
     });
     expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith("rescan-job-1");
+  });
+
+  it("routes open sessions found by historical rescan through live analysis gating", async () => {
+    const repository = createRepository({
+      claimNextSyncMessagesJob: vi.fn(async () => ({
+        analysisScope: "classification",
+        cursorMsgtime: 1_780_000_000_000,
+        jobId: "rescan-job-1",
+        rescanTaskId: "9901",
+        uid: 9001,
+      })),
+      listSessionsBySourceMessages: vi.fn(async () => [
+        {
+          sessionId: "501",
+          sourceMessageId: "8001",
+          status: "open",
+          uid: 9001,
+        },
+      ]),
+      listIncrementalMessages: vi.fn(async ({ cursorMsgtime }) => {
+        if (cursorMsgtime === 1_780_000_000_000) {
+          return [
+            {
+              chatType: 1,
+              content: JSON.stringify({ content: "历史消息" }),
+              fromType: 2,
+              id: "8001",
+              msgtime: 1_780_000_010_000,
+              msgtype: "text",
+              platform: 5,
+              uid: 9001,
+              thirdExternalId: "external-1",
+              thirdGroupId: "",
+              thirdUserId: "user-1",
+            },
+          ];
+        }
+
+        return [];
+      }),
+      shouldCreateLiveAnalyzeJob: vi.fn(async () => true),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.shouldCreateLiveAnalyzeJob).toHaveBeenCalledWith({
+      occurredAt: 1_780_000_010_000,
+      sessionId: "501",
+      uid: 9001,
+    });
+    expect(repository.createAnalyzeJob).toHaveBeenCalledTimes(1);
+    expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        analysisScope: "all",
+        jobType: "analyze_session",
+        mode: "live",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    );
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobType: "reanalyze_session",
+        sessionId: "501",
+      }),
+    );
+    expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
+      queuedSessions: 0,
+      rescanTaskId: "9901",
+      totalSessions: 0,
+    });
+  });
+
+  it("does not create analysis jobs for open sessions found by historical rescan when live gate is not met", async () => {
+    const repository = createRepository({
+      claimNextSyncMessagesJob: vi.fn(async () => ({
+        analysisScope: "classification",
+        cursorMsgtime: 1_780_000_000_000,
+        jobId: "rescan-job-1",
+        rescanTaskId: "9901",
+        uid: 9001,
+      })),
+      listSessionsBySourceMessages: vi.fn(async () => [
+        {
+          sessionId: "501",
+          sourceMessageId: "8001",
+          status: "open",
+          uid: 9001,
+        },
+      ]),
+      listIncrementalMessages: vi.fn(async ({ cursorMsgtime }) => {
+        if (cursorMsgtime === 1_780_000_000_000) {
+          return [
+            {
+              chatType: 1,
+              content: JSON.stringify({ content: "历史消息" }),
+              fromType: 2,
+              id: "8001",
+              msgtime: 1_780_000_010_000,
+              msgtype: "text",
+              platform: 5,
+              uid: 9001,
+              thirdExternalId: "external-1",
+              thirdGroupId: "",
+              thirdUserId: "user-1",
+            },
+          ];
+        }
+
+        return [];
+      }),
+      shouldCreateLiveAnalyzeJob: vi.fn(async () => false),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.shouldCreateLiveAnalyzeJob).toHaveBeenCalledWith({
+      occurredAt: 1_780_000_010_000,
+      sessionId: "501",
+      uid: 9001,
+    });
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
+      queuedSessions: 0,
+      rescanTaskId: "9901",
+      totalSessions: 0,
+    });
+  });
+
+  it("routes messages appended to open sessions during historical rescan through live analysis gating", async () => {
+    const repository = createRepository({
+      claimNextSyncMessagesJob: vi.fn(async () => ({
+        analysisScope: "classification",
+        cursorMsgtime: 1_780_000_000_000,
+        jobId: "rescan-job-1",
+        rescanTaskId: "9901",
+        uid: 9001,
+      })),
+      findReusableSession: vi.fn(async () => ({
+        lastMeaningfulMessageAt: 1_780_000_000_000,
+        sessionId: "501",
+        startedAt: 1_780_000_000_000,
+        status: "open",
+      })),
+      listIncrementalMessages: vi.fn(async ({ cursorMsgtime }) => {
+        if (cursorMsgtime === 1_780_000_000_000) {
+          return [
+            {
+              chatType: 1,
+              content: JSON.stringify({ content: "补齐的历史消息" }),
+              fromType: 2,
+              id: "8001",
+              msgtime: 1_780_000_010_000,
+              msgtype: "text",
+              platform: 5,
+              uid: 9001,
+              thirdExternalId: "external-1",
+              thirdGroupId: "",
+              thirdUserId: "user-1",
+            },
+          ];
+        }
+
+        return [];
+      }),
+      shouldCreateLiveAnalyzeJob: vi.fn(async () => true),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.appendSessionMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "501",
+        sourceMessageId: "8001",
+      }),
+    );
+    expect(repository.shouldCreateLiveAnalyzeJob).toHaveBeenCalledWith({
+      occurredAt: 1_780_000_010_000,
+      sessionId: "501",
+      uid: 9001,
+    });
+    expect(repository.createAnalyzeJob).toHaveBeenCalledTimes(1);
+    expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        analysisScope: "all",
+        jobType: "analyze_session",
+        mode: "live",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    );
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobType: "reanalyze_session",
+        sessionId: "501",
+      }),
+    );
+    expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
+      queuedSessions: 0,
+      rescanTaskId: "9901",
+      totalSessions: 0,
+    });
   });
 
   it("runs one due analysis job, validates evidence ids and saves structured result", async () => {
@@ -1359,9 +1572,8 @@ describe("InsightsWorkerService", () => {
         ],
         sentiment: [],
         summary: {
-          customerIntent: "查物流",
-          processSummary: "客服承诺催快递",
-          resultSummary: "尚未确认物流进展",
+          sessionTitle: "查物流",
+          text: "客服承诺催快递",
         },
         tags: [],
       })),
@@ -1414,6 +1626,135 @@ describe("InsightsWorkerService", () => {
       expect.arrayContaining([expect.stringContaining("intent logistics_delay is not configured")]),
     );
     expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
+  });
+
+  it("fills missing configured QA rules as passed findings before saving", async () => {
+    const promptContext = {
+      entityDictionary: [],
+      intentConfigs: [],
+      labelConfigs: [],
+      qaRuleConfigs: [
+        {
+          applicableScene: undefined,
+          description: undefined,
+          judgmentCriteria: "客服需要回应客户问题",
+          negativeExamples: [],
+          positiveExamples: [],
+          ruleCode: "reply_quality",
+          ruleName: "回复质量",
+          severity: "high" as const,
+        },
+        {
+          applicableScene: undefined,
+          description: undefined,
+          judgmentCriteria: "客服需要说明下一步",
+          negativeExamples: [],
+          positiveExamples: [],
+          ruleCode: "clear_next_step",
+          ruleName: "明确下一步",
+          severity: "medium" as const,
+        },
+      ],
+    };
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "qaFindings",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "manual_reanalyze",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      getCurrentAnalysisOutput: vi.fn(async () => undefined),
+      getPromptContext: vi.fn(async () => promptContext),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流不更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "帮您催一下快递" }),
+          conversationId: "301",
+          fromType: 1,
+          id: "9002",
+          msgtime: 1_780_244_060_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.82,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户反馈物流异常",
+          resolutionStatus: "unresolved" as const,
+        },
+        qaFindings: [
+          {
+            confidence: 0.8,
+            evidenceMessageIds: ["9002"],
+            passed: true,
+            reason: "客服有回应",
+            ruleCode: "reply_quality",
+            severity: "high" as const,
+          },
+        ],
+        sentiment: [],
+        summary: {
+          sessionTitle: "查物流",
+          text: "客服承诺处理",
+        },
+        tags: [],
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output: expect.objectContaining({
+          qaFindings: [
+            expect.objectContaining({
+              confidence: 0.8,
+              evidenceMessageIds: ["9002"],
+              passed: true,
+              reason: "客服有回应",
+              ruleCode: "reply_quality",
+              ruleName: "回复质量",
+              severity: "high",
+            }),
+            expect.objectContaining({
+              confidence: 0,
+              evidenceMessageIds: [],
+              passed: true,
+              reason: "模型未识别出该质检项存在问题，按通过处理",
+              ruleCode: "clear_next_step",
+              ruleName: "明确下一步",
+              severity: "medium",
+            }),
+          ],
+        }),
+        validationWarnings: [],
+      }),
+    );
   });
 
   it("skips final LLM analysis and saves an insufficient-information snapshot when AI-ready messages are below policy threshold", async () => {
@@ -1503,14 +1844,13 @@ describe("InsightsWorkerService", () => {
           faqCandidates: [],
           problemResolution: expect.objectContaining({
             problemDetected: false,
-            problemSummary: "消息不足，未进行模型分析",
+            problemSummary: "",
             resolutionStatus: "unknown",
-            unresolvedReason: "AI有效消息数不足",
+            unresolvedReason: "",
           }),
           summary: expect.objectContaining({
-            customerIntent: "消息不足",
-            processSummary: "AI有效消息数不足，未进行模型分析",
-            resultSummary: "消息不足",
+            sessionTitle: "",
+            text: "",
           }),
         }),
         runId: "run-1",
@@ -1626,7 +1966,7 @@ describe("InsightsWorkerService", () => {
         }),
         output: expect.objectContaining({
           summary: expect.objectContaining({
-            customerIntent: "消息不足",
+            sessionTitle: "",
           }),
         }),
       }),
@@ -1699,9 +2039,8 @@ describe("InsightsWorkerService", () => {
         },
       ],
       summary: {
-        customerIntent: "查物流",
-        processSummary: "客服承诺处理",
-        resultSummary: "尚未解决",
+        sessionTitle: "查物流",
+        text: "客服承诺处理",
       },
       tags: [
         {
@@ -1825,9 +2164,8 @@ describe("InsightsWorkerService", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          customerIntent: "查物流",
-          processSummary: "客服处理中",
-          resultSummary: "待确认",
+          sessionTitle: "查物流",
+          text: "客服处理中",
         },
         tags: [],
       })),
@@ -1895,9 +2233,8 @@ describe("InsightsWorkerService", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          customerIntent: "物流异常",
-          processSummary: "客服已回复",
-          resultSummary: "结果不明确",
+          sessionTitle: "物流异常",
+          text: "客服已回复",
         },
         tags: [],
       })),
@@ -1970,9 +2307,8 @@ describe("InsightsWorkerService", () => {
         },
       ],
       summary: {
-        customerIntent: "查物流",
-        processSummary: "客服承诺处理",
-        resultSummary: "尚未解决",
+        sessionTitle: "查物流",
+        text: "客服承诺处理",
       },
       tags: [
         {
@@ -2056,9 +2392,8 @@ describe("InsightsWorkerService", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          customerIntent: "",
-          processSummary: "",
-          resultSummary: "",
+          sessionTitle: "",
+          text: "",
         },
         tags: [
           {
@@ -2142,9 +2477,8 @@ describe("InsightsWorkerService", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          customerIntent: "查物流",
-          processSummary: "客服处理中",
-          resultSummary: "待确认",
+          sessionTitle: "查物流",
+          text: "客服处理中",
         },
         tags: [],
       })),
@@ -2167,11 +2501,9 @@ describe("InsightsWorkerService", () => {
     const previousSessionContexts = [
       {
         endedAt: 1_780_100_000_000,
-        followUp: "建议关注补发物流",
         problemSummary: "客户反馈上次订单少发",
-        processSummary: "客服登记并承诺补寄",
+        text: "客服登记并承诺补寄",
         resolutionStatus: "partially_resolved" as const,
-        resultSummary: "已登记补寄，物流未确认",
         sessionId: "200",
         startedAt: 1_780_090_000_000,
         unresolvedReason: "尚未给出补寄单号",
@@ -2219,9 +2551,8 @@ describe("InsightsWorkerService", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          customerIntent: "发货咨询",
-          processSummary: "客服未明确回复",
-          resultSummary: "待确认",
+          sessionTitle: "发货咨询",
+          text: "客服未明确回复",
         },
         tags: [],
       })),
@@ -2351,9 +2682,8 @@ describe("InsightsWorkerService", () => {
         qaFindings: [],
         sentiment: [],
         summary: {
-          customerIntent: "寒暄",
-          processSummary: "客服已回复",
-          resultSummary: "无需处理",
+          sessionTitle: "寒暄",
+          text: "客服已回复",
         },
         tags: [],
       })),

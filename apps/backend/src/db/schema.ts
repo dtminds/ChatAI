@@ -936,12 +936,10 @@ export interface XyWapEmbedSessionInsightCurrent {
 
 export interface XyWapEmbedSessionSummary {
   create_time: Generated<Date>;
-  customer_intent: string;
-  follow_up: string | null;
   id: Generated<number>;
-  process_summary: string;
-  result_summary: string;
+  session_title: string;
   snapshot_id: number;
+  summary_text: string;
   update_time: Generated<Date>;
 }
 

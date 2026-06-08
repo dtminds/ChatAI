@@ -73,14 +73,12 @@ type InsightOverviewSessionItem = InsightOverviewSessionsResponse["items"][numbe
 export type InsightCurrentSessionRow = {
   actionOpenCount: number;
   agentAvatarUrl: string | null;
-  agentMessageCount: number;
   agentName: string | null;
   agentSeatId: string | null;
   analysisStatus: InsightAnalysisStatus;
   conversationId: string;
   currentSnapshotId: string;
   customerAvatarUrl: string | null;
-  customerMessageCount: number;
   customerName: string;
   assets?: NonNullable<InsightOverviewSessionItem["assets"]>;
   endedAt: number | null;
@@ -89,7 +87,6 @@ export type InsightCurrentSessionRow = {
   intents?: NonNullable<InsightOverviewSessionItem["intents"]>;
   lastMessageAt: number | null;
   lastCustomerMessageAt: number | null;
-  messageCount: number;
   phase: InsightDetailResponse["session"]["phase"];
   problemDetected: boolean;
   problemEvidenceMessageIds: string[];
@@ -98,10 +95,8 @@ export type InsightCurrentSessionRow = {
   resolutionStatus: InsightResolutionStatus;
   sessionId: string;
   startedAt: number;
-  summaryCustomerIntent: string;
-  summaryFollowUp: string | null;
-  summaryProcess: string;
-  summaryResult: string;
+  summarySessionTitle: string;
+  summaryText: string;
   tags?: NonNullable<InsightOverviewSessionItem["tags"]>;
   unresolvedReason: string | null;
 };
@@ -733,10 +728,8 @@ export class InsightsService {
       },
       sessionMessageRecords,
       summary: {
-        customerIntent: detail.current.summaryCustomerIntent,
-        followUp: detail.current.summaryFollowUp ?? undefined,
-        processSummary: detail.current.summaryProcess,
-        resultSummary: detail.current.summaryResult,
+        sessionTitle: detail.current.summarySessionTitle,
+        text: detail.current.summaryText,
       },
       tags: detail.tags,
     };
@@ -1319,24 +1312,21 @@ function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
     .sort((left, right) => right.startedAt - left.startedAt)
     .map((row) => ({
       agentAvatarUrl: row.agentAvatarUrl ?? undefined,
-      agentMessageCount: row.agentMessageCount,
       agentName: row.agentName ?? undefined,
       analysisStatus: row.analysisStatus,
       conversationId: row.conversationId,
       customerAvatarUrl: row.customerAvatarUrl ?? undefined,
-      customerMessageCount: row.customerMessageCount,
       customerName: row.customerName,
       endedAt: row.endedAt ?? undefined,
       assets: row.assets ?? [],
       entities: row.entities ?? [],
       intents: row.intents ?? [],
       lastMessageAt: row.lastMessageAt ?? undefined,
-      messageCount: row.messageCount,
       problemSummary: row.problemSummary || undefined,
       resolutionStatus: row.resolutionStatus,
       sessionId: row.sessionId,
       startedAt: row.startedAt,
-      summaryCustomerIntent: row.summaryCustomerIntent,
+      summarySessionTitle: row.summarySessionTitle,
       tags: row.tags ?? [],
     }));
 }

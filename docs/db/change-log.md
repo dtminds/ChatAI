@@ -134,6 +134,43 @@ ALTER TABLE xy_wap_embed_session_intent
 
 ## 2026-06-07
 
+- Replaced `xy_wap_embed_session_summary.customer_intent/process_summary/result_summary/follow_up` with `session_title/summary_text`. Runtime code now reads and writes the new summary shape only.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_session_summary
+  ADD COLUMN session_title VARCHAR(255) NULL COMMENT '会话短标题' AFTER snapshot_id,
+  ADD COLUMN summary_text VARCHAR(2048) NULL COMMENT '会话摘要正文' AFTER session_title;
+
+UPDATE xy_wap_embed_session_summary
+SET
+  session_title = COALESCE(LEFT(NULLIF(TRIM(customer_intent), ''), 255), ''),
+  summary_text = COALESCE(
+    LEFT(
+      NULLIF(
+        CONCAT_WS(
+          '；',
+          NULLIF(TRIM(customer_intent), ''),
+          NULLIF(TRIM(process_summary), ''),
+          NULLIF(TRIM(result_summary), '')
+        ),
+        ''
+      ),
+      2048
+    ),
+    ''
+  );
+
+ALTER TABLE xy_wap_embed_session_summary
+  MODIFY COLUMN session_title VARCHAR(255) NOT NULL COMMENT '会话短标题',
+  MODIFY COLUMN summary_text VARCHAR(2048) NOT NULL COMMENT '会话摘要正文',
+  DROP COLUMN customer_intent,
+  DROP COLUMN process_summary,
+  DROP COLUMN result_summary,
+  DROP COLUMN follow_up;
+```
+
 - Removed `xy_wap_embed_session_summary.confidence`; summary confidence is no longer produced, parsed, or stored.
 
 Manual migration for existing databases:

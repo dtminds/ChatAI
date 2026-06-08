@@ -75,10 +75,8 @@ describe("insight prompt builder", () => {
         resolutionStatus: "unresolved" as const,
       },
       summary: {
-        confidence: 0.8,
-        customerIntent: "查物流",
-        processSummary: "客服尚未处理",
-        resultSummary: "未解决",
+        sessionTitle: "物流异常咨询",
+        text: "客户反馈快递一直没更新，客服尚未处理。",
       },
     };
 
@@ -128,6 +126,43 @@ describe("insight prompt builder", () => {
     });
     expect(JSON.stringify(classificationPayload.outputContract)).not.toContain("qaFindings");
     expect(JSON.stringify(classificationPayload.outputContract)).not.toContain("problemResolution");
+  });
+
+  it("instructs the summary step to keep problem evidence as a minimal decision set", () => {
+    const prompt = buildInsightSummaryPromptMessages({
+      messages: [
+        {
+          aiText: "你好",
+          contentStatus: "ready",
+          conversationId: "301",
+          evidenceLabel: "[9001]",
+          includedForAi: true,
+          meaningfulForBoundary: false,
+          messageType: "text",
+          occurredAt: 1_780_244_000_000,
+          senderRole: "customer",
+          sourceMessageId: "9001",
+        },
+        {
+          aiText: "订单一直没有发货，帮我看下",
+          contentStatus: "ready",
+          conversationId: "301",
+          evidenceLabel: "[9002]",
+          includedForAi: true,
+          meaningfulForBoundary: true,
+          messageType: "text",
+          occurredAt: 1_780_244_001_000,
+          senderRole: "customer",
+          sourceMessageId: "9002",
+        },
+      ],
+    });
+    const systemPrompt = prompt[0]?.content ?? "";
+
+    expect(systemPrompt).toContain("problemResolution.evidence 不是会话摘要来源，也不是所有相关消息列表");
+    expect(systemPrompt).toContain("只选择影响 problemDetected / resolutionStatus 判定的最小证据集，通常 1-4 条");
+    expect(systemPrompt).toContain("不要选择寒暄、表情、纯确认、重复追问");
+    expect(systemPrompt).toContain("problemResolution.evidenceMessageIds 必须等于 problemResolution.evidence 中 messageId 的去重集合");
   });
 
   it("caps worker prompt config counts with the new enabled limits", () => {
@@ -260,8 +295,9 @@ describe("insight prompt builder", () => {
     expect(serialized).toContain("售后跟进");
     expect(serialized).toContain("玻尿酸补水面膜");
     expect(serialized).toContain("resolutionStatus");
-    expect(serialized).toContain("2-6 个汉字");
-    expect(serialized).toContain("summary.customerIntent 必须优先使用命中的 tenantContext.intentConfigs.intentName");
+    expect(serialized).toContain("2-12 个汉字");
+    expect(serialized).toContain("summary.sessionTitle 必须是");
+    expect(serialized).toContain("summary.text 必须是");
     expect(serialized).toContain("未配置的意图不得输出到 intents");
     expect(serialized).toContain("customer_problem");
     expect(serialized).toContain("这条消息作为证据的原因");
@@ -412,13 +448,12 @@ describe("insight prompt builder", () => {
       previousSessionContexts: [
         {
           endedAt: 1_780_100_000_000,
-          followUp: "建议继续关注补发物流",
           problemSummary: "客户反馈之前订单少发",
-          processSummary: "客服登记少发并承诺补寄",
           resolutionStatus: "partially_resolved",
-          resultSummary: "已登记补寄，物流未确认",
           sessionId: "200",
+          sessionTitle: "订单少发补寄",
           startedAt: 1_780_090_000_000,
+          summaryText: "客户反馈之前订单少发，客服登记并承诺补寄。",
           unresolvedReason: "尚未提供补寄单号",
         },
       ],
@@ -433,13 +468,12 @@ describe("insight prompt builder", () => {
     expect(userPayload.previousSessionContexts).toEqual([
       {
         endedAt: 1_780_100_000_000,
-        followUp: "建议继续关注补发物流",
         problemSummary: "客户反馈之前订单少发",
-        processSummary: "客服登记少发并承诺补寄",
         resolutionStatus: "partially_resolved",
-        resultSummary: "已登记补寄，物流未确认",
         sessionId: "200",
+        sessionTitle: "订单少发补寄",
         startedAt: 1_780_090_000_000,
+        summaryText: "客户反馈之前订单少发，客服登记并承诺补寄。",
         unresolvedReason: "尚未提供补寄单号",
       },
     ]);

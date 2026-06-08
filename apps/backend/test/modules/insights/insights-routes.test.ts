@@ -1040,10 +1040,8 @@ function createInsightsDbMock(options: {
               session_id: 501,
               started_at: 1_780_243_200_000,
               status: "ready",
-              summary_customer_intent: "查物流",
-              summary_follow_up: "确认快递状态",
-              summary_process: "客服要求客户等待",
-              summary_result: "未确认物流进展",
+              summary_session_title: "查物流",
+              summary_text: "客服要求客户等待",
               unresolved_reason: "售后/物流/退款进度未确认",
             },
           ];

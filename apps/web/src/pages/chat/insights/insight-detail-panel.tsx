@@ -1,20 +1,39 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type {
   InsightDetailResponse,
   InsightMessageContextResponse,
 } from "@chatai/contracts";
 import {
   AiIdeaIcon,
-  Analytics02Icon,
-  ClipboardCheckIcon,
+  ArrowDown01Icon,
+  CheckmarkSquare02Icon,
+  CrazyIcon,
   Database01Icon,
-  Layers01Icon,
+  FlushedIcon,
+  InformationCircleIcon,
+  LookTopIcon,
+  Sad02Icon,
   SmileIcon,
   Tag01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+} from "@/components/ui/empty";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import {
   Sheet,
   SheetContent,
@@ -46,10 +65,6 @@ export function InsightDetailPanel({
     ? adaptInsightMessages(detail.sessionMessageRecords)
     : [];
   const evidenceByMessageId = detail ? buildEvidenceByMessageId(detail.evidenceItems) : new Map<string, EvidenceViewItem[]>();
-  const showIntent = Boolean(
-    detail?.summary.customerIntent
-      && !isSimilarText(detail.summary.customerIntent, detail.problemResolution.problemSummary),
-  );
 
   return (
     <Sheet onOpenChange={onOpenChange} open={isOpen}>
@@ -60,88 +75,26 @@ export function InsightDetailPanel({
           </SheetDescription>
 
           {detail ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <section className="border-b bg-muted/20 px-6 py-4 pr-16">
-                <div className="flex min-w-0 flex-col gap-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-                      <InsightPerson
-                        avatarUrl={detail.session.customerAvatarUrl}
-                        name={detail.session.customerName}
-                        size="sm"
-                      />
-                      <span className="text-xs text-muted-foreground">由</span>
-                      <InsightPerson
-                        avatarUrl={detail.session.agentAvatarUrl}
-                        name={detail.session.agentName ?? "未分配客服"}
-                        roleLabel="客服"
-                        size="sm"
-                      />
-                    </div>
-                  </div>
-                  <p className="max-w-4xl text-sm leading-6 text-muted-foreground">
-                    {detail.problemResolution.problemSummary || "暂无客户问题摘要"}
-                  </p>
-                  <div className="text-xs text-muted-foreground">
-                    生成于 {formatInsightTime(detail.session.generatedAt)}
-                  </div>
-                </div>
-              </section>
-
-              <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_420px]">
-                <div className="min-h-0 overflow-y-auto px-6 py-5">
+            <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_420px]">
+                <div className="min-h-0 overflow-y-auto px-6 py-6">
                   <section
                     aria-label="洞察结论"
-                    className="max-w-[880px] space-y-5"
+                    className="max-w-[760px] space-y-7"
                     role="region"
                   >
-                    <div className="space-y-4">
-                      <div className="space-y-4">
-                        <SummaryBlock
-                          labelExtra={(
-                            <ResolutionBadge status={detail.problemResolution.resolutionStatus} />
-                          )}
-                          label="当前结果"
-                          strong
-                          value={detail.summary.resultSummary}
+                    <DetailSummarySection detail={detail} />
+
+                    <div className="space-y-6">
+                      <QualityFindingsSection items={detail.qaFindings} />
+                      <section className="space-y-4 border-t pt-5">
+                        <SectionHeading>智能归因</SectionHeading>
+                        <InsightResultTable
+                          items={buildBusinessAttributionItems(detail)}
                         />
-                        <SummaryBlock
-                          label="处理过程"
-                          value={detail.summary.processSummary}
-                        />
-                        {detail.summary.followUp ? (
-                          <SummaryBlock
-                            label="跟进建议"
-                            value={detail.summary.followUp}
-                          />
-                        ) : null}
-                      </div>
-
-                      {detail.problemResolution.unresolvedReason ? (
-                        <div className="rounded-[8px] border border-destructive/20 bg-destructive/5 px-4 py-3">
-                          <div className="text-xs font-medium text-destructive">
-                            未解决判定理由
-                          </div>
-                          <p className="mt-1.5 text-sm leading-6 text-foreground">
-                            {detail.problemResolution.unresolvedReason}
-                          </p>
-                        </div>
-                      ) : null}
-
-                    </div>
-
-                    <div className="space-y-4 border-t pt-5">
-                      <h3 className="text-sm font-semibold text-foreground">
-                        提取结果
-                      </h3>
-                      <InsightResultTable
-                        items={buildInsightResultItems(detail, showIntent)}
+                      </section>
+                      <InsightFaqList
+                        items={detail.faqCandidates}
                       />
-                      {detail.faqCandidates.length > 0 ? (
-                        <InsightFaqList
-                          items={detail.faqCandidates.map((item) => item.question)}
-                        />
-                      ) : null}
                     </div>
                   </section>
                 </div>
@@ -152,13 +105,13 @@ export function InsightDetailPanel({
                   role="region"
                 >
                   <div className="flex h-full min-h-0 flex-col">
-                    <div className="flex items-center justify-between border-b bg-background px-5 py-4">
-                      <h3 className="text-sm font-semibold text-foreground">
-                        本轮对话
+                    <div className="border-b bg-background px-5 py-4">
+                      <h3 className="inline-flex items-baseline gap-2 text-sm font-semibold text-foreground">
+                        <span>本轮对话</span>
+                        <span className="text-xs font-normal text-muted-foreground">
+                          {evidenceRecordMessages.length} 条
+                        </span>
                       </h3>
-                      <span className="text-xs text-muted-foreground">
-                        {evidenceRecordMessages.length} 条
-                      </span>
                     </div>
 
                     <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -180,7 +133,6 @@ export function InsightDetailPanel({
                     </div>
                   </div>
                 </aside>
-              </div>
             </div>
           ) : (
             <div className="px-6 py-8 text-sm text-muted-foreground">
@@ -257,32 +209,128 @@ function buildInsightAccounts(
   );
 }
 
-function SummaryBlock({
+function DetailSummarySection({ detail }: { detail: InsightDetailResponse }) {
+  const summaryTitle = detail.summary.sessionTitle || "未命名会话";
+  const sessionTime = detail.session.endedAt
+    ? `${formatInsightTime(detail.session.startedAt)} 至 ${formatInsightTime(detail.session.endedAt)}`
+    : `${formatInsightTime(detail.session.startedAt)} 至 进行中`;
+
+  return (
+    <section className="space-y-7">
+      <div className="space-y-1">
+        <div className="text-xs font-medium text-muted-foreground">
+          生成于 {formatInsightTime(detail.session.generatedAt)}
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-[20px] font-semibold leading-8 text-foreground">
+            {summaryTitle}
+          </h2>
+          {detail.summary.text ? (
+            <p className="text-sm leading-6 text-foreground">
+              {detail.summary.text}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <dl className="space-y-3">
+        {detail.problemResolution.problemSummary ? (
+          <DetailMetaRow label="客户问题">
+            <span className="text-sm font-medium text-foreground">
+              {detail.problemResolution.problemSummary}
+            </span>
+          </DetailMetaRow>
+        ) : null}
+        <DetailMetaRow label="AI 诊断">
+          <span className="inline-flex items-center gap-1.5">
+            <ResolutionBadge status={detail.problemResolution.resolutionStatus} />
+            <DiagnosisReasonInfo reason={detail.problemResolution.unresolvedReason} />
+          </span>
+        </DetailMetaRow>
+        <DetailMetaRow label="客户">
+          <InsightPerson
+            avatarUrl={detail.session.customerAvatarUrl}
+            name={detail.session.customerName}
+            size="sm"
+          />
+        </DetailMetaRow>
+        <DetailMetaRow label="接待客服">
+          <InsightPerson
+            avatarUrl={detail.session.agentAvatarUrl}
+            name={detail.session.agentName ?? "未分配客服"}
+            size="sm"
+          />
+        </DetailMetaRow>
+        <DetailMetaRow label="会话时间">
+          <span className="text-sm font-medium text-foreground">
+            {sessionTime}
+          </span>
+        </DetailMetaRow>
+        <ActionItemsSection items={detail.actionItems} />
+      </dl>
+
+    </section>
+  );
+}
+
+function DiagnosisReasonInfo({ reason }: { reason?: string }) {
+  if (!reason) {
+    return null;
+  }
+
+  return (
+    <HoverCard closeDelay={80} openDelay={120}>
+      <HoverCardTrigger asChild>
+        <button
+          aria-label="查看 AI 诊断理由"
+          className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+          type="button"
+        >
+          <HugeiconsIcon
+            aria-hidden
+            color="currentColor"
+            icon={InformationCircleIcon}
+            size={14}
+            strokeWidth={1.9}
+          />
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent
+        align="start"
+        className="w-80 rounded-[8px] p-3 text-sm leading-6 shadow-sm"
+        side="top"
+        sideOffset={8}
+      >
+        {reason}
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+function DetailMetaRow({
+  children,
   label,
-  labelExtra,
-  strong,
-  value,
 }: {
+  children: ReactNode;
   label: string;
-  labelExtra?: ReactNode;
-  strong?: boolean;
-  value: string;
 }) {
   return (
-    <div className={cn("space-y-1.5", strong ? "max-w-3xl" : "max-w-4xl")}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">{label}</span>
-        {labelExtra}
-      </div>
-      <p
-        className={cn(
-          "text-foreground",
-          strong ? "text-base font-medium leading-7" : "text-sm leading-6",
-        )}
-      >
-        {value || "暂无"}
-      </p>
+    <div className="grid gap-2 sm:grid-cols-[7rem_minmax(0,1fr)]">
+      <dt className="text-sm leading-7 text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="min-w-0 leading-7">
+        {children}
+      </dd>
     </div>
+  );
+}
+
+function SectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="text-sm font-semibold text-foreground">
+      {children}
+    </h3>
   );
 }
 
@@ -309,6 +357,10 @@ function buildEvidenceByMessageId(items: InsightDetailResponse["evidenceItems"])
   const map = new Map<string, EvidenceViewItem[]>();
 
   for (const item of items) {
+    if (item.dimensionType !== "problem_resolution") {
+      continue;
+    }
+
     const current = map.get(item.messageId) ?? [];
     current.push(item);
     map.set(item.messageId, current);
@@ -359,27 +411,15 @@ function evidenceRoleText(role: string) {
   return text[role] ?? "证据";
 }
 
-function isSimilarText(left: string, right: string) {
-  const normalizedLeft = normalizeComparableText(left);
-  const normalizedRight = normalizeComparableText(right);
-
-  if (!normalizedLeft || !normalizedRight) {
-    return false;
-  }
-
-  return normalizedLeft.includes(normalizedRight)
-    || normalizedRight.includes(normalizedLeft);
-}
-
-function normalizeComparableText(value: string) {
-  return value.replace(/[，。！？、\s]/g, "").trim();
-}
-
 type InsightResultItem = {
   display?: "badge" | "text";
   icon: IconSvgElement;
   items: string[];
   label: string;
+  sentimentItems?: Array<{
+    polarity: string;
+    reason: string;
+  }>;
 };
 
 function InsightResultTable({
@@ -390,38 +430,36 @@ function InsightResultTable({
   const visibleItems = items.filter((item) => item.items.length > 0);
 
   if (visibleItems.length === 0) {
-    return null;
+    return <DetailSectionEmptyState />;
   }
 
   return (
     <dl className="divide-y rounded-[8px] border bg-background">
       {visibleItems.map((item) => (
         <div
-          className="grid gap-2 px-3 py-3 sm:grid-cols-[5.5rem_minmax(0,1fr)]"
+          className="grid items-start gap-2 px-3 py-3 sm:grid-cols-[5.5rem_minmax(0,1fr)]"
           key={item.label}
         >
-          <dt className="text-xs leading-6 text-muted-foreground">
+          <dt className="flex min-h-7 items-center text-xs text-muted-foreground">
             <SectionLabel icon={item.icon}>{item.label}</SectionLabel>
           </dt>
-          <dd className="flex min-w-0 flex-wrap gap-2">
-            {item.items.map((value) =>
-              item.display === "text" ? (
-                <span
-                  className="min-w-0 text-sm leading-6 text-foreground"
-                  key={`${item.label}:${value}`}
-                >
-                  {value}
-                </span>
-              ) : (
-                <Badge
-                  className="max-w-full whitespace-normal rounded-[8px] px-2.5 py-1 text-[13px] font-normal leading-5"
-                  key={`${item.label}:${value}`}
-                  variant="secondary"
-                >
-                  {value}
-                </Badge>
-              )
-            )}
+          <dd className="flex min-h-7 min-w-0 flex-wrap items-center gap-2">
+            {item.display === "text"
+              ? item.sentimentItems?.map((value) => (
+                  <SentimentResultItem
+                    item={value}
+                    key={`${item.label}:${value.polarity}:${value.reason}`}
+                  />
+                ))
+              : item.items.map((value) => (
+                  <Badge
+                    className="max-w-full whitespace-normal rounded-[8px] px-2.5 py-1 text-[13px] font-normal leading-5"
+                    key={`${item.label}:${value}`}
+                    variant="secondary"
+                  >
+                    {value}
+                  </Badge>
+                ))}
           </dd>
         </div>
       ))}
@@ -429,24 +467,298 @@ function InsightResultTable({
   );
 }
 
-function InsightFaqList({ items }: { items: string[] }) {
+function DetailSectionEmptyState() {
   return (
-    <div className="space-y-3">
-      <div className="text-xs font-medium text-muted-foreground">FAQ 机会</div>
-      <ol className="space-y-2">
-        {items.map((item, index) => (
-          <li
-            className="grid gap-2 rounded-[8px] bg-muted/45 px-3 py-2 text-sm leading-6 text-foreground sm:grid-cols-[2rem_minmax(0,1fr)]"
-            key={item}
+    <Empty className="min-h-[104px] rounded-[8px] border bg-background p-6">
+      <EmptyHeader>
+        <EmptyDescription>暂无数据</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  );
+}
+
+function SentimentResultItem({
+  item,
+}: {
+  item: {
+    polarity: string;
+    reason: string;
+  };
+}) {
+  const config = getPolarityConfig(item.polarity);
+
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <Badge
+        className={cn(
+          "h-7 shrink-0 justify-center gap-1.5 rounded-[8px] px-2.5 text-[13px] font-normal",
+          config.className,
+        )}
+      >
+        <HugeiconsIcon
+          aria-hidden
+          color="currentColor"
+          icon={config.icon}
+          size={16}
+          strokeWidth={1.9}
+        />
+        {config.label}
+      </Badge>
+      <HoverCard closeDelay={80} openDelay={120}>
+        <HoverCardTrigger asChild>
+          <button
+            aria-label={`查看情绪判定理由：${config.label}`}
+            className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+            type="button"
           >
-            <span className="text-xs leading-6 text-muted-foreground">
-              {index + 1}
-            </span>
-            <span>{item}</span>
+            <HugeiconsIcon
+              aria-hidden
+              color="currentColor"
+              icon={InformationCircleIcon}
+              size={14}
+              strokeWidth={1.9}
+            />
+          </button>
+        </HoverCardTrigger>
+        <HoverCardContent
+          align="start"
+          className="w-80 rounded-[8px] p-3 text-sm leading-6 shadow-sm"
+          side="top"
+          sideOffset={8}
+        >
+          {item.reason}
+        </HoverCardContent>
+      </HoverCard>
+    </span>
+  );
+}
+
+function QualityFindingsSection({
+  items,
+}: {
+  items: InsightDetailResponse["qaFindings"];
+}) {
+  const failedItems = items.filter((item) => !item.passed);
+  const passedRate = Math.round(((items.length - failedItems.length) / items.length) * 100);
+
+  return (
+    <section className="space-y-3 border-t pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SectionHeading>服务质检</SectionHeading>
+        {items.length > 0 ? (
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <QualityScoreRing value={passedRate} />
+            {failedItems.length > 0 ? `${failedItems.length} 项未通过` : "全部通过"}
+          </span>
+        ) : null}
+      </div>
+      {items.length > 0 ? (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <QualityFindingItem item={item} key={`${item.ruleCode}:${item.reason}`} />
+          ))}
+        </div>
+      ) : (
+        <DetailSectionEmptyState />
+      )}
+    </section>
+  );
+}
+
+function QualityFindingItem({
+  item,
+}: {
+  item: InsightDetailResponse["qaFindings"][number];
+}) {
+  const [isReasonOpen, setIsReasonOpen] = useState(false);
+
+  return (
+    <div
+      className={cn(
+        "rounded-[12px] border px-3 py-2.5",
+        item.passed
+          ? "border-success/15 bg-linear-to-r from-background from-55% to-success-muted/70"
+          : "border-destructive/15 bg-linear-to-r from-background from-55% to-destructive-muted/70",
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-foreground">
+            {item.ruleName || item.ruleCode}
+          </span>
+          {!item.passed && item.reason ? (
+            <HoverCard
+              closeDelay={80}
+              onOpenChange={setIsReasonOpen}
+              open={isReasonOpen}
+              openDelay={120}
+            >
+              <HoverCardTrigger asChild>
+                <button
+                  aria-label={`查看未通过原因：${item.reason}`}
+                  className="mt-1 block w-full truncate text-left text-sm leading-6 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                  onBlur={() => setIsReasonOpen(false)}
+                  onFocus={() => setIsReasonOpen(true)}
+                  onMouseEnter={() => setIsReasonOpen(true)}
+                  onMouseLeave={() => setIsReasonOpen(false)}
+                  type="button"
+                >
+                  {item.reason}
+                </button>
+              </HoverCardTrigger>
+              <HoverCardContent
+                align="start"
+                className="w-80 rounded-[8px] p-3 text-sm leading-6 shadow-sm"
+                onMouseEnter={() => setIsReasonOpen(true)}
+                onMouseLeave={() => setIsReasonOpen(false)}
+                side="top"
+              >
+                {item.reason}
+              </HoverCardContent>
+            </HoverCard>
+          ) : null}
+        </div>
+        <Badge
+          className={cn(
+            "w-14 shrink-0 justify-center px-0",
+            item.passed
+              ? "bg-success/85 text-success-foreground"
+              : "bg-destructive/85 text-destructive-foreground",
+          )}
+        >
+          {item.passed ? "通过" : "未通过"}
+        </Badge>
+      </div>
+    </div>
+  );
+}
+
+function QualityScoreRing({ value }: { value: number }) {
+  const normalizedValue = Math.min(100, Math.max(0, value));
+
+  return (
+    <span
+      aria-label={`服务质检通过率 ${normalizedValue}%`}
+      className="relative inline-flex size-4 items-center justify-center rounded-full"
+      role="img"
+      style={{
+        background: `conic-gradient(var(--color-success) ${normalizedValue * 3.6}deg, var(--color-muted) 0deg)`,
+      }}
+    >
+      <span className="absolute inset-[3px] rounded-full bg-background" />
+    </span>
+  );
+}
+
+function ActionItemsSection({
+  items,
+}: {
+  items: InsightDetailResponse["actionItems"];
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <DetailMetaRow label="待办任务">
+      <ul className="space-y-2">
+        {items.map((item) => (
+          <li
+            className={cn(
+              "flex items-start gap-2.5 rounded-[8px] bg-muted/45 px-3 py-2",
+              item.status === "dismissed" || item.status === "expired" ? "opacity-65" : null,
+            )}
+            key={item.actionItemId}
+          >
+            <TodoStatusIcon status={item.status} />
+            <p
+              className={cn(
+                "min-w-0 text-sm font-medium leading-6 text-foreground",
+                item.status === "done" ? "text-muted-foreground line-through decoration-muted-foreground/70" : null,
+                item.status === "dismissed" || item.status === "expired" ? "text-muted-foreground" : null,
+              )}
+            >
+              {item.title}
+            </p>
           </li>
         ))}
-      </ol>
-    </div>
+      </ul>
+    </DetailMetaRow>
+  );
+}
+
+function TodoStatusIcon({
+  status,
+}: {
+  status: InsightDetailResponse["actionItems"][number]["status"];
+}) {
+  if (status === "done") {
+    return (
+      <HugeiconsIcon
+        aria-hidden
+        className="mt-0.5 shrink-0 text-muted-foreground"
+        icon={CheckmarkSquare02Icon}
+        size={18}
+        strokeWidth={1.8}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "mt-[3px] h-4 w-4 shrink-0 rounded-[4px] border",
+        status === "open" ? "border-muted-foreground/70 bg-background" : "border-muted-foreground/40 bg-muted",
+      )}
+    />
+  );
+}
+
+function InsightFaqList({
+  items,
+}: {
+  items: InsightDetailResponse["faqCandidates"];
+}) {
+  return (
+    <section className="space-y-3 border-t pt-5">
+      <SectionHeading>知识沉淀</SectionHeading>
+      {items.length > 0 ? (
+        <ol className="space-y-2">
+          {items.map((item, index) => (
+            <Collapsible asChild defaultOpen={false} key={`${item.question}:${item.status}`}>
+              <li className="rounded-[8px] bg-muted/45 px-3 py-2 text-sm leading-6 text-foreground">
+                <CollapsibleTrigger className="group grid w-full gap-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/35 sm:grid-cols-[2rem_minmax(0,1fr)_1.25rem]">
+                  <span className="text-xs leading-6 text-muted-foreground">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 font-medium">
+                    {item.question}
+                  </span>
+                  <HugeiconsIcon
+                    aria-hidden
+                    className="mt-1 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+                    color="currentColor"
+                    icon={ArrowDown01Icon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                </CollapsibleTrigger>
+                {item.answerHint ? (
+                  <CollapsibleContent className="mt-1 grid gap-2 text-muted-foreground sm:grid-cols-[2rem_minmax(0,1fr)_1.25rem]">
+                    <span aria-hidden />
+                    <span>{item.answerHint}</span>
+                    <span aria-hidden />
+                  </CollapsibleContent>
+                ) : null}
+              </li>
+            </Collapsible>
+          ))}
+        </ol>
+      ) : (
+        <DetailSectionEmptyState />
+      )}
+    </section>
   );
 }
 
@@ -472,20 +784,16 @@ function SectionLabel({
   );
 }
 
-function buildInsightResultItems(
+function buildBusinessAttributionItems(
   detail: InsightDetailResponse,
-  showIntent: boolean,
 ): InsightResultItem[] {
+  const sentimentItems = detail.sentiment.filter((item) => item.reason);
+
   return [
     {
       icon: AiIdeaIcon,
-      items: showIntent ? [detail.summary.customerIntent] : [],
-      label: "意图",
-    },
-    {
-      icon: Layers01Icon,
       items: detail.intents.map((item) => item.intentLabel),
-      label: "细分",
+      label: "意图",
     },
     {
       icon: Database01Icon,
@@ -500,41 +808,52 @@ function buildInsightResultItems(
     {
       display: "text",
       icon: SmileIcon,
-      items: detail.sentiment.map(
-        (item) => `${formatPolarity(item.polarity)}：${item.reason}`,
-      ),
+      items: sentimentItems.map((item) => item.reason),
       label: "情绪",
-    },
-    {
-      icon: ClipboardCheckIcon,
-      items: detail.qaFindings.map((item) =>
-        `${item.passed ? "通过" : "未通过"}：${item.ruleName || item.ruleCode}`,
-      ),
-      label: "质检",
-    },
-    {
-      icon: Analytics02Icon,
-      items: detail.actionItems.map((item) => item.title),
-      label: "待办",
+      sentimentItems: sentimentItems.map((item) => ({
+        polarity: item.polarity,
+        reason: item.reason,
+      })),
     },
   ];
 }
-function formatPolarity(polarity: string) {
+
+function getPolarityConfig(polarity: string) {
   if (polarity === "positive") {
-    return "正向";
+    return {
+      className: "bg-success-muted/55 text-success",
+      icon: LookTopIcon,
+      label: "正向",
+    };
   }
 
   if (polarity === "negative") {
-    return "负向";
+    return {
+      className: "bg-destructive-muted/55 text-destructive",
+      icon: Sad02Icon,
+      label: "负向",
+    };
   }
 
   if (polarity === "mixed") {
-    return "混合";
+    return {
+      className: "bg-warning-muted/55 text-warning",
+      icon: CrazyIcon,
+      label: "混合",
+    };
   }
 
   if (polarity === "neutral") {
-    return "中性";
+    return {
+      className: "bg-muted text-muted-foreground",
+      icon: FlushedIcon,
+      label: "中性",
+    };
   }
 
-  return "未知";
+  return {
+    className: "bg-muted text-muted-foreground",
+    icon: SmileIcon,
+    label: "未知",
+  };
 }

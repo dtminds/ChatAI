@@ -68,7 +68,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getInsightOverview, getInsightOverviewSessions, getInsightSettings } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
-import { ResolutionBadge } from "./insight-badges";
+import { ResolutionBadge, ResolutionDiagnosisHeader } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
 import { InsightTableLoadingRow } from "./insight-table-loading-row";
@@ -110,7 +110,7 @@ const problemFilterOptions = [
 ];
 
 const resolutionFilterOptions = [
-  { label: "全部状态", value: "all" },
+  { label: "全部诊断", value: "all" },
   { label: "已解决", value: "resolved" },
   { label: "未解决", value: "unresolved" },
   { label: "部分解决", value: "partially_resolved" },
@@ -668,10 +668,10 @@ function SessionTableCard({
                 size={17}
               />
               <Input
-                aria-label="搜索问题摘要和诉求"
+                aria-label="搜索摘要"
                 className="h-9 w-full pl-9 sm:w-[220px]"
                 onChange={(event) => onKeywordChange(event.target.value)}
-                placeholder="搜索问题摘要和诉求"
+                placeholder="搜索摘要"
                 value={keyword}
               />
             </div>
@@ -683,7 +683,7 @@ function SessionTableCard({
               widthClassName="w-[132px]"
             />
             <FilterSelect
-              label="解决状态"
+              label="AI 诊断"
               onValueChange={onResolutionFilterChange}
               options={resolutionFilterOptions}
               value={resolutionFilter}
@@ -731,17 +731,18 @@ function SessionTableCard({
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="h-11 min-w-[180px]">客户</TableHead>
-              <TableHead className="h-11 min-w-[180px]">客服</TableHead>
-              <TableHead className="h-11 min-w-[260px]">诉求/问题</TableHead>
-              <TableHead className="h-11 min-w-[160px]">状态</TableHead>
+              <TableHead className="h-11 min-w-[180px]">接待客服</TableHead>
+              <TableHead className="h-11 min-w-[260px]">摘要</TableHead>
+              <TableHead className="h-11 min-w-[160px]">
+                <ResolutionDiagnosisHeader />
+              </TableHead>
               <TableHead className="h-11 min-w-[150px]">时间</TableHead>
-              <TableHead className="h-11 min-w-[80px]">消息</TableHead>
               <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <InsightTableLoadingRow colSpan={7} />
+              <InsightTableLoadingRow colSpan={6} />
             ) : rows.length > 0 ? (
               rows.map((row) => (
                 <TableRow key={row.sessionId}>
@@ -758,11 +759,8 @@ function SessionTableCard({
                     />
                   </TableCell>
                   <TableCell className="max-w-[300px] py-4">
-                    <div className="truncate text-xs font-medium text-foreground">
-                      {row.summaryCustomerIntent || <span className="text-muted-foreground/50">—</span>}
-                    </div>
-                    <div className="mt-1 truncate text-xs text-muted-foreground">
-                      {row.problemSummary || <span className="text-muted-foreground/50">—</span>}
+                    <div className="truncate text-sm font-medium text-foreground">
+                      {formatSessionSummaryCell(row.summarySessionTitle, row.problemSummary)}
                     </div>
                   </TableCell>
                   <TableCell className="py-4">
@@ -770,9 +768,6 @@ function SessionTableCard({
                   </TableCell>
                   <TableCell className="py-4 text-sm text-muted-foreground">
                     {formatInsightTime(row.startedAt)}
-                  </TableCell>
-                  <TableCell className="py-4 text-sm">
-                    {row.messageCount} 条
                   </TableCell>
                   <TableCell className="py-4 text-right">
                     <Button
@@ -808,6 +803,10 @@ function SessionTableCard({
       />
     </section>
   );
+}
+
+function formatSessionSummaryCell(summarySessionTitle?: string, problemSummary?: string) {
+  return summarySessionTitle || problemSummary || <span className="text-muted-foreground/50">-</span>;
 }
 
 type SessionFilterOptions = {
@@ -1044,7 +1043,7 @@ function buildActiveSessionFilters({
   if (resolution !== "all") {
     filters.push({
       key: "resolution",
-      label: `解决状态：${findOptionLabel(resolutionFilterOptions, resolution)}`,
+      label: `AI 诊断：${findOptionLabel(resolutionFilterOptions, resolution)}`,
       onRemove: onResolutionRemove,
     });
   }

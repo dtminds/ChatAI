@@ -271,7 +271,30 @@ function createDeferred<T = void>() {
 
 function createMockInsightDetail() {
   return {
-    actionItems: [],
+    actionItems: [
+      {
+        actionItemId: "801",
+        conversationId: "301",
+        customerAvatarUrl: "https://example.com/customer-1.png",
+        customerName: "张三",
+        evidenceMessageIds: ["9001", "9002"],
+        priority: "high",
+        sessionId: "501",
+        status: "open",
+        title: "跟进物流是否已更新",
+      },
+      {
+        actionItemId: "802",
+        conversationId: "301",
+        customerAvatarUrl: "https://example.com/customer-1.png",
+        customerName: "张三",
+        evidenceMessageIds: ["9001"],
+        priority: "low",
+        sessionId: "501",
+        status: "done",
+        title: "发送补偿说明",
+      },
+    ],
     analysisStatus: "ready",
     currentSnapshotId: "7001",
     entities: [
@@ -403,6 +426,13 @@ function createMockInsightDetail() {
     },
     qaFindings: [
       {
+        evidenceMessageIds: ["9001"],
+        passed: true,
+        reason: "已向客户说明会催促快递并同步进展",
+        ruleCode: "response_timeliness",
+        ruleName: "响应及时性",
+      },
+      {
         evidenceMessageIds: ["9002"],
         passed: false,
         reason: "未确认物流进展",
@@ -431,10 +461,8 @@ function createMockInsightDetail() {
       startedAt: 1_780_243_200_000,
     },
     summary: {
-      customerIntent: "查物流",
-      followUp: "确认快递状态",
-      processSummary: "客服要求客户等待",
-      resultSummary: "未确认物流进展",
+      sessionTitle: "物流异常待跟进",
+      text: "客户反馈物流不更新，客服表示会催快递但尚未确认物流进展。",
     },
     tags: [
       {
@@ -539,12 +567,10 @@ function installInsightMocks() {
     items: [
       {
         agentAvatarUrl: "https://example.com/agent-1.png",
-        agentMessageCount: 3,
         agentName: "客服一号",
         analysisStatus: "ready",
         conversationId: "301",
         customerAvatarUrl: "https://example.com/customer-1.png",
-        customerMessageCount: 5,
         customerName: "张三",
         assets: [
           { assetCode: "https://example.com/promo", assetName: "红包活动", assetType: "link" },
@@ -556,24 +582,21 @@ function installInsightMocks() {
           { intentCode: "logistics_delay", intentLabel: "物流异常" },
         ],
         lastMessageAt: 1_780_244_950_000,
-        messageCount: 8,
         problemSummary: "客户反馈物流异常",
         resolutionStatus: "unresolved",
         sessionId: "501",
         startedAt: 1_780_243_200_000,
-        summaryCustomerIntent: "查物流",
+        summarySessionTitle: "物流异常待跟进",
         tags: [
           { tagCode: "logistics_issue", tagName: "物流异常" },
         ],
       },
       {
         agentAvatarUrl: "https://example.com/agent-2.png",
-        agentMessageCount: 2,
         agentName: "客服二号",
         analysisStatus: "partial",
         conversationId: "302",
         customerAvatarUrl: "https://example.com/customer-2.png",
-        customerMessageCount: 3,
         customerName: "李四",
         entities: [],
         intents: [
@@ -581,34 +604,30 @@ function installInsightMocks() {
           { intentCode: "ai_customer_service_info", intentLabel: "咨询AI客服系统相关信息" },
         ],
         lastMessageAt: 1_780_244_500_000,
-        messageCount: 5,
         problemSummary: "客户咨询退款到账时间",
         resolutionStatus: "resolved",
         sessionId: "502",
         startedAt: 1_780_244_000_000,
-        summaryCustomerIntent: "退款咨询",
+        summarySessionTitle: "退款到账咨询",
         tags: [
           { tagCode: "refund", tagName: "退款咨询" },
         ],
       },
       {
         agentAvatarUrl: "https://example.com/agent-3.png",
-        agentMessageCount: 1,
         agentName: "客服三号",
         analysisStatus: "ready",
         conversationId: "303",
         customerAvatarUrl: "https://example.com/customer-3.png",
-        customerMessageCount: 1,
         customerName: "赵六",
         entities: [],
         intents: [],
         lastMessageAt: 1_780_243_500_000,
-        messageCount: 2,
-        problemSummary: "消息不足，无法判断客户问题",
+        problemSummary: "",
         resolutionStatus: "unknown",
         sessionId: "503",
         startedAt: 1_780_243_400_000,
-        summaryCustomerIntent: "消息不足",
+        summarySessionTitle: "",
         tags: [],
       },
     ],
@@ -754,12 +773,10 @@ function installInsightMocks() {
     items: [
       {
         agentAvatarUrl: "https://example.com/agent-1.png",
-        agentMessageCount: 3,
         agentName: "客服一号",
         analysisStatus: "ready",
         conversationId: "301",
         customerAvatarUrl: "https://example.com/customer-1.png",
-        customerMessageCount: 5,
         customerName: "张三",
         entities: [
           { entityId: "sku-1", entityName: "白色羽绒服", entityType: "product" },
@@ -768,12 +785,11 @@ function installInsightMocks() {
           { intentCode: "logistics_delay", intentLabel: "物流异常" },
         ],
         lastMessageAt: 1_780_244_950_000,
-        messageCount: 8,
         problemSummary: "客户反馈物流异常",
         resolutionStatus: "unresolved",
         sessionId: "501",
         startedAt: 1_780_243_200_000,
-        summaryCustomerIntent: "查物流",
+        summarySessionTitle: "物流异常待跟进",
         tags: [
           { tagCode: "logistics_issue", tagName: "物流异常" },
         ],
@@ -1136,11 +1152,16 @@ describe("conversation insights pages", () => {
     expect(screen.queryByText("最近 30 天")).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "咨询会话明细" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "分页" })).toHaveClass("!mx-0", "!ml-auto");
-    expect(screen.getByText("客户反馈物流异常")).toBeInTheDocument();
+    expect(screen.getByText("摘要")).toBeInTheDocument();
+    expect(screen.getByText("物流异常待跟进")).toBeInTheDocument();
+    expect(screen.queryByText("客户反馈物流异常")).not.toBeInTheDocument();
+    await userEvent.hover(screen.getAllByRole("button", { name: "查看 AI 诊断说明" })[0]!);
+    expect(await screen.findAllByText("AI 对分析快照的判断结果，不是人工处理状态")).not.toHaveLength(0);
+    expect(screen.getAllByText("消息未达准入门槛，或模型基于现有消息仍无法判断")).not.toHaveLength(0);
     expect(screen.getAllByText("消息不足").length).toBeGreaterThan(0);
     expect(screen.queryByText("待复核")).not.toBeInTheDocument();
     expect(screen.queryByText("待判断")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("combobox", { name: "解决状态" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "AI 诊断" }));
     expect(await screen.findByRole("option", { name: "无需客服处理" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "无明确问题" })).not.toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
@@ -1222,19 +1243,68 @@ describe("conversation insights pages", () => {
     expect(within(detailDialog).getAllByRole("img", { name: "客服一号" }).length).toBeGreaterThan(0);
     expect(within(detailDialog).getByText(/生成于/)).toBeInTheDocument();
     expect(within(detailDialog).queryByText("已完成")).not.toBeInTheDocument();
+    expect(within(insightRegion).queryByText("摘要")).not.toBeInTheDocument();
+    expect(within(insightRegion).getByText("物流异常待跟进")).toBeInTheDocument();
+    expect(within(insightRegion).getByText("客户反馈物流不更新，客服表示会催快递但尚未确认物流进展。")).toBeInTheDocument();
+    expect(within(insightRegion).getByText("客户反馈物流异常")).toBeInTheDocument();
+    expect(within(insightRegion).queryByText("处理过程")).not.toBeInTheDocument();
+    expect(within(insightRegion).queryByText("客服要求客户等待")).not.toBeInTheDocument();
+    expect(within(insightRegion).getByText("客户问题")).toBeInTheDocument();
+    expect(within(insightRegion).queryByText("客户诉求")).not.toBeInTheDocument();
+    expect(within(insightRegion).getByText("AI 诊断")).toBeInTheDocument();
+    expect(within(insightRegion).queryByText("未解决判定理由")).not.toBeInTheDocument();
+    expect(within(insightRegion).queryByText("售后/物流/退款进度未确认")).not.toBeInTheDocument();
+    await userEvent.hover(within(insightRegion).getByRole("button", { name: "查看 AI 诊断理由" }));
+    expect(await screen.findByText("售后/物流/退款进度未确认")).toBeInTheDocument();
+    expect(within(insightRegion).getByText("客户")).toBeInTheDocument();
+    expect(within(insightRegion).getByText("接待客服")).toBeInTheDocument();
+    expect(within(insightRegion).queryByText("客服 客服一号")).not.toBeInTheDocument();
+    expect(within(insightRegion).getByText("会话时间")).toBeInTheDocument();
+    expect(within(insightRegion).queryByText("跟进建议")).not.toBeInTheDocument();
+    expect(within(insightRegion).queryByText("确认快递状态")).not.toBeInTheDocument();
+    expect(within(insightRegion).queryByRole("heading", { name: "待处理" })).not.toBeInTheDocument();
+    const actionItemsLabel = within(insightRegion).getByText("待办任务");
+    const diagnosisLabel = within(insightRegion).getByText("AI 诊断");
+    expect(
+      diagnosisLabel.compareDocumentPosition(actionItemsLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      actionItemsLabel.compareDocumentPosition(within(insightRegion).getByText("服务质检")) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(within(insightRegion).getByText("服务质检")).toBeInTheDocument();
+    expect(within(insightRegion).getByRole("img", { name: "服务质检通过率 50%" })).toBeInTheDocument();
+    expect(within(insightRegion).getByText("通过")).toBeInTheDocument();
+    expect(within(insightRegion).getByText("未通过")).toBeInTheDocument();
+    expect(within(insightRegion).getByText("响应及时性")).toBeInTheDocument();
+    expect(within(insightRegion).queryByText("已向客户说明会催促快递并同步进展")).not.toBeInTheDocument();
+    expect(within(insightRegion).getAllByText("未确认物流进展").length).toBeGreaterThan(0);
+    await userEvent.hover(within(insightRegion).getByRole("button", { name: "查看未通过原因：未确认物流进展" }));
+    expect(await screen.findAllByText("未确认物流进展")).toHaveLength(2);
+    expect(within(insightRegion).getByText("负向")).toBeInTheDocument();
+    expect(within(insightRegion).queryByText("客户明确表达物流不更新的不满")).not.toBeInTheDocument();
+    await userEvent.hover(within(insightRegion).getByRole("button", { name: "查看情绪判定理由：负向" }));
+    expect(await screen.findByText("客户明确表达物流不更新的不满")).toBeInTheDocument();
+    const businessAttributionHeading = within(insightRegion).getByRole("heading", { name: "智能归因" });
+    expect(
+      actionItemsLabel.compareDocumentPosition(businessAttributionHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(within(insightRegion).getByText("跟进物流是否已更新")).toBeInTheDocument();
+    expect(within(insightRegion).getByText("发送补偿说明")).toHaveClass("line-through");
     expect(screen.getAllByText("物流异常").length).toBeGreaterThan(0);
     expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
     expect(screen.getByText("物流停滞怎么处理")).toBeInTheDocument();
+    expect(screen.queryByText("先核实物流停滞节点，再告知预计回复时间")).not.toBeInTheDocument();
+    await userEvent.click(within(insightRegion).getByRole("button", { name: /物流停滞怎么处理/ }));
+    expect(screen.getByText("先核实物流停滞节点，再告知预计回复时间")).toBeInTheDocument();
     expect(screen.getAllByText("还没收到货，物流也不更新").length).toBeGreaterThan(0);
     expect(within(conversationRegion).getByText("客户问题")).toBeInTheDocument();
     expect(within(conversationRegion).getByText("客户问题")).toHaveAttribute(
       "title",
       expect.stringContaining("客户明确反馈物流不更新"),
     );
+    expect(screen.queryByRole("region", { name: "关键证据" })).not.toBeInTheDocument();
     expect(within(detailDialog).queryByText("2 条证据")).not.toBeInTheDocument();
     expect(within(detailDialog).queryByText("+1")).not.toBeInTheDocument();
-    expect(within(insightRegion).queryByText("判定依据")).not.toBeInTheDocument();
-    expect(within(insightRegion).queryByText("客户明确反馈物流不更新")).not.toBeInTheDocument();
     expect(within(insightRegion).queryByText("当前会话未确认物流处理结果")).not.toBeInTheDocument();
     expect(within(conversationRegion).queryByText("客户明确反馈物流不更新")).not.toBeInTheDocument();
     expect(within(conversationRegion).queryByText("当前会话未确认物流处理结果")).not.toBeInTheDocument();
@@ -1256,6 +1326,96 @@ describe("conversation insights pages", () => {
     expect(await screen.findByText("正在加载洞察详情")).toBeInTheDocument();
     detailRequest.reject(new Error("detail failed"));
     expect(await screen.findByText("洞察详情加载失败")).toBeInTheDocument();
+  });
+
+  it("only badges problem-resolution evidence in the detail conversation panel", async () => {
+    const detail = createMockInsightDetail();
+    detail.evidenceItems.push({
+      dimensionRecordId: "8001",
+      dimensionType: "sentiment",
+      evidenceRole: "primary",
+      messageId: "9003",
+      reason: "客户语气平稳",
+    });
+    detail.sessionMessageRecords.push({
+      content: { text: "我只是补充确认一下" },
+      contentType: "text",
+      conversationId: "301",
+      createdAt: 1_780_244_200_000,
+      customerId: "customer-301",
+      messageId: "external-msg-9003",
+      seatId: "seat-1",
+      senderAvatar: "https://example.com/customer-1.png",
+      senderName: "张三",
+      senderType: "customer",
+      seq: 9003,
+      status: "sent",
+    });
+    serviceMocks.getInsightDetail.mockResolvedValueOnce(detail);
+
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
+
+    const conversationRegion = await screen.findByRole("region", { name: "本轮对话" });
+    expect(within(conversationRegion).getByText("客户问题")).toBeInTheDocument();
+    expect(within(conversationRegion).getByText("我只是补充确认一下")).toBeInTheDocument();
+    expect(within(conversationRegion).queryByText("证据")).not.toBeInTheDocument();
+  });
+
+  it("hides customer problem row when problem summary is empty", async () => {
+    const detail = createMockInsightDetail();
+    detail.problemResolution.problemSummary = "";
+    serviceMocks.getInsightDetail.mockResolvedValueOnce(detail);
+
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
+
+    const insightRegion = await screen.findByRole("region", { name: "洞察结论" });
+    expect(within(insightRegion).queryByText("客户问题")).not.toBeInTheDocument();
+  });
+
+  it("uses unnamed session title fallback and hides empty summary text", async () => {
+    const detail = createMockInsightDetail();
+    detail.summary = {
+      sessionTitle: "",
+      text: "",
+    };
+    serviceMocks.getInsightDetail.mockResolvedValueOnce(detail);
+
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
+
+    const insightRegion = await screen.findByRole("region", { name: "洞察结论" });
+    expect(within(insightRegion).getByRole("heading", { name: "未命名会话" })).toBeInTheDocument();
+    expect(within(insightRegion).queryByText("暂无")).not.toBeInTheDocument();
+  });
+
+  it("shows empty states for insight detail sections with no results", async () => {
+    const detail = createMockInsightDetail();
+    detail.entities = [];
+    detail.faqCandidates = [];
+    detail.intents = [];
+    detail.qaFindings = [];
+    detail.sentiment = [];
+    detail.tags = [];
+    serviceMocks.getInsightDetail.mockResolvedValueOnce(detail);
+
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
+
+    const insightRegion = await screen.findByRole("region", { name: "洞察结论" });
+    expect(within(insightRegion).getByRole("heading", { name: "服务质检" })).toBeInTheDocument();
+    expect(within(insightRegion).getByRole("heading", { name: "智能归因" })).toBeInTheDocument();
+    expect(within(insightRegion).getByRole("heading", { name: "知识沉淀" })).toBeInTheDocument();
+    expect(within(insightRegion).getAllByText("暂无数据")).toHaveLength(3);
   });
 
   it("keeps the latest insight detail request when users switch sessions quickly", async () => {
@@ -1283,7 +1443,6 @@ describe("conversation insights pages", () => {
           customerName: "张三",
           generatedAt: 1_780_245_100_000,
           lastMessageAt: 1_780_244_950_000,
-          messageCount: 8,
           phase: "final",
           problemSummary: "第一个会话的问题",
           resolutionStatus: "unresolved",
@@ -1300,7 +1459,6 @@ describe("conversation insights pages", () => {
           customerName: "李四",
           generatedAt: 1_780_245_200_000,
           lastMessageAt: 1_780_244_980_000,
-          messageCount: 6,
           phase: "final",
           problemSummary: "第二个会话的问题",
           resolutionStatus: "resolved",
@@ -1404,8 +1562,8 @@ describe("conversation insights pages", () => {
       expect(serviceMocks.getInsightSettings).toHaveBeenCalled();
     });
 
-    expect(screen.getByRole("textbox", { name: "搜索问题摘要和诉求" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "解决状态" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索摘要" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "AI 诊断" })).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "标签" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "实体" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "意图" })).not.toBeInTheDocument();
@@ -1864,6 +2022,7 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("会话未结束时提前生成摘要、待办和业务归因")).toBeInTheDocument();
     expect(screen.getByText("未完结会话分析频率")).toBeInTheDocument();
     expect(screen.getByText("控制未完结会话多久重新分析一次，会消耗更多 AI 分析次数")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "未完结会话分析频率" })).toHaveTextContent("标准（推荐）");
     expect(screen.getByText("准入规则")).toBeInTheDocument();
     expect(screen.getByText("有效会话门槛")).toBeInTheDocument();
     expect(screen.getByText("会话中的消息数少于该数量时，AI 会跳过分析，避免得出无效结论")).toBeInTheDocument();
@@ -2049,7 +2208,7 @@ describe("conversation insights pages", () => {
     expect(within(businessOverviewPanel).queryByText("8 次提及")).not.toBeInTheDocument();
 
     const relatedSessionsTable = screen.getByRole("table", { name: "相关会话" });
-    expect(within(relatedSessionsTable).getByText("客户反馈物流异常")).toBeInTheDocument();
+    expect(within(relatedSessionsTable).getByText("物流异常待跟进")).toBeInTheDocument();
     expect(within(relatedSessionsTable).getByRole("img", { name: "张三" })).toBeInTheDocument();
     expect(within(relatedSessionsTable).getByRole("img", { name: "客服一号" })).toBeInTheDocument();
     expect(within(relatedSessionsTable).queryByText("客户咨询退款到账时间")).not.toBeInTheDocument();
@@ -2073,13 +2232,14 @@ describe("conversation insights pages", () => {
     expect(within(assetTop10List).getByText("H5链接 · 5 个会话 6 次提及")).toBeInTheDocument();
 
     await userEvent.type(screen.getByRole("textbox", { name: "搜索相关会话" }), "物流异常");
-    expect(within(relatedSessionsTable).getByText("客户反馈物流异常")).toBeInTheDocument();
+    expect(within(relatedSessionsTable).getByText("物流异常待跟进")).toBeInTheDocument();
 
     await userEvent.click(within(relatedSessionsTable).getByRole("button", { name: "查看详情" }));
 
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
-    expect(screen.getByText("未确认物流进展")).toBeInTheDocument();
-    expect(screen.getByText("未通过：客户问题是否解决")).toBeInTheDocument();
+    expect(screen.getAllByText("未确认物流进展").length).toBeGreaterThan(0);
+    expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
+    expect(screen.getByText("未通过")).toBeInTheDocument();
     expect(screen.queryByText("未通过：problem_resolution")).not.toBeInTheDocument();
     expect(screen.queryByText("后续版本接入")).not.toBeInTheDocument();
   });

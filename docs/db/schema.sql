@@ -232,10 +232,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_insight_current (
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_summary (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
-  customer_intent VARCHAR(2048) NOT NULL COMMENT '客户诉求摘要',
-  process_summary VARCHAR(2048) NOT NULL COMMENT '处理过程摘要',
-  result_summary VARCHAR(2048) NOT NULL COMMENT '当前结果摘要',
-  follow_up VARCHAR(2048) NULL COMMENT '跟进建议',
+  session_title VARCHAR(255) NOT NULL COMMENT '会话短标题',
+  summary_text VARCHAR(2048) NOT NULL COMMENT '会话摘要正文',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),

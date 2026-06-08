@@ -120,9 +120,8 @@ describe("LLM provider config", () => {
                     qaFindings: [],
                     sentiment: [],
                     summary: {
-                      customerIntent: "咨询",
-                      processSummary: "已回复",
-                      resultSummary: "已解决",
+                      sessionTitle: "咨询",
+                      text: "已回复",
                     },
                     tags: [],
                   }),
@@ -197,9 +196,8 @@ describe("LLM provider config", () => {
                 },
               ],
               summary: {
-                customerIntent: "查物流",
-                processSummary: "客服承诺处理",
-                resultSummary: "尚未解决",
+                sessionTitle: "查物流",
+                text: "客服承诺处理",
               },
             }
           : requestBodies.length === 2
@@ -333,7 +331,7 @@ describe("LLM provider config", () => {
       entities: [expect.objectContaining({ entityName: "补水面膜" })],
       intents: [expect.objectContaining({ intentCode: "logistics_delay" })],
       qaFindings: [expect.objectContaining({ ruleCode: "after_sales_followup" })],
-      summary: { customerIntent: "查物流" },
+      summary: { sessionTitle: "查物流" },
       tags: [expect.objectContaining({ tagCode: "logistics" })],
     });
   });
@@ -359,9 +357,8 @@ describe("LLM provider config", () => {
               },
               sentiment: [],
               summary: {
-                customerIntent: "查物流",
-                processSummary: "客服处理中",
-                resultSummary: "待确认",
+                sessionTitle: "查物流",
+                text: "客服处理中",
               },
             }
           : {
@@ -544,7 +541,8 @@ describe("LLM provider config", () => {
       qaFindings: [],
       tags: [expect.objectContaining({ tagCode: "logistics" })],
     });
-    expect(result.summary.customerIntent).toBe("");
+    expect(result.summary.sessionTitle).toBe("");
+    expect(result.summary.text).toBe("");
   });
 
   it("retries retryable optional classification failures before degrading the dimension", async () => {
@@ -573,9 +571,8 @@ describe("LLM provider config", () => {
                     },
                     sentiment: [],
                     summary: {
-                      customerIntent: "查物流",
-                      processSummary: "客服处理中",
-                      resultSummary: "待确认",
+                      sessionTitle: "查物流",
+                      text: "客服处理中",
                     },
                   }),
                 },
@@ -707,9 +704,8 @@ describe("LLM provider config", () => {
                   qaFindings: [],
                   sentiment: [],
                   summary: {
-                    customerIntent: "寒暄",
-                    processSummary: "无明确问题",
-                    resultSummary: "无需处理",
+                    sessionTitle: "寒暄",
+                    text: "无明确问题",
                   },
                   tags: [],
                 }),
@@ -757,7 +753,7 @@ describe("LLM provider config", () => {
     await vi.advanceTimersByTimeAsync(2_000);
 
     await expect(resultPromise).resolves.toMatchObject({
-      summary: { customerIntent: "寒暄" },
+      summary: { sessionTitle: "寒暄" },
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     vi.useRealTimers();
@@ -806,9 +802,8 @@ describe("LLM provider config", () => {
                   qaFindings: [],
                   sentiment: [],
                   summary: {
-                    customerIntent: "寒暄",
-                    processSummary: "无明确问题",
-                    resultSummary: "无需处理",
+                    sessionTitle: "寒暄",
+                    text: "无明确问题",
                   },
                   tags: [],
                 }),
@@ -849,7 +844,7 @@ describe("LLM provider config", () => {
         ],
       }),
     ).resolves.toMatchObject({
-      summary: { customerIntent: "寒暄" },
+      summary: { sessionTitle: "寒暄" },
     });
 
     expect(requestBodies[0]).toHaveProperty("response_format");
@@ -940,9 +935,8 @@ describe("LLM provider config", () => {
                     qaFindings: [],
                     sentiment: [],
                     summary: {
-                      customerIntent: "寒暄",
-                      processSummary: "客服已回复",
-                      resultSummary: "无需处理",
+                      sessionTitle: "寒暄",
+                      text: "客服已回复",
                     },
                     tags: [],
                   }),
@@ -1030,9 +1024,8 @@ describe("LLM provider config", () => {
                       qaFindings: [],
                       sentiment: [],
                       summary: {
-                        customerIntent: "查物流",
-                        processSummary: "客服承诺处理",
-                        resultSummary: "尚未解决",
+                        sessionTitle: "查物流",
+                        text: "客服承诺处理",
                       },
                       tags: [],
                     }),

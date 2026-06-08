@@ -12,6 +12,7 @@ import {
   InsightRescanTaskListResponseSchema,
   InsightSettingsResponseSchema,
   InsightSettingsSummaryResponseSchema,
+  InsightSessionMessagesResponseSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
   InsightsBusinessResponseSchema,
   InsightsFollowUpsResponseSchema,
@@ -390,7 +391,7 @@ describe("insights DTOs", () => {
     ).toBe(false);
   });
 
-  it("accepts detail responses with evidence message contexts", () => {
+  it("accepts detail responses without embedded conversation messages", () => {
     expect(
       Value.Check(InsightDetailResponseSchema, {
         actionItems: [],
@@ -403,42 +404,6 @@ describe("insights DTOs", () => {
             evidenceRole: "customer_problem",
             messageId: "9001",
             reason: "客户明确询问退款进度",
-          },
-        ],
-        evidenceMessages: [
-          {
-            contentText: "退款什么时候到账？",
-            contentType: "text",
-            messageId: "9001",
-            msgtime: 1780243200000,
-            senderName: "张三",
-            senderRole: "customer",
-          },
-        ],
-        evidenceMessageRecords: [
-          {
-            content: { text: "退款什么时候到账？" },
-            contentType: "text",
-            conversationId: "301",
-            customerId: "customer-1",
-            messageId: "external-msg-9001",
-            seatId: "seat-1",
-            senderType: "customer",
-            seq: 9001,
-            status: "sent",
-          },
-        ],
-        sessionMessageRecords: [
-          {
-            content: { text: "退款什么时候到账？" },
-            contentType: "text",
-            conversationId: "301",
-            customerId: "customer-1",
-            messageId: "external-msg-9001",
-            seatId: "seat-1",
-            senderType: "customer",
-            seq: 9001,
-            status: "sent",
           },
         ],
         faqCandidates: [],
@@ -515,6 +480,26 @@ describe("insights DTOs", () => {
         tags: [],
       }),
     ).toBe(false);
+  });
+
+  it("accepts session message responses separately from detail responses", () => {
+    expect(
+      Value.Check(InsightSessionMessagesResponseSchema, {
+        messages: [
+          {
+            content: { text: "退款什么时候到账？" },
+            contentType: "text",
+            conversationId: "301",
+            customerId: "customer-1",
+            messageId: "external-msg-9001",
+            seatId: "seat-1",
+            senderType: "customer",
+            seq: 9001,
+            status: "sent",
+          },
+        ],
+      }),
+    ).toBe(true);
   });
 
   it("accepts seed-backed settings responses and rescan requests", () => {

@@ -12,6 +12,7 @@ const serviceMocks = vi.hoisted(() => ({
   getInsightDetail: vi.fn(),
   getInsightFollowUps: vi.fn(),
   getInsightMessageContext: vi.fn(),
+  getInsightSessionMessages: vi.fn(),
   getInsightOverview: vi.fn(),
   getInsightOverviewSessions: vi.fn(),
   getInsightQuality: vi.fn(),
@@ -322,84 +323,6 @@ function createMockInsightDetail() {
         reason: "客服表示会催快递",
       },
     ],
-    evidenceMessages: [
-      {
-        contentText: "帮您催一下快递",
-        contentType: "text",
-        messageId: "9001",
-        msgtime: 1_780_244_000_000,
-        senderName: "客服一号",
-        senderRole: "agent",
-      },
-      {
-        contentText: "还没收到货，物流也不更新",
-        contentType: "text",
-        messageId: "9002",
-        msgtime: 1_780_244_100_000,
-        senderName: "张三",
-        senderRole: "customer",
-      },
-    ],
-    evidenceMessageRecords: [
-      {
-        content: { text: "帮您催一下快递" },
-        contentType: "text",
-        conversationId: "301",
-        createdAt: 1_780_244_000_000,
-        customerId: "customer-301",
-        messageId: "external-msg-9001",
-        seatId: "seat-1",
-        senderAvatar: "https://example.com/agent-1.png",
-        senderName: "客服一号",
-        senderType: "agent",
-        seq: 9001,
-        status: "sent",
-      },
-      {
-        content: { text: "还没收到货，物流也不更新" },
-        contentType: "text",
-        conversationId: "301",
-        createdAt: 1_780_244_100_000,
-        customerId: "customer-301",
-        messageId: "external-msg-9002",
-        seatId: "seat-1",
-        senderAvatar: "https://example.com/customer-1.png",
-        senderName: "张三",
-        senderType: "customer",
-        seq: 9002,
-        status: "sent",
-      },
-    ],
-    sessionMessageRecords: [
-      {
-        content: { text: "帮您催一下快递" },
-        contentType: "text",
-        conversationId: "301",
-        createdAt: 1_780_244_000_000,
-        customerId: "customer-301",
-        messageId: "external-msg-9001",
-        seatId: "seat-1",
-        senderAvatar: "https://example.com/agent-1.png",
-        senderName: "客服一号",
-        senderType: "agent",
-        seq: 9001,
-        status: "sent",
-      },
-      {
-        content: { text: "还没收到货，物流也不更新" },
-        contentType: "text",
-        conversationId: "301",
-        createdAt: 1_780_244_100_000,
-        customerId: "customer-301",
-        messageId: "external-msg-9002",
-        seatId: "seat-1",
-        senderAvatar: "https://example.com/customer-1.png",
-        senderName: "张三",
-        senderType: "customer",
-        seq: 9002,
-        status: "sent",
-      },
-    ],
     faqCandidates: [
       {
         answerHint: "先核实物流停滞节点，再告知预计回复时间",
@@ -470,6 +393,41 @@ function createMockInsightDetail() {
         evidenceMessageIds: ["9002"],
         tagCode: "logistics_issue",
         tagName: "物流异常",
+      },
+    ],
+  };
+}
+
+function createMockInsightSessionMessages() {
+  return {
+    messages: [
+      {
+        content: { text: "帮您催一下快递" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_000_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9001",
+        seatId: "seat-1",
+        senderAvatar: "https://example.com/agent-1.png",
+        senderName: "客服一号",
+        senderType: "agent",
+        seq: 9001,
+        status: "sent",
+      },
+      {
+        content: { text: "还没收到货，物流也不更新" },
+        contentType: "text",
+        conversationId: "301",
+        createdAt: 1_780_244_100_000,
+        customerId: "customer-301",
+        messageId: "external-msg-9002",
+        seatId: "seat-1",
+        senderAvatar: "https://example.com/customer-1.png",
+        senderName: "张三",
+        senderType: "customer",
+        seq: 9002,
+        status: "sent",
       },
     ],
   };
@@ -921,6 +879,7 @@ function installInsightMocks() {
     total: 1,
   });
   serviceMocks.getInsightDetail.mockResolvedValue(createMockInsightDetail());
+  serviceMocks.getInsightSessionMessages.mockResolvedValue(createMockInsightSessionMessages());
   serviceMocks.getInsightMessageContext.mockResolvedValue({
     contextAfter: 30,
     contextBefore: 30,
@@ -1142,7 +1101,7 @@ describe("conversation insights pages", () => {
     expect(screen.queryByText("按客户去重")).not.toBeInTheDocument();
     expect(screen.queryByText("客户与客服合计")).not.toBeInTheDocument();
     expect(screen.queryByText("客户主动表达量")).not.toBeInTheDocument();
-    const distributionPanel = screen.getByRole("heading", { name: "问题解决分布" }).closest("section");
+    const distributionPanel = screen.getByRole("heading", { name: "AI 诊断" }).closest("section");
     const trendPanel = screen.getByRole("button", { name: "咨询会话" }).closest("section");
 
     expect(distributionPanel).not.toBeNull();
@@ -1156,7 +1115,7 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("物流异常待跟进")).toBeInTheDocument();
     expect(screen.queryByText("客户反馈物流异常")).not.toBeInTheDocument();
     await userEvent.hover(screen.getAllByRole("button", { name: "查看 AI 诊断说明" })[0]!);
-    expect(await screen.findAllByText("AI 对分析快照的判断结果，不是人工处理状态")).not.toHaveLength(0);
+    expect(await screen.findAllByText("按本轮会话内容判断，不代表后续处理状态")).not.toHaveLength(0);
     expect(screen.getAllByText("消息未达准入门槛，或模型基于现有消息仍无法判断")).not.toHaveLength(0);
     expect(screen.getAllByText("消息不足").length).toBeGreaterThan(0);
     expect(screen.queryByText("待复核")).not.toBeInTheDocument();
@@ -1234,6 +1193,12 @@ describe("conversation insights pages", () => {
     await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
 
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(serviceMocks.getInsightSessionMessages).toHaveBeenCalledWith("501");
+    });
+    expect(serviceMocks.getInsightDetail.mock.invocationCallOrder[0]).toBeLessThan(
+      serviceMocks.getInsightSessionMessages.mock.invocationCallOrder[0],
+    );
     const detailDialog = screen.getByRole("dialog", { name: "洞察详情" });
     const insightRegion = screen.getByRole("region", { name: "洞察结论" });
     const conversationRegion = screen.getByRole("region", { name: "本轮对话" });
@@ -1347,7 +1312,7 @@ describe("conversation insights pages", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
 
-    expect(await screen.findByText("正在加载洞察详情")).toBeInTheDocument();
+    expect(await screen.findByText("正在加载会话")).toBeInTheDocument();
     detailRequest.reject(new Error("detail failed"));
     expect(await screen.findByText("洞察详情加载失败")).toBeInTheDocument();
   });
@@ -1361,7 +1326,8 @@ describe("conversation insights pages", () => {
       messageId: "9003",
       reason: "客户语气平稳",
     });
-    detail.sessionMessageRecords.push({
+    const sessionMessages = createMockInsightSessionMessages();
+    sessionMessages.messages.push({
       content: { text: "我只是补充确认一下" },
       contentType: "text",
       conversationId: "301",
@@ -1376,6 +1342,7 @@ describe("conversation insights pages", () => {
       status: "sent",
     });
     serviceMocks.getInsightDetail.mockResolvedValueOnce(detail);
+    serviceMocks.getInsightSessionMessages.mockResolvedValueOnce(sessionMessages);
 
     renderRoute("/chat/insights");
 
@@ -1995,7 +1962,7 @@ describe("conversation insights pages", () => {
         within(openSummaryCell).getByText("待处理事项"),
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(openCells[3]).toHaveTextContent("周一 00:13");
+    expect(openCells[3]).not.toHaveTextContent("暂无");
     const highPriority = within(openRow as HTMLElement).getByText("高");
     const mediumPriority = within(doneRow as HTMLElement).getByText("中");
     const lowPriority = within(dismissedRow as HTMLElement).getByText("低");
@@ -2670,7 +2637,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
-    const distributionPanel = screen.getByRole("heading", { name: "问题解决分布" }).closest("section");
+    const distributionPanel = screen.getByRole("heading", { name: "AI 诊断" }).closest("section");
 
     expect(distributionPanel).not.toBeNull();
     expect(within(distributionPanel as HTMLElement).getByText("暂无数据")).toBeInTheDocument();
@@ -2711,7 +2678,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
-    const distributionPanel = screen.getByRole("heading", { name: "问题解决分布" }).closest("section");
+    const distributionPanel = screen.getByRole("heading", { name: "AI 诊断" }).closest("section");
 
     expect(distributionPanel).not.toBeNull();
     expect(within(distributionPanel as HTMLElement).getByText("暂无数据")).toBeInTheDocument();

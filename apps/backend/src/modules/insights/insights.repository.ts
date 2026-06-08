@@ -49,7 +49,6 @@ import type {
   InsightCurrentSessionPage,
   InsightCurrentSessionRow,
   InsightDetailRow,
-  InsightEvidenceMessageRow,
   InsightOverviewAggregateRow,
   InsightQualityAgentStatRow,
   InsightQualityAggregateRow,
@@ -59,7 +58,6 @@ import type {
   InsightsRepositoryPort,
   InsightsUidScope,
 } from "./insights.service.js";
-import { buildInsightMessageInput } from "./insight-message-input-builder.js";
 import {
   parseInsightMessageContent,
   readInsightContentString,
@@ -347,19 +345,6 @@ type SeatProfile = {
   avatarUrl: string;
   name: string;
   seatId: string;
-};
-
-type EvidenceMessageQueryRow = {
-  chat_type: number;
-  content: string | null;
-  conversation_id: number | string;
-  from_type: number | null;
-  id: number | string;
-  msgtime: number | string | Date;
-  msgtype: string;
-  sender_name?: string | null;
-  third_from_id?: string | null;
-  third_user_id?: string | null;
 };
 
 type InsightConversationRow = {
@@ -2400,6 +2385,20 @@ export class InsightsRepository implements InsightsRepositoryPort {
     };
   }
 
+  async hasSession(
+    scope: InsightsUidScope,
+    sessionId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_logical_session as session")
+      .select("session.id")
+      .where("session.uid", "=", scope.uid)
+      .where("session.id", "=", parsePositiveInteger(sessionId) ?? -1)
+      .executeTakeFirst();
+
+    return row != null;
+  }
+
   private async listDimensionEvidence(
     scope: InsightsUidScope,
     sessionId: string,
@@ -2547,81 +2546,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       question: row.question,
       status: row.status,
     }));
-  }
-
-  async listEvidenceMessages(
-    scope: InsightsUidScope,
-    sessionId: string,
-    messageIds: string[],
-  ): Promise<InsightEvidenceMessageRow[]> {
-    const normalizedMessageIds = normalizePositiveIntegers(messageIds);
-
-    if (normalizedMessageIds.length === 0) {
-      return [];
-    }
-
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_msg_audit_info as message")
-      .innerJoin("xy_wap_embed_logical_session_message as session_message", (join) =>
-        join
-          .onRef("session_message.source_message_id", "=", "message.id")
-          .on("session_message.session_id", "=", parsePositiveInteger(sessionId) ?? -1),
-      )
-      .leftJoin("xy_wap_embed_contact as contact", (join) =>
-        join
-          .onRef("contact.uid", "=", "message.uid")
-          .onRef("contact.third_external_userid", "=", "message.third_external_id"),
-      )
-      .select([
-        "contact.name as sender_name",
-        "message.chat_type as chat_type",
-        "message.content as content",
-        "message.from_type as from_type",
-        "message.id as id",
-        "message.msgtime as msgtime",
-        "message.msgtype as msgtype",
-        "message.third_from_id as third_from_id",
-        "message.third_user_id as third_user_id",
-        "session_message.conversation_id as conversation_id",
-      ])
-      .where("message.uid", "=", scope.uid)
-      .where("message.id", "in", normalizedMessageIds)
-      .orderBy("message.msgtime", "asc")
-      .orderBy("message.id", "asc")
-      .execute() as EvidenceMessageQueryRow[];
-
-    return rows.map((row) => {
-      return mapEvidenceMessageRow(row);
-    });
-  }
-
-  async listEvidenceMessageRecords(
-    scope: InsightsUidScope,
-    sessionId: string,
-    messageIds: string[],
-  ): Promise<WorkbenchMessageDto[]> {
-    const normalizedMessageIds = normalizePositiveIntegers(messageIds);
-    const targetSessionId = parsePositiveInteger(sessionId);
-
-    if (normalizedMessageIds.length === 0 || targetSessionId == null) {
-      return [];
-    }
-
-    const target = await this.findInsightConversationBySession(
-      scope,
-      targetSessionId,
-    );
-
-    if (!target) {
-      return [];
-    }
-
-    const messageRows = await this.listMessageRowsBySourceIds(
-      target,
-      normalizedMessageIds,
-    );
-
-    return await this.mapMessageRows(target, messageRows);
   }
 
   async listSessionMessageRecords(
@@ -4371,19 +4295,6 @@ function evidenceForDimension(
       ),
     ),
   );
-}
-
-function mapEvidenceMessageRow(row: EvidenceMessageQueryRow): InsightEvidenceMessageRow {
-  const input = buildInsightMessageInput(row);
-
-  return {
-    contentText: input.aiText,
-    contentType: input.messageType,
-    messageId: input.sourceMessageId,
-    msgtime: input.occurredAt,
-    senderName: row.sender_name ?? undefined,
-    senderRole: input.senderRole,
-  };
 }
 
 function buildQuotePreviewsByRowId(

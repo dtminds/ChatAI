@@ -50,21 +50,6 @@ export const InsightPrioritySchema = Type.Union([
   Type.Literal("high"),
 ]);
 
-export const InsightEvidenceMessageContextSchema = Type.Object({
-  contentText: Type.String(),
-  contentType: Type.String(),
-  messageId: Type.String(),
-  msgtime: Type.Number(),
-  senderName: Type.Optional(Type.String()),
-  senderRole: Type.Union([
-    Type.Literal("customer"),
-    Type.Literal("agent"),
-    Type.Literal("system"),
-    Type.Literal("bot"),
-    Type.Literal("unknown"),
-  ]),
-});
-
 export const InsightEntityHotspotSchema = Type.Object({
   entityId: Type.String(),
   entityName: Type.String(),
@@ -455,8 +440,6 @@ export const InsightDetailResponseSchema = Type.Object({
   currentSnapshotId: Type.String(),
   entities: Type.Array(InsightDetailEntitySchema),
   evidenceItems: Type.Array(InsightEvidenceItemSchema),
-  evidenceMessageRecords: Type.Array(Type.Any()),
-  evidenceMessages: Type.Array(InsightEvidenceMessageContextSchema),
   faqCandidates: Type.Array(InsightFaqCandidateSchema),
   intents: Type.Array(InsightIntentSchema),
   problemResolution: InsightProblemResolutionSchema,
@@ -469,9 +452,12 @@ export const InsightDetailResponseSchema = Type.Object({
   })),
   sentiment: Type.Array(InsightSentimentSchema),
   session: InsightSessionMetaSchema,
-  sessionMessageRecords: Type.Array(Type.Any()),
   summary: InsightSummarySchema,
   tags: Type.Array(InsightTagSchema),
+}, { additionalProperties: false });
+
+export const InsightSessionMessagesResponseSchema = Type.Object({
+  messages: Type.Array(Type.Any()),
 }, { additionalProperties: false });
 
 export const InsightMessageContextRequestSchema = Type.Object({
@@ -720,15 +706,13 @@ export type InsightRescanAnalysisScope = Static<typeof InsightRescanAnalysisScop
 export type InsightRescanTaskStatus = Static<typeof InsightRescanTaskStatusSchema>;
 export type InsightCreateActionItemRequest = Static<typeof InsightCreateActionItemRequestSchema>;
 export type InsightCreateActionItemResponse = Static<typeof InsightCreateActionItemResponseSchema>;
-export type InsightDetailResponse = Omit<
-  Static<typeof InsightDetailResponseSchema>,
-  "evidenceMessageRecords"
+export type InsightDetailResponse = Static<typeof InsightDetailResponseSchema>;
+export type InsightSessionMessagesResponse = Omit<
+  Static<typeof InsightSessionMessagesResponseSchema>,
+  "messages"
 > & {
-  evidenceMessageRecords: WorkbenchMessageDto[];
+  messages: WorkbenchMessageDto[];
 };
-export type InsightEvidenceMessageContext = Static<
-  typeof InsightEvidenceMessageContextSchema
->;
 export type InsightMessageContextRequest = Static<typeof InsightMessageContextRequestSchema>;
 export type InsightMessageContextResponse = Omit<
   Static<typeof InsightMessageContextResponseSchema>,

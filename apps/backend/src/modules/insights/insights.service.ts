@@ -22,6 +22,7 @@ import type {
   InsightIntentConfigMutationRequest,
   InsightLabelConfig,
   InsightLabelConfigMutationRequest,
+  InsightSessionMessagesResponse,
   InsightMessageContextResponse,
   InsightQaRuleConfig,
   InsightQaRuleConfigMutationRequest,
@@ -111,8 +112,6 @@ export type InsightActionItemRow = InsightsFollowUpsResponse["items"][number] & 
 export type InsightDetailActionItemRow = InsightDetailResponse["actionItems"][number] & {
   resolutionStatus?: InsightResolutionStatus;
 };
-
-export type InsightEvidenceMessageRow = InsightDetailResponse["evidenceMessages"][number];
 
 export type InsightDetailRow = {
   actionItems: InsightDetailActionItemRow[];
@@ -261,6 +260,7 @@ export type InsightsRepositoryPort = {
     idempotencyKey: string,
   ): Promise<{ jobId: string; taskId: string }>;
   findDetail(scope: InsightsUidScope, sessionId: string): Promise<InsightDetailRow | undefined>;
+  hasSession(scope: InsightsUidScope, sessionId: string): Promise<boolean>;
   listActionItems(
     scope: InsightsUidScope,
     filters?: InsightsFollowUpFilters,
@@ -313,16 +313,6 @@ export type InsightsRepositoryPort = {
   listEntityHotspots?(
     scope: InsightsUidScope,
   ): Promise<InsightsOverviewResponse["entityHotspots"]>;
-  listEvidenceMessages(
-    scope: InsightsUidScope,
-    sessionId: string,
-    messageIds: string[],
-  ): Promise<InsightEvidenceMessageRow[]>;
-  listEvidenceMessageRecords(
-    scope: InsightsUidScope,
-    sessionId: string,
-    messageIds: string[],
-  ): Promise<WorkbenchMessageDto[]>;
   hasActiveRescanTask(scope: InsightsUidScope): Promise<boolean>;
   listRescanTasks(
     scope: InsightsUidScope,
@@ -687,32 +677,12 @@ export class InsightsService {
       throw new NotFoundError("INSIGHT_SESSION_NOT_FOUND", "洞察会话不存在");
     }
 
-    const evidenceMessages = sortEvidenceMessages(
-      await this.repository.listEvidenceMessages(
-        scope,
-        sessionId,
-        detail.problemEvidenceMessageIds,
-      ),
-    );
-    const evidenceMessageRecords = sortWorkbenchMessagesBySeq(
-      await this.repository.listEvidenceMessageRecords(
-        scope,
-        sessionId,
-        detail.problemEvidenceMessageIds,
-      ),
-    );
-    const sessionMessageRecords = sortWorkbenchMessagesBySeq(
-      await this.repository.listSessionMessageRecords(scope, sessionId),
-    );
-
     return {
       actionItems: detail.actionItems,
       analysisStatus: detail.current.analysisStatus,
       currentSnapshotId: detail.current.currentSnapshotId,
       entities: detail.entities,
       evidenceItems: detail.evidenceItems,
-      evidenceMessageRecords,
-      evidenceMessages,
       faqCandidates: detail.faqCandidates,
       intents: detail.intents,
       problemResolution: {
@@ -737,12 +707,26 @@ export class InsightsService {
         sessionId: detail.current.sessionId,
         startedAt: detail.current.startedAt,
       },
-      sessionMessageRecords,
       summary: {
         sessionTitle: detail.current.summarySessionTitle,
         text: detail.current.summaryText,
       },
       tags: detail.tags,
+    };
+  }
+
+  async getSessionMessages(
+    scope: InsightsUidScope,
+    sessionId: string,
+  ): Promise<InsightSessionMessagesResponse> {
+    if (!await this.repository.hasSession(scope, sessionId)) {
+      throw new NotFoundError("INSIGHT_SESSION_NOT_FOUND", "洞察会话不存在");
+    }
+
+    return {
+      messages: sortWorkbenchMessagesBySeq(
+        await this.repository.listSessionMessageRecords(scope, sessionId),
+      ),
     };
   }
 
@@ -1794,18 +1778,6 @@ function compareNumericIdDesc(left: string, right: string) {
   }
 
   return right.localeCompare(left);
-}
-
-function sortEvidenceMessages(rows: InsightEvidenceMessageRow[]) {
-  return [...rows].sort((left, right) => {
-    const timeDelta = left.msgtime - right.msgtime;
-
-    if (timeDelta !== 0) {
-      return timeDelta;
-    }
-
-    return Number(left.messageId) - Number(right.messageId);
-  });
 }
 
 function sortWorkbenchMessagesBySeq(rows: WorkbenchMessageDto[]) {

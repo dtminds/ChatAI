@@ -55,6 +55,11 @@ describe("insights routes", () => {
       method: "GET",
       url: "/api/server/insights/sessions/501",
     });
+    const sessionMessages = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/insights/sessions/501/messages",
+    });
     const status = await app.inject({
       headers: {
         authorization,
@@ -218,10 +223,11 @@ describe("insights routes", () => {
       totalPages: 1,
     });
     expect(detail.statusCode).toBe(200);
-    expect(detail.json().data.evidenceMessages.map((item: { messageId: string }) => item.messageId)).toEqual([
-      "9001",
-      "9002",
-    ]);
+    expect(detail.json().data).not.toHaveProperty("evidenceMessages");
+    expect(detail.json().data).not.toHaveProperty("evidenceMessageRecords");
+    expect(detail.json().data).not.toHaveProperty("sessionMessageRecords");
+    expect(sessionMessages.statusCode).toBe(200);
+    expect(sessionMessages.json().data.messages).toHaveLength(1);
     expect(detail.json().data.tags).toEqual([
       expect.objectContaining({
         evidenceMessageIds: ["9002"],
@@ -1533,6 +1539,14 @@ function createInsightsDbMock(options: {
             session_id: 501,
             third_userid: "seat-1",
             uid: 9001,
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_logical_session as session") {
+        return createBuilder([
+          {
+            id: 501,
           },
         ]);
       }

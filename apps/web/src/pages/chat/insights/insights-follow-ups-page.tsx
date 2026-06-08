@@ -177,7 +177,7 @@ export function InsightsFollowUpsPage() {
           />
         </div>
 
-        <div className="bg-background">
+        <div>
           <div className="overflow-x-auto">
             <Table aria-label="待处理列表">
               <TableHeader>
@@ -316,6 +316,9 @@ export function InsightsFollowUpsPage() {
         error={detail.error}
         isOpen={detail.isOpen}
         isLoading={detail.isLoading}
+        isMessagesLoading={detail.isMessagesLoading}
+        messages={detail.messages}
+        messagesError={detail.messagesError}
         onActionStatusChange={detail.updateActionStatus}
         onOpenChange={detail.onOpenChange}
       />

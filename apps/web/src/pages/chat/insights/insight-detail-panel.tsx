@@ -11,10 +11,13 @@ import {
   Database01Icon,
   FlushedIcon,
   InformationCircleIcon,
+  LibraryIcon,
   LookTopIcon,
   Sad02Icon,
+  ServiceIcon,
   SmileIcon,
   Tag01Icon,
+  Timer01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -41,6 +44,7 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { HistoryCompactMessageList } from "@/pages/chat/components/message-history-side-panel";
@@ -59,6 +63,9 @@ export function InsightDetailPanel({
   error,
   isOpen,
   isLoading,
+  isMessagesLoading,
+  messages,
+  messagesError,
   onActionStatusChange,
   onOpenChange,
 }: {
@@ -66,11 +73,14 @@ export function InsightDetailPanel({
   error?: Error;
   isOpen: boolean;
   isLoading?: boolean;
+  isMessagesLoading?: boolean;
+  messages?: InsightMessageContextResponse["messages"];
+  messagesError?: Error;
   onActionStatusChange?: (actionItemId: string, status: DetailActionStatus) => Promise<void>;
   onOpenChange: (open: boolean) => void;
 }) {
-  const evidenceRecordMessages = detail
-    ? adaptInsightMessages(detail.sessionMessageRecords)
+  const evidenceRecordMessages = messages
+    ? adaptInsightMessages(messages)
     : [];
   const evidenceByMessageId = detail ? buildEvidenceByMessageId(detail.evidenceItems) : new Map<string, EvidenceViewItem[]>();
 
@@ -98,7 +108,7 @@ export function InsightDetailPanel({
                     <div className="space-y-6">
                       <QualityFindingsSection items={detail.qaFindings} />
                       <section className="space-y-4 border-t pt-5">
-                        <SectionHeading>智能归因</SectionHeading>
+                        <SectionHeading icon={AiIdeaIcon}>智能归因</SectionHeading>
                         <InsightResultTable
                           items={buildBusinessAttributionItems(detail)}
                         />
@@ -119,14 +129,22 @@ export function InsightDetailPanel({
                     <div className="border-b bg-background px-5 py-4">
                       <h3 className="inline-flex items-baseline gap-2 text-sm font-semibold text-foreground">
                         <span>本轮对话</span>
-                        <span className="text-xs font-normal text-muted-foreground">
-                          {evidenceRecordMessages.length} 条
-                        </span>
+                        {!isMessagesLoading ? (
+                          <span className="text-xs font-normal text-muted-foreground">
+                            {evidenceRecordMessages.length} 条
+                          </span>
+                        ) : null}
                       </h3>
                     </div>
 
                     <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                      {evidenceRecordMessages.length > 0 ? (
+                      {isMessagesLoading ? (
+                        <InsightLoadingState text="正在加载本轮对话" />
+                      ) : messagesError ? (
+                        <div className="rounded-[8px] border border-dashed bg-background p-6 text-center text-sm text-muted-foreground">
+                          本轮对话加载失败
+                        </div>
+                      ) : evidenceRecordMessages.length > 0 ? (
                         <HistoryCompactMessageList
                           messages={evidenceRecordMessages}
                           renderMetaSuffix={(message) => {
@@ -146,12 +164,25 @@ export function InsightDetailPanel({
                 </aside>
             </div>
           ) : (
-            <div className="px-6 py-8 text-sm text-muted-foreground">
-              {isLoading ? "正在加载洞察详情" : error ? "洞察详情加载失败" : "暂无洞察详情"}
-            </div>
+            isLoading ? (
+              <InsightLoadingState text="正在加载会话" />
+            ) : (
+              <div className="px-6 py-8 text-sm text-muted-foreground">
+                {error ? "洞察详情加载失败" : "暂无洞察详情"}
+              </div>
+            )
           )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function InsightLoadingState({ text }: { text: string }) {
+  return (
+    <div className="flex h-full min-h-[220px] items-center justify-center gap-2 text-sm text-muted-foreground">
+      <Spinner variant="classic" size={18} />
+      <span>{text}</span>
+    </div>
   );
 }
 
@@ -235,8 +266,15 @@ function DetailSummarySection({
   return (
     <section className="space-y-7">
       <div className="space-y-1">
-        <div className="text-xs font-medium text-muted-foreground">
-          生成于 {formatInsightTime(detail.session.generatedAt)}
+        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground/70">
+          <HugeiconsIcon
+            aria-hidden
+            color="currentColor"
+            icon={Timer01Icon}
+            size={14}
+            strokeWidth={1.8}
+          />
+          <span>生成于 {formatInsightTime(detail.session.generatedAt)}</span>
         </div>
         <div className="space-y-1">
           <h2 className="text-[20px] font-semibold leading-8 text-foreground">
@@ -346,9 +384,25 @@ function DetailMetaRow({
   );
 }
 
-function SectionHeading({ children }: { children: ReactNode }) {
+function SectionHeading({
+  children,
+  icon,
+}: {
+  children: ReactNode;
+  icon?: IconSvgElement;
+}) {
   return (
-    <h3 className="text-sm font-semibold text-foreground">
+    <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground">
+      {icon ? (
+        <HugeiconsIcon
+          aria-hidden
+          className="shrink-0 text-muted-foreground"
+          color="currentColor"
+          icon={icon}
+          size={16}
+          strokeWidth={1.9}
+        />
+      ) : null}
       {children}
     </h3>
   );
@@ -564,7 +618,7 @@ function QualityFindingsSection({
   return (
     <section className="space-y-3 border-t pt-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionHeading>服务质检</SectionHeading>
+        <SectionHeading icon={ServiceIcon}>服务质检</SectionHeading>
         {items.length > 0 ? (
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             <QualityScoreRing value={passedRate} />
@@ -616,7 +670,7 @@ function QualityFindingItem({
               <HoverCardTrigger asChild>
                 <button
                   aria-label={`查看未通过原因：${item.reason}`}
-                  className="mt-1 block w-full truncate text-left text-sm leading-6 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                  className="mt-1 block w-full truncate text-left text-xs leading-5 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
                   onBlur={() => setIsReasonOpen(false)}
                   onFocus={() => setIsReasonOpen(true)}
                   onMouseEnter={() => setIsReasonOpen(true)}
@@ -822,7 +876,7 @@ function InsightFaqList({
 }) {
   return (
     <section className="space-y-3 border-t pt-5">
-      <SectionHeading>知识沉淀</SectionHeading>
+      <SectionHeading icon={LibraryIcon}>知识沉淀</SectionHeading>
       {items.length > 0 ? (
         <ol className="space-y-2">
           {items.map((item, index) => (

@@ -1895,7 +1895,7 @@ function ConfigTableShell({
           </Button>
         </div>
       </div>
-      <div className="overflow-x-auto bg-background">{children}</div>
+      <div className="overflow-x-auto">{children}</div>
     </section>
   );
 }
@@ -1990,7 +1990,7 @@ function RescanPanel({
           </Button>
         </div>
       </div>
-      <div className="overflow-x-auto bg-background">
+      <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -2534,10 +2534,10 @@ function PrimaryText({ main, sub }: { main: string; sub?: string }) {
 function SeverityBadge({ severity }: { severity: "high" | "low" | "medium" }) {
   const className =
     severity === "high"
-      ? "border-red-200 bg-red-50 text-red-700"
+      ? "border-destructive/30 bg-destructive-muted/55 text-destructive"
       : severity === "medium"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-emerald-200 bg-emerald-50 text-emerald-700";
+        ? "border-warning/30 bg-warning-muted/55 text-warning"
+        : "border-success/30 bg-success-muted/55 text-success";
 
   return (
     <Badge className={className} variant="outline">

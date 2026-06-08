@@ -277,6 +277,24 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get<{ Params: SessionParams }>(
+    "/api/server/insights/sessions/:sessionId/messages",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: SessionParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).getSessionMessages(
+          await getUidScope(app, request),
+          request.params.sessionId,
+        ),
+      );
+    },
+  );
+
   app.get<{ Querystring: MessageContextQuery }>(
     "/api/server/insights/messages/context",
     {

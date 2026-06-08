@@ -221,6 +221,9 @@ export function InsightsQualityPage() {
         error={detail.error}
         isOpen={detail.isOpen}
         isLoading={detail.isLoading}
+        isMessagesLoading={detail.isMessagesLoading}
+        messages={detail.messages}
+        messagesError={detail.messagesError}
         onActionStatusChange={detail.updateActionStatus}
         onOpenChange={detail.onOpenChange}
       />
@@ -249,7 +252,7 @@ function QualityResultList({
   const endRow = Math.min(total, currentPage * pageSize);
 
   return (
-    <div className="bg-background">
+    <div>
       <Table>
         <TableHeader>
           <TableRow>
@@ -412,7 +415,7 @@ function QualityResultBadge({
         </div>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        align="start"
+        align="end"
         className="w-56"
         onMouseEnter={openMenu}
         onMouseLeave={scheduleClose}
@@ -458,7 +461,7 @@ function AgentReportTable({
   rows: InsightsQualityResponse["agentStats"];
 }) {
   return (
-    <div className="bg-background">
+    <div>
       <Table>
         <TableHeader>
           <TableRow>

@@ -19,6 +19,7 @@ import type {
   InsightLabelConfigMutationRequest,
   InsightMessageContextRequest,
   InsightMessageContextResponse,
+  InsightSessionMessagesResponse,
   InsightQaRuleConfig,
   InsightQaRuleConfigMutationRequest,
   InsightRescanTaskListResponse,
@@ -171,6 +172,14 @@ export async function getInsightFollowUps(
 export async function getInsightDetail(sessionId: string) {
   const response = await http.get<ApiSuccessEnvelope<InsightDetailResponse>>(
     `/server/insights/sessions/${sessionId}`,
+  );
+
+  return response.data;
+}
+
+export async function getInsightSessionMessages(sessionId: string) {
+  const response = await http.get<ApiSuccessEnvelope<InsightSessionMessagesResponse>>(
+    `/server/insights/sessions/${sessionId}/messages`,
   );
 
   return response.data;

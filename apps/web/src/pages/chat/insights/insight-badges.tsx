@@ -107,7 +107,7 @@ export function ResolutionDiagnosisHeader() {
         >
           <div className="space-y-2">
             <p className="text-xs leading-5 text-muted-foreground">
-              AI 对分析快照的判断结果，不是人工处理状态
+              按本轮会话内容判断，不代表后续处理状态
             </p>
             <dl className="grid gap-1.5 text-xs leading-5">
               {resolutionDiagnosisDescriptions.map((item) => (
@@ -148,9 +148,9 @@ const resolutionBadgeConfig = {
 } as const;
 
 const resolutionDiagnosisDescriptions = [
-  { label: "已解决", description: "客户问题在本轮会话内已有明确答复或闭环" },
-  { label: "部分解决", description: "已有处理动作，但仍缺少关键信息或最终结果" },
-  { label: "未解决", description: "客户问题仍未得到有效处理或明确回复" },
+  { label: "已解决", description: "本轮会话内已有明确答复或闭环证据" },
+  { label: "部分解决", description: "本轮会话内已有处理动作，但缺少关键信息或最终结果" },
+  { label: "未解决", description: "本轮会话内未看到有效处理或明确回复" },
   { label: "无需处理", description: "未识别到需要客服处理的客户问题" },
   { label: "消息不足", description: "消息未达准入门槛，或模型基于现有消息仍无法判断" },
 ] as const;

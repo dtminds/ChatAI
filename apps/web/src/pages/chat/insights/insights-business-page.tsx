@@ -280,6 +280,9 @@ export function InsightsBusinessPage() {
         error={detail.error}
         isOpen={detail.isOpen}
         isLoading={detail.isLoading}
+        isMessagesLoading={detail.isMessagesLoading}
+        messages={detail.messages}
+        messagesError={detail.messagesError}
         onActionStatusChange={detail.updateActionStatus}
         onOpenChange={detail.onOpenChange}
       />

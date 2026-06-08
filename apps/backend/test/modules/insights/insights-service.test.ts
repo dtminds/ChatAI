@@ -289,6 +289,7 @@ function createRepository(
     countEnabledConfigs: vi.fn(async () => 0),
     countActiveConfigs: vi.fn(async () => 0),
     createRescanJob: vi.fn(async () => ({ jobId: "8801", taskId: "9901" })),
+    hasSession: vi.fn(async () => true),
     findDetail: vi.fn(async () => ({
       actionItems: [
         {
@@ -548,52 +549,6 @@ function createRepository(
         count: 2,
         intentCode: "logistics_delay",
         intentLabel: "物流异常",
-      },
-    ]),
-    listEvidenceMessages: vi.fn(async () => [
-      {
-        contentText: "还没收到货，物流也不更新",
-        contentType: "text",
-        messageId: "9002",
-        msgtime: 1_780_244_100_000,
-        senderName: "张三",
-        senderRole: "customer",
-      },
-      {
-        contentText: "帮您催一下快递",
-        contentType: "text",
-        messageId: "9001",
-        msgtime: 1_780_244_000_000,
-        senderName: "客服一号",
-        senderRole: "agent",
-      },
-    ]),
-    listEvidenceMessageRecords: vi.fn(async () => [
-      {
-        content: { text: "帮您催一下快递" },
-        contentType: "text",
-        conversationId: "301",
-        createdAt: 1_780_244_000_000,
-        customerId: "customer-301",
-        messageId: "external-msg-9001",
-        seatId: "seat-1",
-        senderName: "客服一号",
-        senderType: "agent",
-        seq: 9001,
-        status: "sent",
-      },
-      {
-        content: { text: "还没收到货，物流也不更新" },
-        contentType: "text",
-        conversationId: "301",
-        createdAt: 1_780_244_100_000,
-        customerId: "customer-301",
-        messageId: "external-msg-9002",
-        seatId: "seat-1",
-        senderName: "张三",
-        senderType: "customer",
-        seq: 9002,
-        status: "sent",
       },
     ]),
     listSessionMessageRecords: vi.fn(async () => [
@@ -1390,8 +1345,9 @@ describe("InsightsService", () => {
     });
   });
 
-  it("returns detail evidence sorted by msgtime and message id", async () => {
-    const service = new InsightsService(createRepository());
+  it("returns detail analysis without loading conversation messages", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
     const result = await service.getDetail(scope, "501");
 
     expect(result.session).toMatchObject({
@@ -1403,13 +1359,10 @@ describe("InsightsService", () => {
       generatedAt: 1_780_245_100_000,
       sessionId: "501",
     });
-    expect(result.evidenceMessages.map((item) => item.messageId)).toEqual(["9001", "9002"]);
-    expect(result.evidenceMessageRecords.map((item) => item.seq)).toEqual([9001, 9002]);
-    expect(result.evidenceMessageRecords.map((item) => item.messageId)).toEqual([
-      "external-msg-9001",
-      "external-msg-9002",
-    ]);
-    expect(result.sessionMessageRecords.map((item) => item.seq)).toEqual([9001, 9002]);
+    expect(result).not.toHaveProperty("evidenceMessages");
+    expect(result).not.toHaveProperty("evidenceMessageRecords");
+    expect(result).not.toHaveProperty("sessionMessageRecords");
+    expect(repository.listSessionMessageRecords).not.toHaveBeenCalled();
     expect(result.evidenceItems).toEqual([
       expect.objectContaining({
         evidenceRole: "customer_problem",
@@ -1452,6 +1405,24 @@ describe("InsightsService", () => {
         question: "物流停滞怎么处理",
       }),
     ]);
+  });
+
+  it("returns session messages separately from detail analysis", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+    const result = await service.getSessionMessages(scope, "501");
+
+    expect(result.messages.map((item) => item.seq)).toEqual([9001, 9002]);
+    expect(repository.hasSession).toHaveBeenCalledWith(scope, "501");
+    expect(repository.findDetail).not.toHaveBeenCalled();
+  });
+
+  it("throws not found when session messages are requested outside uid scope", async () => {
+    const service = new InsightsService(createRepository({
+      hasSession: vi.fn(async () => false),
+    }));
+
+    await expect(service.getSessionMessages(scope, "999")).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("keeps hydrated overview assets in session responses", async () => {

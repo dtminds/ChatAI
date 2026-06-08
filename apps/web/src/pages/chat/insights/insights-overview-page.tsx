@@ -315,6 +315,9 @@ export function InsightsOverviewPage() {
         error={detail.error}
         isOpen={detail.isOpen}
         isLoading={detail.isLoading}
+        isMessagesLoading={detail.isMessagesLoading}
+        messages={detail.messages}
+        messagesError={detail.messagesError}
         onActionStatusChange={detail.updateActionStatus}
         onOpenChange={detail.onOpenChange}
       />
@@ -416,7 +419,7 @@ const ResolutionDistribution = memo(function ResolutionDistribution({
     <section className="flex min-h-[260px] flex-col rounded-xl border bg-card p-4">
       <PanelTitle
         icon={ChartBubbleIcon}
-        title="问题解决分布"
+        title="AI 诊断"
         trailing={<DateRangeSummary from={from} to={to} />}
       />
       {hasData ? (
